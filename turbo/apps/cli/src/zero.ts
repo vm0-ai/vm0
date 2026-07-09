@@ -395,10 +395,10 @@ export function buildZeroHelpText(
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
     ...(payload && !payload.capabilities.includes("billing:read")
       ? []
-      : ["  Check credits?         zero credit"]),
+      : ["  Check credits?         zero credit status"]),
     ...(payload && !payload.capabilities.includes("billing:write")
       ? []
-      : ["  Buy credits?           zero credit 20000"]),
+      : ["  Buy credits?           zero credit buy 20000"]),
     "  Send a Slack message?  zero slack message send --help",
     "  Send Teams?           zero teams message send --help",
     "  Upload Teams?         zero teams upload-file --help",

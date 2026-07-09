@@ -94,7 +94,7 @@ describe("zero credit command", () => {
   it("shows current credit status without creating checkout", async () => {
     server.use(stubBillingStatus());
 
-    await zeroCreditCommand.parseAsync(["node", "cli"]);
+    await zeroCreditCommand.parseAsync(["node", "cli", "status"]);
 
     expect(output()).toContain("Credit status:");
     expect(output()).toContain("Tier: pro");
@@ -130,6 +130,7 @@ describe("zero credit command", () => {
     await zeroCreditCommand.parseAsync([
       "node",
       "cli",
+      "buy",
       "20000",
       "--auto-recharge",
       "--auto-recharge-threshold",
@@ -149,6 +150,27 @@ describe("zero credit command", () => {
     expect(output()).toContain("https://checkout.stripe.com/session/credit");
   });
 
+  it("keeps the credit amount shorthand for buying credits", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      stubMembers("admin"),
+      http.post(
+        "http://localhost:3000/api/zero/billing/credit-checkout",
+        async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json({
+            url: "https://checkout.stripe.com/session/credit",
+          });
+        },
+      ),
+    );
+
+    await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
+
+    expect(capturedBody).toMatchObject({ credits: 20_000 });
+    expect(output()).toContain("https://checkout.stripe.com/session/credit");
+  });
+
   it("rejects auto-recharge threshold without the auto-recharge flag", async () => {
     const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
       return undefined as never;
@@ -162,6 +184,7 @@ describe("zero credit command", () => {
       await zeroCreditCommand.parseAsync([
         "node",
         "cli",
+        "buy",
         "20000",
         "--auto-recharge-threshold",
         "5000",
@@ -190,7 +213,7 @@ describe("zero credit command", () => {
     vi.stubEnv("ZERO_TOKEN", buildZeroToken(["billing:write"]));
 
     try {
-      await zeroCreditCommand.parseAsync(["node", "cli"]);
+      await zeroCreditCommand.parseAsync(["node", "cli", "status"]);
 
       const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
       expect(errorOutput).toContain(
@@ -213,7 +236,7 @@ describe("zero credit command", () => {
     vi.stubEnv("ZERO_TOKEN", buildZeroToken(["billing:read"]));
 
     try {
-      await zeroCreditCommand.parseAsync(["node", "cli", "20000"]);
+      await zeroCreditCommand.parseAsync(["node", "cli", "buy", "20000"]);
 
       const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
       expect(errorOutput).toContain(
