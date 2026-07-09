@@ -875,6 +875,7 @@ jobs:
 
           pnpm --dir turbo/apps/api build
           rm -rf .vercel/output
+          mkdir -p .vercel
           cp -R turbo/apps/api/.vercel/output .vercel/output
           test -f .vercel/output/config.json
 
