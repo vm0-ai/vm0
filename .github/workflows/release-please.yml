@@ -840,7 +840,7 @@ jobs:
           path: /tmp/api-production-build-output.tgz
           if-no-files-found: error
           overwrite: true
-          retention-days: 3
+          retention-days: 14
 
       - name: Calculate duration
         id: duration

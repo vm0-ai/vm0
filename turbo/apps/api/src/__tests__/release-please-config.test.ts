@@ -93,7 +93,11 @@ describe("release-please API deployment graph", () => {
     );
     expect(apiBuildJob).toContain("Build API Production Output");
     expect(apiBuildJob).toContain("Upload API Production Build Output");
-    expect(apiBuildJob).toContain("retention-days: 3");
+    expect(apiBuildJob).toContain(`name: api-production-build-output
+          path: /tmp/api-production-build-output.tgz
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14`);
     expect(apiBuildJob).not.toContain("environment: production");
     expect(apiBuildJob).not.toContain("id-token: write");
     expect(apiBuildJob).not.toContain("Get Production Database URL");
