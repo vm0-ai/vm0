@@ -195,9 +195,11 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
 
     assert!(promoted);
     let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 2);
+    assert_eq!(exec_calls.len(), 3);
     assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
-    assert!(exec_calls[1].sudo);
+    assert!(exec_calls[1].cmd.contains("rm -f --"));
+    assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
+    assert!(exec_calls[2].sudo);
     let copy_calls = sandbox.copy_file_calls();
     assert_eq!(copy_calls.len(), 1);
     assert!(copy_calls[0].path.ends_with("/session-history-sidecar"));

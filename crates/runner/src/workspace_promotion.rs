@@ -21,11 +21,43 @@ use crate::workspace_mount::flush_and_unmount_workspace_drive;
 
 const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
+const SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 enum WorkspacePromotionAction {
     Promoted,
     PreservedExisting,
     AbandonUnpublished,
+}
+
+struct SessionHistorySidecarSourceGuard {
+    source: Option<WorkspaceSessionHistorySidecarPromotionSource>,
+}
+
+impl SessionHistorySidecarSourceGuard {
+    fn new(source: Option<WorkspaceSessionHistorySidecarPromotionSource>) -> Self {
+        Self { source }
+    }
+
+    fn as_ref(&self) -> Option<&WorkspaceSessionHistorySidecarPromotionSource> {
+        self.source.as_ref()
+    }
+
+    async fn discard(&mut self, promotion: &WorkspaceImagePromotionContext) {
+        if let Some(source) = self.source.as_ref() {
+            promotion
+                .discard_session_history_sidecar_source(source)
+                .await;
+        }
+        self.source = None;
+    }
+}
+
+impl Drop for SessionHistorySidecarSourceGuard {
+    fn drop(&mut self) {
+        if let Some(source) = self.source.take() {
+            let _ = std::fs::remove_file(source.tmp_path);
+        }
+    }
 }
 
 pub(crate) async fn promote_workspace_image_from_active_sandbox(
@@ -69,15 +101,13 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     promotion: &WorkspaceImagePromotionContext,
     reason: &'static str,
 ) -> WorkspacePromotionAction {
-    let sidecar_source = export_session_history_sidecar(sandbox, promotion, reason).await;
+    let mut sidecar_source = SessionHistorySidecarSourceGuard::new(
+        export_session_history_sidecar(sandbox, promotion, reason).await,
+    );
     match flush_and_unmount_workspace_drive(sandbox, promotion.run_id()).await {
         Ok(()) => {}
         Err(e) => {
-            if let Some(source) = sidecar_source.as_ref() {
-                promotion
-                    .discard_session_history_sidecar_source(source)
-                    .await;
-            }
+            sidecar_source.discard(promotion).await;
             warn!(
                 run_id = %promotion.run_id(),
                 sandbox_id = %promotion.sandbox_id(),
@@ -94,12 +124,8 @@ async fn promote_workspace_image_from_active_sandbox_inner(
     let outcome = promotion
         .promote_with_session_history_sidecar(sidecar_source.as_ref())
         .await;
-    if !matches!(outcome, Ok(WorkspaceImagePromotionOutcome::Promoted))
-        && let Some(source) = sidecar_source.as_ref()
-    {
-        promotion
-            .discard_session_history_sidecar_source(source)
-            .await;
+    if !matches!(outcome, Ok(WorkspaceImagePromotionOutcome::Promoted)) {
+        sidecar_source.discard(promotion).await;
     }
     match outcome {
         Ok(WorkspaceImagePromotionOutcome::Promoted) => WorkspacePromotionAction::Promoted,
@@ -170,6 +196,8 @@ async fn export_session_history_sidecar(
                 error = %e,
                 "workspace image cache session history sidecar export errored"
             );
+            cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
+                .await;
             return None;
         }
     };
@@ -183,6 +211,8 @@ async fn export_session_history_sidecar(
             error = %format_helper_exec_failure("session history sidecar export", &result),
             "workspace image cache session history sidecar export failed"
         );
+        cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
+            .await;
         return None;
     }
     let metadata = match serde_json::from_slice::<SessionHistorySidecarExportMetadata>(
@@ -203,6 +233,8 @@ async fn export_session_history_sidecar(
                 reason,
                 "workspace image cache session history sidecar export returned invalid metadata"
             );
+            cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
+                .await;
             return None;
         }
     };
@@ -222,6 +254,8 @@ async fn export_session_history_sidecar(
     {
         Ok(result) => result,
         Err(e) => {
+            cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason)
+                .await;
             let _ = fs::remove_file(&tmp_path).await;
             warn!(
                 run_id = %promotion.run_id(),
@@ -235,6 +269,7 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
+    cleanup_guest_session_history_sidecar_export(sandbox, promotion, &export_path, reason).await;
     if copied.bytes_copied != metadata.encoded_size {
         let _ = fs::remove_file(&tmp_path).await;
         warn!(
@@ -254,6 +289,47 @@ async fn export_session_history_sidecar(
         metadata.representation,
         metadata.encoded_size,
     )
+}
+
+async fn cleanup_guest_session_history_sidecar_export(
+    sandbox: &dyn Sandbox,
+    promotion: &WorkspaceImagePromotionContext,
+    export_path: &str,
+    reason: &'static str,
+) {
+    let command = ["rm -f --".to_string(), quote_shell_arg(export_path)].join(" ");
+    let request = ExecRequest {
+        cmd: &command,
+        timeout: SESSION_HISTORY_SIDECAR_CLEANUP_TIMEOUT,
+        env: &[],
+        sudo: false,
+        stdin_bytes: None,
+        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+    };
+    match sandbox
+        .exec_with_diagnostic_label(&request, "session-history-sidecar-cleanup")
+        .await
+    {
+        Ok(result) if helper_exec_succeeded(&result) => {}
+        Ok(result) => warn!(
+            run_id = %promotion.run_id(),
+            sandbox_id = %promotion.sandbox_id(),
+            profile_name = promotion.profile_name(),
+            session_id = %promotion.cli_agent_session_id(),
+            reason,
+            error = %format_helper_exec_failure("session history sidecar cleanup", &result),
+            "workspace image cache session history sidecar cleanup failed"
+        ),
+        Err(e) => warn!(
+            run_id = %promotion.run_id(),
+            sandbox_id = %promotion.sandbox_id(),
+            profile_name = promotion.profile_name(),
+            session_id = %promotion.cli_agent_session_id(),
+            reason,
+            error = %e,
+            "workspace image cache session history sidecar cleanup errored"
+        ),
+    }
 }
 
 pub(crate) async fn promote_workspace_image_from_parked_sandbox(
