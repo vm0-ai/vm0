@@ -180,6 +180,9 @@ export const recordManagedUsage$ = command(
       .from(usageEvent)
       .where(eq(usageEvent.id, inserted.id));
     signal.throwIfAborted();
-    return processed?.creditsCharged ?? 0;
+    if (!processed || processed.creditsCharged === null) {
+      throw new Error(`Failed to process ${args.label} usage event`);
+    }
+    return processed.creditsCharged;
   },
 );

@@ -356,4 +356,39 @@ describe("zero scrape route", () => {
     expect(response.body.error.code).toBe("UNSAFE_FINAL_URL");
     expect(afterCredits).toBe(beforeCredits);
   });
+
+  it("returns Firecrawl success false errors without recording usage", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    await enableScrape(actor);
+    configureProvider();
+    await grantCredits(actor);
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          success: false,
+          error: "Firecrawl rejected this scrape",
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [502],
+    );
+    const afterCredits = await credits(actor);
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("FIRECRAWL_ERROR");
+    expect(response.body.error.message).toBe("Firecrawl rejected this scrape");
+    expect(afterCredits).toBe(beforeCredits);
+  });
 });

@@ -135,6 +135,12 @@ function firecrawlErrorMessage(body: unknown): string {
   return "Firecrawl scrape request failed";
 }
 
+function firecrawlFailure(body: unknown): ScrapeErrorResponse | null {
+  return isRecord(body) && body.success === false
+    ? badGateway(firecrawlErrorMessage(body))
+    : null;
+}
+
 async function readResponseBody(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) {
@@ -389,6 +395,11 @@ export const zeroScrape$ = command(
     signal.throwIfAborted();
     if (isScrapeErrorResponse(firecrawlBody)) {
       return firecrawlBody;
+    }
+
+    const firecrawlFailureResponse = firecrawlFailure(firecrawlBody);
+    if (firecrawlFailureResponse) {
+      return firecrawlFailureResponse;
     }
 
     const firecrawlData = dataFromFirecrawlBody(firecrawlBody);
