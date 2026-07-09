@@ -7027,6 +7027,66 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
+  it("shows credit top-ups when a Custom workspace runs out of credits", async () => {
+    const threadId = "failed-guidance-custom-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "custom",
+        credits: 0,
+        onboardingPaymentPending: false,
+        subscriptionStatus: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: false,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 10,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/credits?credits=${body.credits}`,
+        });
+      },
+    );
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("You're out of credits")).toBeInTheDocument();
+      expect(
+        screen.getByText("Add credits to keep chatting with Zero."),
+      ).toBeInTheDocument();
+      expect(queryButtonByText("Upgrade to Pro")).toBeNull();
+      expect(buttonByText("$100")).toBeInTheDocument();
+      expect(buttonByText("$200")).toBeInTheDocument();
+      expect(buttonByText("$300")).toBeInTheDocument();
+    });
+
+    click(buttonByText("$100"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/credits?credits=100000",
+      );
+    });
+  });
+
   it("shows model-provider setup guidance from failed assistant messages", async () => {
     const threadId = "failed-guidance-provider";
     mockFailedAssistantThread({

@@ -212,6 +212,7 @@ const TIER_LIMITS = Object.freeze({
   "limited-free-1": 1,
   pro: 2,
   team: 10,
+  custom: 10,
 });
 
 function getEffectiveConcurrencyLimit(
@@ -3932,7 +3933,10 @@ async function orgTier(
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  return row?.tier === "pro" || row?.tier === "team" ? row.tier : "free";
+  if (row?.tier === "pro" || row?.tier === "team" || row?.tier === "custom") {
+    return row.tier;
+  }
+  return "free";
 }
 
 async function checkRunConcurrencyLimit(

@@ -17,6 +17,7 @@ import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -88,7 +89,7 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
 
     const initialStatus = await api.readBillingStatus(admin);
     expect(initialStatus).toMatchObject({
-      tier: "pro-suspend",
+      tier: "limited-free-1",
       credits: 0,
       hasSubscription: false,
       autoRecharge: { enabled: false, threshold: null, amount: null },
@@ -234,7 +235,7 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
 
     const downgrade = await api.downgradeBilling(
       admin,
-      { targetTier: "pro-suspend", returnUrl: `${appUrl}/settings/billing` },
+      { targetTier: "limited-free-1", returnUrl: `${appUrl}/settings/billing` },
       [409],
     );
     expectApiError(downgrade.body);
@@ -702,6 +703,11 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     if (!admin.orgId) {
       throw new Error("Expected video generation test user to have an org");
     }
+    await seedOrgMetadata({
+      orgId: admin.orgId,
+      tier: "pro",
+      credits: 0,
+    });
 
     const webhooks = createWebhookCallbackApi(context);
     webhooks.configureStripeWebhookSecret();
@@ -848,6 +854,14 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
   it("chains media quota, generation gates, TTS, and status reads through API-visible state", async () => {
     const { api, admin } = testActors();
     await completeVisibleOnboarding(api, admin);
+    if (!admin.orgId) {
+      throw new Error("Expected media quota test user to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: admin.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
 
     const quota = await api.readVoiceQuota(admin);
     expect(quota.body).toStrictEqual({ allowed: false, count: 0, limit: 0 });

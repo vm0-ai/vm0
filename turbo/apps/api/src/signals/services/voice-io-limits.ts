@@ -12,6 +12,7 @@ export const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
   "pro-suspend": 0,
   pro: 300,
   team: 500,
+  custom: 500,
 };
 
 export const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
@@ -20,6 +21,7 @@ export const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
   "pro-suspend": 0,
   pro: 200 * 60,
   team: 500 * 60,
+  custom: 500 * 60,
 };
 
 export function sttDailyRateKey(date: Date): string {

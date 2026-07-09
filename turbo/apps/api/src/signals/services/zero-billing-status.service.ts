@@ -34,9 +34,14 @@ const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
 
 type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
 type PlanCreditTier = "pro" | "team";
-type ScheduledBillingTargetTier = "pro-suspend" | "pro" | "team";
+type ScheduledBillingTargetTier =
+  | "limited-free-1"
+  | "pro-suspend"
+  | "pro"
+  | "team";
 type UsageAllowanceWindowKind = "short" | "weekly";
 
+const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 const ACTIVE_USAGE_ALLOWANCE_STATUSES = [
   "active",
   "manual_active",
@@ -487,7 +492,12 @@ async function activeUsageAllowanceStatus(
 function scheduledTargetTier(
   value: string | null,
 ): ScheduledBillingTargetTier | null {
-  if (value === "pro-suspend" || value === "pro" || value === "team") {
+  if (
+    value === "limited-free-1" ||
+    value === "pro-suspend" ||
+    value === "pro" ||
+    value === "team"
+  ) {
     return value;
   }
   return null;
@@ -499,7 +509,7 @@ function scheduledBillingChange(
   if (org.cancelAtPeriodEnd) {
     return {
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: CANCELED_SUBSCRIPTION_TARGET_TIER,
       effectiveDate:
         org.pendingSubscriptionChangeAt?.toISOString() ??
         org.currentPeriodEnd?.toISOString() ??

@@ -534,7 +534,7 @@ export function videoRequiresPaidPlan() {
   return {
     status: 402 as const,
     body: errorBody(
-      "Built-in video generation requires Pro or Team. Return `pro_required` as the assistant error marker so the app can show the paid plan upgrade card. Do not retry video generation until the workspace upgrades.",
+      "Built-in video generation requires Pro, Team, or Custom workspace access. Return `pro_required` as the assistant error marker so the app can show the paid plan upgrade card. Do not retry video generation until the workspace upgrades.",
       "PRO_REQUIRED",
     ),
   };

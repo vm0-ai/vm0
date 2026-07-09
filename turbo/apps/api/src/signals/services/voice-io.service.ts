@@ -24,7 +24,7 @@ function lifetimeQuotaForTier(
   tier: OrgTier,
   count: number,
 ): AudioInputQuotaResponse {
-  if (tier === "pro" || tier === "team") {
+  if (tier === "pro" || tier === "team" || tier === "custom") {
     return { allowed: true, count: 0, limit: null };
   }
 
@@ -49,7 +49,7 @@ export function audioInputLifetimeQuota(
       .limit(1);
     const tier: OrgTier = orgTierSchema.parse(orgRow?.tier ?? "pro-suspend");
 
-    if (tier === "pro" || tier === "team") {
+    if (tier === "pro" || tier === "team" || tier === "custom") {
       return lifetimeQuotaForTier(tier, 0);
     }
 
