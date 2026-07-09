@@ -14,8 +14,9 @@
 //! The security-sensitive object is the final per-index lock file. Existing
 //! lock files must be regular files openable for read and write by the current
 //! process, must be owned by the current effective uid, must not have multiple
-//! hard links, and must not be group/other-writable. Unsafe or invalid final
-//! lock paths are reported as I/O errors instead of ordinary lock contention.
+//! hard links, and must not have group/other-writable mode bits. Unsafe or
+//! invalid final lock-file paths are reported as I/O errors instead of ordinary
+//! lock contention.
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -88,10 +89,11 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 ///
 /// Existing final lock files must be regular files openable for read and write
 /// by the current process, must be owned by the current effective uid, must not
-/// have multiple hard links, and must not be group/other-writable. Unsafe final
-/// lock paths, including symlinks and non-regular files, are reported as
-/// [`std::io::Error`]. Existing lock files with otherwise acceptable legacy
-/// permissions may be tightened to `0600`.
+/// have multiple hard links, and must not have group/other-writable mode bits.
+/// Unsafe final lock-file paths, including a symlink at the per-index lock path
+/// and non-regular files, are reported as [`std::io::Error`]. Existing lock
+/// files with otherwise acceptable legacy permissions may be tightened to
+/// `0600`.
 ///
 /// Returns `Ok(Some(_))` when the caller owns the claim until the returned
 /// [`NbdDeviceClaim`] is dropped. Returns `Ok(None)` only when another process
