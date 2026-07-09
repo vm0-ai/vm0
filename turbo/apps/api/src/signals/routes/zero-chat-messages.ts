@@ -10,7 +10,6 @@ import {
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
-  type ModelProviderFeatureStates,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
@@ -91,10 +90,7 @@ import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-mark
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
-import {
-  getAllFeatureStates,
-  isFeatureEnabled,
-} from "@vm0/core/feature-switch";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteEntry } from "../route-entry";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
@@ -223,7 +219,6 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
-  readonly featureStates: ModelProviderFeatureStates;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -240,7 +235,6 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
-  readonly featureStates: ModelProviderFeatureStates;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1128,7 +1122,6 @@ async function resolveStoredModelFirstPin(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly pin: ThreadModelPin;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
@@ -1161,7 +1154,6 @@ async function resolveStoredModelFirstPin(params: {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
       selectedModel: params.pin.selectedModel,
     },
-    featureStates: params.featureStates,
   });
 }
 
@@ -1171,7 +1163,6 @@ async function resolveRunModelPin(params: {
   readonly userId: string;
   readonly threadId: string;
   readonly modelSelection: IncomingModelSelection;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
@@ -1188,7 +1179,6 @@ async function resolveRunModelPin(params: {
       orgId: params.orgId,
       userId: params.userId,
       pin: existing,
-      featureStates: params.featureStates,
     });
     if ("status" in pin) {
       return pin;
@@ -1201,7 +1191,6 @@ async function resolveRunModelPin(params: {
     orgId: params.orgId,
     userId: params.userId,
     modelSelection: params.modelSelection,
-    featureStates: params.featureStates,
   });
   if ("status" in pin) {
     return pin;
@@ -1214,7 +1203,6 @@ async function validateModelSelection(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly modelSelection: IncomingModelSelection;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof insufficientCredits>
@@ -1226,7 +1214,6 @@ async function validateModelSelection(params: {
       orgId: params.orgId,
       userId: params.userId,
       modelSelection: params.modelSelection,
-      featureStates: params.featureStates,
     });
     if ("status" in pin) {
       return pin;
@@ -1240,7 +1227,6 @@ async function resolveCodexServiceTierValidationPin(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly body: NormalSendBody;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<
   | ThreadModelPin
   | ReturnType<typeof providerDeleted>
@@ -1253,7 +1239,6 @@ async function resolveCodexServiceTierValidationPin(params: {
       orgId: params.orgId,
       userId: params.userId,
       modelSelection: params.body.modelSelection,
-      featureStates: params.featureStates,
     });
   }
   if (params.body.threadId) {
@@ -1269,7 +1254,6 @@ async function resolveCodexServiceTierValidationPin(params: {
       orgId: params.orgId,
       userId: params.userId,
       pin: existing,
-      featureStates: params.featureStates,
     });
   }
   return badRequestMessage("A model selection is required");
@@ -1281,7 +1265,6 @@ async function validateCodexServiceTierBeforeThread(params: {
   readonly userId: string;
   readonly body: NormalSendBody;
   readonly codexFastModeEnabled: boolean;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<NormalSendFailure | undefined> {
   if (!codexFastServiceTierRequested(params.body)) {
     return undefined;
@@ -1324,7 +1307,6 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.WebsiteTemplates,
       context,
     ),
-    featureStates: getAllFeatureStates(context),
   };
 }
 
@@ -1642,7 +1624,6 @@ async function resolveInitialThreadModelPin(params: {
   readonly userId: string;
   readonly existingThreadId: string | undefined;
   readonly modelSelection: IncomingModelSelection;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<
   | ThreadModelPin
   | ReturnType<typeof badRequestMessage>
@@ -1659,7 +1640,6 @@ async function resolveInitialThreadModelPin(params: {
     orgId: params.orgId,
     userId: params.userId,
     modelSelection: params.modelSelection,
-    featureStates: params.featureStates,
   });
   if ("status" in pin) {
     return pin;
@@ -2287,30 +2267,28 @@ const prepareNormalSend$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
+    const modelError = await validateModelSelection({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      modelSelection: args.body.modelSelection,
+    });
+    signal.throwIfAborted();
+    if (modelError) {
+      return modelError;
+    }
     const featureSwitches = await resolveNormalSendFeatureSwitches(
       db,
       args.orgId,
       args.userId,
     );
     signal.throwIfAborted();
-    const modelError = await validateModelSelection({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
-      modelSelection: args.body.modelSelection,
-      featureStates: featureSwitches.featureStates,
-    });
-    signal.throwIfAborted();
-    if (modelError) {
-      return modelError;
-    }
     const codexServiceTierError = await validateCodexServiceTierBeforeThread({
       db,
       orgId: args.orgId,
       userId: args.userId,
       body: args.body,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-      featureStates: featureSwitches.featureStates,
     });
     signal.throwIfAborted();
     if (codexServiceTierError) {
@@ -2330,7 +2308,6 @@ const prepareNormalSend$ = command(
       userId: args.userId,
       existingThreadId: args.body.threadId,
       modelSelection: args.body.modelSelection,
-      featureStates: featureSwitches.featureStates,
     });
     signal.throwIfAborted();
     if ("status" in initialPin) {
@@ -2401,7 +2378,6 @@ const prepareNormalSend$ = command(
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-      featureStates: featureSwitches.featureStates,
     };
   },
 );
@@ -2690,7 +2666,6 @@ async function resolveTimedRunModelPin(
         userId: args.userId,
         threadId: prepared.thread.threadId,
         modelSelection: args.body.modelSelection,
-        featureStates: prepared.featureStates,
       });
     },
   );

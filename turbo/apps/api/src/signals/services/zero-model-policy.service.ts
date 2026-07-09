@@ -9,7 +9,6 @@ import {
   getDefaultOrgModelPolicySeed,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
-  isRunModelFeatureEnabled,
   type ModelProviderFeatureStates,
   type ModelProviderCredentialScope,
   type ModelProviderType,
@@ -232,7 +231,6 @@ export async function ensureOrgModelPolicies(
   db: Db,
   orgId: string,
   userId: string,
-  featureStates?: ModelProviderFeatureStates,
 ): Promise<OrgModelPolicyRow[]> {
   const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
   const seedDefaultModel = getSeedDefaultModelForTier(limitedFree1);
@@ -241,16 +239,7 @@ export async function ensureOrgModelPolicies(
     const existingDefault = existing.find((policy) => {
       return policy.isDefault;
     });
-    const existingDefaultModel = parseSupportedModel(
-      existingDefault?.model ?? "",
-    );
-    const shouldReplaceDefaultForFeature =
-      existingDefaultModel !== null &&
-      !isRunModelFeatureEnabled(existingDefaultModel, featureStates);
-    if (
-      !shouldReplaceDefaultForFeature &&
-      !shouldReplaceExistingDefaultForTier(existingDefault, limitedFree1)
-    ) {
+    if (!shouldReplaceExistingDefaultForTier(existingDefault, limitedFree1)) {
       return sortRowsByCatalog(existing);
     }
 
@@ -264,11 +253,7 @@ export async function ensureOrgModelPolicies(
     const fallbackDefault =
       existing.find((policy) => {
         return policy.model === seedDefaultModel;
-      }) ??
-      sortRowsByCatalog(existing).find((policy) => {
-        const model = parseSupportedModel(policy.model);
-        return model !== null && isRunModelFeatureEnabled(model, featureStates);
-      });
+      }) ?? sortRowsByCatalog(existing)[0];
     if (fallbackDefault) {
       await setDefaultModelPolicy(
         db,
@@ -278,8 +263,7 @@ export async function ensureOrgModelPolicies(
       );
       return sortRowsByCatalog(await loadRows(db, orgId));
     }
-    await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel);
-    return sortRowsByCatalog(await loadRows(db, orgId));
+    return sortRowsByCatalog(existing);
   }
 
   const existingModels = new Set(
@@ -287,7 +271,7 @@ export async function ensureOrgModelPolicies(
       return policy.model;
     }),
   );
-  const missing = getDefaultOrgModelPolicySeed(seedDefaultModel, featureStates)
+  const missing = getDefaultOrgModelPolicySeed(seedDefaultModel)
     .filter((seed) => {
       return !existingModels.has(seed.model);
     })
@@ -570,21 +554,16 @@ async function listOrgModelPolicies(
   userId: string,
   featureStates: ModelProviderFeatureStates,
 ): Promise<OrgModelPoliciesResponse> {
-  const rows = await ensureOrgModelPolicies(db, orgId, userId, featureStates);
+  const rows = await ensureOrgModelPolicies(db, orgId, userId);
   const providers = await listOrgProviderRoutes(db, orgId);
   const providersById = new Map(
     providers.map((provider) => {
       return [provider.id, provider];
     }),
   );
-  const policies = rows
-    .filter((row) => {
-      const model = parseSupportedModel(row.model);
-      return model !== null && isRunModelFeatureEnabled(model, featureStates);
-    })
-    .map((row) => {
-      return serializePolicy(row, providersById, featureStates);
-    });
+  const policies = rows.map((row) => {
+    return serializePolicy(row, providersById, featureStates);
+  });
   const workspaceDefault = selectWorkspaceDefaultPolicy(policies);
 
   return {
@@ -647,12 +626,7 @@ export const updateOrgModelPolicies$ = command(
       return validation;
     }
 
-    await ensureOrgModelPolicies(
-      db,
-      params.orgId,
-      params.userId,
-      featureStates,
-    );
+    await ensureOrgModelPolicies(db, params.orgId, params.userId);
     signal.throwIfAborted();
 
     const now = nowDate();

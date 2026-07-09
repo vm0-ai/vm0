@@ -47,8 +47,6 @@ import {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
-const GPT56_FEATURE_STATES = { [FeatureSwitchKey.Gpt56Models]: true } as const;
-
 describe("model-first canonical catalog", () => {
   it("exposes canonical model provider env placeholders", () => {
     expect(Object.keys(MODEL_PROVIDER_ENV_PLACEHOLDERS).sort()).toEqual([
@@ -264,17 +262,15 @@ describe("model-first canonical catalog", () => {
       "openrouter-codex",
       "vercel-ai-gateway-codex",
     ]);
-    expect(getProvidersForModel("gpt-5.6-sol")).toEqual([]);
-    expect(getProvidersForModel("gpt-5.6-sol", GPT56_FEATURE_STATES)).toEqual([
+    expect(getProvidersForModel("gpt-5.6-sol")).toEqual([
       "vm0",
       "openai-api-key",
     ]);
-    expect(getProvidersForModel("gpt-5.6-terra")).toEqual([]);
-    expect(getProvidersForModel("gpt-5.6-terra", GPT56_FEATURE_STATES)).toEqual(
-      ["vm0", "openai-api-key"],
-    );
-    expect(getProvidersForModel("gpt-5.6-luna")).toEqual([]);
-    expect(getProvidersForModel("gpt-5.6-luna", GPT56_FEATURE_STATES)).toEqual([
+    expect(getProvidersForModel("gpt-5.6-terra")).toEqual([
+      "vm0",
+      "openai-api-key",
+    ]);
+    expect(getProvidersForModel("gpt-5.6-luna")).toEqual([
       "vm0",
       "openai-api-key",
     ]);
@@ -327,20 +323,10 @@ describe("model-first canonical catalog", () => {
   });
 
   it("checks model/provider compatibility", () => {
-    expect(isModelSupportedByProvider("gpt-5.6-sol", "vm0")).toBe(false);
-    expect(
-      isModelSupportedByProvider("gpt-5.6-sol", "vm0", GPT56_FEATURE_STATES),
-    ).toBe(true);
+    expect(isModelSupportedByProvider("gpt-5.6-sol", "vm0")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openai-api-key")).toBe(
-      false,
+      true,
     );
-    expect(
-      isModelSupportedByProvider(
-        "gpt-5.6-sol",
-        "openai-api-key",
-        GPT56_FEATURE_STATES,
-      ),
-    ).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.6-sol", "codex-oauth-token")).toBe(
       false,
     );
@@ -452,31 +438,15 @@ describe("model-first canonical catalog", () => {
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
-      "gpt-5.5",
       "claude-opus-4-8",
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "MiniMax-M3",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("gpt-5.6-sol");
     expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("claude-sonnet-4-6");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
-      DEFAULT_ORG_MODEL_POLICY_MODELS.filter((model) => {
-        return !model.startsWith("gpt-5.6-");
-      }).map((model) => {
-        return {
-          model,
-          isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-          defaultProviderType: "vm0",
-          credentialScope: "org",
-          modelProviderId: null,
-        };
-      }),
-    );
-    expect(
-      getDefaultOrgModelPolicySeed(undefined, GPT56_FEATURE_STATES),
-    ).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
           model,
@@ -733,7 +703,7 @@ describe("model selection for Claude-compatible gateway providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("returns VM0 managed models allowed by feature switches", () => {
+  it("returns all VM0 managed models", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("claude-fable-5");
     expect(models).toContain("claude-opus-4-8");
@@ -744,14 +714,11 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("mimo-v2.5");
     expect(models).toContain("hy3-preview");
     expect(models).toContain("deepseek-v4-pro");
-    expect(models).not.toContain("gpt-5.6-sol");
-    expect(models).not.toContain("gpt-5.6-terra");
-    expect(models).not.toContain("gpt-5.6-luna");
+    expect(models).toContain("gpt-5.6-sol");
+    expect(models).toContain("gpt-5.6-terra");
+    expect(models).toContain("gpt-5.6-luna");
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("gpt-5.4-mini");
-    expect(getVm0VisibleModels(GPT56_FEATURE_STATES)).toEqual(
-      expect.arrayContaining(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]),
-    );
     expect(models).not.toContain("claude-haiku-4-5");
     expect(models).not.toContain("kimi-k2.6");
     expect(models).not.toContain("kimi-k2.5");
@@ -959,11 +926,6 @@ describe("openai-api-key codex provider", () => {
 
   it("offers codex-compatible models with gpt-5.5 default", () => {
     expect(getModels("openai-api-key")).toEqual([
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-    ]);
-    expect(getModels("openai-api-key", GPT56_FEATURE_STATES)).toEqual([
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",

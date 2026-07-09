@@ -1,9 +1,7 @@
 import {
   SUPPORTED_RUN_MODELS,
   isLimitedFree1RestrictedRunModel,
-  isRunModelFeatureEnabled,
   isSupportedRunModel,
-  type ModelProviderFeatureStates,
   type ModelProviderCredentialScope,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -37,13 +35,6 @@ interface AvailableModelProviderPin {
   readonly type: string;
 }
 
-interface ModelPolicyPinRow {
-  readonly model: string;
-  readonly defaultProviderType: string;
-  readonly credentialScope: string;
-  readonly modelProviderId: string | null;
-}
-
 async function orgHasLimitedFree1Restrictions(
   db: Db,
   orgId: string,
@@ -72,25 +63,6 @@ function modelProviderAllowedForOrgTier(args: {
   return !args.limitedFree1 || args.modelProviderType === "vm0";
 }
 
-function modelAllowedForFeatureState(
-  model: string | null | undefined,
-  featureStates: ModelProviderFeatureStates | undefined,
-): boolean {
-  return (
-    isSupportedRunModel(model) && isRunModelFeatureEnabled(model, featureStates)
-  );
-}
-
-function knownModelAllowedForFeatureState(
-  model: string | null | undefined,
-  featureStates: ModelProviderFeatureStates | undefined,
-): boolean {
-  return (
-    !isSupportedRunModel(model) ||
-    isRunModelFeatureEnabled(model, featureStates)
-  );
-}
-
 function parseModelProviderCredentialScope(
   value: string | null,
 ): ModelProviderCredentialScope | null {
@@ -111,53 +83,13 @@ export function modelOnlyModelFirstPin(
   };
 }
 
-function emptyModelFirstPin(): ModelFirstPin {
-  return {
-    modelProviderId: null,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel: null,
-  };
-}
-
-function modelPolicyToModelFirstPin(policy: ModelPolicyPinRow): ModelFirstPin {
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
-  };
-}
-
-function modelPolicyAllowedForDefaultPin(args: {
-  readonly policy: ModelPolicyPinRow;
-  readonly limitedFree1: boolean;
-  readonly featureStates?: ModelProviderFeatureStates;
-}): boolean {
-  return (
-    isSupportedRunModel(args.policy.model) &&
-    modelAllowedForFeatureState(args.policy.model, args.featureStates) &&
-    modelAllowedForOrgTier({
-      limitedFree1: args.limitedFree1,
-      selectedModel: args.policy.model,
-    }) &&
-    modelProviderAllowedForOrgTier({
-      limitedFree1: args.limitedFree1,
-      modelProviderType: args.policy.defaultProviderType,
-    })
-  );
-}
-
 export async function resolveDefaultModelFirstPin(
   db: Db,
   orgId: string,
   userId: string,
-  featureStates?: ModelProviderFeatureStates,
 ): Promise<ModelFirstPin> {
   if (userId !== "__no_preference__") {
-    await ensureOrgModelPolicies(db, orgId, userId, featureStates);
+    await ensureOrgModelPolicies(db, orgId, userId);
   }
   const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
   const [preference] = await db
@@ -173,7 +105,6 @@ export async function resolveDefaultModelFirstPin(
 
   const preferredModel =
     isSupportedRunModel(preference?.selectedModel) &&
-    modelAllowedForFeatureState(preference.selectedModel, featureStates) &&
     modelAllowedForOrgTier({
       limitedFree1,
       selectedModel: preference.selectedModel,
@@ -202,20 +133,16 @@ export async function resolveDefaultModelFirstPin(
     .limit(1);
 
   if (!policy && preferredModel) {
-    return resolveDefaultModelFirstPin(
-      db,
-      orgId,
-      "__no_preference__",
-      featureStates,
-    );
+    return resolveDefaultModelFirstPin(db, orgId, "__no_preference__");
   }
 
   if (
     !policy ||
-    !modelPolicyAllowedForDefaultPin({
-      policy,
+    !isSupportedRunModel(policy.model) ||
+    !modelAllowedForOrgTier({ limitedFree1, selectedModel: policy.model }) ||
+    !modelProviderAllowedForOrgTier({
       limitedFree1,
-      featureStates,
+      modelProviderType: policy.defaultProviderType,
     })
   ) {
     const fallbackPolicies = await db
@@ -234,19 +161,55 @@ export async function resolveDefaultModelFirstPin(
       )
       .limit(SUPPORTED_RUN_MODELS.length);
     const fallbackPolicy = fallbackPolicies.find((candidate) => {
-      return modelPolicyAllowedForDefaultPin({
-        policy: candidate,
-        limitedFree1,
-        featureStates,
-      });
+      return (
+        isSupportedRunModel(candidate.model) &&
+        modelAllowedForOrgTier({
+          limitedFree1,
+          selectedModel: candidate.model,
+        }) &&
+        modelProviderAllowedForOrgTier({
+          limitedFree1,
+          modelProviderType: candidate.defaultProviderType,
+        })
+      );
     });
-    if (fallbackPolicy) {
-      return modelPolicyToModelFirstPin(fallbackPolicy);
+    if (
+      fallbackPolicy &&
+      isSupportedRunModel(fallbackPolicy.model) &&
+      modelAllowedForOrgTier({
+        limitedFree1,
+        selectedModel: fallbackPolicy.model,
+      }) &&
+      modelProviderAllowedForOrgTier({
+        limitedFree1,
+        modelProviderType: fallbackPolicy.defaultProviderType,
+      })
+    ) {
+      return {
+        modelProviderId: fallbackPolicy.modelProviderId ?? null,
+        modelProviderType: fallbackPolicy.defaultProviderType,
+        modelProviderCredentialScope: parseModelProviderCredentialScope(
+          fallbackPolicy.credentialScope,
+        ),
+        selectedModel: fallbackPolicy.model,
+      };
     }
-    return emptyModelFirstPin();
+    return {
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: null,
+    };
   }
 
-  return modelPolicyToModelFirstPin(policy);
+  return {
+    modelProviderId: policy.modelProviderId ?? null,
+    modelProviderType: policy.defaultProviderType,
+    modelProviderCredentialScope: parseModelProviderCredentialScope(
+      policy.credentialScope,
+    ),
+    selectedModel: policy.model,
+  };
 }
 
 export async function modelProviderPinAvailable(params: {
@@ -286,7 +249,6 @@ export async function resolveModelSelectionPin(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly modelSelection: ModelSelectionRequest;
-  readonly featureStates?: ModelProviderFeatureStates;
 }): Promise<
   | ModelFirstPin
   | ReturnType<typeof badRequestMessage>
@@ -321,19 +283,8 @@ export async function resolveModelSelectionPin(params: {
       return insufficientCredits();
     }
     if (
-      !knownModelAllowedForFeatureState(
-        modelSelection.selectedModel,
-        params.featureStates,
-      )
-    ) {
-      return badRequestMessage("Invalid model selection");
-    }
-    if (
       provider.type === "vm0" &&
-      !modelAllowedForFeatureState(
-        modelSelection.selectedModel,
-        params.featureStates,
-      )
+      !isSupportedRunModel(modelSelection.selectedModel)
     ) {
       return badRequestMessage("Invalid model selection");
     }
@@ -345,16 +296,11 @@ export async function resolveModelSelectionPin(params: {
     };
   }
 
-  if (
-    !modelAllowedForFeatureState(
-      modelSelection.selectedModel,
-      params.featureStates,
-    )
-  ) {
+  if (!isSupportedRunModel(modelSelection.selectedModel)) {
     return badRequestMessage("Invalid model selection");
   }
 
-  await ensureOrgModelPolicies(db, orgId, userId, params.featureStates);
+  await ensureOrgModelPolicies(db, orgId, userId);
   const [policy] = await db
     .select({
       model: orgModelPolicies.model,
