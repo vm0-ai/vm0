@@ -1792,6 +1792,8 @@ jobs:
           RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
+          set -euo pipefail
+
           read_host_capacity() {
             local HOST=$1
             local RUNNER_NAME=$2
@@ -1801,6 +1803,8 @@ jobs:
           }
 
           start_on_host() {
+            set -euo pipefail
+
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
