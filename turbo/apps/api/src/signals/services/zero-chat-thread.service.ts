@@ -40,6 +40,7 @@ import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,
@@ -347,7 +348,7 @@ const messageColumns = {
       ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
+  )`.mapWith(zeroWorkflowTriggers.atTime),
   workflowTriggerTimezone: sql<string | null>`(
     SELECT "zero_workflow_triggers"."timezone"
     FROM "zero_runs"
