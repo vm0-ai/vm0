@@ -74,6 +74,13 @@ impl BuiltinFirewallCatalogCache {
         }
         validate_firewall_map(&self.firewalls)
     }
+
+    fn has_same_catalog_payload(&self, other: &Self) -> bool {
+        self.schema_version == other.schema_version
+            && self.catalog_digest == other.catalog_digest
+            && self.catalog_version == other.catalog_version
+            && self.firewalls == other.firewalls
+    }
 }
 
 pub(super) struct BuiltinFirewallCatalogRefreshHandle {
@@ -395,12 +402,32 @@ async fn write_catalog_cache(
             )));
         }
     };
+    if let Some(existing) = read_existing_catalog_cache_for_skip(cache_path).await
+        && existing.has_same_catalog_payload(&cache)
+    {
+        return Ok(());
+    }
     crate::state_file::write_private_atomic(cache_path, &content).await?;
     info!(cache_path = %cache_path.display(), "builtin firewall catalog cache refreshed");
     Ok(())
 }
 
-#[cfg(test)]
+async fn read_existing_catalog_cache_for_skip(
+    cache_path: &Path,
+) -> Option<BuiltinFirewallCatalogCache> {
+    match read_catalog_cache(cache_path).await {
+        Ok(cache) => cache,
+        Err(error) => {
+            warn!(
+                error = %error,
+                cache_path = %cache_path.display(),
+                "existing builtin firewall catalog cache is invalid; overwriting"
+            );
+            None
+        }
+    }
+}
+
 async fn read_catalog_cache(
     cache_path: &Path,
 ) -> RunnerResult<Option<BuiltinFirewallCatalogCache>> {
@@ -768,6 +795,58 @@ mod tests {
         assert_eq!(cache.catalog_digest, digest());
         assert_eq!(cache.catalog_version, "test-catalog");
         assert_eq!(cache.firewalls["github"].name, "github");
+    }
+
+    #[tokio::test]
+    async fn write_catalog_cache_keeps_existing_file_when_payload_is_unchanged() {
+        use std::os::unix::fs::MetadataExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+        let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        let before_ino = std::fs::metadata(&cache_path).unwrap().ino();
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+        let after_ino = std::fs::metadata(&cache_path).unwrap().ino();
+        assert_eq!(after, before);
+        assert_eq!(after_ino, before_ino);
+    }
+
+    #[tokio::test]
+    async fn write_catalog_cache_rewrites_when_payload_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+        write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+            .await
+            .unwrap();
+
+        let mut changed = catalog("github");
+        changed
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .base = "https://api.github.com".to_string();
+        write_catalog_cache(&cache_path, &lock_path, changed)
+            .await
+            .unwrap();
+
+        let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+        assert_eq!(
+            cache.firewalls["github"].apis[0].base,
+            "https://api.github.com"
+        );
     }
 
     #[tokio::test]

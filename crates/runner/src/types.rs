@@ -169,7 +169,7 @@ pub enum FirewallEntry {
 
 /// A single firewall config with its name and API entries.
 /// `name` is the canonical identifier (also used as the networkPolicies map key).
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Firewall {
     pub name: String,
     pub apis: Vec<FirewallApi>,
@@ -192,7 +192,7 @@ impl Firewall {
 }
 
 /// A single firewall API entry with base URL and auth headers for proxy-side matching.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallApi {
     /// Stable API identifier used as one component of mitm-addon auth cache keys.
     /// Filled by the Python registry loader after built-in refs and inline firewalls
@@ -241,7 +241,7 @@ impl FirewallApi {
 }
 
 /// A named permission group with matching rules for request authorization.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallPermission {
     pub name: String,
     #[serde(default)]
@@ -630,7 +630,7 @@ fn validate_parameterized_firewall_base_path(
 }
 
 /// Base-host ownership policy for credentialed builtin firewall APIs.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum FirewallBaseHostPolicy {
     #[serde(rename = "providerOwned", rename_all = "camelCase")]
@@ -731,7 +731,7 @@ fn is_ipv4_literal_like(host: &str) -> bool {
 }
 
 /// Auth configuration for a firewall API entry.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FirewallAuth {
     #[serde(default)]
     pub headers: std::collections::HashMap<String, String>,
@@ -994,7 +994,7 @@ fn raw_url_path(value: &str) -> &str {
 }
 
 /// AWS SigV4 auth template for firewall auth injection.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct FirewallAwsSigv4Auth {
