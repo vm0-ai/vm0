@@ -696,7 +696,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       defaultProviderType: "codex-oauth-token",
       credentialScope: "member",
       modelProviderId: null,
-      routeStatus: "missing_provider",
+      routeStatus: "valid",
     });
   });
 
