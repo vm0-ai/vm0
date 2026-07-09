@@ -185,7 +185,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroScrape,
     );
 
@@ -196,7 +196,10 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ZeroScrape]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
-    ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });
+    ).toStrictEqual({
+      [FeatureSwitchKey.ZeroScrape]: true,
+      [FeatureSwitchKey.Dummy]: false,
+    });
   });
 });
 

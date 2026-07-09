@@ -6,7 +6,9 @@ import { command } from "ccstate";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { zeroScrape$ } from "../services/zero-scrape.service";
 
 const scrapeBody$ = bodyResultOf(zeroScrapeContract.scrape);
@@ -21,12 +23,14 @@ const zeroScrapeDisabled = Object.freeze({
   }),
 });
 
-const zeroScrapeEnabled$ = command(({ get }) => {
+const zeroScrapeEnabled$ = command(async ({ get }) => {
   const auth = get(organizationAuthContext$);
-  return isFeatureEnabled(FeatureSwitchKey.ZeroScrape, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-  });
+  const context = await loadUserFeatureSwitchContext(
+    get(db$),
+    auth.orgId,
+    auth.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.ZeroScrape, context);
 });
 
 const scrapeInner$ = command(async ({ get, set }, signal: AbortSignal) => {

@@ -164,7 +164,7 @@ describe("auth tokens", () => {
     );
   });
 
-  it("does not grant scrape capability from user feature switch overrides", () => {
+  it("grants scrape capability from user feature switch overrides", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const overrideToken = generateZeroToken(
       "user_zero",
@@ -176,7 +176,7 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
       "scrape:read",
     );
-    expect(verifyZeroToken(overrideToken)?.capabilities).not.toContain(
+    expect(verifyZeroToken(overrideToken)?.capabilities).toContain(
       "scrape:read",
     );
   });
