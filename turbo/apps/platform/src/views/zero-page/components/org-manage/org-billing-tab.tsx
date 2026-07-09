@@ -160,7 +160,7 @@ function tierRank(t: BillingTier): number {
 }
 
 function isPaidTier(tier: BillingTier): boolean {
-  return tier === "pro" || tier === "team";
+  return tier === "pro" || tier === "team" || tier === "custom";
 }
 
 function isCustomTier(tier: BillingTier): boolean {
@@ -949,6 +949,16 @@ function billingPeriodLabel(args: {
   return `Renews ${date}`;
 }
 
+function cancellationNoticeText(tier: BillingTier, changeDate: string): string {
+  const formattedDate = formatBillingDate(changeDate);
+  if (tier === "custom") {
+    return `Your custom plan will end on ${formattedDate}.`;
+  }
+  return `Your ${formatTierLabel(
+    tier,
+  )} plan has been cancelled and will end on ${formattedDate}.`;
+}
+
 const CONCURRENCY_SLOT_MONTHLY_PRICE_USD = 10;
 
 function slotCountLabel(count: number): string {
@@ -1403,8 +1413,7 @@ export function OrgBillingTab() {
                   <div className="h-0 zero-border-t mx-5" />
                   <div className="px-5 py-3">
                     <p className="text-[13px] text-amber-600 dark:text-amber-400">
-                      Your {formatTierLabel(currentTier)} plan has been
-                      cancelled and will end on {formatBillingDate(changeDate)}.
+                      {cancellationNoticeText(currentTier, changeDate)}
                     </p>
                   </div>
                 </>

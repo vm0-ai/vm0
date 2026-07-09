@@ -327,6 +327,38 @@ describe("organization billing settings", () => {
     }
   });
 
+  it("shows only the end date for a cancelled custom plan", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "custom-cancel-org",
+      name: "Custom Cancel Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        ...activeCustomBillingStatus(),
+        cancelAtPeriodEnd: true,
+        scheduledChange: {
+          type: "cancel",
+          targetTier: "pro-suspend",
+          effectiveDate: "2026-08-09T00:00:00Z",
+        },
+      });
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Custom plan")).toBeInTheDocument();
+      expect(
+        screen.getByText("Your custom plan will end on Aug 9, 2026."),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Custom plan has been cancelled/u),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("shows team concurrency add-on and starts checkout for more slots", async () => {
     let requestedQuantity: number | null = null;
     let canceledSubscriptionId: string | null = null;
