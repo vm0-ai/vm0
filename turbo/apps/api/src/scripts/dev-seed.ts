@@ -298,6 +298,23 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // OpenAI API pricing retrieved 2026-05-06 from:
   // https://openai.com/api/pricing/
   // https://developers.openai.com/api/docs/pricing
+  // GPT-5.6 preview pricing retrieved 2026-07-09 from:
+  // https://openai.com/index/previewing-gpt-5-6-sol/
+  ...usageGroup("model", "gpt-5.6-sol", [
+    ["tokens.input", usd(5), 1_000_000],
+    ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.output", usd(30), 1_000_000],
+  ]),
+  ...usageGroup("model", "gpt-5.6-terra", [
+    ["tokens.input", usd(2.5), 1_000_000],
+    ["tokens.cache_read", usd(0.25), 1_000_000],
+    ["tokens.output", usd(15), 1_000_000],
+  ]),
+  ...usageGroup("model", "gpt-5.6-luna", [
+    ["tokens.input", usd(1), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.output", usd(6), 1_000_000],
+  ]),
   ...usageGroup("model", "gpt-5.5", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.cache_read", usd(0.5), 1_000_000],
