@@ -13,7 +13,7 @@ export const nintendoPlayActivity = {
         featureFlag: FeatureSwitchKey.NintendoPlayActivityConnector,
         label: "Nintendo sign-in",
         helpText:
-          "Sign in with Nintendo, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
+          "Sign in with Nintendo. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
         client: {
           clientRegistration: "static",
           clientType: "public",
