@@ -33,6 +33,8 @@ const AD_TRAFFIC_MARKERS = [
   "utm_campaign",
 ] as const;
 
+const HTTP_URL_PREFIX_REGEX = /^https?:\/\//i;
+
 type PublicService = "www" | "app" | "api";
 
 const SERVICE_LABELS = ["www", "app", "api", "platform"] as const;
@@ -89,10 +91,18 @@ export function resolveAppOrigin(): string {
 }
 
 function parseUrl(value: string): URL | null {
-  if (!URL.canParse(value)) {
+  const trimmed = value.trim();
+  if (!HTTP_URL_PREFIX_REGEX.test(trimmed)) {
     return null;
   }
-  return new URL(value);
+
+  if (typeof URL.canParse === "function") {
+    return URL.canParse(trimmed) ? new URL(trimmed) : null;
+  }
+
+  const parser = document.createElement("a");
+  parser.href = trimmed;
+  return parser.host ? new URL(parser.href) : null;
 }
 
 export function resolveAppUrl(): string {
