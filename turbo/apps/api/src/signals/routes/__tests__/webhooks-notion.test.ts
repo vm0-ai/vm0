@@ -284,7 +284,11 @@ function notionPageEvent(args: {
     | "page.properties_updated";
   readonly timestamp: string;
   readonly pageId?: string;
-  readonly parent?: { readonly id: string; readonly type: string };
+  readonly parent?: {
+    readonly id?: string;
+    readonly type?: string;
+    readonly data_source_id?: string;
+  };
 }): Record<string, unknown> {
   return {
     id: args.id,
@@ -582,7 +586,10 @@ describe("POST /api/webhooks/notion", () => {
         id: "99999999-9999-4999-8999-999999999999",
         type: "page.created",
         timestamp: "2026-07-06T12:00:00.000Z",
-        parent: { id: NOTION_DATA_SOURCE_ID, type: "data_source" },
+        parent: {
+          id: NOTION_DATABASE_ID,
+          data_source_id: NOTION_DATA_SOURCE_ID,
+        },
       }),
     );
     const first = await postNotionWebhook({
