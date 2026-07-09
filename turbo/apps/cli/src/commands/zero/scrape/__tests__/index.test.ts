@@ -31,6 +31,17 @@ vi.mock("os", async (importOriginal) => {
 
 describe("zero scrape command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+  const mockConsoleError = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+  const mockStderrWrite = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((() => {
+      return true;
+    }) as never);
+  const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+    throw new Error("process.exit called");
+  }) as never);
 
   beforeEach(async () => {
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
@@ -41,17 +52,32 @@ describe("zero scrape command", () => {
 
   afterEach(async () => {
     mockConsoleLog.mockClear();
+    mockConsoleError.mockClear();
+    mockStderrWrite.mockClear();
+    mockExit.mockClear();
     vi.unstubAllEnvs();
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
   });
 
   afterAll(async () => {
     mockConsoleLog.mockRestore();
+    mockConsoleError.mockRestore();
+    mockStderrWrite.mockRestore();
+    mockExit.mockRestore();
     await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
   function output(): string {
     return mockConsoleLog.mock.calls.flat().join("\n");
+  }
+
+  function errorOutput(): string {
+    return [
+      ...mockConsoleError.mock.calls.flat(),
+      ...mockStderrWrite.mock.calls.flat(),
+    ]
+      .map(String)
+      .join("\n");
   }
 
   it("posts default markdown scrape requests and prints JSON", async () => {
@@ -169,5 +195,52 @@ describe("zero scrape command", () => {
     expect(output()).toContain("Billing category: standard.markdown");
     expect(output()).toContain("Credits charged: 4");
     expect(output()).toContain("# Example\n\nContent");
+  });
+
+  it("rejects invalid formats before calling the API", async () => {
+    let apiRequests = 0;
+    server.use(
+      http.post("http://localhost:3000/api/zero/scrape", () => {
+        apiRequests += 1;
+        return HttpResponse.json({});
+      }),
+    );
+
+    await expect(async () => {
+      await zeroScrapeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://example.com",
+        "--format",
+        "html",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain("format must be one of: markdown, links");
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(apiRequests).toBe(0);
+  });
+
+  it("prints API error messages", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/zero/scrape", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Firecrawl rejected this scrape",
+              code: "FIRECRAWL_ERROR",
+            },
+          },
+          { status: 502 },
+        );
+      }),
+    );
+
+    await expect(async () => {
+      await zeroScrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(errorOutput()).toContain("502: Firecrawl rejected this scrape");
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 });
