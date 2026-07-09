@@ -3,6 +3,8 @@ use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
 use crate::error::{RunnerError, RunnerResult};
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
 use tokio::io::AsyncReadExt;
 use tokio::task::JoinHandle;
 
@@ -10,6 +12,7 @@ use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
 
 const BOUNDED_COMMAND_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+const SERVICE_UNIT_STATE_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
@@ -265,6 +268,101 @@ impl CleanupUnitActiveState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum NormalizedUnitState {
+    ActiveLike,
+    Inactive,
+    Failed,
+    Maintenance,
+    NotFound,
+}
+
+impl NormalizedUnitState {
+    fn is_active_like(self) -> bool {
+        self == Self::ActiveLike
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ServiceUnitState {
+    load_state: String,
+    active_state: String,
+    sub_state: String,
+    result: String,
+    normalized_state: NormalizedUnitState,
+}
+
+impl ServiceUnitState {
+    #[cfg(test)]
+    pub(super) fn for_test(
+        load_state: &str,
+        active_state: &str,
+        sub_state: &str,
+        result: &str,
+    ) -> Self {
+        let normalized_state =
+            normalize_unit_state("vm0-runner-test.service", load_state, active_state).unwrap();
+        Self {
+            load_state: load_state.to_string(),
+            active_state: active_state.to_string(),
+            sub_state: sub_state.to_string(),
+            result: result.to_string(),
+            normalized_state,
+        }
+    }
+
+    fn active_like(&self) -> bool {
+        self.normalized_state.is_active_like()
+    }
+
+    #[cfg(test)]
+    fn active_state(&self) -> &str {
+        &self.active_state
+    }
+
+    #[cfg(test)]
+    fn is_active_like(&self) -> bool {
+        self.active_like()
+    }
+}
+
+impl Serialize for ServiceUnitState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("ServiceUnitState", 6)?;
+        state.serialize_field("loadState", &self.load_state)?;
+        state.serialize_field("activeState", &self.active_state)?;
+        state.serialize_field("subState", &self.sub_state)?;
+        state.serialize_field("result", &self.result)?;
+        state.serialize_field("normalizedState", &self.normalized_state)?;
+        state.serialize_field("activeLike", &self.active_like())?;
+        state.end()
+    }
+}
+
+/// Read the systemd unit state for machine-readable service reporting.
+pub(super) async fn read_service_unit_state(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<ServiceUnitState> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+    let output =
+        run_systemctl_show_bounded(svc, &properties, SERVICE_UNIT_STATE_QUERY_TIMEOUT).await?;
+    service_unit_state_from_output(svc, &properties, &output)
+}
+
+fn service_unit_state_from_output(
+    svc: &str,
+    properties: &[&str],
+    output: &Output,
+) -> RunnerResult<ServiceUnitState> {
+    let values = parse_systemctl_show_output(svc, properties, output)?;
+    service_unit_state_from_systemctl_show(svc, properties, &output.status, &values, &output.stderr)
+}
+
 /// Read the systemd ActiveState using cleanup semantics.
 ///
 /// Normal health checks intentionally treat `deactivating` as inactive because
@@ -433,26 +531,41 @@ fn required_systemctl_property<'a>(
     Ok(value)
 }
 
-fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> RunnerResult<bool> {
-    match active_state {
-        "active" | "activating" | "reloading" | "refreshing" => Ok(true),
-        "inactive" | "failed" | "deactivating" | "maintenance" => Ok(false),
-        _ => Err(RunnerError::Internal(format!(
-            "unknown ActiveState for {svc}: {active_state} (LoadState={load_state})"
-        ))),
-    }
+fn systemctl_property<'a>(
+    svc: &str,
+    values: &'a BTreeMap<String, String>,
+    property: &str,
+) -> RunnerResult<&'a str> {
+    let value = values.get(property).ok_or_else(|| {
+        RunnerError::Internal(format!(
+            "missing systemctl show property for {svc}: {property}"
+        ))
+    })?;
+    Ok(value.trim())
 }
 
-fn classify_cleanup_unit_active_like(
+fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> RunnerResult<bool> {
+    let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
+    Ok(normalized_state.is_active_like() && active_state != "deactivating")
+}
+
+fn normalize_unit_state(
     svc: &str,
     load_state: &str,
     active_state: &str,
-) -> RunnerResult<bool> {
+) -> RunnerResult<NormalizedUnitState> {
     match active_state {
-        "active" | "activating" | "reloading" | "refreshing" | "deactivating" => Ok(true),
-        "inactive" | "failed" | "maintenance" => Ok(false),
+        "active" | "activating" | "reloading" | "refreshing" | "deactivating" => {
+            Ok(NormalizedUnitState::ActiveLike)
+        }
+        "inactive" | "failed" | "maintenance" if load_state == "not-found" => {
+            Ok(NormalizedUnitState::NotFound)
+        }
+        "inactive" => Ok(NormalizedUnitState::Inactive),
+        "failed" => Ok(NormalizedUnitState::Failed),
+        "maintenance" => Ok(NormalizedUnitState::Maintenance),
         _ => Err(RunnerError::Internal(format!(
-            "unknown ActiveState for cleanup of {svc}: {active_state} (LoadState={load_state})"
+            "unknown ActiveState for {svc}: {active_state} (LoadState={load_state})"
         ))),
     }
 }
@@ -481,12 +594,35 @@ fn cleanup_unit_active_state_from_systemctl_show(
 ) -> RunnerResult<CleanupUnitActiveState> {
     let load_state = required_systemctl_property(svc, values, "LoadState")?;
     let active_state = required_systemctl_property(svc, values, "ActiveState")?;
-    let active_like = classify_cleanup_unit_active_like(svc, load_state, active_state)?;
+    let active_like = normalize_unit_state(svc, load_state, active_state)?.is_active_like();
     let missing_unit = load_state == "not-found" && !active_like;
     ensure_systemctl_show_status(svc, properties, status, stderr, missing_unit)?;
     Ok(CleanupUnitActiveState {
         active_state: active_state.to_string(),
         active_like,
+    })
+}
+
+fn service_unit_state_from_systemctl_show(
+    svc: &str,
+    properties: &[&str],
+    status: &ExitStatus,
+    values: &BTreeMap<String, String>,
+    stderr: &[u8],
+) -> RunnerResult<ServiceUnitState> {
+    let load_state = required_systemctl_property(svc, values, "LoadState")?;
+    let active_state = required_systemctl_property(svc, values, "ActiveState")?;
+    let sub_state = systemctl_property(svc, values, "SubState")?;
+    let result = systemctl_property(svc, values, "Result")?;
+    let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
+    ensure_systemctl_show_status(svc, properties, status, stderr, load_state == "not-found")?;
+
+    Ok(ServiceUnitState {
+        load_state: load_state.to_string(),
+        active_state: active_state.to_string(),
+        sub_state: sub_state.to_string(),
+        result: result.to_string(),
+        normalized_state,
     })
 }
 
@@ -843,7 +979,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_cleanup_unit_active_like_keeps_deactivating_active_like() {
+    fn normalize_unit_state_keeps_lifecycle_active_like_states() {
         for active_state in [
             "active",
             "activating",
@@ -851,29 +987,25 @@ mod tests {
             "refreshing",
             "deactivating",
         ] {
-            assert!(
-                classify_cleanup_unit_active_like(
-                    "vm0-runner-test.service",
-                    "loaded",
-                    active_state,
-                )
-                .unwrap(),
-                "{active_state} should be active-like during cleanup"
+            assert_eq!(
+                normalize_unit_state("vm0-runner-test.service", "loaded", active_state).unwrap(),
+                NormalizedUnitState::ActiveLike,
+                "{active_state} should normalize to active-like"
             );
         }
     }
 
     #[test]
-    fn classify_cleanup_unit_active_like_accepts_inactive_states() {
-        for active_state in ["inactive", "failed", "maintenance"] {
-            assert!(
-                !classify_cleanup_unit_active_like(
-                    "vm0-runner-test.service",
-                    "loaded",
-                    active_state,
-                )
-                .unwrap(),
-                "{active_state} should be inactive-like during cleanup"
+    fn normalize_unit_state_preserves_loaded_inactive_states() {
+        for (active_state, normalized_state) in [
+            ("inactive", NormalizedUnitState::Inactive),
+            ("failed", NormalizedUnitState::Failed),
+            ("maintenance", NormalizedUnitState::Maintenance),
+        ] {
+            assert_eq!(
+                normalize_unit_state("vm0-runner-test.service", "loaded", active_state).unwrap(),
+                normalized_state,
+                "{active_state} should preserve its loaded normalized state"
             );
         }
     }
@@ -901,6 +1033,267 @@ mod tests {
 
         assert_eq!(state.active_state(), "inactive");
         assert!(!state.is_active_like());
+    }
+
+    #[test]
+    fn service_unit_state_keeps_deactivating_active_like_for_reporting() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=loaded\nActiveState=deactivating\nSubState=stop-sigterm\nResult=success\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0);
+        let state = service_unit_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"",
+        )
+        .unwrap();
+
+        assert_eq!(state.active_state(), "deactivating");
+        assert!(state.is_active_like());
+        assert_eq!(state.normalized_state, NormalizedUnitState::ActiveLike);
+    }
+
+    #[test]
+    fn service_unit_state_accepts_all_active_like_states_for_reporting() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let status = ExitStatus::from_raw(0);
+        for active_state in [
+            "active",
+            "activating",
+            "reloading",
+            "refreshing",
+            "deactivating",
+        ] {
+            let stdout = format!(
+                "LoadState=loaded\nActiveState={active_state}\nSubState=running\nResult=success\n"
+            );
+            let values = parse_systemctl_show_properties(
+                "vm0-runner-test.service",
+                &properties,
+                stdout.as_bytes(),
+            )
+            .unwrap();
+            let state = service_unit_state_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap();
+
+            assert_eq!(state.normalized_state, NormalizedUnitState::ActiveLike);
+            assert!(
+                state.is_active_like(),
+                "{active_state} should be active-like"
+            );
+        }
+    }
+
+    #[test]
+    fn service_unit_state_accepts_inactive_like_states_for_reporting() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let status = ExitStatus::from_raw(0);
+        for (active_state, normalized_state) in [
+            ("inactive", NormalizedUnitState::Inactive),
+            ("failed", NormalizedUnitState::Failed),
+            ("maintenance", NormalizedUnitState::Maintenance),
+        ] {
+            let stdout = format!(
+                "LoadState=loaded\nActiveState={active_state}\nSubState=dead\nResult=success\n"
+            );
+            let values = parse_systemctl_show_properties(
+                "vm0-runner-test.service",
+                &properties,
+                stdout.as_bytes(),
+            )
+            .unwrap();
+            let state = service_unit_state_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap();
+
+            assert_eq!(state.normalized_state, normalized_state);
+            assert!(
+                !state.is_active_like(),
+                "{active_state} should not be active-like"
+            );
+        }
+    }
+
+    #[test]
+    fn service_unit_state_preserves_empty_optional_fields() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=loaded\nActiveState=inactive\nSubState=\nResult=\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0);
+        let state = service_unit_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"",
+        )
+        .unwrap();
+
+        assert_eq!(state.sub_state, "");
+        assert_eq!(state.result, "");
+        assert!(!state.is_active_like());
+        assert_eq!(state.normalized_state, NormalizedUnitState::Inactive);
+    }
+
+    #[test]
+    fn service_unit_state_allows_not_found_on_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=not-found\nActiveState=inactive\nSubState=dead\nResult=success\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let state = service_unit_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Unit not found\n",
+        )
+        .unwrap();
+
+        assert_eq!(state.normalized_state, NormalizedUnitState::NotFound);
+        assert!(!state.is_active_like());
+    }
+
+    #[test]
+    fn service_unit_state_accepts_not_found_inactive_like_states() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let status = ExitStatus::from_raw(0x100);
+        for active_state in ["inactive", "failed", "maintenance"] {
+            let stdout = format!(
+                "LoadState=not-found\nActiveState={active_state}\nSubState=dead\nResult=success\n"
+            );
+            let values = parse_systemctl_show_properties(
+                "vm0-runner-test.service",
+                &properties,
+                stdout.as_bytes(),
+            )
+            .unwrap();
+            let state = service_unit_state_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"Unit not found\n",
+            )
+            .unwrap();
+
+            assert_eq!(state.normalized_state, NormalizedUnitState::NotFound);
+            assert!(
+                !state.is_active_like(),
+                "{active_state} should not be active-like"
+            );
+        }
+    }
+
+    #[test]
+    fn service_unit_state_reports_not_found_active_like_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=not-found\nActiveState=deactivating\nSubState=stop-sigterm\nResult=success\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let state = service_unit_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Unit not found\n",
+        )
+        .unwrap();
+
+        assert_eq!(state.load_state, "not-found");
+        assert_eq!(state.normalized_state, NormalizedUnitState::ActiveLike);
+        assert!(state.is_active_like());
+    }
+
+    #[test]
+    fn service_unit_state_rejects_unknown_active_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=loaded\nActiveState=half-active\nSubState=unknown\nResult=success\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0);
+        let err = service_unit_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"",
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown ActiveState"));
+    }
+
+    #[test]
+    fn service_unit_state_rejects_not_found_unknown_active_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let values = parse_systemctl_show_properties(
+            "vm0-runner-test.service",
+            &properties,
+            b"LoadState=not-found\nActiveState=half-active\nSubState=unknown\nResult=success\n",
+        )
+        .unwrap();
+        let status = ExitStatus::from_raw(0x100);
+        let err = service_unit_state_from_systemctl_show(
+            "vm0-runner-test.service",
+            &properties,
+            &status,
+            &values,
+            b"Unit not found\n",
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown ActiveState"));
     }
 
     #[test]
