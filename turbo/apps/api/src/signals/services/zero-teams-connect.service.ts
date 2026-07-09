@@ -735,28 +735,14 @@ type BindTeamsInstallationResult =
   | { readonly kind: "not_found"; readonly message: string }
   | { readonly kind: "forbidden"; readonly message: string };
 
-function buildTeamsWelcomeCard(args: {
-  readonly agentName: string | undefined;
-}): TeamsAdaptiveCard {
+function buildTeamsWelcomeCard(): TeamsAdaptiveCard {
   return {
     type: "AdaptiveCard",
     version: "1.4",
     body: [
       {
         type: "TextBlock",
-        text: "You're connected! Mention @Zero in a channel or send a DM to start chatting with your agent.",
-        wrap: true,
-      },
-      {
-        type: "TextBlock",
-        text: "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
-        wrap: true,
-      },
-      {
-        type: "TextBlock",
-        text: args.agentName
-          ? `Workspace Agent\n- ${args.agentName}\n\nHow to Use\n- Just describe what you need help with`
-          : "No workspace agent configured yet.",
+        text: "You're connected! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
         wrap: true,
       },
     ],
@@ -839,19 +825,12 @@ async function notifyTeamsConnect(args: {
     return;
   }
 
-  const defaultComposeId = await resolveDefaultComposeId(args.db, args.orgId);
-  args.signal.throwIfAborted();
-  const agentName = defaultComposeId
-    ? await getTeamsAgentName(args.db, defaultComposeId)
-    : undefined;
-  args.signal.throwIfAborted();
-
   const sendResult = await sendTeamsMessageReply({
     serviceUrl: args.serviceUrl,
     conversationId,
     tenantId: args.tenantId,
     text: "You're connected!",
-    card: buildTeamsWelcomeCard({ agentName }),
+    card: buildTeamsWelcomeCard(),
     signal: args.signal,
   });
   args.signal.throwIfAborted();

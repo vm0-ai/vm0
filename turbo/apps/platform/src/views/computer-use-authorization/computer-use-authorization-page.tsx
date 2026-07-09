@@ -7,7 +7,10 @@ import {
   IconDownload,
   IconLoader2,
 } from "@tabler/icons-react";
-import type { ComputerUseHost } from "@vm0/api-contracts/contracts/zero-computer-use";
+import type {
+  ComputerUseAuthorizationSource,
+  ComputerUseHost,
+} from "@vm0/api-contracts/contracts/zero-computer-use";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
@@ -35,8 +38,15 @@ function formatTime(value: string): string {
   });
 }
 
-function sourceLabel(source: "chat" | "slack"): string {
-  return source === "slack" ? "this Slack thread" : "this chat thread";
+function sourceLabel(source: ComputerUseAuthorizationSource): string {
+  switch (source) {
+    case "chat":
+      return "this chat thread";
+    case "slack":
+      return "this Slack thread";
+    case "teams":
+      return "this Teams thread";
+  }
 }
 
 function HostOption({

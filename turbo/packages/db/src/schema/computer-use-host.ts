@@ -142,6 +142,9 @@ export const computerUseAuthorizationRequests = pgTable(
     slackConnectionId: uuid("slack_connection_id"),
     slackChannelId: text("slack_channel_id"),
     slackThreadTs: text("slack_thread_ts"),
+    teamsConnectionId: uuid("teams_connection_id"),
+    teamsConversationId: text("teams_conversation_id"),
+    teamsThreadId: text("teams_thread_id"),
     expiresAt: timestamp("expires_at").notNull(),
     completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -159,7 +162,7 @@ export const computerUseAuthorizationRequests = pgTable(
       index("idx_computer_use_auth_requests_expires").on(table.expiresAt),
       check(
         "computer_use_auth_requests_source_check",
-        sql`source IN ('chat', 'slack')`,
+        sql`source IN ('chat', 'slack', 'teams')`,
       ),
       check(
         "computer_use_auth_requests_scope_check",
@@ -169,12 +172,27 @@ export const computerUseAuthorizationRequests = pgTable(
           AND slack_connection_id IS NULL
           AND slack_channel_id IS NULL
           AND slack_thread_ts IS NULL
+          AND teams_connection_id IS NULL
+          AND teams_conversation_id IS NULL
+          AND teams_thread_id IS NULL
         ) OR (
           source = 'slack'
           AND chat_thread_id IS NULL
           AND slack_connection_id IS NOT NULL
           AND slack_channel_id IS NOT NULL
           AND slack_thread_ts IS NOT NULL
+          AND teams_connection_id IS NULL
+          AND teams_conversation_id IS NULL
+          AND teams_thread_id IS NULL
+        ) OR (
+          source = 'teams'
+          AND chat_thread_id IS NULL
+          AND slack_connection_id IS NULL
+          AND slack_channel_id IS NULL
+          AND slack_thread_ts IS NULL
+          AND teams_connection_id IS NOT NULL
+          AND teams_conversation_id IS NOT NULL
+          AND teams_thread_id IS NOT NULL
         )`,
       ),
     ];

@@ -35,6 +35,7 @@ export const teamsInboundMessageActivitySchema = teamsActivityBaseSchema.extend(
     recipient: teamsActorSchema.nullable(),
     rawText: z.string(),
     text: z.string(),
+    value: z.record(z.string(), z.unknown()).nullable(),
     mentionsRecipient: z.boolean(),
   },
 );
@@ -82,6 +83,7 @@ const teamsBotDispatchResponseSchema = z.discriminatedUnion("kind", [
     kind: z.literal("notice"),
     replyText: z.string(),
     connectUrl: z.string().optional(),
+    card: z.record(z.string(), z.unknown()).optional(),
   }),
   z.object({
     kind: z.literal("accepted"),

@@ -444,14 +444,13 @@ describe("POST /api/zero/integrations/teams/connect", () => {
             content: {
               type: "AdaptiveCard",
               version: "1.4",
-              body: expect.arrayContaining([
-                expect.objectContaining({
-                  text: expect.stringContaining("You're connected"),
-                }),
-                expect.objectContaining({
-                  text: expect.stringContaining("Hi! I'm Zero"),
-                }),
-              ]),
+              body: [
+                {
+                  type: "TextBlock",
+                  text: "You're connected! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+                  wrap: true,
+                },
+              ],
             },
           },
         ],

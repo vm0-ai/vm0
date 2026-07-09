@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { teamsOrgConnections } from "./teams-org-connection";
 import { agentSessions } from "./agent-session";
+import { computerUseHosts } from "./computer-use-host";
 
 /**
  * Org-aware Microsoft Teams thread sessions table.
@@ -38,6 +39,12 @@ export const teamsOrgThreadSessions = pgTable(
       },
       { onDelete: "set null" },
     ),
+    computerUseHostId: uuid("computer_use_host_id").references(
+      () => {
+        return computerUseHosts.id;
+      },
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -49,6 +56,9 @@ export const teamsOrgThreadSessions = pgTable(
         table.teamsThreadId,
       ),
       index("idx_teams_org_thread_sessions_connection").on(table.connectionId),
+      index("idx_teams_org_thread_sessions_computer_use_host").on(
+        table.computerUseHostId,
+      ),
     ];
   },
 );

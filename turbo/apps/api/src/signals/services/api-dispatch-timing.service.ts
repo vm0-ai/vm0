@@ -64,6 +64,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver"
   | "api_dispatch_pre_create_zero_slack_build_run_params_assemble"
   | "api_dispatch_pre_create_zero_slack_create_run"
+  | "api_dispatch_pre_create_zero_teams_entrypoint_gap"
+  | "api_dispatch_pre_create_zero_teams_create_run"
   | "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap"
   | "api_dispatch_pre_create_zero_workflow_trigger_check_active_run"
   | "api_dispatch_pre_create_zero_workflow_trigger_check_target_access"
