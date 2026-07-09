@@ -277,6 +277,12 @@ pub(super) enum NormalizedUnitState {
     NotFound,
 }
 
+impl NormalizedUnitState {
+    fn is_active_like(self) -> bool {
+        self == Self::ActiveLike
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ServiceUnitState {
@@ -303,7 +309,7 @@ impl ServiceUnitState {
             sub_state: sub_state.to_string(),
             result: result.to_string(),
             normalized_state,
-            active_like: normalized_state == NormalizedUnitState::ActiveLike,
+            active_like: normalized_state.is_active_like(),
         }
     }
 
@@ -521,7 +527,7 @@ fn systemctl_property<'a>(
 
 fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> RunnerResult<bool> {
     let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
-    Ok(normalized_state == NormalizedUnitState::ActiveLike && active_state != "deactivating")
+    Ok(normalized_state.is_active_like() && active_state != "deactivating")
 }
 
 fn normalize_unit_state(
@@ -569,8 +575,7 @@ fn cleanup_unit_active_state_from_systemctl_show(
 ) -> RunnerResult<CleanupUnitActiveState> {
     let load_state = required_systemctl_property(svc, values, "LoadState")?;
     let active_state = required_systemctl_property(svc, values, "ActiveState")?;
-    let active_like =
-        normalize_unit_state(svc, load_state, active_state)? == NormalizedUnitState::ActiveLike;
+    let active_like = normalize_unit_state(svc, load_state, active_state)?.is_active_like();
     let missing_unit = load_state == "not-found" && !active_like;
     ensure_systemctl_show_status(svc, properties, status, stderr, missing_unit)?;
     Ok(CleanupUnitActiveState {
@@ -599,7 +604,7 @@ fn service_unit_state_from_systemctl_show(
         sub_state: sub_state.to_string(),
         result: result.to_string(),
         normalized_state,
-        active_like: normalized_state == NormalizedUnitState::ActiveLike,
+        active_like: normalized_state.is_active_like(),
     })
 }
 
