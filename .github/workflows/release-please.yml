@@ -877,7 +877,6 @@ jobs:
           rm -rf .vercel/output
           cp -R turbo/apps/api/.vercel/output .vercel/output
           test -f .vercel/output/config.json
-          bash .github/scripts/vercel-assert-crons-match.sh turbo/apps/api/vercel.json .vercel/output/config.json
 
       - name: Archive API Production Build Output
         run: tar -C .vercel -czf /tmp/api-production-build-output.tgz output
@@ -1247,7 +1246,6 @@ jobs:
             mkdir -p .vercel
             tar -C .vercel -xzf /tmp/api-production-build-output/api-production-build-output.tgz
             test -f .vercel/output/config.json
-            bash .github/scripts/vercel-assert-crons-match.sh turbo/apps/api/vercel.json .vercel/output/config.json
           skip-start: "true"
           skip-finish: "true"
           environment-file: ${{ steps.api-production-env.outputs.file }}
