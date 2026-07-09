@@ -1331,7 +1331,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         channelId,
       }),
     );
-    await integrations.updateUserModelPreference(actor, "gpt-5.5");
+    await integrations.updateUserModelPreference(actor, "gpt-5.6-sol");
     const gptThreadTs = "3100.000100";
     await integrations.postSlackEvent(teamId, {
       type: "app_mention",
@@ -1345,7 +1345,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(claim4.cliAgentType).toBe("codex");
     expect(claim4.environment).toMatchObject({
       OPENAI_API_KEY: expect.stringMatching(/.+/),
-      OPENAI_MODEL: "gpt-5.5",
+      OPENAI_MODEL: "gpt-5.6-sol",
     });
     await completeSlackTriggeredRun({
       runId: run4Id,
@@ -1740,7 +1740,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.stringContaining("Use org default"),
     );
 
-    await integrations.updateUserModelPreference(actor, "gpt-5.5");
+    await integrations.updateUserModelPreference(actor, "gpt-5.6-sol");
     const modelResponse = await integrations.postSlackCommand({
       teamId,
       userId: slackUserId,
@@ -1758,7 +1758,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(modelModal.optionLabels).toContainEqual(
       expect.stringContaining("(workspace default)"),
     );
-    expect(modelModal.initialOptionValue).toBe("gpt-5.5");
+    expect(modelModal.initialOptionValue).toBe("gpt-5.6-sol");
 
     const disconnected = await integrations.postSlackCommand({
       teamId,
@@ -1998,7 +1998,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       integrations.modelPickerSubmission({
         workspaceId: teamId,
         slackUserId,
-        selectedValue: "gpt-5.5",
+        selectedValue: "gpt-5.6-sol",
         channelId: "C_BDD_PICK",
       }),
     );
@@ -2006,7 +2006,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await expect(
       integrations.readUserModelPreference(actor),
     ).resolves.toMatchObject({
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
     });
 
     const rejectedModel = await integrations.postSlackInteractive(
@@ -2024,7 +2024,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await expect(
       integrations.readUserModelPreference(actor),
     ).resolves.toMatchObject({
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
     });
 
     context.mocks.slack.views.open.mockClear();

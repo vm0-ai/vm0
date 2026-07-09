@@ -215,7 +215,9 @@ export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
-  "gpt-5.5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
   "claude-opus-4-8",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
@@ -223,7 +225,7 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+  "gpt-5.6-sol" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
   "claude-sonnet-4-6" as const satisfies SupportedRunModel;
@@ -258,6 +260,9 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "glm-5.1": "GLM-5.1",
   "mimo-v2.5": "MiMo-V2.5",
   "hy3-preview": "Hy3 Preview",
+  "gpt-5.6-sol": "GPT 5.6 Sol",
+  "gpt-5.6-terra": "GPT 5.6 Terra",
+  "gpt-5.6-luna": "GPT 5.6 Luna",
   "gpt-5.5": "GPT 5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
@@ -375,6 +380,18 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "deepseek-v4-pro": {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
+  },
+  "gpt-5.6-sol": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
+  "gpt-5.6-terra": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
+  "gpt-5.6-luna": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
   },
   "gpt-5.5": {
     concreteType: "openai-api-key",
@@ -783,7 +800,14 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
+    models: [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+    ] as string[],
     defaultModel: "gpt-5.5",
   },
   "codex-oauth-token": {
@@ -1008,6 +1032,9 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "gpt-5.6-sol": ["vm0", "openai-api-key"],
+  "gpt-5.6-terra": ["vm0", "openai-api-key"],
+  "gpt-5.6-luna": ["vm0", "openai-api-key"],
   "gpt-5.5": [
     "vm0",
     "openai-api-key",

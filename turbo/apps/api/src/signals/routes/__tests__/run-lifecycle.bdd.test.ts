@@ -3135,6 +3135,59 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("claims vm0 GPT 5.6 runs with the selected OpenAI runtime model", async () => {
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = "gpt-5.6-sol";
+    await seedVm0ManagedModelKey(selectedModel);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 built-in GPT 5.6 model provider",
+        model: selectedModel,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the GPT 5.6 chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderPlaceholder(
+        "openai-api-key",
+        "OPENAI_API_KEY",
+      ),
+      OPENAI_MODEL: selectedModel,
+    });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:openai-api-key");
+    expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
+    expect(claim.modelUsageProvider).toBe(selectedModel);
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
