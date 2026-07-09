@@ -91,6 +91,7 @@ import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-s
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as htmlArtifactEditDraftSchema from "./schema/html-artifact-edit-draft";
+import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
@@ -196,6 +197,7 @@ export const schema = {
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
   ...htmlArtifactEditDraftSchema,
+  ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
   ...memoryChangeSummarySchema,

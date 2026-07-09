@@ -636,6 +636,7 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
+  artifactFavoriteBodySchema,
   artifactsListResponseSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,

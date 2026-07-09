@@ -70,6 +70,7 @@ const artifactItemSchema = z.object({
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
+  isFavorited: z.boolean().optional(),
 });
 
 /**
@@ -94,6 +95,10 @@ const artifactsListResponseSchema = z.object({
    * Opaque cursor for the next page, or null when this is the last page.
    */
   nextCursor: z.string().nullable(),
+});
+
+const artifactFavoriteBodySchema = z.object({
+  artifactUrl: z.string().min(1),
 });
 
 const htmlArtifactEditSnapshotQuerySchema = z.object({
@@ -1203,6 +1208,34 @@ export const artifactsContract = c.router({
     summary:
       "List generated artifacts for the caller's current organization (keyset-paginated)",
   },
+  favorite: {
+    method: "POST",
+    path: "/api/zero/artifacts/favorite",
+    headers: authHeadersSchema,
+    body: artifactFavoriteBodySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Favorite a generated artifact for the caller",
+  },
+  unfavorite: {
+    method: "POST",
+    path: "/api/zero/artifacts/unfavorite",
+    headers: authHeadersSchema,
+    body: artifactFavoriteBodySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Remove a generated artifact favorite for the caller",
+  },
 });
 
 export type ChatThreadsContract = typeof chatThreadsContract;
@@ -1248,6 +1281,7 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   artifactItemSchema,
+  artifactFavoriteBodySchema,
   artifactsListResponseSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,

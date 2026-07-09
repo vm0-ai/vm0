@@ -1,10 +1,18 @@
 import { command } from "ccstate";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { queryOf } from "../context/request";
-import { zeroArtifacts$ } from "../services/zero-chat-thread.service";
+import { bodyResultOf, queryOf } from "../context/request";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  favoriteArtifact$,
+  unfavoriteArtifact$,
+  zeroArtifacts$,
+} from "../services/zero-chat-thread.service";
+import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 
 const listArtifactsInner$ = command(
@@ -35,6 +43,83 @@ const listArtifactsInner$ = command(
   },
 );
 
+const favoriteArtifactInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(bodyResultOf(artifactsContract.favorite));
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isFeatureEnabled(FeatureSwitchKey.ArtifactFavorites, {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        overrides,
+      })
+    ) {
+      return { status: 204 as const, body: undefined };
+    }
+
+    const visible = await set(
+      favoriteArtifact$,
+      {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        artifactUrl: bodyResult.data.artifactUrl,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (!visible) {
+      return notFound("Artifact not found");
+    }
+
+    return { status: 204 as const, body: undefined };
+  },
+);
+
+const unfavoriteArtifactInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(bodyResultOf(artifactsContract.unfavorite));
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      !isFeatureEnabled(FeatureSwitchKey.ArtifactFavorites, {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        overrides,
+      })
+    ) {
+      return { status: 204 as const, body: undefined };
+    }
+
+    await set(
+      unfavoriteArtifact$,
+      {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        artifactUrl: bodyResult.data.artifactUrl,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 export const zeroArtifactsRoutes: readonly RouteEntry[] = [
   {
     route: artifactsContract.list,
@@ -45,6 +130,28 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
         requiredCapability: "chat-message:read",
       },
       listArtifactsInner$,
+    ),
+  },
+  {
+    route: artifactsContract.favorite,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      favoriteArtifactInner$,
+    ),
+  },
+  {
+    route: artifactsContract.unfavorite,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      unfavoriteArtifactInner$,
     ),
   },
 ];
