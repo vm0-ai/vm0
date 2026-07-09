@@ -392,6 +392,37 @@ describe("GET /api/zero/memory/recall", () => {
     expect(response.body.memories.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("injects only prompt-relevant memory context", async () => {
+    const fixture = await seedRelationshipFixture({
+      relationshipMemoryEnabled: true,
+      runtimeInjectionEnabled: true,
+    });
+    const query = "cash management sweep fund";
+    await seedSemanticRecallMemory(fixture, query);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+
+    const response = await accept(
+      memoryClient().injectionPreview({
+        headers: authHeaders(),
+        body: { prompt: query },
+      }),
+      [200],
+    );
+
+    expect(response.body.profile.static).toHaveLength(0);
+    expect(response.body.profile.dynamic).toHaveLength(0);
+    expect(response.body.queryMemories).toHaveLength(1);
+    expect(response.body.appendSystemPrompt).toContain(
+      "Relevant memories for this request:",
+    );
+    expect(response.body.appendSystemPrompt).toContain(
+      "The user prefers JPM IJTXX Treasury allocation.",
+    );
+    expect(response.body.appendSystemPrompt).not.toContain("Stable profile:");
+    expect(response.body.appendSystemPrompt).not.toContain("Current context:");
+    expect(response.body.stats.injectedCount).toBe(1);
+  });
+
   it("rejects injection preview when runtime injection is disabled", async () => {
     await seedRelationshipFixture({
       relationshipMemoryEnabled: true,
