@@ -76,7 +76,7 @@ fn device_lock_path_in(index: u32, lock_dir: &Path) -> PathBuf {
 /// `Ok(Some(_))` when the caller owns the claim until the returned
 /// [`NbdDeviceClaim`] is dropped.
 ///
-/// Returns `Ok(None)` only when another process holds the flock on the current
+/// Returns `Ok(None)` only when the flock is already held on the current
 /// per-index lock inode. Unsafe or invalid lock-file state is reported as an
 /// [`std::io::Error`] rather than as `Ok(None)`.
 pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>> {
@@ -98,9 +98,9 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 /// `0600`.
 ///
 /// Returns `Ok(Some(_))` when the caller owns the claim until the returned
-/// [`NbdDeviceClaim`] is dropped. Returns `Ok(None)` only when another process
-/// holds the flock on the current per-index lock inode; unsafe lock-file state
-/// and repeated path replacement during acquisition are reported as I/O errors.
+/// [`NbdDeviceClaim`] is dropped. Returns `Ok(None)` only when the flock is
+/// already held on the current per-index lock inode; unsafe lock-file state and
+/// repeated path replacement during acquisition are reported as I/O errors.
 pub fn try_acquire_device_claim_in(
     index: u32,
     lock_dir: &Path,
