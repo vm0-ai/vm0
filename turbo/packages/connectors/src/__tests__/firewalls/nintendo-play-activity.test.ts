@@ -34,7 +34,7 @@ describe("Nintendo Play Activity firewall", () => {
 
   it("registers Nintendo Play Activity APIs with the runtime token binding", () => {
     expect(firewall.name).toBe("nintendo-play-activity");
-    expect(firewall.apis).toHaveLength(4);
+    expect(firewall.apis).toHaveLength(2);
     expect(
       Object.fromEntries(
         firewall.apis.map((api) => {
@@ -53,18 +53,6 @@ describe("Nintendo Play Activity firewall", () => {
           Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
           "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
           "gentry-locale": "${{ vars.NINTENDO_PLAY_ACTIVITY_LOCALE }}",
-        },
-      },
-      "https://mypage-api.entry.nintendo.co.jp": {
-        headers: {
-          Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
-          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
-        },
-      },
-      "https://news-api.entry.nintendo.co.jp": {
-        headers: {
-          Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
-          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
         },
       },
     });
@@ -90,23 +78,27 @@ describe("Nintendo Play Activity firewall", () => {
       apiBase: "https://news-api.entry.nintendo.co.jp",
       method: "GET",
       path: "/api/v1.1/users/me/play_histories",
-      permissionNames: ["nintendo-entry-play-activity-read"],
+      permissionNames: [],
     });
     expectNintendoPlayActivityMatches({
       apiBase: "https://mypage-api.entry.nintendo.co.jp",
       method: "GET",
       path: "/api/v1/users/me/play_histories",
-      permissionNames: ["my-nintendo-play-activity-read"],
+      permissionNames: [],
     });
   });
 
   it("denies unknown Nintendo Play Activity paths by default", async () => {
     const policy = await loadDefaultFirewallPolicies("nintendo-play-activity");
 
-    expect(policy.policies["my-nintendo-play-activity-read"]).toBe("allow");
     expect(policy.policies["nintendo-account-profile-read"]).toBe("allow");
-    expect(policy.policies["nintendo-entry-play-activity-read"]).toBe("allow");
     expect(policy.policies["nintendo-store-play-activity-read"]).toBe("allow");
+    expect(policy.policies).not.toHaveProperty(
+      "my-nintendo-play-activity-read",
+    );
+    expect(policy.policies).not.toHaveProperty(
+      "nintendo-entry-play-activity-read",
+    );
     expect(policy.unknownPolicy).toBe("deny");
     expectNintendoPlayActivityMatches({
       apiBase: "https://app-api.znej.nintendo.com",
