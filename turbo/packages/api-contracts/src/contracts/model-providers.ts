@@ -231,6 +231,14 @@ export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
   "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
+const RUN_MODEL_FEATURE_SWITCHES = Object.freeze<
+  Partial<Record<SupportedRunModel, FeatureSwitchKey>>
+>({
+  "gpt-5.6-sol": FeatureSwitchKey.Gpt56Models,
+  "gpt-5.6-terra": FeatureSwitchKey.Gpt56Models,
+  "gpt-5.6-luna": FeatureSwitchKey.Gpt56Models,
+});
+
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
 export const modelProviderCredentialScopeSchema = z.enum(["org", "member"]);
@@ -293,10 +301,35 @@ export function getCanonicalModelDisplayName(model: string): string {
   return isSupportedRunModel(model) ? SUPPORTED_RUN_MODEL_LABELS[model] : model;
 }
 
+export function isRunModelFeatureEnabled(
+  model: SupportedRunModel,
+  featureStates?: ModelProviderFeatureStates,
+): boolean {
+  const switchKey = RUN_MODEL_FEATURE_SWITCHES[model];
+  return switchKey === undefined || featureStates?.[switchKey] === true;
+}
+
+function filterRunModelsForFeatures<TModel extends string>(
+  models: readonly TModel[],
+  featureStates?: ModelProviderFeatureStates,
+): TModel[] {
+  return models.filter((model) => {
+    const canonical = normalizeRunModelId(model);
+    return (
+      !isSupportedRunModel(canonical) ||
+      isRunModelFeatureEnabled(canonical, featureStates)
+    );
+  });
+}
+
 export function getDefaultOrgModelPolicySeed(
   defaultModel: SupportedRunModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  featureStates?: ModelProviderFeatureStates,
 ): DefaultOrgModelPolicySeed[] {
-  return DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
+  return filterRunModelsForFeatures(
+    DEFAULT_ORG_MODEL_POLICY_MODELS,
+    featureStates,
+  ).map((model) => {
     return {
       model,
       isDefault: model === defaultModel,
@@ -525,8 +558,13 @@ export function modelSupportsImageInput(
 /**
  * Return the VM0 managed models visible to callers.
  */
-export function getVm0VisibleModels(): string[] {
-  return Object.keys(VM0_MODEL_TO_PROVIDER);
+export function getVm0VisibleModels(
+  featureStates?: ModelProviderFeatureStates,
+): string[] {
+  return filterRunModelsForFeatures(
+    Object.keys(VM0_MODEL_TO_PROVIDER),
+    featureStates,
+  );
 }
 
 /**
@@ -1129,6 +1167,9 @@ export function getProvidersForModel(
   if (!isSupportedRunModel(canonical)) {
     return [];
   }
+  if (!isRunModelFeatureEnabled(canonical, featureStates)) {
+    return [];
+  }
   return filterModelProviderTypesForFeatures(
     MODEL_FIRST_PROVIDER_COMPATIBILITY[canonical],
     featureStates,
@@ -1403,9 +1444,14 @@ export function areProvidersCompatible(
  * Get available models for a model provider type
  * Returns undefined for providers without model selection
  */
-export function getModels(type: ModelProviderType): string[] | undefined {
+export function getModels(
+  type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
+): string[] | undefined {
   const config = MODEL_PROVIDER_TYPES[type];
-  return "models" in config ? config.models : undefined;
+  return "models" in config
+    ? filterRunModelsForFeatures(config.models, featureStates)
+    : undefined;
 }
 
 /**

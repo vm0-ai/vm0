@@ -3141,6 +3141,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const selectedModel = "gpt-5.6-sol";
     await seedVm0ManagedModelKey(selectedModel);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("GPT 5.6 feature switch test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      { [FeatureSwitchKey.Gpt56Models]: true },
+    );
 
     await api.updateOrgModelPolicies(actor, [
       {

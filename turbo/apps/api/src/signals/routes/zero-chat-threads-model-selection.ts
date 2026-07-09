@@ -5,7 +5,10 @@ import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  getAllFeatureStates,
+  isFeatureEnabled,
+} from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -96,6 +99,13 @@ const updateModelSelectionInner$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      writeDb,
+      auth.orgId,
+      auth.userId,
+    );
+    signal.throwIfAborted();
+    const featureStates = getAllFeatureStates(featureSwitchContext);
     const modelSelection =
       body.data.model === null ? null : modelFirstSelection(body.data.model);
     const pin = modelSelection
@@ -104,6 +114,7 @@ const updateModelSelectionInner$ = command(
           orgId: auth.orgId,
           userId: auth.userId,
           modelSelection,
+          featureStates,
         })
       : {
           modelProviderId: null,

@@ -9,6 +9,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -20,6 +21,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
@@ -28,6 +30,10 @@ const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
 const MODEL_POLICIES_PATH = "/api/zero/model-policies";
+const DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS =
+  DEFAULT_ORG_MODEL_POLICY_MODELS.filter((model) => {
+    return !model.startsWith("gpt-5.6-");
+  });
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -124,6 +130,14 @@ async function makeLimitedFreeWorkspace(
   }
 }
 
+async function enableGpt56Models(fixture: ModelPolicyFixture): Promise<void> {
+  await updateFeatureSwitchesForUser(
+    context,
+    { userId: fixture.userId, orgId: fixture.orgId, orgRole: "org:admin" },
+    { [FeatureSwitchKey.Gpt56Models]: true },
+  );
+}
+
 describe("GET/PUT /api/zero/model-policies", () => {
   it("returns 401 for unauthenticated reads and writes", async () => {
     const client = apiClient();
@@ -181,10 +195,21 @@ describe("GET/PUT /api/zero/model-policies", () => {
     expect(response.body.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
+    expect(
+      response.body.policies.map((policy) => {
+        return policy.model;
+      }),
+    ).toStrictEqual(DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS);
+    expect(
+      response.body.policies.some((policy) => {
+        return policy.model.startsWith("gpt-5.6-");
+      }),
+    ).toBeFalsy();
   });
 
   it("lists seeded curated models and the explicit default when enabled", async () => {
     const fixture = await seedFixture();
+    await enableGpt56Models(fixture);
     useSession(fixture);
 
     const response = await accept(
@@ -231,7 +256,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
+    ).toStrictEqual(DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS);
     expect(response.body.workspaceDefaultModel).toBe(
       LIMITED_FREE1_DEFAULT_RUN_MODEL,
     );
@@ -257,7 +282,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
+    ).toStrictEqual(DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS);
     expect(response.body.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
@@ -333,15 +358,15 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
 
     const firstPolicy = response.body.policies.find((policy) => {
-      return policy.model === DEFAULT_ORG_MODEL_POLICY_MODELS[0];
+      return policy.model === DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS[0];
     });
     const secondPolicy = response.body.policies.find((policy) => {
-      return policy.model === DEFAULT_ORG_MODEL_POLICY_MODELS[1];
+      return policy.model === DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS[1];
     });
     expect(firstPolicy?.isDefault).toBeFalsy();
     expect(secondPolicy?.isDefault).toBeTruthy();
     expect(response.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_MODELS[1],
+      DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS[1],
     );
   });
 
@@ -353,9 +378,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
-      return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
-    });
+    const removedModel = DEFAULT_VISIBLE_ORG_MODEL_POLICY_MODELS.find(
+      (model) => {
+        return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+      },
+    );
     if (!removedModel) {
       throw new Error("Default policy seed must include a non-default model");
     }
@@ -414,9 +441,6 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual([
       "claude-fable-5",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
       "gpt-5.5",
       "claude-opus-4-8",
       "claude-opus-4-6",
@@ -586,6 +610,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
   it("allows compatible GPT 5.6 OpenAI org provider routes", async () => {
     const fixture = await seedFixture();
+    await enableGpt56Models(fixture);
     useSession(fixture);
     const openAiProviderId = await createOrgProvider(fixture, "openai-api-key");
     const client = apiClient();
@@ -628,6 +653,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     "rejects unsupported GPT 5.6 %s provider routes",
     async (providerType) => {
       const fixture = await seedFixture();
+      await enableGpt56Models(fixture);
       useSession(fixture);
       const providerId = await createOrgProvider(fixture, providerType);
       const client = apiClient();
@@ -664,6 +690,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
   it("rejects unsupported GPT 5.6 Codex OAuth member routes", async () => {
     const fixture = await seedFixture();
+    await enableGpt56Models(fixture);
     useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
