@@ -1,13 +1,15 @@
 """AWS SigV4 firewall-auth integration helpers for mitm-addon tests."""
 
 import copy
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import TypedDict
+from typing import Protocol, TypedDict
 
 from mitmproxy import http
 
 import auth
+import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
@@ -31,8 +33,27 @@ from url_utils import get_original_url
 
 DEFAULT_SANDBOX_TOKEN = "sandbox-token"
 FAR_FUTURE_EXPIRES_AT = 9_999_999_999
-_RealFlowFactory = Callable[..., http.HTTPFlow]
-_HeaderFactory = Callable[..., http.Headers]
+
+
+class _RealFlowFactory(Protocol):
+    def __call__(
+        self,
+        *,
+        host: str = ...,
+        path: str = ...,
+        method: str = ...,
+        request_body: bytes | None = ...,
+        request_headers: http.Headers | None = ...,
+        with_response: bool = ...,
+    ) -> http.HTTPFlow: ...
+
+
+class _HeaderFactory(Protocol):
+    def __call__(self, *pairs: tuple[str, str]) -> http.Headers: ...
+
+
+class _MitmContextFactory(Protocol):
+    def __call__(self, *, api_url: str = ...) -> AbstractContextManager[object]: ...
 
 
 class AwsAuthConfigBase(TypedDict):
@@ -189,7 +210,7 @@ def aws_auth_response(
 
 
 def prepare_firewall_request(
-    flow,
+    flow: http.HTTPFlow,
     *,
     original_url: str | None = None,
     run_id: str = "run-1",
@@ -246,9 +267,9 @@ def make_sts_query_sigv4_flow(
 
 
 async def handle_firewall_request_with_auth_endpoint(
-    flow,
+    flow: http.HTTPFlow,
     tmp_path: Path,
-    mitm_ctx,
+    mitm_ctx: _MitmContextFactory,
     *,
     endpoint: FakeAuthEndpoint | None = None,
     auth_response: dict[str, object] | None = None,
@@ -272,7 +293,7 @@ async def handle_firewall_request_with_auth_endpoint(
 
 def assert_sigv4_failed_closed(
     result: auth.FirewallAuthHandlingResult,
-    flow,
+    flow: http.HTTPFlow,
     message_fragment: str,
 ) -> None:
     assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
@@ -287,7 +308,7 @@ def _aws_auth_cache_key(
     tmp_path: Path,
     allow: matching.FirewallAllow | None = None,
     vm_info: AwsVmInfo | None = None,
-):
+) -> auth_cache.FirewallAuthCacheKey:
     resolved_allow = aws_allow() if allow is None else allow
     resolved_api_entry = resolved_allow.api_entry
     resolved_vm_info = aws_vm_info(tmp_path) if vm_info is None else vm_info
