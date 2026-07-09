@@ -39,40 +39,6 @@ JSON_PART = r"""{
           ]
         }
       ]
-    },
-    {
-      "auth": {
-        "headers": {
-          "Authorization": "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
-          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)"
-        }
-      },
-      "base": "https://news-api.entry.nintendo.co.jp",
-      "permissions": [
-        {
-          "name": "nintendo-entry-play-activity-read",
-          "rules": [
-            "GET /api/v1.1/users/me/play_histories"
-          ]
-        }
-      ]
-    },
-    {
-      "auth": {
-        "headers": {
-          "Authorization": "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
-          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)"
-        }
-      },
-      "base": "https://mypage-api.entry.nintendo.co.jp",
-      "permissions": [
-        {
-          "name": "my-nintendo-play-activity-read",
-          "rules": [
-            "GET /api/v1/users/me/play_histories"
-          ]
-        }
-      ]
     }
   ],
   "name": "nintendo-play-activity"

@@ -3155,28 +3155,6 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
           "NINTENDO_PLAY_ACTIVITY_TOKEN",
           "NINTENDO_PLAY_ACTIVITY_LOCALE"
         ]
-      },
-      {
-        "authHeaderNames": [
-          "Authorization",
-          "User-Agent"
-        ],
-        "authQueryParamNames": [],
-        "base": "https://news-api.entry.nintendo.co.jp",
-        "envNames": [
-          "NINTENDO_PLAY_ACTIVITY_TOKEN"
-        ]
-      },
-      {
-        "authHeaderNames": [
-          "Authorization",
-          "User-Agent"
-        ],
-        "authQueryParamNames": [],
-        "base": "https://mypage-api.entry.nintendo.co.jp",
-        "envNames": [
-          "NINTENDO_PLAY_ACTIVITY_TOKEN"
-        ]
       }
     ],
     "name": "nintendo-play-activity"
