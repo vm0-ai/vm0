@@ -613,7 +613,7 @@ function goalSnapshotFromRow(
   snapshot: unknown,
 ): ChatMessageGoalSnapshot | undefined {
   const record = recordFromJson(snapshot);
-  if (!record) {
+  if (!record || !("objectiveBrief" in record)) {
     return undefined;
   }
   return {

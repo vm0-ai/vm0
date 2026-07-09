@@ -330,6 +330,21 @@ describe("zero goals", () => {
       )
     `);
     expect(inserted.rowCount).toBe(1);
+    const insertedMissingSnapshotBrief = await db().execute(sql`
+      INSERT INTO chat_messages (
+        chat_thread_id,
+        role,
+        content,
+        goal_snapshot
+      )
+      VALUES (
+        ${fixture.threadId},
+        'user',
+        'legacy snapshot without objective brief',
+        '{"bad":true}'::jsonb
+      )
+    `);
+    expect(insertedMissingSnapshotBrief.rowCount).toBe(1);
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const messages = await chat.listThreadMessages(
@@ -360,6 +375,15 @@ describe("zero goals", () => {
         return message.goalEvent === undefined;
       }),
     ).toBeTruthy();
+    const missingSnapshotBriefMessage = messages.messages.find((message) => {
+      return message.content === "legacy snapshot without objective brief";
+    });
+    expect(missingSnapshotBriefMessage).toStrictEqual(
+      expect.objectContaining({
+        role: "user",
+      }),
+    );
+    expect(missingSnapshotBriefMessage?.goalSnapshot).toBeUndefined();
   });
 
   it("clears the current goal and writes a cleared marker", async () => {
