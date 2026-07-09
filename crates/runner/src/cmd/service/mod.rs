@@ -229,7 +229,7 @@ fn ensure_drain_restart_policy_applied(
 
 type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = RunnerResult<T>> + 'a>>;
 
-const STOP_CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
+const STOP_CLEANUP_LOCK_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
 const STOP_CLEANUP_LOCK_POLL_INTERVAL: TokioDuration = TokioDuration::from_millis(250);
 const STOP_CLEANUP_STOP_TIMEOUT: TokioDuration = TokioDuration::from_secs(20);
 const STOP_CLEANUP_ACTION_TIMEOUT: TokioDuration = TokioDuration::from_secs(10);

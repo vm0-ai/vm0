@@ -1947,7 +1947,7 @@ jobs:
                 # The runner cleanup command has per-action deadlines; keep the
                 # outer SSH watchdog longer than the combined worst-case budget.
                 # shellcheck disable=SC2029
-                timeout 120s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
+                timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
               ) &
               STOP_PIDS+=($!)
             done
