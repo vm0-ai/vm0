@@ -20,6 +20,10 @@
 //! hard links, and must not have group/other-writable mode bits. Unsafe or
 //! invalid final lock-file paths are reported as I/O errors instead of ordinary
 //! lock contention.
+//!
+//! The per-index lock file path must remain stable while claims may be held:
+//! kernel `flock` locks the opened inode, so deleting or replacing the path can
+//! create a separate lock domain for later callers.
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -91,7 +95,9 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 /// `lock_dir/vm0-nbd-{index}.lock`. Missing per-index lock files are created
 /// with private permissions and then validated before locking.
 /// Processes using different lock directories do not coordinate with each
-/// other.
+/// other. Relative lock directories are resolved by each caller's current
+/// working directory, so cooperating processes should use paths that resolve to
+/// the same directory.
 ///
 /// Existing final lock files must be regular files openable for read and write
 /// by the current process, must be owned by the current effective uid, must not
