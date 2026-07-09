@@ -670,6 +670,173 @@ describe("computer-use command visibility", () => {
     expect(output).toContain('"summary": "Typed text"');
   });
 
+  it("should call an mcp plugin tool with json arguments", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    let createBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/plugin-commands",
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json({ commandId: "cmd_mcp", status: "queued" });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_mcp",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_mcp",
+            kind: "plugin.call",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { plugin: "mcp", server: "notes", tool: "create_note" },
+            result: {
+              plugin: "mcp",
+              server: "notes",
+              tool: "create_note",
+              content: "Created note hello",
+              sizeBytes: 18,
+              truncated: false,
+            },
+            timeoutMs: 10_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "plugin",
+      "mcp",
+      "call",
+      "notes",
+      "create_note",
+      "--args",
+      '{"title":"hello"}',
+      "--timeout",
+      "10",
+    ]);
+
+    expect(createBody).toMatchObject({
+      plugin: "mcp",
+      server: "notes",
+      tool: "create_note",
+      arguments: { title: "hello" },
+      timeoutMs: 10_000,
+    });
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("Created note hello");
+  });
+
+  it("should list a server's mcp tools via the reserved tools/list call", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    let createBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/plugin-commands",
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json({ commandId: "cmd_list", status: "queued" });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_list",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_list",
+            kind: "plugin.call",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { plugin: "mcp", server: "notes", tool: "tools/list" },
+            result: {
+              plugin: "mcp",
+              server: "notes",
+              tool: "tools/list",
+              content: '{"server":"notes","tools":[{"name":"create_note"}]}',
+              sizeBytes: 51,
+              truncated: false,
+            },
+            timeoutMs: 10_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "plugin",
+      "mcp",
+      "list",
+      "notes",
+      "--timeout",
+      "10",
+    ]);
+
+    expect(createBody).toMatchObject({
+      plugin: "mcp",
+      server: "notes",
+      tool: "tools/list",
+      arguments: {},
+    });
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("create_note");
+  });
+
+  it("should list mcp servers reported by linked hosts", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    server.use(
+      http.get("http://localhost:3000/api/zero/computer-use/hosts", () => {
+        return HttpResponse.json({
+          hosts: [
+            {
+              id: "host_1",
+              displayName: "Lancy's Mac",
+              appVersion: "1.0.0",
+              osVersion: "macOS 15",
+              supportedCapabilities: [
+                "plugin.call",
+                "plugin.mcp.notes",
+                "plugin.mcp.figma",
+                "plugin.filesystem",
+              ],
+              permissions: { accessibility: true, screenRecording: true },
+              status: "online",
+              lastSeenAt: "2026-05-21T10:00:00.000Z",
+              createdAt: "2026-05-21T10:00:00.000Z",
+            },
+          ],
+        });
+      }),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "plugin",
+      "mcp",
+      "list",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("Lancy's Mac (online): notes, figma");
+  });
+
   it("should download pointer-backed screenshots through the API proxy", async () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
