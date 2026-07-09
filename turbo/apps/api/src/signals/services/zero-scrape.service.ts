@@ -7,7 +7,7 @@ import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
-import { safeAsync, safeJsonParse } from "../utils";
+import { detach, Mechanism, safeAsync, safeJsonParse } from "../utils";
 import {
   checkManagedCredits$,
   recordManagedUsage$,
@@ -22,6 +22,7 @@ const PROVIDER = "firecrawl";
 const USAGE_KIND = "scrape";
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 const FIRECRAWL_TIMEOUT_MS = 30_000;
+const MAX_FIRECRAWL_RESPONSE_BYTES = 5 * 1024 * 1024;
 const MAX_MARKDOWN_CHARS = 1_000_000;
 const MAX_LINKS = 5000;
 
@@ -41,6 +42,27 @@ interface AuthedScrapeArgs {
   readonly auth: AuthContext & { readonly orgId: string };
   readonly body: ZeroScrapeRequest;
 }
+
+interface ScrapeErrorResult {
+  readonly kind: "error";
+  readonly error: ScrapeErrorResponse;
+}
+
+type FirecrawlTextResult =
+  | ScrapeErrorResult
+  | { readonly kind: "text"; readonly text: string };
+
+type FirecrawlBodyResult =
+  | ScrapeErrorResult
+  | { readonly kind: "body"; readonly body: unknown };
+
+type FirecrawlResponseResult =
+  | ScrapeErrorResult
+  | {
+      readonly kind: "response";
+      readonly response: Response;
+      readonly body: unknown;
+    };
 
 interface FirecrawlScrapeData {
   readonly markdown?: string;
@@ -180,13 +202,78 @@ function firecrawlFailure(body: unknown): ScrapeErrorResponse | null {
     : null;
 }
 
-async function readResponseBody(response: Response): Promise<unknown> {
-  const text = await response.text();
+function scrapeErrorResult(error: ScrapeErrorResponse): ScrapeErrorResult {
+  return { kind: "error", error };
+}
+
+function oversizedFirecrawlResponse(): ScrapeErrorResponse {
+  return badGateway(
+    "Firecrawl scrape response is too large",
+    "SCRAPE_OUTPUT_TOO_LARGE",
+  );
+}
+
+function contentLengthExceedsLimit(response: Response): boolean {
+  const contentLength = response.headers.get("content-length");
+  if (!contentLength) {
+    return false;
+  }
+
+  const bytes = Number(contentLength);
+  return Number.isFinite(bytes) && bytes > MAX_FIRECRAWL_RESPONSE_BYTES;
+}
+
+async function readResponseText(
+  response: Response,
+): Promise<FirecrawlTextResult> {
+  if (contentLengthExceedsLimit(response)) {
+    return scrapeErrorResult(oversizedFirecrawlResponse());
+  }
+
+  if (!response.body) {
+    return { kind: "text", text: "" };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let bytesRead = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    bytesRead += value.byteLength;
+    if (bytesRead > MAX_FIRECRAWL_RESPONSE_BYTES) {
+      detach(
+        reader.cancel(),
+        Mechanism.BestEffortCleanup,
+        "Cancel oversized Firecrawl response body",
+      );
+      return scrapeErrorResult(oversizedFirecrawlResponse());
+    }
+    chunks.push(decoder.decode(value, { stream: true }));
+  }
+
+  chunks.push(decoder.decode());
+  return { kind: "text", text: chunks.join("") };
+}
+
+async function readResponseBody(
+  response: Response,
+): Promise<FirecrawlBodyResult> {
+  const result = await readResponseText(response);
+  if (result.kind === "error") {
+    return result;
+  }
+  const { text } = result;
   if (!text) {
-    return null;
+    return { kind: "body", body: null };
   }
   const parsed = safeJsonParse(text);
-  return parsed === undefined ? text : parsed;
+  return { kind: "body", body: parsed === undefined ? text : parsed };
 }
 
 async function fetchFirecrawlScrape(
@@ -194,8 +281,8 @@ async function fetchFirecrawlScrape(
   request: ZeroScrapeRequest,
   targetUrl: URL,
   signal: AbortSignal,
-): Promise<unknown | ScrapeErrorResponse> {
-  const result = await safeAsync(async () => {
+): Promise<FirecrawlBodyResult> {
+  const result = await safeAsync(async (): Promise<FirecrawlResponseResult> => {
     const response = await fetch(FIRECRAWL_SCRAPE_URL, {
       method: "POST",
       headers: {
@@ -215,8 +302,11 @@ async function fetchFirecrawlScrape(
       ]),
     });
 
-    const body = await readResponseBody(response);
-    return { response, body };
+    const readResult = await readResponseBody(response);
+    if (readResult.kind === "error") {
+      return readResult;
+    }
+    return { kind: "response", response, body: readResult.body };
   });
 
   if ("error" in result) {
@@ -226,19 +316,22 @@ async function fetchFirecrawlScrape(
       error instanceof Error &&
       (error.name === "AbortError" || error.name === "TimeoutError")
     ) {
-      return badGateway(
-        "Firecrawl scrape request timed out",
-        "FIRECRAWL_TIMEOUT",
+      return scrapeErrorResult(
+        badGateway("Firecrawl scrape request timed out", "FIRECRAWL_TIMEOUT"),
       );
     }
-    return badGateway("Firecrawl scrape request failed");
+    return scrapeErrorResult(badGateway("Firecrawl scrape request failed"));
+  }
+
+  if (result.ok.kind === "error") {
+    return result.ok;
   }
 
   const { response, body } = result.ok;
   if (!response.ok) {
-    return badGateway(firecrawlErrorMessage(body));
+    return scrapeErrorResult(badGateway(firecrawlErrorMessage(body)));
   }
-  return body;
+  return { kind: "body", body };
 }
 
 function dataFromFirecrawlBody(body: unknown): FirecrawlScrapeData | null {
@@ -504,16 +597,17 @@ export const zeroScrape$ = command(
       return creditError;
     }
 
-    const firecrawlBody = await fetchFirecrawlScrape(
+    const firecrawlResult = await fetchFirecrawlScrape(
       apiKey,
       args.body,
       target.url,
       signal,
     );
     signal.throwIfAborted();
-    if (isScrapeErrorResponse(firecrawlBody)) {
-      return firecrawlBody;
+    if (firecrawlResult.kind === "error") {
+      return firecrawlResult.error;
     }
+    const { body: firecrawlBody } = firecrawlResult;
 
     const firecrawlFailureResponse = firecrawlFailure(firecrawlBody);
     if (firecrawlFailureResponse) {

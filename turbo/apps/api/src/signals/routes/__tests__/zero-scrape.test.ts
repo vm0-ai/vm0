@@ -480,4 +480,79 @@ describe("zero scrape route", () => {
     expect(response.body.error.message).toBe("Firecrawl rejected this scrape");
     expect(afterCredits).toBe(beforeCredits);
   });
+
+  it("does not treat provider JSON as an internal scrape error", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    await enableScrape(actor);
+    configureProvider();
+    await seedScrapePricing();
+    await grantCredits(actor);
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          status: 400,
+          body: {
+            error: {
+              message: "Provider controlled error",
+              code: "PROVIDER_CONTROLLED",
+            },
+          },
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [502],
+    );
+    const afterCredits = await credits(actor);
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("FIRECRAWL_ERROR");
+    expect(response.body.error.message).toBe(
+      "Firecrawl response did not include scrape data",
+    );
+    expect(afterCredits).toBe(beforeCredits);
+  });
+
+  it("rejects oversized Firecrawl responses without recording usage", async () => {
+    const actor = createBddApi(context).user();
+    allowExampleDotCom();
+    await enableScrape(actor);
+    configureProvider();
+    await seedScrapePricing();
+    await grantCredits(actor);
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.text("x".repeat(5 * 1024 * 1024 + 1));
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [502],
+    );
+    const afterCredits = await credits(actor);
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("SCRAPE_OUTPUT_TOO_LARGE");
+    expect(afterCredits).toBe(beforeCredits);
+  });
 });
