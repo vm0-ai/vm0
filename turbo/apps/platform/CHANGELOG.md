@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.582.1](https://github.com/vm0-ai/vm0/compare/app-v0.582.0...app-v0.582.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* open chat rename from header title double-click ([#20811](https://github.com/vm0-ai/vm0/issues/20811)) ([5111368](https://github.com/vm0-ai/vm0/commit/5111368c036c79f70516f7122aea6f8afeeac904))
+
 ## [0.582.0](https://github.com/vm0-ai/vm0/compare/app-v0.581.2...app-v0.582.0) (2026-07-09)
 
 
