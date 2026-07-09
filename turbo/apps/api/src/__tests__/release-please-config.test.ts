@@ -84,13 +84,17 @@ describe("release-please API deployment graph", () => {
     }
   });
 
-  it("builds and promotes API for every release", () => {
+  it("builds and deploys API for every release", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const apiBuildJob = workflowJobBlock(workflow, "build-api-production");
 
     expect(apiBuildJob).toContain(
       `if: \${{ needs.release-please.outputs.releases_created == 'true' }}`,
     );
+    expect(apiBuildJob).toContain("Build API Production Output");
+    expect(apiBuildJob).toContain("Upload API Production Build Output");
+    expect(apiBuildJob).not.toContain("./.github/actions/vercel-deploy");
+    expect(apiBuildJob).not.toContain("skip-domain");
     expect(apiBuildJob).not.toContain("api_deploy_required");
 
     const promoteApiProductionJob = workflowJobBlock(
@@ -99,6 +103,16 @@ describe("release-please API deployment graph", () => {
     );
 
     expect(promoteApiProductionJob).toContain("migrate-production");
+    expect(promoteApiProductionJob).toContain(
+      "Download API Production Build Output",
+    );
+    expect(promoteApiProductionJob).toContain(
+      "Deploy API Production Deployment",
+    );
+    expect(promoteApiProductionJob).toContain('prebuilt: "true"');
+    expect(promoteApiProductionJob).not.toContain(
+      "./.github/actions/vercel-promote",
+    );
     expect(promoteApiProductionJob).toContain("always() &&");
     expect(promoteApiProductionJob).toContain(
       "needs.release-please.outputs.releases_created == 'true'",
