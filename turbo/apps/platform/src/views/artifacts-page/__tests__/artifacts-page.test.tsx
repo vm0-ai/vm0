@@ -519,6 +519,22 @@ describe("artifacts page", () => {
             artifactKind: undefined,
           }),
           createArtifact({
+            artifactItemId: "run-video:file-1",
+            runId: "run-video",
+            fileId: "file-video",
+            filename: "launch-video.mp4",
+            contentType: "video/mp4",
+            artifactKind: undefined,
+          }),
+          createArtifact({
+            artifactItemId: "run-archive:file-1",
+            runId: "run-archive",
+            fileId: "file-archive",
+            filename: "launch-assets.zip",
+            contentType: "application/zip",
+            artifactKind: undefined,
+          }),
+          createArtifact({
             artifactItemId: "run-brief:file-1",
             runId: "run-brief",
             fileId: "file-brief",
@@ -535,13 +551,35 @@ describe("artifacts page", () => {
 
     await screen.findByText("launch-plan.html");
     await screen.findByText("launch-image.png");
+    await screen.findByText("launch-video.mp4");
+    await screen.findByText("launch-assets.zip");
     await screen.findByText("research-brief.html");
 
     click(buttonByLabel("Show image artifacts"));
     await waitFor(() => {
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
       expect(screen.queryByText("research-brief.html")).not.toBeInTheDocument();
       expect(screen.getByText("launch-image.png")).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Show video artifacts"));
+    await waitFor(() => {
+      expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
+      expect(screen.queryByText("research-brief.html")).not.toBeInTheDocument();
+      expect(screen.getByText("launch-video.mp4")).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Show other artifacts"));
+    await waitFor(() => {
+      expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
+      expect(screen.queryByText("research-brief.html")).not.toBeInTheDocument();
+      expect(screen.getByText("launch-assets.zip")).toBeInTheDocument();
     });
 
     click(buttonByLabel("Show all artifacts"));
@@ -550,6 +588,8 @@ describe("artifacts page", () => {
       expect(screen.getByText("research-brief.html")).toBeInTheDocument();
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
     });
 
     await fill(screen.getByLabelText("Search artifacts"), "");
@@ -559,6 +599,8 @@ describe("artifacts page", () => {
       expect(screen.getByText("research-brief.html")).toBeInTheDocument();
       expect(screen.queryByText("launch-plan.html")).not.toBeInTheDocument();
       expect(screen.queryByText("launch-image.png")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-video.mp4")).not.toBeInTheDocument();
+      expect(screen.queryByText("launch-assets.zip")).not.toBeInTheDocument();
     });
 
     // All filtering was client-side: the bulk endpoint was hit once.
