@@ -14,7 +14,9 @@ import {
   IconBrandGithub,
   IconCalendarTime,
   IconClock,
-  IconFileText,
+  IconDatabasePlus,
+  IconFilePencil,
+  IconFilePlus,
   IconLink,
   IconMail,
   IconMessageCircle,
@@ -322,12 +324,14 @@ export function TriggerListIcon({
     if (trigger.eventType === "google-meet-transcript-generated") {
       return IconVideo;
     }
-    if (
-      trigger.eventType === "notion-child-page-created" ||
-      trigger.eventType === "notion-database-item-created" ||
-      trigger.eventType === "notion-page-content-updated"
-    ) {
-      return IconFileText;
+    if (trigger.eventType === "notion-child-page-created") {
+      return IconFilePlus;
+    }
+    if (trigger.eventType === "notion-database-item-created") {
+      return IconDatabasePlus;
+    }
+    if (trigger.eventType === "notion-page-content-updated") {
+      return IconFilePencil;
     }
     if (trigger.eventType === "gmail-label-applied") {
       return IconTag;
