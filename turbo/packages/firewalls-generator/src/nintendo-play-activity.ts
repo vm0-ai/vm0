@@ -22,12 +22,32 @@ interface NintendoPlayActivityApi {
 
 const NINTENDO_PLAY_ACTIVITY_APIS: readonly NintendoPlayActivityApi[] = [
   {
+    base: "https://api.accounts.nintendo.com",
+    permissions: [
+      {
+        name: "nintendo-account-profile-read",
+        description: "Read Nintendo Account profile for the connected account",
+        rules: ["GET /2.0.0/users/me"],
+      },
+    ],
+  },
+  {
     base: "https://app-api.znej.nintendo.com",
     permissions: [
       {
         name: "nintendo-store-play-activity-read",
         description: "Read Nintendo Store app play activity history",
         rules: ["GET /api/v2.0/users/me/play_histories"],
+      },
+    ],
+  },
+  {
+    base: "https://news-api.entry.nintendo.co.jp",
+    permissions: [
+      {
+        name: "nintendo-entry-play-activity-read",
+        description: "Read Nintendo Entry play activity history",
+        rules: ["GET /api/v1.1/users/me/play_histories"],
       },
     ],
   },
