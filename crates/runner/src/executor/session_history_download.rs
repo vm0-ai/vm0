@@ -16,6 +16,7 @@
 //! before they are restored into the sandbox.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::io::{BufRead, BufReader, Read};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -42,6 +43,8 @@ use crate::types::{
 };
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS: usize = 3;
+const SESSION_HISTORY_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_millis(200);
 const SESSION_HISTORY_PROBE_TTL: Duration = Duration::from_secs(60 * 60);
 const SESSION_HISTORY_PROBE_CAPACITY: usize = 4096;
 
@@ -189,6 +192,15 @@ impl SessionHistoryDownloadTimings {
     fn record_response_metadata(&mut self, response: SessionHistoryResponseTelemetryMetadata) {
         if let Some(metadata) = self.metadata {
             self.metadata = Some(metadata.with_response(response));
+        }
+    }
+
+    fn reset_download_attempt(&mut self) {
+        self.request_status = None;
+        self.body_read = None;
+        self.validation = None;
+        if let Some(metadata) = self.metadata {
+            self.metadata = Some(metadata.without_response());
         }
     }
 
@@ -992,37 +1004,54 @@ async fn download_body(
     expected_size: Option<u64>,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<Vec<u8>> {
+    let mut attempt = 1usize;
+    loop {
+        timings.reset_download_attempt();
+        match download_body_once(http, url, expected_size, timings).await {
+            Ok(body) => return Ok(body),
+            Err(error) => {
+                let should_retry =
+                    error.is_retryable() && attempt < SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS;
+                if !should_retry {
+                    return Err(error.into_runner_error());
+                }
+                tracing::warn!(
+                    action = "session_history_download_retry",
+                    attempt,
+                    max_attempts = SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS,
+                    failure_kind = error.kind_value(),
+                    "retrying session history encoded body download"
+                );
+                sleep_session_history_download_retry_delay().await;
+                attempt += 1;
+            }
+        }
+    }
+}
+
+async fn download_body_once(
+    http: &HttpClient,
+    url: &str,
+    expected_size: Option<u64>,
+    timings: &mut SessionHistoryDownloadTimings,
+) -> Result<Vec<u8>, SessionHistoryDownloadBodyError> {
     let request_started = Instant::now();
-    let response_result = http
+    let response = http
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
         .await
-        .map_err(|error| {
-            RunnerError::Internal(format!(
-                "GET {}: {}",
-                redact_url_query(url),
-                error.without_url()
-            ))
-        })?
-        .error_for_status()
-        .map_err(|error| {
-            RunnerError::Internal(format!(
-                "GET status {}: {}",
-                redact_url_query(url),
-                error.without_url()
-            ))
-        });
-    let mut response = match response_result {
-        Ok(response) => {
-            timings.record_request_status(request_started.elapsed(), true);
-            response
-        }
-        Err(error) => {
-            timings.record_request_status(request_started.elapsed(), false);
-            return Err(error);
-        }
-    };
+        .map_err(|error| SessionHistoryDownloadBodyError::from_reqwest("GET", url, error))?;
+    if let Err(error) = response.error_for_status_ref() {
+        timings.record_request_status(request_started.elapsed(), false);
+        return Err(SessionHistoryDownloadBodyError::from_reqwest(
+            "GET status",
+            url,
+            error,
+        ));
+    }
+    timings.record_request_status(request_started.elapsed(), true);
+    let mut response = response;
 
     let response_metadata = session_history_response_metadata(&response, expected_size);
     timings.record_response_metadata(response_metadata);
@@ -1031,17 +1060,21 @@ async fn download_body(
     if let Some(content_length) = response.content_length() {
         if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
             timings.add_validation(validation_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::downloaded_too_large(
+                format!(
+                    "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+                ),
+            ));
         }
         if let Some(expected_size) = expected_size
             && content_length != expected_size
         {
             timings.add_validation(validation_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history content-length mismatch: expected {expected_size} bytes, got {content_length} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::content_length_mismatch(
+                format!(
+                    "session history content-length mismatch: expected {expected_size} bytes, got {content_length} bytes",
+                ),
+            ));
         }
     }
     timings.add_validation(validation_started.elapsed(), true);
@@ -1057,11 +1090,9 @@ async fn download_body(
         Ok(chunk) => chunk,
         Err(error) => {
             timings.record_body_read(body_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "read {}: {}",
-                redact_url_query(url),
-                error.without_url()
-            )));
+            return Err(SessionHistoryDownloadBodyError::from_reqwest(
+                "read", url, error,
+            ));
         }
     } {
         downloaded += chunk.len() as u64;
@@ -1069,15 +1100,20 @@ async fn download_body(
             && downloaded > expected_size
         {
             timings.record_body_read(body_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history downloaded size mismatch: expected {expected_size} bytes, got more than {expected_size} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::downloaded_size_mismatch(
+                format!(
+                    "session history downloaded size mismatch: expected {expected_size} bytes, got more than {expected_size} bytes",
+                ),
+                false,
+            ));
         }
         if downloaded > RESUME_SESSION_HISTORY_MAX_BYTES {
             timings.record_body_read(body_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::downloaded_too_large(
+                format!(
+                    "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+                ),
+            ));
         }
         body.extend_from_slice(&chunk);
     }
@@ -1085,13 +1121,128 @@ async fn download_body(
         && downloaded != expected_size
     {
         timings.record_body_read(body_started.elapsed(), false);
-        return Err(RunnerError::Internal(format!(
-            "session history downloaded size mismatch: expected {expected_size} bytes, got {downloaded} bytes"
-        )));
+        return Err(SessionHistoryDownloadBodyError::downloaded_size_mismatch(
+            format!(
+                "session history downloaded size mismatch: expected {expected_size} bytes, got {downloaded} bytes",
+            ),
+            true,
+        ));
     }
     timings.record_body_read(body_started.elapsed(), true);
 
     Ok(body)
+}
+
+#[derive(Debug)]
+struct SessionHistoryDownloadBodyError {
+    message: String,
+    kind: SessionHistoryDownloadBodyErrorKind,
+}
+
+#[derive(Debug)]
+enum SessionHistoryDownloadBodyErrorKind {
+    Transport { retryable: bool },
+    HttpStatus(reqwest::StatusCode),
+    ContentLengthMismatch,
+    DownloadedSizeMismatch { retryable: bool },
+    DownloadedTooLarge,
+}
+
+impl SessionHistoryDownloadBodyError {
+    fn content_length_mismatch(message: String) -> Self {
+        Self {
+            message,
+            kind: SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch,
+        }
+    }
+
+    fn downloaded_size_mismatch(message: String, retryable: bool) -> Self {
+        Self {
+            message,
+            kind: SessionHistoryDownloadBodyErrorKind::DownloadedSizeMismatch { retryable },
+        }
+    }
+
+    fn downloaded_too_large(message: String) -> Self {
+        Self {
+            message,
+            kind: SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge,
+        }
+    }
+
+    fn from_reqwest(phase: &str, url: &str, error: reqwest::Error) -> Self {
+        let kind = match error.status() {
+            Some(status) => SessionHistoryDownloadBodyErrorKind::HttpStatus(status),
+            None => SessionHistoryDownloadBodyErrorKind::Transport {
+                retryable: reqwest_error_is_retryable(&error),
+            },
+        };
+        Self {
+            message: format!("{phase} {}: {}", redact_url_query(url), error.without_url()),
+            kind,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        match self.kind {
+            SessionHistoryDownloadBodyErrorKind::Transport { retryable } => retryable,
+            SessionHistoryDownloadBodyErrorKind::HttpStatus(status) => {
+                status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+            }
+            SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch
+            | SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge => false,
+            SessionHistoryDownloadBodyErrorKind::DownloadedSizeMismatch { retryable } => retryable,
+        }
+    }
+
+    fn kind_value(&self) -> &'static str {
+        match self.kind {
+            SessionHistoryDownloadBodyErrorKind::Transport { .. } => "transport",
+            SessionHistoryDownloadBodyErrorKind::HttpStatus(status) => {
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    "http_429"
+                } else if status.is_server_error() {
+                    "http_5xx"
+                } else {
+                    "http_non_retryable"
+                }
+            }
+            SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch => "content_length_mismatch",
+            SessionHistoryDownloadBodyErrorKind::DownloadedSizeMismatch { .. } => {
+                "downloaded_size_mismatch"
+            }
+            SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge => "downloaded_too_large",
+        }
+    }
+
+    fn into_runner_error(self) -> RunnerError {
+        RunnerError::Internal(self.message)
+    }
+}
+
+impl fmt::Display for SessionHistoryDownloadBodyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+fn reqwest_error_is_retryable(error: &reqwest::Error) -> bool {
+    !(error.is_builder() || error.is_redirect())
+}
+
+async fn sleep_session_history_download_retry_delay() {
+    let delay = session_history_download_retry_delay();
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
+}
+
+fn session_history_download_retry_delay() -> Duration {
+    if cfg!(test) {
+        Duration::ZERO
+    } else {
+        SESSION_HISTORY_DOWNLOAD_RETRY_DELAY
+    }
 }
 
 fn session_history_response_metadata(
@@ -1193,9 +1344,10 @@ mod tests {
     use std::io::{self, Write};
 
     use flate2::{Compression, write::GzEncoder};
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
     use tokio::sync::oneshot;
+    use tokio::task::JoinHandle;
 
     use super::*;
     use crate::http::{HttpClient, HttpClientConfig};
@@ -1489,6 +1641,117 @@ mod tests {
         OneShotSessionHistoryServer::respond_once(status, body, content_length).await
     }
 
+    struct MultiShotSessionHistoryServer {
+        url: String,
+        task: Option<JoinHandle<io::Result<usize>>>,
+    }
+
+    #[derive(Clone)]
+    struct MultiShotSessionHistoryResponse {
+        status: &'static str,
+        body: Vec<u8>,
+        content_length: Option<u64>,
+    }
+
+    impl MultiShotSessionHistoryResponse {
+        fn new(
+            status: &'static str,
+            body: impl Into<Vec<u8>>,
+            content_length: Option<u64>,
+        ) -> Self {
+            Self {
+                status,
+                body: body.into(),
+                content_length,
+            }
+        }
+
+        fn ok(body: impl Into<Vec<u8>>, content_length: Option<u64>) -> Self {
+            Self::new("200 OK", body, content_length)
+        }
+
+        fn status(status: &'static str) -> Self {
+            Self::new(status, Vec::new(), Some(0))
+        }
+    }
+
+    impl MultiShotSessionHistoryServer {
+        async fn respond_many(responses: Vec<MultiShotSessionHistoryResponse>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let task = tokio::spawn(serve_session_history_many(listener, responses));
+
+            Self {
+                url: format!("http://{address}/history.blob?token=secret"),
+                task: Some(task),
+            }
+        }
+
+        fn url(&self) -> String {
+            self.url.clone()
+        }
+
+        async fn assert_served(mut self, expected_requests: usize) {
+            let mut task = self
+                .task
+                .take()
+                .expect("session history fixture task should be present");
+            match tokio::time::timeout(Duration::from_secs(5), &mut task).await {
+                Ok(result) => {
+                    let served = result
+                        .expect("session history fixture server task should not panic")
+                        .expect("session history fixture server should not fail");
+                    assert_eq!(served, expected_requests);
+                }
+                Err(_) => {
+                    task.abort();
+                    let _ = task.await;
+                    panic!("session history fixture server should finish");
+                }
+            }
+        }
+    }
+
+    impl Drop for MultiShotSessionHistoryServer {
+        fn drop(&mut self) {
+            if let Some(task) = self.task.take() {
+                task.abort();
+            }
+        }
+    }
+
+    async fn serve_session_history_many(
+        listener: TcpListener,
+        responses: Vec<MultiShotSessionHistoryResponse>,
+    ) -> io::Result<usize> {
+        let mut served = 0usize;
+        for response in responses {
+            let (mut stream, _) = listener.accept().await?;
+            let mut request = [0u8; 1024];
+            let request_bytes = stream.read(&mut request).await?;
+            if request_bytes == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "session history fixture received an empty request",
+                ));
+            }
+
+            let content_length_header = response
+                .content_length
+                .map(|content_length| format!("Content-Length: {content_length}\r\n"))
+                .unwrap_or_default();
+            let response_head = format!(
+                "HTTP/1.1 {}\r\n{content_length_header}Connection: close\r\n\r\n",
+                response.status
+            );
+            stream.write_all(response_head.as_bytes()).await?;
+            stream.write_all(&response.body).await?;
+            stream.shutdown().await?;
+            served += 1;
+        }
+        Ok(served)
+    }
+
     #[tokio::test]
     async fn materializer_downloads_and_verifies_hash() {
         let body = b"{\"type\":\"init\"}\n\xff\n";
@@ -1520,6 +1783,100 @@ mod tests {
             _ => panic!("expected downloaded session"),
         }
         server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn materializer_retries_zstd_body_read_error_then_succeeds() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let truncated = compressed[..compressed.len() - 1].to_vec();
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(truncated, Some(encoded_size)),
+            MultiShotSessionHistoryResponse::ok(compressed, Some(encoded_size)),
+        ])
+        .await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served(2).await;
+    }
+
+    #[tokio::test]
+    async fn materializer_retries_500_status_then_succeeds() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::status("500 Internal Server Error"),
+            MultiShotSessionHistoryResponse::ok(body, Some(body.len() as u64)),
+        ])
+        .await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served(2).await;
+    }
+
+    #[tokio::test]
+    async fn materializer_retries_429_status_then_succeeds() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::status("429 Too Many Requests"),
+            MultiShotSessionHistoryResponse::ok(body, Some(body.len() as u64)),
+        ])
+        .await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served(2).await;
     }
 
     #[tokio::test]
@@ -1883,7 +2240,11 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let server = serve_once("200 OK", compressed, None).await;
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(compressed.clone(), None);
+            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+        ])
+        .await;
         let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
 
         let result = start_materializer(&session)
@@ -1904,7 +2265,9 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
-        server.assert_served().await;
+        server
+            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
+            .await;
     }
 
     #[tokio::test]
@@ -1913,7 +2276,11 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let server = serve_once("200 OK", compressed, None).await;
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(compressed.clone(), None);
+            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+        ])
+        .await;
         let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
 
         let result = start_materializer(&session)
@@ -1934,7 +2301,9 @@ mod tests {
             }
             _ => panic!("expected failed materialization"),
         }
-        server.assert_served().await;
+        server
+            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
+            .await;
     }
 
     #[tokio::test]
@@ -2113,7 +2482,10 @@ mod tests {
 
     #[tokio::test]
     async fn materializer_redacts_url_query_from_http_status_error() {
-        let server = serve_once("403 Forbidden", b"", Some(0)).await;
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::status("403 Forbidden"),
+        ])
+        .await;
         let session = ref_session(server.url(), hex::encode(Sha256::digest(b"no")), 2, 2);
 
         let result = start_materializer(&session)
@@ -2133,13 +2505,18 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
-        server.assert_served().await;
+        server.assert_served(1).await;
     }
 
     #[tokio::test]
     async fn materializer_records_mismatched_content_length_metadata() {
         let body = b"actual";
-        let server = serve_once("200 OK", body, Some(999)).await;
+        let server =
+            MultiShotSessionHistoryServer::respond_many(vec![MultiShotSessionHistoryResponse::ok(
+                body,
+                Some(999),
+            )])
+            .await;
         let session = ref_session(
             server.url(),
             hex::encode(Sha256::digest(body)),
@@ -2171,7 +2548,7 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
-        server.assert_served().await;
+        server.assert_served(1).await;
     }
 
     #[tokio::test]
@@ -2205,7 +2582,11 @@ mod tests {
 
     #[tokio::test]
     async fn materializer_records_body_read_failure_timing() {
-        let server = serve_once("200 OK", b"short", Some(999)).await;
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(b"short", Some(999));
+            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+        ])
+        .await;
         let session = ref_session(
             server.url(),
             hex::encode(Sha256::digest(b"short")),
@@ -2227,7 +2608,9 @@ mod tests {
             }
             _ => panic!("expected failed download"),
         }
-        server.assert_served().await;
+        server
+            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
+            .await;
     }
 
     #[test]

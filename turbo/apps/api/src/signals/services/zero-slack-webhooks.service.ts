@@ -1903,13 +1903,12 @@ const buildRunAgentParams$ = command(
       fetchConversationContextDimensions:
         conversationContextObserver.dimensions,
     });
-    await measureApiDispatchTiming(
-      args.timing,
+    const userInfoResolverStatsRecordedAt = now();
+    args.timing.recordElapsed(
       "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
       "nested",
-      () => {
-        return undefined;
-      },
+      userInfoResolverStatsRecordedAt,
+      userInfoResolverStatsRecordedAt,
       slackUserInfoResolverDimensions(userInfoResolver.stats()),
     );
 

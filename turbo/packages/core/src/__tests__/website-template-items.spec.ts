@@ -59,20 +59,28 @@ describe("website template items", () => {
       templateId: "template:black-slabs",
       resourceId: "template:black-slabs",
       previewKind: "iframe",
+      previewImageUrl:
+        "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260708-5f944f83/black-slabs-preview-480x270.webp",
       sourcePath: "black-slabs",
       target: "website",
     });
   });
 
-  it("uses a static-hosted iframe preview asset", () => {
+  it("uses static-hosted preview assets", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       expect(item.previewKind).toBe("iframe");
       expect(item.previewUrl).toMatch(
         /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+\.html$/u,
       );
+      expect(item.previewImageUrl).toMatch(
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-480x270\.webp$/u,
+      );
       expect(item.previewUrl).not.toContain("drive.google.com");
       expect(item.previewUrl).not.toContain("docs.google.com");
       expect(item.previewUrl).not.toContain("raw.githubusercontent.com");
+      expect(item.previewImageUrl).not.toContain("drive.google.com");
+      expect(item.previewImageUrl).not.toContain("docs.google.com");
+      expect(item.previewImageUrl).not.toContain("raw.githubusercontent.com");
     }
   });
 

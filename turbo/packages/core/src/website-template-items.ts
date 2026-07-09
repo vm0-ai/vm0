@@ -7,6 +7,7 @@ export interface WebsiteTemplateItem {
   readonly resourceId: `template:${string}`;
   readonly previewKind: "iframe";
   readonly previewUrl: string;
+  readonly previewImageUrl: string;
   readonly sourcePath: string;
   readonly target: "website";
 }
@@ -28,6 +29,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:black-slabs",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-preview-480x270.webp`,
     sourcePath: "black-slabs",
     target: "website",
   },
@@ -41,6 +43,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:blueprint-grid",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/blueprint-grid-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/blueprint-grid-preview-480x270.webp`,
     sourcePath: "blueprint-grid",
     target: "website",
   },
@@ -54,6 +57,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:coastal-hotel",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/coastal-hotel-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/coastal-hotel-preview-480x270.webp`,
     sourcePath: "coastal-hotel",
     target: "website",
   },
@@ -67,6 +71,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:frame-stack",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frame-stack-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frame-stack-preview-480x270.webp`,
     sourcePath: "frame-stack",
     target: "website",
   },
@@ -80,6 +85,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:gallery-wall",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/gallery-wall-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/gallery-wall-preview-480x270.webp`,
     sourcePath: "gallery-wall",
     target: "website",
   },
@@ -93,6 +99,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:glass-bloom",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/glass-bloom-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/glass-bloom-preview-480x270.webp`,
     sourcePath: "glass-bloom",
     target: "website",
   },
@@ -106,6 +113,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:serif-stack",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/serif-stack-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/serif-stack-preview-480x270.webp`,
     sourcePath: "serif-stack",
     target: "website",
   },
@@ -119,6 +127,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:sticker-pop",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/sticker-pop-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/sticker-pop-preview-480x270.webp`,
     sourcePath: "sticker-pop",
     target: "website",
   },
@@ -132,6 +141,7 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     resourceId: "template:warm-cards",
     previewKind: "iframe",
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/warm-cards-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/warm-cards-preview-480x270.webp`,
     sourcePath: "warm-cards",
     target: "website",
   },
