@@ -564,8 +564,8 @@ jobs:
             --clobber
 
   # Run database migrations in production for API releases only. The API staged
-  # deployment is built without cron definitions, then migrations run, then the
-  # final cron-enabled production deployment is created.
+  # deployment is uploaded without cron definitions, then migrations run, then
+  # the already-built cron-enabled output is deployed to production.
   migrate-production:
     needs: [release-please, builds-complete, build-api-production]
     # always() prevents GitHub Actions from propagating "skipped" when upstream
@@ -773,7 +773,8 @@ jobs:
 
   # Build API production deployment (Staged - prod-eligible, not serving traffic,
   # with cron definitions stripped so Vercel cannot run production crons before
-  # migrations finish). This pre-migration deployment is never promoted.
+  # migrations finish). The original cron-enabled output is archived for the
+  # final post-migration production deploy.
   build-api-production:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
@@ -857,7 +858,40 @@ jobs:
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
-      - name: Build API Staged Production Deployment
+      - name: Build API Production Output
+        shell: bash
+        env:
+          API_PRODUCTION_ENV_FILE: ${{ steps.api-production-env.outputs.file }}
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r line; do
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -n "$line" ]; then
+              KEY="${line%%=*}"
+              VALUE="${line#*=}"
+              echo "Exporting env: $KEY"
+              export "$KEY=$VALUE"
+            fi
+          done < "$API_PRODUCTION_ENV_FILE"
+
+          pnpm --dir turbo/apps/api build
+          rm -rf .vercel/output
+          cp -R turbo/apps/api/.vercel/output .vercel/output
+          test -f .vercel/output/config.json
+
+      - name: Archive API Production Build Output
+        run: tar -C .vercel -czf /tmp/api-production-build-output.tgz output
+
+      - name: Upload API Production Build Output
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: api-production-build-output
+          path: /tmp/api-production-build-output.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Deploy API Staged Production Deployment
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
@@ -868,9 +902,7 @@ jobs:
           deployment-env: api
           prebuilt: "true"
           prebuilt-build-command: |
-            pnpm --dir turbo/apps/api build
-            rm -rf .vercel/output
-            cp -R turbo/apps/api/.vercel/output .vercel/output
+            test -f .vercel/output/config.json
           skip-domain: "true"
           disable-crons: "true"
           skip-start: "true"
@@ -1119,7 +1151,8 @@ jobs:
 
   # Deploy the final API production deployment after migrations. The
   # pre-migration staged deployment is stripped of cron definitions and is not
-  # promoted, so production traffic only moves after this deploy succeeds.
+  # promoted, so production traffic only moves after the archived cron-enabled
+  # output is deployed successfully.
   promote-api-production:
     needs:
       [
@@ -1212,6 +1245,19 @@ jobs:
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
+      - name: Download API Production Build Output
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: api-production-build-output
+          path: /tmp/api-production-build-output
+
+      - name: Restore API Production Build Output
+        run: |
+          rm -rf .vercel/output
+          mkdir -p .vercel
+          tar -C .vercel -xzf /tmp/api-production-build-output/api-production-build-output.tgz
+          test -f .vercel/output/config.json
+
       - name: Deploy API Production Deployment
         id: deploy-api-production
         uses: ./.github/actions/vercel-deploy
@@ -1223,9 +1269,7 @@ jobs:
           deployment-env: api
           prebuilt: "true"
           prebuilt-build-command: |
-            pnpm --dir turbo/apps/api build
-            rm -rf .vercel/output
-            cp -R turbo/apps/api/.vercel/output .vercel/output
+            test -f .vercel/output/config.json
           skip-start: "true"
           skip-finish: "true"
           environment-file: ${{ steps.api-production-env.outputs.file }}
