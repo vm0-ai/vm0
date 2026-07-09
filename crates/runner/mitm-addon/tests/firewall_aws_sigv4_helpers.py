@@ -1,6 +1,7 @@
 """AWS SigV4 firewall-auth integration helpers for mitm-addon tests."""
 
 import copy
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict
 
@@ -100,7 +101,7 @@ def aws_api_entry(
 
 
 def aws_allow(
-    api_entry: AwsApiEntry | None = None,
+    api_entry: Mapping[str, object] | None = None,
     *,
     firewall_name: str = "aws",
     permission: str = "identity",
@@ -108,8 +109,9 @@ def aws_allow(
     rule: str = "POST /",
     rel_path: str = "/",
 ) -> matching.FirewallAllow:
+    resolved_api_entry = aws_api_entry() if api_entry is None else api_entry
     return matching.FirewallAllow(
-        dict(copy.deepcopy(aws_api_entry() if api_entry is None else api_entry)),
+        copy.deepcopy(dict(resolved_api_entry)),
         firewall_name,
         permission,
         {} if params is None else dict(params),
