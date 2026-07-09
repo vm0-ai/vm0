@@ -129,6 +129,37 @@ describe("app auth pages", () => {
     }
   });
 
+  it("ignores malformed sign-in redirect URLs when URL.canParse is unavailable", async () => {
+    const originalCanParse = URL.canParse;
+    Object.defineProperty(URL, "canParse", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const path = `/sign-in?redirect_url=${encodeURIComponent("https://[")}`;
+      setBrowserUrl(`https://app.vm0.ai${path}`);
+
+      detachedSetupPage({ context, path });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByTestId("clerk-sign-in").dataset.clerkFallbackRedirectUrl,
+      ).toBe("https://app.vm0.ai");
+      expect(
+        screen.getByTestId("clerk-sign-in").dataset.clerkForceRedirectUrl,
+      ).toBe("https://app.vm0.ai");
+    } finally {
+      Object.defineProperty(URL, "canParse", {
+        configurable: true,
+        value: originalCanParse,
+      });
+    }
+  });
+
   it("renders the app-hosted sign-up route with an allowed redirect URL", async () => {
     const redirectUrl = "https://app.vm0.ai/prompt";
     const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;

@@ -34,6 +34,10 @@ const AD_TRAFFIC_MARKERS = [
 ] as const;
 
 const HTTP_URL_PREFIX_REGEX = /^https?:\/\//i;
+const LEGACY_HTTP_URL_REGEX = /^https?:\/\/([^/?#\s]+)([/?#][^\s]*)?$/i;
+const LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX =
+  /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::(\d{1,5}))?$/i;
+const MAX_URL_PORT = 65_535;
 
 type PublicService = "www" | "app" | "api";
 
@@ -100,9 +104,19 @@ function parseUrl(value: string): URL | null {
     return URL.canParse(trimmed) ? new URL(trimmed) : null;
   }
 
-  const parser = document.createElement("a");
-  parser.href = trimmed;
-  return parser.host ? new URL(parser.href) : null;
+  const legacyMatch = LEGACY_HTTP_URL_REGEX.exec(trimmed);
+  const host = legacyMatch?.[1];
+  if (!host) {
+    return null;
+  }
+
+  const hostMatch = LEGACY_HOST_WITH_OPTIONAL_PORT_REGEX.exec(host);
+  const port = hostMatch?.[2];
+  if (!hostMatch || (port && Number(port) > MAX_URL_PORT)) {
+    return null;
+  }
+
+  return new URL(trimmed);
 }
 
 export function resolveAppUrl(): string {
