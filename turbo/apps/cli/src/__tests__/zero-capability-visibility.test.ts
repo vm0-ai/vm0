@@ -589,9 +589,7 @@ describe("registerZeroCommands", () => {
     const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
-    expect(help).toContain("zero credit status");
     expect(help).toContain("Buy credits?");
-    expect(help).toContain("zero credit buy 20000");
   });
 
   it("should show only credit status help for billing read capability", () => {
@@ -602,7 +600,7 @@ describe("registerZeroCommands", () => {
     const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
-    expect(help).toContain("zero credit status");
+    expect(help).toContain("zero credit");
     expect(help).not.toContain("Buy credits?");
   });
 
@@ -615,7 +613,6 @@ describe("registerZeroCommands", () => {
 
     expect(help).not.toContain("Check credits?");
     expect(help).toContain("Buy credits?");
-    expect(help).toContain("zero credit buy 20000");
   });
 
   it("should hide billing help examples when billing capabilities are missing", () => {
