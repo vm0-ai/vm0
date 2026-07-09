@@ -155,8 +155,13 @@ def aws_auth_response(
     return response
 
 
-def prepare_firewall_request(flow, *, original_url: str | None = None) -> None:
-    flow.metadata[metadata_keys.VM_RUN_ID] = "run-1"
+def prepare_firewall_request(
+    flow,
+    *,
+    original_url: str | None = None,
+    run_id: str = "run-1",
+) -> None:
+    flow.metadata[metadata_keys.VM_RUN_ID] = run_id
     flow.metadata[metadata_keys.ORIGINAL_URL] = (
         get_original_url(flow) if original_url is None else original_url
     )
@@ -219,10 +224,10 @@ async def handle_firewall_request_with_auth_endpoint(
     resolved_endpoint.queue_json_response(
         aws_auth_response() if auth_response is None else auth_response
     )
-    prepare_firewall_request(flow)
+    resolved_vm_info = aws_vm_info(tmp_path) if vm_info is None else vm_info
+    prepare_firewall_request(flow, run_id=resolved_vm_info["runId"])
 
     with resolved_endpoint.run(), mitm_ctx(api_url=resolved_endpoint.api_url):
-        resolved_vm_info = aws_vm_info(tmp_path) if vm_info is None else vm_info
         return await auth.handle_firewall_request(
             flow,
             aws_allow() if allow is None else allow,
