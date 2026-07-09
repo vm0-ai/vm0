@@ -929,18 +929,20 @@ async function processGithubBackfillJob(
   for (const issue of listed.items) {
     signal.throwIfAborted();
     const subjectKind = issueSubjectKind(issue);
-    if (repositoryAllowsSubject(repository, subjectKind)) {
-      const didRecord = await recordBackfillIssue({
-        db,
-        job,
-        installation,
-        repository,
-        issue,
-        subjectKind,
-      });
-      if (didRecord) {
-        recorded += 1;
-      }
+    if (!repositoryAllowsSubject(repository, subjectKind)) {
+      continue;
+    }
+
+    const didRecord = await recordBackfillIssue({
+      db,
+      job,
+      installation,
+      repository,
+      issue,
+      subjectKind,
+    });
+    if (didRecord) {
+      recorded += 1;
     }
 
     recorded += await recordBackfillComments({

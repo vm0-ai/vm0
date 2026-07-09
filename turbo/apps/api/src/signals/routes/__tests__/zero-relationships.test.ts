@@ -120,9 +120,36 @@ function privateKeyBase64(): string {
   return Buffer.from(pem).toString("base64");
 }
 
+function githubBackfillIssueFixture(
+  args: { readonly pullRequest?: boolean } = {},
+) {
+  return {
+    number: 42,
+    title: args.pullRequest
+      ? "Backfill memory pull request"
+      : "Backfill memory issue",
+    body: "Follow up on trusted contributor context.",
+    html_url: args.pullRequest
+      ? "https://github.com/vm0-ai/vm0/pull/42"
+      : "https://github.com/vm0-ai/vm0/issues/42",
+    created_at: "2026-07-01T12:00:00.000Z",
+    updated_at: "2026-07-06T12:00:00.000Z",
+    user: { id: 101, login: "lancy", type: "User" },
+    labels: [{ name: "memory" }],
+    ...(args.pullRequest
+      ? {
+          pull_request: {
+            url: "https://api.github.com/repos/vm0-ai/vm0/pulls/42",
+          },
+        }
+      : {}),
+  };
+}
+
 function configureGithubAppBackfillMocks(args: {
   readonly remoteInstallationId: string;
   readonly token: string;
+  readonly pullRequest?: boolean;
 }): void {
   mockOptionalEnv("GITHUB_APP_ID", "123456");
   mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", privateKeyBase64());
@@ -138,16 +165,7 @@ function configureGithubAppBackfillMocks(args: {
     ),
     http.get("https://api.github.com/repos/vm0-ai/vm0/issues", () => {
       return HttpResponse.json([
-        {
-          number: 42,
-          title: "Backfill memory issue",
-          body: "Follow up on trusted contributor context.",
-          html_url: "https://github.com/vm0-ai/vm0/issues/42",
-          created_at: "2026-07-01T12:00:00.000Z",
-          updated_at: "2026-07-06T12:00:00.000Z",
-          user: { id: 101, login: "lancy", type: "User" },
-          labels: [{ name: "memory" }],
-        },
+        githubBackfillIssueFixture({ pullRequest: args.pullRequest }),
       ]);
     }),
     http.get(
@@ -170,16 +188,9 @@ function configureGithubAppBackfillMocks(args: {
       },
     ),
     http.get("https://api.github.com/repos/vm0-ai/vm0/issues/42", () => {
-      return HttpResponse.json({
-        number: 42,
-        title: "Backfill memory issue",
-        body: "Follow up on trusted contributor context.",
-        html_url: "https://github.com/vm0-ai/vm0/issues/42",
-        created_at: "2026-07-01T12:00:00.000Z",
-        updated_at: "2026-07-06T12:00:00.000Z",
-        user: { id: 101, login: "lancy", type: "User" },
-        labels: [{ name: "memory" }],
-      });
+      return HttpResponse.json(
+        githubBackfillIssueFixture({ pullRequest: args.pullRequest }),
+      );
     }),
     http.get(
       "https://api.github.com/repos/vm0-ai/vm0/issues/comments/4242",
@@ -197,6 +208,11 @@ function configureGithubAppBackfillMocks(args: {
 
 async function seedGithubMemoryInstallation(
   fixture: RelationshipFixture,
+  args: {
+    readonly includeIssues?: boolean;
+    readonly includePullRequests?: boolean;
+    readonly includeComments?: boolean;
+  } = {},
 ): Promise<{ readonly remoteInstallationId: string }> {
   const actor = fixtureActor(fixture);
   const agent = await bdd.createAgent(actor, {
@@ -221,9 +237,9 @@ async function seedGithubMemoryInstallation(
             name: "vm0",
             defaultBranch: "main",
             selected: true,
-            includeIssues: true,
-            includePullRequests: true,
-            includeComments: true,
+            includeIssues: args.includeIssues ?? true,
+            includePullRequests: args.includePullRequests ?? true,
+            includeComments: args.includeComments ?? true,
             trustedContributors: [{ githubUserId: "101", login: "lancy" }],
           },
         ],
@@ -1381,6 +1397,51 @@ describe("GET /api/zero/relationships/*", () => {
       ]),
     );
     expect(JSON.stringify(sources.body)).not.toContain("external");
+  });
+
+  it("does not backfill GitHub comments when the parent pull request type is disabled", async () => {
+    const fixture = await seedRelationshipFixture();
+    configureGmailEnv();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const installation = await seedGithubMemoryInstallation(fixture, {
+      includePullRequests: false,
+      includeComments: true,
+    });
+    configureGithubAppBackfillMocks({
+      remoteInstallationId: installation.remoteInstallationId,
+      token: "ghs_memory_backfill_pr_disabled",
+      pullRequest: true,
+    });
+
+    await accept(
+      memoryClient().githubBackfill({
+        headers: authHeaders(),
+        body: { days: 180 },
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toMatchObject({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 0,
+    });
+
+    const sources = await accept(
+      memoryClient().sources({
+        headers: authHeaders(),
+        query: { provider: "github", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(sources.body.sources).toHaveLength(0);
   });
 
   it("backfills Notion workspace pages with a document limit", async () => {

@@ -54,9 +54,11 @@ import {
   configureGithubMemory$,
   githubMemoryBackfillDialogOpen$,
   githubMemoryBackfillRequest$,
+  githubMemoryRepositoryDraftHasMore$,
   githubMemoryRepositoryDrafts$,
   githubMemoryRepositories$,
   githubMemoryStatus$,
+  loadMoreGithubMemoryRepositories$,
   memorySourceHasPrev$,
   memorySourceLimit$,
   memorySourcePage$,
@@ -1235,6 +1237,11 @@ function GithubRepositoryDraftList({
     githubMemoryContributorRepository$,
   );
   const contributorsLoadable = useLoadable(githubMemoryContributors$);
+  const hasMoreRepositories = useGet(githubMemoryRepositoryDraftHasMore$);
+  const [loadMoreLoadable, loadMoreRepositories] = useLoadableSet(
+    loadMoreGithubMemoryRepositories$,
+  );
+  const pageSignal = useGet(pageSignal$);
 
   if (repositoriesLoadable.state === "loading") {
     return (
@@ -1276,6 +1283,31 @@ function GithubRepositoryDraftList({
           />
         );
       })}
+      {hasMoreRepositories ? (
+        <div className="flex justify-center border-t border-border/70 p-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 text-xs"
+            disabled={loadMoreLoadable.state === "loading"}
+            onClick={() => {
+              detach(loadMoreRepositories(pageSignal), Reason.DomCallback);
+            }}
+          >
+            {loadMoreLoadable.state === "loading" ? (
+              <IconLoader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <IconRefresh className="h-3.5 w-3.5" />
+            )}
+            <span>
+              {loadMoreLoadable.state === "loading"
+                ? "Loading"
+                : "Load more repositories"}
+            </span>
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1637,6 +1669,7 @@ function GithubMemoryStatusPanel() {
             setConfigOpen({
               open: true,
               repositories: repositoriesLoadable.data.repositories,
+              pagination: repositoriesLoadable.data.pagination,
             });
           }
         }}

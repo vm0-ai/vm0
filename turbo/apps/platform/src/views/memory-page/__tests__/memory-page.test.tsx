@@ -189,27 +189,46 @@ function githubMemoryStatus(
   };
 }
 
-function githubMemoryRepositories(): GithubMemoryRepositoriesResponse {
+function githubMemoryRepositories(
+  args: {
+    readonly page?: number;
+    readonly hasMore?: boolean;
+  } = {},
+): GithubMemoryRepositoriesResponse {
+  const page = args.page ?? 1;
+  const repository =
+    page === 2
+      ? {
+          id: 456,
+          name: "analytics",
+          fullName: "vm0-ai/analytics",
+          private: true,
+          defaultBranch: "main",
+          selected: false,
+          includeIssues: true,
+          includePullRequests: true,
+          includeComments: true,
+          trustedContributors: [],
+        }
+      : {
+          id: 123,
+          name: "vm0",
+          fullName: "vm0-ai/vm0",
+          private: true,
+          defaultBranch: "main",
+          selected: true,
+          includeIssues: true,
+          includePullRequests: true,
+          includeComments: true,
+          trustedContributors: [{ githubUserId: "101", login: "lancy" }],
+        };
   return {
     provider: "github",
     connected: true,
     installationId: "github-installation-1",
     targetName: "vm0-ai",
-    repositories: [
-      {
-        id: 123,
-        name: "vm0",
-        fullName: "vm0-ai/vm0",
-        private: true,
-        defaultBranch: "main",
-        selected: true,
-        includeIssues: true,
-        includePullRequests: true,
-        includeComments: true,
-        trustedContributors: [{ githubUserId: "101", login: "lancy" }],
-      },
-    ],
-    pagination: { page: 1, pageSize: 50, hasMore: false },
+    repositories: [repository],
+    pagination: { page, pageSize: 50, hasMore: args.hasMore ?? false },
   };
 }
 
@@ -1156,6 +1175,101 @@ describe("memory page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Participants")).toBeInTheDocument();
     expect(screen.getAllByText("U-memory-user").length).toBeGreaterThan(0);
+  });
+
+  it("loads additional GitHub repositories in the memory configuration dialog", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroMemoryContract.sources, ({ query, respond }) => {
+      return respond(200, memorySourceListPage(query.provider));
+    });
+    context.mocks.api(zeroMemoryContract.slackStatus, ({ respond }) => {
+      return respond(200, slackMemoryStatus());
+    });
+    context.mocks.api(zeroMemoryContract.githubStatus, ({ respond }) => {
+      return respond(200, githubMemoryStatus());
+    });
+    const repositoryPages: number[] = [];
+    context.mocks.api(
+      zeroMemoryContract.githubRepositories,
+      ({ query, respond }) => {
+        repositoryPages.push(query.page);
+        return respond(
+          200,
+          githubMemoryRepositories({
+            page: query.page,
+            hasMore: query.page === 1,
+          }),
+        );
+      },
+    );
+    let configured: unknown = null;
+    context.mocks.api(
+      zeroMemoryContract.githubConfigure,
+      ({ body, respond }) => {
+        configured = body;
+        return respond(
+          200,
+          githubMemoryStatus({
+            selectedRepositoryCount: body.repositories.filter((repository) => {
+              return repository.selected;
+            }).length,
+          }),
+        );
+      },
+    );
+    context.mocks.api(zeroMemoryContract.notionStatus, ({ respond }) => {
+      return respond(200, notionMemoryStatus());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Sources"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub memory")).toBeInTheDocument();
+    });
+    click(getButtonWithText("Configure"));
+
+    await waitFor(() => {
+      expect(screen.getByText("vm0-ai/vm0")).toBeInTheDocument();
+    });
+    click(getButtonContaining("Load more repositories"));
+
+    await waitFor(() => {
+      expect(screen.getByText("vm0-ai/analytics")).toBeInTheDocument();
+    });
+    expect(repositoryPages).toStrictEqual([1, 2]);
+
+    click(screen.getByText("vm0-ai/analytics"));
+    click(getButtonWithText("Save configuration"));
+
+    await waitFor(() => {
+      expect(configured).toMatchObject({
+        repositories: expect.arrayContaining([
+          expect.objectContaining({
+            fullName: "vm0-ai/analytics",
+            selected: true,
+          }),
+        ]),
+      });
+    });
   });
 
   it("moves through relationship pages from the relationships tab", async () => {

@@ -72,6 +72,7 @@ export type MemoryTab =
   | "raw";
 
 export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
+const GITHUB_MEMORY_REPOSITORIES_PAGE_SIZE = 50;
 
 function defaultGmailRelationshipBackfillRequest(): GmailRelationshipBackfillRequest {
   return {
@@ -125,6 +126,23 @@ function githubRepositoryDraftFromResource(
       repository.trustedContributors,
     ),
   };
+}
+
+function mergeGithubRepositoryDrafts(
+  current: readonly GithubMemoryRepositoryDraft[],
+  incoming: readonly GithubMemoryRepositoryResource[],
+): readonly GithubMemoryRepositoryDraft[] {
+  const currentKeys = new Set(
+    current.map((draft) => {
+      return draft.fullName.toLowerCase();
+    }),
+  );
+  const additions = incoming
+    .filter((repository) => {
+      return !currentKeys.has(repository.fullName.toLowerCase());
+    })
+    .map(githubRepositoryDraftFromResource);
+  return [...current, ...additions];
 }
 
 function defaultNotionMemoryBackfillRequest(): NotionMemoryBackfillRequest {
@@ -406,6 +424,8 @@ const internalGithubMemoryConfigDialogOpen$ = state(false);
 const internalGithubMemoryRepositoryDrafts$ = state<
   readonly GithubMemoryRepositoryDraft[]
 >([]);
+const internalGithubMemoryRepositoryDraftPage$ = state(1);
+const internalGithubMemoryRepositoryDraftHasMore$ = state(false);
 const internalGithubMemoryContributorRepository$ = state<string | null>(null);
 const internalGithubMemoryContributorsReload$ = state(0);
 const internalGithubMemoryBackfillDialogOpen$ = state(false);
@@ -556,6 +576,7 @@ export const setGithubMemoryConfigDialogOpen$ = command(
     args: {
       readonly open: boolean;
       readonly repositories?: readonly GithubMemoryRepositoryResource[];
+      readonly pagination?: GithubMemoryRepositoriesResponse["pagination"];
     },
   ) => {
     set(internalGithubMemoryConfigDialogOpen$, args.open);
@@ -564,9 +585,22 @@ export const setGithubMemoryConfigDialogOpen$ = command(
         internalGithubMemoryRepositoryDrafts$,
         args.repositories.map(githubRepositoryDraftFromResource),
       );
+      set(internalGithubMemoryRepositoryDraftPage$, args.pagination?.page ?? 1);
+      set(
+        internalGithubMemoryRepositoryDraftHasMore$,
+        args.pagination?.hasMore ?? false,
+      );
+      set(internalGithubMemoryContributorRepository$, null);
+    }
+    if (!args.open) {
+      set(internalGithubMemoryContributorRepository$, null);
     }
   },
 );
+
+export const githubMemoryRepositoryDraftHasMore$ = computed((get) => {
+  return get(internalGithubMemoryRepositoryDraftHasMore$);
+});
 
 export const updateGithubMemoryRepositoryDraft$ = command(
   (
@@ -615,6 +649,32 @@ export const githubMemoryContributors$ = computed(
       [200],
     );
     return result.body;
+  },
+);
+
+export const loadMoreGithubMemoryRepositories$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const nextPage = get(internalGithubMemoryRepositoryDraftPage$) + 1;
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.githubRepositories({
+        query: {
+          page: nextPage,
+          limit: GITHUB_MEMORY_REPOSITORIES_PAGE_SIZE,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalGithubMemoryRepositoryDrafts$, (current) => {
+      return mergeGithubRepositoryDrafts(current, result.body.repositories);
+    });
+    set(internalGithubMemoryRepositoryDraftPage$, result.body.pagination.page);
+    set(
+      internalGithubMemoryRepositoryDraftHasMore$,
+      result.body.pagination.hasMore,
+    );
   },
 );
 
@@ -844,7 +904,9 @@ export const githubMemoryRepositories$ = computed(
     get(internalGithubMemoryRepositoriesReload$);
     const client = get(zeroClient$)(zeroMemoryContract);
     const result = await accept(
-      client.githubRepositories({ query: { page: 1, limit: 50 } }),
+      client.githubRepositories({
+        query: { page: 1, limit: GITHUB_MEMORY_REPOSITORIES_PAGE_SIZE },
+      }),
       [200],
     );
     return result.body;
