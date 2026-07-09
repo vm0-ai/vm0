@@ -49,6 +49,7 @@ const L = logger("WebhookStripe");
 type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
 type ClerkClient = ReturnType<typeof clerk$.read>;
 type ClerkClientProvider = () => ClerkClient;
 
@@ -2842,7 +2843,7 @@ interface UsageAllowanceSubscriptionCreditsUpdate {
 }
 
 async function usageAllowanceSubscriptionUpdateTarget(
-  db: Db,
+  db: Pick<UsageAllowanceSubscriptionUpdateStore, "select">,
   subscription: Pick<SubscriptionInput, "id" | "metadata">,
 ): Promise<UsageAllowanceSubscriptionUpdateTarget | null> {
   const subscriptionRows = await db
@@ -2905,7 +2906,7 @@ function usageAllowanceSubscriptionCreditsUpdate(
 }
 
 async function updateActiveUsageAllowanceWindowLimits(
-  db: Db,
+  db: Pick<UsageAllowanceSubscriptionUpdateStore, "update">,
   args: {
     readonly orgIds: readonly string[];
     readonly credits: UsageAllowanceSubscriptionCreditsUpdate;
@@ -2949,58 +2950,100 @@ async function updateActiveUsageAllowanceWindowLimits(
   );
 }
 
+async function expireActiveUsageAllowanceWindows(
+  db: Pick<UsageAllowanceSubscriptionUpdateStore, "update">,
+  args: {
+    readonly orgIds: readonly string[];
+    readonly at: Date;
+    readonly updatedAt: Date;
+  },
+): Promise<void> {
+  await Promise.all(
+    args.orgIds.map((orgId) => {
+      return db
+        .update(orgUsageAllowanceWindows)
+        .set({
+          expiresAt: sql<Date>`GREATEST(${args.at}, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
+          updatedAt: args.updatedAt,
+        })
+        .where(
+          and(
+            eq(orgUsageAllowanceWindows.orgId, orgId),
+            lte(orgUsageAllowanceWindows.startsAt, args.at),
+            gt(orgUsageAllowanceWindows.expiresAt, args.at),
+          ),
+        );
+    }),
+  );
+}
+
 async function handleUsageAllowanceSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<readonly string[]> {
-  const target = await usageAllowanceSubscriptionUpdateTarget(db, subscription);
-  if (!target) {
-    return [];
-  }
+  return await db.transaction(async (tx) => {
+    const target = await usageAllowanceSubscriptionUpdateTarget(
+      tx,
+      subscription,
+    );
+    if (!target) {
+      return [];
+    }
 
-  const periodEnd = usageAllowanceSubscriptionEnd(subscription);
-  const terminalStatus =
-    subscription.status === "canceled" ||
-    subscription.status === "incomplete_expired";
-  const updatedAt = nowDate();
-  const credits = usageAllowanceSubscriptionCreditsUpdate(subscription);
-  const rows = await db
-    .update(orgUsageAllowanceEntitlements)
-    .set({
-      status: terminalStatus ? "canceled" : subscription.status,
-      ...(periodEnd ? { expiresAt: periodEnd } : {}),
-      ...(credits
-        ? {
-            shortWindowUnits: credits.shortWindowUnits,
-            weeklyWindowUnits: credits.weeklyWindowUnits,
-          }
-        : {}),
-      stripeSubscriptionId: subscription.id,
-      updatedAt,
-    })
-    .where(
-      target.by === "subscription"
-        ? eq(
-            orgUsageAllowanceEntitlements.stripeSubscriptionId,
-            subscription.id,
-          )
-        : eq(orgUsageAllowanceEntitlements.orgId, target.orgIds[0] ?? ""),
-    )
-    .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+    const periodEnd = usageAllowanceSubscriptionEnd(subscription);
+    const terminalStatus =
+      subscription.status === "canceled" ||
+      subscription.status === "incomplete_expired";
+    const updatedAt = nowDate();
+    const credits = usageAllowanceSubscriptionCreditsUpdate(subscription);
+    const rows = await tx
+      .update(orgUsageAllowanceEntitlements)
+      .set({
+        status: terminalStatus ? "canceled" : subscription.status,
+        ...(terminalStatus
+          ? { expiresAt: updatedAt }
+          : periodEnd
+            ? { expiresAt: periodEnd }
+            : {}),
+        ...(credits
+          ? {
+              shortWindowUnits: credits.shortWindowUnits,
+              weeklyWindowUnits: credits.weeklyWindowUnits,
+            }
+          : {}),
+        stripeSubscriptionId: subscription.id,
+        updatedAt,
+      })
+      .where(
+        target.by === "subscription"
+          ? eq(
+              orgUsageAllowanceEntitlements.stripeSubscriptionId,
+              subscription.id,
+            )
+          : eq(orgUsageAllowanceEntitlements.orgId, target.orgIds[0] ?? ""),
+      )
+      .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
 
-  if (credits) {
-    await updateActiveUsageAllowanceWindowLimits(db, {
-      orgIds: rows.map((row) => {
-        return row.orgId;
-      }),
-      credits,
-      at: updatedAt,
-      updatedAt,
+    const orgIds = rows.map((row) => {
+      return row.orgId;
     });
-  }
 
-  return rows.map((row) => {
-    return row.orgId;
+    if (terminalStatus) {
+      await expireActiveUsageAllowanceWindows(tx, {
+        orgIds,
+        at: updatedAt,
+        updatedAt,
+      });
+    } else if (credits) {
+      await updateActiveUsageAllowanceWindowLimits(tx, {
+        orgIds,
+        credits,
+        at: updatedAt,
+        updatedAt,
+      });
+    }
+
+    return orgIds;
   });
 }
 
@@ -3161,17 +3204,28 @@ async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
-  const allowanceRows = await db
-    .update(orgUsageAllowanceEntitlements)
-    .set({
-      status: "canceled",
-      expiresAt: nowDate(),
-      updatedAt: nowDate(),
-    })
-    .where(
-      eq(orgUsageAllowanceEntitlements.stripeSubscriptionId, subscription.id),
-    )
-    .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+  const allowanceRows = await db.transaction(async (tx) => {
+    const canceledAt = nowDate();
+    const rows = await tx
+      .update(orgUsageAllowanceEntitlements)
+      .set({
+        status: "canceled",
+        expiresAt: canceledAt,
+        updatedAt: canceledAt,
+      })
+      .where(
+        eq(orgUsageAllowanceEntitlements.stripeSubscriptionId, subscription.id),
+      )
+      .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+    await expireActiveUsageAllowanceWindows(tx, {
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+      at: canceledAt,
+      updatedAt: canceledAt,
+    });
+    return rows;
+  });
   if (allowanceRows.length > 0) {
     return allowanceRows.map((row) => {
       return row.orgId;

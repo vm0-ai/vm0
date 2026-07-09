@@ -5,7 +5,18 @@ import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
 } from "@vm0/db/schema/org-usage-allowance";
-import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  gt,
+  inArray,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
@@ -396,6 +407,7 @@ async function activeUsageAllowanceStatus(
 ): Promise<UsageAllowanceStatus | null> {
   const [entitlement] = await db
     .select({
+      effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
       shortWindowSeconds: orgUsageAllowanceEntitlements.shortWindowSeconds,
       shortWindowUnits: orgUsageAllowanceEntitlements.shortWindowUnits,
       weeklyWindowSeconds: orgUsageAllowanceEntitlements.weeklyWindowSeconds,
@@ -435,6 +447,7 @@ async function activeUsageAllowanceStatus(
         inArray(orgUsageAllowanceWindows.kind, [
           ...USAGE_ALLOWANCE_WINDOW_KINDS,
         ]),
+        gte(orgUsageAllowanceWindows.startsAt, entitlement.effectiveAt),
         lte(orgUsageAllowanceWindows.startsAt, currentTime),
         gt(orgUsageAllowanceWindows.expiresAt, currentTime),
       ),

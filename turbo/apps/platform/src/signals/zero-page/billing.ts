@@ -14,6 +14,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
+import { reloadUsageRecords$ } from "./settings/personal-usage-record.ts";
 import { clerk$ } from "../auth.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { accept } from "../../lib/accept.ts";
@@ -273,6 +274,7 @@ export const reloadBillingStatus$ = command(({ set }) => {
 
 const reloadBillingStatusFromRealtime$ = command(({ set }) => {
   set(reloadBillingStatus$);
+  set(reloadUsageRecords$);
   return false;
 });
 

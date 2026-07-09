@@ -56,6 +56,20 @@ function expectExpiresAboutThirtyDaysFromNow(value: unknown): void {
   expect(expiresInMs).toBeLessThanOrEqual(THIRTY_DAYS_MS + 5000);
 }
 
+function expectIsoTimestampBetween(
+  value: string | null | undefined,
+  before: Date,
+  after: Date,
+): void {
+  expect(typeof value).toBe("string");
+  if (typeof value !== "string") {
+    throw new Error("Expected an ISO timestamp");
+  }
+  const timestamp = Date.parse(value);
+  expect(timestamp).toBeGreaterThanOrEqual(before.getTime());
+  expect(timestamp).toBeLessThanOrEqual(after.getTime() + 1000);
+}
+
 async function waitForExpectation(
   assertion: () => void | Promise<void>,
 ): Promise<void> {
@@ -1945,6 +1959,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             type: "usage_allowance",
             purpose: "usage_allowance",
             orgId,
+            shortWindowUnits: "9000",
+            weeklyWindowUnits: "90000",
           },
           items: {
             data: [{ current_period_end: subscriptionPeriodEndUnix }],
@@ -1954,14 +1970,39 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
 
-    const canceledAtPeriod =
-      await readUsageAllowanceEntitlementFixture(orgId);
+    const canceledAtPeriod = await readUsageAllowanceEntitlementFixture(orgId);
     expect(canceledAtPeriod).toMatchObject({
       orgId,
       status: "active",
+      shortWindowUnits: 9000,
+      weeklyWindowUnits: 90_000,
       expiresAt: isoOf(subscriptionPeriodEndUnix),
       stripeSubscriptionId: `sub_bdd_allowance_${suffix}`,
     });
+
+    const beforeCancel = nowDate();
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: `sub_bdd_allowance_${suffix}`,
+          status: "canceled",
+          items: {
+            data: [{ current_period_end: epochSeconds(30) }],
+          },
+        },
+      }),
+      [200],
+    );
+    const afterCancel = nowDate();
+
+    const canceled = await readUsageAllowanceEntitlementFixture(orgId);
+    expect(canceled).toMatchObject({
+      orgId,
+      status: "canceled",
+      stripeSubscriptionId: `sub_bdd_allowance_${suffix}`,
+    });
+    expectIsoTimestampBetween(canceled?.expiresAt, beforeCancel, afterCancel);
   });
 
   it("cancels usage allowance entitlements when their Stripe subscription is deleted", async () => {
@@ -2012,6 +2053,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
 
+    const beforeDelete = nowDate();
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.deleted",
@@ -2019,6 +2061,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
+    const afterDelete = nowDate();
 
     const entitlement = await readUsageAllowanceEntitlementFixture(orgId);
     expect(entitlement).toMatchObject({
@@ -2026,6 +2069,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       status: "canceled",
       stripeSubscriptionId: subscriptionId,
     });
+    expectIsoTimestampBetween(
+      entitlement?.expiresAt,
+      beforeDelete,
+      afterDelete,
+    );
   });
 
   it("expires Atom day-grant subscription credits at the Atom grant end", async () => {

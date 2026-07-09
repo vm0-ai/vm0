@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import {
+  cancelUsageAllowanceEntitlement,
   seedOrgMetadata,
   seedUsageAllowanceEntitlement,
   seedUsagePricingRows,
@@ -223,7 +224,7 @@ describe("Usage Allowance", () => {
     await processUsageEvents();
 
     await expect(readOrgCredits(actor)).resolves.toBe(80);
-    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(20);
+    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
   it("charges org credits after the short window is exhausted", async () => {
@@ -485,6 +486,36 @@ describe("Usage Allowance", () => {
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
+  it("does not apply allowance to non-vm0 runs inside active allowance windows", async () => {
+    const { actor, agentId } = await vm0AllowanceActor({
+      credits: 100,
+      allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
+    });
+    await createVm0Run(actor, agentId, "activate allowance windows");
+
+    const api = createRunsAutomationsApi(context);
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    await api.ensureOrgModelProvider(actor);
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "non-vm0 run inside active allowance window",
+      modelProvider: "anthropic-api-key",
+    });
+    const provider = usageProvider();
+    await recordPendingUsage({
+      actor,
+      runId: run.runId,
+      provider,
+      quantity: 80,
+    });
+
+    await processUsageEvents();
+
+    await expect(readOrgCredits(actor)).resolves.toBe(20);
+    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+  });
+
   it("does not apply newly created allowance to older runs", async () => {
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const run = await createVm0Run(actor, agentId, "run before entitlement");
@@ -506,17 +537,25 @@ describe("Usage Allowance", () => {
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 
-  it("keeps applying already activated windows after entitlement is inactive", async () => {
+  it("applies existing allowance windows after entitlement is canceled for an already created run", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const { actor, orgId, agentId } = await vm0AllowanceActor({
-      credits: 0,
+      credits: 100,
       allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
     });
-    const run = await createVm0Run(actor, agentId, "windows outlive status");
-    await seedAllowanceEntitlement(orgId, {
-      shortWindowUnits: 100,
-      weeklyWindowUnits: 200,
-      status: "inactive",
-    });
+    const startedAt = nowDate();
+    mockNow(startedAt);
+    const run = await createVm0Run(
+      actor,
+      agentId,
+      "run created before allowance cancellation",
+    );
+
+    const canceledAt = addHours(startedAt, 1);
+    mockNow(canceledAt);
+    await cancelUsageAllowanceEntitlement({ orgId, canceledAt });
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -527,7 +566,41 @@ describe("Usage Allowance", () => {
 
     await processUsageEvents();
 
-    await expect(readOrgCredits(actor)).resolves.toBe(0);
+    await expect(readOrgCredits(actor)).resolves.toBe(100);
+    await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
+  });
+
+  it("does not apply existing allowance windows after entitlement is canceled", async () => {
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const { actor, orgId, agentId } = await vm0AllowanceActor({
+      credits: 100,
+      allowance: { shortWindowUnits: 100, weeklyWindowUnits: 200 },
+    });
+    const startedAt = nowDate();
+    mockNow(startedAt);
+    await createVm0Run(actor, agentId, "activate allowance windows");
+    const canceledAt = addHours(startedAt, 1);
+    mockNow(canceledAt);
+    await cancelUsageAllowanceEntitlement({ orgId, canceledAt });
+    mockNow(addHours(startedAt, 2));
+    const run = await createVm0Run(
+      actor,
+      agentId,
+      "new run after allowance cancellation",
+    );
+    const provider = usageProvider();
+    await recordPendingUsage({
+      actor,
+      runId: run.runId,
+      provider,
+      quantity: 80,
+    });
+
+    await processUsageEvents();
+
+    await expect(readOrgCredits(actor)).resolves.toBe(20);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
   });
 

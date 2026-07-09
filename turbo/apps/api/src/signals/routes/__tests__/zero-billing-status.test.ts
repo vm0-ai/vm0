@@ -362,6 +362,80 @@ describe("GET /api/zero/billing/status", () => {
     });
   });
 
+  it("ignores usage allowance windows from a previous entitlement period", async () => {
+    const fixture = await track(
+      store.set(
+        seedBillingStatusOrg$,
+        {
+          credits: 120_000,
+          subscription: {
+            tier: "team",
+            status: "active",
+            currentPeriodEnd: new Date("2099-04-20T00:00:00Z"),
+            stripeCustomerId: `cus_${randomUUID()}`,
+            stripeSubscriptionId: `sub_${randomUUID()}`,
+          },
+          usageAllowance: {
+            shortWindowSeconds: 18_000,
+            shortWindowUnits: 5000,
+            weeklyWindowSeconds: 604_800,
+            weeklyWindowUnits: 50_000,
+            effectiveAt: new Date("2026-07-01T00:00:00Z"),
+            expiresAt: new Date("2099-04-20T00:00:00Z"),
+            windows: [
+              {
+                kind: "short",
+                startsAt: new Date("2026-06-30T00:00:00Z"),
+                expiresAt: new Date("2099-01-01T05:00:00Z"),
+                unitLimit: 5000,
+                consumedUnits: 1250,
+              },
+              {
+                kind: "weekly",
+                startsAt: new Date("2026-06-30T00:00:00Z"),
+                expiresAt: new Date("2099-01-08T00:00:00Z"),
+                unitLimit: 50_000,
+                consumedUnits: 10_000,
+              },
+            ],
+          },
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingStatusContract).get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.usageAllowance).toStrictEqual({
+      windows: [
+        {
+          kind: "short",
+          windowSeconds: 18_000,
+          unitLimit: 5000,
+          consumedUnits: 0,
+          remainingUnits: 5000,
+          startsAt: null,
+          expiresAt: null,
+        },
+        {
+          kind: "weekly",
+          windowSeconds: 604_800,
+          unitLimit: 50_000,
+          consumedUnits: 0,
+          remainingUnits: 50_000,
+          startsAt: null,
+          expiresAt: null,
+        },
+      ],
+    });
+  });
+
   it("excludes canceled concurrency subscriptions from status", async () => {
     const currentPeriodEnd = new Date("2099-04-20T00:00:00Z");
     const fixture = await track(

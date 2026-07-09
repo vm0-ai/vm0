@@ -4,10 +4,12 @@ import {
   usageAllowanceAllocations,
 } from "@vm0/db/schema/org-usage-allowance";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
   desc,
   eq,
+  gte,
   gt,
   inArray,
   isNotNull,
@@ -301,7 +303,7 @@ async function loadActiveUsageAllowanceEntitlement(
   return await refreshUsageAllowanceEntitlementFromStripe(tx, row, currentTime);
 }
 
-async function loadRunCreatedAt(
+async function loadVm0RunCreatedAt(
   tx: UsageAllowanceStore,
   args: {
     readonly orgId: string;
@@ -311,12 +313,70 @@ async function loadRunCreatedAt(
   const [row] = await tx
     .select({ createdAt: agentRuns.createdAt })
     .from(agentRuns)
-    .where(and(eq(agentRuns.orgId, args.orgId), eq(agentRuns.id, args.runId)))
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.orgId, args.orgId),
+        eq(agentRuns.id, args.runId),
+        eq(zeroRuns.modelProvider, "vm0"),
+      ),
+    )
     .limit(1);
   return row?.createdAt ?? null;
 }
 
 async function lockActiveWindowAt(
+  tx: UsageAllowanceStore,
+  args: {
+    readonly orgId: string;
+    readonly kind: UsageAllowanceWindowKind;
+    readonly at: Date;
+  },
+): Promise<UsageAllowanceWindow | null> {
+  const currentTime = nowDate();
+  const [window] = await tx
+    .select({
+      id: orgUsageAllowanceWindows.id,
+      kind: orgUsageAllowanceWindows.kind,
+      unitLimit: orgUsageAllowanceWindows.unitLimit,
+      consumedUnits: orgUsageAllowanceWindows.consumedUnits,
+    })
+    .from(orgUsageAllowanceWindows)
+    .innerJoin(
+      orgUsageAllowanceEntitlements,
+      eq(
+        orgUsageAllowanceEntitlements.id,
+        orgUsageAllowanceWindows.entitlementId,
+      ),
+    )
+    .where(
+      and(
+        eq(orgUsageAllowanceWindows.orgId, args.orgId),
+        eq(orgUsageAllowanceEntitlements.orgId, args.orgId),
+        inArray(orgUsageAllowanceEntitlements.status, [
+          ...ACTIVE_ALLOWANCE_STATUSES,
+        ]),
+        lte(orgUsageAllowanceEntitlements.effectiveAt, currentTime),
+        or(
+          isNull(orgUsageAllowanceEntitlements.expiresAt),
+          gt(orgUsageAllowanceEntitlements.expiresAt, currentTime),
+        ),
+        gte(
+          orgUsageAllowanceWindows.startsAt,
+          orgUsageAllowanceEntitlements.effectiveAt,
+        ),
+        eq(orgUsageAllowanceWindows.kind, args.kind),
+        lte(orgUsageAllowanceWindows.startsAt, args.at),
+        gt(orgUsageAllowanceWindows.expiresAt, args.at),
+      ),
+    )
+    .orderBy(desc(orgUsageAllowanceWindows.startsAt))
+    .limit(1)
+    .for("update");
+  return window ?? null;
+}
+
+async function lockIssuedWindowAt(
   tx: UsageAllowanceStore,
   args: {
     readonly orgId: string;
@@ -443,17 +503,17 @@ async function loadExistingWindowsForRun(
     readonly runId: string;
   },
 ): Promise<UsageAllowanceWindows | null> {
-  const runCreatedAt = await loadRunCreatedAt(tx, args);
+  const runCreatedAt = await loadVm0RunCreatedAt(tx, args);
   if (!runCreatedAt) {
     return null;
   }
 
-  const shortWindow = await lockActiveWindowAt(tx, {
+  const shortWindow = await lockIssuedWindowAt(tx, {
     orgId: args.orgId,
     kind: "short",
     at: runCreatedAt,
   });
-  const weeklyWindow = await lockActiveWindowAt(tx, {
+  const weeklyWindow = await lockIssuedWindowAt(tx, {
     orgId: args.orgId,
     kind: "weekly",
     at: runCreatedAt,

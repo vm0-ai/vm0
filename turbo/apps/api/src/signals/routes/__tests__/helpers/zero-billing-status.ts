@@ -1,9 +1,4 @@
 import { command } from "ccstate";
-import {
-  orgUsageAllowanceEntitlements,
-  orgUsageAllowanceWindows,
-} from "@vm0/db/schema/org-usage-allowance";
-import { eq } from "drizzle-orm";
 
 import {
   createBillingWebhookFixture,
@@ -20,7 +15,8 @@ import {
   TEST_PRICE_CONCURRENCY,
   type BillingWebhookFixture,
 } from "./stripe-billing-webhook";
-import { writeDb$, type Db } from "../../../external/db";
+import { nowDate } from "../../../../lib/time";
+import { insertUsageAllowanceWindowsFixture } from "../../../../test-fixtures/usage-allowance";
 
 export interface BillingStatusFixture {
   readonly orgId: string;
@@ -261,43 +257,27 @@ async function applyConcurrencySeeds(
 }
 
 async function insertUsageAllowanceWindows(
-  db: Db,
   orgId: string,
   windows: readonly UsageAllowanceWindowSeed[] | undefined,
-  signal: AbortSignal,
 ): Promise<void> {
   if (!windows || windows.length === 0) {
     return;
   }
-
-  const [entitlement] = await db
-    .select({ id: orgUsageAllowanceEntitlements.id })
-    .from(orgUsageAllowanceEntitlements)
-    .where(eq(orgUsageAllowanceEntitlements.orgId, orgId))
-    .limit(1);
-  signal.throwIfAborted();
-  if (!entitlement) {
-    throw new Error("Usage allowance entitlement missing after Stripe webhook");
-  }
-
-  await db.insert(orgUsageAllowanceWindows).values(
-    windows.map((window) => {
+  await insertUsageAllowanceWindowsFixture({
+    orgId,
+    windows: windows.map((window) => {
       return {
-        orgId,
-        entitlementId: entitlement.id,
         kind: window.kind,
         startsAt: window.startsAt,
         expiresAt: window.expiresAt,
         unitLimit: window.unitLimit,
-        consumedUnits: window.consumedUnits ?? 0,
+        consumedUnits: window.consumedUnits,
       };
     }),
-  );
-  signal.throwIfAborted();
+  });
 }
 
 async function applyUsageAllowanceSeed(
-  db: Db,
   signal: AbortSignal,
   fixture: BillingWebhookFixture,
   customerId: string,
@@ -316,15 +296,15 @@ async function applyUsageAllowanceSeed(
     shortWindowUnits: seed.shortWindowUnits,
     weeklyWindowSeconds: seed.weeklyWindowSeconds ?? 604_800,
     weeklyWindowUnits: seed.weeklyWindowUnits,
-    effectiveAt: seed.effectiveAt ?? new Date(),
+    effectiveAt: seed.effectiveAt ?? nowDate(),
     expiresAt: seed.expiresAt ?? new Date("2099-01-01T00:00:00.000Z"),
   });
-  await insertUsageAllowanceWindows(db, fixture.orgId, seed.windows, signal);
+  await insertUsageAllowanceWindows(fixture.orgId, seed.windows);
 }
 
 export const seedBillingStatusOrg$ = command(
   async (
-    { set },
+    _,
     values: BillingStatusSeedValues,
     signal: AbortSignal,
   ): Promise<BillingStatusFixture> => {
@@ -336,7 +316,6 @@ export const seedBillingStatusOrg$ = command(
     }
 
     const fixture = createBillingWebhookFixture();
-    const db = set(writeDb$);
     const customerId =
       values.subscription?.stripeCustomerId ?? generatedStripeCustomerId();
     let grantedCredits = await applySubscriptionSeed(
@@ -357,7 +336,6 @@ export const seedBillingStatusOrg$ = command(
       values.concurrencyEntitlements,
     );
     await applyUsageAllowanceSeed(
-      db,
       signal,
       fixture,
       customerId,

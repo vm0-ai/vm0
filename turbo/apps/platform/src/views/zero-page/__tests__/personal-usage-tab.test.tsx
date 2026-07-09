@@ -63,16 +63,25 @@ function usageRows(): UsageRecordRow[] {
   ];
 }
 
-function mockPersonalUsageStory(): string[] {
-  const rows = usageRows();
-  const requestedRanges: string[] = [];
+function usageRow(args: {
+  readonly title: string;
+  readonly credits: number;
+  readonly runId: string;
+}): UsageRecordRow {
+  return {
+    source: "chat",
+    threadId: null,
+    runId: args.runId,
+    title: args.title,
+    credits: args.credits,
+    tokens: 1000,
+    breakdown: [],
+    member: null,
+    lastActivityAt: "2026-03-21T10:00:00Z",
+  };
+}
 
-  context.mocks.data.org({
-    id: "org_1",
-    slug: "test-org",
-    name: "Test Org",
-    role: "member",
-  });
+function mockBillingStatus(): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
@@ -106,6 +115,19 @@ function mockPersonalUsageStory(): string[] {
       concurrencySubscriptions: [],
     });
   });
+}
+
+function mockPersonalUsageStory(): string[] {
+  const rows = usageRows();
+  const requestedRanges: string[] = [];
+
+  context.mocks.data.org({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "member",
+  });
+  mockBillingStatus();
   context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
     requestedRanges.push(query.range);
     const offset = (query.page - 1) * query.pageSize;
@@ -179,5 +201,66 @@ describe("personal usage settings", () => {
       "focus-visible:outline-none",
       "focus-visible:ring-inset",
     );
+  });
+
+  it("refreshes personal usage when billing realtime changes", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    mockBillingStatus();
+    let usageRequests = 0;
+    context.mocks.api(zeroUsageRecordContract.get, ({ query, respond }) => {
+      usageRequests += 1;
+      const rows =
+        usageRequests === 1
+          ? [
+              usageRow({
+                title: "Initial usage row",
+                credits: 100,
+                runId: "run-initial",
+              }),
+            ]
+          : [
+              usageRow({
+                title: "Realtime refreshed usage",
+                credits: 450,
+                runId: "run-refreshed",
+              }),
+            ];
+      return respond(200, {
+        period: {
+          start: "2026-03-01T00:00:00.000Z",
+          end: "2026-04-01T00:00:00.000Z",
+        },
+        rows,
+        totalCredits: rows.reduce((sum, row) => {
+          return sum + row.credits;
+        }, 0),
+        pagination: {
+          page: query.page,
+          pageSize: query.pageSize,
+          total: rows.length,
+        },
+      });
+    });
+
+    await openUsageSettings();
+
+    await waitFor(() => {
+      expect(screen.getByText("Initial usage row")).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger("billing:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText("Realtime refreshed usage")).toBeInTheDocument();
+      expect(screen.queryByText("Initial usage row")).not.toBeInTheDocument();
+    });
   });
 });
