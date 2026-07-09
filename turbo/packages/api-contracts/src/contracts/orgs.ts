@@ -14,6 +14,7 @@ export const orgTierSchema = z.enum([
   "pro-suspend",
   "pro",
   "team",
+  "custom",
 ]);
 export type OrgTier = z.infer<typeof orgTierSchema>;
 

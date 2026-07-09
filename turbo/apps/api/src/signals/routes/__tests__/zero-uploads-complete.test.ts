@@ -5,6 +5,7 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   createBddApi,
@@ -239,6 +240,11 @@ describe("POST /api/zero/uploads/complete", () => {
     const actor = bdd.user();
     await bdd.setupOnboarding(actor, {
       displayName: "BDD suspended upload completion",
+    });
+    await seedOrgMetadata({
+      orgId: requireOrgId(actor),
+      tier: "pro-suspend",
+      credits: 0,
     });
 
     const response = await chat.requestCompleteUpload(

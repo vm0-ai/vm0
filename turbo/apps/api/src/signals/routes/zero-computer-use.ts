@@ -185,6 +185,21 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
+  if (auth.tokenType === "zero") {
+    const hostId = auth.computerUseHostId;
+    if (!hostId) {
+      return computerUseHostNotAuthorized;
+    }
+    return {
+      status: 200 as const,
+      body: {
+        hosts: result.hosts.filter((host) => {
+          return host.id === hostId;
+        }),
+      },
+    };
+  }
+
   return { status: 200 as const, body: result };
 });
 
@@ -626,6 +641,11 @@ const computerUseCommandAuthOptions = {
   requiredCapability: "computer-use:write",
 } as const;
 
+const computerUseHostListAuthOptions = {
+  ...computerUseAuthOptions,
+  requiredCapability: "computer-use:write",
+} as const;
+
 export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostsContract.start,
@@ -641,7 +661,7 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroComputerUseHostsContract.list,
-    handler: authRoute(computerUseAuthOptions, hostsListInner$),
+    handler: authRoute(computerUseHostListAuthOptions, hostsListInner$),
   },
   {
     route: zeroComputerUseHostsContract.delete,

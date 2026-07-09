@@ -36,7 +36,7 @@ function queuedEntry(): QueueEntry {
 
 function queueResponse(overrides?: {
   concurrency?: {
-    tier: "free" | "pro-suspend" | "pro" | "team";
+    tier: "free" | "pro-suspend" | "pro" | "team" | "custom";
     limit: number;
     active: number;
     available: number;
@@ -181,6 +181,28 @@ describe("queue drawer", () => {
     expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
     expect(screen.getByText("$10/month")).toBeInTheDocument();
     expect(screen.getByText("Buy $10/month")).toBeInTheDocument();
+  });
+
+  it("shows additional concurrency checkout for Custom admins without plan upgrade", async () => {
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: { tier: "custom", limit: 10, active: 10, available: 0 },
+          queue: [queuedEntry()],
+        }),
+      );
+    });
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText("Custom")).toBeInTheDocument();
+      expect(screen.getByText(/10 of 10 slots/)).toBeInTheDocument();
+      expect(screen.getByText("Additional concurrency")).toBeInTheDocument();
+      expect(screen.getByText("Buy $10/month")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Upgrade to/)).not.toBeInTheDocument();
   });
 
   it("lets Team admins buy additional concurrency when the queue is full", async () => {

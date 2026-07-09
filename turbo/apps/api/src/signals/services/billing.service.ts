@@ -95,10 +95,11 @@ export const updateAutoRechargeConfig$ = command(
       signal.throwIfAborted();
 
       const orgTier = row?.tier ?? "pro-suspend";
-      if (orgTier !== "pro" && orgTier !== "team") {
+      if (orgTier !== "pro" && orgTier !== "team" && orgTier !== "custom") {
         return {
           ok: false,
-          error: "Auto-recharge is only available for paid plans (Pro/Team)",
+          error:
+            "Auto-recharge is only available for Pro, Team, or Custom workspaces",
         };
       }
       if (threshold === undefined || amount === undefined) {
