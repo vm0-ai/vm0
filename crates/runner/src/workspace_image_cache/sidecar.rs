@@ -191,12 +191,14 @@ impl SessionWorkspaceCache {
             || source.encoded_size > SESSION_HISTORY_SIDECAR_MAX_BYTES
         {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
+            self.prune_session_history_sidecar(cache_key).await?;
             return Ok(());
         }
         let Some(sidecar_metadata) =
             WorkspaceSessionHistorySidecarMetadata::from_source(source, &tmp_metadata)
         else {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
+            self.prune_session_history_sidecar(cache_key).await?;
             return Ok(());
         };
         ensure_workspace_cache_entry_dir(paths.entry_dir()).await?;

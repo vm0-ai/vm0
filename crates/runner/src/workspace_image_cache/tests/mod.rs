@@ -1587,6 +1587,49 @@ async fn session_history_sidecar_publish_none_prunes_existing_sidecar() {
 }
 
 #[tokio::test]
+async fn session_history_sidecar_invalid_source_prunes_existing_sidecar() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-invalid-source-prune";
+    let history = br#"{"type":"message","content":"old"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+    let invalid_tmp_path = cache.session_workspace_cache_tmp_sidecar(&cache_key, RunId::new_v4());
+    fs::write(&invalid_tmp_path, b"new").await.unwrap();
+    let invalid_source = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path: invalid_tmp_path,
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: 0,
+        restored_session_identity: identity.clone(),
+    };
+
+    cache
+        .publish_session_history_sidecar(&cache_key, RunId::new_v4(), Some(&invalid_source))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        cache
+            .probe_session_history_sidecar(&cache_key, &identity)
+            .await
+            .unwrap_err(),
+        WorkspaceSessionHistorySidecarMiss::Missing
+    );
+}
+
+#[tokio::test]
 async fn session_history_sidecar_probe_rejects_mismatched_body_identity() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
