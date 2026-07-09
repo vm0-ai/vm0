@@ -1104,6 +1104,34 @@ class TestRegistryBuiltinCache:
         second_cache_key = next(iter(registry._registry_state.builtin_firewall_core_cache))
         assert second_cache_key[0] == "cache-b"
 
+    def test_builtin_core_cache_is_cleared_when_registry_becomes_unavailable(
+        self, tmp_path, mitm_ctx
+    ):
+        path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"cache-a": _cache_firewall("cache-a", "https://api-a.example.com")},
+        )
+        write_multi_vm_registry(path, {"10.200.0.1": builtin_vm("run-cache-a", "cache-a")})
+
+        with mitm_ctx(
+            registry_path=str(path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            assert context is not None
+            assert len(registry._registry_state.builtin_firewall_core_cache) == 1
+
+            path.write_text("{ broken")
+            unavailable = registry.load_registry_state(str(path))
+
+        assert isinstance(unavailable, registry.RegistryUnavailable)
+        assert unavailable.reason == "parse_failed"
+        assert registry._registry_state.builtin_firewall_core_cache == {}
+
     def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
         path = tmp_path / "registry.json"
         write_multi_vm_registry(
