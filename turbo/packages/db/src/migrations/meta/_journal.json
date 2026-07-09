@@ -3984,6 +3984,13 @@
       "when": 1783616589371,
       "tag": "0568_salty_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 569,
+      "version": "7",
+      "when": 1783621862995,
+      "tag": "0569_funny_tinkerer",
+      "breakpoints": true
     }
   ]
 }

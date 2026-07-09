@@ -1,9 +1,11 @@
 import type {
   MemoryRecallItem,
+  MemoryKind,
   MemorySearchMode,
   MemorySearchResponse,
   MemorySearchResult,
   MemorySourceProvider,
+  MemorySourceType,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import {
   memoryContextSpaces,
@@ -11,7 +13,7 @@ import {
   memoryDocuments,
   memoryDocumentSearchEntries,
 } from "@vm0/db/schema/memory-substrate";
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
@@ -35,6 +37,12 @@ interface SearchParams extends MemoryScope {
   readonly q: string;
   readonly mode: MemorySearchMode;
   readonly provider?: MemorySourceProvider;
+  readonly sourceType?: MemorySourceType;
+  readonly contextSpaceType?: (typeof memoryContextSpaces.$inferSelect)["type"];
+  readonly contextSpaceKey?: string;
+  readonly memoryKind?: MemoryKind;
+  readonly occurredAfter?: string;
+  readonly occurredBefore?: string;
   readonly limit: number;
 }
 
@@ -141,6 +149,23 @@ function documentFilters(args: SearchParams) {
   if (args.provider) {
     filters.push(eq(memoryDocuments.provider, args.provider));
   }
+  if (args.sourceType) {
+    filters.push(eq(memoryDocuments.sourceType, args.sourceType));
+  }
+  if (args.contextSpaceType) {
+    filters.push(eq(memoryContextSpaces.type, args.contextSpaceType));
+  }
+  if (args.contextSpaceKey) {
+    filters.push(eq(memoryContextSpaces.key, args.contextSpaceKey));
+  }
+  if (args.occurredAfter) {
+    filters.push(gte(memoryDocuments.occurredAt, new Date(args.occurredAfter)));
+  }
+  if (args.occurredBefore) {
+    filters.push(
+      lte(memoryDocuments.occurredAt, new Date(args.occurredBefore)),
+    );
+  }
   return filters;
 }
 
@@ -161,6 +186,10 @@ async function loadLexicalDocumentCandidates(
     .innerJoin(
       memoryDocuments,
       eq(memoryDocuments.id, memoryDocumentChunks.documentId),
+    )
+    .innerJoin(
+      memoryContextSpaces,
+      eq(memoryContextSpaces.id, memoryDocumentChunks.contextSpaceId),
     )
     .where(
       and(
@@ -225,6 +254,10 @@ async function loadSemanticDocumentCandidates(
     .innerJoin(
       memoryDocuments,
       eq(memoryDocuments.id, memoryDocumentSearchEntries.documentId),
+    )
+    .innerJoin(
+      memoryContextSpaces,
+      eq(memoryContextSpaces.id, memoryDocumentSearchEntries.contextSpaceId),
     )
     .where(
       and(
@@ -381,10 +414,19 @@ async function searchMemories(
   db: ReadonlyDb,
   args: SearchParams,
 ): Promise<readonly MemorySearchResult[]> {
+  if (
+    args.memoryKind &&
+    args.memoryKind !== "key_fact" &&
+    args.memoryKind !== "preference" &&
+    args.memoryKind !== "open_loop"
+  ) {
+    return [];
+  }
   const response = await recallZeroMemory(db, {
     orgId: args.orgId,
     userId: args.userId,
     q: args.q,
+    kind: args.memoryKind,
     limit: args.limit,
   });
   return response.memories.map((memory, index) => {

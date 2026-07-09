@@ -42,6 +42,7 @@ async function loadIndexableMemory(
       id: memories.id,
       orgId: memories.orgId,
       userId: memories.userId,
+      contextSpaceId: memories.contextSpaceId,
       entityId: memories.entityId,
       kind: memories.kind,
       status: memories.status,
@@ -105,6 +106,7 @@ async function syncZeroMemorySearchEntryForMemory(
     .values({
       orgId: row.orgId,
       userId: row.userId,
+      contextSpaceId: row.contextSpaceId,
       memoryId: row.id,
       entityId: row.entityId,
       entryKind: "memory_text",
@@ -127,6 +129,7 @@ async function syncZeroMemorySearchEntryForMemory(
       ],
       set: {
         entityId: row.entityId,
+        contextSpaceId: row.contextSpaceId,
         memoryKind: row.kind,
         status: row.status,
         text,
