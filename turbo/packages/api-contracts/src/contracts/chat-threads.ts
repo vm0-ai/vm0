@@ -66,6 +66,7 @@ const artifactItemSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   url: z.string(),
+  previewImageUrl: z.string().optional(),
   createdAt: z.string(),
   artifactKind: hostedArtifactKindSchema.optional(),
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
