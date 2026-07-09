@@ -187,18 +187,11 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-function mockAdminAccountSidebar(): void {
-  prepareDefaultAgent();
-  context.mocks.data.org({
-    id: "org_1",
-    slug: "test-org",
-    name: "Test Org",
-    role: "admin",
-  });
+function mockAdminBillingStatus(credits: number): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
-      credits: 12_500,
+      credits,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
       currentPeriodEnd: "2026-04-01T00:00:00Z",
@@ -228,6 +221,17 @@ function mockAdminAccountSidebar(): void {
       concurrencySubscriptions: [],
     });
   });
+}
+
+function mockAdminAccountSidebar(): void {
+  prepareDefaultAgent();
+  context.mocks.data.org({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+  mockAdminBillingStatus(12_500);
 }
 
 describe("zero sidebar account menu", () => {
@@ -275,6 +279,39 @@ describe("zero sidebar account menu", () => {
       expect(screen.getByText("Pro credits")).toBeInTheDocument();
       expect(screen.getByText("Launch bonus")).toBeInTheDocument();
     });
+  });
+
+  it("refreshes the org credit balance when the menu opens", async () => {
+    mockAdminAccountSidebar();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    let menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+    });
+
+    // The org spends credits elsewhere; the next menu open must reflect it.
+    mockAdminBillingStatus(500);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+    });
+    expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
   });
 
   it("hides account menu subscriptions when the feature switch is disabled", async () => {
