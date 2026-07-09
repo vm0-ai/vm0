@@ -151,7 +151,9 @@ async fn write_files_accepts_file_count_at_batch_limit() {
         })
     };
 
-    let write = expect_write_files(&mut guest).await;
+    let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
+        .await
+        .expect("write_files at the file-count limit should send a frame");
     assert_eq!(write.files, expected_files);
     assert_eq!(
         normal_operation_readiness(&host),
