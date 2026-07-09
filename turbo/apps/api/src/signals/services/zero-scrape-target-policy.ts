@@ -13,6 +13,7 @@ interface ScrapeTargetPolicyResult {
 export type ScrapeTargetPolicyError =
   | "invalid_url"
   | "unsupported_scheme"
+  | "embedded_credentials"
   | "internal_hostname"
   | "unresolvable_hostname"
   | "blocked_address";
@@ -45,6 +46,10 @@ export async function validateScrapeTargetUrl(
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return "unsupported_scheme";
+  }
+
+  if (url.username || url.password) {
+    return "embedded_credentials";
   }
 
   if (hostnameIsInternal(url.hostname)) {

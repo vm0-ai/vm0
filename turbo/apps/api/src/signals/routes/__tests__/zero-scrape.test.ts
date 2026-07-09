@@ -187,6 +187,39 @@ describe("zero scrape route", () => {
     expect(firecrawlRequests).toBe(0);
   });
 
+  it("blocks target URLs with embedded credentials before calling Firecrawl", async () => {
+    const actor = createBddApi(context).user();
+    let firecrawlRequests = 0;
+    allowExampleDotCom();
+    await enableScrape(actor);
+    configureProvider();
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://user:password@example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [400],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+    expect(response.body.error.message).toBe(
+      "Scrape URL must not include credentials",
+    );
+    expect(firecrawlRequests).toBe(0);
+  });
+
   it("returns insufficient credits before calling Firecrawl", async () => {
     const actor = createBddApi(context).user();
     let firecrawlRequests = 0;

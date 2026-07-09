@@ -101,6 +101,9 @@ function targetPolicyMessage(error: ScrapeTargetPolicyError): string {
     case "unsupported_scheme": {
       return "Scrape URL must use http or https";
     }
+    case "embedded_credentials": {
+      return "Scrape URL must not include credentials";
+    }
     case "internal_hostname": {
       return "Scrape URL must target a public hostname";
     }
