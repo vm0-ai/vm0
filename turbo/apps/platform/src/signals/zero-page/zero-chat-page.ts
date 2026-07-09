@@ -5,8 +5,13 @@ import { featureSwitch$ } from "../external/feature-switch.ts";
 import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
-import { resolveModelFirstUserDefaultSelection } from "./model-default-selection.ts";
+import {
+  applyCodexFastModeDefault,
+  resolveModelFirstUserDefaultSelection,
+} from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { codexFastModeLocalDefault$ } from "./codex-fast-local-default.ts";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -64,9 +69,17 @@ export const chatPageModelSelection$ = computed(
     }
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);
-    return resolveModelFirstUserDefaultSelection({
-      userPreference,
+    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
+    const featureSwitches = get(featureSwitch$);
+    return applyCodexFastModeDefault({
+      selection: resolveModelFirstUserDefaultSelection({
+        userPreference,
+        policies,
+      }),
       policies,
+      codexFastModeEnabled:
+        featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
+      codexFastModeDefault,
     });
   },
 );

@@ -91,6 +91,9 @@ import {
 } from "../../signals/view-component-state.ts";
 import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
+import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
+import { setCodexFastModeLocalDefault$ } from "../../signals/zero-page/codex-fast-local-default.ts";
+import { isCodexFastModeAvailableForSelection } from "../../signals/zero-page/model-default-selection.ts";
 import {
   resolveChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
@@ -462,7 +465,12 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
+  const setCodexFastModeLocalDefault = useSet(setCodexFastModeLocalDefault$);
   const personalModelProvider = useLastResolved(personalModelProvider$);
+  const policiesLoadable = useLoadable(orgModelPolicies$);
+  const policies =
+    policiesLoadable.state === "hasData" ? policiesLoadable.data : undefined;
+  const featureSwitches = useGet(featureSwitch$);
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
@@ -473,6 +481,22 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
     if (isSupportedRunModel(selectedModel)) {
       detach(
         updateUserModelPreference({ selectedModel }, pageSignal),
+        Reason.DomCallback,
+      );
+    }
+    if (
+      isCodexFastModeAvailableForSelection({
+        policies,
+        selectedModel,
+        codexFastModeEnabled:
+          featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
+      })
+    ) {
+      detach(
+        setCodexFastModeLocalDefault(
+          selection?.codexServiceTier === "fast",
+          pageSignal,
+        ),
         Reason.DomCallback,
       );
     }

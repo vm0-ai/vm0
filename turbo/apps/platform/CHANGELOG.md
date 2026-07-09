@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.580.0](https://github.com/vm0-ai/vm0/compare/app-v0.579.0...app-v0.580.0) (2026-07-09)
+
+
+### Features
+
+* add r2-backed website template packages ([#20700](https://github.com/vm0-ai/vm0/issues/20700)) ([2c9c4d4](https://github.com/vm0-ai/vm0/commit/2c9c4d43a96ee11abc8a25268cd8910af1f538de))
+* add videos artifact filter ([#20746](https://github.com/vm0-ai/vm0/issues/20746)) ([d551e54](https://github.com/vm0-ai/vm0/commit/d551e5435f31558d21bb9d9ea0a64a26706475ff))
+* refresh org credit balance when account menu opens ([#20737](https://github.com/vm0-ai/vm0/issues/20737)) ([05eec49](https://github.com/vm0-ai/vm0/commit/05eec495d6edc0626e6e0588368494a345289c58))
+
+
+### Refactoring
+
+* remove chat thread emoji feature switch ([#20743](https://github.com/vm0-ai/vm0/issues/20743)) ([18ecbbb](https://github.com/vm0-ai/vm0/commit/18ecbbb276a4395d02252d5f9287aca3f2411f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.0
+    * @vm0/connectors bumped to 1.150.1
+    * @vm0/core bumped to 8.417.0
+
 ## [0.579.0](https://github.com/vm0-ai/vm0/compare/app-v0.578.0...app-v0.579.0) (2026-07-08)
 
 

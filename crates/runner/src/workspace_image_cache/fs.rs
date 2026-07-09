@@ -33,7 +33,10 @@ impl SessionWorkspaceCache {
 }
 
 pub(super) fn is_workspace_tmp_path_name(name: &str) -> bool {
-    name.starts_with("current.ext4.tmp.") || name.starts_with("metadata.json.tmp.")
+    name.starts_with("current.ext4.tmp.")
+        || name.starts_with("metadata.json.tmp.")
+        || name.starts_with("session-history.blob.tmp.")
+        || name.starts_with("session-history.metadata.json.tmp.")
 }
 
 pub(super) fn allocated_bytes(metadata: &std::fs::Metadata) -> u64 {

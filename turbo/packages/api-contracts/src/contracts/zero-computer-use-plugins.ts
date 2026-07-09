@@ -288,6 +288,41 @@ export function computerUseMcpServerCapability(server: string): string {
   return `plugin.${COMPUTER_USE_MCP_PLUGIN}.${server}`;
 }
 
+export const computerUseMcpPluginCallBodySchema = z.object({
+  plugin: z.literal(COMPUTER_USE_MCP_PLUGIN),
+  server: z
+    .string()
+    .regex(
+      COMPUTER_USE_MCP_SERVER_NAME_PATTERN,
+      "MCP server names must match [a-z0-9_-]{1,64}",
+    ),
+  tool: z.string().trim().min(1).max(256),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  timeoutMs: z.number().int().min(1_000).max(120_000).default(60_000),
+});
+
+export type ComputerUseMcpPluginCallBody = z.infer<
+  typeof computerUseMcpPluginCallBodySchema
+>;
+
+export const computerUseAnyPluginCallBodySchema = z.union([
+  computerUsePluginCallBodySchema,
+  computerUseMcpPluginCallBodySchema,
+]);
+
+export type ComputerUseAnyPluginCallBody = z.infer<
+  typeof computerUseAnyPluginCallBodySchema
+>;
+
+export function computerUseMcpPluginCallRequiredCapabilities(
+  server: string,
+): readonly string[] {
+  return [
+    COMPUTER_USE_PLUGIN_CALL_KIND,
+    computerUseMcpServerCapability(server),
+  ];
+}
+
 export interface ComputerUseMcpPluginCallPayload {
   readonly plugin: typeof COMPUTER_USE_MCP_PLUGIN;
   readonly server: string;

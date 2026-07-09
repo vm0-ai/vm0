@@ -231,6 +231,7 @@ export {
 export {
   createComputerUseAuthorizationRequest,
   createComputerUsePluginCommand,
+  listComputerUseHosts,
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
   fetchComputerUsePluginContent,

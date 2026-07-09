@@ -780,6 +780,36 @@ fn validate_identity_body_size(
     Ok(())
 }
 
+pub(super) fn verify_identity_session_history_bytes(
+    bytes: &[u8],
+    expected_raw_size: u64,
+    expected_hash: &str,
+) -> RunnerResult<()> {
+    if expected_raw_size == 0 {
+        return Err(RunnerError::Internal(
+            "identity session history rawSize must be positive".into(),
+        ));
+    }
+    if expected_raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
+        return Err(RunnerError::Internal(format!(
+            "session history is too large: {expected_raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+        )));
+    }
+    if bytes.len() as u64 != expected_raw_size {
+        return Err(RunnerError::Internal(format!(
+            "session history size mismatch: expected {expected_raw_size} bytes, got {} bytes",
+            bytes.len()
+        )));
+    }
+    let actual_hash = hex::encode(Sha256::digest(bytes));
+    if actual_hash != expected_hash {
+        return Err(RunnerError::Internal(
+            "session history hash mismatch".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_compressed_ref(
     encoding: &str,
     history_ref: &ResumeSessionHistoryRef,
@@ -829,6 +859,20 @@ fn validate_decompressed_raw_size(
     }
     timings.add_validation(validation_started.elapsed(), true);
     Ok(())
+}
+
+pub(super) fn verify_codex_zstd_session_history_bytes(
+    encoded_bytes: &[u8],
+    expected_raw_size: u64,
+    expected_hash: &str,
+) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let mut timings = SessionHistoryDownloadTimings::default();
+    verify_codex_zstd_session_history(
+        encoded_bytes,
+        expected_raw_size,
+        expected_hash,
+        &mut timings,
+    )
 }
 
 fn verify_codex_zstd_session_history(

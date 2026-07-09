@@ -3,7 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
-  computerUsePluginCallBodySchema,
+  computerUseAnyPluginCallBodySchema,
 } from "./zero-computer-use-plugins";
 
 const c = initContract();
@@ -748,7 +748,7 @@ export const zeroComputerUsePluginCommandContract = c.router({
     method: "POST",
     path: "/api/zero/computer-use/plugin-commands",
     headers: authHeadersSchema,
-    body: computerUsePluginCallBodySchema,
+    body: computerUseAnyPluginCallBodySchema,
     responses: {
       200: computerUseCommandCreateResponseSchema,
       400: apiErrorSchema,

@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.37.100](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.99...sandbox-fc-v0.37.100) (2026-07-09)
+
 ## [0.37.99](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.98...sandbox-fc-v0.37.99) (2026-07-08)
 
 

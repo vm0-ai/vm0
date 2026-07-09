@@ -992,6 +992,69 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
   });
 
+  it("routes mcp plugin commands by server capability and passes arguments through", async () => {
+    const actor = bdd.user();
+    await enableComputerUseDesktopPlugins(actor);
+
+    const invalidName = await api.requestCreateComputerUsePluginCommand(
+      actor,
+      {
+        plugin: "mcp",
+        server: "Bad Name!",
+        tool: "create_note",
+        arguments: {},
+      },
+      [400],
+    );
+    expectApiError(invalidName.body);
+
+    const notesHost = await api.startComputerUseHost(actor, {
+      supportedCapabilities: ["plugin.call", "plugin.mcp.notes"],
+    });
+
+    const unsupported = await api.requestCreateComputerUsePluginCommand(
+      actor,
+      {
+        plugin: "mcp",
+        server: "figma",
+        tool: "get_selection",
+        arguments: {},
+      },
+      [409],
+    );
+    expectApiError(unsupported.body);
+    expect(unsupported.body.error.message).toBe(
+      "No online computer-use host supports this plugin tool",
+    );
+
+    const created = await api.createComputerUsePluginCommand(actor, {
+      plugin: "mcp",
+      server: "notes",
+      tool: "create_note",
+      arguments: { title: "hello", nested: { tags: ["a", "b"] } },
+    });
+
+    const claimed = await api.claimNextComputerUseCommand(notesHost.hostToken, [
+      "plugin.call",
+      "plugin.mcp.notes",
+    ]);
+    expect(claimed.status).toBe("command");
+    if (claimed.status !== "command") {
+      throw new Error("Expected notes host to claim the mcp plugin command");
+    }
+    expect(claimed.command).toMatchObject({
+      id: created.commandId,
+      hostId: notesHost.hostId,
+      kind: "plugin.call",
+      payload: {
+        plugin: "mcp",
+        server: "notes",
+        tool: "create_note",
+        arguments: { title: "hello", nested: { tags: ["a", "b"] } },
+      },
+    });
+  });
+
   it("offloads filesystem plugin content and records metadata-only audit", async () => {
     const fake = api.installComputerUseS3Fake();
     const orgId = `org_${randomUUID()}`;

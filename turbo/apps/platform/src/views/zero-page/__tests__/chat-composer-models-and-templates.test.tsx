@@ -50,6 +50,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
+import { resetChatPageModelSelection$ } from "../../../signals/zero-page/zero-chat-page.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
@@ -70,6 +73,10 @@ const THREAD_ID = "b1000000-0000-4000-a000-000000000101";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
+const {
+  set$: setCodexFastModeDefaultStorageForTest$,
+  clear$: clearCodexFastModeDefaultStorageForTest$,
+} = localStorageSignals(CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY);
 
 function applyUserConnectorUpdate(
   current: readonly string[],
@@ -1182,6 +1189,171 @@ describe("chat composer models", () => {
         codexServiceTier: "fast",
       });
     });
+  });
+
+  it("remembers Codex fast mode for new chats in the current browser account", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000923",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+    let updatedModelSelection:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000924",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onModelSelectionUpdate: (body) => {
+        updatedModelSelection = body;
+      },
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT 5.5"));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    click(buttonContainingText("Fast", runSpeed));
+    await waitFor(() => {
+      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    act(() => {
+      context.store.set(resetChatPageModelSelection$);
+    });
+
+    await expectComposerModel("GPT 5.5");
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Remember fast mode",
+    );
+
+    await waitFor(() => {
+      expect(updatedModelSelection?.modelSelection).toStrictEqual({
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "gpt-5.5",
+      });
+      expect(updatedModelSelection?.codexServiceTier).toBe("fast");
+      expect(sentBody?.runOptions).toStrictEqual({
+        codexServiceTier: "fast",
+      });
+    });
+  });
+
+  it("does not apply a remembered Codex fast mode default when the switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000925",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+    act(() => {
+      context.store.set(
+        setCodexFastModeDefaultStorageForTest$,
+        JSON.stringify({ "test-user-123:org_default": true }),
+      );
+    });
+
+    try {
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000926",
+          model: "gpt-5.5",
+          modelLabel: "GPT 5.5",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+        }),
+      ]);
+      context.mocks.data.personalModelProviders([codexProvider]);
+      mockAgent();
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          sentBody = body;
+        },
+      });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("combobox", { name: /^GPT 5\.5$/ }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("group", { name: "Run speed" }),
+        ).not.toBeInTheDocument();
+      });
+
+      await sendMessageInUI(
+        user,
+        screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+        "Use standard mode",
+      );
+
+      await waitFor(() => {
+        expect(sentBody?.runOptions).toBeUndefined();
+      });
+    } finally {
+      act(() => {
+        context.store.set(clearCodexFastModeDefaultStorageForTest$);
+      });
+    }
   });
 
   it("keeps Codex fast mode when continuing a hydrated thread", async () => {

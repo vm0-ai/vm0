@@ -35,7 +35,9 @@ import {
   COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,
   COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES,
   computerUseFilesystemToolIsDestructive,
+  computerUseMcpPluginCallRequiredCapabilities,
   computerUsePluginCallRequiredCapabilities,
+  isComputerUseMcpPluginCallPayload,
   isComputerUsePluginCallPayload,
 } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
@@ -116,6 +118,7 @@ interface ComputerUseCommandPayload {
   readonly key?: string;
   readonly action?: string;
   readonly plugin?: string;
+  readonly server?: string;
   readonly tool?: string;
   readonly arguments?: Record<string, unknown>;
 }
@@ -317,6 +320,11 @@ function commandRequiredCapabilities(params: {
   readonly payload: Record<string, unknown>;
 }): readonly string[] {
   if (params.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+    if (isComputerUseMcpPluginCallPayload(params.payload)) {
+      return computerUseMcpPluginCallRequiredCapabilities(
+        params.payload.server,
+      );
+    }
     if (!isComputerUsePluginCallPayload(params.payload)) {
       return [COMPUTER_USE_PLUGIN_CALL_KIND];
     }
@@ -396,6 +404,9 @@ function commandPayload(
   }
   if (params.plugin) {
     payload.plugin = params.plugin.trim();
+  }
+  if (params.server) {
+    payload.server = params.server.trim();
   }
   if (params.tool) {
     payload.tool = params.tool.trim();

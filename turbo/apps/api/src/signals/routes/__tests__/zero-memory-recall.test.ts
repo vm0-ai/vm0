@@ -7,19 +7,24 @@ import { zeroRelationshipsContract } from "@vm0/api-contracts/contracts/zero-rel
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import {
+  seedGraphExpansionMemories,
+  seedSemanticRecallMemory,
+} from "../../../test-fixtures/relationship-memory";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
@@ -271,6 +276,10 @@ async function seedRelationshipFixture(
   return { orgId, userId };
 }
 
+afterEach(() => {
+  mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", undefined);
+});
+
 describe("GET /api/zero/memory/recall", () => {
   it("rejects recall when relationship memory is disabled", async () => {
     await seedRelationshipFixture(false);
@@ -310,6 +319,59 @@ describe("GET /api/zero/memory/recall", () => {
         },
       },
     });
+  });
+
+  it("recalls semantic memory without lexical overlap", async () => {
+    const fixture = await seedRelationshipFixture();
+    const query = "cash management sweep fund";
+    await seedSemanticRecallMemory(fixture, query);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+
+    const response = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: { q: query, limit: 5 },
+      }),
+      [200],
+    );
+
+    expect(response.body.memories).toHaveLength(1);
+    expect(response.body.memories[0]).toMatchObject({
+      kind: "preference",
+      text: "The user prefers JPM IJTXX Treasury allocation.",
+      relationship: {
+        entity: {
+          displayName: "Portfolio Settings",
+          type: "organization",
+        },
+      },
+    });
+  });
+
+  it("expands semantic recall through related graph memories", async () => {
+    const fixture = await seedRelationshipFixture();
+    const query = "platform refactor nickname";
+    await seedGraphExpansionMemories(fixture, query);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+
+    const response = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: { q: query, limit: 2 },
+      }),
+      [200],
+    );
+
+    expect(
+      response.body.memories.map((memory) => {
+        return memory.text;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        "The infrastructure rewrite uses Lucent as its internal migration name.",
+        "Ask Lancy for the Lucent migration rollout owner.",
+      ]),
+    );
   });
 
   it("returns prompt-ready memory context", async () => {

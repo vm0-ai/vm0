@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Command } from "commander";
 import type {
@@ -7,12 +8,16 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
+  COMPUTER_USE_MCP_LIST_TOOLS,
+  COMPUTER_USE_MCP_PLUGIN,
+  type ComputerUseMcpPluginCallBody,
   type ComputerUseFilesystemTool,
   type ComputerUsePluginCallBody,
 } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   ApiRequestError,
   createComputerUsePluginCommand,
+  listComputerUseHosts,
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
   fetchComputerUsePluginContent,
@@ -1168,11 +1173,142 @@ const filesystemPluginCommand = new Command()
   .addCommand(filesystemSearchFilesCommand)
   .addCommand(filesystemGetFileInfoCommand);
 
+const MCP_SERVER_CAPABILITY_PREFIX = `plugin.${COMPUTER_USE_MCP_PLUGIN}.`;
+
+interface ComputerUseMcpCallOptions extends ComputerUseCommandOptions {
+  readonly args?: string;
+  readonly argsFile?: string;
+}
+
+function parseMcpToolArguments(
+  options: ComputerUseMcpCallOptions,
+): Record<string, unknown> {
+  if (options.args && options.argsFile) {
+    throw new Error("Pass either --args or --args-file, not both");
+  }
+  if (options.argsFile) {
+    return parseArgumentsJson(readFileSync(options.argsFile, "utf8"));
+  }
+  return parseArgumentsJson(options.args);
+}
+
+async function runMcpPluginCommand(
+  server: string,
+  tool: string,
+  options: ComputerUseCommandOptions,
+  args: Record<string, unknown>,
+): Promise<void> {
+  const timeoutSeconds = parseTimeoutSeconds(options.timeout);
+  const body: ComputerUseMcpPluginCallBody = {
+    plugin: COMPUTER_USE_MCP_PLUGIN,
+    server,
+    tool,
+    arguments: args,
+    timeoutMs: timeoutSeconds * 1000,
+  };
+  try {
+    const created = await createComputerUsePluginCommand(body);
+    await waitForCommand(
+      created.commandId,
+      timeoutSeconds,
+      pluginCommandOutputText,
+    );
+  } catch (error) {
+    throwComputerUseAuthorizationGuidanceError(error);
+  }
+}
+
+async function printMcpServers(): Promise<void> {
+  const hosts = await listComputerUseHosts().catch((error: unknown) => {
+    throwComputerUseAuthorizationGuidanceError(error);
+  });
+  const lines: string[] = [];
+  for (const host of hosts) {
+    const servers = host.supportedCapabilities
+      .filter((capability) => {
+        return capability.startsWith(MCP_SERVER_CAPABILITY_PREFIX);
+      })
+      .map((capability) => {
+        return capability.slice(MCP_SERVER_CAPABILITY_PREFIX.length);
+      });
+    if (servers.length === 0) {
+      continue;
+    }
+    lines.push(`${host.displayName} (${host.status}): ${servers.join(", ")}`);
+  }
+  if (lines.length === 0) {
+    console.log(
+      "No MCP servers are running on any linked host. Configure and enable them in the Zero Desktop app's Developer Tools section.",
+    );
+    return;
+  }
+  console.log(lines.join("\n"));
+}
+
+const mcpListCommand = new Command()
+  .name("list")
+  .description(
+    "List MCP servers on linked hosts, or a server's tools and schemas",
+  )
+  .argument("[server]", "MCP server name; omit to list available servers")
+  .action(
+    withErrorHandler(
+      async (
+        server: string | undefined,
+        _options: Record<string, never>,
+        command: Command,
+      ) => {
+        if (!server) {
+          await printMcpServers();
+          return;
+        }
+        await runMcpPluginCommand(
+          server,
+          COMPUTER_USE_MCP_LIST_TOOLS,
+          command.optsWithGlobals<ComputerUseCommandOptions>(),
+          {},
+        );
+      },
+    ),
+  );
+
+const mcpCallCommand = new Command()
+  .name("call")
+  .description("Call a tool on a configured MCP server")
+  .argument("<server>", "MCP server name (see: plugin mcp list)")
+  .argument("<tool>", "Tool name (see: plugin mcp list <server>)")
+  .option("--args <json>", "Tool arguments as a JSON object")
+  .option("--args-file <path>", "Read tool arguments JSON from a file")
+  .action(
+    withErrorHandler(
+      async (
+        server: string,
+        tool: string,
+        options: ComputerUseMcpCallOptions,
+        command: Command,
+      ) => {
+        await runMcpPluginCommand(
+          server,
+          tool,
+          command.optsWithGlobals<ComputerUseCommandOptions>(),
+          parseMcpToolArguments(options),
+        );
+      },
+    ),
+  );
+
+const mcpPluginCommand = new Command()
+  .name("mcp")
+  .description("Use custom MCP servers configured in the Zero Desktop app")
+  .addCommand(mcpListCommand)
+  .addCommand(mcpCallCommand);
+
 const pluginCommand = addTargetOptions(
   new Command()
     .name("plugin")
     .description("Use Desktop Computer Use plugins")
-    .addCommand(filesystemPluginCommand),
+    .addCommand(filesystemPluginCommand)
+    .addCommand(mcpPluginCommand),
 );
 
 export const zeroComputerUseCommand = new Command()

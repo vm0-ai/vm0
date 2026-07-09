@@ -23,7 +23,7 @@ import {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUsePluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 
 import { now } from "../../../../lib/time";
 import {
@@ -72,12 +72,12 @@ interface ComputerUseWriteCommandBody {
   readonly clickCount?: number;
 }
 
-type ComputerUsePluginCommandBody = Omit<
-  ComputerUsePluginCallBody,
-  "timeoutMs"
-> & {
-  readonly timeoutMs?: number;
-};
+type OptionalTimeout<Body> = Body extends unknown
+  ? Omit<Body, "timeoutMs"> & { readonly timeoutMs?: number }
+  : never;
+
+type ComputerUsePluginCommandBody =
+  OptionalTimeout<ComputerUseAnyPluginCallBody>;
 
 type ComputerUseCompleteBody =
   | {
