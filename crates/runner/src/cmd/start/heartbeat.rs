@@ -266,6 +266,7 @@ pub(super) fn collect_heartbeat_state(
         admittable_profiles,
         held_session_states: idle_pool.held_session_states(),
         mode: match mode {
+            RunnerMode::Starting => "starting".to_string(),
             RunnerMode::Running => "running".to_string(),
             RunnerMode::Draining => "draining".to_string(),
             // Stopped caught by the debug_assert above; release falls here.
@@ -489,6 +490,29 @@ mod tests {
             RunnerMode::Draining,
         );
 
+        assert!(state.admittable_profiles.is_empty());
+    }
+
+    #[test]
+    fn heartbeat_starting_reports_no_admittable_profiles() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Starting,
+        );
+
+        assert_eq!(state.mode, "starting");
         assert!(state.admittable_profiles.is_empty());
     }
 
