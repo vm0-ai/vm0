@@ -14,6 +14,7 @@ import {
   setFeedbackSelectionToolbarRef$,
 } from "../zero-page/chat-feedback.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
+import { createDeferredPromise } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 // Render a minimal assistant bubble inside a thread container, matching the DOM
@@ -60,10 +61,12 @@ function dispatchPointerEvent(
   element.dispatchEvent(event);
 }
 
-function waitForDeferredSelectionCapture(): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, 0);
-  });
+function waitForDeferredSelectionCapture(signal: AbortSignal): Promise<void> {
+  const deferred = createDeferredPromise<void>(signal);
+  window.setTimeout(() => {
+    deferred.resolve();
+  }, 0);
+  return deferred.promise;
 }
 
 describe("inline feedback thread scoping", () => {
@@ -303,7 +306,7 @@ describe("inline feedback thread scoping", () => {
       listenersScope,
     );
     const composer = document.createElement("div");
-    composer.setAttribute("data-chat-composer", "true");
+    composer.dataset.chatComposer = "true";
     const editor = document.createElement("div");
     editor.setAttribute("contenteditable", "true");
     composer.appendChild(editor);
@@ -317,7 +320,7 @@ describe("inline feedback thread scoping", () => {
     // until the click completes. The composer interaction should still win.
     selectContents(bubble);
     editor.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    await waitForDeferredSelectionCapture();
+    await waitForDeferredSelectionCapture(ctx.signal);
 
     expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
     cleanup?.();

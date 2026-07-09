@@ -422,6 +422,13 @@ function shouldDismissSelectionForInteractionTarget(
   );
 }
 
+function clearWindowTimer(timerId: number | null): null {
+  if (timerId !== null) {
+    window.clearTimeout(timerId);
+  }
+  return null;
+}
+
 export const setFeedbackSelectionToolbarRef$ = onRef(
   command(({ set }, el: HTMLElement, signal: AbortSignal) => {
     const toolbarSignal = set(resetFeedbackSelectionToolbarSignal$, signal);
@@ -470,9 +477,7 @@ export const setFeedbackSelectionListenersRef$ = onRef(
     };
     const captureDeferred = (dismissWhenEmpty: boolean) => {
       pendingDismissWhenEmpty ||= dismissWhenEmpty;
-      if (captureTimerId !== null) {
-        window.clearTimeout(captureTimerId);
-      }
+      captureTimerId = clearWindowTimer(captureTimerId);
       captureTimerId = window.setTimeout(() => {
         const shouldDismissWhenEmpty = pendingDismissWhenEmpty;
         captureTimerId = null;
@@ -485,9 +490,9 @@ export const setFeedbackSelectionListenersRef$ = onRef(
       }, 0);
     };
     const clearSuppressedSelectionCaptureSoon = () => {
-      if (suppressSelectionClearTimerId !== null) {
-        window.clearTimeout(suppressSelectionClearTimerId);
-      }
+      suppressSelectionClearTimerId = clearWindowTimer(
+        suppressSelectionClearTimerId,
+      );
       suppressSelectionClearTimerId = window.setTimeout(() => {
         suppressSelectionCapture = false;
         suppressSelectionClearTimerId = null;
@@ -528,11 +533,9 @@ export const setFeedbackSelectionListenersRef$ = onRef(
       },
       { signal },
     );
-    doc.addEventListener(
-      "pointercancel",
-      clearSuppressedSelectionCaptureSoon,
-      { signal },
-    );
+    doc.addEventListener("pointercancel", clearSuppressedSelectionCaptureSoon, {
+      signal,
+    });
     doc.addEventListener(
       "mousedown",
       () => {
@@ -585,14 +588,10 @@ export const setFeedbackSelectionListenersRef$ = onRef(
     signal.addEventListener(
       "abort",
       () => {
-        if (captureTimerId !== null) {
-          window.clearTimeout(captureTimerId);
-          captureTimerId = null;
-        }
-        if (suppressSelectionClearTimerId !== null) {
-          window.clearTimeout(suppressSelectionClearTimerId);
-          suppressSelectionClearTimerId = null;
-        }
+        captureTimerId = clearWindowTimer(captureTimerId);
+        suppressSelectionClearTimerId = clearWindowTimer(
+          suppressSelectionClearTimerId,
+        );
       },
       { once: true },
     );
