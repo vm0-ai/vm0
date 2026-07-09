@@ -45,15 +45,18 @@ class _RealFlowFactory(Protocol):
         request_body: bytes | None = ...,
         request_headers: http.Headers | None = ...,
         with_response: bool = ...,
-    ) -> http.HTTPFlow: ...
+    ) -> http.HTTPFlow:
+        raise NotImplementedError
 
 
 class _HeaderFactory(Protocol):
-    def __call__(self, *pairs: tuple[str, str]) -> http.Headers: ...
+    def __call__(self, *pairs: tuple[str, str]) -> http.Headers:
+        raise NotImplementedError
 
 
 class _MitmContextFactory(Protocol):
-    def __call__(self, *, api_url: str = ...) -> AbstractContextManager[object]: ...
+    def __call__(self, *, api_url: str = ...) -> AbstractContextManager[object]:
+        raise NotImplementedError
 
 
 class AwsAuthConfigBase(TypedDict):
