@@ -173,9 +173,49 @@ const PRIVATE_ARCHIVE_FIXTURES = [
       "e9ea329a25491e347cb3c1156735201a4ff7f8a299dd8990b024d31854b49050",
   },
   {
+    id: "template:black-slabs",
+    versionId:
+      "007c37df08b7a017b52fd40ebf848b14894afe08b45770b1fae06fed7b77c11f",
+  },
+  {
+    id: "template:blueprint-grid",
+    versionId:
+      "a8904a5dabcd9400d06732f2191ae09b26e4497eaf8628a1d6255977d8ceec01",
+  },
+  {
+    id: "template:coastal-hotel",
+    versionId:
+      "9f2302ccbbfeb834f1eb7671abe17bf92aa52e2dda63b7cccc0180fa4f07f3d2",
+  },
+  {
+    id: "template:frame-stack",
+    versionId:
+      "bb6106f6a0a56346dc53a9092a2272334fd77c9159ffff4f46426286d4fbea31",
+  },
+  {
+    id: "template:gallery-wall",
+    versionId:
+      "2691d0fc64b2cbd711d0678dc12ab34f268f11b11789f8d9956f35fbab3ec01f",
+  },
+  {
+    id: "template:glass-bloom",
+    versionId:
+      "80d5bd9e80554e1e3e71a970d1c438d0c6def79889dfcd5e5152ad1152f3b91f",
+  },
+  {
+    id: "template:serif-stack",
+    versionId:
+      "741f16c88c518da56cb2b0322c004a3f9c874ba7c39accf886c8444436f5b421",
+  },
+  {
+    id: "template:sticker-pop",
+    versionId:
+      "ef6b1b8470785c71be604d06a7eb0afe72092f2d75e4623cb700465d5e436c3f",
+  },
+  {
     id: "template:warm-cards",
     versionId:
-      "dae4ff30aaf7408ae1679d4b5eb25b7cea5c889c00e44b413a572880617e68ce",
+      "2b21bbf11d7d890f9e3b51db16eabff3be958773af41fed0c9163cb3c4ec89fa",
   },
 ] as const;
 

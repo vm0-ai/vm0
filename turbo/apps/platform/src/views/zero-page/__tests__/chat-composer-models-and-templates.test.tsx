@@ -4159,7 +4159,10 @@ describe("chat composer templates", () => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "warm");
+    await fill(
+      screen.getByLabelText("Search templates"),
+      websiteTemplate.title,
+    );
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );

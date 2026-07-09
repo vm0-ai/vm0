@@ -110,24 +110,24 @@ describe("zero generate website command", () => {
       "cli",
       "website",
       "--prompt",
-      "Editorial landing page",
+      "High contrast launch page",
       "--template",
-      "warm-cards",
+      "black-slabs",
       "--site-slug",
-      "warm-cards-demo",
+      "black-slabs-demo",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected template: template:warm-cards (Warm Cards)",
+      "Selected template: template:black-slabs (Black Slabs)",
     );
     expect(stdout).toContain(
-      "Selected template package: zero resource pull template:warm-cards --dir ./generated/resources",
+      "Selected template package: zero resource pull template:black-slabs --dir ./generated/resources",
     );
-    expect(stdout).toContain('"id": "template:warm-cards"');
+    expect(stdout).toContain('"id": "template:black-slabs"');
     expect(stdout).toContain('"type": "tar.gz"');
     expect(stdout).toContain(
-      '"sha256": "1fafd9e5541dfe53ffdfafcbb6e45d525328c9a0cc5bb4afb2a06b4685e153d2"',
+      '"sha256": "7e2dfc9f61dc1b9d187661d36854d27b150c0be92f882d845e5adcfd4054e6ba"',
     );
   });
 
@@ -137,14 +137,14 @@ describe("zero generate website command", () => {
       "cli",
       "website",
       "--prompt",
-      "Editorial landing page",
+      "High contrast launch page",
       "--template",
-      "website-template:warm-cards",
+      "website-template:black-slabs",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected template: template:warm-cards (Warm Cards)",
+      "Selected template: template:black-slabs (Black Slabs)",
     );
   });
 
