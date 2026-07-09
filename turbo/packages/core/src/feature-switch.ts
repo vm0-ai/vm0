@@ -403,6 +403,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ArtifactVideoPreview]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Extract a static poster frame for video artifacts (via Cloudflare Media Transformations) so the artifacts grid shows an image instead of loading each video.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.WorkflowTemplateCatalog]: {
     maintainer: "ming@vm0.ai",
     description:
