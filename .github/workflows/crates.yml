@@ -392,14 +392,12 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
     needs: [detect]
     if: needs.detect.outputs.any-changed == 'true'
-    env:
-      CARGO_TARGET_DIR: target/coverage
     steps:
       - uses: actions/checkout@v7
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: crates -> target/coverage
+          workspaces: crates -> target
           shared-key: coverage
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
