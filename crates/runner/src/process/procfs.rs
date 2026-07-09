@@ -246,9 +246,12 @@ fn service_unit_from_cgroup_path(path: &str) -> Option<String> {
         .rev()
         .filter(|segment| !segment.is_empty())
         .find_map(|segment| {
-            segment
-                .strip_suffix(".service")
-                .map(std::string::ToString::to_string)
+            let unit = segment.strip_suffix(".service")?;
+            if unit.is_empty() {
+                None
+            } else {
+                Some(unit.to_string())
+            }
         })
 }
 
@@ -367,6 +370,10 @@ mod tests {
         assert_eq!(parse_service_unit_from_cgroup(""), None);
         assert_eq!(
             parse_service_unit_from_cgroup("not-a-cgroup-line\n1:cpu:relative.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("0::/system.slice/.service\n"),
             None
         );
     }
