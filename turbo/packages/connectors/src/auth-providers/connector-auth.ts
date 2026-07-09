@@ -92,7 +92,7 @@ import { mercuryProvider } from "./connectors/mercury/provider";
 import { microsoft365Provider } from "./connectors/microsoft-365/provider";
 import { mondayProvider } from "./connectors/monday/provider";
 import { neonProvider } from "./connectors/neon/provider";
-import { nintendoPlayActivityProvider } from "./connectors/nintendo-play-activity/provider";
+import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
@@ -683,9 +683,9 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("monday", "oauth", mondayProvider),
   authCodeRefreshProviderEntry("neon", "oauth", neonProvider),
   externalCodeRefreshProviderEntry(
-    "nintendo-play-activity",
+    "nintendo-store",
     "api",
-    nintendoPlayActivityProvider,
+    nintendoStoreProvider,
   ),
   authCodeRefreshProviderEntry("notion", "oauth", notionProvider),
   authCodeRefreshProviderEntry(

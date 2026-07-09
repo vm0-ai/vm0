@@ -185,7 +185,7 @@
     "generate:n8n": "tsx src/index.ts n8n",
     "generate:neon": "tsx src/index.ts neon",
     "generate:netdata": "tsx src/index.ts netdata",
-    "generate:nintendo-play-activity": "tsx src/index.ts nintendo-play-activity",
+    "generate:nintendo-store": "tsx src/index.ts nintendo-store",
     "generate:notion": "tsx src/index.ts notion",
     "generate:novita": "tsx src/index.ts novita",
     "generate:onyx": "tsx src/index.ts onyx",

@@ -7,32 +7,32 @@ import type { ConnectorExternalCodeGrantConfig } from "@vm0/connectors/connector
 import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { OAuthProviderHttpError, throwOAuthError } from "../../oauth/error";
 
-export const NINTENDO_PLAY_ACTIVITY_AUTHORIZATION_URL =
+export const NINTENDO_STORE_AUTHORIZATION_URL =
   "https://accounts.nintendo.com/connect/1.0.0/authorize";
-export const NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL =
+export const NINTENDO_STORE_SESSION_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/session_token";
-export const NINTENDO_PLAY_ACTIVITY_TOKEN_URL =
+export const NINTENDO_STORE_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/token";
-export const NINTENDO_PLAY_ACTIVITY_PROFILE_URL =
+export const NINTENDO_STORE_PROFILE_URL =
   "https://api.accounts.nintendo.com/2.0.0/users/me";
-export const NINTENDO_PLAY_ACTIVITY_REDIRECT_URI = "npf5c38e31cd085304b://auth";
-export const NINTENDO_PLAY_ACTIVITY_USER_AGENT =
+export const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
+export const NINTENDO_STORE_USER_AGENT =
   "com.nintendo.znej/1.13.0 (Android/7.1.2)";
 
 const NINTENDO_SESSION_TOKEN_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token";
 
-export interface NintendoPlayActivityProviderState {
+export interface NintendoStoreProviderState {
   readonly version: 1;
   readonly state: string;
   readonly codeVerifier: string;
 }
 
-export interface NintendoPlayActivitySessionToken {
+export interface NintendoStoreSessionToken {
   readonly sessionToken: string;
 }
 
-export interface NintendoPlayActivityToken {
+export interface NintendoStoreToken {
   readonly accessToken: string;
   readonly expiresIn?: number;
   readonly idToken: string;
@@ -40,25 +40,25 @@ export interface NintendoPlayActivityToken {
   readonly tokenType: string;
 }
 
-interface NintendoPlayActivityIdentity {
+interface NintendoStoreIdentity {
   readonly accountId: string;
   readonly username: string | null;
   readonly email: string | null;
 }
 
-export interface NintendoPlayActivityLocale {
+export interface NintendoStoreLocale {
   readonly country: string;
   readonly language: string;
   readonly locale: string;
 }
 
-const nintendoPlayActivitySessionTokenSchema = z
+const nintendoStoreSessionTokenSchema = z
   .object({
     session_token: z.string().min(1),
   })
   .passthrough();
 
-const nintendoPlayActivityTokenSchema = z
+const nintendoStoreTokenSchema = z
   .object({
     access_token: z.string().min(1),
     expires_in: z.number().optional(),
@@ -68,7 +68,7 @@ const nintendoPlayActivityTokenSchema = z
   })
   .passthrough();
 
-const nintendoPlayActivityIdTokenClaimsSchema = z
+const nintendoStoreIdTokenClaimsSchema = z
   .object({
     sub: z.string().min(1).optional(),
     email: z.string().min(1).optional(),
@@ -77,7 +77,7 @@ const nintendoPlayActivityIdTokenClaimsSchema = z
   })
   .passthrough();
 
-const nintendoPlayActivityProfileSchema = z
+const nintendoStoreProfileSchema = z
   .object({
     country: z.string().min(1),
     language: z.string().min(1),
@@ -92,7 +92,7 @@ function sha256Base64Url(value: string): string {
   return createHash("sha256").update(value).digest("base64url");
 }
 
-export function createNintendoPlayActivityProviderState(): NintendoPlayActivityProviderState {
+export function createNintendoStoreProviderState(): NintendoStoreProviderState {
   return {
     version: 1,
     state: base64UrlRandom(36),
@@ -100,15 +100,15 @@ export function createNintendoPlayActivityProviderState(): NintendoPlayActivityP
   };
 }
 
-export function buildNintendoPlayActivityAuthorizationUrl(args: {
+export function buildNintendoStoreAuthorizationUrl(args: {
   readonly clientId: string;
   readonly grant: ConnectorExternalCodeGrantConfig;
-  readonly providerState: NintendoPlayActivityProviderState;
+  readonly providerState: NintendoStoreProviderState;
 }): string {
   const params = new URLSearchParams({
     state: args.providerState.state,
     client_id: args.clientId,
-    redirect_uri: NINTENDO_PLAY_ACTIVITY_REDIRECT_URI,
+    redirect_uri: NINTENDO_STORE_REDIRECT_URI,
     scope: args.grant.scopes.join(" "),
     response_type: "session_token_code",
     session_token_code_challenge: sha256Base64Url(
@@ -118,7 +118,7 @@ export function buildNintendoPlayActivityAuthorizationUrl(args: {
     theme: "login_form",
   });
 
-  return `${NINTENDO_PLAY_ACTIVITY_AUTHORIZATION_URL}?${params.toString()}`;
+  return `${NINTENDO_STORE_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 function invalidNintendoExternalCodeError(
@@ -171,14 +171,14 @@ function parseParamsFromInput(input: string): URLSearchParams | null {
   return null;
 }
 
-export function parseNintendoPlayActivitySessionTokenCode(args: {
+export function parseNintendoStoreSessionTokenCode(args: {
   readonly code: string;
   readonly expectedState: string;
 }): string {
   const trimmed = args.code.trim();
   if (!trimmed || hasAsciiControl(trimmed)) {
     throw invalidNintendoExternalCodeError(
-      "Nintendo Play Activity authorization code is empty or invalid",
+      "Nintendo Store authorization code is empty or invalid",
     );
   }
 
@@ -190,30 +190,30 @@ export function parseNintendoPlayActivitySessionTokenCode(args: {
   const state = params.get("state");
   if (state !== null && state !== args.expectedState) {
     throw invalidNintendoExternalCodeError(
-      "Nintendo Play Activity authorization state mismatch",
+      "Nintendo Store authorization state mismatch",
     );
   }
 
   const sessionTokenCode = params.get("session_token_code")?.trim();
   if (!sessionTokenCode || hasAsciiControl(sessionTokenCode)) {
     throw invalidNintendoExternalCodeError(
-      "Nintendo Play Activity redirect URL is missing session_token_code",
+      "Nintendo Store redirect URL is missing session_token_code",
     );
   }
   return sessionTokenCode;
 }
 
-export async function exchangeNintendoPlayActivitySessionTokenCode(args: {
+export async function exchangeNintendoStoreSessionTokenCode(args: {
   readonly clientId: string;
   readonly sessionTokenCode: string;
   readonly codeVerifier: string;
   readonly signal: AbortSignal;
-}): Promise<NintendoPlayActivitySessionToken> {
-  const response = await fetch(NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL, {
+}): Promise<NintendoStoreSessionToken> {
+  const response = await fetch(NINTENDO_STORE_SESSION_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      "User-Agent": NINTENDO_STORE_USER_AGENT,
       Accept: "application/json",
       "Accept-Language": "en-US",
     },
@@ -226,16 +226,10 @@ export async function exchangeNintendoPlayActivitySessionTokenCode(args: {
   });
 
   if (!response.ok) {
-    await throwOAuthError(
-      "Nintendo Play Activity",
-      "session exchange",
-      response,
-    );
+    await throwOAuthError("Nintendo Store", "session exchange", response);
   }
 
-  const raw = nintendoPlayActivitySessionTokenSchema.parse(
-    await response.json(),
-  );
+  const raw = nintendoStoreSessionTokenSchema.parse(await response.json());
   return { sessionToken: raw.session_token };
 }
 
@@ -250,16 +244,16 @@ function normalizeScopes(
   });
 }
 
-export async function exchangeNintendoPlayActivitySessionToken(args: {
+export async function exchangeNintendoStoreSessionToken(args: {
   readonly clientId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
-}): Promise<NintendoPlayActivityToken> {
-  const response = await fetch(NINTENDO_PLAY_ACTIVITY_TOKEN_URL, {
+}): Promise<NintendoStoreToken> {
+  const response = await fetch(NINTENDO_STORE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "User-Agent": NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      "User-Agent": NINTENDO_STORE_USER_AGENT,
       Accept: "application/json",
     },
     body: JSON.stringify({
@@ -271,10 +265,10 @@ export async function exchangeNintendoPlayActivitySessionToken(args: {
   });
 
   if (!response.ok) {
-    await throwOAuthError("Nintendo Play Activity", "token exchange", response);
+    await throwOAuthError("Nintendo Store", "token exchange", response);
   }
 
-  const raw = nintendoPlayActivityTokenSchema.parse(await response.json());
+  const raw = nintendoStoreTokenSchema.parse(await response.json());
   return {
     accessToken: raw.access_token,
     ...(raw.expires_in === undefined ? {} : { expiresIn: raw.expires_in }),
@@ -284,24 +278,24 @@ export async function exchangeNintendoPlayActivitySessionToken(args: {
   };
 }
 
-export async function fetchNintendoPlayActivityLocale(args: {
+export async function fetchNintendoStoreLocale(args: {
   readonly accessToken: string;
   readonly signal: AbortSignal;
-}): Promise<NintendoPlayActivityLocale> {
-  const response = await fetch(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, {
+}): Promise<NintendoStoreLocale> {
+  const response = await fetch(NINTENDO_STORE_PROFILE_URL, {
     headers: {
       Authorization: `Bearer ${args.accessToken}`,
-      "User-Agent": NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      "User-Agent": NINTENDO_STORE_USER_AGENT,
       Accept: "application/json",
     },
     signal: args.signal,
   });
 
   if (!response.ok) {
-    await throwOAuthError("Nintendo Play Activity", "profile", response);
+    await throwOAuthError("Nintendo Store", "profile", response);
   }
 
-  const raw = nintendoPlayActivityProfileSchema.parse(await response.json());
+  const raw = nintendoStoreProfileSchema.parse(await response.json());
   return {
     country: raw.country,
     language: raw.language,
@@ -309,19 +303,17 @@ export async function fetchNintendoPlayActivityLocale(args: {
   };
 }
 
-function parseNintendoPlayActivityIdentity(
-  idToken: string,
-): NintendoPlayActivityIdentity {
+function parseNintendoStoreIdentity(idToken: string): NintendoStoreIdentity {
   const [, payload] = idToken.split(".");
   if (!payload) {
-    throw new Error("Nintendo Play Activity ID token is missing a payload");
+    throw new Error("Nintendo Store ID token is missing a payload");
   }
   const rawClaims: unknown = JSON.parse(
     Buffer.from(payload, "base64url").toString("utf8"),
   );
-  const claims = nintendoPlayActivityIdTokenClaimsSchema.parse(rawClaims);
+  const claims = nintendoStoreIdTokenClaimsSchema.parse(rawClaims);
   if (!claims.sub) {
-    throw new Error("Nintendo Play Activity ID token is missing a subject");
+    throw new Error("Nintendo Store ID token is missing a subject");
   }
   return {
     accountId: claims.sub,
@@ -330,10 +322,10 @@ function parseNintendoPlayActivityIdentity(
   };
 }
 
-export function nintendoPlayActivityUserInfo(
+export function nintendoStoreUserInfo(
   idToken: string,
 ): ConnectorAuthProviderGrantUserInfo {
-  const identity = parseNintendoPlayActivityIdentity(idToken);
+  const identity = parseNintendoStoreIdentity(idToken);
   return {
     id: identity.accountId,
     username: identity.username,
@@ -341,6 +333,6 @@ export function nintendoPlayActivityUserInfo(
   };
 }
 
-export function nintendoPlayActivityAccountId(idToken: string): string {
-  return parseNintendoPlayActivityIdentity(idToken).accountId;
+export function nintendoStoreAccountId(idToken: string): string {
+  return parseNintendoStoreIdentity(idToken).accountId;
 }

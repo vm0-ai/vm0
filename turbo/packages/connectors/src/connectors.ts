@@ -36,8 +36,7 @@ import { docusign } from "./connectors/docusign";
 import { googleAds } from "./connectors/google-ads";
 import { googleMaps } from "./connectors/google-maps";
 import { gumroad } from "./connectors/gumroad";
-import { nintendoEshopCatalog } from "./connectors/nintendo-eshop-catalog";
-import { nintendoPlayActivity } from "./connectors/nintendo-play-activity";
+import { nintendoStore } from "./connectors/nintendo-store";
 import { playstation } from "./connectors/playstation";
 import { spotify } from "./connectors/spotify";
 import { steam } from "./connectors/steam";
@@ -455,8 +454,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...googleCloud,
   ...googleMaps,
   ...gumroad,
-  ...nintendoEshopCatalog,
-  ...nintendoPlayActivity,
+  ...nintendoStore,
   ...playstation,
   ...spotify,
   ...steam,

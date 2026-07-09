@@ -33,7 +33,6 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 async function enableFeatureSwitches(
   orgId: string,
@@ -230,93 +229,6 @@ describe("GET /api/zero/connector-catalog", () => {
       hasDefaultPolicyOverrides: false,
     });
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
-  });
-
-  it("shows no-auth connector catalog entries when enabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorCatalogContract);
-    const initialList = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      initialList.body.connectors.find((connector) => {
-        return connector.connectorRef === "nintendo-eshop-catalog";
-      }),
-    ).toBeUndefined();
-
-    const initialStatus = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      initialStatus.body.connectors.find((connector) => {
-        return connector.connectorRef === "nintendo-eshop-catalog";
-      }),
-    ).toBeUndefined();
-
-    await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
-    });
-    const overriddenList = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      overriddenList.body.connectors.find((connector) => {
-        return connector.connectorRef === "nintendo-eshop-catalog";
-      }),
-    ).toMatchObject({
-      connectorRef: "nintendo-eshop-catalog",
-      authMethods: [
-        {
-          id: "api",
-          grantKind: "none",
-        },
-      ],
-    });
-
-    mocks.clerk.session(userId, STAFF_ORG_ID);
-
-    const staffList = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      staffList.body.connectors.find((connector) => {
-        return connector.connectorRef === "nintendo-eshop-catalog";
-      }),
-    ).toMatchObject({
-      connectorRef: "nintendo-eshop-catalog",
-      authMethods: [
-        {
-          id: "api",
-          grantKind: "none",
-        },
-      ],
-    });
-
-    const staffStatus = await accept(
-      client.status({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-    expect(
-      staffStatus.body.connectors.find((connector) => {
-        return connector.connectorRef === "nintendo-eshop-catalog";
-      }),
-    ).toMatchObject({
-      connectorRef: "nintendo-eshop-catalog",
-      connected: false,
-      authMethods: [
-        {
-          id: "api",
-          grantKind: "none",
-        },
-      ],
-    });
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
@@ -545,7 +457,7 @@ describe("GET /api/zero/connector-catalog", () => {
     });
   });
 
-  it("hides Nintendo Play Activity until its connector switch is enabled", async () => {
+  it("hides Nintendo Store until its connector switch is enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -557,12 +469,12 @@ describe("GET /api/zero/connector-catalog", () => {
     );
     expect(
       hidden.body.connectors.some((connector) => {
-        return connector.connectorRef === "nintendo-play-activity";
+        return connector.connectorRef === "nintendo-store";
       }),
     ).toBeFalsy();
 
     await enableConnectorFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.NintendoPlayActivityConnector]: true,
+      [FeatureSwitchKey.NintendoStoreConnector]: true,
     });
     const visible = await accept(
       client.status({ headers: { authorization: "Bearer clerk-session" } }),
@@ -570,22 +482,22 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(visible.body);
-    const nintendoPlayActivity = visible.body.connectors.find((connector) => {
-      return connector.connectorRef === "nintendo-play-activity";
+    const nintendoStore = visible.body.connectors.find((connector) => {
+      return connector.connectorRef === "nintendo-store";
     });
-    expect(nintendoPlayActivity).toMatchObject({
-      connectorRef: "nintendo-play-activity",
-      label: "Nintendo Play Activity",
+    expect(nintendoStore).toMatchObject({
+      connectorRef: "nintendo-store",
+      label: "Nintendo Store",
       connected: false,
       connectionStatus: "not-connected",
       permissionSummary: {
         hasPermissions: true,
-        permissionCount: 4,
+        permissionCount: 6,
         hasCategories: false,
         hasDefaultPolicyOverrides: true,
       },
     });
-    expect(nintendoPlayActivity?.authMethods).toStrictEqual([
+    expect(nintendoStore?.authMethods).toStrictEqual([
       {
         id: "api",
         label: "Nintendo sign-in",

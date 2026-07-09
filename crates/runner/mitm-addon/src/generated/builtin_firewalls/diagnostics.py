@@ -3140,7 +3140,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "authQueryParamNames": [],
         "base": "https://api.accounts.nintendo.com",
         "envNames": [
-          "NINTENDO_PLAY_ACTIVITY_TOKEN"
+          "NINTENDO_STORE_TOKEN"
         ]
       },
       {
@@ -3152,12 +3152,12 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "authQueryParamNames": [],
         "base": "https://app-api.znej.nintendo.com",
         "envNames": [
-          "NINTENDO_PLAY_ACTIVITY_TOKEN",
-          "NINTENDO_PLAY_ACTIVITY_LOCALE"
+          "NINTENDO_STORE_TOKEN",
+          "NINTENDO_STORE_LOCALE"
         ]
       }
     ],
-    "name": "nintendo-play-activity"
+    "name": "nintendo-store"
   },
   {
     "apis": [

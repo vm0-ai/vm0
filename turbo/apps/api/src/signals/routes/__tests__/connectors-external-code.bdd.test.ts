@@ -45,16 +45,16 @@ const AWS_REDIRECT_URI =
 const PLAYSTATION_AUTHORIZE_URL =
   "https://ca.account.sony.com/api/authz/v3/oauth/authorize";
 const PLAYSTATION_NPSSO_URL = "https://ca.account.sony.com/api/v1/ssocookie";
-const NINTENDO_PLAY_ACTIVITY_AUTHORIZE_URL =
+const NINTENDO_STORE_AUTHORIZE_URL =
   "https://accounts.nintendo.com/connect/1.0.0/authorize";
-const NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL =
+const NINTENDO_STORE_SESSION_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/session_token";
-const NINTENDO_PLAY_ACTIVITY_TOKEN_URL =
+const NINTENDO_STORE_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/token";
-const NINTENDO_PLAY_ACTIVITY_PROFILE_URL =
+const NINTENDO_STORE_PROFILE_URL =
   "https://api.accounts.nintendo.com/2.0.0/users/me";
-const NINTENDO_PLAY_ACTIVITY_REDIRECT_URI = "npf5c38e31cd085304b://auth";
-const NINTENDO_PLAY_ACTIVITY_CLIENT_ID = "5c38e31cd085304b";
+const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
+const NINTENDO_STORE_CLIENT_ID = "5c38e31cd085304b";
 
 async function awsActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
@@ -81,7 +81,7 @@ function jwtPayload(payload: Readonly<Record<string, string>>): string {
   return `${encode({ alg: "none" })}.${encode(payload)}.`;
 }
 
-function mockNintendoPlayActivityExternalCodeProvider(): {
+function mockNintendoStoreExternalCodeProvider(): {
   readonly sessionTokenBodies: URLSearchParams[];
   readonly tokenBodies: Readonly<Record<string, unknown>>[];
 } {
@@ -89,17 +89,17 @@ function mockNintendoPlayActivityExternalCodeProvider(): {
   const tokenBodies: Readonly<Record<string, unknown>>[] = [];
 
   server.use(
-    http.post(NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL, async ({ request }) => {
+    http.post(NINTENDO_STORE_SESSION_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
       sessionTokenBodies.push(body);
       return HttpResponse.json({
         session_token: "bdd-nintendo-session-token",
       });
     }),
-    http.post(NINTENDO_PLAY_ACTIVITY_TOKEN_URL, async ({ request }) => {
+    http.post(NINTENDO_STORE_TOKEN_URL, async ({ request }) => {
       const body: unknown = await request.json();
       if (!isRecord(body)) {
-        throw new Error("Expected Nintendo Play Activity token body object");
+        throw new Error("Expected Nintendo Store token body object");
       }
       tokenBodies.push(body);
       return HttpResponse.json({
@@ -114,7 +114,7 @@ function mockNintendoPlayActivityExternalCodeProvider(): {
         scope: "openid user user.mii user.email user.links[].id",
       });
     }),
-    http.get(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, () => {
+    http.get(NINTENDO_STORE_PROFILE_URL, () => {
       return HttpResponse.json({
         country: "HK",
         language: "zh-TW",
@@ -391,34 +391,34 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(authorizeRequestCount).toBe(1);
   });
 
-  it("starts and completes a Nintendo Play Activity external-code session through public APIs", async () => {
-    const provider = mockNintendoPlayActivityExternalCodeProvider();
+  it("starts and completes a Nintendo Store external-code session through public APIs", async () => {
+    const provider = mockNintendoStoreExternalCodeProvider();
     const bdd = createBddApi(context);
     const actor = bdd.user();
     context.mocks.ably.publish.mockResolvedValue(undefined);
     await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.NintendoPlayActivityConnector]: true,
+      [FeatureSwitchKey.NintendoStoreConnector]: true,
     });
 
     const session = await connectorsApi.startExternalCode(
       actor,
-      "nintendo-play-activity",
+      "nintendo-store",
       "api",
     );
     expect(session).toMatchObject({
-      type: "nintendo-play-activity",
+      type: "nintendo-store",
       status: "pending",
       expiresIn: 600,
     });
     const authorizationUrl = new URL(session.authorizationUrl);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
-      NINTENDO_PLAY_ACTIVITY_AUTHORIZE_URL,
+      NINTENDO_STORE_AUTHORIZE_URL,
     );
     expect(authorizationUrl.searchParams.get("client_id")).toBe(
-      NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+      NINTENDO_STORE_CLIENT_ID,
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      NINTENDO_PLAY_ACTIVITY_REDIRECT_URI,
+      NINTENDO_STORE_REDIRECT_URI,
     );
     expect(authorizationUrl.searchParams.get("response_type")).toBe(
       "session_token_code",
@@ -429,22 +429,22 @@ describe("CONN-02: external-code session lifecycle", () => {
     const state = authorizationUrl.searchParams.get("state");
     expect(state).toStrictEqual(expect.any(String));
     if (!state) {
-      throw new Error("Expected Nintendo Play Activity authorization state");
+      throw new Error("Expected Nintendo Store authorization state");
     }
 
     const complete = await connectorsApi.completeExternalCode(
       actor,
-      "nintendo-play-activity",
+      "nintendo-store",
       {
         sessionId: session.sessionId,
         sessionToken: session.sessionToken,
-        code: `${NINTENDO_PLAY_ACTIVITY_REDIRECT_URI}#session_token_code=bdd-nintendo-session-token-code&state=${state}`,
+        code: `${NINTENDO_STORE_REDIRECT_URI}#session_token_code=bdd-nintendo-session-token-code&state=${state}`,
       },
     );
 
     expect(provider.sessionTokenBodies).toHaveLength(1);
     expect(provider.sessionTokenBodies[0]?.get("client_id")).toBe(
-      NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+      NINTENDO_STORE_CLIENT_ID,
     );
     expect(provider.sessionTokenBodies[0]?.get("session_token_code")).toBe(
       "bdd-nintendo-session-token-code",
@@ -454,13 +454,13 @@ describe("CONN-02: external-code session lifecycle", () => {
     ).toStrictEqual(expect.any(String));
     expect(provider.tokenBodies).toStrictEqual([
       {
-        client_id: NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+        client_id: NINTENDO_STORE_CLIENT_ID,
         session_token: "bdd-nintendo-session-token",
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token",
       },
     ]);
     expect(complete.connector).toMatchObject({
-      type: "nintendo-play-activity",
+      type: "nintendo-store",
       authMethod: "api",
       externalId: "bdd-nintendo-account-id",
       externalUsername: "bdd-nintendo-player",
@@ -479,18 +479,18 @@ describe("CONN-02: external-code session lifecycle", () => {
     const listed = await connectorsApi.listConnectors(actor);
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "nintendo-play-activity",
+        connectorType: "nintendo-store",
         authMethod: "api",
         namespace: "secrets",
-        name: "NINTENDO_PLAY_ACTIVITY_TOKEN",
+        name: "NINTENDO_STORE_TOKEN",
       }),
     );
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "nintendo-play-activity",
+        connectorType: "nintendo-store",
         authMethod: "api",
         namespace: "vars",
-        name: "NINTENDO_PLAY_ACTIVITY_LOCALE",
+        name: "NINTENDO_STORE_LOCALE",
       }),
     );
     const secretList = await authOrgApi.listSecrets(actor);
@@ -502,14 +502,14 @@ describe("CONN-02: external-code session lifecycle", () => {
         return secret.name;
       });
     expect(connectorSecretNames.sort()).toStrictEqual([
-      "NINTENDO_PLAY_ACTIVITY_ACCESS_TOKEN",
-      "NINTENDO_PLAY_ACTIVITY_ID_TOKEN",
-      "NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN",
+      "NINTENDO_STORE_ACCESS_TOKEN",
+      "NINTENDO_STORE_ID_TOKEN",
+      "NINTENDO_STORE_SESSION_TOKEN",
     ]);
     expectNoVisibleSecret(secretList, "bdd-nintendo-session-token");
     expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
 
-    await connectorsApi.deleteConnectorByType(actor, "nintendo-play-activity");
+    await connectorsApi.deleteConnectorByType(actor, "nintendo-store");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 

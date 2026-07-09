@@ -5,67 +5,65 @@ import type {
   RefreshTokenAccessProvider,
 } from "../../types";
 import {
-  buildNintendoPlayActivityAuthorizationUrl,
-  createNintendoPlayActivityProviderState,
-  exchangeNintendoPlayActivitySessionToken,
-  exchangeNintendoPlayActivitySessionTokenCode,
-  fetchNintendoPlayActivityLocale,
-  nintendoPlayActivityAccountId,
-  nintendoPlayActivityUserInfo,
-  parseNintendoPlayActivitySessionTokenCode,
+  buildNintendoStoreAuthorizationUrl,
+  createNintendoStoreProviderState,
+  exchangeNintendoStoreSessionToken,
+  exchangeNintendoStoreSessionTokenCode,
+  fetchNintendoStoreLocale,
+  nintendoStoreAccountId,
+  nintendoStoreUserInfo,
+  parseNintendoStoreSessionTokenCode,
 } from "./api";
 
-const NINTENDO_PLAY_ACTIVITY_EXTERNAL_CODE_EXPIRES_IN_SECONDS = 10 * 60;
+const NINTENDO_STORE_EXTERNAL_CODE_EXPIRES_IN_SECONDS = 10 * 60;
 
-const nintendoPlayActivityProviderStateSchema = z.object({
+const nintendoStoreProviderStateSchema = z.object({
   version: z.literal(1),
   state: z.string().min(1).max(128),
   codeVerifier: z.string().min(43).max(128),
 });
 
-function parseNintendoPlayActivityProviderState(providerState: string) {
+function parseNintendoStoreProviderState(providerState: string) {
   const parsed: unknown = JSON.parse(providerState);
-  return nintendoPlayActivityProviderStateSchema.parse(parsed);
+  return nintendoStoreProviderStateSchema.parse(parsed);
 }
 
-function createNintendoPlayActivityExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
-  "nintendo-play-activity",
+function createNintendoStoreExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
+  "nintendo-store",
   "api"
 >["grant"] {
   return {
     kind: "external-code",
     startExternalCodeAuthorization: async (args) => {
-      const providerState = createNintendoPlayActivityProviderState();
+      const providerState = createNintendoStoreProviderState();
       return {
-        authorizationUrl: buildNintendoPlayActivityAuthorizationUrl({
+        authorizationUrl: buildNintendoStoreAuthorizationUrl({
           clientId: args.authClient.clientId,
           grant: args.externalCodeGrant,
           providerState,
         }),
         providerState: JSON.stringify(providerState),
-        expiresIn: NINTENDO_PLAY_ACTIVITY_EXTERNAL_CODE_EXPIRES_IN_SECONDS,
+        expiresIn: NINTENDO_STORE_EXTERNAL_CODE_EXPIRES_IN_SECONDS,
       };
     },
     completeExternalCodeAuthorization: async (args) => {
-      const providerState = parseNintendoPlayActivityProviderState(
-        args.providerState,
-      );
-      const sessionTokenCode = parseNintendoPlayActivitySessionTokenCode({
+      const providerState = parseNintendoStoreProviderState(args.providerState);
+      const sessionTokenCode = parseNintendoStoreSessionTokenCode({
         code: args.code,
         expectedState: providerState.state,
       });
-      const session = await exchangeNintendoPlayActivitySessionTokenCode({
+      const session = await exchangeNintendoStoreSessionTokenCode({
         clientId: args.authClient.clientId,
         sessionTokenCode,
         codeVerifier: providerState.codeVerifier,
         signal: args.signal,
       });
-      const token = await exchangeNintendoPlayActivitySessionToken({
+      const token = await exchangeNintendoStoreSessionToken({
         clientId: args.authClient.clientId,
         sessionToken: session.sessionToken,
         signal: args.signal,
       });
-      const locale = await fetchNintendoPlayActivityLocale({
+      const locale = await fetchNintendoStoreLocale({
         accessToken: token.accessToken,
         signal: args.signal,
       });
@@ -74,7 +72,7 @@ function createNintendoPlayActivityExternalCodeGrantProvider(): ExternalCodeConn
           sessionToken: session.sessionToken,
           accessToken: token.accessToken,
           idToken: token.idToken,
-          accountId: nintendoPlayActivityAccountId(token.idToken),
+          accountId: nintendoStoreAccountId(token.idToken),
           locale: locale.locale,
         },
         expiresIn: token.expiresIn,
@@ -82,25 +80,25 @@ function createNintendoPlayActivityExternalCodeGrantProvider(): ExternalCodeConn
           token.scopes.length > 0
             ? token.scopes
             : args.externalCodeGrant.scopes,
-        userInfo: nintendoPlayActivityUserInfo(token.idToken),
+        userInfo: nintendoStoreUserInfo(token.idToken),
       };
     },
   };
 }
 
-function createNintendoPlayActivityRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
-  "nintendo-play-activity",
+function createNintendoStoreRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
+  "nintendo-store",
   "api"
 > {
   return {
     kind: "refresh-token",
     refresh: async (args) => {
-      const token = await exchangeNintendoPlayActivitySessionToken({
+      const token = await exchangeNintendoStoreSessionToken({
         clientId: args.authClient.clientId,
         sessionToken: args.inputs.sessionToken,
         signal: args.signal,
       });
-      const locale = await fetchNintendoPlayActivityLocale({
+      const locale = await fetchNintendoStoreLocale({
         accessToken: token.accessToken,
         signal: args.signal,
       });
@@ -116,13 +114,13 @@ function createNintendoPlayActivityRefreshTokenAccessProvider(): RefreshTokenAcc
   };
 }
 
-export const nintendoPlayActivityProvider = {
-  grant: createNintendoPlayActivityExternalCodeGrantProvider(),
-  access: createNintendoPlayActivityRefreshTokenAccessProvider(),
+export const nintendoStoreProvider = {
+  grant: createNintendoStoreExternalCodeGrantProvider(),
+  access: createNintendoStoreRefreshTokenAccessProvider(),
   revoke: { kind: "none" },
 } as const satisfies ExternalCodeConnectorAuthProvider<
-  "nintendo-play-activity",
+  "nintendo-store",
   "api"
 > & {
-  readonly access: RefreshTokenAccessProvider<"nintendo-play-activity", "api">;
+  readonly access: RefreshTokenAccessProvider<"nintendo-store", "api">;
 };

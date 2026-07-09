@@ -13,24 +13,24 @@ import {
 import { isOAuthProviderHttpError } from "../../oauth/error";
 import { server } from "../../__tests__/test-server";
 import {
-  NINTENDO_PLAY_ACTIVITY_AUTHORIZATION_URL,
-  NINTENDO_PLAY_ACTIVITY_PROFILE_URL,
-  NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL,
-  NINTENDO_PLAY_ACTIVITY_TOKEN_URL,
-  NINTENDO_PLAY_ACTIVITY_USER_AGENT,
-} from "../nintendo-play-activity/api";
+  NINTENDO_STORE_AUTHORIZATION_URL,
+  NINTENDO_STORE_PROFILE_URL,
+  NINTENDO_STORE_SESSION_TOKEN_URL,
+  NINTENDO_STORE_TOKEN_URL,
+  NINTENDO_STORE_USER_AGENT,
+} from "../nintendo-store/api";
 
-const NINTENDO_PLAY_ACTIVITY_CLIENT_ID = "5c38e31cd085304b";
-const NINTENDO_PLAY_ACTIVITY_REDIRECT_URI = "npf5c38e31cd085304b://auth";
+const NINTENDO_STORE_CLIENT_ID = "5c38e31cd085304b";
+const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
 const NINTENDO_SESSION_TOKEN_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token";
 
-function nintendoPlayActivityAuthClient() {
+function nintendoStoreAuthClient() {
   const authClient = resolveConnectorAuthClientForMethod(
-    "nintendo-play-activity",
+    "nintendo-store",
     "api",
     () => {
-      throw new Error("Nintendo Play Activity auth client should not read env");
+      throw new Error("Nintendo Store auth client should not read env");
     },
   );
   if (
@@ -39,7 +39,7 @@ function nintendoPlayActivityAuthClient() {
     authClient.clientType !== "public" ||
     !("clientId" in authClient)
   ) {
-    throw new Error("Missing Nintendo Play Activity public auth client");
+    throw new Error("Missing Nintendo Store public auth client");
   }
   return authClient;
 }
@@ -60,11 +60,11 @@ function sha256Base64Url(value: string): string {
   return createHash("sha256").update(value).digest("base64url");
 }
 
-async function startNintendoPlayActivitySession() {
+async function startNintendoStoreSession() {
   const result = await startConnectorExternalCodeAuthorization({
-    type: "nintendo-play-activity",
+    type: "nintendo-store",
     authMethod: "api",
-    authClient: nintendoPlayActivityAuthClient(),
+    authClient: nintendoStoreAuthClient(),
   });
   const providerState = JSON.parse(result.providerState) as {
     readonly version: 1;
@@ -74,7 +74,7 @@ async function startNintendoPlayActivitySession() {
   return { result, providerState };
 }
 
-function mockNintendoPlayActivityTokenExchange(args?: {
+function mockNintendoStoreTokenExchange(args?: {
   readonly accessToken?: string;
   readonly idToken?: string;
 }) {
@@ -86,14 +86,14 @@ function mockNintendoPlayActivityTokenExchange(args?: {
     tokenRequestBody?: unknown;
   } = {};
   server.use(
-    http.post(NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL, async ({ request }) => {
+    http.post(NINTENDO_STORE_SESSION_TOKEN_URL, async ({ request }) => {
       captured.sessionRequestHeaders = request.headers;
       captured.sessionRequestBody = new URLSearchParams(await request.text());
       return HttpResponse.json({
         session_token: "nintendo-session-token",
       });
     }),
-    http.post(NINTENDO_PLAY_ACTIVITY_TOKEN_URL, async ({ request }) => {
+    http.post(NINTENDO_STORE_TOKEN_URL, async ({ request }) => {
       captured.tokenRequestHeaders = request.headers;
       captured.tokenRequestBody = await request.json();
       return HttpResponse.json({
@@ -110,7 +110,7 @@ function mockNintendoPlayActivityTokenExchange(args?: {
         token_type: "Bearer",
       });
     }),
-    http.get(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, ({ request }) => {
+    http.get(NINTENDO_STORE_PROFILE_URL, ({ request }) => {
       captured.profileRequestHeaders = request.headers;
       return HttpResponse.json({
         country: "HK",
@@ -121,19 +121,19 @@ function mockNintendoPlayActivityTokenExchange(args?: {
   return captured;
 }
 
-describe("Nintendo Play Activity external-code provider", () => {
+describe("Nintendo Store external-code provider", () => {
   it("starts by building a Nintendo session-token-code authorization URL", async () => {
-    const { result, providerState } = await startNintendoPlayActivitySession();
+    const { result, providerState } = await startNintendoStoreSession();
     const authorizationUrl = new URL(result.authorizationUrl);
 
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
-      NINTENDO_PLAY_ACTIVITY_AUTHORIZATION_URL,
+      NINTENDO_STORE_AUTHORIZATION_URL,
     );
     expect(authorizationUrl.searchParams.get("client_id")).toBe(
-      NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+      NINTENDO_STORE_CLIENT_ID,
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      NINTENDO_PLAY_ACTIVITY_REDIRECT_URI,
+      NINTENDO_STORE_REDIRECT_URI,
     );
     expect(authorizationUrl.searchParams.get("response_type")).toBe(
       "session_token_code",
@@ -158,16 +158,16 @@ describe("Nintendo Play Activity external-code provider", () => {
   });
 
   it("exchanges a pasted Nintendo redirect URL for connector credentials", async () => {
-    const { result, providerState } = await startNintendoPlayActivitySession();
-    const captured = mockNintendoPlayActivityTokenExchange();
+    const { result, providerState } = await startNintendoStoreSession();
+    const captured = mockNintendoStoreTokenExchange();
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-play-activity",
+        type: "nintendo-store",
         authMethod: "api",
-        authClient: nintendoPlayActivityAuthClient(),
+        authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
-        code: `${NINTENDO_PLAY_ACTIVITY_REDIRECT_URI}#session_token_code=nintendo-session-code&state=${providerState.state}`,
+        code: `${NINTENDO_STORE_REDIRECT_URI}#session_token_code=nintendo-session-code&state=${providerState.state}`,
         signal: testSignal(),
       }),
     ).resolves.toStrictEqual({
@@ -195,10 +195,10 @@ describe("Nintendo Play Activity external-code provider", () => {
       "application/x-www-form-urlencoded",
     );
     expect(captured.sessionRequestHeaders?.get("user-agent")).toBe(
-      NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      NINTENDO_STORE_USER_AGENT,
     );
     expect(captured.sessionRequestBody?.get("client_id")).toBe(
-      NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+      NINTENDO_STORE_CLIENT_ID,
     );
     expect(captured.sessionRequestBody?.get("session_token_code")).toBe(
       "nintendo-session-code",
@@ -211,10 +211,10 @@ describe("Nintendo Play Activity external-code provider", () => {
       "application/json; charset=utf-8",
     );
     expect(captured.tokenRequestHeaders?.get("user-agent")).toBe(
-      NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      NINTENDO_STORE_USER_AGENT,
     );
     expect(captured.tokenRequestBody).toStrictEqual({
-      client_id: NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+      client_id: NINTENDO_STORE_CLIENT_ID,
       session_token: "nintendo-session-token",
       grant_type: NINTENDO_SESSION_TOKEN_GRANT_TYPE,
     });
@@ -222,21 +222,21 @@ describe("Nintendo Play Activity external-code provider", () => {
       "Bearer nintendo-access-token",
     );
     expect(captured.profileRequestHeaders?.get("user-agent")).toBe(
-      NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      NINTENDO_STORE_USER_AGENT,
     );
   });
 
   it("accepts a raw Nintendo session token code", async () => {
-    const { result } = await startNintendoPlayActivitySession();
-    const captured = mockNintendoPlayActivityTokenExchange({
+    const { result } = await startNintendoStoreSession();
+    const captured = mockNintendoStoreTokenExchange({
       accessToken: "raw-code-access-token",
     });
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-play-activity",
+        type: "nintendo-store",
         authMethod: "api",
-        authClient: nintendoPlayActivityAuthClient(),
+        authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
         code: " raw-session-code ",
         signal: testSignal(),
@@ -255,10 +255,10 @@ describe("Nintendo Play Activity external-code provider", () => {
   });
 
   it("rejects a Nintendo redirect URL with the wrong state before exchange", async () => {
-    const { result } = await startNintendoPlayActivitySession();
+    const { result } = await startNintendoStoreSession();
     let sessionExchangeCount = 0;
     server.use(
-      http.post(NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL, () => {
+      http.post(NINTENDO_STORE_SESSION_TOKEN_URL, () => {
         sessionExchangeCount += 1;
         return HttpResponse.json({ session_token: "should-not-happen" });
       }),
@@ -266,11 +266,11 @@ describe("Nintendo Play Activity external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-play-activity",
+        type: "nintendo-store",
         authMethod: "api",
-        authClient: nintendoPlayActivityAuthClient(),
+        authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
-        code: `${NINTENDO_PLAY_ACTIVITY_REDIRECT_URI}#session_token_code=nintendo-session-code&state=wrong-state`,
+        code: `${NINTENDO_STORE_REDIRECT_URI}#session_token_code=nintendo-session-code&state=wrong-state`,
         signal: testSignal(),
       }),
     ).rejects.toSatisfy((error: unknown) => {
@@ -284,10 +284,10 @@ describe("Nintendo Play Activity external-code provider", () => {
   });
 
   it("rejects a pasted redirect URL without a session token code before exchange", async () => {
-    const { result, providerState } = await startNintendoPlayActivitySession();
+    const { result, providerState } = await startNintendoStoreSession();
     let sessionExchangeCount = 0;
     server.use(
-      http.post(NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL, () => {
+      http.post(NINTENDO_STORE_SESSION_TOKEN_URL, () => {
         sessionExchangeCount += 1;
         return HttpResponse.json({ session_token: "should-not-happen" });
       }),
@@ -295,11 +295,11 @@ describe("Nintendo Play Activity external-code provider", () => {
 
     await expect(
       completeConnectorExternalCodeAuthorization({
-        type: "nintendo-play-activity",
+        type: "nintendo-store",
         authMethod: "api",
-        authClient: nintendoPlayActivityAuthClient(),
+        authClient: nintendoStoreAuthClient(),
         providerState: result.providerState,
-        code: `${NINTENDO_PLAY_ACTIVITY_REDIRECT_URI}#state=${providerState.state}`,
+        code: `${NINTENDO_STORE_REDIRECT_URI}#state=${providerState.state}`,
         signal: testSignal(),
       }),
     ).rejects.toSatisfy((error: unknown) => {
@@ -312,12 +312,12 @@ describe("Nintendo Play Activity external-code provider", () => {
     expect(sessionExchangeCount).toBe(0);
   });
 
-  it("refreshes the Nintendo Play Activity access token from the session token", async () => {
+  it("refreshes the Nintendo Store access token from the session token", async () => {
     let profileRequestHeaders: Headers | undefined;
     let tokenRequestBody: unknown;
     const refreshedIdToken = jwtPayload({ sub: "nintendo-account-123" });
     server.use(
-      http.post(NINTENDO_PLAY_ACTIVITY_TOKEN_URL, async ({ request }) => {
+      http.post(NINTENDO_STORE_TOKEN_URL, async ({ request }) => {
         tokenRequestBody = await request.json();
         return HttpResponse.json({
           access_token: "refreshed-nintendo-access-token",
@@ -326,7 +326,7 @@ describe("Nintendo Play Activity external-code provider", () => {
           token_type: "Bearer",
         });
       }),
-      http.get(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, ({ request }) => {
+      http.get(NINTENDO_STORE_PROFILE_URL, ({ request }) => {
         profileRequestHeaders = request.headers;
         return HttpResponse.json({
           country: "US",
@@ -337,9 +337,9 @@ describe("Nintendo Play Activity external-code provider", () => {
 
     await expect(
       refreshConnectorAuthProviderAccessToken({
-        type: "nintendo-play-activity",
+        type: "nintendo-store",
         authMethod: "api",
-        authClient: nintendoPlayActivityAuthClient(),
+        authClient: nintendoStoreAuthClient(),
         inputs: {
           sessionToken: "stored-nintendo-session-token",
         },
@@ -354,7 +354,7 @@ describe("Nintendo Play Activity external-code provider", () => {
       expiresIn: 1800,
     });
     expect(tokenRequestBody).toStrictEqual({
-      client_id: NINTENDO_PLAY_ACTIVITY_CLIENT_ID,
+      client_id: NINTENDO_STORE_CLIENT_ID,
       session_token: "stored-nintendo-session-token",
       grant_type: NINTENDO_SESSION_TOKEN_GRANT_TYPE,
     });
