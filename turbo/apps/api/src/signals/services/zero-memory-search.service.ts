@@ -458,12 +458,21 @@ function dedupeSearchResults(
   limit: number,
 ): readonly MemorySearchResult[] {
   const documentCounts = new Map<string, number>();
-  const seenTexts = new Set<string>();
+  const resultIndexesByText = new Map<string, number>();
   const deduped: MemorySearchResult[] = [];
 
   for (const result of results) {
     const normalizedText = normalizedResultText(result);
-    if (normalizedText && seenTexts.has(normalizedText)) {
+    const existingIndex = normalizedText
+      ? resultIndexesByText.get(normalizedText)
+      : undefined;
+    if (existingIndex !== undefined) {
+      const existing = deduped[existingIndex];
+      if (existing?.kind === "document_chunk" && result.kind === "memory") {
+        const documentCount = documentCounts.get(existing.documentId) ?? 1;
+        documentCounts.set(existing.documentId, documentCount - 1);
+        deduped[existingIndex] = result;
+      }
       continue;
     }
     if (result.kind === "document_chunk") {
@@ -474,7 +483,7 @@ function dedupeSearchResults(
       documentCounts.set(result.documentId, documentCount + 1);
     }
     if (normalizedText) {
-      seenTexts.add(normalizedText);
+      resultIndexesByText.set(normalizedText, deduped.length);
     }
     deduped.push(result);
     if (deduped.length >= limit) {

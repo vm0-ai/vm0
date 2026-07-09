@@ -134,6 +134,7 @@ export async function seedLexicalRelationshipMemory(args: {
   readonly text: string;
   readonly confidence?: number;
   readonly lastSeenAt?: Date;
+  readonly query?: string;
 }): Promise<{
   readonly entityId: string;
   readonly memoryId: string;
@@ -167,6 +168,21 @@ export async function seedLexicalRelationshipMemory(args: {
     .returning({ id: memories.id });
   if (!memory) {
     throw new Error("Expected lexical relationship memory fixture memory");
+  }
+
+  if (args.query) {
+    await insertSearchEntryForMemory({
+      db,
+      fixture: args.fixture,
+      entityId: entity.id,
+      memoryId: memory.id,
+      kind: args.kind,
+      memoryText: args.text,
+      displayName: args.displayName,
+      query: args.query,
+      confidence: args.confidence ?? 91,
+      lastSeenAt: args.lastSeenAt ?? new Date("2026-07-05T12:00:00.000Z"),
+    });
   }
 
   return {

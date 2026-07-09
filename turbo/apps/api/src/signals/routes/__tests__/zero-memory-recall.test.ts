@@ -550,6 +550,7 @@ describe("GET /api/zero/memory/search", () => {
       displayName: "Security review",
       kind: "key_fact",
       text,
+      query: "launch checklist security review",
     });
     await seedMemoryDocumentChunk({
       fixture,
