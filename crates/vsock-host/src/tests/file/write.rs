@@ -173,6 +173,7 @@ async fn write_files_accepts_file_count_at_batch_limit() {
 async fn write_files_rejects_file_count_above_batch_limit_before_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
     let paths = (0..=WRITE_FILES_BATCH_FILE_LIMIT)
         .map(|index| format!("/tmp/too-many-files-{index}.txt"))
         .collect::<Vec<_>>();
@@ -184,8 +185,9 @@ async fn write_files_rejects_file_count_above_batch_limit_before_sending_frame()
         })
         .collect::<Vec<_>>();
 
-    let err = host
-        .write_files_with_write_observer(
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
             &files,
             FrameWriteObserver::new({
                 let write_start_count = Arc::clone(&write_start_count);
@@ -194,9 +196,11 @@ async fn write_files_rejects_file_count_above_batch_limit_before_sending_frame()
                     Ok(())
                 }
             }),
-        )
-        .await
-        .unwrap_err();
+        ),
+    )
+    .await
+    .expect("file-count-invalid write_files should return before waiting for the writer")
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
@@ -210,16 +214,19 @@ async fn write_files_rejects_file_count_above_batch_limit_before_sending_frame()
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer_guard);
 }
 
 #[tokio::test]
 async fn write_files_rejects_content_above_batch_limit_before_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
     let content = vec![0u8; WRITE_FILES_BATCH_CONTENT_LIMIT + 1];
 
-    let err = host
-        .write_files_with_write_observer(
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
             &[WriteFileEntry {
                 path: "/tmp/too-large-batch-content.txt",
                 content: &content,
@@ -231,9 +238,11 @@ async fn write_files_rejects_content_above_batch_limit_before_sending_frame() {
                     Ok(())
                 }
             }),
-        )
-        .await
-        .unwrap_err();
+        ),
+    )
+    .await
+    .expect("content-invalid write_files should return before waiting for the writer")
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
@@ -247,6 +256,7 @@ async fn write_files_rejects_content_above_batch_limit_before_sending_frame() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer_guard);
 }
 
 #[tokio::test]
