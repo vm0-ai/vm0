@@ -12,6 +12,7 @@ use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 use tracing::{info, warn};
 
+use super::heartbeat::HeldSessionStateSnapshot;
 use super::idle_lifecycle::{
     SharedIdlePool, destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait,
 };
@@ -35,6 +36,7 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::types::HeldSessionState;
 use crate::workspace_image_cache::{
     WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionRequest,
 };
@@ -55,6 +57,21 @@ fn mark_session_affinity_refresh(
     }
 }
 
+fn mark_workspace_cache_snapshot_promoted(
+    snapshot: &HeldSessionStateSnapshot,
+    session_id: Option<&str>,
+    completed_at: &str,
+    promoted: bool,
+) -> bool {
+    if promoted && let Some(session_id) = session_id {
+        snapshot.upsert_workspace_cache_state(HeldSessionState {
+            session_id: session_id.to_owned(),
+            last_completed_at: completed_at.to_owned(),
+        });
+    }
+    promoted
+}
+
 pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
@@ -72,6 +89,7 @@ pub(super) struct FinalizeContext {
     pub(super) idle_pool: SharedIdlePool,
     pub(super) status: Arc<StatusTracker>,
     pub(super) park_notify: Arc<tokio::sync::Notify>,
+    pub(super) held_session_snapshot: HeldSessionStateSnapshot,
     pub(super) parking_gate: ParkingGate,
     pub(super) network_log_drain: NetworkLogDrainCoordinator,
     pub(super) exit_code: i32,
@@ -110,6 +128,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         idle_pool,
         status,
         park_notify,
+        held_session_snapshot,
         parking_gate,
         network_log_drain,
         exit_code,
@@ -186,12 +205,17 @@ pub(super) async fn finalize_sandbox_for_completion(
                     error = %failure.error,
                     "sandbox park failed, destroying instead of parking"
                 );
-                let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
-                    sandbox.as_ref(),
-                    workspace_promotion,
-                    "park_failed",
-                )
-                .await;
+                let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                    &held_session_snapshot,
+                    Some(&cli_agent_session_id),
+                    &completed_at,
+                    promote_workspace_image_from_active_sandbox(
+                        sandbox.as_ref(),
+                        workspace_promotion,
+                        "park_failed",
+                    )
+                    .await,
+                );
                 let destroy_outcome = stop_and_destroy_sandbox(
                     sandbox,
                     &**failure_factory,
@@ -233,7 +257,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                 destroy_bookkeeping,
             )
             .await;
-            session_affinity_changed |= destroy_result.workspace_cache_promoted;
+            session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+                &held_session_snapshot,
+                Some(&cli_agent_session_id),
+                &completed_at,
+                destroy_result.workspace_cache_promoted,
+            );
             destroy_result.budget
         } else {
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
@@ -263,9 +292,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                             destroy_bookkeeping,
                         )
                         .await;
+                        let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                            &held_session_snapshot,
+                            Some(&cli_agent_session_id),
+                            &completed_at,
+                            destroy_result.workspace_cache_promoted,
+                        );
                         return mark_session_affinity_refresh(
                             CompletionReady::new(completion_payload, destroy_result.budget),
-                            destroy_result.workspace_cache_promoted,
+                            workspace_cache_promoted,
                         );
                     }
                     drop(transfer_guard);
@@ -287,9 +322,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                         destroy_bookkeeping,
                     )
                     .await;
+                    let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+                        &held_session_snapshot,
+                        Some(&cli_agent_session_id),
+                        &completed_at,
+                        destroy_result.workspace_cache_promoted,
+                    );
                     return mark_session_affinity_refresh(
                         CompletionReady::new(completion_payload, destroy_result.budget),
-                        destroy_result.workspace_cache_promoted,
+                        workspace_cache_promoted,
                     );
                 }
                 let candidate = candidate.with_last_completed_at(completed_at.clone());
@@ -367,7 +408,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                             destroy_bookkeeping,
                         )
                         .await;
-                        session_affinity_changed |= destroy_result.workspace_cache_promoted;
+                        session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
+                            &held_session_snapshot,
+                            Some(&cli_agent_session_id),
+                            &completed_at,
+                            destroy_result.workspace_cache_promoted,
+                        );
                         destroy_result.budget
                     }
                 };
@@ -375,17 +421,22 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable session — stop + destroy.
-        let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
-            sandbox.as_ref(),
-            workspace_promotion,
-            active_cleanup_reason(
-                exit_code,
-                cancelled,
-                parking_gate.is_open(),
-                resolved_cli_agent_session_id,
-            ),
-        )
-        .await;
+        let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
+            &held_session_snapshot,
+            resolved_cli_agent_session_id,
+            &completed_at,
+            promote_workspace_image_from_active_sandbox(
+                sandbox.as_ref(),
+                workspace_promotion,
+                active_cleanup_reason(
+                    exit_code,
+                    cancelled,
+                    parking_gate.is_open(),
+                    resolved_cli_agent_session_id,
+                ),
+            )
+            .await,
+        );
         session_affinity_changed |= workspace_cache_promoted;
         let destroy_outcome = stop_and_destroy_sandbox(
             sandbox,
@@ -674,6 +725,7 @@ mod tests {
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
                 park_notify: Arc::new(tokio::sync::Notify::new()),
+                held_session_snapshot: HeldSessionStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 exit_code: 0,

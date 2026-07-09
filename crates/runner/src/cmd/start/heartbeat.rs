@@ -79,10 +79,30 @@ impl HeldSessionStateSnapshot {
         Self::default()
     }
 
+    pub(super) fn workspace_cache_loaded(&self) -> bool {
+        self.lock_inner().workspace_cache_loaded
+    }
+
     pub(super) fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
         let mut inner = self.lock_inner();
         inner.workspace_cache_states = states;
+        cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
         inner.workspace_cache_loaded = true;
+    }
+
+    pub(super) fn upsert_workspace_cache_state(&self, state: HeldSessionState) {
+        let mut inner = self.lock_inner();
+        inner.workspace_cache_loaded = true;
+        match inner
+            .workspace_cache_states
+            .iter_mut()
+            .find(|existing| existing.session_id == state.session_id)
+        {
+            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
+            Some(existing) => *existing = state,
+            None => inner.workspace_cache_states.push(state),
+        }
+        cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
     }
 
     pub(super) fn might_contain_workspace_cache_session(&self, session_id: &str) -> bool {
@@ -130,10 +150,11 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         mode,
     );
     drop(pool);
-    let workspace_cache_states =
-        workspace_cache_held_session_states(hb.workspace_cache.as_ref()).await;
-    hb.held_session_snapshot
-        .update_workspace_cache_states(workspace_cache_states.clone());
+    let workspace_cache_states = refresh_workspace_cache_held_session_snapshot(
+        &hb.held_session_snapshot,
+        hb.workspace_cache.as_ref(),
+    )
+    .await;
     state.held_session_states = merge_current_held_session_states(
         state.held_session_states,
         workspace_cache_states,
@@ -151,6 +172,15 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         "heartbeat held session states"
     );
     hb.provider.heartbeat(&state).await;
+}
+
+pub(super) async fn refresh_workspace_cache_held_session_snapshot(
+    snapshot: &HeldSessionStateSnapshot,
+    workspace_cache: Option<&SessionWorkspaceCache>,
+) -> Vec<HeldSessionState> {
+    let states = workspace_cache_held_session_states(workspace_cache).await;
+    snapshot.update_workspace_cache_states(states.clone());
+    states
 }
 
 async fn workspace_cache_held_session_states(
@@ -208,6 +238,19 @@ fn merge_held_session_states(
     states.truncate(MAX_HELD_SESSION_STATES);
     states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
     states
+}
+
+fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldSessionState>) {
+    if states.len() <= MAX_HELD_SESSION_STATES {
+        return;
+    }
+    states.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    states.truncate(MAX_HELD_SESSION_STATES);
+    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
 }
 
 fn admittable_profiles_for_heartbeat(
@@ -671,11 +714,19 @@ mod tests {
         let snapshot = HeldSessionStateSnapshot::new();
 
         assert!(
+            !snapshot.workspace_cache_loaded(),
+            "new snapshot should start with unknown workspace-cache state"
+        );
+        assert!(
             snapshot.might_contain_workspace_cache_session("sess-cache"),
             "unloaded snapshot should trigger one refresh for cache-enabled runners"
         );
 
         snapshot.update_workspace_cache_states(Vec::new());
+        assert!(
+            snapshot.workspace_cache_loaded(),
+            "refresh should mark workspace-cache state loaded even when empty"
+        );
         assert!(
             !snapshot.might_contain_workspace_cache_session("sess-cache"),
             "loaded empty snapshot should not keep triggering cache refreshes"
@@ -689,6 +740,38 @@ mod tests {
             snapshot.might_contain_workspace_cache_session("sess-cache"),
             "loaded matching snapshot should trigger refresh when that session is claimed"
         );
+    }
+
+    #[test]
+    fn held_session_snapshot_upsert_caps_workspace_cache_states() {
+        let snapshot = HeldSessionStateSnapshot::new();
+        for index in 0..=MAX_HELD_SESSION_STATES {
+            snapshot.upsert_workspace_cache_state(HeldSessionState {
+                session_id: format!("sess-{index:04}"),
+                last_completed_at: timestamp_for_index(index),
+            });
+        }
+
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
+        let states =
+            snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
+
+        assert_eq!(states.len(), MAX_HELD_SESSION_STATES);
+        assert!(
+            !states.iter().any(|state| state.session_id == "sess-0000"),
+            "oldest upserted workspace-cache state should be dropped at the cap"
+        );
+        assert!(
+            states
+                .iter()
+                .any(|state| state.session_id == format!("sess-{MAX_HELD_SESSION_STATES:04}")),
+            "newest upserted workspace-cache state should be retained at the cap"
+        );
+    }
+
+    fn timestamp_for_index(index: usize) -> String {
+        format!("2026-06-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
     }
 
     #[test]

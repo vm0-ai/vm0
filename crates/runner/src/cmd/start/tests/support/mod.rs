@@ -11,7 +11,7 @@ pub(super) use self::env::{
 pub(super) use self::idle_pool::{
     TestParkedIdleCandidateSpec, WorkspacePromotionSeedSpec, seed_idle_pool,
     seed_idle_pool_expired, seed_idle_pool_with_overrides, seed_idle_pool_with_timing,
-    seed_idle_pool_with_workspace_promotion,
+    seed_idle_pool_with_workspace_promotion, seed_workspace_cache_state,
 };
 pub(super) use self::jobs::{
     TEST_SESSION_LAST_COMPLETED_AT, context_with_session, minimal_context, push_job, shutdown,
