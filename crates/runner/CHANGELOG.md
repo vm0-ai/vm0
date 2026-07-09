@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.141.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.2...runner-rs-v0.141.0) (2026-07-09)
+
+
+### Features
+
+* **runner:** add service stop cleanup policies ([#20769](https://github.com/vm0-ai/vm0/issues/20769)) ([e499917](https://github.com/vm0-ai/vm0/commit/e49991791d96e70bcb909a6b57ccda9669316e99))
+
+
+### Bug Fixes
+
+* parse runner service cgroups robustly ([#20792](https://github.com/vm0-ai/vm0/issues/20792)) ([53ecb3e](https://github.com/vm0-ai/vm0/commit/53ecb3e6bb7f741df1410d739779e7a1bd338d11))
+
 ## [0.140.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.1...runner-rs-v0.140.2) (2026-07-09)
 
 

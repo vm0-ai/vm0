@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.17](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.16...sandbox-v0.19.17) (2026-07-09)
+
+
+### Documentation
+
+* remove duplicate sandbox lifecycle docs ([#20793](https://github.com/vm0-ai/vm0/issues/20793)) ([8453218](https://github.com/vm0-ai/vm0/commit/84532189b6c375752982738f0287548ebdb27505))
+
 ## [0.19.16](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.15...sandbox-v0.19.16) (2026-07-08)
 
 
