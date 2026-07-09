@@ -15,6 +15,7 @@ mod diagnostic;
 mod drain_override;
 mod gate;
 mod signal;
+mod state;
 mod stop;
 mod systemctl;
 mod target;
@@ -59,6 +60,8 @@ enum ServiceCommand {
     Resume(ServiceResumeArgs),
     /// Wait until a runner service is active and job-admitting
     WaitRunning(ServiceWaitRunningArgs),
+    /// Show machine-readable systemd unit state for runner services
+    UnitState(state::UnitStateArgs),
     /// Show service status (all runner services if --name is omitted)
     Status(ServiceStatusArgs),
     /// Show service logs
@@ -149,6 +152,7 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
         ServiceCommand::Drain(a) => drain(a).await,
         ServiceCommand::Resume(a) => resume(a).await,
         ServiceCommand::WaitRunning(a) => wait_running(a).await,
+        ServiceCommand::UnitState(a) => state::run(a).await,
         ServiceCommand::Status(a) => status(a).await,
         ServiceCommand::Logs(a) => logs(a).await,
     }
