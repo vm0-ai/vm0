@@ -264,6 +264,9 @@ export {
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
 
+// Domain modules - Zero Scrape
+export { callZeroScrape, type ZeroScrapeResponse } from "./domains/zero-scrape";
+
 // Domain modules - Zero Banking
 export {
   callZeroBanking,

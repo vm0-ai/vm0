@@ -164,6 +164,23 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates scrape capability behind the zero scrape feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.ZeroScrape]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "scrape:read",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "scrape:read",
+    );
+  });
+
   it("grants goal capabilities by default", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
 

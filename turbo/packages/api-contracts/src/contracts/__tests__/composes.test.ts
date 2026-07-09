@@ -93,6 +93,10 @@ describe("ZERO_CAPABILITIES", () => {
     expect(ZERO_CAPABILITIES).toContain("maps:read");
   });
 
+  it("should include managed scrape read capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("scrape:read");
+  });
+
   it("should include billing read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("billing:read");
     expect(ZERO_CAPABILITIES).toContain("billing:write");

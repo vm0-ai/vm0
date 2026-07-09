@@ -1394,6 +1394,18 @@ export {
   type RedeemResponse,
 } from "./zero-billing";
 export {
+  zeroScrapeContract,
+  zeroScrapeFormatSchema,
+  zeroScrapeModeSchema,
+  zeroScrapeRequestSchema,
+  zeroScrapeResponseSchema,
+  type ZeroScrapeContract,
+  type ZeroScrapeFormat,
+  type ZeroScrapeMode,
+  type ZeroScrapeRequest,
+  type ZeroScrapeResponse,
+} from "./zero-scrape";
+export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
   // Inferred types
