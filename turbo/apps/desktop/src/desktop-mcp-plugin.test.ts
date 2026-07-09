@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -115,7 +115,9 @@ describe("DesktopMcpPluginManager", () => {
   });
 
   it("runs a stdio MCP server end to end", async () => {
-    const workspace = mkdtempSync(path.join(tmpdir(), "mcp-plugin-"));
+    const workspace = realpathSync(
+      mkdtempSync(path.join(tmpdir(), "mcp-plugin-")),
+    );
     writeFileSync(path.join(workspace, "hello.txt"), "hello from mcp\n");
     const preferencesPath = path.join(workspace, "preferences.json");
 
