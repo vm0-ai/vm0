@@ -7,7 +7,7 @@
 //!
 //! Claims are represented by per-index lock files named
 //! `vm0-nbd-{index}.lock`. When this API creates a missing lock file, it uses
-//! private file permissions. The default directory is [`default_lock_dir`],
+//! private mode bits. The default directory is [`default_lock_dir`],
 //! currently `/var/lock`; callers using [`try_acquire_device_claim_in`] may
 //! provide another operator-approved lock-file directory. The directory must
 //! already exist, but this API does not require the directory itself to be owned
@@ -98,7 +98,7 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 ///
 /// `lock_dir` must already exist. The per-index lock path is
 /// `lock_dir/vm0-nbd-{index}.lock`. Missing per-index lock files are created
-/// with private permissions and then validated before locking.
+/// with private mode bits and then validated before locking.
 /// Processes using different lock directories do not coordinate with each
 /// other. Relative lock directories are resolved by each caller's current
 /// working directory, so cooperating processes should use paths that resolve to
@@ -109,8 +109,7 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 /// have multiple hard links, and must not have group/other-writable mode bits.
 /// Unsafe final lock-file paths, including a symlink at the per-index lock path
 /// and non-regular files, are reported as [`std::io::Error`]. Existing lock
-/// files with otherwise acceptable legacy permissions may be tightened to
-/// `0600`.
+/// files with otherwise acceptable legacy mode bits may be tightened to `0600`.
 ///
 /// Returns `Ok(Some(_))` when the caller owns the claim until the returned
 /// [`NbdDeviceClaim`] is dropped. Returns `Ok(None)` only when the flock is
