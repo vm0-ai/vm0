@@ -52,7 +52,7 @@ function isRunUploadedFileSource(
   });
 }
 
-async function publishArtifactsChangedForRun(
+export async function publishArtifactsChangedForRun(
   writeDb: Db,
   runId: string,
   signal: AbortSignal,
@@ -124,14 +124,14 @@ export const recordHostedSiteArtifact$ = command(
     { set },
     args: RecordHostedSiteArtifactArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<string | null> => {
     if (!args.runId) {
-      return;
+      return null;
     }
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "web", signal);
 
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -177,12 +177,18 @@ export const recordHostedSiteArtifact$ = command(
             entrypoint: args.entrypoint,
             spaFallback: args.spaFallback,
           },
+          // Content changed on redeploy: drop the stale preview so the
+          // deploy-time trigger (or the cron sweep as a fallback) regenerates
+          // it against the new deployment.
+          previewImageUrl: null,
           updatedAt: sql`now()`,
         },
-      });
+      })
+      .returning({ id: runUploadedFiles.id });
     signal.throwIfAborted();
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    return row?.id ?? null;
   },
 );
 

@@ -249,6 +249,21 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   const previewKind = artifactPreviewKind(item);
   const title = `${item.filename} preview`;
 
+  // A pre-rendered static snapshot (generated at deploy time for HTML/website
+  // artifacts) replaces the live iframe entirely, so the grid loads a single
+  // image instead of the full hosted site. Absent for old / not-yet-rendered /
+  // render-failed artifacts, which fall through to the live preview below.
+  if (item.previewImageUrl) {
+    return (
+      <img
+        src={item.previewImageUrl}
+        alt=""
+        loading="lazy"
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
   if (previewKind === "image") {
     return (
       <img

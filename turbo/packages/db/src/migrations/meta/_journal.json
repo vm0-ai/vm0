@@ -3963,6 +3963,13 @@
       "when": 1783591372546,
       "tag": "0565_eager_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 566,
+      "version": "7",
+      "when": 1783591372547,
+      "tag": "0566_pink_fallen_one",
+      "breakpoints": true
     }
   ]
 }
