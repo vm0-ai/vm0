@@ -9,7 +9,10 @@ import {
   recordMemorySource,
 } from "./memory-substrate.service";
 import { enqueueMemorySourceRelationshipExtractionJob } from "./relationship-memory-gmail-queue.service";
-import { recordMemoryDocumentFromConnectorSource } from "./zero-memory-document-ingestion.service";
+import {
+  normalizedConnectorMemoryDocumentAdapter,
+  recordConnectorMemoryDocument,
+} from "./zero-memory-connector-adapter.service";
 
 interface NotionPageMemorySourcePage {
   readonly id: string;
@@ -165,39 +168,43 @@ export async function recordNotionPageMemorySource(args: {
     parsedDate(args.page.lastEditedTime) ??
     parsedDate(args.page.createdTime) ??
     args.occurredAt;
-  await recordMemoryDocumentFromConnectorSource(args.db, {
+  await recordConnectorMemoryDocument({
+    db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    provider: "notion",
-    sourceType: "notion_page_event",
-    externalId,
-    title: args.page.title,
-    content: notionPageDocumentContent({
-      page: args.page,
-      parent: args.parent,
-      workspaceName: args.workspaceName,
-      eventFamily: args.eventFamily,
-      eventType: args.eventType,
-    }),
-    occurredAt,
-    contextSpace: notionContextSpace({
-      connectorId: args.connectorId,
-      workspaceId: args.workspaceId,
-      workspaceName: args.workspaceName,
-    }),
-    metadata: {
+    adapter: normalizedConnectorMemoryDocumentAdapter,
+    input: {
       provider: "notion",
       sourceType: "notion_page_event",
-      externalUrl: args.page.url,
-      pageId: args.page.id,
-      pageUrl: args.page.url,
-      workspaceId: args.workspaceId,
-      workspaceName: args.workspaceName,
-      reason: args.reason,
-    },
-    citation: {
-      url: args.page.url,
-      locator: args.eventFamily,
+      externalId,
+      title: args.page.title,
+      content: notionPageDocumentContent({
+        page: args.page,
+        parent: args.parent,
+        workspaceName: args.workspaceName,
+        eventFamily: args.eventFamily,
+        eventType: args.eventType,
+      }),
+      occurredAt,
+      contextSpace: notionContextSpace({
+        connectorId: args.connectorId,
+        workspaceId: args.workspaceId,
+        workspaceName: args.workspaceName,
+      }),
+      metadata: {
+        provider: "notion",
+        sourceType: "notion_page_event",
+        externalUrl: args.page.url,
+        pageId: args.page.id,
+        pageUrl: args.page.url,
+        workspaceId: args.workspaceId,
+        workspaceName: args.workspaceName,
+        reason: args.reason,
+      },
+      citation: {
+        url: args.page.url,
+        locator: args.eventFamily,
+      },
     },
   });
 
@@ -265,36 +272,40 @@ export async function recordNotionBackfillPageMemorySource(args: {
     return false;
   }
 
-  await recordMemoryDocumentFromConnectorSource(args.db, {
+  await recordConnectorMemoryDocument({
+    db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    provider: "notion",
-    sourceType: "notion_page",
-    externalId,
-    title: args.page.title,
-    content: notionPageDocumentContent({
-      page: args.page,
-      workspaceName: args.workspaceName,
-    }),
-    occurredAt,
-    contextSpace: notionContextSpace({
-      connectorId: args.connectorId,
-      workspaceId: args.workspaceId,
-      workspaceName: args.workspaceName,
-    }),
-    metadata: {
+    adapter: normalizedConnectorMemoryDocumentAdapter,
+    input: {
       provider: "notion",
       sourceType: "notion_page",
-      externalUrl: args.page.url,
-      pageId: args.page.id,
-      pageUrl: args.page.url,
-      workspaceId: args.workspaceId,
-      workspaceName: args.workspaceName,
-      reason: args.reason,
-    },
-    citation: {
-      url: args.page.url,
-      locator: args.page.id,
+      externalId,
+      title: args.page.title,
+      content: notionPageDocumentContent({
+        page: args.page,
+        workspaceName: args.workspaceName,
+      }),
+      occurredAt,
+      contextSpace: notionContextSpace({
+        connectorId: args.connectorId,
+        workspaceId: args.workspaceId,
+        workspaceName: args.workspaceName,
+      }),
+      metadata: {
+        provider: "notion",
+        sourceType: "notion_page",
+        externalUrl: args.page.url,
+        pageId: args.page.id,
+        pageUrl: args.page.url,
+        workspaceId: args.workspaceId,
+        workspaceName: args.workspaceName,
+        reason: args.reason,
+      },
+      citation: {
+        url: args.page.url,
+        locator: args.page.id,
+      },
     },
   });
 

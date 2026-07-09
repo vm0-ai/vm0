@@ -10,7 +10,10 @@ import {
   recordMemorySource,
 } from "./memory-substrate.service";
 import { enqueueMemorySourceRelationshipExtractionJob } from "./relationship-memory-gmail-queue.service";
-import { recordMemoryDocumentFromConnectorSource } from "./zero-memory-document-ingestion.service";
+import {
+  normalizedConnectorMemoryDocumentAdapter,
+  recordConnectorMemoryDocument,
+} from "./zero-memory-connector-adapter.service";
 
 type GithubSubjectKind = "issue" | "pull_request";
 
@@ -257,33 +260,81 @@ async function recordGithubSubjectMemoryDocument(args: {
   readonly reason: string;
 }): Promise<void> {
   const sourceType = githubSubjectSourceType(args.subjectKind);
-  await recordMemoryDocumentFromConnectorSource(args.db, {
+  await recordConnectorMemoryDocument({
+    db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    provider: "github",
-    sourceType,
-    externalId: args.externalId,
-    title: args.issue.title,
-    content: githubSubjectDocumentContent({
-      issue: args.issue,
-      repository: args.repository,
-      subjectKind: args.subjectKind,
-      subjectUrl: args.subjectUrl,
-    }),
-    occurredAt: args.occurredAt,
-    contextSpace: githubRepoContextSpace(args.repository.full_name),
-    metadata: {
+    adapter: normalizedConnectorMemoryDocumentAdapter,
+    input: {
       provider: "github",
       sourceType,
-      externalUrl: args.subjectUrl,
-      repository: args.repository.full_name,
-      subjectKind: args.subjectKind,
-      subjectNumber: args.issue.number,
-      reason: args.reason,
+      externalId: args.externalId,
+      title: args.issue.title,
+      content: githubSubjectDocumentContent({
+        issue: args.issue,
+        repository: args.repository,
+        subjectKind: args.subjectKind,
+        subjectUrl: args.subjectUrl,
+      }),
+      occurredAt: args.occurredAt,
+      contextSpace: githubRepoContextSpace(args.repository.full_name),
+      metadata: {
+        provider: "github",
+        sourceType,
+        externalUrl: args.subjectUrl,
+        repository: args.repository.full_name,
+        subjectKind: args.subjectKind,
+        subjectNumber: args.issue.number,
+        reason: args.reason,
+      },
+      citation: {
+        url: args.subjectUrl,
+        locator: `#${args.issue.number}`,
+      },
     },
-    citation: {
-      url: args.subjectUrl,
-      locator: `#${args.issue.number}`,
+  });
+}
+
+async function recordGithubCommentMemoryDocument(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly externalId: string;
+  readonly issue: GithubIssueLike;
+  readonly comment: GithubCommentLike;
+  readonly repository: GithubRepository;
+  readonly subjectKind: GithubSubjectKind;
+  readonly subjectUrl: string;
+  readonly commentUrl: string | null;
+  readonly occurredAt: Date;
+  readonly reason: string;
+}): Promise<void> {
+  await recordConnectorMemoryDocument({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    adapter: normalizedConnectorMemoryDocumentAdapter,
+    input: {
+      provider: "github",
+      sourceType: "github_issue_comment",
+      externalId: args.externalId,
+      title: args.issue.title,
+      content: githubCommentDocumentContent(args),
+      occurredAt: args.occurredAt,
+      contextSpace: githubRepoContextSpace(args.repository.full_name),
+      metadata: {
+        provider: "github",
+        sourceType: "github_issue_comment",
+        externalUrl: args.commentUrl ?? args.subjectUrl,
+        repository: args.repository.full_name,
+        subjectKind: args.subjectKind,
+        subjectNumber: args.issue.number,
+        reason: args.reason,
+      },
+      citation: {
+        url: args.commentUrl ?? args.subjectUrl,
+        locator: `#${args.issue.number} comment ${args.comment.id}`,
+      },
     },
   });
 }
@@ -643,35 +694,19 @@ export async function recordGithubIssueCommentMemorySource(args: {
       subjectNumber: args.issue.number,
     });
   const commentUrl = args.comment.html_url ?? null;
-  await recordMemoryDocumentFromConnectorSource(args.db, {
+  await recordGithubCommentMemoryDocument({
+    db: args.db,
     orgId: installation.orgId,
     userId: target.userId,
-    provider: "github",
-    sourceType: "github_issue_comment",
     externalId,
-    title: args.issue.title,
-    content: githubCommentDocumentContent({
-      issue: args.issue,
-      comment: args.comment,
-      repository: args.repository,
-      subjectKind: args.subjectKind,
-      commentUrl,
-    }),
+    issue: args.issue,
+    comment: args.comment,
+    repository: args.repository,
+    subjectKind: args.subjectKind,
+    subjectUrl,
+    commentUrl,
     occurredAt,
-    contextSpace: githubRepoContextSpace(args.repository.full_name),
-    metadata: {
-      provider: "github",
-      sourceType: "github_issue_comment",
-      externalUrl: commentUrl ?? subjectUrl,
-      repository: args.repository.full_name,
-      subjectKind: args.subjectKind,
-      subjectNumber: args.issue.number,
-      reason: args.reason,
-    },
-    citation: {
-      url: commentUrl ?? subjectUrl,
-      locator: `#${args.issue.number} comment ${args.comment.id}`,
-    },
+    reason: args.reason,
   });
 
   return await enqueueGithubSourceExtraction({

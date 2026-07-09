@@ -3,6 +3,7 @@ import { IconCode, IconLoader2 } from "@tabler/icons-react";
 import type {
   MemoryInjectionItem,
   MemoryInjectionPreviewResponse,
+  MemorySearchResult,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import { Button, cn } from "@vm0/ui";
 
@@ -135,6 +136,50 @@ function MemoryGroup({
   );
 }
 
+function DocumentEvidenceGroup({
+  items,
+}: {
+  readonly items: readonly Extract<
+    MemorySearchResult,
+    { readonly kind: "document_chunk" }
+  >[];
+}) {
+  return (
+    <section className="rounded-md border border-border/70 bg-background">
+      <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
+        <h3 className="text-xs font-medium text-muted-foreground">
+          Source evidence
+        </h3>
+        <span className="text-xs text-muted-foreground">{items.length}</span>
+      </div>
+      {items.length > 0 ? (
+        <div className="flex flex-col divide-y divide-border/70">
+          {items.map((item) => {
+            return (
+              <article key={item.chunkId} className="px-3 py-2">
+                <p className="text-sm font-medium leading-5 text-foreground">
+                  {item.title ?? item.externalId}
+                </p>
+                <p className="line-clamp-3 text-xs leading-5 text-muted-foreground">
+                  {item.text}
+                </p>
+                <p className="mt-1 break-all text-xs leading-5 text-muted-foreground">
+                  {item.provider}:{item.externalId}
+                  {item.citation.locator ? ` - ${item.citation.locator}` : ""}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+          No source evidence
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MemoryInjectionResults({
   data,
 }: {
@@ -152,7 +197,7 @@ function MemoryInjectionResults({
             Append system prompt
           </h3>
           <span className="text-xs text-muted-foreground">
-            {data.stats.characterCount} chars
+            {data.stats.tokenCount} tokens
           </span>
         </div>
         <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-5 text-foreground">
@@ -166,8 +211,14 @@ function MemoryInjectionResults({
             {data.stats.injectedCount} injected, {data.stats.omittedCount}{" "}
             omitted
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {data.stats.profileTokenCount} profile,{" "}
+            {data.stats.memoryTokenCount} memory,{" "}
+            {data.stats.documentTokenCount} evidence tokens
+          </p>
         </div>
         <MemoryGroup title="Relevant memories" items={data.queryMemories} />
+        <DocumentEvidenceGroup items={data.documentEvidence} />
       </aside>
     </div>
   );

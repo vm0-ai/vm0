@@ -436,10 +436,15 @@ export const memoryInjectionPreviewResponseSchema = z.object({
     dynamic: z.array(memoryInjectionItemSchema),
   }),
   queryMemories: z.array(memoryInjectionItemSchema),
+  documentEvidence: z.array(memoryDocumentSearchResultSchema),
   stats: z.object({
     injectedCount: z.number().int().nonnegative(),
     omittedCount: z.number().int().nonnegative(),
     characterCount: z.number().int().nonnegative(),
+    tokenCount: z.number().int().nonnegative(),
+    profileTokenCount: z.number().int().nonnegative(),
+    memoryTokenCount: z.number().int().nonnegative(),
+    documentTokenCount: z.number().int().nonnegative(),
   }),
 });
 
