@@ -20,11 +20,11 @@ use crate::paths;
 use super::codex_app_server::{
     CodexAppServerClient, CodexAppServerConfig, CodexAppServerError, ServerNotification,
 };
+use super::codex_app_server_events::{IGNORED_NOTIFICATION_METHODS, notification_to_codex_event};
 use super::event_delivery::{AckedEventPrefix, PreparedEvent};
 use super::{
     CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
-    LOG_TAG, ParsedEventAction, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, command,
-    notification_to_codex_event,
+    LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
@@ -308,6 +308,9 @@ async fn run_codex_app_server(
 
         Ok::<CliExecutionResult, AgentError>(CliExecutionResult {
             exit_code,
+            // App-server terminal events report a protocol-level turn status,
+            // not the child process wait status.
+            cli_observed_exit: None,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: None,
@@ -356,12 +359,14 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
         PathBuf::from("codex")
     };
     let codex_home = PathBuf::from(runtime.codex_home());
+    let child_user_env = runtime.child_user_env();
     let mut config = CodexAppServerConfig::new(binary, codex_home)
         .with_child_env(
             runtime.home_dir.as_ref(),
-            runtime.user_env,
+            child_user_env.as_ref(),
             runtime.api_url.as_ref(),
         )
+        .with_config_overrides(runtime.codex_startup_config_overrides())
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if runtime.use_mock_codex
@@ -434,6 +439,12 @@ fn thread_param_fields(runtime: &CliRuntimeConfig<'_>) -> Map<String, Value> {
         params.insert(
             "model".to_string(),
             Value::String(runtime.openai_model.to_string()),
+        );
+    }
+    if let Some(provider_id) = runtime.codex_model_provider_id() {
+        params.insert(
+            "modelProvider".to_string(),
+            Value::String(provider_id.to_string()),
         );
     }
     if !runtime.append_system_prompt.is_empty() {

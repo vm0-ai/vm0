@@ -21,6 +21,7 @@ use super::target::RunnerServiceUnit;
 /// the runner is no longer around to receive it. `Sent` carries the PID
 /// so callers can keep the pre-refactor `info!(…, pid, …)` structured
 /// field in their journald logs.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ServiceSignalOutcome {
     Sent { pid: u32 },
     AlreadyGone,

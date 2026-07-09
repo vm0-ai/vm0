@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.34](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.33...guest-common-v0.2.34) (2026-07-09)
+
+## [0.2.33](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.32...guest-common-v0.2.33) (2026-07-08)
+
+## [0.2.32](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.31...guest-common-v0.2.32) (2026-07-08)
+
 ## [0.2.31](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.30...guest-common-v0.2.31) (2026-07-05)
 
 ## [0.2.30](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.29...guest-common-v0.2.30) (2026-07-03)

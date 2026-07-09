@@ -100,6 +100,9 @@ export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
 
 function billingTierRank(tier: string | null | undefined): number {
   switch (tier) {
+    case "custom": {
+      return 3;
+    }
     case "team": {
       return 2;
     }
@@ -117,6 +120,9 @@ function billingTierRank(tier: string | null | undefined): number {
 
 function billingTierLabel(tier: string | null | undefined): string {
   switch (tier) {
+    case "custom": {
+      return "Custom";
+    }
     case "team": {
       return "Team";
     }

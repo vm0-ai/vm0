@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.28](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.27...vsock-guest-v0.19.28) (2026-07-09)
+
+
+### Performance Improvements
+
+* move exec stdin buffer into writer thread ([#20794](https://github.com/vm0-ai/vm0/issues/20794)) ([ab70586](https://github.com/vm0-ai/vm0/commit/ab70586046c07055b76a0d591f70073dd1457dc1))
+
+## [0.19.27](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.26...vsock-guest-v0.19.27) (2026-07-09)
+
+## [0.19.26](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.25...vsock-guest-v0.19.26) (2026-07-08)
+
+## [0.19.25](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.24...vsock-guest-v0.19.25) (2026-07-08)
+
 ## [0.19.24](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.23...vsock-guest-v0.19.24) (2026-07-05)
 
 ## [0.19.23](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.22...vsock-guest-v0.19.23) (2026-07-04)

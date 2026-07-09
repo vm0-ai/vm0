@@ -1326,7 +1326,7 @@ describe("findMatchingPermissions", () => {
   });
 
   it("ignores awsSigv4 auth configs with unsupported defaults", () => {
-    const config: FirewallConfig = {
+    const config = {
       name: "aws",
       apis: [
         {
@@ -1341,14 +1341,14 @@ describe("findMatchingPermissions", () => {
           permissions: [{ name: "identity", rules: ["GET /"] }],
         },
       ],
-    } as unknown as FirewallConfig;
+    };
 
     expect(findMatchingPermissions("GET", "/", config)).toEqual([]);
   });
 
   it("ignores malformed top-level firewall shapes", () => {
-    const nullConfig = null as unknown as FirewallConfig;
-    const arrayConfig = [] as unknown as FirewallConfig;
+    const nullConfig = null;
+    const arrayConfig: unknown[] = [];
     const nonStringNameConfig = {
       name: 123,
       apis: [
@@ -1358,11 +1358,11 @@ describe("findMatchingPermissions", () => {
           permissions: [{ name: "read", rules: ["GET /items/{id}"] }],
         },
       ],
-    } as unknown as FirewallConfig;
+    };
     const nonArrayApisConfig = {
       name: "malformed-apis",
       apis: { base: "https://example.com" },
-    } as unknown as FirewallConfig;
+    };
 
     expect(findMatchingPermissions("GET", "/items/1", nullConfig)).toEqual([]);
     expect(findMatchingPermissions("GET", "/items/1", arrayConfig)).toEqual([]);
@@ -1375,7 +1375,7 @@ describe("findMatchingPermissions", () => {
   });
 
   it("ignores API entries that fail base or auth validation", () => {
-    const malformedApiConfig: FirewallConfig = {
+    const malformedApiConfig = {
       name: "malformed-api",
       apis: [
         {
@@ -1475,7 +1475,7 @@ describe("findMatchingPermissions", () => {
           permissions: [{ name: "valid", rules: ["GET /items/{id}"] }],
         },
       ],
-    } as unknown as FirewallConfig;
+    };
 
     expect(
       findMatchingPermissions("GET", "/items/1", malformedApiConfig),
@@ -1529,7 +1529,7 @@ describe("findMatchingPermissions", () => {
           ],
         },
       ],
-    } as unknown as FirewallConfig;
+    };
 
     expect(
       findMatchingPermissions("GET", "/items/1", malformedPermissionConfig),

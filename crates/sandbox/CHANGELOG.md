@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.17](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.16...sandbox-v0.19.17) (2026-07-09)
+
+
+### Documentation
+
+* remove duplicate sandbox lifecycle docs ([#20793](https://github.com/vm0-ai/vm0/issues/20793)) ([8453218](https://github.com/vm0-ai/vm0/commit/84532189b6c375752982738f0287548ebdb27505))
+
+## [0.19.16](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.15...sandbox-v0.19.16) (2026-07-08)
+
+
+### Performance Improvements
+
+* add fresh sandbox factory stage telemetry ([#20689](https://github.com/vm0-ai/vm0/issues/20689)) ([d33d7cb](https://github.com/vm0-ai/vm0/commit/d33d7cb235410c3080092de8ee2117d081b19308))
+
 ## [0.19.15](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.14...sandbox-v0.19.15) (2026-07-06)
 
 

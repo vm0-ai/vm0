@@ -1,6 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
-    mock_run_config_with_runtime, shutdown, test_profiles, wait_status_mode,
+    assert_run_exits_within, mock_run_config_with_runtime, shutdown, test_profiles,
+    wait_status_mode,
 };
 use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
 use crate::types::{HeartbeatState, SandboxReuseResult};
@@ -174,19 +175,24 @@ async fn live_runner_instance_publish_failure_shuts_down_startup_resources() {
     let status_path = dir.path().join("status.json");
     let status = StatusTracker::new(status_path.clone(), 4, None, None);
     let (mut mitm, _mitm_crash_rx) = crate::proxy::MitmProxy::noop();
-    let mut ignore_term_child = tokio::process::Command::new("python3")
+    let ignore_term_fifo = dir.path().join("ignore-term-child.fifo");
+    let mut ignore_term_child = tokio::process::Command::new("bash")
         .arg("-c")
         .arg(
             r#"
-import os
-import signal
-
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-os.write(1, b"ready\n")
-while True:
-    signal.pause()
+set -euo pipefail
+fifo="$1"
+mkfifo "$fifo"
+trap '' TERM
+exec 3<>"$fifo"
+printf 'ready\n'
+while true; do
+  read -r _ <&3 || true
+done
 "#,
         )
+        .arg("ignore-term-child")
+        .arg(&ignore_term_fifo)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -196,11 +202,15 @@ while True:
     let proxy_child_pid = ignore_term_child.id().expect("proxy child should have pid");
     let stdout = ignore_term_child.stdout.take().unwrap();
     let mut ready_lines = tokio::io::BufReader::new(stdout).lines();
-    let ready = tokio::time::timeout(Duration::from_secs(2), ready_lines.next_line())
+    let ready = tokio::time::timeout(Duration::from_secs(5), ready_lines.next_line())
         .await
         .expect("ignore-term child did not become ready")
         .unwrap();
     assert_eq!(ready.as_deref(), Some("ready"));
+    let proxy_child_starttime = crate::process::read_process_stat(proxy_child_pid)
+        .await
+        .expect("proxy child stat should be readable after readiness")
+        .starttime;
     mitm.set_child_for_test(ignore_term_child);
     let prefetch_cancel = CancellationToken::new();
     let task_cancel = prefetch_cancel.clone();
@@ -253,8 +263,12 @@ while True:
         .expect("prefetch task should observe cleanup cancellation")
         .expect("prefetch task should report cancellation");
     assert_eq!(memory_prefetch.task_count(), 0);
+    let proxy_child_still_exists = matches!(
+        crate::process::read_process_stat(proxy_child_pid).await,
+        Some(stat) if stat.starttime == proxy_child_starttime
+    );
     assert!(
-        !std::path::Path::new(&format!("/proc/{proxy_child_pid}")).exists(),
+        !proxy_child_still_exists,
         "proxy child should be killed and reaped during cleanup"
     );
     wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
@@ -279,12 +293,84 @@ async fn startup_does_not_publish_running_before_factories_are_ready() {
         Some("running"),
         "runner must not publish running before factories are ready",
     );
+    assert_eq!(
+        status_mode_if_exists(&status_path).await.as_deref(),
+        Some("starting"),
+        "runner should publish startup progress while factories are not ready",
+    );
 
     release_tx
         .send(())
         .expect("runner should still be waiting for factory release");
     wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn drain_during_startup_exits_after_readiness_without_running() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+
+    env.drain();
+    env.resume();
+    assert_eq!(
+        *env.mode_tx.borrow(),
+        RunnerMode::Draining,
+        "resume before startup readiness must not open admission",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup drain should exit without entering Running",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn stop_during_startup_exits_after_readiness_without_running() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+
+    env.trigger_stopping().await;
+    assert_eq!(
+        *env.mode_tx.borrow(),
+        RunnerMode::Stopping,
+        "startup stop must not be lost before factories become ready",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup stop should exit without entering Running",
+    )
+    .await;
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
 #[tokio::test]

@@ -24,9 +24,11 @@ use tracing::{error, info, warn};
 
 use super::api::ApiClient;
 use super::api_direct_candidates::{
-    DirectCandidateInbox, DirectCandidateInsertOutcome, DirectJobCandidate,
+    DirectCandidateInbox, DirectCandidateInsertOutcome, DirectCandidatePruneSnapshot,
+    DirectJobCandidate,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
+use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
@@ -633,6 +635,8 @@ async fn handle_ably_message_with_network_policy_refresh(
     network_policy_refresh: Option<&NetworkPolicyRefreshHandle>,
     network_policy_refresh_cancel: Option<&CancellationToken>,
 ) {
+    let notification_received_at = StdInstant::now();
+
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.lock().await.get(&run_id).cloned();
         if let Some(handle) = handle {
@@ -674,9 +678,10 @@ async fn handle_ably_message_with_network_policy_refresh(
                     profile = %profile,
                     "ably: job notification, queueing direct candidate"
                 );
-                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity(
+                JobNotificationAction::Direct(DirectJobCandidate::new_with_affinity_metadata(
                     notif.run_id,
                     profile.to_owned(),
+                    notification_received_at,
                     notif.cli_agent_session_id.map(str::to_owned),
                     notif.affinity_protected_until.map(str::to_owned),
                 ))
@@ -737,12 +742,18 @@ async fn enqueue_direct_candidate(
 ) {
     let run_id = candidate.run_id();
     let profile = candidate.profile_name().to_owned();
-    match direct_candidates.push(candidate).await {
-        DirectCandidateInsertOutcome::Inserted(_) | DirectCandidateInsertOutcome::Updated(_) => {}
+    let outcome = direct_candidates.push(candidate).await;
+    if let Some(pruned) = outcome.pruned() {
+        log_direct_candidate_pruned(&profile, "push", pruned);
+    }
+    match outcome {
+        DirectCandidateInsertOutcome::Inserted { .. }
+        | DirectCandidateInsertOutcome::Updated { .. } => {}
         DirectCandidateInsertOutcome::Overflow {
             snapshot,
             coalesced_count,
             should_wake_poll,
+            ..
         } => {
             if !should_wake_poll {
                 return;
@@ -759,6 +770,23 @@ async fn enqueue_direct_candidate(
             poll_wakeups.request_immediate_poll().await;
         }
     }
+}
+
+fn log_direct_candidate_pruned(
+    profile: &str,
+    source: &'static str,
+    pruned: DirectCandidatePruneSnapshot,
+) {
+    info!(
+        profile,
+        source,
+        pruned_count = pruned.pruned_count,
+        depth = pruned.depth,
+        capacity = pruned.capacity,
+        stale_after_ms = duration_ms(pruned.stale_after),
+        oldest_pruned_wait_ms = duration_ms(pruned.oldest_pruned_wait_elapsed),
+        "ably: stale direct candidates pruned"
+    );
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
@@ -1016,7 +1044,17 @@ mod tests {
     }
 
     fn direct_candidate_inbox_with_capacity(capacity: usize) -> Arc<DirectCandidateInbox> {
-        DirectCandidateInbox::new(capacity)
+        direct_candidate_inbox_with_stale_after(
+            capacity,
+            crate::provider::api_direct_candidates::DIRECT_CANDIDATE_STALE_AFTER,
+        )
+    }
+
+    fn direct_candidate_inbox_with_stale_after(
+        capacity: usize,
+        stale_after: Duration,
+    ) -> Arc<DirectCandidateInbox> {
+        DirectCandidateInbox::new(capacity, stale_after)
     }
 
     async fn pop_direct_candidate(inbox: &DirectCandidateInbox) -> DirectJobCandidate {
@@ -1029,6 +1067,47 @@ mod tests {
 
     fn default_profiles() -> Vec<String> {
         vec![crate::profile::DEFAULT_PROFILE.to_string()]
+    }
+
+    fn malformed_network_policy_refresh_messages(
+        unrelated_name: &'static str,
+    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 5] {
+        [
+            (
+                "invalid runId",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "not-a-uuid",
+                    "connectorRef": "github"
+                }),
+            ),
+            (
+                "missing runId",
+                Some("network-policy-refresh"),
+                serde_json::json!({ "connectorRef": "github" }),
+            ),
+            (
+                "missing connectorRef",
+                Some("network-policy-refresh"),
+                serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
+            ),
+            (
+                "empty connectorRef",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorRef": ""
+                }),
+            ),
+            (
+                "unrelated message name",
+                Some(unrelated_name),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorRef": "github"
+                }),
+            ),
+        ]
     }
 
     #[tokio::test(start_paused = true)]
@@ -1891,6 +1970,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stale_full_direct_candidate_queue_prunes_before_enqueueing() {
+        let tokens = Mutex::new(HashMap::new());
+        let wakeups = PollWakeups::new(true);
+        let stale_after = Duration::from_secs(60);
+        let direct_candidates = direct_candidate_inbox_with_stale_after(1, stale_after);
+        let profiles = default_profiles();
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        let stale_enqueued_at = StdInstant::now() - Duration::from_secs(120);
+        let stale_run_id: RunId = "00000000-0000-0000-0000-000000000001".parse().unwrap();
+        let _ = direct_candidates
+            .push(DirectJobCandidate::new_with_enqueued_at(
+                stale_run_id,
+                "vm0/default".to_string(),
+                stale_enqueued_at,
+                stale_enqueued_at,
+            ))
+            .await;
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000002",
+                "profile": "vm0/default"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates).await;
+        assert_eq!(
+            candidate.run_id(),
+            "00000000-0000-0000-0000-000000000002"
+                .parse::<RunId>()
+                .unwrap()
+        );
+        assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
     async fn legacy_target_runner_id_does_not_defer_poll() {
         let tokens = Mutex::new(HashMap::new());
         let wakeups = PollWakeups::new(true);
@@ -1987,6 +2110,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn malformed_network_policy_refresh_notification_does_not_mutate_handler_state() {
+        for (case, name, data) in
+            malformed_network_policy_refresh_messages("network-policy-refresh-v2")
+        {
+            let sentinel_run_id: RunId = "00000000-0000-0000-0000-000000000099".parse().unwrap();
+            let sentinel_handle = RunCancellationHandle::new();
+            let sentinel_token = sentinel_handle.token();
+            let tokens = Mutex::new(HashMap::from([(sentinel_run_id, sentinel_handle)]));
+            let wakeups = PollWakeups::new(true);
+            let direct_candidates = direct_candidate_inbox();
+            let profiles = default_profiles();
+            let _ = wakeups
+                .wait_for_poll_due(
+                    &CancellationToken::new(),
+                    Duration::from_secs(30),
+                    Duration::from_secs(5),
+                )
+                .await;
+            let msg = make_message(name, data);
+
+            handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+            let snapshot = wakeups.snapshot().await;
+            assert_no_direct_candidate(&direct_candidates).await;
+            assert!(!snapshot.poll_now, "{case}");
+            assert!(snapshot.deferred_poll_at.is_none(), "{case}");
+            assert!(!sentinel_token.is_cancelled(), "{case}");
+
+            let tokens = tokens.lock().await;
+            assert_eq!(tokens.len(), 1, "{case}");
+            assert!(tokens.contains_key(&sentinel_run_id), "{case}");
+        }
+    }
+
+    #[tokio::test]
     async fn supervisor_shutdown_awaits_task_termination() {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let supervisor = AblySupervisor::spawn_test_task(|shutdown| async move {
@@ -2059,6 +2217,18 @@ mod tests {
             "00000000-0000-0000-0000-000000000003"
         );
         assert_eq!(notification.connector_ref, "github");
+    }
+
+    #[test]
+    fn parse_network_policy_refresh_notification_rejects_malformed_messages() {
+        for (case, name, data) in malformed_network_policy_refresh_messages("other") {
+            let msg = make_message(name, data);
+
+            assert!(
+                parse_network_policy_refresh_notification(&msg).is_none(),
+                "{case}"
+            );
+        }
     }
 
     #[test]

@@ -90,7 +90,9 @@ function staticValueModuleSpecifiers(source: string): string[] {
 
 function dynamicImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
-  for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
+  for (const match of source.matchAll(
+    /import\(\s*["']([^"']+)["'](?:\s+as\s+string)?\s*\)/g,
+  )) {
     specifiers.push(match[1]!);
   }
   return specifiers;
@@ -142,8 +144,11 @@ function routingMetadataFromSource(source: ConnectorFirewallSource): unknown {
 }
 
 function sourceHasObjectKey(source: string, key: string): boolean {
+  const quotedKey = JSON.stringify(key);
+  const escapedQuotedKey = quotedKey.replaceAll('"', '\\"');
   return (
-    source.includes(`${JSON.stringify(key)}:`) ||
+    source.includes(`${quotedKey}:`) ||
+    source.includes(`${escapedQuotedKey}:`) ||
     new RegExp(`^\\s*${key}:`, "m").test(source)
   );
 }
@@ -594,6 +599,27 @@ describe("firewall metadata generator", () => {
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
 
+  it(
+    "keeps PlayStation universal search aligned with psn-api",
+    async () => {
+      const source = await loadGeneratedConnectorFirewallSource("playstation", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const searchPermission = source.firewall.apis
+        .flatMap((api) => {
+          return api.permissions ?? [];
+        })
+        .find((permission) => {
+          return permission.name === "playstation-search-read";
+        });
+
+      expect(searchPermission?.rules).toStrictEqual([
+        "POST /api/search/v1/universalSearch",
+      ]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
   it("keeps generated server metadata host-owner only", () => {
     const source = fs.readFileSync(
       path.resolve(
@@ -604,13 +630,13 @@ describe("firewall metadata generator", () => {
     );
 
     expect(staticValueModuleSpecifiers(source)).toStrictEqual([]);
-    expect(source).toContain('"api.github.com": "github"');
-    expect(source).toContain('"{network}.g.alchemy.com": "alchemy"');
-    expect(source).toContain('"slack.com": "slack"');
+    expect(source).toContain('\\"api.github.com\\": \\"github\\"');
+    expect(source).toContain('\\"{network}.g.alchemy.com\\": \\"alchemy\\"');
+    expect(source).toContain('\\"slack.com\\": \\"slack\\"');
     expect(source).not.toContain("${{");
-    expect(source).not.toContain('"permissions"');
-    expect(source).not.toContain('"description"');
-    expect(source).not.toContain('"rules"');
+    expect(sourceHasObjectKey(source, "permissions")).toBe(false);
+    expect(sourceHasObjectKey(source, "description")).toBe(false);
+    expect(sourceHasObjectKey(source, "rules")).toBe(false);
   });
 
   it("keeps generated server execution metadata eager and server-shaped", () => {
@@ -625,13 +651,13 @@ describe("firewall metadata generator", () => {
     expect(staticValueModuleSpecifiers(source)).toStrictEqual([]);
     expect(dynamicImportSpecifiers(source)).toStrictEqual([]);
     expect(source).toContain("FIREWALL_SERVER_EXECUTION_METADATA");
-    expect(source).toContain('"baseUrlVarNames"');
-    expect(source).toContain('"baseUrlTemplates"');
-    expect(source).toContain('"secretPlaceholderNames"');
-    expect(source).toContain('"placeholderValues"');
-    expect(source).not.toContain('"permissions":');
-    expect(source).not.toContain('"description"');
-    expect(source).not.toContain('"rules"');
+    expect(sourceHasObjectKey(source, "baseUrlVarNames")).toBe(true);
+    expect(sourceHasObjectKey(source, "baseUrlTemplates")).toBe(true);
+    expect(sourceHasObjectKey(source, "secretPlaceholderNames")).toBe(true);
+    expect(sourceHasObjectKey(source, "placeholderValues")).toBe(true);
+    expect(sourceHasObjectKey(source, "permissions")).toBe(false);
+    expect(sourceHasObjectKey(source, "description")).toBe(false);
+    expect(sourceHasObjectKey(source, "rules")).toBe(false);
   });
 
   it("keeps the generated metadata loader literal and nullable", () => {
@@ -746,12 +772,16 @@ describe("firewall metadata generator", () => {
     expect(staticValueModuleSpecifiers(slackDetailSource)).toStrictEqual([]);
     expect(dynamicImportSpecifiers(slackDetailSource)).toStrictEqual([]);
     expect(slackDetailSource).toContain("firewallRoutingMetadata");
-    expect(sourceHasObjectKey(slackDetailSource, "base")).toBe(true);
-    expect(sourceHasObjectKey(slackDetailSource, "routes")).toBe(true);
-    expect(sourceHasObjectKey(slackDetailSource, "permissionName")).toBe(true);
-    expect(sourceHasObjectKey(slackDetailSource, "rule")).toBe(true);
-    expect(sourceHasObjectKey(slackDetailSource, "permissions")).toBe(false);
-    expect(sourceHasObjectKey(slackDetailSource, "rules")).toBe(false);
+    expect(slackDetailSource).toContain("JSON.parse");
+    expect(slackDetailSource).toContain(
+      "firewallRoutingMetadataValue as FirewallRoutingMetadata",
+    );
+    expect(slackDetailSource).toContain('\\"base\\"');
+    expect(slackDetailSource).toContain('\\"routes\\"');
+    expect(slackDetailSource).toContain('\\"permissionName\\"');
+    expect(slackDetailSource).toContain('\\"rule\\"');
+    expect(slackDetailSource).not.toContain('\\"permissions\\"');
+    expect(slackDetailSource).not.toContain('\\"rules\\"');
     assertRoutingMetadataSourceExcludesAuthData(
       slackDetailSource,
       "routing-details/slack.generated.ts",
@@ -776,9 +806,10 @@ describe("firewall metadata generator", () => {
           "utf-8",
         );
         expect(detailSource, filename).toContain(
-          `export const firewallRoutingMetadata = ${stableJson(
-            routingMetadataFromSource(source),
-          )} as const satisfies FirewallRoutingMetadata;`,
+          `const firewallRoutingMetadataJson = ${JSON.stringify(stableJson(routingMetadataFromSource(source)))};`,
+        );
+        expect(detailSource, filename).toContain(
+          "export const firewallRoutingMetadata = firewallRoutingMetadataValue as FirewallRoutingMetadata;",
         );
         assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
       }
@@ -815,6 +846,10 @@ describe("firewall metadata generator", () => {
       );
       expect(loaderSource).toContain('["model-provider:openai-api-key"]');
       expect(loaderSource).toContain("RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST");
+      expect(loaderSource).toContain("RUNNER_RUNTIME_FIREWALL_NAMES");
+      expect(loaderSource).toContain(
+        "export const RUNNER_RUNTIME_FIREWALL_NAMES = Object.freeze(",
+      );
 
       const googleDriveRuntimeSource = fs.readFileSync(
         path.resolve(
@@ -823,8 +858,10 @@ describe("firewall metadata generator", () => {
         ),
         "utf-8",
       );
-      expect(googleDriveRuntimeSource).toMatch(/"?name"?:\s*"google-drive"/);
-      expect(googleDriveRuntimeSource).not.toContain('"description"');
+      expect(googleDriveRuntimeSource).toContain(
+        '\\"name\\": \\"google-drive\\"',
+      );
+      expect(googleDriveRuntimeSource).not.toContain('\\"description\\"');
       expect(googleDriveRuntimeSource).not.toContain("placeholders");
       expect(googleDriveRuntimeSource).not.toContain("defaultPolicies");
     },

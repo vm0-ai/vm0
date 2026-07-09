@@ -64,6 +64,16 @@ export interface DesktopComputerUseApi {
   readonly removeFilesystemPluginAllowedDirectory: (
     directory: string,
   ) => Promise<DesktopComputerUseState>;
+  readonly importMcpPluginServers: (
+    json: string,
+  ) => Promise<DesktopComputerUseState>;
+  readonly setMcpPluginServerEnabled: (
+    server: string,
+    enabled: boolean,
+  ) => Promise<DesktopComputerUseState>;
+  readonly removeMcpPluginServer: (
+    server: string,
+  ) => Promise<DesktopComputerUseState>;
   readonly openAccessibilitySettings: () => Promise<void>;
   readonly openScreenRecordingSettings: () => Promise<void>;
   readonly openAutomationSettings: () => Promise<void>;

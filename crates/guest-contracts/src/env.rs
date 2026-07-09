@@ -112,6 +112,12 @@ pub const CLI_AGENT_TYPE_ENV: &str = "CLI_AGENT_TYPE";
 /// payload.
 pub const USER_ENV_FILE_ENV: &str = "VM0_USER_ENV_FILE";
 
+/// Private runtime subdirectory used by [`USER_ENV_FILE_ENV`].
+pub const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
+
+/// Private runtime filename used by [`USER_ENV_FILE_ENV`].
+pub const USER_ENV_FILENAME: &str = "env.json";
+
 /// Path to the private runner-owned run payload JSON file.
 ///
 /// Large prompt-like and configuration payloads use this file instead of
@@ -138,6 +144,9 @@ pub const ARTIFACTS_ENV: &str = "VM0_ARTIFACTS";
 ///
 /// Unset or empty means there are no feature flags.
 pub const FEATURE_FLAGS_ENV: &str = "VM0_FEATURE_FLAGS";
+
+/// Logical run-payload field name for API-owned Codex runtime metadata.
+pub const CODEX_RUNTIME_CONFIG_ENV: &str = "VM0_CODEX_RUNTIME_CONFIG";
 
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
@@ -169,6 +178,9 @@ pub struct RunPayload {
     /// JSON map of feature flag names to enabled states.
     #[serde(default)]
     pub feature_flags: String,
+    /// JSON object describing API-owned Codex provider/runtime metadata.
+    #[serde(default)]
+    pub codex_runtime_config: String,
 }
 
 /// Borrowed logical string field from [`RunPayload`].
@@ -182,7 +194,7 @@ pub struct RunPayloadField<'a> {
 
 impl RunPayload {
     /// Return all logical string fields carried by this run payload.
-    pub fn fields(&self) -> [RunPayloadField<'_>; 8] {
+    pub fn fields(&self) -> [RunPayloadField<'_>; 9] {
         let Self {
             prompt,
             append_system_prompt,
@@ -192,6 +204,7 @@ impl RunPayload {
             settings,
             artifacts,
             feature_flags,
+            codex_runtime_config,
         } = self;
 
         [
@@ -226,6 +239,10 @@ impl RunPayload {
             RunPayloadField {
                 name: FEATURE_FLAGS_ENV,
                 value: feature_flags,
+            },
+            RunPayloadField {
+                name: CODEX_RUNTIME_CONFIG_ENV,
+                value: codex_runtime_config,
             },
         ]
     }
@@ -394,7 +411,11 @@ mod tests {
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");
+        assert_eq!(USER_ENV_PRIVATE_DIR_NAME, "user-env");
+        assert_eq!(USER_ENV_FILENAME, "env.json");
         assert_eq!(RUN_PAYLOAD_FILE_ENV, "VM0_RUN_PAYLOAD_FILE");
+        assert_eq!(RUN_PAYLOAD_PRIVATE_DIR_NAME, "run-payload");
+        assert_eq!(RUN_PAYLOAD_FILENAME, "payload.json");
     }
 
     #[test]
@@ -408,6 +429,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -417,6 +439,7 @@ mod tests {
         assert_eq!(json["secretValues"], "secret");
         assert_eq!(json["disallowedTools"], "WebFetch");
         assert_eq!(json["featureFlags"], r#"{"flag":true}"#);
+        assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"minimax"}"#);
     }
 
     #[test]
@@ -430,6 +453,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
 
         let fields = payload.fields();
@@ -469,6 +493,10 @@ mod tests {
                     name: FEATURE_FLAGS_ENV,
                     value: r#"{"flag":true}"#
                 },
+                RunPayloadField {
+                    name: CODEX_RUNTIME_CONFIG_ENV,
+                    value: r#"{"providerId":"minimax"}"#
+                },
             ]
         );
     }
@@ -494,6 +522,7 @@ mod tests {
             settings: "{}".to_string(),
             artifacts: "[]".to_string(),
             feature_flags: r#"{"flag":true}"#.to_string(),
+            codex_runtime_config: r#"{"providerId":"minimax"}"#.to_string(),
         };
 
         assert_eq!(payload.first_nul_field(), None);
@@ -542,6 +571,7 @@ mod tests {
         for key in [
             API_URL_ENV,
             WORKING_DIR_ENV,
+            USER_ENV_FILE_ENV,
             RUN_PAYLOAD_FILE_ENV,
             CLI_AGENT_TYPE_ENV,
             USE_MOCK_CLAUDE_ENV,

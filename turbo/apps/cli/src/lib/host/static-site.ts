@@ -94,6 +94,13 @@ function isExternalReference(value: string): boolean {
   return /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/iu.test(value);
 }
 
+// References containing template interpolation are resolved at runtime, not on
+// disk. Covers JS template literals (`${...}`), mustache/Vue/Angular/Handlebars
+// (`{{...}}`), and EJS/ERB (`<%...%>`). These cannot be validated statically.
+function isDynamicReference(value: string): boolean {
+  return /\$\{|\{\{|<%/u.test(value);
+}
+
 function stripQueryAndHash(value: string): string {
   const hashIndex = value.indexOf("#");
   const withoutHash = hashIndex >= 0 ? value.slice(0, hashIndex) : value;
@@ -103,7 +110,7 @@ function stripQueryAndHash(value: string): string {
 
 function normalizeReference(fromPath: string, raw: string): string | null {
   const trimmed = raw.trim();
-  if (!trimmed || isExternalReference(trimmed)) {
+  if (!trimmed || isExternalReference(trimmed) || isDynamicReference(trimmed)) {
     return null;
   }
   const stripped = stripQueryAndHash(trimmed);

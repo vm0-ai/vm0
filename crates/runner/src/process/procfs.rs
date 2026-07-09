@@ -179,23 +179,100 @@ pub(crate) async fn read_cwd(pid: u32) -> Option<PathBuf> {
     tokio::fs::read_link(&link).await.ok()
 }
 
-/// Read `/proc/{pid}/cgroup` and extract the systemd unit name (cgroup v2).
+/// Read `/proc/{pid}/cgroup` and extract the systemd service unit name.
 ///
 /// Example content: `0::/system.slice/vm0-runner-v0.2.0.service\n`
 /// Returns `Some("vm0-runner-v0.2.0")` for the above.
 pub async fn read_service_unit(pid: u32) -> Option<String> {
     let path = format!("/proc/{pid}/cgroup");
     let content = tokio::fs::read_to_string(&path).await.ok()?;
+    parse_service_unit_from_cgroup(&content)
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum CgroupPathPriority {
+    Fallback,
+    Systemd,
+}
+
+fn parse_service_unit_from_cgroup(content: &str) -> Option<String> {
+    let mut saw_systemd_path = false;
+    let mut fallback_unit = None;
     for line in content.lines() {
-        // cgroup v2 format: "0::/<slice>/<unit>.service"
-        // cgroup v1 format: "<id>:<controller>:/<slice>/<unit>.service"
-        let path_part = line.rsplit_once(':')?.1;
-        let basename = path_part.rsplit('/').next()?;
-        if let Some(unit) = basename.strip_suffix(".service") {
-            return Some(unit.to_string());
+        let Some((priority, path)) = cgroup_path_from_line(line) else {
+            continue;
+        };
+        if priority == CgroupPathPriority::Systemd {
+            saw_systemd_path = true;
+            if let Some(unit) = service_unit_from_cgroup_path(path) {
+                return Some(unit);
+            }
+            continue;
+        }
+        if let Some(unit) = service_unit_from_cgroup_path(path) {
+            fallback_unit.get_or_insert(unit);
         }
     }
-    None
+    if saw_systemd_path {
+        None
+    } else {
+        fallback_unit
+    }
+}
+
+fn cgroup_path_from_line(line: &str) -> Option<(CgroupPathPriority, &str)> {
+    let mut parts = line.splitn(3, ':');
+    let hierarchy_id = parse_cgroup_hierarchy_id(parts.next()?)?;
+    let controllers = parts.next()?;
+    let path = parts.next()?;
+    if !path.starts_with('/') {
+        return None;
+    }
+
+    let is_v2 = hierarchy_id == 0 && controllers.is_empty();
+    let is_v1 = hierarchy_id != 0
+        && !controllers.is_empty()
+        && controllers
+            .split(',')
+            .all(|controller| !controller.is_empty());
+    if !is_v2 && !is_v1 {
+        return None;
+    }
+
+    let priority = if is_v2
+        || controllers
+            .split(',')
+            .any(|controller| controller == "name=systemd")
+    {
+        CgroupPathPriority::Systemd
+    } else {
+        CgroupPathPriority::Fallback
+    };
+    Some((priority, path))
+}
+
+fn parse_cgroup_hierarchy_id(field: &str) -> Option<u32> {
+    if field.is_empty() || !field.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    if field.len() > 1 && field.starts_with('0') {
+        return None;
+    }
+    field.parse().ok()
+}
+
+fn service_unit_from_cgroup_path(path: &str) -> Option<String> {
+    path.split('/')
+        .rev()
+        .filter(|segment| !segment.is_empty())
+        .find_map(|segment| {
+            let unit = segment.strip_suffix(".service")?;
+            if unit.is_empty() {
+                None
+            } else {
+                Some(unit.to_string())
+            }
+        })
 }
 
 /// Scan `/proc` for all process argvs.
@@ -274,6 +351,129 @@ mod tests {
         stat.extend_from_slice(b") ");
         stat.extend_from_slice(fields.join(" ").as_bytes());
         stat
+    }
+
+    fn service_unit(unit: &str) -> Option<String> {
+        Some(unit.to_string())
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_accepts_v2_service_line() {
+        assert_eq!(
+            parse_service_unit_from_cgroup("0::/system.slice/vm0-runner-v0.2.0.service\n"),
+            service_unit("vm0-runner-v0.2.0")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_accepts_v1_systemd_service_line() {
+        assert_eq!(
+            parse_service_unit_from_cgroup(
+                "9:name=systemd:/system.slice/vm0-runner-v0.2.0.service\n",
+            ),
+            service_unit("vm0-runner-v0.2.0")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_skips_malformed_lines_before_valid_service() {
+        assert_eq!(
+            parse_service_unit_from_cgroup(
+                "not-a-cgroup-line\n1:cpu:/system.slice\n0::/system.slice/vm0-runner-v1.service\n",
+            ),
+            service_unit("vm0-runner-v1")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_rejects_empty_or_malformed_only_content() {
+        assert_eq!(parse_service_unit_from_cgroup(""), None);
+        assert_eq!(
+            parse_service_unit_from_cgroup("not-a-cgroup-line\n1:cpu:relative.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("0::/system.slice/.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("::/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("1::/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("0:cpu:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("abc:cpu:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("+1:cpu:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("00::/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("01:cpu:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("1:,:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_finds_service_ancestor() {
+        assert_eq!(
+            parse_service_unit_from_cgroup(
+                "0::/system.slice/vm0-runner-v1.service/runtime/child\n",
+            ),
+            service_unit("vm0-runner-v1")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_preserves_colon_inside_path() {
+        assert_eq!(
+            parse_service_unit_from_cgroup("0::/system.slice/vm0-runner-v1:blue.service\n"),
+            service_unit("vm0-runner-v1:blue")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_prefers_v1_systemd_controller() {
+        assert_eq!(
+            parse_service_unit_from_cgroup(
+                "4:cpu:/system.slice/wrong-runner.service\n9:name=systemd:/system.slice/vm0-runner-v1.service\n",
+            ),
+            service_unit("vm0-runner-v1")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_falls_back_without_systemd_path() {
+        assert_eq!(
+            parse_service_unit_from_cgroup("4:cpu:/system.slice/vm0-runner-fallback.service\n"),
+            service_unit("vm0-runner-fallback")
+        );
+    }
+
+    #[test]
+    fn parse_service_unit_from_cgroup_does_not_fallback_when_systemd_path_has_no_service() {
+        assert_eq!(
+            parse_service_unit_from_cgroup(
+                "4:cpu:/system.slice/vm0-runner-fallback.service\n0::/system.slice\n",
+            ),
+            None
+        );
     }
 
     #[test]

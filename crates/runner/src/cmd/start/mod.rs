@@ -38,6 +38,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::duration::duration_ms as saturated_duration_ms;
 use crate::ids::RunId;
@@ -46,7 +47,7 @@ use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
-use crate::executor::ExecutorConfig;
+use crate::executor::{ExecutorConfig, SessionHistoryProbe};
 use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
@@ -56,7 +57,10 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
-use crate::provider::{ApiProvider, JobProvider, LocalProvider, NetworkPolicyRefreshHandle};
+use crate::provider::{
+    ApiProvider, BuiltinFirewallCatalogCachePaths, JobProvider, LocalProvider,
+    NetworkPolicyRefreshHandle,
+};
 use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
@@ -98,7 +102,9 @@ use mitm_restart::{
 use orphan_reap::{
     OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
 };
-use signals::{EarlySignals, SignalController, handle_stopping_signal, recv_handler_task};
+use signals::{
+    EarlySignals, SignalController, SignalHandlerTask, handle_stopping_signal, recv_handler_task,
+};
 
 const READY_DIRECT_CANDIDATE_DRAIN_LIMIT: usize = 8;
 
@@ -221,6 +227,18 @@ async fn shutdown_startup_resources_after_factory_failure(
     dns_handle.stop().await;
     memory_prefetch.drain().await;
     status.set_mode(RunnerMode::Stopped).await;
+}
+
+async fn abort_signal_handler_task(handler_task: SignalHandlerTask, context: &'static str) {
+    match handler_task.abort_and_wait().await {
+        Err(error) if error.is_cancelled() => {}
+        Err(error) => {
+            warn!(error = %error, context, "signal handler task failed during abort");
+        }
+        Ok(()) => {
+            warn!(context, "signal handler task exited before abort completed");
+        }
+    }
 }
 
 /// Load config and run the main poll loop.
@@ -363,9 +381,11 @@ async fn run_start_with_home(
     // checks can fail due to config/filesystem state and should not leave
     // runtime-owned pools behind.
     let cancel = CancellationToken::new();
+    let runner_client_session_id = Uuid::new_v4().to_string();
     let http = HttpClient::new(HttpClientConfig {
         api_url: server.url.clone(),
         vercel_bypass: std::env::var("VERCEL_AUTOMATION_BYPASS_SECRET").ok(),
+        client_session_id: runner_client_session_id.clone(),
     })?;
     let name = runner_config.name;
     let group = runner_config.group;
@@ -414,7 +434,9 @@ async fn run_start_with_home(
         addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
+        builtin_firewall_catalog_cache_path: paths.builtin_firewall_catalog_cache(),
         api_url: Some(server.url.clone()),
+        client_session_id: runner_client_session_id,
     })
     .await?;
     mitm.start().await?;
@@ -600,6 +622,10 @@ async fn run_start_with_home(
             server.token,
             group,
             profiles,
+            BuiltinFirewallCatalogCachePaths {
+                cache_path: paths.builtin_firewall_catalog_cache(),
+                lock_path: paths.builtin_firewall_catalog_cache_lock(),
+            },
             cancel.clone(),
             Arc::clone(&cancel_tokens),
         )
@@ -617,6 +643,7 @@ async fn run_start_with_home(
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
         network_policy_refresh,
+        session_history_probe: SessionHistoryProbe::default(),
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(
             paths.clone(),
@@ -1124,6 +1151,24 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut memory_prefetch,
     } = shutdown;
 
+    // -----------------------------------------------------------------------
+    // Signal handling / mode channel
+    // -----------------------------------------------------------------------
+    let signal = match signals.signal_source {
+        SignalSource::Real(signals) => SignalController::spawn(
+            provider_state.cancel.clone(),
+            Arc::clone(&provider_state.cancel_tokens),
+            signals,
+            shared.parking_gate.clone(),
+        ),
+        SignalSource::Override(controller) => controller,
+    };
+    let mut mode_rx = signal.mode_rx;
+    let lifecycle = signal.lifecycle;
+    let mut signal_handler_task = signal.handler_task;
+
+    shared.status.write_initial().await;
+
     let mut factories = match start_factories(
         &runner.profiles,
         &firecracker,
@@ -1144,9 +1189,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 shared.status.as_ref(),
             )
             .await;
+            if let Some(handler_task) = signal_handler_task.take() {
+                abort_signal_handler_task(handler_task, "factory_startup_failure").await;
+            }
             return Err(e);
         }
     };
+    let startup_mode = lifecycle.mark_startup_ready();
+    shared.status.set_mode(startup_mode).await;
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
@@ -1154,15 +1204,23 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // "factory still referenced" warnings from Arc::try_unwrap.
     let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
-    shared.status.write_initial().await;
-    info!(
-        name = %runner.name,
-        group = %runner.group,
-        effective_vcpu = capacity.budget.effective_vcpu(),
-        effective_memory_mb = capacity.budget.effective_memory_mb(),
-        max_concurrent = capacity.budget.max_concurrent(),
-        "runner started"
-    );
+    if startup_mode == RunnerMode::Running {
+        info!(
+            name = %runner.name,
+            group = %runner.group,
+            effective_vcpu = capacity.budget.effective_vcpu(),
+            effective_memory_mb = capacity.budget.effective_memory_mb(),
+            max_concurrent = capacity.budget.max_concurrent(),
+            "runner started"
+        );
+    } else {
+        info!(
+            name = %runner.name,
+            group = %runner.group,
+            mode = ?startup_mode,
+            "runner startup completed after lifecycle signal"
+        );
+    }
 
     // -----------------------------------------------------------------------
     // Mitmproxy crash-restart state
@@ -1172,22 +1230,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         MITM_BACKOFF_MAX,
         Some(MITM_MAX_CONSECUTIVE_FAILURES),
     );
-
-    // -----------------------------------------------------------------------
-    // Signal handling / mode channel
-    // -----------------------------------------------------------------------
-    let signal = match signals.signal_source {
-        SignalSource::Real(signals) => SignalController::spawn(
-            provider_state.cancel.clone(),
-            Arc::clone(&provider_state.cancel_tokens),
-            signals,
-            shared.parking_gate.clone(),
-        ),
-        SignalSource::Override(controller) => controller,
-    };
-    let mut mode_rx = signal.mode_rx;
-    let lifecycle = signal.lifecycle;
-    let mut signal_handler_task = signal.handler_task;
 
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
@@ -1254,7 +1296,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // sleep (30s) from scratch — so poll never fires. See #8747.
     let mut discover_fut = Box::pin(provider_state.provider.discover());
 
-    let mut current_mode = RunnerMode::Running;
+    let mut current_mode = startup_mode;
     let spawn_ctx = SpawnContext {
         provider: Arc::clone(&provider_state.provider),
         exec_config: Arc::clone(&exec_config),
@@ -1281,6 +1323,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             shared.status.set_mode(mode).await;
         }
         match mode {
+            RunnerMode::Starting => {}
             // Stopped should not normally reach here — teardown sets it and
             // exits. Treat as a safety break.
             RunnerMode::Stopped => break,
@@ -1541,7 +1584,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     RunnerMode::Running if can_discover => "main",
                     RunnerMode::Running => "budget_exhausted",
                     RunnerMode::Draining => "draining",
-                    RunnerMode::Stopping | RunnerMode::Stopped => "inactive",
+                    RunnerMode::Starting | RunnerMode::Stopping | RunnerMode::Stopped => {
+                        "inactive"
+                    }
                 };
                 if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
                     info!(source, "session affinity state triggered immediate heartbeat");
@@ -1673,17 +1718,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
     teardown.phase_complete("finish_mitm_restart", phase);
     if let Some(handler_task) = signal_handler_task.take() {
-        match handler_task.abort_and_wait().await {
-            Err(error) if error.is_cancelled() => {
-                teardown.event("signal_handler_aborted");
-            }
-            Err(error) => {
-                warn!(error = %error, "signal handler task failed during shutdown");
-            }
-            Ok(()) => {
-                warn!("signal handler task exited before shutdown abort completed");
-            }
-        }
+        abort_signal_handler_task(handler_task, "shutdown").await;
+        teardown.event("signal_handler_aborted");
     }
 
     info!("shutting down factories");

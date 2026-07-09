@@ -3,6 +3,7 @@ import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
 import {
   findDesignSystem,
+  findWebsiteTemplateResource,
   findTemplate,
   listDesignSystems,
   listTemplates,
@@ -22,6 +23,21 @@ interface WebsiteOptions {
   readonly designSystem?: string;
   readonly siteSlug?: string;
   readonly title?: string;
+}
+
+function selectedTemplateDetails(
+  template: ReturnType<typeof findTemplate> | undefined,
+): readonly string[] {
+  if (!template) {
+    return ["Selected template: agent decides"];
+  }
+  const details = [`Selected template: ${template.id} (${template.name})`];
+  if (template.source.archive) {
+    details.push(
+      `Selected template package: zero resource pull ${template.id} --dir ./generated/resources`,
+    );
+  }
+  return details;
 }
 
 function unknownDesignSystemError(id: string): Error {
@@ -121,7 +137,9 @@ ${formatRegistryListing(templates, "website templates")}`;
       let resolvedTemplate;
       if (options.template !== undefined) {
         const canonical = canonicalizeRegistryId("template", options.template);
-        const entry = findTemplate(canonical);
+        const entry =
+          findWebsiteTemplateResource(options.template) ??
+          findTemplate(canonical);
         if (!entry || !entry.targets?.includes(WEBSITE_TARGET)) {
           throw unknownTemplateError(options.template);
         }
@@ -140,11 +158,7 @@ ${formatRegistryListing(templates, "website templates")}`;
               ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
               : "agent decides"
           }`,
-          `Selected template: ${
-            resolvedTemplate
-              ? `${resolvedTemplate.id} (${resolvedTemplate.name})`
-              : "agent decides"
-          }`,
+          ...selectedTemplateDetails(resolvedTemplate),
         ],
         artifactRules: [
           "Build the usable website as the first screen; do not output a landing-page plan.",

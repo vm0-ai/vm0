@@ -1,10 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type {
-  ModelSelectionRequest,
-  PersistedAttachment,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -26,6 +23,11 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+
+interface ModelSelectionRequest {
+  readonly modelProviderId: string;
+  readonly selectedModel: string;
+}
 
 interface QueuedMessageCapture {
   content?: string;

@@ -15,14 +15,11 @@ const CODEX_SESSION_CLEANUP_SCRIPT: &str =
 
 fn codex_restore_rollout_path(
     session_id: &str,
-    session_history: Option<&str>,
-    fallback_timestamp: chrono::DateTime<chrono::Utc>,
+    timestamp: chrono::DateTime<chrono::Utc>,
+    extension: &str,
 ) -> String {
-    let timestamp = session_history
-        .and_then(codex_session_meta_timestamp)
-        .unwrap_or(fallback_timestamp);
     format!(
-        "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}.jsonl",
+        "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}{extension}",
         timestamp.format("%Y"),
         timestamp.format("%m"),
         timestamp.format("%d"),
@@ -30,39 +27,59 @@ fn codex_restore_rollout_path(
     )
 }
 
-fn codex_session_meta_timestamp(session_history: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+fn codex_restore_rollout_timestamp(
+    session: &MaterializedResumeSession<'_>,
+    fallback_timestamp: chrono::DateTime<chrono::Utc>,
+) -> chrono::DateTime<chrono::Utc> {
+    session
+        .codex_zstd_history()
+        .and_then(|(_, timestamp)| timestamp)
+        .or_else(|| {
+            session
+                .history_text()
+                .and_then(codex_session_meta_timestamp)
+        })
+        .unwrap_or(fallback_timestamp)
+}
+
+pub(super) fn codex_session_meta_timestamp(
+    session_history: &str,
+) -> Option<chrono::DateTime<chrono::Utc>> {
     for line in session_history.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
-            continue;
-        }
-
-        if let Some(timestamp) = value
-            .get("payload")
-            .and_then(|payload| payload.get("timestamp"))
-            .and_then(|timestamp| timestamp.as_str())
-            .and_then(parse_codex_rollout_timestamp)
-        {
-            return Some(timestamp);
-        }
-
-        if let Some(timestamp) = value
-            .get("timestamp")
-            .and_then(|timestamp| timestamp.as_str())
-            .and_then(parse_codex_rollout_timestamp)
-        {
+        if let Some(timestamp) = codex_session_meta_timestamp_line(line) {
             return Some(timestamp);
         }
     }
 
     None
+}
+
+pub(super) fn codex_session_meta_timestamp_line(
+    line: &str,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return None;
+    };
+    if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
+        return None;
+    }
+
+    value
+        .get("payload")
+        .and_then(|payload| payload.get("timestamp"))
+        .and_then(|timestamp| timestamp.as_str())
+        .and_then(parse_codex_rollout_timestamp)
+        .or_else(|| {
+            value
+                .get("timestamp")
+                .and_then(|timestamp| timestamp.as_str())
+                .and_then(parse_codex_rollout_timestamp)
+        })
 }
 
 fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -81,8 +98,9 @@ fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::U
         })
 }
 
-/// Write a Codex session history file as plain JSONL at
-/// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl`.
+/// Write a Codex session history file as canonical JSONL or zstd-compressed
+/// JSONL under
+/// `~/.codex/sessions/YYYY/MM/DD/rollout-YYYY-MM-DDThh-mm-ss-{thread_id}.jsonl[.zst]`.
 ///
 /// Codex 0.137 filters filesystem resume candidates through its canonical
 /// rollout filename parser, so a bare `{thread_id}.jsonl` is ignored.
@@ -91,15 +109,19 @@ pub(super) async fn restore_codex_session(
     context: &ExecutionContext,
     session: &MaterializedResumeSession<'_>,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
-    let session_history = session.history_bytes();
     let original_session_id = session.cli_agent_session_id();
     let thread_id = CodexThreadId::parse(original_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
     let session_id = thread_id.as_str();
     let session_filename_key = thread_id.filename_key();
 
-    let session_path =
-        codex_restore_rollout_path(session_id, session.history_text(), chrono::Utc::now());
+    let timestamp = codex_restore_rollout_timestamp(session, chrono::Utc::now());
+    let (session_history, extension) = if let Some((bytes, _)) = session.codex_zstd_history() {
+        (bytes, ".jsonl.zst")
+    } else {
+        (session.history_bytes(), ".jsonl")
+    };
+    let session_path = codex_restore_rollout_path(session_id, timestamp, extension);
 
     cleanup_existing_codex_session_files(
         sandbox,

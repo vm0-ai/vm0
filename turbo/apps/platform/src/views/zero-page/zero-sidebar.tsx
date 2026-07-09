@@ -3,6 +3,7 @@ import { useLastResolved, useGet, useSet } from "ccstate-react";
 import {
   IconChartLine,
   IconLayoutGrid,
+  IconPackage,
   IconRoute,
   IconUsers,
   IconEdit,
@@ -69,6 +70,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
+  },
+  {
+    id: "artifacts",
+    activeKeys: ["artifacts"],
+    pathname: "/artifacts",
+    label: "Artifacts",
+    icon: IconPackage as NavIcon,
+    featureGate: FeatureSwitchKey.Artifacts,
   },
   {
     id: "workflows",
@@ -176,8 +185,13 @@ function AccountDropdownContainer({
   collapsed?: boolean;
 }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
+  const settingsOwnerId = collapsed ? "sidebar-collapsed" : "sidebar-expanded";
   return (
-    <AccountDropdown onAccountAction={onAccountAction} collapsed={collapsed} />
+    <AccountDropdown
+      onAccountAction={onAccountAction}
+      settingsOwnerId={settingsOwnerId}
+      collapsed={collapsed}
+    />
   );
 }
 

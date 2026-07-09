@@ -1,5 +1,5 @@
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { signInThroughHostedAuth } from "../lib/auth";
 import {
   completeExploreOnboarding,
@@ -25,7 +25,12 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
     mirrorStorageToUrls: [onboardingUrl],
   });
 
-  await completeExploreOnboarding(page, { apiUrl, appUrl, onboardingUrl });
+  await completeExploreOnboarding(page, {
+    apiUrl,
+    appUrl,
+    onboardingUrl,
+    auth: { email, activeOrganizationId: orgId },
+  });
 
   // Verify: landed on chat page
   await page.waitForURL("**/agents/*/chat", {

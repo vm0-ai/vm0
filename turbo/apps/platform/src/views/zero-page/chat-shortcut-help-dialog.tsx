@@ -1,7 +1,5 @@
-import { useGet, useLastResolved, useSet } from "ccstate-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { useGet, useSet } from "ccstate-react";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   chatShortcutHelpOpen$,
@@ -79,28 +77,9 @@ const SIDEBAR_SHORTCUT_SECTIONS = [
   },
 ] as const;
 
-function isChatThreadEmojiShortcutKey(key: string): boolean {
-  return key === "shift+f2" || key === "ctrl+shift+1" || key === "ctrl+shift+0";
-}
-
-function shortcutSectionsForRoute(
-  route: RouteKey | null,
-  chatThreadEmojiEnabled: boolean,
-) {
+function shortcutSectionsForRoute(route: RouteKey | null) {
   if (route === "chat") {
-    return chatThreadEmojiEnabled
-      ? CHAT_THREAD_SHORTCUT_SECTIONS
-      : CHAT_THREAD_SHORTCUT_SECTIONS.map((section) => {
-          if (section.title !== "Global") {
-            return section;
-          }
-          return {
-            ...section,
-            shortcuts: section.shortcuts.filter((shortcut) => {
-              return !isChatThreadEmojiShortcutKey(shortcut.key);
-            }),
-          };
-        });
+    return CHAT_THREAD_SHORTCUT_SECTIONS;
   }
   if (route === "agentChat" || route === "home") {
     return AGENT_CHAT_SHORTCUT_SECTIONS;
@@ -112,13 +91,7 @@ export function ChatShortcutHelpDialog() {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
   const activeRoute = useGet(activeRoute$);
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
-  const shortcutSections = shortcutSectionsForRoute(
-    activeRoute,
-    chatThreadEmojiEnabled,
-  );
+  const shortcutSections = shortcutSectionsForRoute(activeRoute);
 
   return (
     <ShortcutHelpDialog

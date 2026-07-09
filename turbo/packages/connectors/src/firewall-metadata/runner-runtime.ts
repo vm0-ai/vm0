@@ -1,6 +1,7 @@
 import type { Firewall } from "../firewall-types";
 import {
   RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_NAMES,
   RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
   hasGeneratedRunnerRuntimeFirewall,
   loadGeneratedRunnerRuntimeFirewall,
@@ -8,6 +9,7 @@ import {
 
 export {
   RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_NAMES,
   RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
 };
 
@@ -34,4 +36,10 @@ export async function loadRunnerRuntimeFirewalls(
     }),
   );
   return Object.fromEntries(entries);
+}
+
+export async function loadAllRunnerRuntimeFirewalls(): Promise<
+  Record<string, Firewall>
+> {
+  return await loadRunnerRuntimeFirewalls(RUNNER_RUNTIME_FIREWALL_NAMES);
 }

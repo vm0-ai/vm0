@@ -48,6 +48,19 @@ _codex_zero_curl() {
     curl -fsS "${hdrs[@]}" "$@" "$base$path"
 }
 
+_codex_zero_test_curl() {
+    local path="$1"; shift
+    local token base
+    token=$(_codex_zero_token)
+    base=$(_codex_zero_api_url)
+    local -a hdrs=(-H "Authorization: Bearer $token" -H "Content-Type: application/json")
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        hdrs+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+        hdrs+=(-H "x-vm0-test-endpoint-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl -fsS "${hdrs[@]}" "$@" "$base$path"
+}
+
 # Enable the codex-beta feature switch for the current test user.
 # Key must match FeatureSwitchKey.CodexBeta = "codexBeta" (camelCase) in
 # turbo/packages/connectors/src/feature-switch-key.ts. isFeatureEnabled()
@@ -70,6 +83,49 @@ enable_codex_beta() {
 # explicitly force the switch off for that isolated identity.
 disable_codex_beta() {
     return 0
+}
+
+configure_codex_zero_model_policy() {
+    local model="$1"
+    local provider_type="$2"
+    local provider_id="$3"
+    local current payload
+
+    current=$(_codex_zero_curl "/api/zero/model-policies")
+    payload=$(printf '%s' "$current" | jq -c \
+        --arg model "$model" \
+        --arg providerType "$provider_type" \
+        --arg providerId "$provider_id" \
+        '
+        (.policies // [])
+        | map({
+            model,
+            isDefault,
+            defaultProviderType,
+            credentialScope,
+            modelProviderId
+          }) as $existing
+        | ($existing | map(select(.model != $model))) as $others
+        | (
+            ($existing | map(select(.model == $model)) | first)
+            // {model: $model, isDefault: false}
+          ) as $target
+        | {
+            policies: (
+              $others
+              + [
+                  $target
+                  + {
+                      defaultProviderType: $providerType,
+                      credentialScope: "org",
+                      modelProviderId: $providerId
+                    }
+                ]
+            )
+          }
+        ')
+
+    _codex_zero_curl "/api/zero/model-policies" -X PUT -d "$payload" >/dev/null
 }
 
 # Poll /api/zero/chat-threads/:id/messages until the current run has a terminal
@@ -171,24 +227,17 @@ send_chat_run_message() {
     local agent_id="$1"
     local prompt="$2"
     local payload body
-    # debugNoMockCodex=true bypasses USE_MOCK_CODEX in the runner so the real
+    # realAgentInPreview=true bypasses USE_MOCK_CODEX in the runner so the real
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
     # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
-    # guest_mock_codex::build_events. The chat/messages contract
-    # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
-    # the same passthrough on /api/zero/runs.
-    # Model-first selection can carry either the sentinel provider id for an org
-    # policy route, or a concrete provider id for an explicit model/provider pin.
-    # BYOK smoke tests use a concrete id so they do not mutate shared org policy.
+    # guest_mock_codex::build_events.
     local selected_model="${CODEX_ZERO_SELECTED_MODEL:-gpt-5.5}"
-    local model_provider_id="${CODEX_ZERO_MODEL_PROVIDER_ID:-00000000-0000-4000-8000-000000000000}"
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
-        --arg modelProviderId "$model_provider_id" \
         --arg selectedModel "$selected_model" \
-        '{agentId: $agentId, prompt: $prompt, modelSelection: {modelProviderId: $modelProviderId, selectedModel: $selectedModel}, hasTextContent: true, debugNoMockCodex: true}')
+        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, realAgentInPreview: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")

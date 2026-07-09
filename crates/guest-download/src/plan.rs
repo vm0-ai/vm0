@@ -1,4 +1,4 @@
-use crate::download::{DownloadTask, NotFoundPolicy, classify_download_task_kind};
+use crate::download::{DownloadTask, classify_download_task_kind};
 use crate::instructions::{InstructionCleanup, InstructionNormalization};
 use crate::manifest::{Manifest, ManifestEntry};
 use std::path::Path;
@@ -7,8 +7,15 @@ pub(crate) struct RunPlan {
     pub(crate) cleanup_paths: Vec<String>,
     pub(crate) instruction_cleanups: Vec<InstructionCleanup>,
     pub(crate) preserved_paths: Vec<String>,
+    pub(crate) empty_artifacts: Vec<EmptyArtifactPreparation>,
     pub(crate) download_tasks: Vec<DownloadTask>,
     pub(crate) instruction_files: Vec<InstructionNormalization>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EmptyArtifactPreparation {
+    pub(crate) label: String,
+    pub(crate) mount_path: String,
 }
 
 #[derive(Clone, Copy)]
@@ -29,13 +36,6 @@ impl ManifestEntryKind {
         match self {
             Self::Storage => "storage_download",
             Self::Artifact => "artifact_download",
-        }
-    }
-
-    fn not_found_policy(self) -> NotFoundPolicy {
-        match self {
-            Self::Storage => NotFoundPolicy::Fail,
-            Self::Artifact => NotFoundPolicy::Ignore404,
         }
     }
 
@@ -114,17 +114,29 @@ impl RunPlan {
             ManifestEntryKind::Storage,
         );
 
-        // Artifacts: 404 is non-fatal (may not exist on first run).
+        // Artifacts with archives must download successfully; explicit empty
+        // artifacts are prepared separately below and do not create tasks.
         append_download_tasks(
             &mut download_tasks,
             &manifest.artifacts,
             ManifestEntryKind::Artifact,
         );
+        let empty_artifacts = manifest
+            .artifacts
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.empty)
+            .map(|(index, entry)| EmptyArtifactPreparation {
+                label: format_empty_artifact_label(entry, index + 1),
+                mount_path: entry.mount_path.clone(),
+            })
+            .collect();
 
         Self {
             cleanup_paths: manifest.cleanup_paths.clone(),
             instruction_cleanups,
             preserved_paths,
+            empty_artifacts,
             download_tasks,
             instruction_files,
         }
@@ -142,6 +154,9 @@ fn append_download_tasks(
     kind: ManifestEntryKind,
 ) {
     for (idx, entry) in entries.iter().enumerate() {
+        if matches!(kind, ManifestEntryKind::Artifact) && entry.empty {
+            continue;
+        }
         if should_download_entry(entry, kind)
             && let Some(url) = entry.archive_url.clone()
         {
@@ -155,11 +170,20 @@ fn append_download_tasks(
                 kind.op_name(),
                 url,
                 download_mount_path.to_string(),
-                kind.not_found_policy(),
                 task_kind,
             ));
         }
     }
+}
+
+fn format_empty_artifact_label(entry: &ManifestEntry, index: usize) -> String {
+    let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
+    let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
+    let missing_root_policy = entry.missing_root_policy.as_deref().unwrap_or("fail");
+    format!(
+        "artifact {index} mountPath={} vasStorageName={} vasVersionId={} empty=true cached={} missingRootPolicy={}",
+        entry.mount_path, storage_name, version_id, entry.cached, missing_root_policy
+    )
 }
 
 fn download_mount_path(entry: &ManifestEntry, kind: ManifestEntryKind) -> &str {
@@ -287,7 +311,6 @@ mod tests {
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
-                NotFoundPolicy::Fail,
             )
         );
         assert_eq!(
@@ -297,7 +320,6 @@ mod tests {
                 "artifact_download",
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
-                NotFoundPolicy::Ignore404,
             )
         );
         assert_eq!(
@@ -307,8 +329,62 @@ mod tests {
                 "artifact_download",
                 "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),
-                NotFoundPolicy::Ignore404,
             )
+        );
+    }
+
+    #[test]
+    fn run_plan_prepares_explicit_empty_artifact_without_download_task() {
+        let json = r#"{
+            "storages": [],
+            "artifacts": [{
+                "mountPath": "/workspace",
+                "archiveUrl": "https://s3/compat-empty-artifact.tar.gz",
+                "empty": true,
+                "vasStorageName": "memory",
+                "vasVersionId": "empty-v1",
+                "missingRootPolicy": "preserveParentVersion"
+            }]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert!(plan.download_tasks.is_empty());
+        assert_eq!(
+            plan.empty_artifacts,
+            [EmptyArtifactPreparation {
+                label: "artifact 1 mountPath=/workspace vasStorageName=memory vasVersionId=empty-v1 empty=true cached=false missingRootPolicy=preserveParentVersion".into(),
+                mount_path: "/workspace".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn run_plan_does_not_treat_storage_empty_field_as_special() {
+        let json = r#"{
+            "storages": [{
+                "mountPath": "/data",
+                "archiveUrl": "https://s3/storage.tar.gz",
+                "empty": true,
+                "vasStorageName": "data",
+                "vasVersionId": "storage-v1"
+            }],
+            "artifacts": []
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+
+        let plan = RunPlan::from_manifest(&manifest);
+
+        assert_eq!(plan.empty_artifacts, []);
+        assert_eq!(
+            plan.download_tasks,
+            [DownloadTask::new(
+                "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
+                "storage_download",
+                "https://s3/storage.tar.gz".into(),
+                "/data".into(),
+            )]
         );
     }
 
@@ -377,7 +453,6 @@ mod tests {
                 "storage_download",
                 "https://s3/instructions.tar.gz".into(),
                 "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
-                NotFoundPolicy::Fail,
                 crate::download::DownloadTaskKind::FrameworkHomeInstructions,
             )
         );
@@ -405,7 +480,6 @@ mod tests {
                 "storage_download",
                 "https://s3/data.tar.gz".into(),
                 "/data".into(),
-                NotFoundPolicy::Fail,
                 crate::download::DownloadTaskKind::Other,
             )
         );
@@ -432,7 +506,6 @@ mod tests {
                 "artifact_download",
                 "https://s3/workspace.tar.gz".into(),
                 "/workspace".into(),
-                NotFoundPolicy::Ignore404,
                 crate::download::DownloadTaskKind::Other,
             )
         );
@@ -527,6 +600,7 @@ mod tests {
                 archive_url: Some("https://s3/artifact.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
+                empty: false,
                 vas_storage_name: Some("artifact".into()),
                 vas_version_id: Some("artifact-v1".into()),
                 missing_root_policy: None,
@@ -554,6 +628,7 @@ mod tests {
                 archive_url: Some("https://s3/storage.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
+                empty: false,
                 vas_storage_name: Some("storage".into()),
                 vas_version_id: Some("storage-v1".into()),
                 missing_root_policy: None,
@@ -575,7 +650,6 @@ mod tests {
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 mount_path,
-                NotFoundPolicy::Fail,
             )],
         );
     }
@@ -596,6 +670,7 @@ mod tests {
                 archive_url: Some("https://s3/artifact.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
+                empty: false,
                 vas_storage_name: Some("artifact".into()),
                 vas_version_id: Some("artifact-v1".into()),
                 missing_root_policy: None,
@@ -616,7 +691,6 @@ mod tests {
                 "artifact_download",
                 "https://s3/artifact.tar.gz".into(),
                 mount_path,
-                NotFoundPolicy::Ignore404,
             )],
         );
     }

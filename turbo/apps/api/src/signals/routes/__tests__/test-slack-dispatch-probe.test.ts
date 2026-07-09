@@ -10,7 +10,7 @@ import type {
   TestSlackStatePostResponse,
   TestSlackStateResponse,
 } from "@vm0/api-contracts/contracts/test-slack-state";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
@@ -20,6 +20,7 @@ import { verifyZeroToken } from "../../auth/tokens";
 import { runnersRoutes } from "../runners";
 import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { testSlackStateRoutes } from "../test-slack-state";
+import { createDeferredPromise, settle } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -40,6 +41,58 @@ interface SlackProbeFixture {
   readonly slackUserId: string;
   readonly defaultAgentId: string | null;
   readonly connectionId: string | null;
+}
+
+interface SlackUserInfoMockResponse {
+  readonly ok: true;
+  readonly user: {
+    readonly profile: {
+      readonly display_name: string;
+      readonly email: string;
+    };
+    readonly tz: string;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function slackUserInfoCallCount(userId: string): number {
+  return context.mocks.slack.users.info.mock.calls.filter((call) => {
+    const request = call[0];
+    return isRecord(request) && request.user === userId;
+  }).length;
+}
+
+function slackUserInfoResponse(
+  displayName = "Slack User",
+): SlackUserInfoMockResponse {
+  return {
+    ok: true,
+    user: {
+      profile: {
+        display_name: displayName,
+        email: "slack@example.com",
+      },
+      tz: "UTC",
+    },
+  };
 }
 
 function configureSlackProbeTest(): void {
@@ -69,16 +122,7 @@ function configureSlackProbeTest(): void {
     ok: true,
     messages: [],
   });
-  context.mocks.slack.users.info.mockResolvedValue({
-    ok: true,
-    user: {
-      profile: {
-        display_name: "Slack User",
-        email: "slack@example.com",
-      },
-      tz: "UTC",
-    },
-  });
+  context.mocks.slack.users.info.mockResolvedValue(slackUserInfoResponse());
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
@@ -345,6 +389,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "x-vercel-protection-bypass": "preview-secret",
         "x-vm0-test-endpoint-bypass": "preview-secret",
       },
       body: JSON.stringify({}),
@@ -433,11 +478,173 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Slack",
     );
+    expect(claim.appendSystemPrompt).toContain(
+      "zero slack message send --help",
+    );
+    expect(claim.appendSystemPrompt).toContain(
+      "normal replies are automatically sent to the originating thread",
+    );
+    expect(claim.appendSystemPrompt).toContain(
+      "Never use SLACK_TOKEN directly",
+    );
     expect(claim.appendSystemPrompt).toContain("Channel type: Channel");
     const state = await readSlackState(fixture);
     expect(state.recent_runs).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: claim.runId, triggerSource: "slack" }),
+      ]),
+    );
+  });
+
+  it("coalesces overlapping Slack user info lookups during run creation", async () => {
+    const fixture = await track(
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
+    );
+    const prompt = "slack user info coalescing";
+    const contextMentionedUserId = "U_CONTEXT_MENTIONED";
+    const historyResponse = createDeferredPromise<{
+      readonly ok: true;
+      readonly messages: readonly Record<string, unknown>[];
+    }>(context.signal);
+    const currentUserInfoResponse =
+      createDeferredPromise<SlackUserInfoMockResponse>(context.signal);
+    const releasePendingMocks = (): void => {
+      if (!historyResponse.settled()) {
+        historyResponse.resolve({ ok: true, messages: [] });
+      }
+      if (!currentUserInfoResponse.settled()) {
+        currentUserInfoResponse.resolve(slackUserInfoResponse());
+      }
+    };
+    context.mocks.slack.conversations.history.mockReturnValue(
+      historyResponse.promise,
+    );
+    context.mocks.slack.users.info.mockImplementation(
+      async (request: unknown) => {
+        const requestedUserId =
+          isRecord(request) && typeof request.user === "string"
+            ? request.user
+            : "";
+        if (requestedUserId === fixture.slackUserId) {
+          return await currentUserInfoResponse.promise;
+        }
+        return slackUserInfoResponse(`Slack User ${requestedUserId}`);
+      },
+    );
+
+    const responsePromise = (async () => {
+      const response = await postProbe({
+        team_id: fixture.slackWorkspaceId,
+        channel_id: "C-test",
+        user_id: fixture.slackUserId,
+        message_text: prompt,
+        message_ts: "1710000000.000000",
+        channel_type: "channel",
+      });
+      expect(response.status).toBe(200);
+      await expect(
+        readJson<TestSlackDispatchProbeResponse>(response),
+      ).resolves.toStrictEqual({ ok: true });
+    })();
+    onTestFinished(async () => {
+      releasePendingMocks();
+      await settle(responsePromise);
+    });
+
+    await expect
+      .poll(() => {
+        return slackUserInfoCallCount(fixture.slackUserId);
+      })
+      .toBe(1);
+    await expect
+      .poll(() => {
+        return context.mocks.slack.conversations.history.mock.calls.length;
+      })
+      .toBe(1);
+    historyResponse.resolve({
+      ok: true,
+      messages: [
+        {
+          user: fixture.slackUserId,
+          text: `previous context from the same Slack user and <@${contextMentionedUserId}>`,
+          ts: "1709999999.000000",
+        },
+      ],
+    });
+    await expect
+      .poll(() => {
+        return slackUserInfoCallCount(contextMentionedUserId);
+      })
+      .toBe(1);
+    expect(slackUserInfoCallCount(fixture.slackUserId)).toBe(1);
+
+    currentUserInfoResponse.resolve(slackUserInfoResponse());
+    await responsePromise;
+
+    expect(slackUserInfoCallCount(fixture.slackUserId)).toBe(1);
+    const state = await readSlackState(fixture);
+    const run = state.recent_runs.find((candidate) => {
+      return candidate.promptPreview === prompt;
+    });
+    if (!run) {
+      throw new Error("Expected Slack dispatch probe to create a run");
+    }
+    const timingEvents = sandboxOperationEventsForRun(run.id);
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type:
+            "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
+          slack_user_info_resolver_requested_count_bucket: "2_4",
+          slack_user_info_resolver_cache_hit_count_bucket: "0",
+          slack_user_info_resolver_miss_count_bucket: "2_4",
+          slack_user_info_resolver_in_flight_hit_count_bucket: "1",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(timingEvents)).not.toContain(contextMentionedUserId);
+  });
+
+  it("keeps creating Slack runs when Slack user info lookup rejects", async () => {
+    const fixture = await track(
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
+    );
+    const prompt = "slack user info failure should not fail run creation";
+    context.mocks.slack.conversations.history.mockResolvedValue({
+      ok: true,
+      messages: [
+        {
+          user: fixture.slackUserId,
+          text: "context from the same Slack user",
+          ts: "1709999999.000000",
+        },
+      ],
+    });
+    context.mocks.slack.users.info.mockRejectedValue(
+      new Error("Slack users.info failed"),
+    );
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: "C-test",
+      user_id: fixture.slackUserId,
+      message_text: prompt,
+      message_ts: "1710000000.000000",
+      channel_type: "channel",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(
+      readJson<TestSlackDispatchProbeResponse>(response),
+    ).resolves.toStrictEqual({ ok: true });
+    expect(slackUserInfoCallCount(fixture.slackUserId)).toBeGreaterThan(0);
+    const state = await readSlackState(fixture);
+    expect(state.recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "slack",
+          promptPreview: prompt,
+        }),
       ]),
     );
   });
@@ -571,6 +778,140 @@ describe("POST /api/test/slack-dispatch-probe", () => {
         message: "status update failed",
         code: "slack_status_failed",
       },
+    });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger an error"
+        );
+      }),
+    ).toBeUndefined();
+  });
+
+  it("clears thread status when pre-create fails after status succeeds", async () => {
+    const fixture = await track(
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
+    );
+    const historyError = Object.assign(
+      new Error("conversation history failed"),
+      {
+        code: "slack_history_failed",
+      },
+    );
+    context.mocks.slack.conversations.history.mockRejectedValueOnce(
+      historyError,
+    );
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: "C-test",
+      user_id: fixture.slackUserId,
+      message_text: "trigger a context error",
+      message_ts: "1710000003.000000",
+      channel_type: "channel",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readJson<TestSlackDispatchProbeResponse>(response);
+    expect(body).toMatchObject({
+      ok: false,
+      error: {
+        name: "Error",
+        message: "conversation history failed",
+        code: "slack_history_failed",
+      },
+    });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger a context error"
+        );
+      }),
+    ).toBeUndefined();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(1, {
+      channel_id: "C-test",
+      thread_ts: "1710000003.000000",
+      status: "is thinking...",
+    });
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(2, {
+      channel_id: "C-test",
+      thread_ts: "1710000003.000000",
+      status: "",
+    });
+  });
+
+  it("preserves the pre-create error when status cleanup fails", async () => {
+    const fixture = await track(
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
+    );
+    context.mocks.slack.assistant.threads.setStatus
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(new Error("status cleanup failed"));
+    const historyError = Object.assign(
+      new Error("conversation history still failed"),
+      {
+        code: "slack_history_failed",
+      },
+    );
+    context.mocks.slack.conversations.history.mockRejectedValueOnce(
+      historyError,
+    );
+
+    const response = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: "C-test",
+      user_id: fixture.slackUserId,
+      message_text: "trigger cleanup failure",
+      message_ts: "1710000004.000000",
+      channel_type: "channel",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readJson<TestSlackDispatchProbeResponse>(response);
+    expect(body).toMatchObject({
+      ok: false,
+      error: {
+        name: "Error",
+        message: "conversation history still failed",
+        code: "slack_history_failed",
+      },
+    });
+    const state = await readSlackState(fixture);
+    expect(
+      state.recent_runs.find((run) => {
+        return (
+          run.triggerSource === "slack" &&
+          run.promptPreview === "trigger cleanup failure"
+        );
+      }),
+    ).toBeUndefined();
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(1, {
+      channel_id: "C-test",
+      thread_ts: "1710000004.000000",
+      status: "is thinking...",
+    });
+    expect(
+      context.mocks.slack.assistant.threads.setStatus,
+    ).toHaveBeenNthCalledWith(2, {
+      channel_id: "C-test",
+      thread_ts: "1710000004.000000",
+      status: "",
     });
   });
 });

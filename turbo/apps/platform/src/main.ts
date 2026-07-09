@@ -1,3 +1,4 @@
+import "./lib/preview-bypass-cookie-bootstrap.ts";
 import { initSentry, Sentry } from "./lib/sentry.ts";
 import { initPostHog } from "./lib/posthog.ts";
 import { setupVisualViewportKeyboardState } from "./lib/visual-viewport-keyboard.ts";

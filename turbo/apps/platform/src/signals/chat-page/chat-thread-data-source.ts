@@ -3,7 +3,6 @@ import type {
   ChatRunOptionsRequest,
   CodexServiceTier,
   ChatThreadDraft,
-  ModelSelectionRequest,
   GenerationTemplateRequest,
   PagedChatMessage,
   PersistedAttachment,
@@ -36,9 +35,11 @@ export interface PatchDraftArgs {
 
 export interface PatchModelSelectionArgs {
   threadId: string;
-  modelSelection:
-    | (ModelSelectionRequest & { codexServiceTier?: CodexServiceTier })
-    | null;
+  modelSelection: {
+    readonly modelProviderId: string;
+    readonly selectedModel: string;
+    readonly codexServiceTier?: CodexServiceTier;
+  } | null;
 }
 
 export interface PatchComputerUseHostArgs {
@@ -55,6 +56,7 @@ export interface AppendQueuedMessageArgs {
   chatThreadSortEventId: string;
   hasTextContent: boolean;
   runOptions?: ChatRunOptionsRequest;
+  realAgentInPreview?: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }

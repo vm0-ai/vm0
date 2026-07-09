@@ -9,6 +9,7 @@ import pytest
 from mitmproxy import tcp
 from mitmproxy.flow import Error
 
+import deferred_callbacks
 import flow_metadata_keys as metadata_keys
 import logging_utils
 import mitm_addon
@@ -25,7 +26,7 @@ def _capture_tcp_drains(monkeypatch: pytest.MonkeyPatch) -> list[_ScheduledTcpDr
     def call_soon(callback: Callable[[tcp.TCPFlow], None], flow: tcp.TCPFlow) -> None:
         scheduled.append((callback, flow))
 
-    monkeypatch.setattr(mitm_addon, "_call_soon", call_soon)
+    monkeypatch.setattr(deferred_callbacks, "call_soon", call_soon)
     return scheduled
 
 
@@ -289,7 +290,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
-        monkeypatch.setattr(mitm_addon, "_MAX_SAFE_NETWORK_LOG_SIZE", max_log_size)
+        monkeypatch.setattr(logging_utils, "NETWORK_LOG_MAX_SAFE_SIZE", max_log_size)
         scheduled = _capture_tcp_drains(monkeypatch)
 
         with mitm_ctx():

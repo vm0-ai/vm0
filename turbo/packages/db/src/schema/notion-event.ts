@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -11,7 +12,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
+import type { NotionWorkflowPendingEventContextJson } from "@vm0/db/jsonb-contracts/notion-event";
+
 import { zeroWorkflowTriggers } from "./zero-workflow";
+
+export type { NotionWorkflowPendingEventContext } from "@vm0/db/jsonb-contracts/notion-event";
 
 export const notionWebhookSecrets = pgTable(
   "notion_webhook_secrets",
@@ -56,7 +61,11 @@ export type NotionWorkflowPendingEventStatus =
   | "running"
   | "processed"
   | "skipped";
-export type NotionWorkflowPendingEventFamily = "new_child_page";
+export type NotionWorkflowPendingEventFamily =
+  | "new_child_page"
+  | "new_database_item"
+  | "page_content_updated";
+export type NotionWorkflowPendingEventScopeType = "page" | "data_source";
 
 export const notionWorkflowPendingEvents = pgTable(
   "notion_workflow_pending_events",
@@ -71,7 +80,10 @@ export const notionWorkflowPendingEvents = pgTable(
         { onDelete: "cascade" },
       ),
     pageId: uuid("page_id").notNull(),
-    parentPageId: uuid("parent_page_id").notNull(),
+    scopeType: varchar("scope_type", { length: 32 })
+      .$type<NotionWorkflowPendingEventScopeType>()
+      .notNull(),
+    scopeId: uuid("scope_id").notNull(),
     eventFamily: varchar("event_family", { length: 64 })
       .$type<NotionWorkflowPendingEventFamily>()
       .notNull()
@@ -84,6 +96,9 @@ export const notionWorkflowPendingEvents = pgTable(
     latestNotionEventId: uuid("latest_notion_event_id").notNull(),
     firstEventAt: timestamp("first_event_at").notNull(),
     latestEventAt: timestamp("latest_event_at").notNull(),
+    latestEventContext: jsonb(
+      "latest_event_context",
+    ).$type<NotionWorkflowPendingEventContextJson>(),
     runAfter: timestamp("run_after").notNull(),
     attempts: integer("attempts").default(0).notNull(),
     pageTitle: text("page_title"),
@@ -98,15 +113,17 @@ export const notionWorkflowPendingEvents = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_notion_pending_events_trigger_page_family").on(
-        table.triggerId,
-        table.pageId,
-        table.eventFamily,
-      ),
+      uniqueIndex("idx_notion_pending_events_trigger_page_family_active")
+        .on(table.triggerId, table.pageId, table.eventFamily)
+        .where(sql`status IN ('pending', 'running')`),
       index("idx_notion_pending_events_due").on(table.status, table.runAfter),
       index("idx_notion_pending_events_page_pending").on(
         table.pageId,
         table.status,
+      ),
+      index("idx_notion_pending_events_scope").on(
+        table.scopeType,
+        table.scopeId,
       ),
     ];
   },

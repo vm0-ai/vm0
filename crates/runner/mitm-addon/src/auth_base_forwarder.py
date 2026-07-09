@@ -12,11 +12,12 @@ import http.client as http_client
 import ipaddress
 import socket
 import ssl
+import sys
 import threading
 import urllib.parse
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, InvalidStateError
 from contextlib import suppress
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 
 from mitmproxy import http
 
@@ -105,18 +106,111 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
+_FORWARD_REQUEST_CLEANUP_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    Exception,
+    asyncio.CancelledError,
+    KeyboardInterrupt,
+    SystemExit,
+    GeneratorExit,
+)
 _PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 _UPSTREAM_HOST_FORBIDDEN_CHARS = frozenset("{}*")
-_forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
-_forward_request_admission_state: (
-    tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
-) = None
 _forward_request_accepting = True
+_forward_request_lifecycle_lock = threading.Lock()
+_forward_request_workers: set[threading.Thread] = set()
+_forward_request_workers_lock = threading.Lock()
+_forward_request_pending_futures: set[Future[tuple[int, bytes, http.Headers]]] = set()
+_forward_request_pending_futures_lock = threading.Lock()
 _forward_request_budget_lock = threading.Lock()
 _forward_request_admitted_count = 0
 _forward_request_admitted_body_bytes = 0
+_forward_request_active_closeables: set["_Closeable"] = set()
+_forward_request_active_closeables_lock = threading.Lock()
 _https_context: ssl.SSLContext | None = None
 _https_context_lock = threading.Lock()
+
+
+class _Closeable(Protocol):
+    def close(self) -> object:
+        raise NotImplementedError
+
+
+class _ForwardRequestAdmissionState(NamedTuple):
+    loop: asyncio.AbstractEventLoop
+    max_workers: int
+    admission_limit: int
+    semaphore: asyncio.Semaphore
+
+
+_forward_request_admission_state: _ForwardRequestAdmissionState | None = None
+
+
+def _track_active_closeable(closeable: _Closeable) -> bool:
+    with _forward_request_lifecycle_lock, _forward_request_active_closeables_lock:
+        if not _forward_request_accepting:
+            return False
+        _forward_request_active_closeables.add(closeable)
+        return True
+
+
+def _untrack_active_closeable(closeable: _Closeable) -> None:
+    with _forward_request_active_closeables_lock:
+        _forward_request_active_closeables.discard(closeable)
+
+
+def _close_active_forward_request_closeables() -> None:
+    with _forward_request_active_closeables_lock:
+        closeables = tuple(_forward_request_active_closeables)
+        _forward_request_active_closeables.clear()
+    for closeable in closeables:
+        with suppress(Exception):
+            closeable.close()
+
+
+def _cancel_pending_forward_request_futures() -> None:
+    with _forward_request_pending_futures_lock:
+        futures = tuple(_forward_request_pending_futures)
+        _forward_request_pending_futures.clear()
+    for future in futures:
+        future.cancel()
+
+
+def _wake_forward_request_admission_waiters(
+    state: _ForwardRequestAdmissionState | None,
+) -> None:
+    if state is None:
+        return
+
+    def release_waiters() -> None:
+        # Wake every admitted waiter. Shutdown has already disabled submission, so
+        # these extra permits only let waiters observe the closed lifecycle state.
+        for _ in range(state.admission_limit):
+            state.semaphore.release()
+
+    with suppress(RuntimeError):
+        state.loop.call_soon_threadsafe(release_waiters)
+
+
+def _discard_pending_forward_request_future(
+    future: Future[tuple[int, bytes, http.Headers]],
+) -> None:
+    with _forward_request_pending_futures_lock:
+        _forward_request_pending_futures.discard(future)
+
+
+def _join_forward_request_workers() -> None:
+    current_thread = threading.current_thread()
+    while True:
+        with _forward_request_workers_lock:
+            workers = tuple(
+                worker
+                for worker in _forward_request_workers
+                if worker is not current_thread and worker.is_alive()
+            )
+        if not workers:
+            return
+        for worker in workers:
+            worker.join()
 
 
 def reset_forward_request_state_for_tests() -> None:
@@ -126,7 +220,7 @@ def reset_forward_request_state_for_tests() -> None:
     global _forward_request_admitted_count
     global _https_context
 
-    shutdown_forward_request_executor(wait=True)
+    shutdown_forward_request_workers(wait=True)
     with _forward_request_budget_lock:
         _forward_request_admitted_count = 0
         _forward_request_admitted_body_bytes = 0
@@ -135,18 +229,20 @@ def reset_forward_request_state_for_tests() -> None:
     _forward_request_accepting = True
 
 
-def shutdown_forward_request_executor(*, wait: bool) -> None:
+def shutdown_forward_request_workers(*, wait: bool) -> None:
     """Shut down auth.base forwarding workers."""
-    global _forward_request_executor_state
     global _forward_request_admission_state
     global _forward_request_accepting
 
-    _forward_request_accepting = False
-    _forward_request_admission_state = None
-    state = _forward_request_executor_state
-    _forward_request_executor_state = None
-    if state is not None:
-        state[1].shutdown(wait=wait, cancel_futures=True)
+    with _forward_request_lifecycle_lock:
+        _forward_request_accepting = False
+        admission_state = _forward_request_admission_state
+        _forward_request_admission_state = None
+    _wake_forward_request_admission_waiters(admission_state)
+    _cancel_pending_forward_request_futures()
+    _close_active_forward_request_closeables()
+    if wait:
+        _join_forward_request_workers()
 
 
 class ForwardedResponseTooLargeError(Exception):
@@ -240,6 +336,24 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
         super().__init__(host, port=port, timeout=timeout)
         self._validated_addresses = validated_addresses
         self._context = _get_https_context()
+        self._tracked_closeables: list[_Closeable] = []
+
+    def _track_closeable(self, closeable: _Closeable) -> None:
+        if not _track_active_closeable(closeable):
+            with suppress(Exception):
+                closeable.close()
+            raise RuntimeError("auth.base forwarding workers are shut down")
+        self._tracked_closeables.append(closeable)
+
+    def _untrack_closeables(self) -> None:
+        for closeable in self._tracked_closeables:
+            _untrack_active_closeable(closeable)
+        self._tracked_closeables.clear()
+
+    def _close_and_untrack_after_connect_failure(self, closeable: _Closeable) -> None:
+        with suppress(Exception):
+            closeable.close()
+        self._untrack_closeables()
 
     def connect(self) -> None:
         raw_sock = _connect_to_validated_addresses(self._validated_addresses)(
@@ -247,17 +361,27 @@ class _ValidatedTLSConnection(http_client.HTTPConnection):
             self.timeout,
             None,
         )
+        self._track_closeable(raw_sock)
         try:
             raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         except OSError as exc:
             if exc.errno != errno.ENOPROTOOPT:
-                raw_sock.close()
+                self._close_and_untrack_after_connect_failure(raw_sock)
                 raise
         try:
-            self.sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
+            wrapped_sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
+            if wrapped_sock is not raw_sock:
+                self._track_closeable(wrapped_sock)
+            self.sock = wrapped_sock
         except Exception:
-            raw_sock.close()
+            self._close_and_untrack_after_connect_failure(raw_sock)
             raise
+
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self._untrack_closeables()
 
 
 def _make_validated_https_connection(
@@ -508,21 +632,23 @@ def reserve_forward_request_admission(body_bytes: int) -> AuthBaseForwardingAdmi
 
     if body_bytes < 0:
         raise ValueError("auth.base forwarding body size cannot be negative")
-    if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding executor is shut down")
 
-    with _forward_request_budget_lock:
-        if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
-            raise AuthBaseForwardingSaturatedError("auth.base forwarding admission is full")
-        if (
-            _forward_request_admitted_body_bytes + body_bytes
-            > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
-        ):
-            raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
+    with _forward_request_lifecycle_lock:
+        if not _forward_request_accepting:
+            raise RuntimeError("auth.base forwarding workers are shut down")
 
-        _forward_request_admitted_count += 1
-        _forward_request_admitted_body_bytes += body_bytes
-        return AuthBaseForwardingAdmission(body_bytes)
+        with _forward_request_budget_lock:
+            if _forward_request_admitted_count + 1 > MAX_ADMITTED_AUTH_BASE_FORWARDS:
+                raise AuthBaseForwardingSaturatedError("auth.base forwarding admission is full")
+            if (
+                _forward_request_admitted_body_bytes + body_bytes
+                > MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES
+            ):
+                raise AuthBaseForwardingSaturatedError("auth.base forwarding body budget is full")
+
+            _forward_request_admitted_count += 1
+            _forward_request_admitted_body_bytes += body_bytes
+            return AuthBaseForwardingAdmission(body_bytes)
 
 
 def adjust_forward_request_admission(
@@ -660,52 +786,45 @@ def _forward_request_sync(
         conn.close()
 
 
-def _get_forward_request_executor() -> ThreadPoolExecutor:
-    global _forward_request_executor_state
-
-    if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding executor is shut down")
-    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
-    if _forward_request_executor_state is None or _forward_request_executor_state[0] != max_workers:
-        state = _forward_request_executor_state
-        _forward_request_executor_state = (
-            max_workers,
-            ThreadPoolExecutor(
-                max_workers=max_workers,
-                thread_name_prefix="auth-base-forward",
-            ),
-        )
-        if state is not None:
-            state[1].shutdown(wait=True, cancel_futures=True)
-    return _forward_request_executor_state[1]
-
-
 def _get_forward_request_admission_semaphore() -> asyncio.Semaphore:
     global _forward_request_admission_state
 
-    if not _forward_request_accepting:
-        raise RuntimeError("auth.base forwarding executor is shut down")
-    loop = asyncio.get_running_loop()
-    max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
-    if (
-        _forward_request_admission_state is None
-        or _forward_request_admission_state[0] is not loop
-        or _forward_request_admission_state[1] != max_workers
-    ):
-        _forward_request_admission_state = (
-            loop,
-            max_workers,
-            asyncio.Semaphore(max_workers),
-        )
-    return _forward_request_admission_state[2]
+    with _forward_request_lifecycle_lock:
+        if not _forward_request_accepting:
+            raise RuntimeError("auth.base forwarding workers are shut down")
+        loop = asyncio.get_running_loop()
+        max_workers = MAX_CONCURRENT_AUTH_BASE_FORWARDS
+        admission_limit = MAX_ADMITTED_AUTH_BASE_FORWARDS
+        if (
+            _forward_request_admission_state is None
+            or _forward_request_admission_state.loop is not loop
+            or _forward_request_admission_state.max_workers != max_workers
+        ):
+            _forward_request_admission_state = _ForwardRequestAdmissionState(
+                loop=loop,
+                max_workers=max_workers,
+                admission_limit=admission_limit,
+                semaphore=asyncio.Semaphore(max_workers),
+            )
+        elif admission_limit > _forward_request_admission_state.admission_limit:
+            # Keep the same semaphore so a capacity change cannot reset the
+            # active concurrency limit while forwards are already running.
+            _forward_request_admission_state = _ForwardRequestAdmissionState(
+                loop=_forward_request_admission_state.loop,
+                max_workers=_forward_request_admission_state.max_workers,
+                admission_limit=admission_limit,
+                semaphore=_forward_request_admission_state.semaphore,
+            )
+        return _forward_request_admission_state.semaphore
 
 
 def _can_submit_forward_request(semaphore: asyncio.Semaphore) -> bool:
-    return (
-        _forward_request_accepting
-        and _forward_request_admission_state is not None
-        and _forward_request_admission_state[2] is semaphore
-    )
+    with _forward_request_lifecycle_lock:
+        return (
+            _forward_request_accepting
+            and _forward_request_admission_state is not None
+            and _forward_request_admission_state.semaphore is semaphore
+        )
 
 
 def _release_forward_request_resources(
@@ -729,6 +848,82 @@ def _forward_request_sync_in_context(
     return context.run(_forward_request_sync, url, method, headers, body)
 
 
+def _set_forward_request_future_exception(
+    future: Future[tuple[int, bytes, http.Headers]],
+    exc: BaseException,
+) -> None:
+    with suppress(InvalidStateError):
+        future.set_exception(exc)
+
+
+def _run_forward_request_worker(
+    future: Future[tuple[int, bytes, http.Headers]],
+    context: contextvars.Context,
+    url: str,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+) -> None:
+    try:
+        with _forward_request_lifecycle_lock:
+            if not _forward_request_accepting:
+                future.cancel()
+                _discard_pending_forward_request_future(future)
+                return
+            if not future.set_running_or_notify_cancel():
+                _discard_pending_forward_request_future(future)
+                return
+            _discard_pending_forward_request_future(future)
+        try:
+            result = _forward_request_sync_in_context(context, url, method, headers, body)
+        except Exception as exc:
+            _set_forward_request_future_exception(future, exc)
+        else:
+            with suppress(InvalidStateError):
+                future.set_result(result)
+    finally:
+        if sys.exc_info()[1] is not None and future.running():
+            _set_forward_request_future_exception(
+                future,
+                RuntimeError("auth.base forwarding worker exited without completing future"),
+            )
+        with _forward_request_workers_lock:
+            _forward_request_workers.discard(threading.current_thread())
+
+
+def _start_forward_request_worker(
+    context: contextvars.Context,
+    url: str,
+    method: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None,
+) -> Future[tuple[int, bytes, http.Headers]]:
+    future: Future[tuple[int, bytes, http.Headers]] = Future()
+    worker = threading.Thread(
+        target=_run_forward_request_worker,
+        args=(future, context, url, method, headers, body),
+        name="auth-base-forward",
+        daemon=True,
+    )
+    with _forward_request_lifecycle_lock:
+        if not _forward_request_accepting:
+            raise RuntimeError("auth.base forwarding workers are shut down")
+        with _forward_request_pending_futures_lock:
+            _forward_request_pending_futures.add(future)
+        with _forward_request_workers_lock:
+            _forward_request_workers.add(worker)
+        try:
+            worker.start()
+        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
+            with _forward_request_pending_futures_lock:
+                _forward_request_pending_futures.discard(future)
+            with _forward_request_workers_lock:
+                _forward_request_workers.discard(worker)
+            future.cancel()
+            raise
+    return future
+
+
 async def forward_request(
     url: str,
     method: str,
@@ -741,7 +936,7 @@ async def forward_request(
     body_bytes = _request_body_size(body)
     try:
         _validate_request_body_size(body)
-    except BaseException:
+    except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
         if admission is not None:
             release_forward_request_admission(admission)
         raise
@@ -750,7 +945,7 @@ async def forward_request(
     else:
         try:
             adjust_forward_request_admission(admission, body_bytes)
-        except BaseException:
+        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
             release_forward_request_admission(admission)
             raise
 
@@ -762,17 +957,16 @@ async def forward_request(
         await semaphore.acquire()
         if not _can_submit_forward_request(semaphore):
             semaphore.release()
-            raise RuntimeError("auth.base forwarding executor is shut down")
+            raise RuntimeError("auth.base forwarding workers are shut down")
         try:
-            future = _get_forward_request_executor().submit(
-                _forward_request_sync_in_context,
+            future = _start_forward_request_worker(
                 context,
                 url,
                 method,
                 headers,
                 body,
             )
-        except BaseException:
+        except _FORWARD_REQUEST_CLEANUP_EXCEPTIONS:
             semaphore.release()
             raise
         future.add_done_callback(

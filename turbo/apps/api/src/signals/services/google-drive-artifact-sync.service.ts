@@ -12,6 +12,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { hostedDeployments } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { secrets } from "@vm0/db/schema/secret";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -86,6 +87,36 @@ function artifactKey(runId: string, fileId: string): string {
 
 function escapeQuery(value: string): string {
   return value.replace(/\\/g, String.raw`\\`).replace(/'/g, String.raw`\'`);
+}
+
+async function threadAllowsGoogleDriveArtifactSync(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<boolean> {
+  const [authorization] = await db
+    .select({ id: userConnectors.id })
+    .from(chatThreads)
+    .innerJoin(
+      userConnectors,
+      and(
+        eq(userConnectors.orgId, args.orgId),
+        eq(userConnectors.userId, args.userId),
+        eq(userConnectors.agentId, chatThreads.agentComposeId),
+        eq(userConnectors.connectorType, "google-drive"),
+      ),
+    )
+    .where(
+      and(
+        eq(chatThreads.id, args.threadId),
+        eq(chatThreads.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return authorization !== undefined;
 }
 
 async function loadDriveTokens(
@@ -263,7 +294,7 @@ function buildStatusMap(
   return map;
 }
 
-function resolveSyncStatus(
+function resolveGoogleDriveArtifactSyncStatus(
   lookup: DriveStatusLookup,
   runId: string,
   fileId: string,
@@ -288,7 +319,11 @@ export function applyGoogleDriveArtifactSyncStatuses(
       files: run.files.map((file) => {
         return {
           ...file,
-          googleDriveSync: resolveSyncStatus(lookup, run.runId, file.id),
+          googleDriveSync: resolveGoogleDriveArtifactSyncStatus(
+            lookup,
+            run.runId,
+            file.id,
+          ),
         };
       }),
     };
@@ -319,6 +354,14 @@ export function googleDriveArtifactStatusLookup(args: {
       return { type: "disconnected" };
     }
     const db = get(db$);
+    const authorized = await threadAllowsGoogleDriveArtifactSync(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      threadId: args.threadId,
+    });
+    if (!authorized) {
+      return { type: "disconnected" };
+    }
     const featureSwitchOverrides = await get(
       userFeatureSwitchOverrides(args.orgId, args.userId),
     );
@@ -1007,7 +1050,7 @@ type BadRequestResponse = ReturnType<typeof badRequestMessage>;
  * Error mapping (preserves legacy web behavior where applicable):
  *  - 404 "Artifact file not found" — thread missing/cross-user, or no row.
  *  - 400 "Connect Google Drive before syncing artifacts" — connector
- *    absent or `needsReconnect`.
+ *    absent, `needsReconnect`, or not authorized for the thread's agent.
  *  - 400 "This artifact file cannot be synced to Google Drive" — file
  *    location is missing or doesn't match a caller-owned artifact prefix.
  *  - 400 "Google Drive upload failed with HTTP <status>" — upload error
@@ -1055,6 +1098,16 @@ export const syncArtifactToGoogleDrive$ = command(
     signal.throwIfAborted();
     if (!artifact) {
       return notFound("Artifact file not found");
+    }
+
+    const authorized = await threadAllowsGoogleDriveArtifactSync(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      threadId: args.threadId,
+    });
+    signal.throwIfAborted();
+    if (!authorized) {
+      return badRequestMessage("Connect Google Drive before syncing artifacts");
     }
 
     const hostedContent = await get(

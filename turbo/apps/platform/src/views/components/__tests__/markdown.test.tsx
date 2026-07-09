@@ -76,6 +76,24 @@ describe("assistant markdown", () => {
     expect(container.querySelector(".wmde-markdown span")).toBeNull();
   });
 
+  it("keeps blockquotes rendering when html is escaped", () => {
+    const { container } = render(
+      <StoreProvider value={context.store}>
+        <Markdown
+          source={"Feedback on this part of your reply:\n\n> quoted passage"}
+          escapeHtml
+        />
+      </StoreProvider>,
+    );
+
+    const blockquote = container.querySelector(".wmde-markdown blockquote");
+    expect(blockquote).not.toBeNull();
+    expect(blockquote?.textContent).toContain("quoted passage");
+    // The leading `>` must be consumed as the blockquote marker, not shown as
+    // literal text alongside the passage.
+    expect(blockquote?.textContent).not.toContain(">");
+  });
+
   it("renders formatted text and follows theme changes", async () => {
     mockThread("**bold text**");
 

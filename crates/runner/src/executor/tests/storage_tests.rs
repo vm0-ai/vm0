@@ -448,6 +448,7 @@ fn guest_art_with_policy(
     GuestDownloadArtifactEntry {
         mount_path: "/workspace".into(),
         archive_url: url.map(str::to_string),
+        empty: false,
         cached: false,
         vas_storage_name: name.into(),
         vas_storage_id: String::new(),
@@ -513,6 +514,20 @@ fn guest_download_has_work_skips_fully_empty_cached_manifest() {
     };
 
     assert!(!guest_download_has_work(&manifest));
+}
+
+#[test]
+fn guest_download_has_work_detects_explicit_empty_artifacts() {
+    let mut artifact = guest_art("memory", "v-empty", None);
+    artifact.empty = true;
+    let manifest = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![artifact],
+        cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
+    };
+
+    assert!(guest_download_has_work(&manifest));
 }
 
 #[test]
@@ -680,6 +695,7 @@ fn filter_two_artifacts_at_different_mount_paths() {
     let art_a = GuestDownloadArtifactEntry {
         mount_path: "/workspace".into(),
         archive_url: Some("https://s3/a-v2".into()),
+        empty: false,
         cached: false,
         vas_storage_name: "art-a".into(),
         vas_storage_id: String::new(),
@@ -689,6 +705,7 @@ fn filter_two_artifacts_at_different_mount_paths() {
     let art_b = GuestDownloadArtifactEntry {
         mount_path: "/data".into(),
         archive_url: Some("https://s3/b-v1".into()),
+        empty: false,
         cached: false,
         vas_storage_name: "art-b".into(),
         vas_storage_id: String::new(),
@@ -756,6 +773,7 @@ fn filter_cleanup_paths_keep_broad_phase_order() {
         artifacts: vec![GuestDownloadArtifactEntry {
             mount_path: "/artifact-changed".into(),
             archive_url: Some("https://s3/artifact".into()),
+            empty: false,
             cached: false,
             vas_storage_name: "artifact".into(),
             vas_storage_id: String::new(),
@@ -1051,6 +1069,29 @@ fn filter_unchanged_artifact_policy_does_not_force_redownload() {
 }
 
 #[test]
+fn filter_unchanged_explicit_empty_artifact_still_has_prepare_work() {
+    let mut artifact = guest_art("memory", "empty-v1", None);
+    artifact.empty = true;
+    let manifest = GuestDownloadManifest {
+        storages: vec![],
+        artifacts: vec![artifact],
+        cleanup_paths: vec![],
+        instruction_cleanups: Vec::new(),
+    };
+    let prev = StorageFingerprints {
+        storages: HashMap::new(),
+        artifacts: art_fp("/workspace", "memory", "empty-v1"),
+    };
+
+    let result = apply_storage_fingerprint_reuse(&manifest, &prev);
+
+    assert!(result.artifacts[0].empty);
+    assert!(result.artifacts[0].archive_url.is_none());
+    assert!(result.artifacts[0].cached);
+    assert!(guest_download_has_work(&result));
+}
+
+#[test]
 fn filter_changed_storage_with_null_url_adds_cleanup_path() {
     let manifest = GuestDownloadManifest {
         storages: vec![guest_storage("/data", "vol-1", "v2", None)],
@@ -1138,6 +1179,7 @@ fn filter_tainted_paths_force_download_even_when_versions_match() {
         artifacts: vec![GuestDownloadArtifactEntry {
             mount_path: "/workspace/artifact".into(),
             archive_url: Some("https://s3/artifact".into()),
+            empty: false,
             cached: false,
             vas_storage_name: "artifact".into(),
             vas_storage_id: String::new(),

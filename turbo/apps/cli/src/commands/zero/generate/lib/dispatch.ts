@@ -7,6 +7,8 @@ interface DispatchOptions {
   readonly provider?: string;
   readonly prompt?: string;
   readonly all?: boolean;
+  readonly listOnMissingPrompt?: boolean;
+  readonly missingPromptError?: string;
 }
 
 /**
@@ -32,6 +34,9 @@ export async function dispatchGenerate(
   const resolvedPrompt = resolvePrompt(options.prompt);
 
   if (resolvedPrompt === null) {
+    if (options.listOnMissingPrompt === false) {
+      throw new Error(options.missingPromptError ?? "Prompt is required");
+    }
     await runLister(options.generationType, {
       all: options.all,
     });

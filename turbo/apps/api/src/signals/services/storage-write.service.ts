@@ -229,6 +229,10 @@ function mergeWithBaseVersion(args: {
       return args.files;
     }
 
+    if (baseVersionRecord.fileCount === 0) {
+      return args.files;
+    }
+
     const baseManifest = await get(
       downloadManifest(args.bucket, baseVersionRecord.s3Key),
     );
@@ -358,6 +362,7 @@ function existingStorageVersionIsReusable(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storageId: string;
+  readonly storageType: StorageType;
   readonly versionId: string;
   readonly force: boolean | undefined;
   readonly signal: AbortSignal;
@@ -383,6 +388,9 @@ function existingStorageVersionIsReusable(args: {
         args.bucket,
         existingVersion.s3Key,
         existingVersion.fileCount,
+        {
+          allowMissingObjectsForEmptyVersion: args.storageType === "artifact",
+        },
       ),
     );
     args.signal.throwIfAborted();
@@ -466,6 +474,9 @@ function commitExistingStorageVersion(args: {
         args.bucket,
         args.version.s3Key,
         args.version.fileCount,
+        {
+          allowMissingObjectsForEmptyVersion: args.storage.type === "artifact",
+        },
       ),
     );
     args.signal.throwIfAborted();
@@ -720,6 +731,7 @@ export const prepareStorageUploadForAuth$ = command(
         db: writeDb,
         bucket,
         storageId: storage.id,
+        storageType: args.storageType,
         versionId,
         force: args.force,
         signal,

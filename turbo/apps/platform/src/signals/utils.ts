@@ -336,11 +336,8 @@ function runRetriedLoad<T>(load: () => Promise<T>): Promise<T> {
  * network or chunk-loading errors. Do not wrap mutations: `load` may run more
  * than once.
  */
-export async function retryTransientLoad<T>(
-  load: () => Promise<T>,
-): Promise<T> {
-  let attempt = 0;
-  while (true) {
+export function retryTransientLoad<T>(load: () => Promise<T>): Promise<T> {
+  async function attemptLoad(attempt: number): Promise<T> {
     const result = await settle(runRetriedLoad(load));
     if (result.ok) {
       return result.value;
@@ -349,9 +346,11 @@ export async function retryTransientLoad<T>(
     if (delayMs === undefined || !isRetryableError(result.error)) {
       throw result.error;
     }
-    attempt += 1;
     await delay(IN_VITEST ? 0 : delayMs);
+    return attemptLoad(attempt + 1);
   }
+
+  return attemptLoad(0);
 }
 
 // ---------------------------------------------------------------------------

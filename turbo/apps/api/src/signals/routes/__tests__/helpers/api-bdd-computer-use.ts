@@ -23,7 +23,7 @@ import {
   type ComputerUseReadCommandKind,
   type ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUsePluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 
 import { now } from "../../../../lib/time";
 import {
@@ -72,12 +72,12 @@ interface ComputerUseWriteCommandBody {
   readonly clickCount?: number;
 }
 
-type ComputerUsePluginCommandBody = Omit<
-  ComputerUsePluginCallBody,
-  "timeoutMs"
-> & {
-  readonly timeoutMs?: number;
-};
+type OptionalTimeout<Body> = Body extends unknown
+  ? Omit<Body, "timeoutMs"> & { readonly timeoutMs?: number }
+  : never;
+
+type ComputerUsePluginCommandBody =
+  OptionalTimeout<ComputerUseAnyPluginCallBody>;
 
 type ComputerUseCompleteBody =
   | {
@@ -464,7 +464,7 @@ export function createComputerUseBddApi(context: TestContext) {
     },
 
     async requestListComputerUseHosts(
-      actor: ApiTestUser | null,
+      actor: ComputerUseAuth,
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
@@ -474,7 +474,7 @@ export function createComputerUseBddApi(context: TestContext) {
     },
 
     async listComputerUseHosts(
-      actor: ApiTestUser,
+      actor: ComputerUseAuth,
     ): Promise<ComputerUseHostListResponse> {
       const response = await accept(
         hostsClient().list({ headers: authenticate(actor) }),

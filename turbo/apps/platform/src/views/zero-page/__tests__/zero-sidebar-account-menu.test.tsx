@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -130,6 +131,52 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
+function formatResetInTimeZone(resetAt: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(new Date(resetAt));
+}
+
+function mockBrowserTimeZone(timeZone: string): void {
+  const resolvedOptions = new Intl.DateTimeFormat().resolvedOptions();
+  vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({
+    ...resolvedOptions,
+    timeZone,
+  });
+}
+
+function expectVisibleText(text: string): void {
+  const matches = screen.getAllByText(text);
+  const visibleMatch = matches.find((element) => {
+    try {
+      expect(element).toBeVisible();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  expect(visibleMatch).toBeDefined();
+}
+
 async function openAccountMenu(): Promise<HTMLElement> {
   const accountName = await screen.findByText("Alex Rivera");
   const accountButton = accountName.closest("button");
@@ -140,18 +187,11 @@ async function openAccountMenu(): Promise<HTMLElement> {
   return screen.findByRole("menu");
 }
 
-function mockAdminAccountSidebar(): void {
-  prepareDefaultAgent();
-  context.mocks.data.org({
-    id: "org_1",
-    slug: "test-org",
-    name: "Test Org",
-    role: "admin",
-  });
+function mockAdminBillingStatus(credits: number): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
-      credits: 12_500,
+      credits,
       onboardingPaymentPending: false,
       subscriptionStatus: "active",
       currentPeriodEnd: "2026-04-01T00:00:00Z",
@@ -181,6 +221,17 @@ function mockAdminAccountSidebar(): void {
       concurrencySubscriptions: [],
     });
   });
+}
+
+function mockAdminAccountSidebar(): void {
+  prepareDefaultAgent();
+  context.mocks.data.org({
+    id: "org_1",
+    slug: "test-org",
+    name: "Test Org",
+    role: "admin",
+  });
+  mockAdminBillingStatus(12_500);
 }
 
 describe("zero sidebar account menu", () => {
@@ -230,6 +281,39 @@ describe("zero sidebar account menu", () => {
     });
   });
 
+  it("refreshes the org credit balance when the menu opens", async () => {
+    mockAdminAccountSidebar();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    let menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("12,500 credits")).toBeInTheDocument();
+    });
+
+    // The org spends credits elsewhere; the next menu open must reflect it.
+    mockAdminBillingStatus(500);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+
+    menu = await openAccountMenu();
+    await waitFor(() => {
+      expect(within(menu).getByText("500 credits")).toBeInTheDocument();
+    });
+    expect(within(menu).queryByText("12,500 credits")).not.toBeInTheDocument();
+  });
+
   it("hides account menu subscriptions when the feature switch is disabled", async () => {
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
@@ -258,6 +342,8 @@ describe("zero sidebar account menu", () => {
   });
 
   it("shows subscription usage grouped below credits in the account menu", async () => {
+    mockBrowserTimeZone("America/New_York");
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
@@ -295,6 +381,7 @@ describe("zero sidebar account menu", () => {
     expect(within(panel).getByText("88%")).toBeInTheDocument();
     expect(within(panel).getByText("76%")).toBeInTheDocument();
     expect(within(panel).getByText("2 resets left")).toBeInTheDocument();
+    expect(within(panel).queryByText(/^resets /)).not.toBeInTheDocument();
     expect(
       within(panel).queryByText(/codex\.user@example\.com/),
     ).not.toBeInTheDocument();
@@ -303,6 +390,14 @@ describe("zero sidebar account menu", () => {
       name: "Codex 5h remaining",
     });
     expect(codexFiveHour).toHaveAttribute("aria-valuenow", "82");
+    fireEvent.focus(codexFiveHour);
+
+    await waitFor(() => {
+      expectVisibleText("Resets in 4h 12m");
+      expectVisibleText(
+        formatResetInTimeZone("2030-01-01T05:00:00.000Z", "America/New_York"),
+      );
+    });
 
     const credits = within(menu).getByText("12,500 credits");
     const codex = within(panel).getByRole("heading", { name: "Codex" });
@@ -565,6 +660,18 @@ describe("zero sidebar account menu", () => {
       expect(screen.getByText("alex.rivera@example.test")).toBeInTheDocument();
     });
 
+    const openedSettingsDialog = screen.getByRole("dialog", {
+      name: "Settings",
+    });
+    await waitFor(() => {
+      const activeElement = document.activeElement;
+      expect(openedSettingsDialog).not.toHaveFocus();
+      expect(activeElement).toBeInstanceOf(HTMLElement);
+      expect(openedSettingsDialog).toContainElement(
+        activeElement as HTMLElement,
+      );
+    });
+
     click(buttonByText("Manage"));
 
     await waitFor(() => {
@@ -610,6 +717,57 @@ describe("zero sidebar account menu", () => {
     await waitFor(() => {
       expect(screen.getByText("Disabled")).toBeInTheDocument();
     });
+
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+    click(buttonByLabel("Close", settingsDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
+    });
+    expect(document.body.style.pointerEvents).not.toBe("none");
+
+    const reopenedMenu = await openAccountMenu();
+    expect(within(reopenedMenu).getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("restores page interactivity after closing settings", async () => {
+    prepareDefaultAgent();
+    const user = userEvent.setup({ delay: null });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open chat list menu")).toBeInTheDocument();
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Settings"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    click(within(dialog).getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(document.querySelector(".zero-dialog-overlay")).toBeNull();
+    expect(document.body.style.pointerEvents).not.toBe("none");
+
+    await user.click(screen.getByLabelText("Open chat list menu"));
+    await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
   });
 
   it("shows account switching, add-account, and sign-out actions", async () => {

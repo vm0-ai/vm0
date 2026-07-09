@@ -172,6 +172,30 @@ export const addFilesystemPluginAllowedDirectory$ = command(async ({ set }) => {
   set(reloadComputerUse$);
 });
 
+export const importMcpPluginServers$ = command(
+  async ({ set }, json: string) => {
+    await desktopComputerUseApi().importMcpPluginServers(json);
+    set(reloadComputerUse$);
+  },
+);
+
+export const setMcpPluginServerEnabled$ = command(
+  async (
+    { set },
+    { server, enabled }: { readonly server: string; readonly enabled: boolean },
+  ) => {
+    await desktopComputerUseApi().setMcpPluginServerEnabled(server, enabled);
+    set(reloadComputerUse$);
+  },
+);
+
+export const removeMcpPluginServer$ = command(
+  async ({ set }, server: string) => {
+    await desktopComputerUseApi().removeMcpPluginServer(server);
+    set(reloadComputerUse$);
+  },
+);
+
 export const removeFilesystemPluginAllowedDirectory$ = command(
   async ({ set }, directory: string) => {
     await desktopComputerUseApi().removeFilesystemPluginAllowedDirectory(

@@ -93,10 +93,29 @@ function usageByRunIdFromGroups(
     }
     const runId = firstRunIdForMessages(group.messages);
     if (runId !== undefined) {
-      usageByRunId.set(runId, group.usage);
+      setLatestUsageForRun(usageByRunId, runId, group.usage);
     }
   }
   return usageByRunId;
+}
+
+function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
+  const timestamp = Date.parse(usage.settledAt);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function setLatestUsageForRun(
+  usageByRunId: Map<string, ChatMessageUsagePayload>,
+  runId: string,
+  usage: ChatMessageUsagePayload,
+): void {
+  const existing = usageByRunId.get(runId);
+  if (
+    existing === undefined ||
+    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
+  ) {
+    usageByRunId.set(runId, usage);
+  }
 }
 
 interface UsageBreakdownAccumulator {

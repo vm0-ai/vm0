@@ -1,7 +1,6 @@
 pub(crate) struct DownloadError {
     pub(crate) message: String,
     pub(crate) retriable: bool,
-    pub(crate) status_code: Option<u16>,
 }
 
 impl DownloadError {
@@ -9,19 +8,13 @@ impl DownloadError {
         Self {
             message: message.into(),
             retriable: false,
-            status_code: None,
         }
     }
 
-    pub(crate) fn transport(
-        message: impl Into<String>,
-        retriable: bool,
-        status_code: Option<u16>,
-    ) -> Self {
+    pub(crate) fn transport(message: impl Into<String>, retriable: bool) -> Self {
         Self {
             message: message.into(),
             retriable,
-            status_code,
         }
     }
 }

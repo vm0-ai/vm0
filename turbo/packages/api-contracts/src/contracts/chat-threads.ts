@@ -8,7 +8,7 @@ import { triggerSourceSchema } from "./logs";
 import { isSupportedRunModel } from "./model-providers";
 
 const c = initContract();
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
+export const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 
 /**
@@ -52,6 +52,47 @@ const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
 const chatThreadArtifactRunSchema = z.object({
   runId: z.string(),
   files: z.array(chatThreadArtifactFileSchema),
+});
+
+const artifactItemSchema = z.object({
+  artifactItemId: z.string(),
+  threadId: z.string(),
+  runId: z.string(),
+  fileId: z.string(),
+  agentId: z.string(),
+  agentName: z.string().nullable().optional(),
+  agentAvatarUrl: z.string().nullable().optional(),
+  threadTitle: z.string().nullable().optional(),
+  filename: z.string(),
+  contentType: z.string(),
+  url: z.string(),
+  createdAt: z.string(),
+  artifactKind: hostedArtifactKindSchema.optional(),
+  googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
+});
+
+/**
+ * Keyset pagination for the artifacts list. Both fields are optional so
+ * un-paginated callers (older frontend bundles) still get a valid first page.
+ * `cursor` is an opaque token returned as `nextCursor` from a previous page.
+ */
+const artifactsListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(10_000).optional(),
+  cursor: z.string().optional(),
+});
+
+const artifactsListResponseSchema = z.object({
+  artifacts: z.array(artifactItemSchema),
+  /**
+   * True when more artifacts exist beyond this page. Retained for backward
+   * compatibility with older frontend bundles that read it; new clients follow
+   * `nextCursor` instead.
+   */
+  truncated: z.boolean(),
+  /**
+   * Opaque cursor for the next page, or null when this is the last page.
+   */
+  nextCursor: z.string().nullable(),
 });
 
 const htmlArtifactEditSnapshotQuerySchema = z.object({
@@ -234,11 +275,21 @@ const workflowGenerationTemplateRequestSchema = z.object({
   }),
 });
 
+const websiteGenerationTemplateRequestSchema = z.object({
+  type: z.literal("website"),
+  selection: z
+    .object({
+      websiteTemplateId: z.string().min(1),
+    })
+    .strict(),
+});
+
 const generationTemplateRequestSchema = z.discriminatedUnion("type", [
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
   workflowGenerationTemplateRequestSchema,
+  websiteGenerationTemplateRequestSchema,
 ]);
 
 const pagedChatMessageBaseSchema = z.object({
@@ -332,6 +383,7 @@ const chatThreadDetailSchema = z.object({
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
+  selectedModel: z.string().nullable(),
 });
 
 const chatThreadDraftSchema = z.object({
@@ -339,32 +391,122 @@ const chatThreadDraftSchema = z.object({
   draftAttachments: z.array(persistedAttachmentSchema).nullable(),
 });
 
-/**
- * Per-run model selection from the composer. Both fields are required when
- * the object is present; pass `null` to clear the thread's override and fall
- * back to the agent/org default; omit to leave the thread's override unchanged.
- */
-const modelSelectionRequestSchema = z
-  .object({
-    modelProviderId: z.string().uuid(),
-    selectedModel: z.string().min(1),
-  })
+const selectedModelRequestSchema = z
+  .string()
+  .min(1)
   .superRefine((value, ctx) => {
-    if (
-      value.modelProviderId === MODEL_FIRST_SELECTION_PROVIDER_ID &&
-      !isSupportedRunModel(value.selectedModel)
-    ) {
+    if (!isSupportedRunModel(value)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["selectedModel"],
         message: "Invalid model selection",
       });
     }
   });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function legacyModelSelectionModel(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const selectedModel = value.selectedModel;
+  return typeof selectedModel === "string" ? selectedModel : undefined;
+}
+
+function normalizeLegacyModelSelectionInput(
+  value: unknown,
+  options: { readonly allowNull: boolean },
+): unknown {
+  if (!isRecord(value) || "model" in value || !("modelSelection" in value)) {
+    return value;
+  }
+  const legacyModelSelection = legacyModelSelectionModel(value.modelSelection);
+  if (
+    legacyModelSelection === undefined ||
+    (legacyModelSelection === null && !options.allowNull)
+  ) {
+    return value;
+  }
+  return { ...value, model: legacyModelSelection };
+}
+
+const chatThreadCreateBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    agentId: z.string().min(1),
+    clientThreadId: z.string().uuid().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective model provider from org
+     * policy and available credentials.
+     */
+    model: selectedModelRequestSchema,
+    title: z.string().optional(),
+  }),
+);
+
+const chatThreadModelSelectionUpdateBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: true });
+  },
+  z.object({
+    /**
+     * Selected model id, or null to clear the thread's selected model.
+     */
+    model: selectedModelRequestSchema.nullable(),
+    codexServiceTier: codexServiceTierSchema.nullable().optional(),
+    eventId: chatThreadEventIdSchema.optional(),
+  }),
+);
+
 const chatRunOptionsRequestSchema = z.object({
   codexServiceTier: codexServiceTierSchema.optional(),
 });
+
+const chatMessageNormalSendBodySchema = z.preprocess(
+  (value) => {
+    return normalizeLegacyModelSelectionInput(value, { allowNull: false });
+  },
+  z.object({
+    agentId: z.string().min(1),
+    prompt: z.string().min(1),
+    threadId: z.string().optional(),
+    clientThreadId: z.string().uuid().optional(),
+    chatThreadEventId: chatThreadEventIdSchema.optional(),
+    // Client-generated UUID for the sort touch created by direct user sends.
+    // Lets event-sourced clients reconcile optimistic sidebar recency by id.
+    chatThreadSortEventId: chatThreadEventIdSchema.optional(),
+    /**
+     * Selected model id. The API resolves the effective provider from org
+     * policy and available credentials. Existing threads may omit it to
+     * reuse the thread's persisted model.
+     */
+    model: selectedModelRequestSchema.optional(),
+    runOptions: chatRunOptionsRequestSchema.optional(),
+    generationTemplate: generationTemplateRequestSchema.optional(),
+    computerUseHostId: z.string().uuid().nullable().optional(),
+    // Optional for backward compatibility: older clients that omit this field
+    // still trigger title generation (server guards with !== false, not === true).
+    hasTextContent: z.boolean().optional(),
+    attachFiles: z.array(attachFileSchema).optional(),
+    // Client-generated UUID used as the user message's primary key.
+    // Lets the client render an optimistic row and reconcile with the
+    // server row by id — no temp-id swap, no React remount.
+    clientMessageId: z.string().uuid().optional(),
+    // Preview evaluation escape hatch: when enabled, the request asks the
+    // runner to bypass preview mock CLIs and use the real agent runtime.
+    realAgentInPreview: z.boolean().optional(),
+    revokesMessageId: z.string().min(1).optional(),
+    interruptsRunId: z.undefined().optional(),
+  }),
+);
 
 /**
  * Chat thread collection route contract.
@@ -419,13 +561,7 @@ export const chatThreadsContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads",
     headers: authHeadersSchema,
-    body: z.object({
-      agentId: z.string().min(1),
-      clientThreadId: z.string().uuid().optional(),
-      eventId: chatThreadEventIdSchema.optional(),
-      modelSelection: modelSelectionRequestSchema,
-      title: z.string().optional(),
-    }),
+    body: chatThreadCreateBodySchema,
     responses: {
       201: z.object({
         id: z.string(),
@@ -727,16 +863,13 @@ export const chatThreadModelSelectionContract = c.router({
     path: "/api/zero/chat-threads/:id/model-selection",
     headers: authHeadersSchema,
     pathParams: chatThreadIdPathParamsSchema,
-    body: z.object({
-      modelSelection: modelSelectionRequestSchema.nullable(),
-      codexServiceTier: codexServiceTierSchema.nullable().optional(),
-      eventId: chatThreadEventIdSchema.optional(),
-    }),
+    body: chatThreadModelSelectionUpdateBodySchema,
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Update a chat thread model selection",
@@ -777,46 +910,7 @@ export const chatMessagesContract = c.router({
     path: "/api/zero/chat/messages",
     headers: authHeadersSchema,
     body: z.union([
-      z.object({
-        agentId: z.string().min(1),
-        prompt: z.string().min(1),
-        threadId: z.string().optional(),
-        clientThreadId: z.string().uuid().optional(),
-        chatThreadEventId: chatThreadEventIdSchema.optional(),
-        // Client-generated UUID for the sort touch created by direct user sends.
-        // Lets event-sourced clients reconcile optimistic sidebar recency by id.
-        chatThreadSortEventId: chatThreadEventIdSchema.optional(),
-        modelProvider: z.string().optional(),
-        /**
-         * Per-run model override. This does not mutate the thread's selected
-         * model; thread model changes are persisted through
-         * `chatThreadModelSelectionContract.update`.
-         *
-         * When omitted, the run resolves from the thread's persisted
-         * `selected_model`.
-         */
-        modelSelection: modelSelectionRequestSchema.nullable().optional(),
-        runOptions: chatRunOptionsRequestSchema.optional(),
-        generationTemplate: generationTemplateRequestSchema.optional(),
-        computerUseHostId: z.string().uuid().nullable().optional(),
-        // Optional for backward compatibility: older clients that omit this field
-        // still trigger title generation (server guards with !== false, not === true).
-        hasTextContent: z.boolean().optional(),
-        attachFiles: z.array(attachFileSchema).optional(),
-        // Client-generated UUID used as the user message's primary key.
-        // Lets the client render an optimistic row and reconcile with the
-        // server row by id — no temp-id swap, no React remount.
-        clientMessageId: z.string().uuid().optional(),
-        // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
-        // set (CI default), allow the request to bypass the mock and execute
-        // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
-        // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
-        // entry path end-to-end.
-        debugNoMockClaude: z.boolean().optional(),
-        debugNoMockCodex: z.boolean().optional(),
-        revokesMessageId: z.string().min(1).optional(),
-        interruptsRunId: z.undefined().optional(),
-      }),
+      chatMessageNormalSendBodySchema,
       z.object({
         agentId: z.string().min(1),
         threadId: z.string().min(1),
@@ -826,15 +920,13 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelProvider: z.undefined().optional(),
-        modelSelection: z.undefined().optional(),
+        model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
-        debugNoMockClaude: z.undefined().optional(),
-        debugNoMockCodex: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
         interruptsRunId: z.undefined().optional(),
       }),
       z.object({
@@ -846,15 +938,13 @@ export const chatMessagesContract = c.router({
         clientThreadId: z.undefined().optional(),
         chatThreadEventId: z.undefined().optional(),
         chatThreadSortEventId: z.undefined().optional(),
-        modelProvider: z.undefined().optional(),
-        modelSelection: z.undefined().optional(),
+        model: z.undefined().optional(),
         runOptions: z.undefined().optional(),
         generationTemplate: z.undefined().optional(),
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
-        debugNoMockClaude: z.undefined().optional(),
-        debugNoMockCodex: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
         revokesMessageId: z.undefined().optional(),
       }),
     ]),
@@ -1098,6 +1188,22 @@ export const chatThreadArtifactsContract = c.router({
   },
 });
 
+export const artifactsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/artifacts",
+    headers: authHeadersSchema,
+    query: artifactsListQuerySchema,
+    responses: {
+      200: artifactsListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary:
+      "List generated artifacts for the caller's current organization (keyset-paginated)",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadDraftContract = typeof chatThreadDraftContract;
@@ -1115,6 +1221,7 @@ export type ChatThreadComputerUseHostContract =
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
+export type ArtifactsContract = typeof artifactsContract;
 export type ChatSearchContract = typeof chatSearchContract;
 export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
 export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
@@ -1127,25 +1234,26 @@ export {
   chatThreadDetailSchema,
   chatThreadMetadataSchema,
   chatThreadDraftSchema,
-  modelSelectionRequestSchema,
   chatRunOptionsRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
   videoGenerationTemplateRequestSchema,
   illustrationGenerationTemplateRequestSchema,
+  websiteGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   chatMessageUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
+  artifactItemSchema,
+  artifactsListResponseSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
   htmlArtifactEditSnapshotSchema,
 };
 
-export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
 export type ChatRunOptionsRequest = z.infer<typeof chatRunOptionsRequestSchema>;
 export type GenerationTemplateRequest = z.infer<
@@ -1154,7 +1262,7 @@ export type GenerationTemplateRequest = z.infer<
 export type GenerationTemplateType = GenerationTemplateRequest["type"];
 export type LegacyThreadGenerationTemplateType = Exclude<
   GenerationTemplateType,
-  "workflow"
+  "workflow" | "website"
 >;
 /**
  * Legacy generation template shape retained for older thread-level storage.
@@ -1182,6 +1290,9 @@ export type IllustrationGenerationTemplateRequest = z.infer<
 export type WorkflowGenerationTemplateRequest = z.infer<
   typeof workflowGenerationTemplateRequestSchema
 >;
+export type WebsiteGenerationTemplateRequest = z.infer<
+  typeof websiteGenerationTemplateRequestSchema
+>;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
@@ -1206,6 +1317,8 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
+export type ArtifactItem = z.infer<typeof artifactItemSchema>;
+export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema
 >;

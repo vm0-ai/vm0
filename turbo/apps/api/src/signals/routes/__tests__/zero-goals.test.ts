@@ -1,28 +1,17 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { createStore } from "ccstate";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
-import {
-  deleteUsageInsightFixture$,
-  seedChatThread$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { createBddApi } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const ALL_GOAL_CAPABILITIES = [
@@ -31,15 +20,13 @@ const ALL_GOAL_CAPABILITIES = [
   "goal:user-control:write",
 ] as const satisfies readonly ZeroCapability[];
 
-interface GoalApiFixture extends UsageInsightFixture {
+interface GoalApiFixture {
+  readonly orgId: string;
+  readonly userId: string;
   readonly runId: string;
   readonly threadId: string;
   readonly agentId: string;
 }
-
-const track = createFixtureTracker<GoalApiFixture>(async (fixture) => {
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-});
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -73,46 +60,42 @@ function headers(
 }
 
 async function seedGoalApiFixture(): Promise<GoalApiFixture> {
-  const fixture = await store.set(
-    seedUsageInsightFixture$,
-    undefined,
-    context.signal,
-  );
-  await store.set(
-    seedOrgMembership$,
-    { orgId: fixture.orgId, userId: fixture.userId, role: "member" },
-    context.signal,
-  );
-  const compose = await store.set(
-    seedCompose$,
-    { orgId: fixture.orgId, userId: fixture.userId },
-    context.signal,
-  );
-  const threadId = await store.set(
-    seedChatThread$,
-    { userId: fixture.userId, composeId: compose.composeId },
-    context.signal,
-  );
-  const run = await store.set(
-    seedRun$,
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const chat = createChatFilesBddApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Goal fixtures require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Goal Agent",
+    visibility: "private",
+  });
+  const sent = await chat.requestSendMessage(
+    actor,
     {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      composeId: compose.composeId,
-      chatThreadId: threadId,
-      triggerSource: "web",
-      status: "running",
+      agentId: agent.agentId,
+      prompt: "goal precondition",
+      model: "claude-sonnet-4-6",
     },
-    context.signal,
+    [201],
   );
-  return await track(
-    Promise.resolve({
-      ...fixture,
-      runId: run.runId,
-      threadId,
-      agentId: compose.agentId,
-    }),
-  );
+  if (sent.status !== 201 || sent.body.runId === null) {
+    throw new Error("Expected the chat send to create a thread-linked run");
+  }
+  return {
+    orgId: actor.orgId,
+    userId: actor.userId,
+    runId: sent.body.runId,
+    threadId: sent.body.threadId,
+    agentId: agent.agentId,
+  };
 }
 
 async function createGoal(fixture: GoalApiFixture, objective = "ship goals") {

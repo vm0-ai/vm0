@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -12,33 +11,19 @@ import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
 import { zeroVoiceIoQuotaRoutes } from "../zero-voice-io-quota";
+import { seedUserBehaviorCount } from "../../../test-fixtures/user-behavior-count";
 import {
-  deleteGenerationFixture,
-  deleteGenerationPricingRows,
-  ensureGenerationPricingRow,
-  readGenerationBehaviorCount,
-  readGenerationBehaviorCounts,
-  readGenerationOrgCredits,
-  readGenerationUploadedFiles,
-  readGenerationUsageEvents,
-  seedGenerationBehaviorCount,
-  seedGenerationFixture,
-  type GenerationFixture,
-} from "./helpers/zero-generation-state";
+  deleteUsagePricingRows,
+  ensureUsagePricingRow,
+  seedOrgMetadata,
+} from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-} from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
@@ -46,15 +31,14 @@ const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 const AUDIO_INPUT_FREE_QUOTA = 10;
+const FREE_DAILY_RATE_LIMIT = 10;
+const FREE_DAILY_DURATION_LIMIT_SECONDS = 10 * 60;
 const PRO_DAILY_RATE_LIMIT = 300;
 const PRO_DAILY_DURATION_LIMIT_SECONDS = 200 * 60;
 const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
-const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
-  "https://api.openai.com/v1/audio/transcriptions";
 const BYTEPLUS_ASR_FLASH_URL =
   "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
-const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 const SPEECH_CONTENT_TYPE = "audio/wav";
 const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
 const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
@@ -64,8 +48,9 @@ interface SpeechPricing {
   readonly unitSize: number;
 }
 
-interface VoiceFixture extends GenerationFixture {
-  readonly pricingInserted: boolean;
+interface VoiceFixture {
+  readonly orgId: string;
+  readonly userId: string;
 }
 
 function authHeaders() {
@@ -79,6 +64,7 @@ function createVoiceIoTestApp() {
       ...zeroVoiceIoQuotaRoutes,
       ...zeroVoiceIoSpeechRoutes,
       ...zeroVoiceIoSttRoutes,
+      ...zeroBillingStatusRoutes,
     ],
   });
 }
@@ -236,9 +222,8 @@ function zeroToken(args: {
 
 async function ensureSpeechPricing(): Promise<{
   readonly pricing: SpeechPricing;
-  readonly inserted: boolean;
 }> {
-  const result = await ensureGenerationPricingRow(context.signal, {
+  const result = await ensureUsagePricingRow({
     kind: "audio",
     provider: VOICE_IO_TTS_MODEL,
     category: "output_audio_seconds",
@@ -250,48 +235,65 @@ async function ensureSpeechPricing(): Promise<{
       unitPrice: result.pricing.unitPrice,
       unitSize: result.pricing.unitSize,
     },
-    inserted: result.inserted,
   };
 }
 
 async function deleteSpeechPricing(): Promise<void> {
-  await deleteGenerationPricingRows(context.signal, {
+  await deleteUsagePricingRows({
     kind: "audio",
     provider: VOICE_IO_TTS_MODEL,
     categories: ["output_audio_seconds"],
   });
 }
 
+// Isolation comes from random org/user IDs; no teardown is needed.
 async function seedVoiceFixture(options: {
   readonly credits?: number;
   readonly tier?: OrgTier;
   readonly withPricing?: boolean;
 }): Promise<VoiceFixture> {
-  const fixture = await seedGenerationFixture(context.signal, {
-    credits: options.credits,
-    tier: options.tier,
-  });
+  const fixture = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
 
+  await seedOrgMetadata({
+    orgId: fixture.orgId,
+    tier: options.tier ?? "free",
+    credits: options.credits ?? 10_000,
+  });
   await store.set(
     seedOrgMembership$,
     { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
     context.signal,
   );
 
-  const pricingResult = options.withPricing
-    ? await ensureSpeechPricing()
-    : { pricing: null, inserted: false };
-  void pricingResult.pricing;
+  if (options.withPricing) {
+    await ensureSpeechPricing();
+  }
 
-  return { ...fixture, pricingInserted: pricingResult.inserted };
+  return fixture;
 }
 
-async function deleteVoiceFixture(fixture: VoiceFixture): Promise<void> {
-  await deleteGenerationFixture(context.signal, fixture);
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  if (fixture.pricingInserted) {
-    await deleteSpeechPricing();
+// Reads the org credit balance through the product billing surface so charge
+// assertions stay on externally observable state.
+async function orgCredits(fixture: VoiceFixture): Promise<number> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const app = createVoiceIoTestApp();
+  const response = await app.request("/api/zero/billing/status", {
+    headers: authHeaders(),
+  });
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("credits" in body) ||
+    typeof body.credits !== "number"
+  ) {
+    throw new Error("Expected billing status credits");
   }
+  return body.credits;
 }
 
 function expectedCredits(
@@ -317,41 +319,55 @@ function sttForm(file?: File): FormData {
   return form;
 }
 
-async function readBehaviorCount(
-  fixture: Pick<VoiceFixture, "orgId" | "userId">,
-  behaviorKey: string,
-): Promise<number> {
-  return await readGenerationBehaviorCount(
-    context.signal,
-    fixture,
-    behaviorKey,
-  );
+// Reads the audio input quota through the product quota surface. For free
+// orgs this reports the lifetime `audio_input` count while under the daily
+// limits, and the blocking counter with its limit once a daily limit is hit —
+// the same signals the product exposes to clients.
+async function readAudioQuota(fixture: VoiceFixture): Promise<unknown> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const app = createVoiceIoTestApp();
+  const response = await app.request("/api/zero/voice-io/quota", {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  expect(response.status).toBe(200);
+  return await response.json();
 }
 
 async function seedBehaviorCount(
-  fixture: Pick<VoiceFixture, "orgId" | "userId">,
+  fixture: VoiceFixture,
   behaviorKey: string,
   count: number,
 ): Promise<void> {
-  await seedGenerationBehaviorCount(
-    context.signal,
-    fixture,
+  await seedUserBehaviorCount({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
     behaviorKey,
     count,
-  );
-}
-
-async function useOpenAiStt(
-  fixture: Pick<VoiceFixture, "orgId" | "userId">,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.BytePlusVoiceInputStt]: false,
   });
 }
 
-describe("POST /api/zero/voice-io/*", () => {
-  const track = createFixtureTracker<VoiceFixture>(deleteVoiceFixture);
+function bytePlusSttResponse(text: string, utterances?: readonly unknown[]) {
+  return HttpResponse.json(
+    {
+      result: {
+        text,
+        ...(utterances !== undefined && { utterances }),
+      },
+    },
+    { headers: { "x-api-status-code": "20000000" } },
+  );
+}
 
+function mockBytePlusStt(text: string): void {
+  server.use(
+    http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+      return bytePlusSttResponse(text);
+    }),
+  );
+}
+
+describe("POST /api/zero/voice-io/*", () => {
   beforeEach(() => {
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -375,7 +391,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("reports daily request exhaustion from /quota", async () => {
-    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+    const fixture = await seedVoiceFixture({ tier: "pro" });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     await seedBehaviorCount(fixture, sttDailyRateKey(), PRO_DAILY_RATE_LIMIT);
 
@@ -393,14 +409,14 @@ describe("POST /api/zero/voice-io/*", () => {
     });
   });
 
-  it("rejects /stt requests without a multipart file before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+  it("rejects /stt requests without a multipart file before BytePlus", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledOpenAi = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        calledBytePlus = true;
+        return bytePlusSttResponse("should not run");
       }),
     );
 
@@ -415,17 +431,17 @@ describe("POST /api/zero/voice-io/*", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "No audio file provided", code: "BAD_REQUEST" },
     });
-    expect(calledOpenAi).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
-  it("rejects unsupported /stt MIME types before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+  it("rejects unsupported /stt MIME types before BytePlus", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledOpenAi = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        calledBytePlus = true;
+        return bytePlusSttResponse("should not run");
       }),
     );
 
@@ -446,17 +462,17 @@ describe("POST /api/zero/voice-io/*", () => {
         code: "BAD_REQUEST",
       },
     });
-    expect(calledOpenAi).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
-  it("rejects /stt files larger than 25 MB before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+  it("rejects /stt files larger than 25 MB before BytePlus", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    let calledOpenAi = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        calledBytePlus = true;
+        return bytePlusSttResponse("should not run");
       }),
     );
 
@@ -477,23 +493,18 @@ describe("POST /api/zero/voice-io/*", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "File too large (max 25 MB)", code: "BAD_REQUEST" },
     });
-    expect(calledOpenAi).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
   it("accepts /stt MIME types with codec suffixes", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    let observedFileType: string | undefined;
+    let observedBody: Record<string, unknown> | null = null;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
-        const form = await request.formData();
-        const file = form.get("file");
-        if (file instanceof File) {
-          observedFileType = file.type;
-        }
-        return HttpResponse.json({ text: "hello from codec test" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, async ({ request }) => {
+        observedBody = (await request.json()) as Record<string, unknown>;
+        return bytePlusSttResponse("hello from codec test");
       }),
     );
 
@@ -514,82 +525,25 @@ describe("POST /api/zero/voice-io/*", () => {
     await expect(response.json()).resolves.toStrictEqual({
       text: "hello from codec test",
     });
-    expect(observedFileType).toBe("audio/webm;codecs=opus");
+    expect(observedBody).toMatchObject({
+      audio: {
+        format: "webm",
+        codec: "opus",
+      },
+    });
   });
 
-  it("transcribes /stt multipart audio and records quota counters", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    let observedAuthorization: string | null = null;
-    let observedFileName: string | undefined;
-    let observedFileType: string | undefined;
-    let observedModel: FormDataEntryValue | null = null;
-    let observedResponseFormat: FormDataEntryValue | null = null;
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
-        observedAuthorization = request.headers.get("authorization");
-        const form = await request.formData();
-        const file = form.get("file");
-        if (!(file instanceof File)) {
-          return HttpResponse.json(
-            { error: { message: "missing file", code: "BAD_REQUEST" } },
-            { status: 400 },
-          );
-        }
-        observedFileName = file.name;
-        observedFileType = file.type;
-        observedModel = form.get("model");
-        observedResponseFormat = form.get("response_format");
-        return HttpResponse.json({ text: "hello from voice" });
-      }),
-    );
-
-    const app = createVoiceIoTestApp();
-    const response = await app.request("/api/zero/voice-io/stt", {
-      method: "POST",
-      headers: authHeaders(),
-      body: sttForm(sttFile(wavBytes(2))),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      text: "hello from voice",
-    });
-    expect(observedAuthorization).toBe("Bearer test-openai-key");
-    expect(observedFileName).toBe("speech.wav");
-    expect(observedFileType).toBe("audio/wav");
-    expect(observedModel).toBe(VOICE_IO_STT_VERBOSE_MODEL);
-    expect(observedResponseFormat).toBe("verbose_json");
-
-    const rows = await readGenerationBehaviorCounts(context.signal, fixture);
-    const counts = new Map(
-      rows.map((row): readonly [string, number] => {
-        return [row.behaviorKey, row.count];
-      }),
-    );
-    expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
-    expect(counts.get(sttDailyRateKey())).toBe(1);
-    expect(counts.get(sttDailyDurationKey())).toBe(2);
-  });
-
-  it("routes /stt through BytePlus by default", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+  it("transcribes /stt multipart audio through BytePlus and records quota counters", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const audioBytes = wavBytes(2);
-    let calledOpenAi = false;
     let observedApiKey: string | null = null;
     let observedResourceId: string | null = null;
     let observedSequence: string | null = null;
     let observedRequestId: string | null = null;
     let observedBody: Record<string, unknown> | null = null;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
-      }),
       http.post(BYTEPLUS_ASR_FLASH_URL, async ({ request }) => {
         observedApiKey = request.headers.get("x-api-key");
         observedResourceId = request.headers.get("x-api-resource-id");
@@ -626,7 +580,6 @@ describe("POST /api/zero/voice-io/*", () => {
       text: "hello from byteplus",
       segments: [{ start: 0.08, end: 1.28, text: "hello from byteplus" }],
     });
-    expect(calledOpenAi).toBeFalsy();
     expect(observedApiKey).toBe("test-byteplus-stt-key");
     expect(observedResourceId).toBe("volc.seedasr.auc_turbo");
     expect(observedSequence).toBe("-1");
@@ -646,20 +599,26 @@ describe("POST /api/zero/voice-io/*", () => {
       },
     });
 
-    const rows = await readGenerationBehaviorCounts(context.signal, fixture);
-    const counts = new Map(
-      rows.map((row): readonly [string, number] => {
-        return [row.behaviorKey, row.count];
-      }),
-    );
-    expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
-    expect(counts.get(sttDailyRateKey())).toBe(1);
-    expect(counts.get(sttDailyDurationKey())).toBe(2);
+    // The quota surface reports the lifetime free-tier count and confirms the
+    // daily counters have not hit a limit; exact daily rate/duration
+    // accounting is pinned product-visibly by the metering and limit tests.
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: true,
+      count: 1,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
   });
 
   it("accepts BytePlus no-speech responses as empty transcripts", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Pre-fill the daily duration counter to two seconds under the free-tier
+    // limit so the 2s clip's metering is observable on the quota surface.
+    await seedBehaviorCount(
+      fixture,
+      sttDailyDurationKey(),
+      FREE_DAILY_DURATION_LIMIT_SECONDS - 2,
+    );
 
     server.use(
       http.post(BYTEPLUS_ASR_FLASH_URL, () => {
@@ -685,26 +644,29 @@ describe("POST /api/zero/voice-io/*", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ text: "" });
-    await expect(readBehaviorCount(fixture, sttDailyRateKey())).resolves.toBe(
-      1,
-    );
-    await expect(
-      readBehaviorCount(fixture, sttDailyDurationKey()),
-    ).resolves.toBe(2);
+    // The no-speech transcription still metered its 2 seconds: the duration
+    // counter lands exactly on the limit, which the quota surface reports.
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: false,
+      count: FREE_DAILY_DURATION_LIMIT_SECONDS,
+      limit: FREE_DAILY_DURATION_LIMIT_SECONDS,
+    });
   });
 
   it("meters /stt WAV duration from the data chunk, not a fixed 44-byte offset", async () => {
     // ffmpeg-produced WAV can carry chunks (LIST/INFO/JUNK) before the data
     // chunk, so the data chunk is not at byte 44. A fixed-offset reader would
     // mis-measure this clip; the RIFF chunk-walk must report its true length.
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        return HttpResponse.json({ text: "hello from voice" });
-      }),
+    mockBytePlusStt("hello from voice");
+    // Pre-fill the duration counter to exactly 120 seconds under the limit:
+    // the quota surface then reports the metered duration exactly (any over-
+    // or under-count would return a different count or stay allowed).
+    await seedBehaviorCount(
+      fixture,
+      sttDailyDurationKey(),
+      FREE_DAILY_DURATION_LIMIT_SECONDS - 120,
     );
 
     const app = createVoiceIoTestApp();
@@ -715,23 +677,27 @@ describe("POST /api/zero/voice-io/*", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(
-      readBehaviorCount(fixture, sttDailyDurationKey()),
-    ).resolves.toBe(120);
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: false,
+      count: FREE_DAILY_DURATION_LIMIT_SECONDS,
+      limit: FREE_DAILY_DURATION_LIMIT_SECONDS,
+    });
   });
 
   it("meters /stt WAV duration from the declared data size, ignoring trailing chunks", async () => {
     // A well-formed WAV with a LIST chunk after data must be measured from the
     // declared data size, not the whole remaining buffer (which would count the
     // 3s-worth trailing chunk as audio and over-meter to 63s).
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        return HttpResponse.json({ text: "hello from voice" });
-      }),
+    mockBytePlusStt("hello from voice");
+    // Pre-fill the duration counter to exactly 60 seconds under the limit: an
+    // over-count (63s with the trailing chunk) would report 603, an
+    // under-count would stay allowed.
+    await seedBehaviorCount(
+      fixture,
+      sttDailyDurationKey(),
+      FREE_DAILY_DURATION_LIMIT_SECONDS - 60,
     );
 
     const app = createVoiceIoTestApp();
@@ -742,9 +708,11 @@ describe("POST /api/zero/voice-io/*", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(
-      readBehaviorCount(fixture, sttDailyDurationKey()),
-    ).resolves.toBe(60);
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: false,
+      count: FREE_DAILY_DURATION_LIMIT_SECONDS,
+      limit: FREE_DAILY_DURATION_LIMIT_SECONDS,
+    });
   });
 
   it("does not reject large compressed audio on a byte-size estimate", async () => {
@@ -752,15 +720,9 @@ describe("POST /api/zero/voice-io/*", () => {
     // ~400s and rejected it with AUDIO_DURATION_TOO_LONG; real duration parsing
     // measures the actual length instead, so a short-but-dense clip is no longer
     // falsely rejected on file size.
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        return HttpResponse.json({ text: "hello from voice" });
-      }),
-    );
+    mockBytePlusStt("hello from voice");
 
     const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
@@ -774,22 +736,15 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(response.status).toBe(200);
   });
 
-  it("uses whisper-1 and verbose_json when ?verbose=true, returns segments", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+  it("returns BytePlus utterance segments when ?verbose=true", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    let observedModel: FormDataEntryValue | null = null;
-    let observedResponseFormat: FormDataEntryValue | null = null;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, async ({ request }) => {
-        const form = await request.formData();
-        observedModel = form.get("model");
-        observedResponseFormat = form.get("response_format");
-        return HttpResponse.json({
-          text: "hello world",
-          segments: [{ start: 0, end: 1.5, text: " hello world" }],
-        });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        return bytePlusSttResponse("hello world", [
+          { start_time: 0, end_time: 1500, text: " hello world" },
+        ]);
       }),
     );
 
@@ -805,23 +760,16 @@ describe("POST /api/zero/voice-io/*", () => {
       text: "hello world",
       segments: [{ start: 0, end: 1.5, text: " hello world" }],
     });
-    expect(observedModel).toBe("whisper-1");
-    expect(observedResponseFormat).toBe("verbose_json");
   });
 
   it("authorizes a sandbox token carrying file:write on /stt", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({});
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
       runId: `run_${randomUUID()}`,
     });
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        return HttpResponse.json({ text: "from agent" });
-      }),
-    );
+    mockBytePlusStt("from agent");
 
     const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
@@ -837,7 +785,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("rejects a sandbox token without file:write on /stt", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+    const fixture = await seedVoiceFixture({});
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -860,14 +808,9 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("does not increment the legacy /stt free-tier counter for pro orgs", async () => {
-    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({ tier: "pro" });
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        return HttpResponse.json({ text: "pro transcript" });
-      }),
-    );
+    mockBytePlusStt("pro transcript");
 
     const app = createVoiceIoTestApp();
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -879,20 +822,25 @@ describe("POST /api/zero/voice-io/*", () => {
       expect(response.status).toBe(200);
     }
 
-    await expect(
-      readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
-    ).resolves.toBe(0);
+    // The lifetime counter is only product-visible at free tier (the quota
+    // surface always reports 0 for pro/team). Downgrading the org to free
+    // exposes it: had the pro requests incremented it, count would be 2.
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "free",
+      credits: 10_000,
+    });
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: true,
+      count: 0,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
   });
 
   it("increments the /stt free-tier audio input counter up to quota", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        return HttpResponse.json({ text: "free transcript" });
-      }),
-    );
+    mockBytePlusStt("free transcript");
 
     const app = createVoiceIoTestApp();
     for (let attempt = 1; attempt <= AUDIO_INPUT_FREE_QUOTA; attempt++) {
@@ -902,14 +850,18 @@ describe("POST /api/zero/voice-io/*", () => {
         body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
       });
       expect(response.status).toBe(200);
-      await expect(
-        readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
-      ).resolves.toBe(attempt);
+      // The quota surface reports the lifetime count while under the daily
+      // limits and flips to blocked exactly at the shared limit of 10.
+      await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+        allowed: attempt < AUDIO_INPUT_FREE_QUOTA,
+        count: attempt,
+        limit: AUDIO_INPUT_FREE_QUOTA,
+      });
     }
   });
 
-  it("blocks /stt before OpenAI when the free audio quota is exhausted", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+  it("blocks /stt before BytePlus when the free audio quota is exhausted", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     await seedBehaviorCount(
       fixture,
@@ -917,11 +869,11 @@ describe("POST /api/zero/voice-io/*", () => {
       AUDIO_INPUT_FREE_QUOTA,
     );
 
-    let calledOpenAi = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        calledBytePlus = true;
+        return bytePlusSttResponse("should not run");
       }),
     );
     const app = createVoiceIoTestApp();
@@ -940,18 +892,34 @@ describe("POST /api/zero/voice-io/*", () => {
       },
       quota: { count: AUDIO_INPUT_FREE_QUOTA, limit: AUDIO_INPUT_FREE_QUOTA },
     });
-    expect(calledOpenAi).toBeFalsy();
-    await expect(
-      readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
-    ).resolves.toBe(AUDIO_INPUT_FREE_QUOTA);
+    expect(calledBytePlus).toBeFalsy();
+    // The rejected request did not consume quota: the surface still reports
+    // exactly the seeded lifetime count.
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: false,
+      count: AUDIO_INPUT_FREE_QUOTA,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
   });
 
-  it("does not increment /stt counters when OpenAI transcription fails", async () => {
-    const fixture = await track(seedVoiceFixture({}));
-    await useOpenAiStt(fixture);
+  it("does not increment /stt counters when BytePlus transcription fails", async () => {
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    // Park every counter one increment under its limit: if the failed request
+    // incremented any of them, the quota surface would flip to blocked (or
+    // report a lifetime count of 1).
+    await seedBehaviorCount(
+      fixture,
+      sttDailyRateKey(),
+      FREE_DAILY_RATE_LIMIT - 1,
+    );
+    await seedBehaviorCount(
+      fixture,
+      sttDailyDurationKey(),
+      FREE_DAILY_DURATION_LIMIT_SECONDS - 3,
+    );
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
         return HttpResponse.json(
           { error: { message: "rate limit exceeded" } },
           { status: 429 },
@@ -970,27 +938,23 @@ describe("POST /api/zero/voice-io/*", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: { message: "Transcription failed", code: "INTERNAL_SERVER_ERROR" },
     });
-    await expect(
-      readBehaviorCount(fixture, AUDIO_INPUT_BEHAVIOR_KEY),
-    ).resolves.toBe(0);
-    await expect(readBehaviorCount(fixture, sttDailyRateKey())).resolves.toBe(
-      0,
-    );
-    await expect(
-      readBehaviorCount(fixture, sttDailyDurationKey()),
-    ).resolves.toBe(0);
+    await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+      allowed: true,
+      count: 0,
+      limit: AUDIO_INPUT_FREE_QUOTA,
+    });
   });
 
-  it("blocks /stt before OpenAI when the daily request limit is exhausted", async () => {
-    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+  it("blocks /stt before BytePlus when the daily request limit is exhausted", async () => {
+    const fixture = await seedVoiceFixture({ tier: "pro" });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     await seedBehaviorCount(fixture, sttDailyRateKey(), PRO_DAILY_RATE_LIMIT);
 
-    let calledOpenAi = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        calledBytePlus = true;
+        return bytePlusSttResponse("should not run");
       }),
     );
 
@@ -1009,11 +973,11 @@ describe("POST /api/zero/voice-io/*", () => {
       },
       quota: { count: PRO_DAILY_RATE_LIMIT, limit: PRO_DAILY_RATE_LIMIT },
     });
-    expect(calledOpenAi).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
-  it("blocks /stt before OpenAI when the daily duration limit is exhausted", async () => {
-    const fixture = await track(seedVoiceFixture({ tier: "pro" }));
+  it("blocks /stt before BytePlus when the daily duration limit is exhausted", async () => {
+    const fixture = await seedVoiceFixture({ tier: "pro" });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     await seedBehaviorCount(
       fixture,
@@ -1021,11 +985,11 @@ describe("POST /api/zero/voice-io/*", () => {
       PRO_DAILY_DURATION_LIMIT_SECONDS,
     );
 
-    let calledOpenAi = false;
+    let calledBytePlus = false;
     server.use(
-      http.post(OPENAI_AUDIO_TRANSCRIPTIONS_URL, () => {
-        calledOpenAi = true;
-        return HttpResponse.json({ text: "should not run" });
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        calledBytePlus = true;
+        return bytePlusSttResponse("should not run");
       }),
     );
 
@@ -1047,7 +1011,7 @@ describe("POST /api/zero/voice-io/*", () => {
         limit: PRO_DAILY_DURATION_LIMIT_SECONDS,
       },
     });
-    expect(calledOpenAi).toBeFalsy();
+    expect(calledBytePlus).toBeFalsy();
   });
 
   it("returns 401 from /speech when unauthenticated", async () => {
@@ -1064,7 +1028,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("rejects empty /speech text before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({}));
+    const fixture = await seedVoiceFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1089,7 +1053,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("rejects unsupported /speech voices before OpenAI", async () => {
-    const fixture = await track(seedVoiceFixture({ withPricing: true }));
+    const fixture = await seedVoiceFixture({ withPricing: true });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1114,9 +1078,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("blocks /speech before OpenAI when credits are insufficient", async () => {
-    const fixture = await track(
-      seedVoiceFixture({ credits: 0, withPricing: true }),
-    );
+    const fixture = await seedVoiceFixture({ credits: 0, withPricing: true });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1144,7 +1106,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("blocks /speech before OpenAI when pricing is missing", async () => {
-    const fixture = await track(seedVoiceFixture({ credits: 1000 }));
+    const fixture = await seedVoiceFixture({ credits: 1000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledOpenAi = false;
     server.use(
@@ -1174,7 +1136,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("generates /speech WAV files for run-scoped zero tokens", async () => {
-    const fixture = await track(seedVoiceFixture({ withPricing: true }));
+    const fixture = await seedVoiceFixture({ withPricing: true });
     const { pricing } = await ensureSpeechPricing();
     const { composeId } = await store.set(
       seedCompose$,
@@ -1265,47 +1227,16 @@ describe("POST /api/zero/voice-io/*", () => {
     }
     expect(new Uint8Array(putBody)).toStrictEqual(wav);
 
-    const uploadRows = await readGenerationUploadedFiles(context.signal, {
-      externalId: fileId,
-    });
-    expect(uploadRows).toHaveLength(1);
-    expect(uploadRows[0]).toMatchObject({
-      runId,
-      source: "web",
-      externalId: fileId,
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      filename,
-      contentType: SPEECH_CONTENT_TYPE,
-      sizeBytes: wav.byteLength,
-    });
-    expect(uploadRows[0]?.metadata).toMatchObject({
-      generatedBy: "zero-official-voice",
-      model: VOICE_IO_TTS_MODEL,
-      voice: "marin",
-      durationSeconds: 2,
-      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
-    });
-
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "audio",
-      provider: VOICE_IO_TTS_MODEL,
-      category: "output_audio_seconds",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      runId,
-      quantity: 2,
-      creditsCharged: expectedCredits(2, pricing),
-      status: "processed",
-      billingError: null,
-    });
+    // The metered charge (2 seconds at the audio rate) is asserted through
+    // the response body above and the exact org balance drop, observed on the
+    // product billing surface.
+    await expect(orgCredits(fixture)).resolves.toBe(
+      10_000 - expectedCredits(2, pricing),
+    );
   });
 
   it("uses actual /speech WAV data bytes when the data chunk size is oversized", async () => {
-    const fixture = await track(seedVoiceFixture({ withPricing: true }));
+    const fixture = await seedVoiceFixture({ withPricing: true });
     const { pricing } = await ensureSpeechPricing();
     const { composeId } = await store.set(
       seedCompose$,
@@ -1354,23 +1285,18 @@ describe("POST /api/zero/voice-io/*", () => {
       voice: "nova",
     });
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      runId,
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      runId,
-      quantity: 10,
-      creditsCharged: expectedCredits(10, pricing),
-      status: "processed",
-      billingError: null,
-    });
+    // 10 seconds metered from the actual data bytes (not the oversized chunk
+    // declaration) — pinned by the response body above and the balance drop.
+    await expect(orgCredits(fixture)).resolves.toBe(
+      10_000 - expectedCredits(10, pricing),
+    );
   });
 
   it("returns 500 from /speech without persisted output when OpenAI fails", async () => {
-    const fixture = await track(
-      seedVoiceFixture({ credits: 1000, withPricing: true }),
-    );
+    const fixture = await seedVoiceFixture({
+      credits: 1000,
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(OPENAI_AUDIO_SPEECH_URL, () => {
@@ -1397,23 +1323,8 @@ describe("POST /api/zero/voice-io/*", () => {
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
-    const uploadRows = await readGenerationUploadedFiles(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-    });
-    expect(uploadRows).toHaveLength(0);
-
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "audio",
-      provider: VOICE_IO_TTS_MODEL,
-      category: "output_audio_seconds",
-    });
-    expect(usageRows).toHaveLength(0);
-
-    await expect(
-      readGenerationOrgCredits(context.signal, fixture.orgId),
-    ).resolves.toBe(1000);
+    // No output persisted (S3 untouched above) and no usage settled: the org
+    // balance is unchanged on the product billing surface.
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 });

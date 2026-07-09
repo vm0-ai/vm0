@@ -15,28 +15,83 @@
 //! downloaded bytes must satisfy the declared size, byte cap, and hash contract
 //! before they are restored into the sandbox.
 
-use std::io::Read;
+use std::collections::HashMap;
+use std::fmt;
+use std::io::{BufRead, BufReader, Read};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use flate2::read::MultiGzDecoder;
+use reqwest::header::{CONTENT_ENCODING, TRANSFER_ENCODING};
 use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use super::session_restore::MaterializedResumeSession;
+use super::cli_framework::EffectiveCliFramework;
+use super::session_restore::{MaterializedResumeSession, codex_session_meta_timestamp_line};
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
-use crate::telemetry::SessionHistoryTelemetryMetadata;
+use crate::telemetry::{
+    SessionHistoryCacheProbeMetadata, SessionHistoryContentEncodingState,
+    SessionHistoryContentLengthState, SessionHistoryResponseTelemetryMetadata,
+    SessionHistoryTelemetryMetadata, SessionHistoryTransferEncodingState,
+};
 use crate::types::{
     ResumeSession, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
     ResumeSessionHistoryRefKind,
 };
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS: usize = 3;
+const SESSION_HISTORY_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_millis(200);
+const SESSION_HISTORY_PROBE_TTL: Duration = Duration::from_secs(60 * 60);
+const SESSION_HISTORY_PROBE_CAPACITY: usize = 4096;
 
 pub(crate) struct SessionHistoryMaterializer {
     state: SessionHistoryMaterializerState,
+}
+
+#[derive(Clone)]
+pub(crate) struct SessionHistoryProbe {
+    inner: Arc<Mutex<SessionHistoryProbeState>>,
+    ttl: Duration,
+    capacity: usize,
+}
+
+#[derive(Default)]
+struct SessionHistoryProbeState {
+    entries: HashMap<SessionHistoryProbeKey, SessionHistoryProbeEntry>,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct SessionHistoryProbeKey {
+    hash: String,
+    encoding: ResumeSessionHistoryEncoding,
+    raw_size: u64,
+    encoded_size: u64,
+}
+
+#[derive(Clone, Copy)]
+struct SessionHistoryProbeEntry {
+    last_seen: Instant,
+    in_flight: usize,
+}
+
+#[derive(Clone)]
+struct SessionHistoryProbeRegistration {
+    observation: SessionHistoryCacheProbeMetadata,
+    guard: Option<SessionHistoryProbeGuard>,
+}
+
+#[derive(Clone)]
+struct SessionHistoryProbeGuard {
+    inner: Arc<SessionHistoryProbeGuardInner>,
+}
+
+struct SessionHistoryProbeGuardInner {
+    probe: SessionHistoryProbe,
+    key: Mutex<Option<SessionHistoryProbeKey>>,
 }
 
 enum SessionHistoryMaterializerState {
@@ -45,6 +100,7 @@ enum SessionHistoryMaterializerState {
     Downloading {
         started_at: Instant,
         metadata: SessionHistoryTelemetryMetadata,
+        probe_registration: Option<SessionHistoryProbeRegistration>,
         task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
     },
 }
@@ -76,6 +132,7 @@ pub(super) struct SessionHistoryDownloadTimings {
     request_status: Option<SessionHistoryDownloadPhaseTiming>,
     body_read: Option<SessionHistoryDownloadPhaseTiming>,
     validation: Option<SessionHistoryDownloadPhaseTiming>,
+    decompression: Option<SessionHistoryDownloadPhaseTiming>,
     hash_verification: Option<SessionHistoryDownloadPhaseTiming>,
 }
 
@@ -107,12 +164,22 @@ impl SessionHistoryDownloadTimings {
         self.validation
     }
 
+    pub(super) fn decompression(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.decompression
+    }
+
     pub(super) fn hash_verification(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
         self.hash_verification
     }
 
     fn record_request_status(&mut self, elapsed: Duration, success: bool) {
         self.request_status = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    #[cfg(test)]
+    pub(super) fn response_metadata(&self) -> Option<SessionHistoryResponseTelemetryMetadata> {
+        self.metadata
+            .and_then(SessionHistoryTelemetryMetadata::response)
     }
 
     fn for_metadata(metadata: SessionHistoryTelemetryMetadata) -> Self {
@@ -122,12 +189,31 @@ impl SessionHistoryDownloadTimings {
         }
     }
 
+    fn record_response_metadata(&mut self, response: SessionHistoryResponseTelemetryMetadata) {
+        if let Some(metadata) = self.metadata {
+            self.metadata = Some(metadata.with_response(response));
+        }
+    }
+
+    fn reset_download_attempt(&mut self) {
+        self.request_status = None;
+        self.body_read = None;
+        self.validation = None;
+        if let Some(metadata) = self.metadata {
+            self.metadata = Some(metadata.without_response());
+        }
+    }
+
     fn record_body_read(&mut self, elapsed: Duration, success: bool) {
         self.body_read = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
     }
 
     fn record_hash_verification(&mut self, elapsed: Duration, success: bool) {
         self.hash_verification = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn record_decompression(&mut self, elapsed: Duration, success: bool) {
+        self.decompression = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
     }
 
     fn add_validation(&mut self, elapsed: Duration, success: bool) {
@@ -161,11 +247,184 @@ fn merge_phase_timing(
     }
 }
 
+impl Default for SessionHistoryProbe {
+    fn default() -> Self {
+        Self::new(SESSION_HISTORY_PROBE_TTL, SESSION_HISTORY_PROBE_CAPACITY)
+    }
+}
+
+impl SessionHistoryProbe {
+    fn new(ttl: Duration, capacity: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(SessionHistoryProbeState::default())),
+            ttl,
+            capacity,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_limits_for_test(ttl: Duration, capacity: usize) -> Self {
+        Self::new(ttl, capacity)
+    }
+
+    fn observe(&self, history_ref: &ResumeSessionHistoryRef) -> SessionHistoryProbeRegistration {
+        let now = Instant::now();
+        let key = SessionHistoryProbeKey::from_ref(history_ref);
+        let mut state = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.prune_expired(&mut state, now);
+
+        let previous = state.entries.get(&key).copied();
+        let seen_recently = previous
+            .map(|entry| now.saturating_duration_since(entry.last_seen) <= self.ttl)
+            .unwrap_or(false);
+        let download_inflight = previous.map(|entry| entry.in_flight > 0).unwrap_or(false);
+        let observation = SessionHistoryCacheProbeMetadata::new(seen_recently, download_inflight);
+
+        if self.capacity == 0 {
+            return SessionHistoryProbeRegistration {
+                observation,
+                guard: None,
+            };
+        }
+
+        state
+            .entries
+            .entry(key.clone())
+            .and_modify(|entry| {
+                entry.last_seen = now;
+                entry.in_flight = entry.in_flight.saturating_add(1);
+            })
+            .or_insert(SessionHistoryProbeEntry {
+                last_seen: now,
+                in_flight: 1,
+            });
+        self.enforce_capacity(&mut state, &key);
+
+        let guard = state
+            .entries
+            .contains_key(&key)
+            .then(|| SessionHistoryProbeGuard::new(self.clone(), key));
+        SessionHistoryProbeRegistration { observation, guard }
+    }
+
+    fn finish(&self, key: SessionHistoryProbeKey) {
+        let mut state = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(entry) = state.entries.get_mut(&key) {
+            entry.in_flight = entry.in_flight.saturating_sub(1);
+        }
+    }
+
+    fn prune_expired(&self, state: &mut SessionHistoryProbeState, now: Instant) {
+        let ttl = self.ttl;
+        state.entries.retain(|_, entry| {
+            entry.in_flight > 0 || now.saturating_duration_since(entry.last_seen) <= ttl
+        });
+    }
+
+    fn enforce_capacity(
+        &self,
+        state: &mut SessionHistoryProbeState,
+        current_key: &SessionHistoryProbeKey,
+    ) {
+        while state.entries.len() > self.capacity {
+            let candidate = state
+                .entries
+                .iter()
+                .filter(|(key, _)| *key != current_key)
+                .filter(|(_, entry)| entry.in_flight == 0)
+                .min_by_key(|(_, entry)| entry.last_seen)
+                .map(|(key, _)| key.clone())
+                .or_else(|| {
+                    state
+                        .entries
+                        .iter()
+                        .filter(|(key, _)| *key != current_key)
+                        .min_by_key(|(_, entry)| entry.last_seen)
+                        .map(|(key, _)| key.clone())
+                })
+                .or_else(|| state.entries.keys().next().cloned());
+            let Some(candidate) = candidate else {
+                break;
+            };
+            state.entries.remove(&candidate);
+        }
+    }
+}
+
+impl SessionHistoryProbeKey {
+    fn from_ref(history_ref: &ResumeSessionHistoryRef) -> Self {
+        Self {
+            hash: history_ref.hash.clone(),
+            encoding: history_ref
+                .encoding
+                .unwrap_or(ResumeSessionHistoryEncoding::Identity),
+            raw_size: history_ref.raw_size,
+            encoded_size: history_ref.encoded_size,
+        }
+    }
+}
+
+impl SessionHistoryProbeRegistration {
+    fn observation(&self) -> SessionHistoryCacheProbeMetadata {
+        self.observation
+    }
+
+    fn finish(&self) {
+        if let Some(guard) = &self.guard {
+            guard.finish();
+        }
+    }
+}
+
+impl SessionHistoryProbeGuard {
+    fn new(probe: SessionHistoryProbe, key: SessionHistoryProbeKey) -> Self {
+        Self {
+            inner: Arc::new(SessionHistoryProbeGuardInner {
+                probe,
+                key: Mutex::new(Some(key)),
+            }),
+        }
+    }
+
+    fn finish(&self) {
+        let key = self
+            .inner
+            .key
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(key) = key {
+            self.inner.probe.finish(key);
+        }
+    }
+}
+
+impl Drop for SessionHistoryProbeGuardInner {
+    fn drop(&mut self) {
+        let key = self
+            .key
+            .get_mut()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(key) = key {
+            self.probe.finish(key);
+        }
+    }
+}
+
 impl SessionHistoryMaterializer {
     pub(crate) fn start_cancellable(
         http: &HttpClient,
         session: Option<&ResumeSession>,
+        framework: EffectiveCliFramework,
         cancel: CancellationToken,
+        probe: Option<&SessionHistoryProbe>,
     ) -> Self {
         let Some(session) = session else {
             return Self {
@@ -177,25 +436,35 @@ impl SessionHistoryMaterializer {
                 state: SessionHistoryMaterializerState::NoDownloadNeeded,
             };
         };
-        let metadata = SessionHistoryTelemetryMetadata::from_ref(history_ref);
+        let probe_registration = probe.map(|probe| probe.observe(history_ref));
+        let mut metadata = SessionHistoryTelemetryMetadata::from_ref(history_ref);
+        if let Some(registration) = &probe_registration {
+            metadata = metadata.with_cache_probe(registration.observation());
+        }
 
         let http = http.clone();
         let session = session.clone();
         let started_at = Instant::now();
+        let task_probe_registration = probe_registration.clone();
         // The spawned task observes cancellation even before `finish` runs, so
         // prestarted downloads do not need to wait for final materialization.
         Self {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at,
                 metadata,
+                probe_registration,
                 task: Some(tokio::spawn(async move {
-                    tokio::select! {
+                    let result = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => {
                             SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         }
-                        result = download_resume_session_history_timed(http, session, metadata) => result,
+                        result = download_resume_session_history_timed(http, session, framework, metadata) => result,
+                    };
+                    if let Some(registration) = &task_probe_registration {
+                        registration.finish();
                     }
+                    result
                 })),
             },
         }
@@ -232,6 +501,7 @@ impl SessionHistoryMaterializer {
             SessionHistoryMaterializerState::Downloading {
                 started_at,
                 metadata,
+                probe_registration,
                 task,
             } => {
                 let started_at = *started_at;
@@ -241,10 +511,12 @@ impl SessionHistoryMaterializer {
                         task.abort();
                         let _ = task.await;
                     }
+                    finish_session_history_probe(probe_registration);
                     return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
                         .into_materialization();
                 }
                 let Some(mut task) = task.take() else {
+                    finish_session_history_probe(probe_registration);
                     return SessionHistoryMaterialization::Failed {
                         elapsed: Duration::ZERO,
                         timings: SessionHistoryDownloadTimings::for_metadata(metadata),
@@ -272,6 +544,7 @@ impl SessionHistoryMaterializer {
                         })
                     }
                 };
+                finish_session_history_probe(probe_registration);
                 // Re-check after joining because the task itself can observe
                 // cancellation while still producing a successful result.
                 if cancel.is_cancelled() {
@@ -319,19 +592,28 @@ impl Drop for SessionHistoryMaterializer {
         {
             // Dropping means no owner will call `finish`. Abort the task so an
             // abandoned prestarted download does not continue in the background.
+            // Probe cleanup is handled by explicit finish paths or by the
+            // guard's drop fallback when the task future is gone.
             task.abort();
         }
+    }
+}
+
+fn finish_session_history_probe(registration: &Option<SessionHistoryProbeRegistration>) {
+    if let Some(registration) = registration {
+        registration.finish();
     }
 }
 
 async fn download_resume_session_history_timed(
     http: HttpClient,
     session: ResumeSession,
+    framework: EffectiveCliFramework,
     metadata: SessionHistoryTelemetryMetadata,
 ) -> SessionHistoryDownloadTaskResult {
     let started_at = Instant::now();
     let mut timings = SessionHistoryDownloadTimings::for_metadata(metadata);
-    let result = download_resume_session_history(http, session, &mut timings).await;
+    let result = download_resume_session_history(http, session, framework, &mut timings).await;
     SessionHistoryDownloadTaskResult {
         elapsed: started_at.elapsed(),
         timings,
@@ -342,6 +624,7 @@ async fn download_resume_session_history_timed(
 async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
+    framework: EffectiveCliFramework,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<MaterializedResumeSession<'static>> {
     // The history ref is treated as untrusted input. The request timeout and
@@ -383,7 +666,17 @@ async fn download_resume_session_history(
                 timings,
             )
             .await?;
-            let raw_bytes = gunzip_session_history(&encoded_bytes, raw_size)?;
+            let decompression_started = Instant::now();
+            let raw_bytes = match gunzip_session_history(&encoded_bytes, raw_size) {
+                Ok(raw_bytes) => {
+                    timings.record_decompression(decompression_started.elapsed(), true);
+                    raw_bytes
+                }
+                Err(error) => {
+                    timings.record_decompression(decompression_started.elapsed(), false);
+                    return Err(error);
+                }
+            };
             validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
         }
@@ -396,7 +689,30 @@ async fn download_resume_session_history(
                 timings,
             )
             .await?;
-            let raw_bytes = unzstd_session_history(&encoded_bytes, raw_size)?;
+            if framework == EffectiveCliFramework::Codex {
+                let timestamp = verify_codex_zstd_session_history(
+                    &encoded_bytes,
+                    raw_size,
+                    &history_ref.hash,
+                    timings,
+                )?;
+                return Ok(MaterializedResumeSession::new_codex_zstd(
+                    session.cli_agent_session_id,
+                    encoded_bytes,
+                    timestamp,
+                ));
+            }
+            let decompression_started = Instant::now();
+            let raw_bytes = match unzstd_session_history(&encoded_bytes, raw_size) {
+                Ok(raw_bytes) => {
+                    timings.record_decompression(decompression_started.elapsed(), true);
+                    raw_bytes
+                }
+                Err(error) => {
+                    timings.record_decompression(decompression_started.elapsed(), false);
+                    return Err(error);
+                }
+            };
             validate_decompressed_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
         }
@@ -476,6 +792,36 @@ fn validate_identity_body_size(
     Ok(())
 }
 
+pub(super) fn verify_identity_session_history_bytes(
+    bytes: &[u8],
+    expected_raw_size: u64,
+    expected_hash: &str,
+) -> RunnerResult<()> {
+    if expected_raw_size == 0 {
+        return Err(RunnerError::Internal(
+            "identity session history rawSize must be positive".into(),
+        ));
+    }
+    if expected_raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
+        return Err(RunnerError::Internal(format!(
+            "session history is too large: {expected_raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+        )));
+    }
+    if bytes.len() as u64 != expected_raw_size {
+        return Err(RunnerError::Internal(format!(
+            "session history size mismatch: expected {expected_raw_size} bytes, got {} bytes",
+            bytes.len()
+        )));
+    }
+    let actual_hash = hex::encode(Sha256::digest(bytes));
+    if actual_hash != expected_hash {
+        return Err(RunnerError::Internal(
+            "session history hash mismatch".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_compressed_ref(
     encoding: &str,
     history_ref: &ResumeSessionHistoryRef,
@@ -492,7 +838,7 @@ fn validate_compressed_ref(
     if raw_size > RESUME_SESSION_HISTORY_MAX_BYTES {
         timings.add_validation(validation_started.elapsed(), false);
         return Err(RunnerError::Internal(format!(
-            "session history is too large: {raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+            "session history rawSize is too large: {raw_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
         )));
     }
     if history_ref.encoded_size == 0 {
@@ -525,6 +871,90 @@ fn validate_decompressed_raw_size(
     }
     timings.add_validation(validation_started.elapsed(), true);
     Ok(())
+}
+
+pub(super) fn verify_codex_zstd_session_history_bytes(
+    encoded_bytes: &[u8],
+    expected_raw_size: u64,
+    expected_hash: &str,
+) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let mut timings = SessionHistoryDownloadTimings::default();
+    verify_codex_zstd_session_history(
+        encoded_bytes,
+        expected_raw_size,
+        expected_hash,
+        &mut timings,
+    )
+}
+
+fn verify_codex_zstd_session_history(
+    encoded_bytes: &[u8],
+    expected_raw_size: u64,
+    expected_hash: &str,
+    timings: &mut SessionHistoryDownloadTimings,
+) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+    let decompression_started = Instant::now();
+    let decoder = match zstd::stream::read::Decoder::new(encoded_bytes) {
+        Ok(decoder) => decoder,
+        Err(error) => {
+            timings.record_decompression(decompression_started.elapsed(), false);
+            return Err(RunnerError::Internal(format!(
+                "decompress zstd session history: {error}"
+            )));
+        }
+    };
+    let mut reader = BufReader::new(decoder.take(expected_raw_size.saturating_add(1)));
+    let mut hasher = Sha256::new();
+    let mut decoded = 0u64;
+    let mut timestamp = None;
+    let mut line = Vec::new();
+
+    loop {
+        line.clear();
+        let read = match reader.read_until(b'\n', &mut line) {
+            Ok(read) => read,
+            Err(error) => {
+                timings.record_decompression(decompression_started.elapsed(), false);
+                return Err(RunnerError::Internal(format!(
+                    "decompress zstd session history: {error}"
+                )));
+            }
+        };
+        if read == 0 {
+            break;
+        }
+        decoded += read as u64;
+        if decoded > expected_raw_size {
+            timings.record_decompression(decompression_started.elapsed(), false);
+            return Err(RunnerError::Internal(format!(
+                "session history is too large after decompression: {decoded} bytes exceeds {expected_raw_size} bytes"
+            )));
+        }
+        hasher.update(&line);
+        if timestamp.is_none()
+            && let Ok(line) = std::str::from_utf8(strip_jsonl_line_ending(&line))
+        {
+            timestamp = codex_session_meta_timestamp_line(line);
+        }
+    }
+    timings.record_decompression(decompression_started.elapsed(), true);
+
+    validate_decompressed_raw_size(expected_raw_size, decoded as usize, timings)?;
+    let hash_started = Instant::now();
+    let actual_hash = hex::encode(hasher.finalize());
+    if actual_hash != expected_hash {
+        timings.record_hash_verification(hash_started.elapsed(), false);
+        return Err(RunnerError::Internal(
+            "session history hash mismatch".into(),
+        ));
+    }
+    timings.record_hash_verification(hash_started.elapsed(), true);
+    Ok(timestamp)
+}
+
+fn strip_jsonl_line_ending(line: &[u8]) -> &[u8] {
+    let line = line.strip_suffix(b"\n").unwrap_or(line);
+    line.strip_suffix(b"\r").unwrap_or(line)
 }
 
 fn gunzip_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerResult<Vec<u8>> {
@@ -574,53 +1004,77 @@ async fn download_body(
     expected_size: Option<u64>,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<Vec<u8>> {
+    let mut attempt = 1usize;
+    loop {
+        timings.reset_download_attempt();
+        match download_body_once(http, url, expected_size, timings).await {
+            Ok(body) => return Ok(body),
+            Err(error) => {
+                let should_retry =
+                    error.is_retryable() && attempt < SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS;
+                if !should_retry {
+                    return Err(error.into_runner_error());
+                }
+                tracing::warn!(
+                    action = "session_history_download_retry",
+                    attempt,
+                    max_attempts = SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS,
+                    failure_kind = error.kind_value(),
+                    "retrying session history encoded body download"
+                );
+                sleep_session_history_download_retry_delay().await;
+                attempt += 1;
+            }
+        }
+    }
+}
+
+async fn download_body_once(
+    http: &HttpClient,
+    url: &str,
+    expected_size: Option<u64>,
+    timings: &mut SessionHistoryDownloadTimings,
+) -> Result<Vec<u8>, SessionHistoryDownloadBodyError> {
     let request_started = Instant::now();
-    let response_result = http
+    let response = http
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
         .await
-        .map_err(|error| {
-            RunnerError::Internal(format!(
-                "GET {}: {}",
-                redact_url_query(url),
-                error.without_url()
-            ))
-        })?
-        .error_for_status()
-        .map_err(|error| {
-            RunnerError::Internal(format!(
-                "GET status {}: {}",
-                redact_url_query(url),
-                error.without_url()
-            ))
-        });
-    let mut response = match response_result {
-        Ok(response) => {
-            timings.record_request_status(request_started.elapsed(), true);
-            response
-        }
-        Err(error) => {
-            timings.record_request_status(request_started.elapsed(), false);
-            return Err(error);
-        }
-    };
+        .map_err(|error| SessionHistoryDownloadBodyError::from_reqwest("GET", url, error))?;
+    if let Err(error) = response.error_for_status_ref() {
+        timings.record_request_status(request_started.elapsed(), false);
+        return Err(SessionHistoryDownloadBodyError::from_reqwest(
+            "GET status",
+            url,
+            error,
+        ));
+    }
+    timings.record_request_status(request_started.elapsed(), true);
+    let mut response = response;
+
+    let response_metadata = session_history_response_metadata(&response, expected_size);
+    timings.record_response_metadata(response_metadata);
 
     let validation_started = Instant::now();
     if let Some(content_length) = response.content_length() {
         if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
             timings.add_validation(validation_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::downloaded_too_large(
+                format!(
+                    "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+                ),
+            ));
         }
         if let Some(expected_size) = expected_size
             && content_length != expected_size
         {
             timings.add_validation(validation_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history content-length mismatch: expected {expected_size} bytes, got {content_length} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::content_length_mismatch(
+                format!(
+                    "session history content-length mismatch: expected {expected_size} bytes, got {content_length} bytes",
+                ),
+            ));
         }
     }
     timings.add_validation(validation_started.elapsed(), true);
@@ -636,11 +1090,9 @@ async fn download_body(
         Ok(chunk) => chunk,
         Err(error) => {
             timings.record_body_read(body_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "read {}: {}",
-                redact_url_query(url),
-                error.without_url()
-            )));
+            return Err(SessionHistoryDownloadBodyError::from_reqwest(
+                "read", url, error,
+            ));
         }
     } {
         downloaded += chunk.len() as u64;
@@ -648,15 +1100,20 @@ async fn download_body(
             && downloaded > expected_size
         {
             timings.record_body_read(body_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history downloaded size mismatch: expected {expected_size} bytes, got more than {expected_size} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::downloaded_size_mismatch(
+                format!(
+                    "session history downloaded size mismatch: expected {expected_size} bytes, got more than {expected_size} bytes",
+                ),
+                false,
+            ));
         }
         if downloaded > RESUME_SESSION_HISTORY_MAX_BYTES {
             timings.record_body_read(body_started.elapsed(), false);
-            return Err(RunnerError::Internal(format!(
-                "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
-            )));
+            return Err(SessionHistoryDownloadBodyError::downloaded_too_large(
+                format!(
+                    "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes",
+                ),
+            ));
         }
         body.extend_from_slice(&chunk);
     }
@@ -664,13 +1121,208 @@ async fn download_body(
         && downloaded != expected_size
     {
         timings.record_body_read(body_started.elapsed(), false);
-        return Err(RunnerError::Internal(format!(
-            "session history downloaded size mismatch: expected {expected_size} bytes, got {downloaded} bytes"
-        )));
+        return Err(SessionHistoryDownloadBodyError::downloaded_size_mismatch(
+            format!(
+                "session history downloaded size mismatch: expected {expected_size} bytes, got {downloaded} bytes",
+            ),
+            true,
+        ));
     }
     timings.record_body_read(body_started.elapsed(), true);
 
     Ok(body)
+}
+
+#[derive(Debug)]
+struct SessionHistoryDownloadBodyError {
+    message: String,
+    kind: SessionHistoryDownloadBodyErrorKind,
+}
+
+#[derive(Debug)]
+enum SessionHistoryDownloadBodyErrorKind {
+    Transport { retryable: bool },
+    HttpStatus(reqwest::StatusCode),
+    ContentLengthMismatch,
+    DownloadedSizeMismatch { retryable: bool },
+    DownloadedTooLarge,
+}
+
+impl SessionHistoryDownloadBodyError {
+    fn content_length_mismatch(message: String) -> Self {
+        Self {
+            message,
+            kind: SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch,
+        }
+    }
+
+    fn downloaded_size_mismatch(message: String, retryable: bool) -> Self {
+        Self {
+            message,
+            kind: SessionHistoryDownloadBodyErrorKind::DownloadedSizeMismatch { retryable },
+        }
+    }
+
+    fn downloaded_too_large(message: String) -> Self {
+        Self {
+            message,
+            kind: SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge,
+        }
+    }
+
+    fn from_reqwest(phase: &str, url: &str, error: reqwest::Error) -> Self {
+        let kind = match error.status() {
+            Some(status) => SessionHistoryDownloadBodyErrorKind::HttpStatus(status),
+            None => SessionHistoryDownloadBodyErrorKind::Transport {
+                retryable: reqwest_error_is_retryable(&error),
+            },
+        };
+        Self {
+            message: format!("{phase} {}: {}", redact_url_query(url), error.without_url()),
+            kind,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        match self.kind {
+            SessionHistoryDownloadBodyErrorKind::Transport { retryable } => retryable,
+            SessionHistoryDownloadBodyErrorKind::HttpStatus(status) => {
+                status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+            }
+            SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch
+            | SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge => false,
+            SessionHistoryDownloadBodyErrorKind::DownloadedSizeMismatch { retryable } => retryable,
+        }
+    }
+
+    fn kind_value(&self) -> &'static str {
+        match self.kind {
+            SessionHistoryDownloadBodyErrorKind::Transport { .. } => "transport",
+            SessionHistoryDownloadBodyErrorKind::HttpStatus(status) => {
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    "http_429"
+                } else if status.is_server_error() {
+                    "http_5xx"
+                } else {
+                    "http_non_retryable"
+                }
+            }
+            SessionHistoryDownloadBodyErrorKind::ContentLengthMismatch => "content_length_mismatch",
+            SessionHistoryDownloadBodyErrorKind::DownloadedSizeMismatch { .. } => {
+                "downloaded_size_mismatch"
+            }
+            SessionHistoryDownloadBodyErrorKind::DownloadedTooLarge => "downloaded_too_large",
+        }
+    }
+
+    fn into_runner_error(self) -> RunnerError {
+        RunnerError::Internal(self.message)
+    }
+}
+
+impl fmt::Display for SessionHistoryDownloadBodyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+fn reqwest_error_is_retryable(error: &reqwest::Error) -> bool {
+    !(error.is_builder() || error.is_redirect())
+}
+
+async fn sleep_session_history_download_retry_delay() {
+    let delay = session_history_download_retry_delay();
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
+}
+
+fn session_history_download_retry_delay() -> Duration {
+    if cfg!(test) {
+        Duration::ZERO
+    } else {
+        SESSION_HISTORY_DOWNLOAD_RETRY_DELAY
+    }
+}
+
+fn session_history_response_metadata(
+    response: &reqwest::Response,
+    expected_size: Option<u64>,
+) -> SessionHistoryResponseTelemetryMetadata {
+    SessionHistoryResponseTelemetryMetadata::new(
+        content_length_state(response.content_length(), expected_size),
+        content_encoding_state(response.headers()),
+        transfer_encoding_state(response.headers()),
+    )
+}
+
+fn content_length_state(
+    content_length: Option<u64>,
+    expected_size: Option<u64>,
+) -> SessionHistoryContentLengthState {
+    let Some(content_length) = content_length else {
+        return SessionHistoryContentLengthState::Absent;
+    };
+    if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
+        return SessionHistoryContentLengthState::Oversized;
+    }
+    let Some(expected_size) = expected_size else {
+        return SessionHistoryContentLengthState::PresentWithoutExpected;
+    };
+    if content_length == expected_size {
+        SessionHistoryContentLengthState::MatchesExpected
+    } else {
+        SessionHistoryContentLengthState::MismatchesExpected
+    }
+}
+
+fn content_encoding_state(
+    headers: &reqwest::header::HeaderMap,
+) -> SessionHistoryContentEncodingState {
+    let values = headers.get_all(CONTENT_ENCODING);
+    let mut saw_header = false;
+    for value in values {
+        saw_header = true;
+        let Ok(value) = value.to_str() else {
+            return SessionHistoryContentEncodingState::Other;
+        };
+        for item in value.split(',').map(str::trim) {
+            if item.eq_ignore_ascii_case("gzip") {
+                return SessionHistoryContentEncodingState::Gzip;
+            }
+            if item.eq_ignore_ascii_case("zstd") {
+                return SessionHistoryContentEncodingState::Zstd;
+            }
+        }
+    }
+    if !saw_header {
+        return SessionHistoryContentEncodingState::Absent;
+    }
+    SessionHistoryContentEncodingState::Other
+}
+
+fn transfer_encoding_state(
+    headers: &reqwest::header::HeaderMap,
+) -> SessionHistoryTransferEncodingState {
+    let values = headers.get_all(TRANSFER_ENCODING);
+    let mut saw_header = false;
+    for value in values {
+        saw_header = true;
+        let Ok(value) = value.to_str() else {
+            return SessionHistoryTransferEncodingState::Other;
+        };
+        if value
+            .split(',')
+            .map(str::trim)
+            .any(|item| item.eq_ignore_ascii_case("chunked"))
+        {
+            return SessionHistoryTransferEncodingState::Chunked;
+        }
+    }
+    if !saw_header {
+        return SessionHistoryTransferEncodingState::Absent;
+    }
+    SessionHistoryTransferEncodingState::Other
 }
 
 fn redact_url_query(url: &str) -> String {
@@ -695,9 +1347,11 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
     use tokio::sync::oneshot;
+    use tokio::task::JoinHandle;
 
     use super::*;
     use crate::http::{HttpClient, HttpClientConfig};
+    use crate::test_fixtures::OneShotSessionHistoryServer;
     use crate::types::{
         ResumeSessionHistory, ResumeSessionHistoryEncoding, ResumeSessionHistoryRef,
         ResumeSessionHistoryRefKind,
@@ -707,6 +1361,7 @@ mod tests {
         HttpClient::new(HttpClientConfig {
             api_url: "http://api.test".to_string(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap()
     }
@@ -722,6 +1377,7 @@ mod tests {
                     encoding: None,
                     raw_size,
                     encoded_size,
+                    download_source: None,
                 },
             },
         }
@@ -774,6 +1430,7 @@ mod tests {
                     encoding: Some(encoding),
                     raw_size,
                     encoded_size,
+                    download_source: None,
                 },
             },
         }
@@ -789,12 +1446,21 @@ mod tests {
         zstd::encode_all(raw, 0).unwrap()
     }
 
-    fn start_materializer(session: &ResumeSession) -> SessionHistoryMaterializer {
+    fn start_materializer_with_framework(
+        session: &ResumeSession,
+        framework: EffectiveCliFramework,
+    ) -> SessionHistoryMaterializer {
         SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(session),
+            framework,
             CancellationToken::new(),
+            None,
         )
+    }
+
+    fn start_materializer(session: &ResumeSession) -> SessionHistoryMaterializer {
+        start_materializer_with_framework(session, EffectiveCliFramework::ClaudeCode)
     }
 
     fn identity_metadata() -> SessionHistoryTelemetryMetadata {
@@ -821,39 +1487,277 @@ mod tests {
         assert!(phase.is_none(), "phase should not be recorded: {phase:?}");
     }
 
+    fn assert_response_metadata(
+        timings: &SessionHistoryDownloadTimings,
+        content_length_state: SessionHistoryContentLengthState,
+        content_encoding_state: SessionHistoryContentEncodingState,
+        transfer_encoding_state: SessionHistoryTransferEncodingState,
+    ) {
+        let metadata = timings
+            .response_metadata()
+            .expect("response metadata should be recorded");
+        assert_eq!(metadata.content_length_state(), content_length_state);
+        assert_eq!(metadata.content_encoding_state(), content_encoding_state);
+        assert_eq!(metadata.transfer_encoding_state(), transfer_encoding_state);
+    }
+
+    #[test]
+    fn probe_reports_recent_and_inflight_refs() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
+        let session = ref_session(
+            "http://127.0.0.1/history.blob".to_string(),
+            hex::encode(Sha256::digest(b"history")),
+            7,
+            7,
+        );
+        let history_ref = session.history_ref().unwrap();
+
+        let first = probe.observe(history_ref);
+        assert_eq!(
+            first.observation(),
+            SessionHistoryCacheProbeMetadata::new(false, false)
+        );
+
+        let second = probe.observe(history_ref);
+        assert_eq!(
+            second.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+
+        first.finish();
+        second.finish();
+        let third = probe.observe(history_ref);
+        assert_eq!(
+            third.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        third.finish();
+    }
+
+    #[test]
+    fn probe_registration_drop_clears_inflight_ref() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
+        let session = ref_session(
+            "http://127.0.0.1/drop.blob".to_string(),
+            hex::encode(Sha256::digest(b"drop")),
+            4,
+            4,
+        );
+        let history_ref = session.history_ref().unwrap();
+
+        let registration = probe.observe(history_ref);
+        let overlapping = probe.observe(history_ref);
+        assert_eq!(
+            overlapping.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+        overlapping.finish();
+        drop(registration);
+        let repeated = probe.observe(history_ref);
+
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
+    }
+
+    #[test]
+    fn probe_eviction_removes_old_ref_identity() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 1);
+        let first_session = ref_session(
+            "http://127.0.0.1/first.blob".to_string(),
+            hex::encode(Sha256::digest(b"first")),
+            5,
+            5,
+        );
+        let second_session = ref_session(
+            "http://127.0.0.1/second.blob".to_string(),
+            hex::encode(Sha256::digest(b"second")),
+            6,
+            6,
+        );
+        let first_ref = first_session.history_ref().unwrap();
+        let second_ref = second_session.history_ref().unwrap();
+
+        let first = probe.observe(first_ref);
+        first.finish();
+        let second = probe.observe(second_ref);
+        second.finish();
+        let repeated_first = probe.observe(first_ref);
+
+        assert_eq!(
+            repeated_first.observation(),
+            SessionHistoryCacheProbeMetadata::new(false, false)
+        );
+        repeated_first.finish();
+    }
+
+    #[test]
+    fn probe_capacity_eviction_preserves_inflight_ref_when_possible() {
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 2);
+        let active_session = ref_session(
+            "http://127.0.0.1/active.blob".to_string(),
+            hex::encode(Sha256::digest(b"active")),
+            6,
+            6,
+        );
+        let idle_session = ref_session(
+            "http://127.0.0.1/idle.blob".to_string(),
+            hex::encode(Sha256::digest(b"idle")),
+            4,
+            4,
+        );
+        let new_session = ref_session(
+            "http://127.0.0.1/new.blob".to_string(),
+            hex::encode(Sha256::digest(b"new")),
+            3,
+            3,
+        );
+        let active_ref = active_session.history_ref().unwrap();
+        let idle_ref = idle_session.history_ref().unwrap();
+        let new_ref = new_session.history_ref().unwrap();
+
+        let active = probe.observe(active_ref);
+        let idle = probe.observe(idle_ref);
+        idle.finish();
+        let new = probe.observe(new_ref);
+        new.finish();
+
+        let repeated_active = probe.observe(active_ref);
+        assert_eq!(
+            repeated_active.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, true)
+        );
+        repeated_active.finish();
+        active.finish();
+    }
+
     async fn serve_once(
         status: &'static str,
         body: impl Into<Vec<u8>> + Send + 'static,
         content_length: Option<u64>,
-    ) -> String {
-        let body = body.into();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
+    ) -> OneShotSessionHistoryServer {
+        OneShotSessionHistoryServer::respond_once(status, body, content_length).await
+    }
+
+    struct MultiShotSessionHistoryServer {
+        url: String,
+        task: Option<JoinHandle<io::Result<usize>>>,
+    }
+
+    #[derive(Clone)]
+    struct MultiShotSessionHistoryResponse {
+        status: &'static str,
+        body: Vec<u8>,
+        content_length: Option<u64>,
+    }
+
+    impl MultiShotSessionHistoryResponse {
+        fn new(
+            status: &'static str,
+            body: impl Into<Vec<u8>>,
+            content_length: Option<u64>,
+        ) -> Self {
+            Self {
+                status,
+                body: body.into(),
+                content_length,
+            }
+        }
+
+        fn ok(body: impl Into<Vec<u8>>, content_length: Option<u64>) -> Self {
+            Self::new("200 OK", body, content_length)
+        }
+
+        fn status(status: &'static str) -> Self {
+            Self::new(status, Vec::new(), Some(0))
+        }
+    }
+
+    impl MultiShotSessionHistoryServer {
+        async fn respond_many(responses: Vec<MultiShotSessionHistoryResponse>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let task = tokio::spawn(serve_session_history_many(listener, responses));
+
+            Self {
+                url: format!("http://{address}/history.blob?token=secret"),
+                task: Some(task),
+            }
+        }
+
+        fn url(&self) -> String {
+            self.url.clone()
+        }
+
+        async fn assert_served(mut self, expected_requests: usize) {
+            let mut task = self
+                .task
+                .take()
+                .expect("session history fixture task should be present");
+            match tokio::time::timeout(Duration::from_secs(5), &mut task).await {
+                Ok(result) => {
+                    let served = result
+                        .expect("session history fixture server task should not panic")
+                        .expect("session history fixture server should not fail");
+                    assert_eq!(served, expected_requests);
+                }
+                Err(_) => {
+                    task.abort();
+                    let _ = task.await;
+                    panic!("session history fixture server should finish");
+                }
+            }
+        }
+    }
+
+    impl Drop for MultiShotSessionHistoryServer {
+        fn drop(&mut self) {
+            if let Some(task) = self.task.take() {
+                task.abort();
+            }
+        }
+    }
+
+    async fn serve_session_history_many(
+        listener: TcpListener,
+        responses: Vec<MultiShotSessionHistoryResponse>,
+    ) -> io::Result<usize> {
+        let mut served = 0usize;
+        for response in responses {
+            let (mut stream, _) = listener.accept().await?;
             let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).await;
-            let content_length_header = content_length
+            let request_bytes = stream.read(&mut request).await?;
+            if request_bytes == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "session history fixture received an empty request",
+                ));
+            }
+
+            let content_length_header = response
+                .content_length
                 .map(|content_length| format!("Content-Length: {content_length}\r\n"))
                 .unwrap_or_default();
-            let response =
-                format!("HTTP/1.1 {status}\r\n{content_length_header}Connection: close\r\n\r\n");
-            stream.write_all(response.as_bytes()).await.unwrap();
-            stream.write_all(&body).await.unwrap();
-        });
-        format!("http://{address}/history.blob?token=secret")
+            let response_head = format!(
+                "HTTP/1.1 {}\r\n{content_length_header}Connection: close\r\n\r\n",
+                response.status
+            );
+            stream.write_all(response_head.as_bytes()).await?;
+            stream.write_all(&response.body).await?;
+            stream.shutdown().await?;
+            served += 1;
+        }
+        Ok(served)
     }
 
     #[tokio::test]
     async fn materializer_downloads_and_verifies_hash() {
         let body = b"{\"type\":\"init\"}\n\xff\n";
         let hash = hex::encode(Sha256::digest(body));
-        let session = ref_session(
-            serve_once("200 OK", body, Some(body.len() as u64)).await,
-            hash,
-            body.len() as u64,
-            body.len() as u64,
-        );
+        let server = serve_once("200 OK", body, Some(body.len() as u64)).await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -867,10 +1771,169 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
+                assert_phase_success(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::MatchesExpected,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn materializer_retries_zstd_body_read_error_then_succeeds() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let truncated = compressed[..compressed.len() - 1].to_vec();
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(truncated, Some(encoded_size)),
+            MultiShotSessionHistoryResponse::ok(compressed, Some(encoded_size)),
+        ])
+        .await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served(2).await;
+    }
+
+    #[tokio::test]
+    async fn materializer_retries_500_status_then_succeeds() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::status("500 Internal Server Error"),
+            MultiShotSessionHistoryResponse::ok(body, Some(body.len() as u64)),
+        ])
+        .await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served(2).await;
+    }
+
+    #[tokio::test]
+    async fn materializer_retries_429_status_then_succeeds() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::status("429 Too Many Requests"),
+            MultiShotSessionHistoryResponse::ok(body, Some(body.len() as u64)),
+        ])
+        .await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served(2).await;
+    }
+
+    #[tokio::test]
+    async fn materializer_records_response_content_encoding_state() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server = OneShotSessionHistoryServer::respond_once_with_headers(
+            "200 OK",
+            body,
+            Some(body.len() as u64),
+            vec![("Content-Encoding", "gzip")],
+        )
+        .await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded { timings, .. } => {
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::MatchesExpected,
+                    SessionHistoryContentEncodingState::Gzip,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn materializer_records_chunked_transfer_response_metadata() {
+        let body = b"{\"type\":\"init\"}\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let server =
+            OneShotSessionHistoryServer::respond_once_chunked("200 OK", body.to_vec()).await;
+        let session = ref_session(server.url(), hash, body.len() as u64, body.len() as u64);
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded { timings, .. } => {
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::Absent,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Chunked,
+                );
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -896,9 +1959,108 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_phase_failure(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_compressed_ref_with_invalid_metadata() {
+        struct InvalidMetadataCase {
+            name: &'static str,
+            raw_size: u64,
+            encoded_size: u64,
+            expected_error_substrings: &'static [&'static str],
+        }
+
+        let valid_raw_size = 16;
+        let valid_encoded_size = 32;
+        let scenarios = [
+            (
+                ResumeSessionHistoryEncoding::Gzip,
+                EffectiveCliFramework::ClaudeCode,
+                "gzip",
+                "gzip ClaudeCode",
+            ),
+            (
+                ResumeSessionHistoryEncoding::Zstd,
+                EffectiveCliFramework::ClaudeCode,
+                "zstd",
+                "zstd ClaudeCode",
+            ),
+            (
+                ResumeSessionHistoryEncoding::Zstd,
+                EffectiveCliFramework::Codex,
+                "zstd",
+                "zstd Codex",
+            ),
+        ];
+        let metadata_cases = [
+            InvalidMetadataCase {
+                name: "zero rawSize",
+                raw_size: 0,
+                encoded_size: valid_encoded_size,
+                expected_error_substrings: &["rawSize must be positive"],
+            },
+            InvalidMetadataCase {
+                name: "oversized rawSize",
+                raw_size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+                encoded_size: valid_encoded_size,
+                expected_error_substrings: &["rawSize", "too large"],
+            },
+            InvalidMetadataCase {
+                name: "zero encodedSize",
+                raw_size: valid_raw_size,
+                encoded_size: 0,
+                expected_error_substrings: &["encodedSize must be positive"],
+            },
+            InvalidMetadataCase {
+                name: "oversized encodedSize",
+                raw_size: valid_raw_size,
+                encoded_size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+                expected_error_substrings: &["encoded", "too large"],
+            },
+        ];
+
+        for (encoding, framework, expected_encoding, scenario_name) in scenarios {
+            for case in &metadata_cases {
+                let session = compressed_ref_session(
+                    "http://127.0.0.1:9/history.blob?token=secret".to_string(),
+                    hex::encode(Sha256::digest([])),
+                    case.raw_size,
+                    case.encoded_size,
+                    encoding,
+                );
+
+                let result = start_materializer_with_framework(&session, framework)
+                    .finish(&CancellationToken::new())
+                    .await;
+
+                match result {
+                    SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                        let message = error.to_string();
+                        for expected in case.expected_error_substrings {
+                            assert!(
+                                message.contains(expected),
+                                "{} {}: expected error to contain {expected:?}, got {message:?}",
+                                scenario_name,
+                                case.name
+                            );
+                        }
+                        assert_eq!(timings.encoding(), Some(expected_encoding));
+                        assert_no_phase(timings.request_status());
+                        assert_no_phase(timings.body_read());
+                        assert_phase_failure(timings.validation());
+                        assert_no_phase(timings.hash_verification());
+                    }
+                    _ => panic!(
+                        "{scenario_name} {}: expected failed materialization",
+                        case.name
+                    ),
+                }
+            }
         }
     }
 
@@ -908,12 +2070,8 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -927,10 +2085,18 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::Absent,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -939,12 +2105,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -958,10 +2120,118 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_preserves_verified_zstd_history() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let server = serve_once("200 OK", compressed.clone(), None).await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.history_bytes(), compressed);
+                assert!(session.history_text().is_none());
+                let (_, timestamp) = session
+                    .codex_zstd_history()
+                    .expect("codex zstd history should be preserved");
+                assert_eq!(
+                    timestamp.map(|timestamp| timestamp.to_rfc3339()).as_deref(),
+                    Some("2026-07-02T10:00:00+00:00")
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
+                assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_rejects_zstd_hash_mismatch() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(
+            server.url(),
+            "0".repeat(64),
+            body.len() as u64,
+            encoded_size,
+        );
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("session history hash mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_success(timings.validation());
+                assert_phase_success(timings.decompression());
+                assert_phase_failure(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+        server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn codex_materializer_rejects_zstd_body_over_declared_raw_size() {
+        let body =
+            b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-07-02T10:00:00Z\"}}\n";
+        let compressed = zstd_bytes(body);
+        let encoded_size = compressed.len() as u64;
+        let hash = hex::encode(Sha256::digest(body));
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, 1, encoded_size);
+
+        let materializer =
+            start_materializer_with_framework(&session, EffectiveCliFramework::Codex);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("session history is too large after decompression"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.decompression());
+                assert_no_phase(timings.hash_verification());
+            }
+            _ => panic!("expected failed materialization"),
+        }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -970,12 +2240,12 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size + 1,
-        );
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(compressed.clone(), None);
+            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+        ])
+        .await;
+        let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -990,10 +2260,14 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
         }
+        server
+            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
+            .await;
     }
 
     #[tokio::test]
@@ -1002,12 +2276,12 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size + 1,
-        );
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(compressed.clone(), None);
+            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+        ])
+        .await;
+        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size + 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1022,17 +2296,22 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
         }
+        server
+            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
+            .await;
     }
 
     #[tokio::test]
     async fn materializer_rejects_body_over_declared_size_without_content_length() {
         let body = b"{\"type\":\"init\"}\n";
         let hash = hex::encode(Sha256::digest(body));
-        let session = ref_session(serve_once("200 OK", body, None).await, hash, 1, 1);
+        let server = serve_once("200 OK", body, None).await;
+        let session = ref_session(server.url(), hash, 1, 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1047,10 +2326,12 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1061,12 +2342,8 @@ mod tests {
         let compressed = [gzip_bytes(first), gzip_bytes(second)].concat();
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(&body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            body.len() as u64,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, body.len() as u64, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1077,6 +2354,7 @@ mod tests {
             }
             _ => panic!("expected downloaded session"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1085,12 +2363,8 @@ mod tests {
         let compressed = gzip_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = gzip_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            1,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = gzip_ref_session(server.url(), hash, 1, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1105,9 +2379,11 @@ mod tests {
                 );
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.decompression());
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1116,12 +2392,8 @@ mod tests {
         let compressed = zstd_bytes(body);
         let encoded_size = compressed.len() as u64;
         let hash = hex::encode(Sha256::digest(body));
-        let session = zstd_ref_session(
-            serve_once("200 OK", compressed, None).await,
-            hash,
-            1,
-            encoded_size,
-        );
+        let server = serve_once("200 OK", compressed, None).await;
+        let session = zstd_ref_session(server.url(), hash, 1, encoded_size);
 
         let materializer = start_materializer(&session);
         let result = materializer.finish(&CancellationToken::new()).await;
@@ -1136,9 +2408,11 @@ mod tests {
                 );
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
+                assert_phase_failure(timings.decompression());
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
@@ -1147,8 +2421,9 @@ mod tests {
         let mut compressed = zstd_bytes(body);
         compressed.truncate(compressed.len().saturating_sub(1));
         let hash = hex::encode(Sha256::digest(body));
+        let server = serve_once("200 OK", compressed.clone(), None).await;
         let session = zstd_ref_session(
-            serve_once("200 OK", compressed.clone(), None).await,
+            server.url(),
             hash,
             body.len() as u64,
             compressed.len() as u64,
@@ -1168,22 +2443,20 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_phase_failure(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed materialization"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_rejects_hash_mismatch_and_redacts_url_query() {
         let expected_hash = hex::encode(Sha256::digest(b"expected"));
         let actual_hash = hex::encode(Sha256::digest(b"actual"));
-        let session = ref_session(
-            serve_once("200 OK", b"actual", Some(6)).await,
-            expected_hash.clone(),
-            6,
-            6,
-        );
+        let server = serve_once("200 OK", b"actual", Some(6)).await;
+        let session = ref_session(server.url(), expected_hash.clone(), 6, 6);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1199,20 +2472,21 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_phase_failure(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_redacts_url_query_from_http_status_error() {
-        let session = ref_session(
-            serve_once("403 Forbidden", b"no", Some(2)).await,
-            hex::encode(Sha256::digest(b"no")),
-            2,
-            2,
-        );
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::status("403 Forbidden"),
+        ])
+        .await;
+        let session = ref_session(server.url(), hex::encode(Sha256::digest(b"no")), 2, 2);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1226,20 +2500,61 @@ mod tests {
                 assert_phase_failure(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served(1).await;
+    }
+
+    #[tokio::test]
+    async fn materializer_records_mismatched_content_length_metadata() {
+        let body = b"actual";
+        let server =
+            MultiShotSessionHistoryServer::respond_many(vec![MultiShotSessionHistoryResponse::ok(
+                body,
+                Some(999),
+            )])
+            .await;
+        let session = ref_session(
+            server.url(),
+            hex::encode(Sha256::digest(body)),
+            body.len() as u64,
+            body.len() as u64,
+        );
+
+        let result = start_materializer(&session)
+            .finish(&CancellationToken::new())
+            .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error.to_string().contains("content-length mismatch"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_no_phase(timings.body_read());
+                assert_phase_failure(timings.validation());
+                assert_no_phase(timings.decompression());
+                assert_no_phase(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::MismatchesExpected,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
+            }
+            _ => panic!("expected failed download"),
+        }
+        server.assert_served(1).await;
     }
 
     #[tokio::test]
     async fn materializer_rejects_oversized_content_length() {
-        let session = ref_session(
-            serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await,
-            hex::encode(Sha256::digest(b"")),
-            1,
-            1,
-        );
+        let server = serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await;
+        let session = ref_session(server.url(), hex::encode(Sha256::digest(b"")), 1, 1);
 
         let result = start_materializer(&session)
             .finish(&CancellationToken::new())
@@ -1251,16 +2566,29 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_phase_failure(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
+                assert_response_metadata(
+                    &timings,
+                    SessionHistoryContentLengthState::Oversized,
+                    SessionHistoryContentEncodingState::Absent,
+                    SessionHistoryTransferEncodingState::Absent,
+                );
             }
             _ => panic!("expected failed download"),
         }
+        server.assert_served().await;
     }
 
     #[tokio::test]
     async fn materializer_records_body_read_failure_timing() {
+        let server = MultiShotSessionHistoryServer::respond_many(vec![
+            MultiShotSessionHistoryResponse::ok(b"short", Some(999));
+            SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
+        ])
+        .await;
         let session = ref_session(
-            serve_once("200 OK", b"short", Some(999)).await,
+            server.url(),
             hex::encode(Sha256::digest(b"short")),
             999,
             999,
@@ -1275,10 +2603,14 @@ mod tests {
                 assert_phase_success(timings.request_status());
                 assert_phase_failure(timings.body_read());
                 assert_phase_success(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected failed download"),
         }
+        server
+            .assert_served(SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS)
+            .await;
     }
 
     #[test]
@@ -1321,6 +2653,7 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
@@ -1350,8 +2683,15 @@ mod tests {
             1,
             1,
         );
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
 
-        let materializer = start_materializer(&session);
+        let materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            Some(&session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            Some(&probe),
+        );
         tokio::time::timeout(Duration::from_secs(5), request_received_rx)
             .await
             .unwrap()
@@ -1364,6 +2704,13 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(closed, 0);
+
+        let repeated = probe.observe(session.history_ref().unwrap());
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
     }
 
     #[tokio::test]
@@ -1388,11 +2735,14 @@ mod tests {
             1,
         );
         let cancel = CancellationToken::new();
+        let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
 
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(&session),
+            EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
+            Some(&probe),
         );
         tokio::time::timeout(Duration::from_secs(5), request_received_rx)
             .await
@@ -1413,10 +2763,17 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
             }
             _ => panic!("expected cancelled download"),
         }
+        let repeated = probe.observe(session.history_ref().unwrap());
+        assert_eq!(
+            repeated.observation(),
+            SessionHistoryCacheProbeMetadata::new(true, false)
+        );
+        repeated.finish();
     }
 
     #[tokio::test]
@@ -1436,7 +2793,9 @@ mod tests {
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
             Some(&session),
+            EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
+            None,
         );
         let result = materializer.finish(&cancel).await;
         match result {
@@ -1445,6 +2804,7 @@ mod tests {
                 assert_no_phase(timings.request_status());
                 assert_no_phase(timings.body_read());
                 assert_no_phase(timings.validation());
+                assert_no_phase(timings.decompression());
                 assert_no_phase(timings.hash_verification());
                 assert_eq!(timings.encoding(), Some("gzip"));
             }
@@ -1475,6 +2835,7 @@ mod tests {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
                 metadata: identity_metadata(),
+                probe_registration: None,
                 task: Some(task),
             },
         };
@@ -1507,6 +2868,7 @@ mod tests {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at: Instant::now(),
                 metadata: identity_metadata(),
+                probe_registration: None,
                 task: Some(task),
             },
         };

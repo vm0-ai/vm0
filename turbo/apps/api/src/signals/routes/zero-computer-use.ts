@@ -8,7 +8,10 @@ import {
   zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { COMPUTER_USE_PLUGIN_CALL_KIND } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import {
+  COMPUTER_USE_MCP_PLUGIN,
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
@@ -182,6 +185,21 @@ const hostsListInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
   signal.throwIfAborted();
 
+  if (auth.tokenType === "zero") {
+    const hostId = auth.computerUseHostId;
+    if (!hostId) {
+      return computerUseHostNotAuthorized;
+    }
+    return {
+      status: 200 as const,
+      body: {
+        hosts: result.hosts.filter((host) => {
+          return host.id === hostId;
+        }),
+      },
+    };
+  }
+
   return { status: 200 as const, body: result };
 });
 
@@ -345,11 +363,19 @@ const pluginCommandCreateInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         kind: COMPUTER_USE_PLUGIN_CALL_KIND,
-        payload: {
-          plugin: bodyResult.data.plugin,
-          tool: bodyResult.data.tool,
-          arguments: bodyResult.data.arguments,
-        },
+        payload:
+          bodyResult.data.plugin === COMPUTER_USE_MCP_PLUGIN
+            ? {
+                plugin: bodyResult.data.plugin,
+                server: bodyResult.data.server,
+                tool: bodyResult.data.tool,
+                arguments: bodyResult.data.arguments,
+              }
+            : {
+                plugin: bodyResult.data.plugin,
+                tool: bodyResult.data.tool,
+                arguments: bodyResult.data.arguments,
+              },
         timeoutMs: bodyResult.data.timeoutMs,
         ...(auth.tokenType === "zero"
           ? { runId: auth.runId, targetHostId }
@@ -615,6 +641,11 @@ const computerUseCommandAuthOptions = {
   requiredCapability: "computer-use:write",
 } as const;
 
+const computerUseHostListAuthOptions = {
+  ...computerUseAuthOptions,
+  requiredCapability: "computer-use:write",
+} as const;
+
 export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   {
     route: zeroComputerUseHostsContract.start,
@@ -630,7 +661,7 @@ export const zeroComputerUseRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroComputerUseHostsContract.list,
-    handler: authRoute(computerUseAuthOptions, hostsListInner$),
+    handler: authRoute(computerUseHostListAuthOptions, hostsListInner$),
   },
   {
     route: zeroComputerUseHostsContract.delete,

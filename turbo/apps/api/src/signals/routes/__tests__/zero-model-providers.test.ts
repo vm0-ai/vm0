@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
@@ -15,26 +14,13 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const trackUsageFixture = createFixtureTracker<UsageInsightFixture>(
-  (fixture) => {
-    return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  },
-);
 
 function uniqueOrgUser(prefix: string): {
   readonly orgId: string;
@@ -169,32 +155,42 @@ function encryptedSecretsBody(values: Record<string, string>): string {
   return encryptSecretForTests(JSON.stringify(values));
 }
 
+interface EntitledRunActor {
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+}
+
+async function entitledRunActor(): Promise<EntitledRunActor> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Firewall Auth Test",
+    visibility: "private",
+  });
+  return { actor, agentId: agent.agentId };
+}
+
 async function markOrgCodexProviderStaleViaFirewall(
-  fixture: {
-    readonly orgId: string;
-    readonly userId: string;
-  },
+  entitled: EntitledRunActor,
   accessToken: string,
 ): Promise<void> {
-  await trackUsageFixture(Promise.resolve(fixture));
-  const { composeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      displayName: "Firewall Auth Test",
-    },
-    context.signal,
-  );
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      composeId,
-    },
-    context.signal,
-  );
+  const api = createRunsAutomationsApi(context);
+  const { actor, agentId } = entitled;
+  if (!actor.orgId) {
+    throw new Error("Entitled actor must be org-scoped");
+  }
+  const run = await api.createRun(actor, {
+    agentId,
+    prompt: "trigger firewall auth token refresh",
+    modelProvider: "anthropic-api-key",
+  });
 
   server.use(
     http.post("https://auth.openai.com/oauth/token", () => {
@@ -215,9 +211,9 @@ async function markOrgCodexProviderStaleViaFirewall(
     client.resolve({
       headers: {
         authorization: `Bearer ${generateSandboxToken(
-          fixture.userId,
-          runId,
-          fixture.orgId,
+          actor.userId,
+          run.runId,
+          actor.orgId,
         )}`,
       },
       body: {
@@ -432,8 +428,12 @@ describe("GET /api/zero/model-providers", () => {
   });
 
   it("surfaces OAuth refresh state on listed providers", async () => {
-    const fixture = uniqueOrgUser("zmp-list-stale");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const entitled = await entitledRunActor();
+    mocks.clerk.session(
+      entitled.actor.userId,
+      entitled.actor.orgId,
+      "org:admin",
+    );
     const expiredAccess = makeJwt({
       exp: Math.floor(now() / 1000) - 60,
       sub: "expired",
@@ -454,7 +454,7 @@ describe("GET /api/zero/model-providers", () => {
       }),
       [201],
     );
-    await markOrgCodexProviderStaleViaFirewall(fixture, expiredAccess);
+    await markOrgCodexProviderStaleViaFirewall(entitled, expiredAccess);
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -1025,8 +1025,12 @@ describe("POST /api/zero/model-providers", () => {
   });
 
   it("re-paste clears codex reconnect state", async () => {
-    const fixture = uniqueOrgUser("zmp-codex-repaste");
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const entitled = await entitledRunActor();
+    mocks.clerk.session(
+      entitled.actor.userId,
+      entitled.actor.orgId,
+      "org:admin",
+    );
     const expiredAccess = makeJwt({
       exp: Math.floor(now() / 1000) - 60,
       sub: "expired",
@@ -1046,7 +1050,7 @@ describe("POST /api/zero/model-providers", () => {
       }),
       [201],
     );
-    await markOrgCodexProviderStaleViaFirewall(fixture, expiredAccess);
+    await markOrgCodexProviderStaleViaFirewall(entitled, expiredAccess);
     const stale = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],

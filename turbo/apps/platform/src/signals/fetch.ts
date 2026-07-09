@@ -6,12 +6,12 @@ import {
   unauthorizedRedirectSuppressionUntil$,
 } from "./auth-retry.ts";
 import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
+import { addClientHeaders } from "./client-headers.ts";
 
 const OAUTH_WEB_NAVIGATION_TARGET = "www";
 
 /**
  * Web base URL for OAuth and web-origin handoff navigation only.
- * - On localhost: use VITE_API_URL so the popup hits the configured API (e.g. :3000).
  * - On a non-localhost host (e.g. app.vm7.ai): derive from current origin
  *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
  */
@@ -21,32 +21,29 @@ export const webBaseForNavigation$ = computed(() => {
 
 /**
  * Resolves the API base URL.
- * If VITE_API_URL is http://localhost:3000, derives the URL from the current
- * browser origin by replacing "platform" or "app" with "api" in the hostname.
- * Otherwise, uses VITE_API_URL directly.
+ * Derives the API URL from the current browser origin by preserving the root
+ * domain and replacing the service subdomain segment ("platform", "app", or
+ * "www") with "api".
  */
 export const apiBase$ = computed(() => {
   return resolveApiBase();
 });
 
-function mergeHeadersWithAutoIds(
+function mergeHeadersWithClientHeaders(
   baseHeaders: Record<string, string>,
   userHeaders: HeadersInit | undefined,
-  autoHeaders: Record<string, string>,
-): Record<string, string> {
-  const result = { ...baseHeaders, ...autoHeaders };
+): Headers {
+  const headers = new Headers(baseHeaders);
 
   if (userHeaders) {
-    if (userHeaders instanceof Headers) {
-      for (const [key, value] of userHeaders.entries()) {
-        result[key] = value;
-      }
-    } else if (typeof userHeaders === "object" && !Array.isArray(userHeaders)) {
-      Object.assign(result, userHeaders);
+    const newHeaders = new Headers(userHeaders);
+    for (const [key, value] of newHeaders.entries()) {
+      headers.set(key, value);
     }
   }
 
-  return result;
+  addClientHeaders(headers);
+  return headers;
 }
 
 /**
@@ -117,28 +114,18 @@ export const fetch$ = computed((get) => {
       const authHeaders: Record<string, string> = token
         ? { Authorization: `Bearer ${token}` }
         : {};
-      const autoHeaders: Record<string, string> = {};
-
       if (requestInput instanceof Request) {
         finalInit = {
           credentials: "include",
-          headers: mergeHeadersWithAutoIds(
-            authHeaders,
-            options?.headers,
-            autoHeaders,
-          ),
           ...options,
+          headers: mergeHeadersWithClientHeaders(authHeaders, options?.headers),
         };
       } else {
         finalInit = {
           credentials: "include",
           method: "GET",
           ...options,
-          headers: mergeHeadersWithAutoIds(
-            authHeaders,
-            options?.headers,
-            autoHeaders,
-          ),
+          headers: mergeHeadersWithClientHeaders(authHeaders, options?.headers),
         };
       }
 

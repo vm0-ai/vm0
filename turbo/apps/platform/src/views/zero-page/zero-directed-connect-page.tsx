@@ -15,7 +15,10 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  connectConnectorNoAuth$,
+  connectFlowType$,
   getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusNoAuthMethod,
   getConnectorStatusConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
@@ -72,6 +75,17 @@ function runDirectedConnect(params: {
     },
     signal: AbortSignal,
   ) => Promise<boolean>;
+  connectNoAuth: (
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly options: {
+        readonly showPermissionDialog?: boolean;
+        readonly connectorLabel?: string;
+      };
+    },
+    signal: AbortSignal,
+  ) => Promise<boolean>;
   onConnected: () => Promise<void>;
   openConnectModal: () => void;
   openManualGrantDialog: () => void;
@@ -87,7 +101,11 @@ function runDirectedConnect(params: {
 
   const manualGrantMethod = getOnlyManualConnectorStatusAuthMethod(params.item);
 
-  if (launchMode === "modal" && manualGrantMethod) {
+  if (
+    launchMode === "modal" &&
+    manualGrantMethod &&
+    params.item.availableAuthMethods.length === 1
+  ) {
     params.openManualGrantDialog();
     return;
   }
@@ -96,21 +114,34 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod = getOnlyAvailableStatusBrowserAuthMethod(params.item);
-  if (!authMethod) {
-    params.openConnectModal();
-    return;
-  }
+  const authMethod =
+    launchMode === "browser-auth"
+      ? getOnlyAvailableStatusBrowserAuthMethod(params.item)
+      : getOnlyAvailableStatusNoAuthMethod(params.item);
 
   detach(
     (async () => {
       let connected = true;
-      connected = await params.connect(
-        params.connectorType,
-        authMethod,
-        { connectorLabel: params.item.label },
-        params.signal,
-      );
+      if (!authMethod) {
+        params.openConnectModal();
+        return;
+      }
+      connected =
+        launchMode === "browser-auth"
+          ? await params.connect(
+              params.connectorType,
+              authMethod,
+              { connectorLabel: params.item.label },
+              params.signal,
+            )
+          : await params.connectNoAuth(
+              {
+                type: params.connectorType,
+                authMethod,
+                options: { connectorLabel: params.item.label },
+              },
+              params.signal,
+            );
       if (connected) {
         await params.onConnected();
       }
@@ -508,7 +539,9 @@ function DirectedConnectCard() {
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
   const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
+  const connectFlowType = useGet(connectFlowType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
   const { item, isConnected, isLoading, unavailable } =
@@ -539,7 +572,8 @@ function DirectedConnectCard() {
       : "Zero";
   const isConnecting =
     pollingAuthCodeType === connectorType ||
-    pollingDeviceAuthType === connectorType;
+    pollingDeviceAuthType === connectorType ||
+    connectFlowType === connectorType;
   if (unavailable) {
     return null;
   }
@@ -566,6 +600,7 @@ function DirectedConnectCard() {
       connectorType,
       signal,
       connect,
+      connectNoAuth,
       onConnected: runPostConnectActions,
       openManualGrantDialog: () => {
         return setManualGrantDialogKey({ connectorType, agentId, signal });

@@ -30,7 +30,9 @@ import auth_base_forwarder
 import builtin_connector_diagnostics
 import logging_utils
 import mitm_addon
+import platform_api
 import registry
+import upstream_admission
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
@@ -54,9 +56,10 @@ def _reset_module_state() -> Iterator[None]:
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
-    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
+    upstream_admission.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_runner_usage_flush_state_for_tests()
-    mitm_addon.reset_tls_admission_state_for_tests()
+    upstream_admission.reset_tls_admission_state_for_tests()
+    platform_api.configure_client_headers(client_session_id="", client_version="")
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters.reset_for_tests()
@@ -70,8 +73,9 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
-    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
-    mitm_addon.reset_tls_admission_state_for_tests()
+    upstream_admission.reset_upstream_destination_resolution_cache_for_tests()
+    upstream_admission.reset_tls_admission_state_for_tests()
+    platform_api.configure_client_headers(client_session_id="", client_version="")
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
 
@@ -304,11 +308,22 @@ def real_tcp_flow():
 
 
 class _StubOptions:
-    """Plain stand-in for the two addon-specific ``ctx.options`` fields."""
+    """Plain stand-in for addon-specific ``ctx.options`` fields."""
 
-    def __init__(self, *, registry_path: str, api_url: str) -> None:
+    def __init__(
+        self,
+        *,
+        registry_path: str,
+        api_url: str,
+        builtin_firewall_catalog_cache_path: str,
+        client_session_id: str,
+        client_version: str,
+    ) -> None:
         self.vm0_proxy_registry_path = registry_path
         self.vm0_api_url = api_url
+        self.vm0_builtin_firewall_catalog_cache_path = builtin_firewall_catalog_cache_path
+        self.vm0_client_session_id = client_session_id
+        self.vm0_client_version = client_version
         self.vm0_usage_flush_interval_seconds = usage.DEFAULT_FLUSH_INTERVAL_SECONDS
 
 
@@ -329,22 +344,46 @@ def mitm_ctx(tmp_path):
     """
 
     default_registry_path = str(tmp_path / "proxy-registry.json")
+    default_builtin_firewall_catalog_cache_path = str(
+        tmp_path / "builtin-firewall-catalog-cache.json"
+    )
 
     @contextlib.contextmanager
     def _stub(
         *,
         registry_path: str | None = None,
         api_url: str = "https://api.vm0.ai",
+        builtin_firewall_catalog_cache_path: str | None = None,
+        client_session_id: str = "runner-session-test",
+        client_version: str = "runner-version-test",
     ) -> Iterator[MagicMock]:
         if registry_path is None:
             registry_path = default_registry_path
-        options = _StubOptions(registry_path=registry_path, api_url=api_url)
+        if builtin_firewall_catalog_cache_path is None:
+            builtin_firewall_catalog_cache_path = default_builtin_firewall_catalog_cache_path
+        options = _StubOptions(
+            registry_path=registry_path,
+            api_url=api_url,
+            builtin_firewall_catalog_cache_path=builtin_firewall_catalog_cache_path,
+            client_session_id=client_session_id,
+            client_version=client_version,
+        )
         log = MagicMock()
         with (
             patch.object(mitm_addon.ctx, "options", options, create=True),
             patch.object(mitm_addon.ctx, "log", log, create=True),
         ):
-            yield log
+            platform_api.configure_client_headers(
+                client_session_id=client_session_id,
+                client_version=client_version,
+            )
+            try:
+                yield log
+            finally:
+                platform_api.configure_client_headers(
+                    client_session_id="",
+                    client_version="",
+                )
 
     return _stub
 

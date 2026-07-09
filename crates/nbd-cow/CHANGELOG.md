@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.58](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.57...nbd-cow-v0.4.58) (2026-07-09)
+
+
+### Documentation
+
+* **nbd-cow:** clarify device lock contract ([#20797](https://github.com/vm0-ai/vm0/issues/20797)) ([97afffd](https://github.com/vm0-ai/vm0/commit/97afffddfa0942da27809a12e98813e8959dcc1f))
+
 ## [0.4.57](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.56...nbd-cow-v0.4.57) (2026-07-06)
 
 

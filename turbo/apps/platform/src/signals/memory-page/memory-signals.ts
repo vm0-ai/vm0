@@ -2,6 +2,14 @@ import { command, computed, state } from "ccstate";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemoryInjectionPreviewResponse,
+  type MemoryRecallItemKind,
+  type MemoryRecallResponse,
+  type MemorySourceDetailResponse,
+  type MemorySourceListResponse,
+  type MemorySourceProvider,
+  type SlackMemoryBackfillRequest,
+  type SlackMemoryStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import {
   zeroMemoryActivityContract,
@@ -29,7 +37,17 @@ export type MemoryRelationshipFilter =
   | "organizations"
   | "open-loops";
 
-export type MemoryTab = "updates" | "relationships" | "raw";
+export type MemorySourceProviderFilter = "all" | MemorySourceProvider;
+
+export type MemoryRecallKindFilter = "all" | MemoryRecallItemKind;
+
+export type MemoryTab =
+  | "updates"
+  | "injection"
+  | "recall"
+  | "relationships"
+  | "sources"
+  | "raw";
 
 export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
 
@@ -38,6 +56,15 @@ function defaultGmailRelationshipBackfillRequest(): GmailRelationshipBackfillReq
     days: 180,
     includeArchived: true,
     includeSent: true,
+  };
+}
+
+function defaultSlackMemoryBackfillRequest(): SlackMemoryBackfillRequest {
+  return {
+    days: 180,
+    includePublicChannels: true,
+    includePrivateChannels: true,
+    includeDirectMessages: true,
   };
 }
 
@@ -98,6 +125,79 @@ const internalGmailRelationshipBackfillRequest$ =
   state<GmailRelationshipBackfillRequest>(
     defaultGmailRelationshipBackfillRequest(),
   );
+
+const internalMemoryRecallQuery$ = state("");
+const internalSubmittedMemoryRecallQuery$ = state("");
+const internalMemoryRecallKindFilter$ = state<MemoryRecallKindFilter>("all");
+const internalMemoryRecallLimit$ = state(10);
+const internalMemoryRecallReload$ = state(0);
+const internalMemoryInjectionPrompt$ = state("");
+const internalSubmittedMemoryInjectionPrompt$ = state("");
+const internalMemoryInjectionReload$ = state(0);
+
+export const memoryRecallQuery$ = computed((get) => {
+  return get(internalMemoryRecallQuery$);
+});
+
+export const setMemoryRecallQuery$ = command(({ set }, query: string) => {
+  set(internalMemoryRecallQuery$, query);
+});
+
+export const submittedMemoryRecallQuery$ = computed((get) => {
+  return get(internalSubmittedMemoryRecallQuery$);
+});
+
+export const submitMemoryRecall$ = command(({ get, set }) => {
+  const query = get(internalMemoryRecallQuery$).trim();
+  const previousQuery = get(internalSubmittedMemoryRecallQuery$).trim();
+  set(internalSubmittedMemoryRecallQuery$, query);
+  if (query === previousQuery) {
+    set(internalMemoryRecallReload$, (current) => {
+      return current + 1;
+    });
+  }
+});
+
+export const memoryRecallKindFilter$ = computed((get) => {
+  return get(internalMemoryRecallKindFilter$);
+});
+
+export const setMemoryRecallKindFilter$ = command(
+  ({ set }, filter: MemoryRecallKindFilter) => {
+    set(internalMemoryRecallKindFilter$, filter);
+  },
+);
+
+export const memoryRecallLimit$ = computed((get) => {
+  return get(internalMemoryRecallLimit$);
+});
+
+export const setMemoryRecallLimit$ = command(({ set }, limit: number) => {
+  set(internalMemoryRecallLimit$, limit);
+});
+
+export const memoryInjectionPrompt$ = computed((get) => {
+  return get(internalMemoryInjectionPrompt$);
+});
+
+export const setMemoryInjectionPrompt$ = command(({ set }, prompt: string) => {
+  set(internalMemoryInjectionPrompt$, prompt);
+});
+
+export const submittedMemoryInjectionPrompt$ = computed((get) => {
+  return get(internalSubmittedMemoryInjectionPrompt$);
+});
+
+export const submitMemoryInjectionPreview$ = command(({ get, set }) => {
+  const prompt = get(internalMemoryInjectionPrompt$).trim();
+  const previousPrompt = get(internalSubmittedMemoryInjectionPrompt$).trim();
+  set(internalSubmittedMemoryInjectionPrompt$, prompt);
+  if (prompt === previousPrompt) {
+    set(internalMemoryInjectionReload$, (current) => {
+      return current + 1;
+    });
+  }
+});
 
 export const memoryRelationshipSearch$ = computed((get) => {
   return get(internalMemoryRelationshipSearch$);
@@ -226,6 +326,123 @@ export const updateGmailRelationshipBackfillRequest$ = command(
 );
 
 const memoryActivityReload$ = state(0);
+const internalMemorySourceProviderFilter$ =
+  state<MemorySourceProviderFilter>("all");
+const internalMemorySourcePage$ = state(1);
+const internalMemorySourceLimit$ = state(50);
+const internalMemorySourcesReload$ = state(0);
+const internalSelectedMemorySourceId$ = state<string | null>(null);
+const internalSlackMemoryStatusReload$ = state(0);
+const internalSlackMemoryBackfillDialogOpen$ = state(false);
+const internalSlackMemoryBackfillRequest$ = state<SlackMemoryBackfillRequest>(
+  defaultSlackMemoryBackfillRequest(),
+);
+
+export const memorySourceProviderFilter$ = computed((get) => {
+  return get(internalMemorySourceProviderFilter$);
+});
+
+export const selectedMemorySourceId$ = computed((get) => {
+  return get(internalSelectedMemorySourceId$);
+});
+
+export const setSelectedMemorySourceId$ = command(
+  ({ set }, sourceId: string | null) => {
+    set(internalSelectedMemorySourceId$, sourceId);
+  },
+);
+
+export const setMemorySourceProviderFilter$ = command(
+  ({ set }, filter: MemorySourceProviderFilter) => {
+    set(internalMemorySourceProviderFilter$, filter);
+    set(internalMemorySourcePage$, 1);
+  },
+);
+
+export const memorySourcePage$ = computed((get) => {
+  return get(internalMemorySourcePage$);
+});
+
+export const memorySourceLimit$ = computed((get) => {
+  return get(internalMemorySourceLimit$);
+});
+
+export const memorySourceHasPrev$ = computed((get) => {
+  return get(internalMemorySourcePage$) > 1;
+});
+
+export const goToNextMemorySourcePage$ = command(
+  ({ set }, totalPages: number) => {
+    set(internalMemorySourcePage$, (current) => {
+      return Math.min(totalPages, current + 1);
+    });
+  },
+);
+
+export const goToPrevMemorySourcePage$ = command(({ set }) => {
+  set(internalMemorySourcePage$, (current) => {
+    return Math.max(1, current - 1);
+  });
+});
+
+export const goForwardTwoMemorySourcePages$ = command(
+  ({ set }, totalPages: number) => {
+    set(internalMemorySourcePage$, (current) => {
+      return Math.min(totalPages, current + 2);
+    });
+  },
+);
+
+export const goBackTwoMemorySourcePages$ = command(({ set }) => {
+  set(internalMemorySourcePage$, (current) => {
+    return Math.max(1, current - 2);
+  });
+});
+
+export const setMemorySourceRowsPerPage$ = command(({ set }, limit: number) => {
+  set(internalMemorySourceLimit$, limit);
+  set(internalMemorySourcePage$, 1);
+});
+
+export const reloadMemorySources$ = command(({ set }) => {
+  set(internalMemorySourcesReload$, (current) => {
+    return current + 1;
+  });
+});
+
+export const reloadSlackMemoryStatus$ = command(({ set }) => {
+  set(internalSlackMemoryStatusReload$, (current) => {
+    return current + 1;
+  });
+});
+
+export const slackMemoryBackfillDialogOpen$ = computed((get) => {
+  return get(internalSlackMemoryBackfillDialogOpen$);
+});
+
+export const setSlackMemoryBackfillDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalSlackMemoryBackfillDialogOpen$, open);
+    if (open) {
+      set(
+        internalSlackMemoryBackfillRequest$,
+        defaultSlackMemoryBackfillRequest(),
+      );
+    }
+  },
+);
+
+export const slackMemoryBackfillRequest$ = computed((get) => {
+  return get(internalSlackMemoryBackfillRequest$);
+});
+
+export const updateSlackMemoryBackfillRequest$ = command(
+  ({ set }, patch: Partial<SlackMemoryBackfillRequest>) => {
+    set(internalSlackMemoryBackfillRequest$, (current) => {
+      return { ...current, ...patch };
+    });
+  },
+);
 
 // Per-entry and per-item expand state for the Updates timeline, keyed by stable
 // activity keys. Mirrors the keyed-record ephemeral UI state pattern used
@@ -273,6 +490,40 @@ export const memoryActivity$ = computed(
   },
 );
 
+export const memorySources$ = computed(
+  async (get): Promise<MemorySourceListResponse> => {
+    get(internalMemorySourcesReload$);
+    const providerFilter = get(memorySourceProviderFilter$);
+    const page = get(memorySourcePage$);
+    const limit = get(memorySourceLimit$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.sources({
+        query: {
+          provider: providerFilter === "all" ? undefined : providerFilter,
+          page,
+          limit,
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const selectedMemorySourceDetail$ = computed(
+  async (get): Promise<MemorySourceDetailResponse | null> => {
+    const sourceId = get(selectedMemorySourceId$);
+    if (!sourceId) {
+      return null;
+    }
+
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(client.source({ params: { sourceId } }), [200]);
+    return result.body;
+  },
+);
+
 export const memoryRelationships$ = computed(
   async (get): Promise<RelationshipSearchResponse> => {
     get(internalMemoryRelationshipsReload$);
@@ -293,6 +544,88 @@ export const memoryRelationships$ = computed(
       [200],
     );
     return result.body;
+  },
+);
+
+export const memoryRecallResults$ = computed(
+  async (get): Promise<MemoryRecallResponse | null> => {
+    get(internalMemoryRecallReload$);
+    const query = get(submittedMemoryRecallQuery$).trim();
+    if (query.length === 0) {
+      return null;
+    }
+
+    const kindFilter = get(memoryRecallKindFilter$);
+    const limit = get(memoryRecallLimit$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.recall({
+        query: {
+          q: query,
+          kind: kindFilter === "all" ? undefined : kindFilter,
+          limit,
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryInjectionPreview$ = computed(
+  async (get): Promise<MemoryInjectionPreviewResponse | null> => {
+    get(internalMemoryInjectionReload$);
+    const prompt = get(submittedMemoryInjectionPrompt$).trim();
+    if (prompt.length === 0) {
+      return null;
+    }
+
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.injectionPreview({
+        body: { prompt },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const slackMemoryStatus$ = computed(
+  async (get): Promise<SlackMemoryStatusResponse> => {
+    get(internalSlackMemoryStatusReload$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(client.slackStatus(), [200]);
+    return result.body;
+  },
+);
+
+export const startSlackMemoryBackfill$ = command(
+  async (
+    { get, set },
+    options: SlackMemoryBackfillRequest,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.slackBackfill({ body: options, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Slack memory backfill started");
+    set(reloadSlackMemoryStatus$);
+    set(reloadMemorySources$);
+  },
+);
+
+export const stopSlackMemoryBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(client.slackStopBackfill({ fetchOptions: { signal } }), [200]);
+    signal.throwIfAborted();
+    toast.success("Slack memory backfill stopped");
+    set(reloadSlackMemoryStatus$);
+    set(reloadMemorySources$);
   },
 );
 

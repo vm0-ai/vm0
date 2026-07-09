@@ -373,6 +373,11 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
     return "base" not in raw_auth or _static_auth_base_is_valid(raw_auth["base"])
 
 
+def firewall_api_auth_config_is_valid(api_entry: dict) -> bool:
+    """Return whether an API entry auth config has a valid runtime shape."""
+    return _auth_config_is_valid(api_entry)
+
+
 def _path_specificity(
     pattern: CompiledPathPattern,
 ) -> _PathSpecificity:
@@ -693,6 +698,11 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     if not _compiled_rule_path_is_valid(pattern):
         return None
     return _CompiledRule(method, rule_str, pattern, _path_specificity(pattern))
+
+
+def firewall_rule_is_valid(rule_str: str) -> bool:
+    """Return whether a firewall permission rule matches the runtime grammar."""
+    return _compile_rule(rule_str) is not None
 
 
 # Compiled matcher contract

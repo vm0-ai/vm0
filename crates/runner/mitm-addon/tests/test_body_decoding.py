@@ -1,7 +1,6 @@
 """Tests for shared HTTP body decoding helpers."""
 
 import gzip
-import hashlib
 import zlib
 
 import brotli
@@ -9,26 +8,18 @@ import pytest
 import zstandard
 
 from body_decoding import (
+    can_stream_decode_usage,
     create_stream_decode_feed,
     create_stream_decode_session,
     decode_request_body_for_network_log_capture,
     decompress_body,
+    decompress_json_usage_body,
 )
 from body_limits import DEFAULT_BODY_DECODE_LIMIT, STREAM_DECODE_CHUNK_LIMIT
 from tests.body_decode_helpers import (
     pseudo_random_ascii,
     track_brotli_decompressor,
-    track_zstd_decompressor,
 )
-
-
-def _deterministic_low_ratio_bytes(size: int) -> bytes:
-    data = bytearray()
-    counter = 0
-    while len(data) < size:
-        data.extend(hashlib.sha256(counter.to_bytes(8, "little")).digest())
-        counter += 1
-    return bytes(data[:size])
 
 
 def _compress_one_shot_body(encoding: str, body: bytes) -> bytes:
@@ -53,19 +44,11 @@ class TestStreamDecodeFeed:
         parse(gzip.compress(b"hello world"))
         assert b"".join(chunks) == b"hello world"
 
-    def test_zstd_happy_path(self, headers):
-        chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert parse is not None
-        parse(zstandard.ZstdCompressor().compress(b"hello world"))
-        assert b"".join(chunks) == b"hello world"
-
     def test_supported_encodings_across_small_chunks(self, headers):
         plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
         compressed_by_encoding = {
             "gzip": gzip.compress(plaintext),
             "deflate": zlib.compress(plaintext),
-            "zstd": zstandard.ZstdCompressor().compress(plaintext),
         }
 
         for encoding, compressed in compressed_by_encoding.items():
@@ -91,17 +74,6 @@ class TestStreamDecodeFeed:
         session.feed(compressed[:-1])
 
         assert b"".join(chunks) == plaintext
-        assert session.finish_error() == "incomplete compressed body"
-
-    def test_zstd_session_reports_truncated_frame(self, headers):
-        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
-        compressed = zstandard.ZstdCompressor().compress(plaintext)
-        chunks: list[bytes] = []
-        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert session is not None
-
-        session.feed(compressed[:-1])
-
         assert session.finish_error() == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
@@ -164,105 +136,6 @@ class TestStreamDecodeFeed:
         assert len(chunks) > 1
         assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
 
-    def test_zstd_high_ratio_output_is_chunked(self, headers):
-        plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3 + 123)
-        chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert parse is not None
-
-        parse(zstandard.ZstdCompressor().compress(plaintext))
-
-        assert b"".join(chunks) == plaintext
-        assert len(chunks) > 1
-        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
-
-    def test_zstd_large_low_ratio_input_ramps_up(self, headers, monkeypatch):
-        plaintext = _deterministic_low_ratio_bytes(512 * 1024)
-        compressed = zstandard.ZstdCompressor().compress(plaintext)
-        stats = track_zstd_decompressor(monkeypatch)
-        chunks: list[bytes] = []
-        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert session is not None
-
-        session.feed(compressed)
-
-        assert b"".join(chunks) == plaintext
-        assert session.finish_error() is None
-        assert stats.max_input > 4
-        assert stats.calls < len(compressed) // 8
-
-    def test_zstd_high_ratio_input_stays_small_before_large_output(self, headers, monkeypatch):
-        plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 4 + 123)
-        compressed = zstandard.ZstdCompressor().compress(plaintext)
-        stats = track_zstd_decompressor(monkeypatch)
-        chunks: list[bytes] = []
-        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert session is not None
-
-        session.feed(compressed)
-
-        assert b"".join(chunks) == plaintext
-        assert session.finish_error() is None
-        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
-        assert stats.max_input <= 12
-
-    def test_zstd_mixed_ratio_input_keeps_transient_output_small(self, headers, monkeypatch):
-        plaintext = _deterministic_low_ratio_bytes(256 * 1024) + (
-            b"A" * (STREAM_DECODE_CHUNK_LIMIT * 64)
-        )
-        compressed = zstandard.ZstdCompressor().compress(plaintext)
-        stats = track_zstd_decompressor(monkeypatch)
-        chunks: list[bytes] = []
-        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert session is not None
-
-        session.feed(compressed)
-
-        assert b"".join(chunks) == plaintext
-        assert session.finish_error() is None
-        assert max(len(chunk) for chunk in chunks) <= STREAM_DECODE_CHUNK_LIMIT
-        assert stats.max_input <= 12
-        assert stats.max_output <= STREAM_DECODE_CHUNK_LIMIT * 4
-
-    def test_concatenated_zstd_frames_same_callback(self, headers):
-        first = zstandard.ZstdCompressor().compress(b"hello ")
-        second = zstandard.ZstdCompressor().compress(b"world")
-        chunks: list[bytes] = []
-        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert session is not None
-
-        session.feed(first + second)
-
-        assert b"".join(chunks) == b"hello world"
-        assert session.finish_error() is None
-
-    def test_zstd_streaming_uses_decompressobj_for_finalization(self, headers, monkeypatch):
-        real_decompressor = zstandard.ZstdDecompressor
-        stats = {"stream_writer": 0, "decompressobj": 0}
-
-        class CountingZstdDecompressor:
-            def __init__(self):
-                self._inner = real_decompressor()
-
-            def stream_writer(self, sink):
-                stats["stream_writer"] += 1
-                raise AssertionError("streaming usage decoder must not use stream_writer")
-
-            def decompressobj(self):
-                stats["decompressobj"] += 1
-                return self._inner.decompressobj()
-
-        monkeypatch.setattr("body_decoding.zstandard.ZstdDecompressor", CountingZstdDecompressor)
-        chunks: list[bytes] = []
-        parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
-        assert parse is not None
-
-        parse(zstandard.ZstdCompressor().compress(b"hello world"))
-
-        assert b"".join(chunks) == b"hello world"
-        assert stats["stream_writer"] == 0
-        assert stats["decompressobj"] >= 1
-
     def test_gzip_error_logs_once_and_short_circuits(self, headers, mitm_ctx):
         chunks: list[bytes] = []
         with mitm_ctx() as log:
@@ -287,18 +160,32 @@ class TestStreamDecodeFeed:
         assert "br" in log.debug.call_args[0][0]
         assert chunks == []
 
-    def test_zstd_error_logs_once_and_short_circuits(self, headers, mitm_ctx, monkeypatch):
-        stats = track_zstd_decompressor(monkeypatch)
+    def test_zstd_unsafe_encoding_logs_once_and_does_not_feed(self, headers, mitm_ctx):
         chunks: list[bytes] = []
         with mitm_ctx() as log:
             parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
-            assert parse is not None
-            parse(b"not zstd at all")
-            parse(b"more garbage")
+        assert parse is None
         assert log.debug.call_count == 1
-        assert "zstd" in log.debug.call_args[0][0]
-        assert stats.calls == 1
+        msg = log.debug.call_args[0][0]
+        assert "Streaming decompression skipped" in msg
+        assert "zstd" in msg
+        assert "hard-bounded" in msg
         assert chunks == []
+
+    def test_zstd_stream_decode_session_is_not_created(self, headers):
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert session is None
+        assert chunks == []
+
+    def test_zstd_can_stream_decode_usage_is_false(self, headers, mitm_ctx):
+        with mitm_ctx() as log:
+            assert can_stream_decode_usage(headers(("Content-Encoding", "zstd"))) is False
+        assert log.debug.call_count == 1
+        msg = log.debug.call_args[0][0]
+        assert "Streaming decompression skipped" in msg
+        assert "zstd" in msg
+        assert "hard-bounded" in msg
 
     def test_error_without_ctx_log_does_not_raise(self, headers):
         # No mitm_ctx patch — ctx.log is unavailable.  Guard must swallow.
@@ -591,3 +478,142 @@ class TestDecodeRequestBodyForNetworkLogCapture:
         )
 
         assert decoded == body[:128]
+
+
+class TestDecompressJsonUsageBody:
+    """Direct tests for strict JSON usage decompression."""
+
+    def test_zstd_valid_single_frame_returns_decoded_body(self, headers):
+        body = b'{"usage":{"input_tokens":1}}'
+        compressed = zstandard.ZstdCompressor().compress(body)
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=1024)
+
+        assert decoded == body
+        assert error is None
+
+    def test_zstd_valid_concatenated_frames_return_decoded_body(self, headers):
+        first = b'{"usage":'
+        second = b'{"input_tokens":1}}'
+        compressed = zstandard.ZstdCompressor().compress(
+            first
+        ) + zstandard.ZstdCompressor().compress(second)
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=1024)
+
+        assert decoded == first + second
+        assert error is None
+
+    def test_zstd_invalid_body_returns_error(self, headers):
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        _decoded, error = decompress_json_usage_body(b"not zstd", hdrs, max_output=1024)
+
+        assert error == "invalid compressed body"
+
+    def test_zstd_truncated_first_frame_returns_error(self, headers):
+        compressed = zstandard.ZstdCompressor().compress(b'{"ok":true}')
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        _decoded, error = decompress_json_usage_body(compressed[:-1], hdrs, max_output=1024)
+
+        assert error == "incomplete compressed body"
+
+    def test_zstd_trailing_garbage_returns_error(self, headers):
+        compressed = zstandard.ZstdCompressor().compress(b'{"ok":true}') + b"garbage"
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        _decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=1024)
+
+        assert error == "invalid compressed body"
+
+    def test_zstd_trailing_truncated_frame_returns_error(self, headers):
+        first = zstandard.ZstdCompressor().compress(b'{"ok":true}')
+        trailing_frame = zstandard.ZstdCompressor().compress(b"{}")
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        _decoded, error = decompress_json_usage_body(
+            first + trailing_frame[:5],
+            hdrs,
+            max_output=1024,
+        )
+
+        assert error == "incomplete compressed body"
+
+    def test_zstd_decoded_limit_exceeded_returns_error(self, headers):
+        body = b"x" * 1024
+        compressed = zstandard.ZstdCompressor().compress(body)
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=128)
+
+        assert decoded == body[:128]
+        assert error == "decoded body limit exceeded"
+
+    def test_zstd_without_content_size_returns_decoded_body(self, headers):
+        body = b'{"usage":{"input_tokens":1}}'
+        compressed = zstandard.ZstdCompressor(write_content_size=False).compress(body)
+        hdrs = headers(("Content-Encoding", "zstd"))
+
+        decoded, error = decompress_json_usage_body(compressed, hdrs, max_output=1024)
+
+        assert decoded == body
+        assert error is None
+
+    def test_zstd_validation_does_not_decompress_full_remaining_input_at_once(
+        self, headers, monkeypatch
+    ):
+        frame_body = b"A" * 1024
+        compressed = b"".join(zstandard.ZstdCompressor().compress(frame_body) for _ in range(200))
+        body = frame_body * 200
+        hdrs = headers(("Content-Encoding", "zstd"))
+        validation_input_sizes: list[int] = []
+        real_factory = zstandard.ZstdDecompressor
+
+        class TrackingDecompressionObj:
+            def __init__(self, wrapped):
+                self._wrapped = wrapped
+
+            def decompress(self, data):
+                validation_input_sizes.append(len(data))
+                return self._wrapped.decompress(data)
+
+            @property
+            def eof(self):
+                return self._wrapped.eof
+
+            @property
+            def unused_data(self):
+                return self._wrapped.unused_data
+
+            @property
+            def unconsumed_tail(self):
+                return self._wrapped.unconsumed_tail
+
+        class TrackingZstdDecompressor:
+            def __init__(self, *args, **kwargs):
+                self._wrapped = real_factory(*args, **kwargs)
+
+            def stream_reader(self, *args, **kwargs):
+                return self._wrapped.stream_reader(*args, **kwargs)
+
+            def decompressobj(self, *args, **kwargs):
+                return TrackingDecompressionObj(self._wrapped.decompressobj(*args, **kwargs))
+
+        monkeypatch.setattr(
+            "body_decoding.zstandard.ZstdDecompressor",
+            TrackingZstdDecompressor,
+        )
+
+        decoded, error = decompress_json_usage_body(
+            compressed,
+            hdrs,
+            max_output=len(body),
+        )
+
+        assert decoded == body
+        assert error is None
+        assert validation_input_sizes
+        assert max(validation_input_sizes) <= 32

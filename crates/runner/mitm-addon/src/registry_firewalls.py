@@ -1,13 +1,25 @@
 """Registry VM firewall entry resolution."""
 
 import copy
+from contextlib import suppress
 from dataclasses import dataclass
 
+from mitmproxy import ctx
+
 import builtin_base_url
+import builtin_firewall_cache
 import builtin_host_policy
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
-BuiltinFirewallCoreCacheKey = tuple[str, int, tuple[tuple[str, str], ...], tuple[str, ...]]
+BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
+BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity | tuple[str, str, str]
+BuiltinFirewallCatalogSnapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot
+BuiltinFirewallCoreCacheKey = tuple[
+    str,
+    BuiltinFirewallCatalogIdentity,
+    tuple[tuple[str, str], ...],
+    tuple[str, ...],
+]
 
 
 class FirewallEntryResolutionError(ValueError):
@@ -16,14 +28,66 @@ class FirewallEntryResolutionError(ValueError):
 
 @dataclass(frozen=True)
 class ResolvedFirewallEntries:
+    """Resolved registry firewall configs and aligned builtin cache keys.
+
+    `firewalls` contains the runtime firewall configs that registry state should
+    use after builtin and inline expansion. `firewalls is None` preserves a VM
+    that did not provide a `firewalls` entry at all.
+
+    When firewalls are present, `builtin_cache_keys` is positionally aligned
+    with them: `builtin_cache_keys[i]` describes `firewalls[i]`. A per-entry
+    cache key of `None` means that firewall came from an inline entry and must
+    bypass builtin compiled-core cache reuse.
+    """
+
     firewalls: list[dict] | None
     builtin_cache_keys: tuple[BuiltinFirewallCoreCacheKey | None, ...] | None
+
+    def __post_init__(self) -> None:
+        if self.firewalls is None:
+            if self.builtin_cache_keys is not None:
+                raise ValueError("builtin cache keys must be absent when firewalls are absent")
+            return
+        if self.builtin_cache_keys is None:
+            raise ValueError("builtin cache keys must be present when firewalls are present")
+        if len(self.firewalls) != len(self.builtin_cache_keys):
+            raise ValueError("builtin cache keys must align with resolved firewalls")
 
 
 @dataclass(frozen=True)
 class _ResolvedBuiltinFirewallEntry:
     firewall: dict
     cache_key: BuiltinFirewallCoreCacheKey
+
+
+_bundled_fallback_warnings: set[
+    tuple[
+        str,
+        str,
+        str | None,
+        BuiltinFirewallCatalogFileKey | None,
+        str | None,
+        str | None,
+    ]
+] = set()
+
+
+def reset_cache_for_tests() -> None:
+    """Reset builtin firewall resolver cache state between tests."""
+    builtin_firewall_cache.reset_cache_for_tests()
+    _bundled_fallback_warnings.clear()
+
+
+def catalog_file_key(
+    cache_path: str | None,
+) -> builtin_firewall_cache.CatalogFileKey | None:
+    """Return the registry-facing builtin catalog cache identity."""
+    return builtin_firewall_cache.catalog_file_key(cache_path)
+
+
+def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
+    """Load the registry-facing builtin catalog snapshot for one resolver pass."""
+    return builtin_firewall_cache.load_catalog_snapshot(cache_path)
 
 
 def _copy_builtin_firewall_shell(
@@ -43,7 +107,10 @@ def _copy_builtin_firewall_shell(
             raise FirewallEntryResolutionError(
                 f'builtin firewall "{firewall_name}" api entries must be objects'
             )
-        copied_apis.append(dict(api))
+        copied_api = dict(api)
+        copied_api.pop("id", None)
+        copied_api.pop(builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER, None)
+        copied_apis.append(copied_api)
 
     firewall = dict(catalog_firewall)
     firewall["apis"] = copied_apis
@@ -54,12 +121,82 @@ def _resolution_error(error: Exception) -> FirewallEntryResolutionError:
     return FirewallEntryResolutionError(str(error))
 
 
-def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntry:
+def _catalog_source_for_name(
+    raw_name: str,
+    catalog_snapshot: BuiltinFirewallCatalogSnapshot,
+) -> tuple[dict | None, BuiltinFirewallCatalogIdentity]:
+    cached_catalog = catalog_snapshot.catalog
+    if cached_catalog is not None:
+        catalog_firewall = cached_catalog.firewalls.get(raw_name)
+        if catalog_firewall is not None:
+            return catalog_firewall, cached_catalog.identity
+        fallback_reason = "cache_missing_firewall"
+    else:
+        fallback_reason = catalog_snapshot.fallback_reason or "cache_unavailable"
+
+    catalog_firewall = BUILTIN_FIREWALLS.get(raw_name)
+    if catalog_firewall is not None:
+        _warn_bundled_fallback(
+            raw_name=raw_name,
+            reason=fallback_reason,
+            catalog_snapshot=catalog_snapshot,
+        )
+    return catalog_firewall, ("bundled", raw_name, str(id(catalog_firewall)))
+
+
+def _warn_bundled_fallback(
+    *,
+    raw_name: str,
+    reason: str,
+    catalog_snapshot: BuiltinFirewallCatalogSnapshot,
+) -> None:
+    cached_catalog = catalog_snapshot.catalog
+    catalog_digest = None
+    catalog_version = None
+    if cached_catalog is not None:
+        _, catalog_digest, catalog_version, _ = cached_catalog.identity
+    warning_file_key = None if cached_catalog is not None else catalog_snapshot.dependency_file_key
+
+    warning_key = (
+        raw_name,
+        reason,
+        catalog_snapshot.cache_path,
+        warning_file_key,
+        catalog_digest,
+        catalog_version,
+    )
+    if warning_key in _bundled_fallback_warnings:
+        return
+    _bundled_fallback_warnings.add(warning_key)
+
+    fields = [
+        "Using bundled builtin firewall fallback",
+        f"reason={reason}",
+        f"firewall_name={raw_name}",
+    ]
+    if catalog_snapshot.cache_path is not None:
+        fields.append(f"cache_path={catalog_snapshot.cache_path}")
+    if catalog_digest is not None:
+        fields.append(f"catalog_digest={catalog_digest}")
+    if catalog_version is not None:
+        fields.append(f"catalog_version={catalog_version}")
+    if warning_file_key is not None:
+        fields.append(f"cache_file_key={warning_file_key!r}")
+
+    with suppress(Exception):
+        ctx.log.warn(" ".join(fields))
+
+
+def _resolve_builtin_firewall_entry(
+    entry: dict,
+    *,
+    catalog_snapshot: BuiltinFirewallCatalogSnapshot,
+) -> _ResolvedBuiltinFirewallEntry:
     raw_name = entry.get("name")
     if not isinstance(raw_name, str) or raw_name == "":
         raise FirewallEntryResolutionError("builtin firewall entry name must be a non-empty string")
 
-    catalog_firewall = BUILTIN_FIREWALLS.get(raw_name)
+    catalog_firewall, catalog_identity = _catalog_source_for_name(raw_name, catalog_snapshot)
     if catalog_firewall is None:
         raise FirewallEntryResolutionError(f'unknown builtin firewall "{raw_name}"')
 
@@ -106,7 +243,7 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
         firewall=firewall,
         cache_key=(
             raw_name,
-            id(catalog_firewall),
+            catalog_identity,
             tuple(sorted(vars_map.items())),
             tuple(resolved_bases),
         ),
@@ -128,7 +265,27 @@ def _assign_firewall_api_ids(firewalls: list[dict], run_id: str) -> None:
             index += 1
 
 
-def resolve_firewall_entries(vm: dict) -> ResolvedFirewallEntries:
+def resolve_firewall_entries(
+    vm: dict,
+    *,
+    builtin_firewall_catalog_cache_path: str | None = None,
+    builtin_firewall_catalog_snapshot: BuiltinFirewallCatalogSnapshot | None = None,
+) -> ResolvedFirewallEntries:
+    """Expand a registry VM's firewall entries into runtime firewall configs.
+
+    Supported entry kinds are `builtin` and `inline`. Builtins resolve from the
+    supplied catalog snapshot when provided, otherwise from the catalog cache
+    path. A supplied snapshot pins builtin resolution for this call so a single
+    registry pass cannot mix catalog versions.
+
+    Inline firewalls are deep-copied and receive per-entry `None` builtin cache
+    keys. API IDs are assigned after expansion and before returning. Callers must
+    validate `vm["runId"]` as a non-empty string before calling.
+
+    Raises `FirewallEntryResolutionError` for malformed firewall lists or
+    entries, unsupported entry kinds, unknown builtins, invalid builtin base URL
+    templates, and builtin host-policy validation failures.
+    """
     raw_firewalls = vm.get("firewalls")
     if raw_firewalls is None:
         return ResolvedFirewallEntries(None, None)
@@ -143,7 +300,14 @@ def resolve_firewall_entries(vm: dict) -> ResolvedFirewallEntries:
 
         kind = entry.get("kind")
         if kind == "builtin":
-            resolved_builtin = _resolve_builtin_firewall_entry(entry)
+            if builtin_firewall_catalog_snapshot is None:
+                builtin_firewall_catalog_snapshot = load_catalog_snapshot(
+                    builtin_firewall_catalog_cache_path
+                )
+            resolved_builtin = _resolve_builtin_firewall_entry(
+                entry,
+                catalog_snapshot=builtin_firewall_catalog_snapshot,
+            )
             resolved.append(resolved_builtin.firewall)
             builtin_cache_keys.append(resolved_builtin.cache_key)
             continue

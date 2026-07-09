@@ -179,7 +179,7 @@ fn file_scheme_preexisting_symlink_ancestor_blocks_nested_entry() {
 
 // Storage with a missing file:// target fails the run. The runner only rewrites
 // archive_url to file:// after vsock-staging succeeds, so a missing file means a
-// broken runner contract — fatal, no retry (status_code is None, retriable false).
+// broken runner contract: fatal and not retriable.
 #[test]
 fn file_scheme_missing_storage_fatal() {
     let dir = tempfile::tempdir().unwrap();
@@ -194,10 +194,8 @@ fn file_scheme_missing_storage_fatal() {
     assert!(!result);
 }
 
-// Artifacts treat HTTP 404 as non-fatal ("may not exist on first run"), but the
-// file:// path has no status_code, so a missing local file is fatal for artifacts
-// too. Same reasoning as storages: the runner only stages + rewrites after the
-// file lands, so a missing file signals a broken contract, not an absent artifact.
+// Artifact downloads require a real archive. Explicit empty artifacts use the
+// empty marker instead of a file:// archive, so a missing staged file is fatal.
 #[test]
 fn file_scheme_missing_artifact_fatal() {
     let dir = tempfile::tempdir().unwrap();

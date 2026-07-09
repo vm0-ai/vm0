@@ -43,6 +43,9 @@ interface AddOptions extends GmailTriggerOptions {
   readonly subject?: string;
   readonly actor?: string;
   readonly calendarId?: string;
+  readonly pageUrl?: string;
+  readonly parentPageUrl?: string;
+  readonly databaseUrl?: string;
 }
 
 interface UpdateOptions extends GmailTriggerOptions {
@@ -62,11 +65,14 @@ const EVENT_KINDS = [
   "google-calendar-event-created",
   "google-calendar-event-updated",
   "google-calendar-event-cancelled",
+  "notion-child-page-created",
+  "notion-database-item-created",
+  "notion-page-content-updated",
   "webhook",
 ] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, or --calendar-id";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, --calendar-id, --page-url, --parent-page-url, or --database-url";
 
 function addGmailTriggerOptions(command: Command): Command {
   return command
@@ -300,12 +306,21 @@ function hasCalendarTriggerOptions(options: AddOptions): boolean {
   return options.calendarId !== undefined;
 }
 
+function hasNotionTriggerOptions(options: AddOptions): boolean {
+  return (
+    options.pageUrl !== undefined ||
+    options.parentPageUrl !== undefined ||
+    options.databaseUrl !== undefined
+  );
+}
+
 function hasEventAddOptions(options: AddOptions): boolean {
   return (
     hasGmailTriggerOptions(options) ||
     hasGmailLabelOption(options) ||
     hasGithubTriggerOptions(options) ||
-    hasCalendarTriggerOptions(options)
+    hasCalendarTriggerOptions(options) ||
+    hasNotionTriggerOptions(options)
   );
 }
 
@@ -331,6 +346,12 @@ function assertNoCalendarTriggerOptions(options: AddOptions): void {
     throw new Error(
       "Google Calendar trigger flags only apply to Google Calendar event triggers",
     );
+  }
+}
+
+function assertNoNotionTriggerOptions(options: AddOptions): void {
+  if (hasNotionTriggerOptions(options)) {
+    throw new Error("Notion trigger flags only apply to Notion event triggers");
   }
 }
 
@@ -419,6 +440,7 @@ function buildGmailNewMessageCreateRequest(
   }
   assertNoGithubTriggerOptions(options);
   assertNoCalendarTriggerOptions(options);
+  assertNoNotionTriggerOptions(options);
   return {
     kind: "event",
     eventType: "gmail-new-message",
@@ -437,6 +459,7 @@ function buildGmailLabelAppliedCreateRequest(
   }
   assertNoGithubTriggerOptions(options);
   assertNoCalendarTriggerOptions(options);
+  assertNoNotionTriggerOptions(options);
   return {
     kind: "event",
     eventType: "gmail-label-applied",
@@ -454,6 +477,7 @@ function buildGithubLabelAppliedCreateRequest(
     );
   }
   assertNoCalendarTriggerOptions(options);
+  assertNoNotionTriggerOptions(options);
   return {
     kind: "event",
     eventType: "github-label-applied",
@@ -472,10 +496,11 @@ function buildGoogleCalendarEventCreateRequest(
   if (
     hasGmailTriggerOptions(options) ||
     hasGmailLabelOption(options) ||
-    hasGithubTriggerOptions(options)
+    hasGithubTriggerOptions(options) ||
+    hasNotionTriggerOptions(options)
   ) {
     throw new Error(
-      "Gmail and GitHub trigger flags only apply to their event triggers",
+      "Gmail, GitHub, and Notion trigger flags only apply to their event triggers",
     );
   }
   const calendarId = options.calendarId?.trim() || "primary";
@@ -509,6 +534,131 @@ function buildGoogleCalendarEventCreateRequest(
       event: "event_cancelled",
       calendarId,
     },
+  };
+}
+
+function buildNotionChildPageCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options) ||
+    hasCalendarTriggerOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar trigger flags only apply to their event triggers",
+    );
+  }
+
+  const parentPageUrl = options.parentPageUrl?.trim();
+  if (options.pageUrl !== undefined || options.databaseUrl !== undefined) {
+    throw new Error(
+      "--page-url and --database-url do not apply to notion-child-page-created triggers",
+    );
+  }
+  if (!parentPageUrl) {
+    throw new Error(
+      'notion-child-page-created triggers require --parent-page-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-child-page-created",
+    eventConfig: {
+      provider: "notion",
+      event: "child_page_created",
+      parentPageUrl,
+    },
+  };
+}
+
+function buildNotionDatabaseItemCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options) ||
+    hasCalendarTriggerOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar trigger flags only apply to their event triggers",
+    );
+  }
+
+  if (options.pageUrl !== undefined || options.parentPageUrl !== undefined) {
+    throw new Error(
+      "--page-url and --parent-page-url do not apply to notion-database-item-created triggers",
+    );
+  }
+  const databaseUrl = options.databaseUrl?.trim();
+  if (!databaseUrl) {
+    throw new Error(
+      'notion-database-item-created triggers require --database-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-database-item-created",
+    eventConfig: {
+      provider: "notion",
+      event: "database_item_created",
+      databaseUrl,
+    },
+  };
+}
+
+function buildNotionPageContentUpdatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options) ||
+    hasCalendarTriggerOptions(options)
+  ) {
+    throw new Error(
+      "Gmail, GitHub, and Google Calendar trigger flags only apply to their event triggers",
+    );
+  }
+
+  if (options.parentPageUrl !== undefined) {
+    throw new Error(
+      "--parent-page-url only applies to notion-child-page-created triggers",
+    );
+  }
+  const pageUrl = options.pageUrl?.trim();
+  const databaseUrl = options.databaseUrl?.trim();
+  if (
+    (pageUrl !== undefined && pageUrl.length > 0) ===
+    (databaseUrl !== undefined && databaseUrl.length > 0)
+  ) {
+    throw new Error(
+      'notion-page-content-updated triggers require exactly one of --page-url "https://www.notion.so/..." or --database-url "https://www.notion.so/..."',
+    );
+  }
+
+  return {
+    kind: "event",
+    eventType: "notion-page-content-updated",
+    eventConfig:
+      pageUrl !== undefined && pageUrl.length > 0
+        ? {
+            provider: "notion",
+            event: "page_content_updated",
+            pageUrl,
+          }
+        : {
+            provider: "notion",
+            event: "page_content_updated",
+            databaseUrl: databaseUrl ?? "",
+          },
   };
 }
 
@@ -557,6 +707,12 @@ function buildCreateRequest(
       return buildGoogleCalendarEventCreateRequest(kind, options);
     case "google-calendar-event-cancelled":
       return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "notion-child-page-created":
+      return buildNotionChildPageCreatedCreateRequest(options);
+    case "notion-database-item-created":
+      return buildNotionDatabaseItemCreatedCreateRequest(options);
+    case "notion-page-content-updated":
+      return buildNotionPageContentUpdatedCreateRequest(options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -686,6 +842,18 @@ const addCommand = addGithubTriggerOptions(
     "--calendar-id <id>",
     "Google Calendar ID for Google Calendar event triggers (default: primary)",
   )
+  .option(
+    "--page-url <url>",
+    "Notion page URL for notion-page-content-updated triggers",
+  )
+  .option(
+    "--parent-page-url <url>",
+    "Parent Notion page URL for notion-child-page-created triggers",
+  )
+  .option(
+    "--database-url <url>",
+    "Notion database URL for notion-database-item-created or notion-page-content-updated triggers",
+  )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -701,6 +869,10 @@ Examples:
   zero workflow trigger add triage --agent <agent-id> google-calendar-event-created
   zero workflow trigger add triage --agent <agent-id> google-calendar-event-updated
   zero workflow trigger add triage --agent <agent-id> google-calendar-event-cancelled
+  zero workflow trigger add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  zero workflow trigger add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  zero workflow trigger add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  zero workflow trigger add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow trigger add triage --agent <agent-id> webhook
 
 Notes:
@@ -866,6 +1038,7 @@ export const triggerCommand = new Command()
     `
 Examples:
   Add a trigger:      zero workflow trigger add <workflow-id> cron --expr "0 9 * * *"
+  Add a Notion page:  zero workflow trigger add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
   Add a webhook:      zero workflow trigger add <workflow-id> webhook
   Update a schedule:  zero workflow trigger update <trigger-id> --every 10m
   List triggers:      zero workflow trigger list <workflow-id>

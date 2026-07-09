@@ -1,5 +1,6 @@
 import type { DesktopAuthState } from "./desktop-bridge";
 import type { DesktopAuthCallback } from "./desktop-auth";
+import type { DesktopClientHeaderInjector } from "./desktop-client-headers";
 import {
   headersWithSessionCookies,
   type DesktopSessionCookieSource,
@@ -44,6 +45,7 @@ interface DesktopAuthSessionOptions {
    */
   readonly cookieUrls: readonly URL[];
   readonly cookieSource: DesktopSessionCookieSource;
+  readonly addClientHeaders: DesktopClientHeaderInjector;
   /** `buildDesktopAuthTokenUrl(webUrl)`. */
   readonly tokenUrl: string;
   /** `buildDesktopAuthConsumeUrl(webUrl, code, handoffId)`. */
@@ -86,6 +88,7 @@ export class DesktopAuthSession {
   private readonly apiBaseUrl: string;
   private readonly cookieUrls: readonly URL[];
   private readonly cookieSource: DesktopSessionCookieSource;
+  private readonly addClientHeaders: DesktopClientHeaderInjector;
   private readonly tokenUrl: string;
   private readonly consumeUrl: (
     code: string,
@@ -106,6 +109,7 @@ export class DesktopAuthSession {
     this.apiBaseUrl = options.apiBaseUrl;
     this.cookieUrls = options.cookieUrls;
     this.cookieSource = options.cookieSource;
+    this.addClientHeaders = options.addClientHeaders;
     this.tokenUrl = options.tokenUrl;
     this.consumeUrl = options.consumeUrl;
     this.selectOrgUrl = options.selectOrgUrl;
@@ -304,6 +308,7 @@ export class DesktopAuthSession {
     if (this.token) {
       headers.set("authorization", `Bearer ${this.token}`);
     }
+    this.addClientHeaders(headers);
     return headers;
   }
 }

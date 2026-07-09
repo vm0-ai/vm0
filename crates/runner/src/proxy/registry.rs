@@ -70,9 +70,10 @@ async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
         .map_err(|e| RunnerError::Internal(format!("parse registry: {e}")))
 }
 
-/// Write the proxy registry JSON file atomically (write tmp + rename).
+/// Write the proxy registry JSON file with target-path atomic replacement on Unix.
 ///
-/// This ensures the Python mitm-addon never reads a partially-written file.
+/// On supported Unix runner hosts, this ensures the Python mitm-addon never
+/// reads a partially-written file.
 async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> RunnerResult<()> {
     let content = serde_json::to_string(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;
@@ -397,7 +398,9 @@ mod tests {
                         headers: HashMap::new(),
                         base: None,
                         query: None,
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: Some(vec![
                         FirewallPermission {
                             name: "repos.read".to_string(),
@@ -844,7 +847,9 @@ mod tests {
                         )]),
                         base: None,
                         query: None,
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: Some(vec![FirewallPermission {
                         name: "mail-read".to_string(),
                         description: None,
@@ -1002,7 +1007,9 @@ mod tests {
                         headers: std::collections::HashMap::new(),
                         base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
                         query: None,
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: None,
                 }],
             },
@@ -1051,7 +1058,9 @@ mod tests {
                             .into_iter()
                             .collect(),
                         ),
+                        aws_sigv4: None,
                     },
+                    host_policy: None,
                     permissions: None,
                 }],
             },

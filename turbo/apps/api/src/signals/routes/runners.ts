@@ -10,12 +10,14 @@ import {
   storedExecutionContextSchema,
   type ExecutionContext,
   type HeldSessionState,
+  type SessionHistoryDownloadSource,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import {
   RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
   RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
   hasRunnerRuntimeFirewall,
+  loadAllRunnerRuntimeFirewalls,
   loadRunnerRuntimeFirewalls,
 } from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -34,6 +36,7 @@ import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
   generatePresignedGetUrl,
+  publicS3DownloadSource,
   S3ObjectSizeLimitError,
   s3ObjectContentLength,
 } from "../external/s3";
@@ -984,12 +987,14 @@ interface CompressedResumeSessionHistoryRepresentation {
   readonly rawSize: number;
   readonly encodedSize: number;
   readonly objectKey: string;
+  readonly downloadSource: SessionHistoryDownloadSource;
 }
 
 interface IdentityResumeSessionHistoryRepresentation {
   readonly encoding: typeof SESSION_HISTORY_ENCODING_IDENTITY;
   readonly rawSize: number;
   readonly encodedSize: number;
+  readonly downloadSource: SessionHistoryDownloadSource;
 }
 
 function hasResumeSessionHistoryRef(
@@ -1077,6 +1082,7 @@ const loadCompressedResumeSessionHistoryRepresentation$ = command(
       rawSize: blob.rawSize,
       encodedSize: blob.encodedSize,
       objectKey: resumeSessionHistoryBlobKey(args.hash, encoding),
+      downloadSource: publicS3DownloadSource(),
     };
   },
 );
@@ -1185,6 +1191,7 @@ const loadIdentityResumeSessionHistoryRepresentation$ = command(
       encoding: SESSION_HISTORY_ENCODING_IDENTITY,
       rawSize,
       encodedSize,
+      downloadSource: publicS3DownloadSource(),
     };
   },
 );
@@ -1237,6 +1244,7 @@ async function resolveResumeSessionForClaim(args: {
         encoding: compressedRepresentation.encoding,
         rawSize: compressedRepresentation.rawSize,
         encodedSize: compressedRepresentation.encodedSize,
+        downloadSource: compressedRepresentation.downloadSource,
       },
     };
   }
@@ -1261,6 +1269,7 @@ async function resolveResumeSessionForClaim(args: {
       encoding: identityRepresentation.encoding,
       rawSize: identityRepresentation.rawSize,
       encodedSize: identityRepresentation.encodedSize,
+      downloadSource: identityRepresentation.downloadSource,
     },
   };
 }
@@ -1406,6 +1415,11 @@ function scheduleSuccessfulClaimSideEffects(args: {
         readonly discoverySource?: string;
         readonly jobDiscoveredToClaimRequestMs?: number;
         readonly localAdmissionToClaimRequestMs?: number;
+        readonly directCandidateNotificationToEnqueueMs?: number;
+        readonly directCandidateInboxWaitMs?: number;
+        readonly providerDiscoveryToMainLoopMs?: number;
+        readonly mainLoopToLocalAdmissionMs?: number;
+        readonly preLocalAdmissionOutcome?: string;
         readonly pollDueToJobDiscoveredMs?: number;
         readonly pollHttpRequestMs?: number;
         readonly pollReason?: string;
@@ -1445,6 +1459,13 @@ function scheduleSuccessfulClaimSideEffects(args: {
       args.telemetry?.jobDiscoveredToClaimRequestMs,
     localAdmissionToClaimRequestMs:
       args.telemetry?.localAdmissionToClaimRequestMs,
+    directCandidateNotificationToEnqueueMs:
+      args.telemetry?.directCandidateNotificationToEnqueueMs,
+    directCandidateInboxWaitMs: args.telemetry?.directCandidateInboxWaitMs,
+    providerDiscoveryToMainLoopMs:
+      args.telemetry?.providerDiscoveryToMainLoopMs,
+    mainLoopToLocalAdmissionMs: args.telemetry?.mainLoopToLocalAdmissionMs,
+    preLocalAdmissionOutcome: args.telemetry?.preLocalAdmissionOutcome,
     discoverySource: args.telemetry?.discoverySource,
     pollDueToJobDiscoveredMs: args.telemetry?.pollDueToJobDiscoveredMs,
     pollHttpRequestMs: args.telemetry?.pollHttpRequestMs,
@@ -1466,6 +1487,11 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly directCandidateNotificationToEnqueueMs: number | undefined;
+  readonly directCandidateInboxWaitMs: number | undefined;
+  readonly providerDiscoveryToMainLoopMs: number | undefined;
+  readonly mainLoopToLocalAdmissionMs: number | undefined;
+  readonly preLocalAdmissionOutcome: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
@@ -1485,7 +1511,7 @@ function scheduleClaimSucceededSideEffects(args: {
   );
 }
 
-async function recordClaimTimingMetrics(args: {
+interface ClaimTimingMetricArgs {
   readonly runId: string;
   readonly runnerGroup: string;
   readonly profile: string;
@@ -1497,13 +1523,98 @@ async function recordClaimTimingMetrics(args: {
   readonly claimRequestToRunningMs: number;
   readonly jobDiscoveredToClaimRequestMs: number | undefined;
   readonly localAdmissionToClaimRequestMs: number | undefined;
+  readonly directCandidateNotificationToEnqueueMs: number | undefined;
+  readonly directCandidateInboxWaitMs: number | undefined;
+  readonly providerDiscoveryToMainLoopMs: number | undefined;
+  readonly mainLoopToLocalAdmissionMs: number | undefined;
+  readonly preLocalAdmissionOutcome: string | undefined;
   readonly discoverySource: string | undefined;
   readonly pollDueToJobDiscoveredMs: number | undefined;
   readonly pollHttpRequestMs: number | undefined;
   readonly pollReason: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
-}): Promise<void> {
+}
+
+type ClaimTimingMetricValueKey =
+  | "apiToRunnerQueueMs"
+  | "runnerQueueToClaimRequestMs"
+  | "apiToClaimRequestMs"
+  | "apiToClaimMs"
+  | "claimRequestToRunningMs"
+  | "jobDiscoveredToClaimRequestMs"
+  | "localAdmissionToClaimRequestMs"
+  | "directCandidateNotificationToEnqueueMs"
+  | "directCandidateInboxWaitMs"
+  | "providerDiscoveryToMainLoopMs"
+  | "mainLoopToLocalAdmissionMs"
+  | "pollDueToJobDiscoveredMs"
+  | "pollHttpRequestMs";
+
+const CLAIM_TIMING_METRIC_FIELDS = [
+  { actionType: "api_to_runner_queue", valueKey: "apiToRunnerQueueMs" },
+  {
+    actionType: "runner_queue_to_claim_request",
+    valueKey: "runnerQueueToClaimRequestMs",
+  },
+  { actionType: "api_to_claim_request", valueKey: "apiToClaimRequestMs" },
+  { actionType: "api_to_claim", valueKey: "apiToClaimMs" },
+  {
+    actionType: "claim_request_to_running",
+    valueKey: "claimRequestToRunningMs",
+  },
+  {
+    actionType: "job_discovered_to_claim_request",
+    valueKey: "jobDiscoveredToClaimRequestMs",
+  },
+  {
+    actionType: "local_admission_to_claim_request",
+    valueKey: "localAdmissionToClaimRequestMs",
+  },
+  {
+    actionType: "direct_candidate_notification_to_enqueue",
+    valueKey: "directCandidateNotificationToEnqueueMs",
+  },
+  {
+    actionType: "direct_candidate_inbox_wait",
+    valueKey: "directCandidateInboxWaitMs",
+  },
+  {
+    actionType: "provider_discovery_to_main_loop",
+    valueKey: "providerDiscoveryToMainLoopMs",
+  },
+  {
+    actionType: "main_loop_to_local_admission",
+    valueKey: "mainLoopToLocalAdmissionMs",
+  },
+  {
+    actionType: "runner_poll_due_to_job_discovered",
+    valueKey: "pollDueToJobDiscoveredMs",
+  },
+  { actionType: "runner_poll_http_request", valueKey: "pollHttpRequestMs" },
+] as const satisfies readonly {
+  readonly actionType: string;
+  readonly valueKey: ClaimTimingMetricValueKey;
+}[];
+
+async function recordClaimTimingMetrics(
+  args: ClaimTimingMetricArgs,
+): Promise<void> {
   await Promise.resolve();
+  const dimensions = claimTimingDimensions(args);
+  recordSandboxOperations(claimTimingOperations(args, dimensions));
+  args.claimRouteTiming.flush({
+    runId: args.runId,
+    runnerGroup: args.runnerGroup,
+    profile: args.profile,
+    authType: args.authType,
+    discoverySource: args.discoverySource,
+    pollReason: args.pollReason,
+  });
+}
+
+function claimTimingDimensions(
+  args: ClaimTimingMetricArgs,
+): Record<string, string> {
   const dimensions: Record<string, string> = {
     runner_group: args.runnerGroup,
     profile: args.profile,
@@ -1515,73 +1626,25 @@ async function recordClaimTimingMetrics(args: {
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
   }
-  recordSandboxOperations(
-    [
-      claimTimingOperation(
-        args.runId,
-        "api_to_runner_queue",
-        args.apiToRunnerQueueMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "runner_queue_to_claim_request",
-        args.runnerQueueToClaimRequestMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "api_to_claim_request",
-        args.apiToClaimRequestMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "api_to_claim",
-        args.apiToClaimMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "claim_request_to_running",
-        args.claimRequestToRunningMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "job_discovered_to_claim_request",
-        args.jobDiscoveredToClaimRequestMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "local_admission_to_claim_request",
-        args.localAdmissionToClaimRequestMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "runner_poll_due_to_job_discovered",
-        args.pollDueToJobDiscoveredMs,
-        dimensions,
-      ),
-      claimTimingOperation(
-        args.runId,
-        "runner_poll_http_request",
-        args.pollHttpRequestMs,
-        dimensions,
-      ),
-    ].filter((operation): operation is SandboxOperationAttrs => {
-      return operation !== undefined;
-    }),
-  );
-  args.claimRouteTiming.flush({
-    runId: args.runId,
-    runnerGroup: args.runnerGroup,
-    profile: args.profile,
-    authType: args.authType,
-    discoverySource: args.discoverySource,
-    pollReason: args.pollReason,
+  if (args.preLocalAdmissionOutcome) {
+    dimensions.pre_local_admission_outcome = args.preLocalAdmissionOutcome;
+  }
+  return dimensions;
+}
+
+function claimTimingOperations(
+  args: ClaimTimingMetricArgs,
+  dimensions: Record<string, string>,
+): SandboxOperationAttrs[] {
+  return CLAIM_TIMING_METRIC_FIELDS.map(({ actionType, valueKey }) => {
+    return claimTimingOperation(
+      args.runId,
+      actionType,
+      args[valueKey],
+      dimensions,
+    );
+  }).filter((operation): operation is SandboxOperationAttrs => {
+    return operation !== undefined;
   });
 }
 
@@ -1946,17 +2009,21 @@ const builtinFirewallsResolveInner$ = command(
       return body.response;
     }
 
-    const names = [...new Set(body.data.names)];
-    const missingNames = names.filter((name) => {
-      return !hasRunnerRuntimeFirewall(name);
-    });
-    if (missingNames.length > 0) {
-      return badRequestMessage(
-        `Unknown builtin firewall: ${missingNames.join(", ")}`,
-      );
+    let firewalls: Awaited<ReturnType<typeof loadRunnerRuntimeFirewalls>>;
+    if (body.data.names === undefined) {
+      firewalls = await loadAllRunnerRuntimeFirewalls();
+    } else {
+      const names = [...new Set(body.data.names)];
+      const missingNames = names.filter((name) => {
+        return !hasRunnerRuntimeFirewall(name);
+      });
+      if (missingNames.length > 0) {
+        return badRequestMessage(
+          `Unknown builtin firewall: ${missingNames.join(", ")}`,
+        );
+      }
+      firewalls = await loadRunnerRuntimeFirewalls(names);
     }
-
-    const firewalls = await loadRunnerRuntimeFirewalls(names);
     signal.throwIfAborted();
 
     return {

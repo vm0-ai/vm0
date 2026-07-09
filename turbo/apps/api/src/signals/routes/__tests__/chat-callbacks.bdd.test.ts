@@ -10,13 +10,8 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
-import type {
-  TestChatMessagesStateActionBody,
-  TestChatMessagesStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { testContext } from "../../../__tests__/test-context";
@@ -32,7 +27,6 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -54,8 +48,6 @@ function goalsClient() {
   return setupApp({ context })(zeroGoalsContract);
 }
 
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
@@ -169,13 +161,10 @@ async function startChatRun(
         ? {}
         : { attachFiles: body.attachFiles }),
       ...(body.selectedModel === undefined
-        ? { modelProvider: "anthropic-api-key" }
-        : {
-            modelSelection: {
-              modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-              selectedModel: body.selectedModel,
-            },
-          }),
+        ? body.threadId === undefined
+          ? { model: "claude-sonnet-4-6" }
+          : {}
+        : { model: body.selectedModel }),
     },
     [201],
   );
@@ -490,11 +479,11 @@ function recommendedFollowupMessages(
   });
 }
 
-function publishedChatThreadRunFinished(threadId: string): boolean {
+function publishedChatThreadFollowupsFinished(threadId: string): boolean {
   return context.mocks.ably.publish.mock.calls.some((call) => {
     const payload = call[1];
     return (
-      call[0] === "chatThreadRunFinished" &&
+      call[0] === "chatThreadFollowupsFinished" &&
       payload !== null &&
       typeof payload === "object" &&
       "threadId" in payload &&
@@ -547,36 +536,6 @@ function chatOutputAxiomQueryCalls(): readonly unknown[][] {
 function pushPayload(call: readonly unknown[] | undefined): unknown {
   const raw = call?.[1];
   return JSON.parse(typeof raw === "string" ? raw : "{}");
-}
-
-function requestChatMessagesState(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testChatMessagesStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function postChatMessagesStateAction(
-  body: TestChatMessagesStateActionBody,
-): Promise<TestChatMessagesStateActionResponse> {
-  const response = await requestChatMessagesState(
-    "/api/test/chat-messages-state/action",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `chat messages state action ${body.action} failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestChatMessagesStateActionResponse;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -832,7 +791,7 @@ describe("CHAT-02: completed chat callback", () => {
     ]);
     await expect
       .poll(() => {
-        return publishedChatThreadRunFinished(first.threadId);
+        return publishedChatThreadFollowupsFinished(first.threadId);
       })
       .toBe(true);
 
@@ -997,6 +956,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "The final assistant answer"),
     ]);
+    context.mocks.ably.publish.mockClear();
     await completeChatRunOk(run.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
@@ -1009,6 +969,7 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.recommendedFollowups).toBeUndefined();
+    expect(publishedChatThreadFollowupsFinished(run.threadId)).toBeTruthy();
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
@@ -1459,58 +1420,6 @@ Detailed goal procedure:
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
     await flushWaitUntilForTest();
-  }, 90_000);
-
-  it("excludes pre-dispatch cancelled rows without chat messages from later context", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "anchor before ghost",
-    });
-    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "anchor answer")]);
-    await completeChatRunOk(first.runId, firstHeaders, {
-      lastEventSequence: 0,
-    });
-    await waitForThreadMessages(actor, first.threadId, (messages) => {
-      return assistantMessages(messages).some((message) => {
-        return (
-          message.runId === first.runId && message.content === "anchor answer"
-        );
-      });
-    });
-
-    const ghost = await api.createRun(actor, {
-      agentId,
-      prompt: "ghost pre-dispatch queued prompt",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.requestCancelRun(actor, ghost.runId, [200]);
-    await waitForRunStatus(actor, ghost.runId, "cancelled");
-    await postChatMessagesStateAction({
-      action: "attach-pre-dispatch-cancelled-run-to-thread",
-      run_id: ghost.runId,
-      thread_id: first.threadId,
-    });
-
-    const second = await startChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "continue after ghost",
-    });
-    const secondRun = await api.readRun(actor, second.runId);
-    const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
-    expect(appended).toContain("User: anchor before ghost");
-    expect(appended).toContain("Assistant: anchor answer");
-    expect(appended).not.toContain(`- RUN_ID: ${ghost.runId}`);
-    expect(appended).not.toContain("ghost pre-dispatch queued prompt");
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await waitForRunStatus(actor, second.runId, "cancelled");
   }, 90_000);
 });
 
@@ -2019,11 +1928,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         `chatThreadRunCreated:${threadId}`,
         null,
       );
-      await expect
-        .poll(() => {
-          return publishedChatThreadRunFinished(run.threadId);
-        })
-        .toBe(true);
+      await waitForChatThreadMessageCreatedPublish(run.threadId);
     }
     const reportRunId = runIds[2];
     if (!threadId || !reportRunId) {
@@ -2452,10 +2357,11 @@ describe("CHAT-02: auto-send across a model switch", () => {
       prompt: "And stringify?",
     });
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await chat.updateThreadModelSelection(actor, first.threadId, {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: "claude-sonnet-4-6",
-    });
+    await chat.updateThreadModelSelection(
+      actor,
+      first.threadId,
+      "claude-sonnet-4-6",
+    );
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,

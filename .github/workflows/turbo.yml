@@ -180,11 +180,11 @@ jobs:
             echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema)/"; then
-            echo "Migration or schema changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
+            echo "Migration, schema, or JSONB contract changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration or schema changes"
+            echo "No migration, schema, or JSONB contract changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -405,7 +405,48 @@ jobs:
       # dependsOn ^check-types does not re-run the shared packages here.
       - name: Type Check (api)
         working-directory: turbo
-        run: pnpm --filter api run check-types
+        run: |
+          set +e
+          result_file=".memory-results/api-check-types.jsonl"
+          rm -f "$result_file"
+
+          node scripts/measure-memory.mjs \
+            --label ci-api-check-types \
+            --json "$result_file" \
+            -- pnpm --filter api run check-types
+          status=$?
+
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const file = process.argv[1];
+            if (!fs.existsSync(file)) {
+              process.exit(0);
+            }
+
+            const lines = fs.readFileSync(file, "utf8").trim().split(/\n/).filter(Boolean);
+            if (lines.length === 0) {
+              process.exit(0);
+            }
+
+            const result = JSON.parse(lines[lines.length - 1]);
+            const durationSeconds = (result.durationMs / 1000).toFixed(1);
+            const summary = [
+              "### Type Check (api) memory",
+              "",
+              `- Peak RSS: ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB)`,
+              `- Duration: ${durationSeconds}s`,
+              `- Exit code: ${result.exitCode}`,
+              "",
+            ].join("\n");
+
+            console.log(`Peak RSS (api check-types): ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB), duration ${durationSeconds}s`);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          ' "$result_file"
+
+          exit "$status"
       - name: Type Check (@vm0/app)
         working-directory: turbo
         run: pnpm --filter @vm0/app run check-types
@@ -454,7 +495,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -494,13 +535,13 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    # Only run when migration or schema files changed
+    # Only run when migration, schema, or persistent JSONB contract files changed
     if: needs.prepare.outputs.migration-changed == 'true'
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -514,6 +555,27 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/toolchain-init
+      - name: Prompt for JSONB Contract Changes
+        run: |
+          BASE_REF="${{ needs.prepare.outputs.base-ref }}"
+          CHANGED=$(git diff --name-only "$BASE_REF" -- \
+            'turbo/packages/db/src/jsonb-contracts/**')
+
+          if [ -n "$CHANGED" ]; then
+            echo "::warning title=Persistent JSONB contracts changed::Review production compatibility before merging."
+            echo ""
+            echo "Persistent JSONB contract files changed:"
+            echo "$CHANGED"
+            echo ""
+            echo "Before merging, confirm:"
+            echo "- Existing production rows remain readable by new API code."
+            echo "- Removed/renamed keys have read-time normalization or a data migration."
+            echo "- Strict response schemas tolerate legacy persisted rows, or legacy rows are migrated."
+            echo "- Regression tests cover any legacy persisted JSON shape that should remain readable."
+          fi
+      - name: Check JSONB Contract Usage
+        working-directory: turbo/packages/db
+        run: pnpm lint:jsonb-contracts
       - name: Check Migration Immutability
         if: vars.CI_CHECK_IMMUTABLE_MIGRATE != '0'
         run: |
@@ -623,7 +685,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -798,7 +860,11 @@ jobs:
           WEB_API_ENV_FILE: ${{ steps.api-seed-env.outputs.file }}
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          DEV_MODEL_DEEPSEEK_KEY: fake-key
+          DEV_MODEL_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEV_MODEL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEV_MODEL_DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEV_MODEL_MOONSHOT_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          DEV_MODEL_MINIMAX_KEY: ${{ secrets.MINIMAX_API_KEY }}
         run: |
           while IFS= read -r line; do
             if [ -n "$line" ]; then
@@ -807,6 +873,26 @@ jobs:
               export "$key=$value"
             fi
           done < "$WEB_API_ENV_FILE"
+
+          required_seed_env=(
+            DEV_MODEL_ANTHROPIC_KEY
+            DEV_MODEL_OPENAI_KEY
+            DEV_MODEL_OPENROUTER_KEY
+            DEV_MODEL_DEEPSEEK_KEY
+            DEV_MODEL_MOONSHOT_KEY
+            DEV_MODEL_MINIMAX_KEY
+          )
+          missing_seed_env=()
+          for key in "${required_seed_env[@]}"; do
+            value="${!key:-}"
+            if [ -z "$value" ]; then
+              missing_seed_env+=("$key")
+            fi
+          done
+          if [ "${#missing_seed_env[@]}" -gt 0 ]; then
+            printf '::error::Missing preview seed model key env(s): %s\n' "${missing_seed_env[*]}"
+            exit 1
+          fi
 
           npm install -g neonctl@2.15.0
 
@@ -1092,16 +1178,9 @@ jobs:
           prebuilt: "true"
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            VITE_VERCEL_ENV=preview
-            VITE_API_URL=${{ needs.prepare.outputs.api-preview-url }}
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
-            VITE_ONBOARDING_URL=${{ needs.prepare.outputs.www-preview-url || vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
-            VITE_ONBOARDING_DOMAIN=${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
-            PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL_DEV || vars.PUBLIC_ARTIFACTS_BASE_URL }}
-            VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
@@ -1164,6 +1243,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           cd ansible
@@ -1187,6 +1267,11 @@ jobs:
           fi
 
           FORWARD_URL="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
+            echo "::add-mask::$encoded_bypass"
+            FORWARD_URL="${FORWARD_URL}?x-vercel-protection-bypass=${encoded_bypass}"
+          fi
           EXTRA_VARS="$(jq -nc \
             --arg ansible_user "$METAL_USER" \
             --arg job_ref "$JOB_REF" \
@@ -1304,6 +1389,11 @@ jobs:
           echo "::add-mask::$stripe_webhook_secret"
 
           forward_url="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
+            echo "::add-mask::$encoded_bypass"
+            forward_url="${forward_url}?x-vercel-protection-bypass=${encoded_bypass}"
+          fi
           stripe listen \
             --api-key "$STRIPE_SECRET_KEY" \
             --events checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted \
@@ -1330,6 +1420,7 @@ jobs:
         env:
           API_PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run Playwright E2E tests
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
@@ -1339,6 +1430,7 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
         run: |
@@ -1669,7 +1761,9 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-api]
     outputs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
-    timeout-minutes: 2
+    # Normal starts should finish quickly; failures need enough room for the
+    # bounded partial-start cleanup watchdog to run before GitHub kills the job.
+    timeout-minutes: 8
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
@@ -1698,26 +1792,19 @@ jobs:
           RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
+          set -euo pipefail
+
           read_host_capacity() {
             local HOST=$1
+            local RUNNER_NAME=$2
             local REMOTE="${METAL_USER}@${HOST}"
-            local MC=""
-
-            for _ in $(seq 1 60); do
-              # shellcheck disable=SC2029
-              MC=$(ssh "$REMOTE" "sudo jq -r '.max_concurrent // empty' ${RUNNER_DIR}/status.json 2>/dev/null") || true
-              if [[ "$MC" =~ ^[0-9]+$ ]]; then
-                echo "$MC"
-                return 0
-              fi
-              sleep 1
-            done
-
-            echo "::error::Failed to read max_concurrent from ${HOST}" >&2
-            return 1
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_NAME} --timeout-secs 120"
           }
 
           start_on_host() {
+            set -euo pipefail
+
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
@@ -1756,9 +1843,9 @@ jobs:
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Stop any existing service from a previous run (e.g., re-run after test failure).
-            # stop() returns Ok when no service exists, so no need for || true.
+            # Use cleanup semantics so a stale or wedged unit cannot hang this start path.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force"
+            timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
@@ -1771,13 +1858,13 @@ jobs:
               --env USE_MOCK_CLAUDE=true \
               --env USE_MOCK_CODEX=true"
 
-            # Wait for the runner main loop to publish status.json before
-            # health checks. systemd-run returns once the process starts, but
-            # proxy/DNS setup and the initial status write can take longer.
-            if ! MC=$(read_host_capacity "$HOST"); then
+            # Wait for the runner to become job-admitting before health checks.
+            # systemd-run returns once the process starts, but startup
+            # readiness can keep status.json at mode=starting for longer.
+            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
               return 1
             fi
-            echo "Runner status ready on ${HOST}: max_concurrent=${MC}"
+            echo "Runner ready on ${HOST}: max_concurrent=${MC}"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
@@ -1786,22 +1873,134 @@ jobs:
           LOG_DIR=$(mktemp -d)
           HOSTS=()
           PIDS=()
+          PGIDS=()
+          RUNNER_START_SUCCEEDED=0
+          RUNNER_START_SIGNAL_EXIT=0
+          RUNNER_START_RECORDING=0
+
+          cleanup_logs() {
+            rm -rf "$LOG_DIR"
+          }
+
+          request_runner_start_exit() {
+            RUNNER_START_SIGNAL_EXIT=$1
+            if [ "$RUNNER_START_RECORDING" -ne 1 ]; then
+              exit "$RUNNER_START_SIGNAL_EXIT"
+            fi
+          }
+
+          check_runner_start_exit() {
+            if [ "$RUNNER_START_SIGNAL_EXIT" -ne 0 ]; then
+              exit "$RUNNER_START_SIGNAL_EXIT"
+            fi
+          }
+
+          process_group_for_pid() {
+            local PID=$1
+            ps -o pgid= -p "$PID" 2>/dev/null | tr -d ' '
+          }
+
+          stop_background_start_jobs() {
+            local JOB_PIDS=()
+            local START_PGIDS=()
+            local WAIT_PIDS=()
+            local CURRENT_PGID
+            CURRENT_PGID=$(process_group_for_pid "$$" || true)
+            for PGID in "${PGIDS[@]}"; do
+              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
+                START_PGIDS+=("$PGID")
+              fi
+            done
+            for PID in $(jobs -pr); do
+              JOB_PIDS+=("$PID")
+              WAIT_PIDS+=("$PID")
+            done
+            for PID in "${PIDS[@]}"; do
+              WAIT_PIDS+=("$PID")
+            done
+            for PID in "${JOB_PIDS[@]}"; do
+              local PGID
+              PGID=$(process_group_for_pid "$PID" || true)
+              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
+                START_PGIDS+=("$PGID")
+              else
+                kill -TERM "$PID" 2>/dev/null || true
+              fi
+            done
+            for PGID in "${START_PGIDS[@]}"; do
+              kill -TERM -- "-$PGID" 2>/dev/null || true
+            done
+            for PGID in "${START_PGIDS[@]}"; do
+              kill -KILL -- "-$PGID" 2>/dev/null || true
+            done
+            for PID in "${JOB_PIDS[@]}"; do
+              kill -KILL "$PID" 2>/dev/null || true
+            done
+            for PID in "${WAIT_PIDS[@]}"; do
+              wait "$PID" 2>/dev/null || true
+            done
+          }
+
+          stop_started_hosts() {
+            local STOP_PIDS=()
+            local HOST_INDEX=0
+            for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+              HOST_INDEX=$((HOST_INDEX + 1))
+              local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+              local REMOTE="${METAL_USER}@${HOST}"
+              echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
+              (
+                # The runner cleanup command has per-action deadlines; keep the
+                # outer SSH watchdog longer than the combined worst-case budget.
+                # shellcheck disable=SC2029
+                timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
+              ) &
+              STOP_PIDS+=($!)
+            done
+            for PID in "${STOP_PIDS[@]}"; do
+              wait "$PID" 2>/dev/null || true
+            done
+          }
+
+          cleanup_runner_start() {
+            local EXIT_CODE=$?
+            trap - EXIT
+            trap '' INT TERM
+            if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
+              stop_background_start_jobs
+              stop_started_hosts
+            fi
+            cleanup_logs
+            exit "$EXIT_CODE"
+          }
+
+          trap cleanup_runner_start EXIT
+          trap 'request_runner_start_exit 130' INT
+          trap 'request_runner_start_exit 143' TERM
+          export -f read_host_capacity start_on_host
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
-            start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
-            PIDS+=($!)
             HOSTS+=("$HOST")
+            RUNNER_START_RECORDING=1
+            setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            PIDS+=($!)
+            PGIDS+=($!)
+            RUNNER_START_RECORDING=0
+            check_runner_start_exit
           done
 
           FAILED=0
           for i in "${!PIDS[@]}"; do
             if ! wait "${PIDS[$i]}"; then
+              check_runner_start_exit
               FAILED=1
               echo "::error::Runner start failed on ${HOSTS[$i]}"
             fi
+            check_runner_start_exit
             echo "=== ${HOSTS[$i]} ==="
             cat "${LOG_DIR}/${HOSTS[$i]}.log"
+            check_runner_start_exit
           done
           rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
@@ -1810,15 +2009,25 @@ jobs:
 
           # Sum auto-detected max_concurrent from all hosts' status.json
           TOTAL=0
+          HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            if ! MC=$(read_host_capacity "$HOST"); then
-              exit 1
+            HOST_INDEX=$((HOST_INDEX + 1))
+            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
+              check_runner_start_exit
+              FAILED=1
+              break
             fi
+            check_runner_start_exit
             echo "Host ${HOST}: max_concurrent=${MC}"
             TOTAL=$((TOTAL + MC))
           done
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
           echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
           echo "Total capacity across all hosts: ${TOTAL}"
+          RUNNER_START_SUCCEEDED=1
 
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)

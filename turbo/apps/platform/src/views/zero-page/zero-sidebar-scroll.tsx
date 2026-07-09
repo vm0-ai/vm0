@@ -1,4 +1,10 @@
-import type { CSSProperties, ReactNode, UIEvent } from "react";
+import type {
+  CSSProperties,
+  FocusEventHandler,
+  PointerEventHandler,
+  ReactNode,
+  UIEvent,
+} from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   thumbStyle$,
@@ -11,17 +17,25 @@ import {
 
 /** Overlay scroll area: hides native scrollbar, renders a custom thin indicator. */
 export function OverlayScrollArea({
+  "aria-label": ariaLabel,
   className,
   children,
+  onFocus,
+  onPointerDownCapture,
   onScroll,
   style,
   "data-testid": dataTestId,
+  tabIndex,
 }: {
+  "aria-label"?: string;
   className?: string;
   children: ReactNode;
+  onFocus?: FocusEventHandler<HTMLDivElement>;
+  onPointerDownCapture?: PointerEventHandler<HTMLDivElement>;
   onScroll?: (e: UIEvent<HTMLDivElement>) => void;
   style?: CSSProperties;
   "data-testid"?: string;
+  tabIndex?: number;
 }) {
   const thumbStyleValue = useGet(thumbStyle$);
   const setThumbStyleFn = useSet(setThumbStyle$);
@@ -66,7 +80,11 @@ export function OverlayScrollArea({
         ref={setViewportRef}
         className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={style}
+        onFocus={onFocus}
+        onPointerDownCapture={onPointerDownCapture}
         onScroll={handleScroll}
+        tabIndex={tabIndex}
+        aria-label={ariaLabel}
         data-testid={dataTestId}
       >
         {children}

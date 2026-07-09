@@ -1,40 +1,51 @@
 """Tests for auth.base HTTPS forwarding behavior."""
 
 import asyncio
+import contextvars
 import errno
+import multiprocessing
 import ssl
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from mitmproxy import http
 
 import auth_base_forwarder as forwarder
 from tests.auth_base_forwarder_helpers import FakeSocket, fake_forwarder_upstream, http_response
 
-
-class _SubmitRecordingThreadPoolExecutor(ThreadPoolExecutor):
-    def __init__(self, *args, **kwargs) -> None:
-        self._submit_count = 0
-        self._submit_lock = threading.Lock()
-        super().__init__(*args, **kwargs)
-
-    def submit(self, fn, /, *args, **kwargs):
-        future = super().submit(fn, *args, **kwargs)
-        with self._submit_lock:
-            self._submit_count += 1
-        return future
-
-    @property
-    def submit_count(self) -> int:
-        with self._submit_lock:
-            return self._submit_count
+_PROCESS_EXIT_TIMEOUT_SECONDS = 5
 
 
 async def _run_ready_tasks() -> None:
     ready = asyncio.Event()
     asyncio.get_running_loop().call_soon(ready.set)
     await ready.wait()
+
+
+def _run_blocked_forward_then_shutdown_wait_false() -> None:
+    async def main():
+        forward_started = threading.Event()
+        never_release = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            forward_started.set()
+            never_release.wait()
+            return FakeSocket(http_response())
+
+        with fake_forwarder_upstream(create_connection=create_connection):
+            task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                if not await asyncio.to_thread(forward_started.wait, 2):
+                    raise RuntimeError("auth.base forward did not start")
+                forwarder.shutdown_forward_request_workers(wait=False)
+            finally:
+                task.cancel()
+
+    asyncio.run(main())
 
 
 class TestAuthBaseForwarderSecurity:
@@ -378,6 +389,30 @@ class TestAuthBaseForwarderTransportSecurity:
         context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
         assert conn.sock is wrapped_sock
 
+    def test_validated_connection_untracks_raw_socket_when_setsockopt_cleanup_close_fails(self):
+        raw_sock = MagicMock()
+        raw_sock.setsockopt.side_effect = OSError(errno.EINVAL, "setsockopt failed")
+        raw_sock.close.side_effect = OSError("close failed")
+        context = MagicMock()
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            pytest.raises(OSError, match="setsockopt failed"),
+        ):
+            conn.connect()
+
+        raw_sock.close.assert_called_once_with()
+        context.wrap_socket.assert_not_called()
+        with forwarder._forward_request_active_closeables_lock:
+            assert raw_sock not in forwarder._forward_request_active_closeables
+
     def test_validated_connection_closes_raw_socket_when_tls_wrap_fails(self):
         raw_sock = MagicMock()
         context = MagicMock()
@@ -397,6 +432,29 @@ class TestAuthBaseForwarderTransportSecurity:
             conn.connect()
 
         raw_sock.close.assert_called_once_with()
+
+    def test_validated_connection_untracks_raw_socket_when_tls_cleanup_close_fails(self):
+        raw_sock = MagicMock()
+        raw_sock.close.side_effect = OSError("close failed")
+        context = MagicMock()
+        context.wrap_socket.side_effect = OSError("tls failed")
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            pytest.raises(OSError, match="tls failed"),
+        ):
+            conn.connect()
+
+        raw_sock.close.assert_called_once_with()
+        with forwarder._forward_request_active_closeables_lock:
+            assert raw_sock not in forwarder._forward_request_active_closeables
 
 
 class TestAuthBaseForwarderRequestBehavior:
@@ -785,6 +843,55 @@ class TestAuthBaseForwarderResourceCleanup:
 
 
 class TestForwardRequestAsyncWrapper:
+    def test_shutdown_wait_false_does_not_keep_process_alive_with_blocked_forward(self):
+        process = multiprocessing.get_context("spawn").Process(
+            target=_run_blocked_forward_then_shutdown_wait_false,
+            name="auth-base-shutdown-regression",
+        )
+        process.start()
+        try:
+            process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
+            assert not process.is_alive()
+            assert process.exitcode == 0
+        finally:
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=_PROCESS_EXIT_TIMEOUT_SECONDS)
+
+        assert process.exitcode == 0
+
+    def test_shutdown_before_worker_start_cancels_pending_forward(self):
+        future: Future[tuple[int, bytes, http.Headers]] = Future()
+        with forwarder._forward_request_pending_futures_lock:
+            forwarder._forward_request_pending_futures.add(future)
+
+        forwarder.shutdown_forward_request_workers(wait=False)
+
+        assert future.cancelled()
+        with forwarder._forward_request_pending_futures_lock:
+            assert future not in forwarder._forward_request_pending_futures
+
+        with patch.object(forwarder, "_forward_request_sync_in_context") as forward_sync:
+            forwarder._run_forward_request_worker(
+                future,
+                contextvars.copy_context(),
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        forward_sync.assert_not_called()
+        assert future.cancelled()
+
+    def test_shutdown_rejects_new_forward_admission(self):
+        forwarder.shutdown_forward_request_workers(wait=False)
+
+        with pytest.raises(RuntimeError, match="workers are shut down"):
+            forwarder.reserve_forward_request_admission(0)
+
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
     async def test_rejects_body_over_limit_before_forwarding(self):
         with (
             patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
@@ -974,17 +1081,9 @@ class TestForwardRequestAsyncWrapper:
                 with lock:
                     active -= 1
 
-        executors: list[_SubmitRecordingThreadPoolExecutor] = []
-
-        def create_executor(*args, **kwargs):
-            executor = _SubmitRecordingThreadPoolExecutor(*args, **kwargs)
-            executors.append(executor)
-            return executor
-
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
             patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 1),
-            patch.object(forwarder, "ThreadPoolExecutor", new=create_executor),
             fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
@@ -993,19 +1092,19 @@ class TestForwardRequestAsyncWrapper:
             try:
                 first_started = await asyncio.to_thread(first_entered.wait, 2)
                 assert first_started
-                assert len(executors) == 1
-                executor = executors[0]
-                assert executor.submit_count == 1
+                assert started == 1
 
                 first_task.cancel()
                 with pytest.raises(asyncio.CancelledError):
                     await asyncio.wait_for(first_task, timeout=1)
                 with lock:
                     assert active == 1
+                    started_before_second_attempt = started
 
                 with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
                     await forwarder.forward_request("https://example.com", "GET", [], None)
-                assert executor.submit_count == 1
+                with lock:
+                    assert started == started_before_second_attempt
 
                 release_first.set()
             finally:
@@ -1047,17 +1146,9 @@ class TestForwardRequestAsyncWrapper:
                     active -= 1
 
         third_task = None
-        executors: list[_SubmitRecordingThreadPoolExecutor] = []
-
-        def create_executor(*args, **kwargs):
-            executor = _SubmitRecordingThreadPoolExecutor(*args, **kwargs)
-            executors.append(executor)
-            return executor
-
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
             patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
-            patch.object(forwarder, "ThreadPoolExecutor", new=create_executor),
             fake_forwarder_upstream(create_connection=create_connection),
         ):
             first_task = asyncio.create_task(
@@ -1069,9 +1160,7 @@ class TestForwardRequestAsyncWrapper:
             try:
                 first_started = await asyncio.to_thread(first_entered.wait, 2)
                 assert first_started
-                assert len(executors) == 1
-                executor = executors[0]
-                assert executor.submit_count == 1
+                assert started == 1
 
                 waiting_task.cancel()
                 with pytest.raises(asyncio.CancelledError):
@@ -1081,7 +1170,6 @@ class TestForwardRequestAsyncWrapper:
                     forwarder.forward_request("https://example.com", "GET", [], None)
                 )
                 await _run_ready_tasks()
-                assert executor.submit_count == 1
                 assert not second_entered.is_set()
 
                 release_first.set()
@@ -1101,7 +1189,105 @@ class TestForwardRequestAsyncWrapper:
         assert started == 2
         assert max_active == 1
 
-    async def test_shutdown_rejects_waiting_forward_without_restarting_executor(self):
+    async def test_admission_limit_change_does_not_reset_concurrency_limit(self):
+        active = 0
+        max_active = 0
+        started = 0
+        lock = threading.Lock()
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release_first = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            nonlocal active
+            nonlocal max_active
+            nonlocal started
+
+            with lock:
+                active += 1
+                started += 1
+                current = started
+                max_active = max(max_active, active)
+                if current == 1:
+                    first_entered.set()
+                elif current == 2:
+                    second_entered.set()
+            try:
+                if current == 1 and not release_first.wait(timeout=5):
+                    raise TimeoutError("test did not release first forward")
+                return FakeSocket(http_response())
+            finally:
+                with lock:
+                    active -= 1
+
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
+            fake_forwarder_upstream(create_connection=create_connection),
+        ):
+            first_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            second_task = None
+            try:
+                first_started = await asyncio.to_thread(first_entered.wait, 2)
+                assert first_started
+                assert started == 1
+
+                with patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 3):
+                    second_task = asyncio.create_task(
+                        forwarder.forward_request("https://example.com", "GET", [], None)
+                    )
+                    await _run_ready_tasks()
+
+                assert not second_entered.is_set()
+
+                release_first.set()
+                second_started_after_release = await asyncio.to_thread(second_entered.wait, 2)
+                assert second_started_after_release
+
+                status, body, headers = await asyncio.wait_for(second_task, timeout=2)
+            finally:
+                release_first.set()
+                await asyncio.gather(first_task, return_exceptions=True)
+                if second_task is not None:
+                    await asyncio.gather(second_task, return_exceptions=True)
+
+        assert status == 200
+        assert body == b"ok"
+        assert list(headers.items(multi=True)) == []
+        assert started == 2
+        assert max_active == 1
+
+    def test_worker_base_exception_completes_future_before_propagating(self):
+        future: Future[tuple[int, bytes, http.Headers]] = Future()
+        with forwarder._forward_request_pending_futures_lock:
+            forwarder._forward_request_pending_futures.add(future)
+
+        with (
+            patch.object(
+                forwarder,
+                "_forward_request_sync_in_context",
+                side_effect=SystemExit("worker stopped"),
+            ),
+            pytest.raises(SystemExit, match="worker stopped"),
+        ):
+            forwarder._run_forward_request_worker(
+                future,
+                contextvars.copy_context(),
+                "https://example.com",
+                "GET",
+                [],
+                None,
+            )
+
+        assert future.done()
+        with pytest.raises(RuntimeError, match="worker exited without completing future"):
+            future.result()
+        with forwarder._forward_request_pending_futures_lock:
+            assert future not in forwarder._forward_request_pending_futures
+
+    async def test_shutdown_rejects_untracked_running_forward_and_waiting_forward(self):
         started = 0
         lock = threading.Lock()
         first_entered = threading.Event()
@@ -1136,21 +1322,137 @@ class TestForwardRequestAsyncWrapper:
                 first_started = await asyncio.to_thread(first_entered.wait, 2)
                 assert first_started
 
-                forwarder.shutdown_forward_request_executor(wait=False)
+                forwarder.shutdown_forward_request_workers(wait=False)
                 release_first.set()
 
-                status, body, headers = await asyncio.wait_for(first_task, timeout=2)
-                with pytest.raises(RuntimeError, match="executor is shut down"):
+                with pytest.raises(RuntimeError, match="workers are shut down"):
+                    await asyncio.wait_for(first_task, timeout=2)
+                with pytest.raises(RuntimeError, match="workers are shut down"):
                     await asyncio.wait_for(waiting_task, timeout=2)
             finally:
                 release_first.set()
                 await asyncio.gather(first_task, waiting_task, return_exceptions=True)
 
-        assert status == 200
-        assert body == b"ok"
-        assert list(headers.items(multi=True)) == []
         assert not second_entered.is_set()
         assert started == 1
+
+    async def test_shutdown_wakes_waiting_forward_when_running_forward_is_blocked(self):
+        started = 0
+        lock = threading.Lock()
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release_first = threading.Event()
+
+        def create_connection(_address, _timeout, _source_address):
+            nonlocal started
+
+            with lock:
+                started += 1
+                current = started
+                if current == 1:
+                    first_entered.set()
+                elif current == 2:
+                    second_entered.set()
+            if current == 1 and not release_first.wait(timeout=5):
+                raise TimeoutError("test did not release first forward")
+            return FakeSocket(http_response())
+
+        with (
+            patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
+            fake_forwarder_upstream(create_connection=create_connection),
+        ):
+            first_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            waiting_task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                first_started = await asyncio.to_thread(first_entered.wait, 2)
+                assert first_started
+
+                with patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 0):
+                    forwarder.shutdown_forward_request_workers(wait=False)
+
+                with pytest.raises(RuntimeError, match="workers are shut down"):
+                    await asyncio.wait_for(waiting_task, timeout=2)
+            finally:
+                release_first.set()
+                await asyncio.gather(first_task, waiting_task, return_exceptions=True)
+
+        assert not second_entered.is_set()
+        assert started == 1
+
+    async def test_shutdown_closes_active_forward_socket(self):
+        setsockopt_entered = threading.Event()
+        socket_closed = threading.Event()
+        release_setsockopt = threading.Event()
+
+        class BlockingSetsockoptSocket(FakeSocket):
+            def setsockopt(self, level: int, optname: int, value: int) -> None:
+                self.setsockopt_calls.append((level, optname, value))
+                setsockopt_entered.set()
+                if not release_setsockopt.wait(timeout=5):
+                    raise TimeoutError("test did not release setsockopt")
+
+            def close(self) -> None:
+                super().close()
+                socket_closed.set()
+                release_setsockopt.set()
+
+        socket = BlockingSetsockoptSocket(http_response())
+
+        def create_connection(_address, _timeout, _source_address):
+            return socket
+
+        with fake_forwarder_upstream(create_connection=create_connection):
+            task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                assert await asyncio.to_thread(setsockopt_entered.wait, 2)
+                forwarder.shutdown_forward_request_workers(wait=False)
+                assert await asyncio.to_thread(socket_closed.wait, 2)
+                with forwarder._forward_request_active_closeables_lock:
+                    assert socket not in forwarder._forward_request_active_closeables
+            finally:
+                release_setsockopt.set()
+                await asyncio.gather(task, return_exceptions=True)
+
+        assert socket.closed
+
+    async def test_shutdown_closes_socket_created_after_active_close_snapshot(self):
+        connect_entered = threading.Event()
+        release_connect = threading.Event()
+        socket = FakeSocket(http_response())
+
+        def create_connection(_address, _timeout, _source_address):
+            connect_entered.set()
+            if not release_connect.wait(timeout=5):
+                raise TimeoutError("test did not release connect")
+            return socket
+
+        with fake_forwarder_upstream(create_connection=create_connection):
+            task = asyncio.create_task(
+                forwarder.forward_request("https://example.com", "GET", [], None)
+            )
+            try:
+                assert await asyncio.to_thread(connect_entered.wait, 2)
+                forwarder.shutdown_forward_request_workers(wait=False)
+                release_connect.set()
+
+                with pytest.raises(RuntimeError, match="workers are shut down"):
+                    await asyncio.wait_for(task, timeout=2)
+            finally:
+                release_connect.set()
+                await asyncio.gather(task, return_exceptions=True)
+
+        assert socket.closed
+        assert not socket.setsockopt_calls
+        with forwarder._forward_request_active_closeables_lock:
+            assert socket not in forwarder._forward_request_active_closeables
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
     async def test_offloads_request_work_from_event_loop_thread(self):
         event_loop_thread_id = threading.get_ident()

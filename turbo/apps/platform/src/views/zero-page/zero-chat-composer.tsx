@@ -40,6 +40,7 @@ import {
   IconTemplate,
   IconUpload,
   IconVideo,
+  IconWorld,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -119,13 +120,17 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
+  WORKFLOW_TEMPLATE_CATEGORIES,
   WORKFLOW_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
   r2ImageTransformUrl,
   type IllustrationTemplateItem,
   type PresentationTemplateItem,
   type VideoTemplateItem,
+  type WebsiteTemplateItem,
   type WorkflowTemplateItem,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -186,10 +191,13 @@ import {
   setUploadPopoverOpen$,
   templatePickerOpen$,
   setTemplatePickerOpen$,
+  openWebsiteTemplatePreview$,
   templatePickerCategory$,
   setTemplatePickerCategory$,
   templatePickerSearch$,
   setTemplatePickerSearch$,
+  templatePickerWorkflowCategory$,
+  setTemplatePickerWorkflowCategory$,
   templatePickerPreviewSlug$,
   setTemplatePickerPreviewSlug$,
   restoreTemplatePickerPresentationScroll$,
@@ -229,8 +237,11 @@ import {
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
 import { Markdown } from "../components/markdown.tsx";
+import { WebsiteTemplatePreviewDialogSlot } from "./website-template-preview-dialog.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
+const COMPOSER_CONTROL_FOCUS_CLASS =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 function isHappyDomTestEnvironment(): boolean {
   return (
@@ -947,6 +958,9 @@ function selectedTemplateTitle(
   if (value?.type === "workflow") {
     return selectedWorkflowTemplateItem(value)?.title;
   }
+  if (value?.type === "website") {
+    return selectedWebsiteTemplateItem(value)?.title;
+  }
   return (
     selectedPresentationTemplateItem(value)?.title ??
     selectedIllustrationTemplateItem(value)?.title
@@ -1118,6 +1132,54 @@ function workflowTemplateMatchesSearch(
     item.id,
     item.description,
     item.connectors.join(" "),
+  ].join(" ");
+  return searchable.toLowerCase().includes(normalizedQuery);
+}
+
+function isSelectedWebsiteTemplate(
+  item: WebsiteTemplateItem,
+  value: GenerationTemplateRequest | undefined,
+): boolean {
+  return (
+    value?.type === "website" &&
+    findWebsiteTemplateItem(value.selection.websiteTemplateId)?.id === item.id
+  );
+}
+
+function toWebsiteGenerationTemplate(
+  item: WebsiteTemplateItem,
+): GenerationTemplateRequest {
+  return {
+    type: "website",
+    selection: { websiteTemplateId: item.id },
+  };
+}
+
+function selectedWebsiteTemplateItem(
+  value: GenerationTemplateRequest | undefined,
+): WebsiteTemplateItem | undefined {
+  if (value?.type !== "website") {
+    return undefined;
+  }
+  return findWebsiteTemplateItem(value.selection.websiteTemplateId);
+}
+
+function websiteTemplateMatchesSearch(
+  item: WebsiteTemplateItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+  const searchable = [
+    item.title,
+    item.id,
+    item.slug,
+    item.description,
+    item.resourceId,
+    item.sourcePath,
+    item.templateId,
   ].join(" ");
   return searchable.toLowerCase().includes(normalizedQuery);
 }
@@ -1316,12 +1378,114 @@ function VideoTemplateGrid({
   );
 }
 
+function WebsiteTemplateCard({
+  item,
+  selected,
+  onSelect,
+  onPreview,
+}: {
+  item: WebsiteTemplateItem;
+  selected: boolean;
+  onSelect: (item: WebsiteTemplateItem) => void;
+  onPreview: (item: WebsiteTemplateItem) => void;
+}) {
+  const preview = () => {
+    onPreview(item);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Preview website template ${item.title}`}
+      onClick={preview}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          preview();
+        }
+      }}
+      className={cn(
+        "group flex cursor-zoom-in flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        TEMPLATE_CARD_SHADOW,
+        selected ? "border-primary ring-1 ring-primary" : "border-border",
+      )}
+    >
+      <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
+        <img
+          alt={`${item.title} website template preview`}
+          title={`${item.title} website template preview`}
+          src={item.previewImageUrl}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          className="pointer-events-none h-full w-full bg-background object-cover"
+        />
+      </div>
+      <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {item.title}
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label={`Select website template ${item.title}`}
+          aria-pressed={selected}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(item);
+          }}
+          className={cn(
+            "h-8 shrink-0 cursor-pointer rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            selected
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-background text-foreground hover:bg-muted",
+          )}
+        >
+          Use
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WebsiteTemplateGrid({
+  items,
+  value,
+  onSelect,
+  onPreview,
+}: {
+  items: readonly WebsiteTemplateItem[];
+  value: GenerationTemplateRequest | undefined;
+  onSelect: (item: WebsiteTemplateItem) => void;
+  onPreview: (item: WebsiteTemplateItem) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((item) => {
+        return (
+          <WebsiteTemplateCard
+            key={item.id}
+            item={item}
+            selected={isSelectedWebsiteTemplate(item, value)}
+            onSelect={onSelect}
+            onPreview={onPreview}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function WorkflowTemplateConnectorIcons({
   connectors,
   compact = false,
   limit = compact ? 3 : 5,
 }: {
-  connectors: readonly ConnectorType[];
+  // Loosely typed: the curated catalog stores connectors as plain strings;
+  // isConnectorIconType narrows to the ones that actually have an icon.
+  connectors: readonly string[];
   compact?: boolean;
   limit?: number;
 }) {
@@ -1373,32 +1537,23 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
-  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div
       className={cn(
-        "group flex min-h-44 flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
+        "group flex flex-col rounded-lg border bg-card p-4 transition-colors hover:bg-muted/20",
         TEMPLATE_CARD_SHADOW,
         selected ? "border-primary ring-1 ring-primary" : "border-border",
       )}
     >
-      <div className="flex min-w-0 flex-1 gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <IconRoute size={18} stroke={1.7} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground">{item.title}</p>
-          <p className="mt-2 line-clamp-4 text-sm leading-5 text-muted-foreground">
-            {item.description}
-          </p>
-          {hasConnectorIcons ? (
-            <div className="mt-3">
-              <WorkflowTemplateConnectorIcons connectors={item.connectors} />
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <div className="mt-4 flex justify-end">
+      <p className="text-sm font-semibold text-foreground">{item.title}</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+        {item.description}
+      </p>
+      <div className="mt-auto flex items-center gap-2 pt-3.5">
+        <WorkflowTemplateConnectorIcons
+          connectors={item.connectors}
+          limit={4}
+        />
         <button
           type="button"
           aria-label={`Select workflow template ${item.title}`}
@@ -1407,7 +1562,7 @@ function WorkflowTemplateCard({
             onSelect(item);
           }}
           className={cn(
-            "h-8 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "ml-auto h-8 shrink-0 rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             selected
               ? "border-primary/40 bg-primary/10 text-primary"
               : "border-border bg-background text-foreground hover:bg-muted",
@@ -1420,6 +1575,85 @@ function WorkflowTemplateCard({
   );
 }
 
+// Resolves the workflow template tab's data in one place: the feature-gated
+// catalog, the persona pills present in it, the active pill (falling back to
+// "all"), and the items after both the pill and the search filter. Kept out of
+// TemplatePickerDialog so that component stays under its complexity budget.
+function resolveWorkflowCatalog({
+  showCatalog,
+  categoryFilter,
+  search,
+}: {
+  showCatalog: boolean;
+  categoryFilter: string;
+  search: string;
+}): ResolvedWorkflowTemplateCatalog {
+  const catalogItems = showCatalog
+    ? WORKFLOW_TEMPLATE_ITEMS
+    : WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
+        return item.category === WORKFLOW_TEMPLATE_CATEGORIES[0];
+      });
+  const pills = WORKFLOW_TEMPLATE_CATEGORIES.filter((categoryName) => {
+    return catalogItems.some((item) => {
+      return item.category === categoryName;
+    });
+  });
+  const active = pills.includes(categoryFilter) ? categoryFilter : "all";
+  const items = catalogItems.filter((item) => {
+    const matchesCategory = active === "all" || item.category === active;
+    return matchesCategory && workflowTemplateMatchesSearch(item, search);
+  });
+  return { pills, active, items };
+}
+
+interface ResolvedWorkflowTemplateCatalog {
+  pills: readonly string[];
+  active: string;
+  items: readonly WorkflowTemplateItem[];
+}
+
+// Persona pill filter for the workflow template tab, styled like the in-app
+// Ideas & Use Cases gallery: an "All" pill plus one pill per persona.
+function WorkflowTemplatePillRow({
+  pills,
+  active,
+  onSelect,
+}: {
+  pills: readonly string[];
+  active: string;
+  onSelect: (category: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
+      {["all", ...pills].map((pill) => {
+        const isActive = active === pill;
+        return (
+          <button
+            key={pill}
+            type="button"
+            aria-pressed={isActive}
+            className={cn(
+              "h-7 shrink-0 rounded-md border border-border px-2.5 text-sm font-medium leading-none transition-colors cursor-pointer",
+              isActive
+                ? "bg-muted text-foreground"
+                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+            onClick={() => {
+              onSelect(pill);
+            }}
+          >
+            {pill === "all" ? "All" : pill}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Renders the (already search + pill filtered) templates as a flat grid.
+// Categorization is handled by the persona pill row above, so there are no
+// per-persona section headers — items stay in catalog order (General first)
+// so related cards still cluster.
 function WorkflowTemplateGrid({
   items,
   value,
@@ -1622,12 +1856,14 @@ function videoPreviewImageUrlsForItems(
 function initialTemplatePreviewImageUrlsForCategory({
   category,
   hasPptTab,
+  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   presentationThemeIdBySlug,
 }: {
   category: string;
   hasPptTab: boolean;
+  hasWebsiteTab?: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   presentationThemeIdBySlug?: Readonly<Record<string, string>>;
@@ -1646,6 +1882,9 @@ function initialTemplatePreviewImageUrlsForCategory({
   }
   if (category === "video" && hasVideoTab) {
     return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
+  }
+  if (category === "website" && hasWebsiteTab) {
+    return [];
   }
   return [];
 }
@@ -4283,12 +4522,14 @@ function IllustrationTemplateCard({
 function resolveTemplatePickerCategory({
   category,
   hasPptTab,
+  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
 }: {
   category: string;
   hasPptTab: boolean;
+  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -4296,6 +4537,9 @@ function resolveTemplatePickerCategory({
   const categories: string[] = [];
   if (hasPptTab) {
     categories.push("slides");
+  }
+  if (hasWebsiteTab) {
+    categories.push("website");
   }
   if (hasIllustrationTab) {
     categories.push("illustration");
@@ -4313,6 +4557,7 @@ function resolveTemplatePickerCategory({
 function TemplatePickerTabs({
   selectedCategory,
   hasPptTab,
+  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
@@ -4320,6 +4565,7 @@ function TemplatePickerTabs({
 }: {
   selectedCategory: string;
   hasPptTab: boolean;
+  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -4356,6 +4602,28 @@ function TemplatePickerTabs({
                 stroke={1.8}
               />
               Presentation
+            </TabsTrigger>
+          )}
+          {hasWebsiteTab && (
+            <TabsTrigger
+              value="website"
+              className={cn(
+                "h-12 gap-2 rounded-none border-b-2 bg-transparent px-1 pb-3 pt-2 text-base font-semibold shadow-none focus-visible:ring-inset focus-visible:ring-offset-0",
+                selectedCategory === "website"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <IconWorld
+                className={cn(
+                  "h-5 w-5",
+                  selectedCategory === "website"
+                    ? "text-cyan-500"
+                    : "text-muted-foreground",
+                )}
+                stroke={1.8}
+              />
+              Website
             </TabsTrigger>
           )}
           {hasIllustrationTab && (
@@ -4437,7 +4705,7 @@ function IllustrationTemplateGrid({
   onSelect,
   onVariantChange,
 }: {
-  items: IllustrationTemplateItem[];
+  items: readonly IllustrationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   variantIndexBySlug: Readonly<Record<string, number>>;
   onSelect: (item: IllustrationTemplateItem) => void;
@@ -4471,7 +4739,7 @@ function PptTemplateGrid({
   onSelect,
   onPreview,
 }: {
-  items: PresentationTemplateItem[];
+  items: readonly PresentationTemplateItem[];
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   onPreview: (item: PresentationTemplateItem, slideIndex?: number) => void;
@@ -4499,6 +4767,7 @@ function TemplatePickerDialog({
   onClose,
   hasPptTab,
   presentationItems,
+  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
@@ -4508,6 +4777,7 @@ function TemplatePickerDialog({
   onClose: () => void;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
+  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -4528,6 +4798,7 @@ function TemplatePickerDialog({
   const setDetailPreview = useSet(setTemplateDetailHtmlPreview$);
   const detailThemeIdBySlug = useGet(templateDetailThemeIdBySlug$);
   const setDetailThemeId = useSet(setTemplateDetailThemeId$);
+  const openWebsiteTemplatePreview = useSet(openWebsiteTemplatePreview$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const detailSlideIndexBySlug = useGet(templateDetailSlideIndexBySlug$);
   const setDetailSlideIndex = useSet(setTemplateDetailSlideIndex$);
@@ -4559,13 +4830,27 @@ function TemplatePickerDialog({
   const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
     return videoTemplateMatchesSearch(item, search);
   });
-  const filteredWorkflowItems = WORKFLOW_TEMPLATE_ITEMS.filter((item) => {
-    return workflowTemplateMatchesSearch(item, search);
+  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS.filter((item) => {
+    return websiteTemplateMatchesSearch(item, search);
+  });
+  // The persona catalog rolls out behind a feature switch, and a persona pill
+  // filters the grid, ideation-gallery style. resolveWorkflowCatalog() keeps
+  // that branching out of this component to stay under the complexity budget.
+  const features = useLastResolved(featureSwitch$);
+  const showWorkflowTemplateCatalog =
+    features?.[FeatureSwitchKey.WorkflowTemplateCatalog] ?? false;
+  const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
+  const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
+  const workflowCatalog = resolveWorkflowCatalog({
+    showCatalog: showWorkflowTemplateCatalog,
+    categoryFilter: workflowCategoryFilter,
+    search,
   });
 
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
+    hasWebsiteTab,
     hasIllustrationTab,
     hasVideoTab,
     hasWorkflowTab,
@@ -4608,6 +4893,9 @@ function TemplatePickerDialog({
     if (targetCategory === "video" && hasVideoTab) {
       return videoPreviewImageUrlsForItems(filteredVideoItemsForSearch(query));
     }
+    if (targetCategory === "website" && hasWebsiteTab) {
+      return [];
+    }
     return [];
   };
 
@@ -4642,6 +4930,15 @@ function TemplatePickerDialog({
   const handleSelectWorkflow = (item: WorkflowTemplateItem) => {
     onChange(toWorkflowGenerationTemplate(item));
     closeTemplatePicker();
+  };
+
+  const handleSelectWebsite = (item: WebsiteTemplateItem) => {
+    onChange(toWebsiteGenerationTemplate(item));
+    closeTemplatePicker();
+  };
+
+  const handlePreviewWebsite = (item: WebsiteTemplateItem) => {
+    openWebsiteTemplatePreview(item.id);
   };
 
   const handleSelectIllustration = (item: IllustrationTemplateItem) => {
@@ -4806,6 +5103,7 @@ function TemplatePickerDialog({
               <TemplatePickerTabs
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
+                hasWebsiteTab={hasWebsiteTab}
                 hasIllustrationTab={hasIllustrationTab}
                 hasVideoTab={hasVideoTab}
                 hasWorkflowTab={hasWorkflowTab}
@@ -4829,101 +5127,228 @@ function TemplatePickerDialog({
                 </div>
               </div>
             </div>
-            {selectedCategory === "slides" && hasPptTab && (
-              <div
-                data-presentation-template-grid-scroll=""
-                ref={restorePresentationGridScrollNode}
-                className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
-                onScroll={(event) => {
-                  setPresentationGridScrollTop(event.currentTarget.scrollTop);
-                }}
-              >
-                {filteredPptItems.length > 0 ? (
-                  <PptTemplateGrid
-                    items={filteredPptItems}
-                    value={value}
-                    onSelect={handleSelectPresentation}
-                    onPreview={handlePreview}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
-                  />
-                )}
-              </div>
-            )}
-            {selectedCategory === "illustration" && (
-              <div
-                data-illustration-template-grid-scroll=""
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-                onScroll={(event) => {
-                  prewarmIllustrationPreviewImagesNearScroll({
-                    items: filteredIllustrationItems,
-                    scrollContainer: event.currentTarget,
-                    variantIndexBySlug: illustrationVariantIndex,
-                  });
-                }}
-              >
-                {filteredIllustrationItems.length > 0 ? (
-                  <IllustrationTemplateGrid
-                    items={filteredIllustrationItems}
-                    value={value}
-                    variantIndexBySlug={illustrationVariantIndex}
-                    onSelect={handleSelectIllustration}
-                    onVariantChange={setIllustrationVariantIndex}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
-                  />
-                )}
-              </div>
-            )}
-            {selectedCategory === "video" && hasVideoTab && (
-              <div
-                data-video-template-grid-scroll=""
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-              >
-                {filteredVideoItems.length > 0 ? (
-                  <VideoTemplateGrid
-                    items={filteredVideoItems}
-                    value={value}
-                    onSelect={handleSelectVideo}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
-                  />
-                )}
-              </div>
-            )}
-            {selectedCategory === "workflow" && hasWorkflowTab && (
-              <div
-                data-workflow-template-grid-scroll=""
-                className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
-              >
-                {filteredWorkflowItems.length > 0 ? (
-                  <WorkflowTemplateGrid
-                    items={filteredWorkflowItems}
-                    value={value}
-                    onSelect={handleSelectWorkflow}
-                  />
-                ) : (
-                  <TemplateEmptyPanel
-                    title="No matches"
-                    description="Try a different search."
-                  />
-                )}
-              </div>
-            )}
+            <TemplatePickerCategoryContent
+              selectedCategory={selectedCategory}
+              hasPptTab={hasPptTab}
+              hasWebsiteTab={hasWebsiteTab}
+              hasVideoTab={hasVideoTab}
+              hasWorkflowTab={hasWorkflowTab}
+              filteredPptItems={filteredPptItems}
+              filteredWebsiteItems={filteredWebsiteItems}
+              filteredIllustrationItems={filteredIllustrationItems}
+              filteredVideoItems={filteredVideoItems}
+              workflowCatalog={workflowCatalog}
+              value={value}
+              illustrationVariantIndex={illustrationVariantIndex}
+              onPresentationScroll={setPresentationGridScrollTop}
+              onRestorePresentationScroll={restorePresentationGridScrollNode}
+              onSelectPresentation={handleSelectPresentation}
+              onPreviewPresentation={handlePreview}
+              onSelectWebsite={handleSelectWebsite}
+              onPreviewWebsite={handlePreviewWebsite}
+              onSelectIllustration={handleSelectIllustration}
+              onIllustrationVariantChange={setIllustrationVariantIndex}
+              onSelectVideo={handleSelectVideo}
+              onWorkflowCategoryChange={setWorkflowCategoryFilter}
+              onSelectWorkflow={handleSelectWorkflow}
+            />
           </>
         )}
       </DialogContent>
     </Dialog>
   );
+}
+
+function TemplatePickerCategoryContent({
+  selectedCategory,
+  hasPptTab,
+  hasWebsiteTab,
+  hasVideoTab,
+  hasWorkflowTab,
+  filteredPptItems,
+  filteredWebsiteItems,
+  filteredIllustrationItems,
+  filteredVideoItems,
+  workflowCatalog,
+  value,
+  illustrationVariantIndex,
+  onPresentationScroll,
+  onRestorePresentationScroll,
+  onSelectPresentation,
+  onPreviewPresentation,
+  onSelectWebsite,
+  onPreviewWebsite,
+  onSelectIllustration,
+  onIllustrationVariantChange,
+  onSelectVideo,
+  onWorkflowCategoryChange,
+  onSelectWorkflow,
+}: {
+  selectedCategory: string;
+  hasPptTab: boolean;
+  hasWebsiteTab: boolean;
+  hasVideoTab: boolean;
+  hasWorkflowTab: boolean;
+  filteredPptItems: readonly PresentationTemplateItem[];
+  filteredWebsiteItems: readonly WebsiteTemplateItem[];
+  filteredIllustrationItems: readonly IllustrationTemplateItem[];
+  filteredVideoItems: readonly VideoTemplateItem[];
+  workflowCatalog: ResolvedWorkflowTemplateCatalog;
+  value: GenerationTemplateRequest | undefined;
+  illustrationVariantIndex: Readonly<Record<string, number>>;
+  onPresentationScroll: (value: number) => void;
+  onRestorePresentationScroll: (node: HTMLDivElement | null) => void;
+  onSelectPresentation: (
+    item: PresentationTemplateItem,
+    colorSystemId?: string,
+  ) => void;
+  onPreviewPresentation: (
+    item: PresentationTemplateItem,
+    slideIndex?: number,
+  ) => void;
+  onSelectWebsite: (item: WebsiteTemplateItem) => void;
+  onPreviewWebsite: (item: WebsiteTemplateItem) => void;
+  onSelectIllustration: (item: IllustrationTemplateItem) => void;
+  onIllustrationVariantChange: (slug: string, index: number) => void;
+  onSelectVideo: (item: VideoTemplateItem) => void;
+  onWorkflowCategoryChange: (category: string) => void;
+  onSelectWorkflow: (item: WorkflowTemplateItem) => void;
+}) {
+  if (selectedCategory === "slides" && hasPptTab) {
+    return (
+      <div
+        data-presentation-template-grid-scroll=""
+        ref={onRestorePresentationScroll}
+        className="relative flex min-h-0 flex-1 transform-gpu flex-col overflow-y-auto px-5 py-4"
+        onScroll={(event) => {
+          onPresentationScroll(event.currentTarget.scrollTop);
+        }}
+      >
+        {filteredPptItems.length > 0 ? (
+          <PptTemplateGrid
+            items={filteredPptItems}
+            value={value}
+            onSelect={onSelectPresentation}
+            onPreview={onPreviewPresentation}
+          />
+        ) : (
+          <TemplateEmptyPanel
+            title="No matches"
+            description="Try a different search."
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "website" && hasWebsiteTab) {
+    return (
+      <div
+        data-website-template-grid-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+      >
+        {filteredWebsiteItems.length > 0 ? (
+          <WebsiteTemplateGrid
+            items={filteredWebsiteItems}
+            value={value}
+            onSelect={onSelectWebsite}
+            onPreview={onPreviewWebsite}
+          />
+        ) : (
+          <TemplateEmptyPanel
+            title="No matches"
+            description="Try a different search."
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "illustration") {
+    return (
+      <div
+        data-illustration-template-grid-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        onScroll={(event) => {
+          prewarmIllustrationPreviewImagesNearScroll({
+            items: filteredIllustrationItems,
+            scrollContainer: event.currentTarget,
+            variantIndexBySlug: illustrationVariantIndex,
+          });
+        }}
+      >
+        {filteredIllustrationItems.length > 0 ? (
+          <IllustrationTemplateGrid
+            items={filteredIllustrationItems}
+            value={value}
+            variantIndexBySlug={illustrationVariantIndex}
+            onSelect={onSelectIllustration}
+            onVariantChange={onIllustrationVariantChange}
+          />
+        ) : (
+          <TemplateEmptyPanel
+            title="No matches"
+            description="Try a different search."
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "video" && hasVideoTab) {
+    return (
+      <div
+        data-video-template-grid-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+      >
+        {filteredVideoItems.length > 0 ? (
+          <VideoTemplateGrid
+            items={filteredVideoItems}
+            value={value}
+            onSelect={onSelectVideo}
+          />
+        ) : (
+          <TemplateEmptyPanel
+            title="No matches"
+            description="Try a different search."
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (selectedCategory === "workflow" && hasWorkflowTab) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {workflowCatalog.pills.length > 1 && (
+          <WorkflowTemplatePillRow
+            pills={workflowCatalog.pills}
+            active={workflowCatalog.active}
+            onSelect={onWorkflowCategoryChange}
+          />
+        )}
+        <div
+          data-workflow-template-grid-scroll=""
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4"
+        >
+          {workflowCatalog.items.length > 0 ? (
+            <WorkflowTemplateGrid
+              items={workflowCatalog.items}
+              value={value}
+              onSelect={onSelectWorkflow}
+            />
+          ) : (
+            <TemplateEmptyPanel
+              title="No matches"
+              description="Try a different search."
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function SelectedTemplateChip({
@@ -5235,6 +5660,55 @@ function SelectedWorkflowTemplateChip({
   );
 }
 
+function SelectedWebsiteTemplateChip({
+  item,
+  onOpen,
+  onRemove,
+}: {
+  item: WebsiteTemplateItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Preview website template ${item.title}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              <IconWorld
+                size={12}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Website
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {item.title}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove website template ${item.title}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
 function SelectedTemplateChipSlot({
   picker,
   onDraftChange,
@@ -5247,10 +5721,15 @@ function SelectedTemplateChipSlot({
   const setSearch = useSet(setTemplatePickerSearch$);
   const setPreviewSlug = useSet(setTemplatePickerPreviewSlug$);
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
+  const features = useLastResolved(featureSwitch$);
+  const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
   const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   const workflowItem = selectedWorkflowTemplateItem(picker?.value);
+  const websiteItem = hasWebsiteTab
+    ? selectedWebsiteTemplateItem(picker?.value)
+    : undefined;
   if (!picker) {
     return null;
   }
@@ -5261,6 +5740,7 @@ function SelectedTemplateChipSlot({
       initialTemplatePreviewImageUrlsForCategory({
         category,
         hasPptTab: true,
+        hasWebsiteTab,
         hasIllustrationTab: true,
         hasVideoTab: true,
         presentationThemeIdBySlug: cardThemeIdBySlug,
@@ -5333,6 +5813,20 @@ function SelectedTemplateChipSlot({
       />
     );
   }
+  if (websiteItem) {
+    return (
+      <SelectedWebsiteTemplateChip
+        item={websiteItem}
+        onOpen={() => {
+          return openPicker("website");
+        }}
+        onRemove={() => {
+          picker.onChange(undefined);
+          onDraftChange?.();
+        }}
+      />
+    );
+  }
   return null;
 }
 
@@ -5340,6 +5834,7 @@ function TemplatePickerButton({
   picker,
   hasPptTab,
   presentationItems,
+  hasWebsiteTab,
   hasIllustrationTab,
   hasVideoTab,
   hasWorkflowTab,
@@ -5347,6 +5842,7 @@ function TemplatePickerButton({
   picker: ComposerTemplatePicker;
   hasPptTab: boolean;
   presentationItems: readonly PresentationTemplateItem[];
+  hasWebsiteTab: boolean;
   hasIllustrationTab: boolean;
   hasVideoTab: boolean;
   hasWorkflowTab: boolean;
@@ -5361,6 +5857,7 @@ function TemplatePickerButton({
   const selectedCategory = resolveTemplatePickerCategory({
     category,
     hasPptTab,
+    hasWebsiteTab,
     hasIllustrationTab,
     hasVideoTab,
     hasWorkflowTab,
@@ -5370,6 +5867,7 @@ function TemplatePickerButton({
       initialTemplatePreviewImageUrlsForCategory({
         category: selectedCategory,
         hasPptTab,
+        hasWebsiteTab,
         hasIllustrationTab,
         hasVideoTab,
         presentationThemeIdBySlug: cardThemeIdBySlug,
@@ -5387,6 +5885,7 @@ function TemplatePickerButton({
               type="button"
               className={cn(
                 "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+                COMPOSER_CONTROL_FOCUS_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
               aria-label="Template"
@@ -5418,6 +5917,7 @@ function TemplatePickerButton({
           }}
           hasPptTab={hasPptTab}
           presentationItems={presentationItems}
+          hasWebsiteTab={hasWebsiteTab}
           hasIllustrationTab={hasIllustrationTab}
           hasVideoTab={hasVideoTab}
           hasWorkflowTab={hasWorkflowTab}
@@ -5433,6 +5933,8 @@ function ComposerTemplatePickerSlot({
   picker: ComposerTemplatePicker | undefined;
 }) {
   const hasPptTab = true;
+  const features = useLastResolved(featureSwitch$);
+  const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
   const hasIllustrationTab = true;
   const hasVideoTab = true;
   const hasWorkflowTab = true;
@@ -5445,6 +5947,7 @@ function ComposerTemplatePickerSlot({
       picker={picker}
       hasPptTab={hasPptTab}
       presentationItems={presentationItems}
+      hasWebsiteTab={hasWebsiteTab}
       hasIllustrationTab={hasIllustrationTab}
       hasVideoTab={hasVideoTab}
       hasWorkflowTab={hasWorkflowTab}
@@ -5463,7 +5966,10 @@ function CreateWorkflowPromptButton({
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9"
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
+              COMPOSER_CONTROL_FOCUS_CLASS,
+            )}
             aria-label="Create workflow"
             onClick={onCreateWorkflowPrompt}
           >
@@ -5798,7 +6304,10 @@ function ConnectorsPopoverButton({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5"
+                className={cn(
+                  "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
+                  COMPOSER_CONTROL_FOCUS_CLASS,
+                )}
                 aria-label="Connectors"
               >
                 <ConnectorTriggerIcons
@@ -6127,6 +6636,7 @@ function MicButton({
             type="button"
             className={cn(
               "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+              COMPOSER_CONTROL_FOCUS_CLASS,
               recording || starting || transcribing
                 ? "bg-[#2E9E9F] text-white hover:bg-[#279394]"
                 : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -6174,7 +6684,10 @@ function ComposerAttachButton({
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]"
+            className={cn(
+              "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+              COMPOSER_CONTROL_FOCUS_CLASS,
+            )}
             aria-label="Attach"
             onClick={onSelectFile}
           >
@@ -6225,6 +6738,7 @@ function ComposerUploadMenu({
         type="button"
         className={cn(
           "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
+          COMPOSER_CONTROL_FOCUS_CLASS,
           uploadOpen && "bg-accent text-foreground",
         )}
         aria-label="Upload"
@@ -6580,7 +7094,6 @@ function ComposerModelPickerSlot({
   modelPickerLoading,
   submitBlocker,
   codexFastModeEnabled,
-  popoverModelPickerEnabled,
   modelPickerOpen,
   onModelPickerChange,
   onModelPickerOpenChange,
@@ -6589,7 +7102,6 @@ function ComposerModelPickerSlot({
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   codexFastModeEnabled: boolean;
-  popoverModelPickerEnabled: boolean;
   modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
   onModelPickerOpenChange: (open: boolean) => void;
@@ -6611,11 +7123,11 @@ function ComposerModelPickerSlot({
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            "hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground",
+            COMPOSER_CONTROL_FOCUS_CLASS,
           )}
           compactTrigger
           mobileIconTrigger
-          pickerMode={popoverModelPickerEnabled ? "popover" : "select"}
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
           onOpenChange={onModelPickerOpenChange}
@@ -6634,11 +7146,6 @@ function ComposerModelPickerSlot({
 function useCodexFastModeEnabled(): boolean {
   const features = useLastResolved(featureSwitch$);
   return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
-}
-
-function usePopoverModelPickerEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.ComposerModelPickerPopover] ?? false;
 }
 
 function useUploadPopoverEnabled(): boolean {
@@ -6683,7 +7190,6 @@ export function ZeroChatComposer({
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const codexFastModeEnabled = useCodexFastModeEnabled();
-  const popoverModelPickerEnabled = usePopoverModelPickerEnabled();
   const uploadPopoverEnabled = useUploadPopoverEnabled();
 
   const resolved = useResolvedComposerSignals(
@@ -7153,7 +7659,6 @@ export function ZeroChatComposer({
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
                     codexFastModeEnabled={codexFastModeEnabled}
-                    popoverModelPickerEnabled={popoverModelPickerEnabled}
                     modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
                     onModelPickerOpenChange={setModelPickerOpen}
@@ -7175,6 +7680,7 @@ export function ZeroChatComposer({
           </CardContent>
         </Card>
         <ActiveGoalObjectiveDialog threadId={chatThreadId} />
+        <WebsiteTemplatePreviewDialogSlot />
       </div>
       {selectedConnType && (
         <ConnectModal

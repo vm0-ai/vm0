@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import {
+  type ArtifactItem,
   type ChatSearchMessage,
   type ChatSearchResult,
   type ChatThreadDraft,
@@ -52,6 +53,7 @@ import {
   isNull,
   lt,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -122,6 +124,22 @@ type ChatMessageRow = {
   readonly workflowTriggerAtTime: Date | null;
   readonly workflowTriggerTimezone: string | null;
   readonly workflowTriggerUserTimezone: string | null;
+};
+
+type ArtifactListSqlRow = Record<string, unknown> & {
+  readonly row_id: string;
+  readonly run_id: string;
+  readonly external_id: string;
+  readonly filename: string | null;
+  readonly content_type: string | null;
+  readonly url: string;
+  readonly metadata: unknown;
+  readonly created_at: Date | string;
+  readonly thread_id: string;
+  readonly thread_title: string | null;
+  readonly agent_id: string;
+  readonly agent_name: string | null;
+  readonly agent_avatar_url: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -934,6 +952,183 @@ export function zeroChatThreadArtifacts(args: {
     },
   );
 }
+
+function generatedArtifactCondition(): SQL {
+  return sql<boolean>`(
+    jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
+    OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+  )`;
+}
+
+function artifactRowCreatedAt(row: ArtifactListSqlRow): Date {
+  return row.created_at instanceof Date
+    ? row.created_at
+    : new Date(row.created_at);
+}
+
+function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
+  const filename = row.filename ?? row.external_id;
+  const artifactKind = parseHostedArtifactKindFromMetadata(row.metadata);
+  return {
+    artifactItemId: `${row.run_id}:${row.external_id}`,
+    threadId: row.thread_id,
+    runId: row.run_id,
+    fileId: row.external_id,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    agentAvatarUrl: row.agent_avatar_url,
+    threadTitle: row.thread_title,
+    filename,
+    contentType: row.content_type ?? inferMimetype(filename),
+    url: row.url,
+    createdAt: artifactRowCreatedAt(row).toISOString(),
+    ...(artifactKind ? { artifactKind } : {}),
+  };
+}
+
+// Default page size when a caller passes no `limit`. Kept at the historical
+// bulk cap so un-paginated callers (older frontend bundles) see the exact same
+// first page as before.
+const ARTIFACTS_DEFAULT_LIMIT = 10_000;
+const ARTIFACTS_MAX_LIMIT = 10_000;
+
+const artifactCursorSchema = z.object({
+  createdAt: z.string(),
+  rowId: z.string(),
+});
+type ArtifactCursor = z.infer<typeof artifactCursorSchema>;
+
+function encodeArtifactCursor(cursor: ArtifactCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeArtifactCursor(raw: string): ArtifactCursor {
+  return artifactCursorSchema.parse(
+    JSON.parse(Buffer.from(raw, "base64url").toString("utf8")),
+  );
+}
+
+interface ZeroArtifactsArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+interface ZeroArtifactsResult {
+  readonly artifacts: readonly ArtifactItem[];
+  readonly truncated: boolean;
+  readonly nextCursor: string | null;
+}
+
+export const zeroArtifacts$ = command(
+  async (
+    { set },
+    args: ZeroArtifactsArgs,
+    signal: AbortSignal,
+  ): Promise<ZeroArtifactsResult> => {
+    const db = set(writeDb$);
+    const limit = Math.min(
+      args.limit ?? ARTIFACTS_DEFAULT_LIMIT,
+      ARTIFACTS_MAX_LIMIT,
+    );
+    const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
+    // Keyset must be applied AFTER the DISTINCT ON (url) dedup (on the deduped
+    // representatives), matching the final ORDER BY created_at DESC, row_id
+    // DESC. Pushing it into scoped_artifacts (pre-dedup) would let an older row
+    // of an already-emitted url slip past the cursor and re-surface as a dup.
+    const keysetClause = cursor
+      ? sql`WHERE (created_at, row_id) < (${cursor.createdAt}::timestamptz, ${cursor.rowId}::uuid)`
+      : sql``;
+    const conditions: SQL[] = [
+      sql`${agentRuns.orgId} = ${args.orgId}`,
+      sql`${chatThreads.userId} = ${args.userId}`,
+      sql`${agentComposes.orgId} = ${args.orgId}`,
+      sql`${runUploadedFiles.url} IS NOT NULL`,
+      generatedArtifactCondition(),
+      sql`(
+        NOT EXISTS (
+          SELECT 1
+          FROM ${runUploadedFiles} hosted_files
+          WHERE hosted_files.run_id = ${runUploadedFiles.runId}
+            AND (
+              hosted_files.metadata->>'artifactKind' IN ('hosted-site', 'presentation-html')
+            )
+        )
+        OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+      )`,
+    ];
+
+    const rows = await db.execute<ArtifactListSqlRow>(sql`
+      WITH scoped_artifacts AS (
+        SELECT
+          ${runUploadedFiles.id} AS row_id,
+          ${runUploadedFiles.runId} AS run_id,
+          ${runUploadedFiles.externalId} AS external_id,
+          ${runUploadedFiles.filename} AS filename,
+          ${runUploadedFiles.contentType} AS content_type,
+          ${runUploadedFiles.url} AS url,
+          ${runUploadedFiles.metadata} AS metadata,
+          ${runUploadedFiles.createdAt} AS created_at,
+          ${chatThreads.id} AS thread_id,
+          ${chatThreads.title} AS thread_title,
+          ${zeroAgents.id} AS agent_id,
+          COALESCE(${zeroAgents.displayName}, ${agentComposes.name}) AS agent_name,
+          ${zeroAgents.avatarUrl} AS agent_avatar_url
+        FROM ${runUploadedFiles}
+        INNER JOIN ${agentRuns}
+          ON ${agentRuns.id} = ${runUploadedFiles.runId}
+        INNER JOIN ${zeroRuns}
+          ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+        INNER JOIN ${chatThreads}
+          ON ${chatThreads.id} = COALESCE(
+            ${zeroRuns.chatThreadId},
+            (
+              SELECT ${chatMessages.chatThreadId}
+              FROM ${chatMessages}
+              WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+              ORDER BY ${chatMessages.createdAt} ASC
+              LIMIT 1
+            )
+          )
+        INNER JOIN ${agentComposes}
+          ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+        INNER JOIN ${zeroAgents}
+          ON ${zeroAgents.id} = ${agentComposes.id}
+        WHERE ${sql.join(conditions, sql` AND `)}
+      ),
+      deduped_artifacts AS (
+        SELECT DISTINCT ON (url) *
+        FROM scoped_artifacts
+        ORDER BY url, created_at DESC, row_id DESC
+      )
+      SELECT *
+      FROM deduped_artifacts
+      ${keysetClause}
+      ORDER BY created_at DESC, row_id DESC
+      LIMIT ${limit + 1}
+    `);
+    signal.throwIfAborted();
+
+    // Over-fetch one row to detect whether a further page exists.
+    const hasMore = rows.rows.length > limit;
+    const pageRows = hasMore ? rows.rows.slice(0, limit) : rows.rows;
+    const lastRow = pageRows.at(-1);
+    const nextCursor =
+      hasMore && lastRow
+        ? encodeArtifactCursor({
+            createdAt: artifactRowCreatedAt(lastRow).toISOString(),
+            rowId: lastRow.row_id,
+          })
+        : null;
+
+    return {
+      artifacts: pageRows.map(toArtifactItem),
+      truncated: hasMore,
+      nextCursor,
+    };
+  },
+);
 
 function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
   if (row.content === null) {

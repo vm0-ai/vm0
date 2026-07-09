@@ -3,9 +3,15 @@ import {
   findImageStyle,
   findPresentationRunbookPackage,
   findVideoTemplate,
+  findWebsiteTemplatePackage,
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
+  type WebsiteTemplatePackage,
 } from "@vm0/core/resource-registry";
+import {
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "@vm0/core/website-template-items";
 import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
 
 interface PresentationGenerationTemplateInput {
@@ -38,11 +44,19 @@ interface WorkflowGenerationTemplateInput {
   };
 }
 
+interface WebsiteGenerationTemplateInput {
+  readonly type: "website";
+  readonly selection: {
+    readonly websiteTemplateId: string;
+  };
+}
+
 type GenerationTemplateInput =
   | PresentationGenerationTemplateInput
   | VideoGenerationTemplateInput
   | IllustrationGenerationTemplateInput
-  | WorkflowGenerationTemplateInput;
+  | WorkflowGenerationTemplateInput
+  | WebsiteGenerationTemplateInput;
 
 type GenerationTemplatePromptResult =
   | {
@@ -69,6 +83,9 @@ export function buildGenerationTemplatePrompt(
   }
   if (generationTemplate.type === "workflow") {
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
+  }
+  if (generationTemplate.type === "website") {
+    return buildWebsiteGenerationTemplatePrompt(generationTemplate);
   }
 
   return buildPresentationGenerationTemplatePrompt(generationTemplate);
@@ -149,6 +166,53 @@ function buildPresentationRunbookPrompt(
   };
 }
 
+function buildWebsiteGenerationTemplatePrompt(
+  generationTemplate: WebsiteGenerationTemplateInput,
+): GenerationTemplatePromptResult {
+  const item = findWebsiteTemplateItem(
+    generationTemplate.selection.websiteTemplateId,
+  );
+  if (!item) {
+    return { status: "invalid", message: "Unknown website template" };
+  }
+
+  const pkg = findWebsiteTemplatePackage(item.templateId);
+  if (!pkg) {
+    return { status: "invalid", message: "Unknown website template" };
+  }
+
+  return buildWebsiteTemplatePackagePrompt(item, pkg);
+}
+
+function buildWebsiteTemplatePackagePrompt(
+  item: WebsiteTemplateItem,
+  pkg: WebsiteTemplatePackage,
+): GenerationTemplatePromptResult {
+  const packageDir = `./generated/resources/${pkg.slug}`;
+
+  return {
+    status: "resolved",
+    prompt: [
+      ...templateFraming("a website"),
+      "Selected website template:",
+      "- Artifact type: website",
+      `- Template: ${item.title} (${item.id})`,
+      `- Template description: ${pkg.description}`,
+      `- Template package id: ${pkg.templateId}`,
+      `- Package resource: ${pkg.resourceId}`,
+      "",
+      "When you produce a website from the user's request:",
+      `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
+      `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
+      `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
+      `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
+      "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
+      "- Host the finished static website: zero host <output-dir> --site <slug>",
+      "- Return the hosted website URL and keep the generated static site as the final deliverable.",
+    ].join("\n"),
+  };
+}
+
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
 ): GenerationTemplatePromptResult {
@@ -203,7 +267,8 @@ function buildIllustrationGenerationTemplatePrompt(
       `- Style description: ${imageStyle.description}`,
       "",
       "When you produce an illustration or image from the user's request:",
-      `- Run: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>"`,
+      `- Run: zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile`,
+      '- Compile the returned packet into a final image prompt, then run `zero generate image --provider built-in --compiled-prompt "<compiled prompt>"` with any reference image URLs and requested generation parameters from the packet.',
       "- If a flag above no longer applies, run `zero generate image -h` to discover the current flags, models, providers, and styles.",
     ].join("\n"),
   };

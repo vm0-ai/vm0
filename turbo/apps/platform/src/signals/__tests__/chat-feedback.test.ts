@@ -10,9 +10,11 @@ import {
   feedbackItemsValue$,
   feedbackSelectionValue$,
   feedbackThreadIdValue$,
+  setFeedbackSelectionListenersRef$,
   setFeedbackSelectionToolbarRef$,
 } from "../zero-page/chat-feedback.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
+import { createDeferredPromise } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 // Render a minimal assistant bubble inside a thread container, matching the DOM
@@ -46,6 +48,27 @@ function dispatchShortcut(key: string): KeyboardEvent {
   return event;
 }
 
+function dispatchPointerEvent(
+  element: HTMLElement,
+  type: "pointerdown" | "pointerup" | "pointercancel",
+  pointerType = "mouse",
+): void {
+  const event = new Event(type, { bubbles: true });
+  Object.defineProperty(event, "pointerType", {
+    configurable: true,
+    value: pointerType,
+  });
+  element.dispatchEvent(event);
+}
+
+function waitForDeferredSelectionCapture(signal: AbortSignal): Promise<void> {
+  const deferred = createDeferredPromise<void>(signal);
+  window.setTimeout(() => {
+    deferred.resolve();
+  }, 0);
+  return deferred.promise;
+}
+
 describe("inline feedback thread scoping", () => {
   const ctx = testContext();
 
@@ -58,6 +81,39 @@ describe("inline feedback thread scoping", () => {
 
     expect(ctx.store.get(feedbackThreadIdValue$)).toBe("thread-a");
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(1);
+  });
+
+  it("anchors the toolbar with visible client rects when the range bounds are empty", () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    const range = document.createRange();
+    range.selectNodeContents(bubble);
+    Object.defineProperty(range, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 0, 0);
+      },
+    });
+    Object.defineProperty(range, "getClientRects", {
+      configurable: true,
+      value: () => {
+        return [
+          new DOMRect(0, 0, 0, 0),
+          new DOMRect(24, 32, 180, 20),
+        ] as unknown as DOMRectList;
+      },
+    });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    ctx.store.set(captureFeedbackSelection$);
+
+    expect(ctx.store.get(feedbackSelectionValue$)?.rect).toStrictEqual({
+      top: 32,
+      left: 24,
+      width: 180,
+      height: 20,
+    });
   });
 
   it("starts a fresh stack when feedback moves to another thread", () => {
@@ -236,6 +292,39 @@ describe("inline feedback thread scoping", () => {
     expect(event.defaultPrevented).toBeFalsy();
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(0);
     cleanup?.();
+  });
+
+  it("does not restore the toolbar from stale selection after composer interaction starts", async () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    expect(ctx.store.get(feedbackSelectionValue$)).not.toBeNull();
+
+    const listenersScope = document.createElement("span");
+    const cleanup = ctx.store.set(
+      setFeedbackSelectionListenersRef$,
+      listenersScope,
+    );
+    const composer = document.createElement("div");
+    composer.dataset.chatComposer = "true";
+    const editor = document.createElement("div");
+    editor.setAttribute("contenteditable", "true");
+    composer.appendChild(editor);
+    document.body.appendChild(composer);
+
+    dispatchPointerEvent(editor, "pointerdown");
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    expect(window.getSelection()?.toString()).toBe("Reply from thread A");
+
+    // Some browser event orders can leave the old assistant selection readable
+    // until the click completes. The composer interaction should still win.
+    selectContents(bubble);
+    editor.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await waitForDeferredSelectionCapture(ctx.signal);
+
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    cleanup?.();
+    composer.remove();
   });
 });
 

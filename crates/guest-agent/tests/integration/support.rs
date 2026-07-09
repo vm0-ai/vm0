@@ -130,6 +130,7 @@ pub(crate) fn test_http_client(retry_delay: Duration) -> guest_agent::http::Http
         server.base_url(),
         "test-token-abc123",
         "test-bypass-value",
+        TEST_RUN_ID,
         retry_delay,
     )
     .expect("build test http client")

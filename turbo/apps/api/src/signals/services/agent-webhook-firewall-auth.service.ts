@@ -68,7 +68,6 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { testOverride } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
@@ -84,6 +83,7 @@ import {
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
+import { resolveUsageAllowanceAvailabilityForRun } from "./usage-allowance.service";
 import {
   connectorRuntimeCredentialStatusForAccess,
   type ConnectorCredentialStatus,
@@ -99,17 +99,15 @@ const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
 const FIREWALL_AUTH_REFRESH_TIMEOUT_MS = 30_000;
 const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
 const MAX_OAUTH_REFRESH_LOG_FIELD_LENGTH = 128;
-const refreshTimeoutMsForTests = testOverride<number | undefined>(() => {
-  return undefined;
-});
-
-export function setFirewallAuthRefreshTimeoutMsForTests(
-  timeoutMs: number,
-): () => void {
-  refreshTimeoutMsForTests.set(timeoutMs);
-  return () => {
-    refreshTimeoutMsForTests.clear();
-  };
+function firewallAuthRefreshTimeoutMs(): number {
+  const configured = optionalEnv("FIREWALL_AUTH_REFRESH_TIMEOUT_MS");
+  if (configured === undefined) {
+    return FIREWALL_AUTH_REFRESH_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(configured, 10);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : FIREWALL_AUTH_REFRESH_TIMEOUT_MS;
 }
 
 interface FirewallAuthBody {
@@ -296,15 +294,28 @@ async function resolveBillableFirewallCacheExpiry(params: {
   if (!availability) {
     return insufficientCredits();
   }
-  if (availability.tier === "pro-suspend") {
+  if (
+    availability.tier === "pro-suspend" ||
+    availability.tier === "limited-free-1"
+  ) {
     return insufficientCredits();
   }
-  if (availability.spendableCredits <= 0) {
+  const allowance =
+    availability.spendableCredits > 0
+      ? null
+      : await resolveUsageAllowanceAvailabilityForRun(params.db, {
+          orgId: params.auth.orgId,
+          runId: params.auth.runId,
+        });
+  const spendableUnits =
+    Math.max(availability.spendableCredits, 0) +
+    (allowance?.remainingUnits ?? 0);
+  if (spendableUnits <= 0) {
     return insufficientCredits();
   }
 
   const leaseSeconds =
-    availability.spendableCredits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD
+    spendableUnits <= LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD
       ? LOW_BILLABLE_FIREWALL_LEASE_SECONDS
       : NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS;
 
@@ -813,9 +824,7 @@ function isRefreshTimeoutError(error: unknown, signal: AbortSignal): boolean {
 }
 
 function firewallAuthRefreshTimeoutSignal(): AbortSignal {
-  return AbortSignal.timeout(
-    refreshTimeoutMsForTests.get() ?? FIREWALL_AUTH_REFRESH_TIMEOUT_MS,
-  );
+  return AbortSignal.timeout(firewallAuthRefreshTimeoutMs());
 }
 
 function isReconnectRequiredRefreshErrorCode(

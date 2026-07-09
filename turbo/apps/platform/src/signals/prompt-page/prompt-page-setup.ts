@@ -4,10 +4,13 @@ import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/cha
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findWebsiteTemplateItem,
   findVideoTemplateItem,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { defaultAgentId$ } from "../agent.ts";
@@ -28,10 +31,20 @@ import {
   resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-default-selection.ts";
 
-function generationTemplateFromSearchParam(
+function templateIdFromSearchParam(
+  template: string | null,
+): string | undefined {
+  const id = template?.trim();
+  if (!id) {
+    return undefined;
+  }
+  return id;
+}
+
+function legacyGenerationTemplateFromSearchParam(
   template: string | null,
 ): GenerationTemplateRequest | undefined {
-  const id = template?.trim();
+  const id = templateIdFromSearchParam(template);
   if (!id) {
     return undefined;
   }
@@ -84,6 +97,108 @@ function generationTemplateFromSearchParam(
   };
 }
 
+function websiteGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const websiteTemplate = findWebsiteTemplateItem(id);
+  if (!websiteTemplate) {
+    return undefined;
+  }
+  return {
+    type: "website",
+    selection: {
+      websiteTemplateId: websiteTemplate.id,
+    },
+  };
+}
+
+function videoGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const videoTemplate = findVideoTemplateItem(id);
+  if (!videoTemplate) {
+    return undefined;
+  }
+  return {
+    type: "video",
+    selection: { stylePresetId: videoTemplate.id },
+  };
+}
+
+function presentationGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const presentationTemplateId = id.replace(/^presentation-template:/, "");
+  const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find(
+    (item) => {
+      return (
+        item.slug === presentationTemplateId ||
+        item.templateId === id ||
+        item.templateId === presentationTemplateId
+      );
+    },
+  );
+  if (!presentationTemplate) {
+    return undefined;
+  }
+  return {
+    type: "presentation",
+    selection: {
+      templateId: presentationTemplate.templateId,
+      colorSystemId:
+        presentationTemplate.colorSystemId ?? "color-system:warm-sand",
+      previewUrl: presentationTemplate.embedUrl,
+    },
+  };
+}
+
+function illustrationGenerationTemplateFromId(
+  id: string,
+): GenerationTemplateRequest | undefined {
+  const illustrationTemplateId = id
+    .replace(/^illustration-template:/, "")
+    .replace(/^image-template:/, "");
+  const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+    return (
+      item.slug === illustrationTemplateId ||
+      item.illustrationStyleId === id ||
+      item.illustrationStyleId === illustrationTemplateId
+    );
+  });
+  if (!illustrationTemplate) {
+    return undefined;
+  }
+  return {
+    type: "illustration",
+    selection: {
+      illustrationStyleId: illustrationTemplate.illustrationStyleId,
+    },
+  };
+}
+
+const generationTemplateParsers = [
+  websiteGenerationTemplateFromId,
+  videoGenerationTemplateFromId,
+  presentationGenerationTemplateFromId,
+  illustrationGenerationTemplateFromId,
+] as const;
+
+function generationTemplateFromSearchParam(
+  template: string | null,
+): GenerationTemplateRequest | undefined {
+  const id = templateIdFromSearchParam(template);
+  if (!id) {
+    return undefined;
+  }
+  for (const parse of generationTemplateParsers) {
+    const generationTemplate = parse(id);
+    if (generationTemplate) {
+      return generationTemplate;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Lightweight prompt deep-link endpoint.
  *
@@ -99,9 +214,12 @@ export const setupPromptPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt")?.trim();
     const requestedModel = params.get("model")?.trim();
-    const generationTemplate = generationTemplateFromSearchParam(
-      params.get("template"),
-    );
+    const template = params.get("template");
+    const generationTemplate = get(featureSwitch$)[
+      FeatureSwitchKey.WebsiteTemplates
+    ]
+      ? generationTemplateFromSearchParam(template)
+      : legacyGenerationTemplateFromSearchParam(template);
     if (!prompt) {
       set(detachedNavigateTo$, "/", { replace: true });
       return;

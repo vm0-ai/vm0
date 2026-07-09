@@ -58,6 +58,7 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         "orgRole" in auth && auth.orgRole === "admin" ? "admin" : "member",
       tenantId: body.tenantId,
       teamsUserId: body.teamsUserId,
+      teamsAadObjectId: body.teamsAadObjectId,
       teamsUserDisplayName: body.teamsUserDisplayName,
       teamsUserPrincipalName: body.teamsUserPrincipalName,
       teamId: body.teamId,

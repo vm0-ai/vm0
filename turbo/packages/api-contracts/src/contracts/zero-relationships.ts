@@ -14,6 +14,7 @@ const relationshipItemKindSchema = z.enum([
   "preference",
   "open_loop",
 ]);
+const relationshipProviderSchema = z.enum(["gmail", "slack"]);
 
 const relationshipEntitySchema = z.object({
   id: z.string().uuid(),
@@ -25,7 +26,7 @@ const relationshipEntitySchema = z.object({
 
 const relationshipSourceSchema = z.object({
   id: z.string().uuid(),
-  provider: z.literal("gmail"),
+  provider: relationshipProviderSchema,
   externalId: z.string(),
   threadId: z.string().nullable(),
   messageId: z.string().nullable(),
@@ -44,7 +45,7 @@ const relationshipItemSchema = z.object({
 
 const relationshipInteractionSchema = z.object({
   id: z.string().uuid(),
-  provider: z.literal("gmail"),
+  provider: relationshipProviderSchema,
   externalId: z.string(),
   threadId: z.string().nullable(),
   messageId: z.string().nullable(),
@@ -56,9 +57,9 @@ const relationshipInteractionSchema = z.object({
 export const relationshipRecordSchema = z.object({
   id: z.string().uuid(),
   entity: relationshipEntitySchema,
-  relationshipType: z.string(),
-  status: z.enum(["active", "quiet", "archived"]),
-  summary: z.string(),
+  relationshipType: z.string().nullable(),
+  status: z.enum(["active", "quiet", "archived"]).nullable(),
+  summary: z.string().nullable(),
   lastInteractionAt: z.string().nullable(),
   items: z.array(relationshipItemSchema),
   recentInteractions: z.array(relationshipInteractionSchema),

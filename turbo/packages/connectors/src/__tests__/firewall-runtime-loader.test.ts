@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   RUNNER_RUNTIME_FIREWALL_CATALOG_DIGEST,
+  RUNNER_RUNTIME_FIREWALL_NAMES,
   RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION,
   hasRunnerRuntimeFirewall,
+  loadAllRunnerRuntimeFirewalls,
   loadRunnerRuntimeFirewall,
 } from "../firewall-metadata/runner-runtime";
 
@@ -25,6 +27,9 @@ function parseSource(source: string): ts.SourceFile {
 }
 
 function stringLiteralText(node: ts.Node | undefined): string | null {
+  if (node !== undefined && ts.isAsExpression(node)) {
+    return stringLiteralText(node.expression);
+  }
   if (
     node === undefined ||
     (!ts.isStringLiteral(node) && !ts.isNoSubstitutionTemplateLiteral(node))
@@ -410,6 +415,14 @@ describe("firewall runtime surface", () => {
     expect(RUNNER_RUNTIME_FIREWALL_CATALOG_VERSION).toMatch(
       /^sha256-[a-f0-9]{12}$/,
     );
+    expect(Object.isFrozen(RUNNER_RUNTIME_FIREWALL_NAMES)).toBe(true);
+    expect(RUNNER_RUNTIME_FIREWALL_NAMES).toContain("github");
+    expect(RUNNER_RUNTIME_FIREWALL_NAMES).toContain(
+      "model-provider:openai-api-key",
+    );
+    expect([...RUNNER_RUNTIME_FIREWALL_NAMES].sort(compareStrings)).toEqual([
+      ...RUNNER_RUNTIME_FIREWALL_NAMES,
+    ]);
     expect(hasRunnerRuntimeFirewall("github")).toBe(true);
     expect(hasRunnerRuntimeFirewall("model-provider:openai-api-key")).toBe(
       true,
@@ -438,6 +451,24 @@ describe("firewall runtime surface", () => {
       ],
     });
     expect(missing).toBeNull();
+  });
+
+  it("loads the full runner runtime firewall catalog from generated names", async () => {
+    const firewalls = await loadAllRunnerRuntimeFirewalls();
+
+    expect(Object.keys(firewalls).sort(compareStrings)).toStrictEqual([
+      ...RUNNER_RUNTIME_FIREWALL_NAMES,
+    ]);
+    expect(firewalls.github?.name).toBe("github");
+    expect(firewalls["model-provider:openai-api-key"]?.apis[0]).toStrictEqual({
+      base: "https://api.openai.com/v1/responses",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+        },
+      },
+      permissions: [],
+    });
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {

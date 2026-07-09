@@ -13,6 +13,7 @@ const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 // Each chat thread renders inside a container tagged with its thread id. We
 // read it off the selection so a feedback draft stays bound to its own thread.
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
+const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 
 export interface FeedbackSelectionRect {
   readonly top: number;
@@ -170,6 +171,64 @@ function readAssistantSelection(): {
   return { text, range, bubble };
 }
 
+function hasVisibleArea(rect: DOMRectReadOnly): boolean {
+  return rect.width > 0 && rect.height > 0;
+}
+
+function rectFromRange(range: Range): FeedbackSelectionRect {
+  const rects = Array.from(range.getClientRects()).filter(hasVisibleArea);
+  if (rects.length === 0) {
+    const rect = range.getBoundingClientRect();
+    return {
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  const top = Math.min(
+    ...rects.map((rect) => {
+      return rect.top;
+    }),
+  );
+  const left = Math.min(
+    ...rects.map((rect) => {
+      return rect.left;
+    }),
+  );
+  const right = Math.max(
+    ...rects.map((rect) => {
+      return rect.right;
+    }),
+  );
+  const bottom = Math.max(
+    ...rects.map((rect) => {
+      return rect.bottom;
+    }),
+  );
+  return {
+    top,
+    left,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+function readFeedbackSelection(): FeedbackSelection | null {
+  const found = readAssistantSelection();
+  if (!found) {
+    return null;
+  }
+  const rect = rectFromRange(found.range);
+  return {
+    text: found.text,
+    threadId: resolveSelectionThreadId(found.bubble),
+    range: found.range.cloneRange(),
+    rect,
+  };
+}
+
 // Compose every noted fragment into a single follow-up turn, each passage
 // quoted above the note that belongs to it.
 function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
@@ -189,35 +248,42 @@ function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
-export const closeFeedbackSelectionToolbar$ = command(({ set }) => {
+const hideFeedbackSelectionToolbar$ = command(({ set }) => {
   set(resetFeedbackSelectionToolbarSignal$);
-  window.getSelection()?.removeAllRanges();
   set(feedbackSelection$, null);
+});
+
+export const closeFeedbackSelectionToolbar$ = command(({ get, set }) => {
+  if (get(feedbackSelection$) === null) {
+    return;
+  }
+  set(hideFeedbackSelectionToolbar$);
+  window.getSelection()?.removeAllRanges();
 });
 
 // Watch the document selection and drive the floating toolbar. The toolbar
 // shows whether or not the tray is open — selecting another passage and
 // clicking "Provide feedback" again is how a further fragment is added.
 export const captureFeedbackSelection$ = command(({ get, set }) => {
-  const found = readAssistantSelection();
-  if (!found) {
+  const selection = readFeedbackSelection();
+  if (!selection) {
     if (get(feedbackSelection$) !== null) {
       set(closeFeedbackSelectionToolbar$);
     }
     return;
   }
-  const rect = found.range.getBoundingClientRect();
-  set(feedbackSelection$, {
-    text: found.text,
-    threadId: resolveSelectionThreadId(found.bubble),
-    range: found.range.cloneRange(),
-    rect: {
-      top: rect.top,
-      left: rect.left,
-      width: rect.width,
-      height: rect.height,
-    },
-  });
+  set(feedbackSelection$, selection);
+});
+
+// Selectionchange can arrive after mouseup for double-click/line selections in
+// Chromium. Use it only as an additive capture path so toolbar button clicks are
+// not interrupted when focusing a button clears the native selection.
+export const captureFeedbackSelectionIfPresent$ = command(({ set }) => {
+  const selection = readFeedbackSelection();
+  if (!selection) {
+    return;
+  }
+  set(feedbackSelection$, selection);
 });
 
 // "Provide feedback" on a passage: append it as a new fragment. The newest
@@ -345,6 +411,24 @@ function shouldIgnoreTextShortcut(event: KeyboardEvent): boolean {
   return isEditableTarget(event.target);
 }
 
+function shouldDismissSelectionForInteractionTarget(
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    isEditableTarget(target) || target.closest(CHAT_COMPOSER_SELECTOR) !== null
+  );
+}
+
+function clearWindowTimer(timerId: number | null): null {
+  if (timerId !== null) {
+    window.clearTimeout(timerId);
+  }
+  return null;
+}
+
 export const setFeedbackSelectionToolbarRef$ = onRef(
   command(({ set }, el: HTMLElement, signal: AbortSignal) => {
     const toolbarSignal = set(resetFeedbackSelectionToolbarSignal$, signal);
@@ -378,23 +462,117 @@ export const setFeedbackSelectionToolbarRef$ = onRef(
 );
 
 export const setFeedbackSelectionListenersRef$ = onRef(
-  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+  command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
     const doc = el.ownerDocument;
     let captureTimerId: number | null = null;
+    let pendingDismissWhenEmpty = false;
+    let mouseIsDown = false;
+    let suppressSelectionCapture = false;
+    let suppressSelectionClearTimerId: number | null = null;
     const capture = () => {
       set(captureFeedbackSelection$);
     };
-    const captureDeferred = () => {
-      if (captureTimerId !== null) {
-        window.clearTimeout(captureTimerId);
-      }
+    const captureIfPresent = () => {
+      set(captureFeedbackSelectionIfPresent$);
+    };
+    const captureDeferred = (dismissWhenEmpty: boolean) => {
+      pendingDismissWhenEmpty ||= dismissWhenEmpty;
+      captureTimerId = clearWindowTimer(captureTimerId);
       captureTimerId = window.setTimeout(() => {
+        const shouldDismissWhenEmpty = pendingDismissWhenEmpty;
         captureTimerId = null;
-        capture();
+        pendingDismissWhenEmpty = false;
+        if (shouldDismissWhenEmpty) {
+          capture();
+          return;
+        }
+        captureIfPresent();
       }, 0);
     };
+    const clearSuppressedSelectionCaptureSoon = () => {
+      suppressSelectionClearTimerId = clearWindowTimer(
+        suppressSelectionClearTimerId,
+      );
+      suppressSelectionClearTimerId = window.setTimeout(() => {
+        suppressSelectionCapture = false;
+        suppressSelectionClearTimerId = null;
+      }, 0);
+    };
+    const dismissSelectionForComposerInteraction = (
+      target: EventTarget | null,
+    ) => {
+      if (
+        get(feedbackSelection$) === null ||
+        !shouldDismissSelectionForInteractionTarget(target)
+      ) {
+        return;
+      }
+      suppressSelectionCapture = true;
+      // Do not clear the native selection here: the composer may already own
+      // the caret by the time the popover finishes closing.
+      set(hideFeedbackSelectionToolbar$);
+    };
 
-    doc.addEventListener("mouseup", captureDeferred, { signal });
+    // Starting an interaction in the composer should hand focus back to the
+    // composer, not let a stale assistant selection reopen the toolbar.
+    doc.addEventListener(
+      "pointerdown",
+      (event) => {
+        dismissSelectionForComposerInteraction(event.target);
+      },
+      { capture: true, signal },
+    );
+    doc.addEventListener(
+      "pointerup",
+      (event) => {
+        // Mouse interactions finish through the mouseup path below; touch/pen
+        // may not, so clear their suppression after the pointer sequence.
+        if ((event as PointerEvent).pointerType !== "mouse") {
+          clearSuppressedSelectionCaptureSoon();
+        }
+      },
+      { signal },
+    );
+    doc.addEventListener("pointercancel", clearSuppressedSelectionCaptureSoon, {
+      signal,
+    });
+    doc.addEventListener(
+      "mousedown",
+      () => {
+        mouseIsDown = true;
+      },
+      { capture: true, signal },
+    );
+    doc.addEventListener(
+      "mouseup",
+      () => {
+        mouseIsDown = false;
+        if (suppressSelectionCapture) {
+          suppressSelectionCapture = false;
+          return;
+        }
+        captureDeferred(true);
+      },
+      { signal },
+    );
+    doc.addEventListener(
+      "dblclick",
+      () => {
+        mouseIsDown = false;
+        captureDeferred(false);
+      },
+      { signal },
+    );
+    doc.addEventListener(
+      "selectionchange",
+      () => {
+        if (mouseIsDown || suppressSelectionCapture) {
+          return;
+        }
+        captureDeferred(false);
+      },
+      { signal },
+    );
     doc.addEventListener("keyup", capture, { signal });
     doc.addEventListener(
       "scroll",
@@ -410,10 +588,10 @@ export const setFeedbackSelectionListenersRef$ = onRef(
     signal.addEventListener(
       "abort",
       () => {
-        if (captureTimerId !== null) {
-          window.clearTimeout(captureTimerId);
-          captureTimerId = null;
-        }
+        captureTimerId = clearWindowTimer(captureTimerId);
+        suppressSelectionClearTimerId = clearWindowTimer(
+          suppressSelectionClearTimerId,
+        );
       },
       { once: true },
     );

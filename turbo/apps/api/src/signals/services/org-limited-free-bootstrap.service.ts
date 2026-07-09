@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -121,7 +121,7 @@ async function ensureBootstrapComposeRow(
 }
 
 function isPaidTier(tier: string): boolean {
-  return tier === "pro" || tier === "team";
+  return tier === "pro" || tier === "team" || tier === "custom";
 }
 
 async function reserveBootstrapCompose(
@@ -257,7 +257,7 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
       {
         orgId: args.orgId,
         type: "vm0",
-        selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+        selectedModel: LIMITED_FREE1_DEFAULT_RUN_MODEL,
       },
       signal,
     );

@@ -1,3 +1,9 @@
+import {
+  WEBSITE_TEMPLATE_ITEMS,
+  findWebsiteTemplateItem,
+  type WebsiteTemplateItem,
+} from "./website-template-items";
+
 export type GenerationTarget =
   | "image"
   | "presentation"
@@ -3613,6 +3619,108 @@ export function findPresentationRunbookResource(
   };
 }
 
+// ── Website template packages ────────────────────────────────────────────────
+// Self-contained website packages uploaded to private R2. Keep these pull-only
+// resources out of RESOURCE_REGISTRY so the feature-switched picker remains the
+// only user-facing catalog for built-in website templates.
+
+export interface WebsiteTemplatePackage {
+  /** Picker template id; this is also the pull id for website packages. */
+  readonly templateId: WebsiteTemplateItem["templateId"];
+  readonly resourceId: WebsiteTemplateItem["resourceId"];
+  readonly slug: WebsiteTemplateItem["slug"];
+  readonly name: WebsiteTemplateItem["title"];
+  readonly description: WebsiteTemplateItem["description"];
+  readonly source: ResourceSourceRef;
+}
+
+// Archive digests for uploaded private R2 website template packages. Keep these
+// in sync with the private R2 version ids served by the API download route.
+const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
+  "black-slabs":
+    "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
+  "blueprint-grid":
+    "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
+  "coastal-hotel":
+    "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
+  "frame-stack":
+    "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
+  "gallery-wall":
+    "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
+  "glass-bloom":
+    "0c61488baa294fb13c58aa129e3ae99f0cd4ff9125459761a1b2c1390b860f93",
+  "serif-stack":
+    "cf5137a7b6788f4d7cb24bda358a8e1971c0e7ed026d50e6cf292f6bf0cd0c14",
+  "sticker-pop":
+    "2086113018279f28e23489cf7a0f3663c37a23210fb106c4ed48d8c19923f78f",
+  "warm-cards":
+    "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
+};
+
+function websiteTemplateArchiveSha256(slug: string): string {
+  const sha256 = WEBSITE_TEMPLATE_ARCHIVE_SHA256[slug];
+  if (!sha256) {
+    throw new Error(`Missing website template archive sha256 for ${slug}`);
+  }
+  return sha256;
+}
+
+const WEBSITE_TEMPLATE_PACKAGES: readonly WebsiteTemplatePackage[] =
+  WEBSITE_TEMPLATE_ITEMS.map((item) => {
+    return {
+      templateId: item.templateId,
+      resourceId: item.resourceId,
+      slug: item.sourcePath,
+      name: item.title,
+      description: item.description,
+      source: privateR2ArchiveSource(
+        item.sourcePath,
+        websiteTemplateArchiveSha256(item.slug),
+      ),
+    };
+  });
+
+function websiteTemplatePackageToRegistryEntry(
+  pkg: WebsiteTemplatePackage,
+): RegistryEntry {
+  return {
+    id: pkg.resourceId,
+    kind: "template",
+    name: pkg.name,
+    description: pkg.description,
+    source: pkg.source,
+    targets: ["website"],
+  };
+}
+
+export function listWebsiteTemplatePackages(): readonly WebsiteTemplatePackage[] {
+  return WEBSITE_TEMPLATE_PACKAGES;
+}
+
+export function findWebsiteTemplatePackage(
+  templateId: string,
+): WebsiteTemplatePackage | undefined {
+  const normalizedTemplateId =
+    findWebsiteTemplateItem(templateId)?.templateId ?? templateId;
+  return WEBSITE_TEMPLATE_PACKAGES.find((pkg) => {
+    return pkg.templateId === normalizedTemplateId;
+  });
+}
+
+export function findWebsiteTemplateResource(
+  resourceId: string,
+): RegistryEntry | undefined {
+  const normalizedResourceId =
+    findWebsiteTemplateItem(resourceId)?.resourceId ?? resourceId;
+  const pkg = WEBSITE_TEMPLATE_PACKAGES.find((entry) => {
+    return entry.resourceId === normalizedResourceId;
+  });
+  if (!pkg) {
+    return undefined;
+  }
+  return websiteTemplatePackageToRegistryEntry(pkg);
+}
+
 const COLOR_SYSTEM_ID_PREFIX = "color-system:";
 
 /**
@@ -3769,9 +3877,20 @@ export function listTemplates(
   if (target === undefined) {
     return all;
   }
-  return all.filter((entry) => {
+  const filtered = all.filter((entry) => {
     return entry.targets?.includes(target) ?? false;
   });
+  if (target !== "website") {
+    return filtered;
+  }
+  const websitePackageEntries = WEBSITE_TEMPLATE_PACKAGES.map(
+    websiteTemplatePackageToRegistryEntry,
+  ).filter((entry) => {
+    return !filtered.some((template) => {
+      return template.id === entry.id;
+    });
+  });
+  return [...filtered, ...websitePackageEntries];
 }
 
 export function findTemplate(id: string): RegistryEntry | undefined {

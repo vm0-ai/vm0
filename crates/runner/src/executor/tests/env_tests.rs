@@ -6,6 +6,7 @@ use api_contracts::generated::types::runners::storage::{
 };
 use sandbox::SandboxId;
 use sandbox_mock::MockSandbox;
+use serde_json::json;
 
 use super::super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -28,7 +29,7 @@ use crate::host_env::{
     RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::ids::RunId;
-use crate::types::{ExecutionContext, ResumeSession, SandboxReuseResult};
+use crate::types::{CodexRuntimeConfig, ExecutionContext, ResumeSession, SandboxReuseResult};
 
 fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
     let sandbox_id = SandboxId::new_v4().to_string();
@@ -38,6 +39,18 @@ fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
         &sandbox_id,
         SandboxReuseResult::Reused,
     )
+}
+
+fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> CodexRuntimeConfig {
+    CodexRuntimeConfig {
+        provider_id: "minimax".into(),
+        name: "MiniMax".into(),
+        base_url: "https://api.minimax.io/v1".into(),
+        env_key: "OPENAI_API_KEY".into(),
+        wire_api: "responses".into(),
+        supports_websockets: false,
+        model_catalog,
+    }
 }
 
 #[test]
@@ -1028,6 +1041,14 @@ async fn write_user_env_file_uses_private_write_for_small_env() {
         .unwrap();
 
     assert_eq!(path, guest_user_env_file_path(run_id).unwrap());
+    assert!(
+        path.ends_with(&format!(
+            "/{}/{}",
+            guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME,
+            guest_contracts::env::USER_ENV_FILENAME
+        )),
+        "got: {path}"
+    );
     assert!(sandbox.exec_calls().is_empty());
     assert!(sandbox.write_file_calls().is_empty());
     let writes = sandbox.private_write_file_calls();
@@ -1213,6 +1234,65 @@ fn build_run_payload_for_run_rejects_prompt_nul() {
 }
 
 #[test]
+fn build_run_payload_for_run_serializes_codex_runtime_config() {
+    let mut ctx = minimal_context();
+    ctx.codex_runtime_config = Some(codex_runtime_config_for_test(Some(json!({
+        "models": [{ "slug": "MiniMax-M3" }],
+    }))));
+
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&payload.codex_runtime_config).unwrap();
+
+    assert_eq!(value["providerId"], "minimax");
+    assert_eq!(value["baseUrl"], "https://api.minimax.io/v1");
+    assert_eq!(value["envKey"], "OPENAI_API_KEY");
+    assert_eq!(value["wireApi"], "responses");
+    assert_eq!(value["supportsWebsockets"], false);
+    assert_eq!(value["modelCatalog"]["models"][0]["slug"], "MiniMax-M3");
+}
+
+#[test]
+fn build_run_payload_for_run_omits_absent_codex_runtime_config() {
+    let ctx = minimal_context();
+
+    let payload = build_run_payload_for_run(&ctx).unwrap();
+
+    assert!(payload.codex_runtime_config.is_empty());
+}
+
+#[test]
+fn execution_context_validation_rejects_codex_runtime_config_nul() {
+    let secret = "Mini\0Max";
+    let mut ctx = minimal_context();
+    let mut config = codex_runtime_config_for_test(None);
+    config.name = secret.into();
+    ctx.codex_runtime_config = Some(config);
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("run payload"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_CODEX_RUNTIME_CONFIG"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
+fn execution_context_validation_rejects_codex_runtime_config_catalog_nul() {
+    let secret = "MiniMax\0M3";
+    let mut ctx = minimal_context();
+    ctx.codex_runtime_config = Some(codex_runtime_config_for_test(Some(json!({
+        "models": [{ "slug": secret }],
+    }))));
+
+    let error = validate_context_for_test(&ctx).unwrap_err();
+
+    assert!(error.contains("run payload"));
+    assert!(error.contains("NUL byte"));
+    assert!(error.contains("VM0_CODEX_RUNTIME_CONFIG"));
+    assert!(!error.contains(secret));
+}
+
+#[test]
 fn build_env_json_with_user_timezone() {
     let mut ctx = minimal_context();
     ctx.user_timezone = Some("Asia/Shanghai".into());
@@ -1289,9 +1369,9 @@ fn build_env_json_with_mock_claude() {
 }
 
 #[test]
-fn build_env_json_mock_claude_suppressed_by_debug_flag() {
+fn build_env_json_mock_claude_suppressed_by_real_agent_preview_flag() {
     let mut ctx = minimal_context();
-    ctx.debug_no_mock_claude = Some(true);
+    ctx.real_agent_in_preview = Some(true);
     let env = build_env_for_test_with_host_env(
         &ctx,
         "http://localhost",
@@ -1320,10 +1400,10 @@ fn build_env_json_with_mock_codex() {
 }
 
 #[test]
-fn build_env_json_mock_codex_suppressed_by_debug_flag() {
+fn build_env_json_mock_codex_suppressed_by_real_agent_preview_flag() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    ctx.debug_no_mock_codex = Some(true);
+    ctx.real_agent_in_preview = Some(true);
     let env = build_env_for_test_with_host_env(
         &ctx,
         "http://localhost",

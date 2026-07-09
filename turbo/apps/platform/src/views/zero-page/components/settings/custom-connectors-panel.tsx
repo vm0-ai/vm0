@@ -25,7 +25,7 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
-import { runAfterDropdownMenuClose } from "../../../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 
 function CustomConnectorRow({
@@ -93,13 +93,9 @@ function CustomConnectorRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               {!connector.hasSecret && (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    runAfterDropdownMenuClose(onConnect);
-                  }}
-                >
+                <DropdownMenuModalItem onModalSelect={onConnect}>
                   Connect
-                </DropdownMenuItem>
+                </DropdownMenuModalItem>
               )}
               {connector.hasSecret && (
                 <DropdownMenuItem onClick={onDisconnect}>
@@ -108,21 +104,15 @@ function CustomConnectorRow({
               )}
               {isAdmin && (
                 <>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      runAfterDropdownMenuClose(onRename);
-                    }}
-                  >
+                  <DropdownMenuModalItem onModalSelect={onRename}>
                     Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      runAfterDropdownMenuClose(onDelete);
-                    }}
+                  </DropdownMenuModalItem>
+                  <DropdownMenuModalItem
+                    onModalSelect={onDelete}
                     className="text-destructive focus:text-destructive"
                   >
                     Delete
-                  </DropdownMenuItem>
+                  </DropdownMenuModalItem>
                 </>
               )}
             </DropdownMenuContent>

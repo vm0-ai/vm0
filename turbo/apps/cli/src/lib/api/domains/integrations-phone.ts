@@ -20,6 +20,7 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 interface DownloadPhoneFileResult {
   path: string;
@@ -96,7 +97,9 @@ export async function downloadPhoneFile(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders(headers),
+  });
 
   if (!response.ok) {
     let message = `Failed to download AgentPhone file (HTTP ${response.status})`;

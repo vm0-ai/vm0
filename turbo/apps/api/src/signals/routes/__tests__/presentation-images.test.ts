@@ -1,6 +1,5 @@
 import { presentationImagesContract } from "@vm0/api-contracts/contracts/presentation-images";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +8,6 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -51,22 +49,11 @@ function zeroToken(
   });
 }
 
-async function enableUnsplashPreferred(
-  fixture: PresentationImagesFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(
-    context,
-    { userId: fixture.userId, orgId: fixture.orgId },
-    { [FeatureSwitchKey.PresentationImageUnsplashPreferred]: true },
-  );
-}
-
 describe("POST /api/presentation/images/resolve", () => {
   it("resolves image briefs through Unsplash with per-request query dedupe", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    await enableUnsplashPreferred(fixture);
     const searchQueries: string[] = [];
     const downloadPhotoIds: string[] = [];
 
@@ -250,7 +237,6 @@ describe("POST /api/presentation/images/resolve", () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    await enableUnsplashPreferred(fixture);
     server.use(
       http.get(UNSPLASH_SEARCH_URL, () => {
         return HttpResponse.json({ results: [] });
@@ -285,7 +271,6 @@ describe("POST /api/presentation/images/resolve", () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
-    await enableUnsplashPreferred(fixture);
     server.use(
       http.get(UNSPLASH_SEARCH_URL, () => {
         return HttpResponse.error();
@@ -338,21 +323,13 @@ describe("POST /api/presentation/images/resolve", () => {
     });
   });
 
-  it("resolves directly through Pexels when the switch is off", async () => {
-    // Use an isolated org/user so no PresentationImageUnsplashPreferred override
-    // from earlier tests leaks in and flips this to the Unsplash-preferred path.
+  it("resolves directly through Pexels when Unsplash is not configured", async () => {
     const fixture = createFixture("_pexels_only");
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
-    mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
     mockEnv("PEXELS_API_KEY", "test-pexels-key");
 
-    let unsplashCalled = false;
     const pexelsQueries: string[] = [];
     server.use(
-      http.get(UNSPLASH_SEARCH_URL, () => {
-        unsplashCalled = true;
-        return HttpResponse.json({ results: [] });
-      }),
       http.get(PEXELS_SEARCH_URL, ({ request }) => {
         expect(request.headers.get("authorization")).toBe("test-pexels-key");
         const url = new URL(request.url);
@@ -388,8 +365,6 @@ describe("POST /api/presentation/images/resolve", () => {
       [200],
     );
 
-    // Switch off: Unsplash is never consulted even though its key is present.
-    expect(unsplashCalled).toBeFalsy();
     expect(pexelsQueries).toStrictEqual(["city skyline"]);
     expect(response.body.items).toStrictEqual([
       {
@@ -414,12 +389,11 @@ describe("POST /api/presentation/images/resolve", () => {
     ]);
   });
 
-  it("falls back to Pexels when the switch is on and Unsplash has no result", async () => {
+  it("falls back to Pexels when Unsplash has no result", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
     mockEnv("PEXELS_API_KEY", "test-pexels-key");
-    await enableUnsplashPreferred(fixture);
 
     let unsplashCalled = false;
     server.use(
@@ -455,7 +429,6 @@ describe("POST /api/presentation/images/resolve", () => {
       [200],
     );
 
-    // Switch on: Unsplash is tried first, then Pexels resolves the fallback.
     expect(unsplashCalled).toBeTruthy();
     expect(response.body.items).toStrictEqual([
       {

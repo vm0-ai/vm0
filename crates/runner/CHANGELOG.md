@@ -1,5 +1,208 @@
 # Changelog
 
+## [0.141.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.0...runner-rs-v0.141.1) (2026-07-09)
+
+
+### Performance Improvements
+
+* preallocate storage cache body buffers ([#20810](https://github.com/vm0-ai/vm0/issues/20810)) ([1db13a2](https://github.com/vm0-ai/vm0/commit/1db13a209cf54ebb08ad9a5f976e9cc904ad7567))
+
+## [0.141.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.2...runner-rs-v0.141.0) (2026-07-09)
+
+
+### Features
+
+* **runner:** add service stop cleanup policies ([#20769](https://github.com/vm0-ai/vm0/issues/20769)) ([e499917](https://github.com/vm0-ai/vm0/commit/e49991791d96e70bcb909a6b57ccda9669316e99))
+
+
+### Bug Fixes
+
+* parse runner service cgroups robustly ([#20792](https://github.com/vm0-ai/vm0/issues/20792)) ([53ecb3e](https://github.com/vm0-ai/vm0/commit/53ecb3e6bb7f741df1410d739779e7a1bd338d11))
+
+## [0.140.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.1...runner-rs-v0.140.2) (2026-07-09)
+
+
+### Refactoring
+
+* split runner executor diagnostics ([#20783](https://github.com/vm0-ai/vm0/issues/20783)) ([0d02016](https://github.com/vm0-ai/vm0/commit/0d02016d478208bb35dea0a8602614ab85c18b02))
+
+## [0.140.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.0...runner-rs-v0.140.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* retry transient session history blob downloads ([#20760](https://github.com/vm0-ai/vm0/issues/20760)) ([fd7e2d2](https://github.com/vm0-ai/vm0/commit/fd7e2d2434e77c7b1709c24a5d4005165f7170fa))
+
+## [0.140.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.5...runner-rs-v0.140.0) (2026-07-09)
+
+
+### Features
+
+* gate runner readiness on starting mode ([#20720](https://github.com/vm0-ai/vm0/issues/20720)) ([2d07aec](https://github.com/vm0-ai/vm0/commit/2d07aec8042eeabeff3b316b246b29fbbdba3c99))
+
+
+### Performance Improvements
+
+* cache session history with workspace images ([#20733](https://github.com/vm0-ai/vm0/issues/20733)) ([d588e5a](https://github.com/vm0-ai/vm0/commit/d588e5a9aa6e67ca18199cd74cadfa7dd4d66418))
+
+## [0.139.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.4...runner-rs-v0.139.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* bound zstd usage validation ([#20708](https://github.com/vm0-ai/vm0/issues/20708)) ([ba4069e](https://github.com/vm0-ai/vm0/commit/ba4069e87f9cc56e1fad5168fe6c9750141d69fc))
+
+
+### Documentation
+
+* clarify runner active run status schema ([#20686](https://github.com/vm0-ai/vm0/issues/20686)) ([1849808](https://github.com/vm0-ai/vm0/commit/18498089b25834157327be0142ed89637bedc6c0))
+
+
+### Refactoring
+
+* expose auth cache test hooks ([#20705](https://github.com/vm0-ai/vm0/issues/20705)) ([bfaceb4](https://github.com/vm0-ai/vm0/commit/bfaceb452d465411cceb39fd5beab4db3955dbe3))
+
+## [0.139.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.3...runner-rs-v0.139.4) (2026-07-08)
+
+
+### Documentation
+
+* **runner:** document network policy refresh safety contract ([#20695](https://github.com/vm0-ai/vm0/issues/20695)) ([ac6d18c](https://github.com/vm0-ai/vm0/commit/ac6d18c9b3733f429fa1fe3805100d4bfb752793))
+
+
+### Refactoring
+
+* **mitm-addon:** extract upstream admission owner ([#20677](https://github.com/vm0-ai/vm0/issues/20677)) ([fedd3e4](https://github.com/vm0-ai/vm0/commit/fedd3e4cd6a13c016658f0d973ceb531c80f6f7d))
+
+## [0.139.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.2...runner-rs-v0.139.3) (2026-07-08)
+
+## [0.139.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.1...runner-rs-v0.139.2) (2026-07-08)
+
+
+### Bug Fixes
+
+* add runner api transport diagnostics ([#20648](https://github.com/vm0-ai/vm0/issues/20648)) ([73243b9](https://github.com/vm0-ai/vm0/commit/73243b94d15d23d161b99807c2f4f0cf3374632d))
+
+## [0.139.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.0...runner-rs-v0.139.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
+* prune stale runner direct candidates ([#20649](https://github.com/vm0-ai/vm0/issues/20649)) ([191387f](https://github.com/vm0-ai/vm0/commit/191387fcdb094faae15cb83c940d463bcf5d580a))
+
+## [0.139.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.2...runner-rs-v0.139.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+
+
+### Refactoring
+
+* **mitm-addon:** extract connector diagnostic owner ([#20624](https://github.com/vm0-ai/vm0/issues/20624)) ([96ec313](https://github.com/vm0-ai/vm0/commit/96ec313c48ccba2f838c642b353bbfb1fdb3d5c7))
+
+## [0.138.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.1...runner-rs-v0.138.2) (2026-07-08)
+
+
+### Performance Improvements
+
+* add session history fetch response telemetry ([#20605](https://github.com/vm0-ai/vm0/issues/20605)) ([146fc5b](https://github.com/vm0-ai/vm0/commit/146fc5b39f9697ebb318bf01ca086506e7c0bc66))
+
+## [0.138.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.138.0...runner-rs-v0.138.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* add builtin firewall fallback telemetry ([#20603](https://github.com/vm0-ai/vm0/issues/20603)) ([8c99cfb](https://github.com/vm0-ai/vm0/commit/8c99cfbe7327e0e50bad252fdf773d7ff7c8f000))
+
+
+### Refactoring
+
+* **mitm-addon:** extract request classification owner ([#20587](https://github.com/vm0-ai/vm0/issues/20587)) ([a571d98](https://github.com/vm0-ai/vm0/commit/a571d98dd8d4a3a456306fa41edf710f877ec176))
+
+## [0.138.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.137.0...runner-rs-v0.138.0) (2026-07-08)
+
+
+### Features
+
+* add platform client headers to runner requests ([#20577](https://github.com/vm0-ai/vm0/issues/20577)) ([dee5306](https://github.com/vm0-ai/vm0/commit/dee53066bbc014e302a85aa085136b408e2df833))
+* preload runner builtin firewall catalog ([#20535](https://github.com/vm0-ai/vm0/issues/20535)) ([72eec90](https://github.com/vm0-ai/vm0/commit/72eec90baafa5c7600c59184ee3746249154a0dc))
+
+
+### Bug Fixes
+
+* **mitm-addon:** detach auth base forwards from executor shutdown ([#20529](https://github.com/vm0-ai/vm0/issues/20529)) ([323833a](https://github.com/vm0-ai/vm0/commit/323833af1318279b31062d044cecae21d229bfd3))
+
+
+### Refactoring
+
+* **mitm-addon:** add flow metadata boundaries ([#20552](https://github.com/vm0-ai/vm0/issues/20552)) ([9787277](https://github.com/vm0-ai/vm0/commit/97872771829f96ec3daf03868d6905b32038d6ee))
+* **mitm-addon:** extract local response construction ([#20554](https://github.com/vm0-ai/vm0/issues/20554)) ([9495f55](https://github.com/vm0-ai/vm0/commit/9495f55419face681f2a63c7cb8e9e3bb87e10e6))
+
+
+### Performance Improvements
+
+* add direct ably claim timing telemetry ([#20579](https://github.com/vm0-ai/vm0/issues/20579)) ([3167db5](https://github.com/vm0-ai/vm0/commit/3167db5f5a44b4c72fd07ebf6b162d2e41b1cad9))
+
+## [0.137.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.6...runner-rs-v0.137.0) (2026-07-07)
+
+
+### Features
+
+* add playstation connector ([#20459](https://github.com/vm0-ai/vm0/issues/20459)) ([588ee8b](https://github.com/vm0-ai/vm0/commit/588ee8b242242277e752c91f64a1b9698b6d3afd))
+
+
+### Bug Fixes
+
+* **runner:** prevent service drain restarts ([#20496](https://github.com/vm0-ai/vm0/issues/20496)) ([1a250e4](https://github.com/vm0-ai/vm0/commit/1a250e4d8e01157eb14d7fc4b35a6a63e916d43f))
+
+
+### Refactoring
+
+* accept empty artifact manifests without archive urls ([#20525](https://github.com/vm0-ai/vm0/issues/20525)) ([1ce8bfd](https://github.com/vm0-ai/vm0/commit/1ce8bfd954a2c9c0d963dd0a46e34b31fdceb73f))
+* **mitm-addon:** extract tcp logging owner ([#20543](https://github.com/vm0-ai/vm0/issues/20543)) ([deb5fbc](https://github.com/vm0-ai/vm0/commit/deb5fbc86cf29ae4dc0b56cb870858a8090a88a3))
+* **mitm-addon:** split flow metadata key linter ([#20545](https://github.com/vm0-ai/vm0/issues/20545)) ([9b51a50](https://github.com/vm0-ai/vm0/commit/9b51a50a180c1e3ac62ab4357e11b9359e863b43))
+
+## [0.136.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.5...runner-rs-v0.136.6) (2026-07-07)
+
+
+### Refactoring
+
+* document mitm hook state ownership ([#20517](https://github.com/vm0-ai/vm0/issues/20517)) ([695971e](https://github.com/vm0-ai/vm0/commit/695971e09a8e4c4e2552e659e4ace4bae7a8ad29))
+* **mitm-addon:** extract flow metadata key linter ([#20503](https://github.com/vm0-ai/vm0/issues/20503)) ([0c0e806](https://github.com/vm0-ai/vm0/commit/0c0e80694a4cc010dcac437de735eb27af8c1a0c))
+
+
+### Performance Improvements
+
+* add session history attribution telemetry ([#20497](https://github.com/vm0-ai/vm0/issues/20497)) ([2daa651](https://github.com/vm0-ai/vm0/commit/2daa6519837d9f2ca3bbc640e2f1d8e8cc135630))
+
+## [0.136.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.4...runner-rs-v0.136.5) (2026-07-07)
+
+
+### Documentation
+
+* **mitm-addon:** document usage buffer flush signals ([#20500](https://github.com/vm0-ai/vm0/issues/20500)) ([1f1c0c3](https://github.com/vm0-ai/vm0/commit/1f1c0c317730654db43e49ed97ab2bbd2640d596))
+
+## [0.136.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.3...runner-rs-v0.136.4) (2026-07-07)
+
+## [0.136.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.2...runner-rs-v0.136.3) (2026-07-07)
+
+## [0.136.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.1...runner-rs-v0.136.2) (2026-07-07)
+
+
+### Refactoring
+
+* **runner:** split network log manager ownership ([#20454](https://github.com/vm0-ai/vm0/issues/20454)) ([c7a7c0b](https://github.com/vm0-ai/vm0/commit/c7a7c0bac780febd0e2631056d54b3a183b64f24))
+
+
+### Performance Improvements
+
+* reuse codex zstd session history ([#20450](https://github.com/vm0-ai/vm0/issues/20450)) ([e9b1a48](https://github.com/vm0-ai/vm0/commit/e9b1a48e0e36b8ae75bceab667fd8d6f70fd2ede))
+
+## [0.136.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.136.0...runner-rs-v0.136.1) (2026-07-07)
+
 ## [0.136.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.135.0...runner-rs-v0.136.0) (2026-07-06)
 
 

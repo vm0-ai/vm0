@@ -770,10 +770,10 @@ jobs:
                   type: mrkdwn
                   text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Build web app production deployment (Staged - prod-eligible, not serving traffic)
+  # Build API production deployment (Staged - prod-eligible, not serving traffic)
   build-api-production:
     needs: release-please
-    if: ${{ needs.release-please.outputs.api_deploy_required == 'true' }}
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1126,9 +1126,7 @@ jobs:
     if: >-
       always() &&
       !failure() && !cancelled() &&
-      needs.release-please.outputs.api_deploy_required == 'true' &&
-      (needs.release-please.outputs.api_release_created != 'true' ||
-       needs.migrate-production.result == 'success')
+      needs.release-please.outputs.releases_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
@@ -1364,16 +1362,11 @@ jobs:
           skip-finish: "true"
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
-            VITE_VERCEL_ENV=production
-            VITE_API_URL=https://www.vm0.ai
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
-            VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL || 'https://www.vm0.ai' }}
-            PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL }}
-            VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
             VITE_POSTHOG_KEY=${{ vars.POSTHOG_KEY }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
+            VITE_SENTRY_DSN=${{ vars.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
@@ -1489,55 +1482,6 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_APP }}
           deployment-url: ${{ needs.build-app-production.outputs.deployment_url }}
-
-      - name: Record Atom web client version
-        shell: bash
-        env:
-          ATOM_API_URL: ${{ vars.ATOM_API_URL || 'https://atom-api.vm6.ai' }}
-          ATOM_DEPLOY_TOKEN: ${{ secrets.ATOM_DEPLOY_TOKEN }}
-          DEPLOYMENT_URL: ${{ needs.build-app-production.outputs.deployment_url }}
-          GIT_SHA: ${{ needs.build-app-production.outputs.git_sha }}
-          VERSION: ${{ needs.release-please.outputs.app_version }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "$ATOM_DEPLOY_TOKEN" ]; then
-            echo "::error::ATOM_DEPLOY_TOKEN is required to record web client versions in Atom"
-            exit 1
-          fi
-          if [ -z "$VERSION" ]; then
-            echo "::error::App version is missing"
-            exit 1
-          fi
-          if [ -z "$GIT_SHA" ]; then
-            echo "::error::Git SHA is missing"
-            exit 1
-          fi
-
-          payload="$(jq -n \
-            --arg version "$VERSION" \
-            --arg gitSha "$GIT_SHA" \
-            --arg releaseTag "platform-v$VERSION" \
-            --arg deploymentUrl "$DEPLOYMENT_URL" \
-            '{
-              version: $version,
-              gitSha: $gitSha,
-              releaseTag: $releaseTag,
-              deploymentUrl: $deploymentUrl
-            }')"
-
-          curl --fail --show-error --silent \
-            --retry 5 \
-            --retry-delay 2 \
-            --retry-max-time 60 \
-            --retry-all-errors \
-            --max-time 30 \
-            --request POST \
-            --url "${ATOM_API_URL%/}/api/deployments/web-client-versions" \
-            --header "Authorization: Bearer ${ATOM_DEPLOY_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "$payload" \
-            >/dev/null
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
@@ -1830,8 +1774,8 @@ jobs:
       - name: Install dependencies
         run: cd turbo && pnpm install --frozen-lockfile
 
-      - name: Use latest npm for OIDC support
-        run: npm install -g npm@latest
+      - name: Use stable npm for OIDC support
+        run: npm install -g npm@11.18.0
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build

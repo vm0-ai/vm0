@@ -119,6 +119,9 @@ describe("steam firewall", () => {
     expectSteamMatches("GET", "/ISteamApps/GetAppList/v2/", [
       "steam-apps-read",
     ]);
+    expectSteamMatches("GET", "/ISteamWebAPIUtil/GetSupportedAPIList/v1/", [
+      "steam-apps-read",
+    ]);
     expectSteamMatches("GET", "/ISteamApps/GetSDRConfig/v1/", [
       "steam-apps-read",
     ]);

@@ -342,7 +342,7 @@ def _pending_delivery_payload_count() -> int:
         return _pending_delivery_payloads
 
 
-def _pending_delivery_payload_count_for_tests() -> int:
+def pending_delivery_payload_count_for_tests() -> int:
     return _pending_delivery_payload_count()
 
 
@@ -375,7 +375,7 @@ def _post_admitted_webhook_with_retry(
         _release_delivery_capacity()
 
 
-def _enqueue_webhook(
+def enqueue_webhook_delivery(
     url: str,
     sandbox_token: str,
     payload: dict,

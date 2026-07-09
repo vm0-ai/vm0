@@ -1,5 +1,8 @@
 import { loadGeneratedFirewallPermissionMetadata } from "./permission-detail-loader.generated";
-import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./permission-summaries.generated";
+import {
+  FIREWALL_PERMISSION_METADATA_SUMMARIES,
+  type FirewallPermissionMetadataConnectorType,
+} from "./permission-summaries.generated";
 import type {
   FirewallPermissionDetailMetadata,
   FirewallPermissionSummaryMetadata,
@@ -37,7 +40,7 @@ export type {
 } from "./types";
 
 export type FirewallMetadataConnectorType =
-  keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
+  FirewallPermissionMetadataConnectorType;
 
 export function isFirewallMetadataConnectorType(
   type: string,

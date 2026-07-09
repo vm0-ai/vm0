@@ -450,7 +450,13 @@ function SelfDemoteAction({ email }: { email: string }) {
             <IconDots size={15} stroke={1.5} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent
+          align="end"
+          className="w-48"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
+        >
           <DialogTrigger asChild>
             <DropdownMenuItem>Switch to member</DropdownMenuItem>
           </DialogTrigger>
@@ -524,7 +530,13 @@ function MemberActions({ member }: { member: OrgMember }) {
             <IconDots size={15} stroke={1.5} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuContent
+          align="end"
+          className="w-48"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
+        >
           <DropdownMenuItem
             onClick={() => {
               return detach(
@@ -633,7 +645,13 @@ function PendingInvitationRow({
                   <IconDots size={15} stroke={1.5} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent
+                align="end"
+                className="w-48"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                }}
+              >
                 <DialogTrigger asChild>
                   <DropdownMenuItem className="text-destructive focus:text-destructive">
                     Revoke invitation

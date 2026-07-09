@@ -28,7 +28,10 @@ async function resolveAgentLabel(
     .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
     .where(eq(agentRuns.id, runId))
     .limit(1);
-  return row?.displayName ?? row?.name ?? undefined;
+  if (!row) {
+    return undefined;
+  }
+  return row.displayName === null ? row.name : row.displayName;
 }
 
 async function resolveSelectedModel(
@@ -40,7 +43,10 @@ async function resolveSelectedModel(
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
-  return row?.selectedModel ?? undefined;
+  if (!row || row.selectedModel === null) {
+    return undefined;
+  }
+  return row.selectedModel;
 }
 
 async function resolveUserMention(

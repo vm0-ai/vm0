@@ -33,8 +33,12 @@ pub mod runners {
             pub vas_storage_id: String,
             /// VAS version identifier for the artifact contents.
             pub vas_version_id: String,
-            /// Presigned URL for downloading the artifact archive.
-            pub archive_url: String,
+            /// Optional presigned URL for downloading the artifact archive. Explicit empty artifacts may omit it.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub archive_url: Option<String>,
+            /// Whether this artifact version is explicitly empty and can be prepared without downloading an archive.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub empty: Option<bool>,
             /// Optional policy for a missing artifact root; absence behaves like `fail`.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,

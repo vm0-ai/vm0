@@ -12,6 +12,7 @@ import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs"
 import {
   getDefaultModel,
   getModelProviderFirewall,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getFrameworkForType,
   getProviderRuntimeModel,
@@ -25,6 +26,7 @@ import {
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   shouldInlineModelProviderFirewall,
+  type ModelProviderCodexRuntimeConfig,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
   type ModelProviderFeatureStates,
@@ -176,7 +178,11 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service";
+import {
+  checkLimitedFreeRunModelAdmission,
+  checkOrgCreditsForRunAdmission,
+} from "./zero-run-admission.service";
+import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -206,6 +212,7 @@ const TIER_LIMITS = Object.freeze({
   "limited-free-1": 1,
   pro: 2,
   team: 10,
+  custom: 10,
 });
 
 function getEffectiveConcurrencyLimit(
@@ -239,6 +246,9 @@ type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type RunAdmissionDb = Pick<Db, "select">;
 
+const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
+  "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
+
 function withZeroTokenSecret(
   body: CreateRunBody,
   zeroToken: string,
@@ -254,6 +264,28 @@ function withZeroTokenSecret(
 
 function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withZeroTokenSecret(body, "__pending_zero_token__");
+}
+
+function withFinalFrameworkAppendSystemPrompt(
+  body: CreateRunBody,
+  framework: SupportedFramework,
+  chatThreadId: string | undefined,
+): CreateRunBody {
+  if (framework !== "codex" || body.triggerSource !== "web" || !chatThreadId) {
+    return body;
+  }
+
+  return {
+    ...body,
+    appendSystemPrompt: [
+      body.appendSystemPrompt,
+      CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT,
+    ]
+      .filter((part): part is string => {
+        return Boolean(part);
+      })
+      .join("\n\n"),
+  };
 }
 
 interface ContextArtifact {
@@ -478,6 +510,7 @@ interface ResolvedModelProviderEnvironment {
   readonly inlineFirewall?: boolean;
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
+  readonly codexRuntimeConfig?: ModelProviderCodexRuntimeConfig;
 }
 
 interface PermissionManifest {
@@ -587,6 +620,9 @@ interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
   readonly connectorTypes: readonly ConnectorType[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
@@ -606,12 +642,6 @@ interface PersistedRunEnvironmentVariable {
 interface PersistedRunEnvironmentSnapshot {
   readonly secrets: readonly PersistedRunEnvironmentSecret[];
   readonly variables: readonly PersistedRunEnvironmentVariable[];
-}
-
-interface CreditCheckRow extends Record<string, unknown> {
-  readonly tier: string | null;
-  readonly credits: string | null;
-  readonly unsettled_expired: string | null;
 }
 
 interface CustomConnectorRuntimeContext {
@@ -1468,6 +1498,10 @@ function modelProviderEnvironment(args: {
       ? {}
       : { [args.config.secretName]: args.secretValue ?? "" },
     selectedModel: model,
+    codexRuntimeConfig: getModelProviderCodexRuntimeConfig(
+      args.type,
+      args.featureStates,
+    ),
     firewall,
     inlineFirewall: shouldInlineModelProviderFirewall(
       args.type,
@@ -1705,6 +1739,10 @@ async function multiAuthModelProviderEnvironment(
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
+    codexRuntimeConfig: getModelProviderCodexRuntimeConfig(
+      args.type,
+      featureStates,
+    ),
     firewall,
     inlineFirewall: shouldInlineModelProviderFirewall(args.type, featureStates),
     secretConnectorMap: authMaps?.secretConnectorMap,
@@ -1756,6 +1794,10 @@ async function vm0ModelProviderEnvironment(
     ),
     secrets: { [secretName]: apiKey },
     selectedModel,
+    codexRuntimeConfig: getModelProviderCodexRuntimeConfig(
+      concreteType,
+      featureStates,
+    ),
     firewall: getModelProviderFirewall(concreteType, featureStates),
     inlineFirewall: shouldInlineModelProviderFirewall(
       concreteType,
@@ -2190,6 +2232,7 @@ interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
+  readonly secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
   readonly environment: Record<string, string>;
 }
 
@@ -2198,6 +2241,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     secrets: undefined,
     vars: undefined,
     secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
     connectorTypes: [],
     storedEnvironment: undefined,
   };
@@ -2583,6 +2627,8 @@ function resolveStoredConnectorState(
   const secrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
+  const secretConnectorMetadataMap: Record<string, SecretConnectorMetadata> =
+    {};
   const environment: Record<string, string> = {};
 
   for (const { connectorType, runtimeBindings } of bindingSets) {
@@ -2613,10 +2659,6 @@ function resolveStoredConnectorState(
           break;
         }
         case "platform-secret": {
-          const secretValue = optionalEnv(source.name);
-          if (secretValue) {
-            secrets[envName] = secretValue;
-          }
           break;
         }
       }
@@ -2628,6 +2670,9 @@ function resolveStoredConnectorState(
     for (const { envName, source } of runtimeBindings) {
       if (source.kind === "connector-secret") {
         secretConnectorMap[envName] = connectorType;
+      } else if (source.kind === "platform-secret") {
+        secretConnectorMap[envName] = connectorType;
+        secretConnectorMetadataMap[envName] = { sourceType: "platform-secret" };
       }
     }
   }
@@ -2636,6 +2681,7 @@ function resolveStoredConnectorState(
     secrets,
     vars,
     secretConnectorMap,
+    secretConnectorMetadataMap,
     environment,
   };
 }
@@ -2655,6 +2701,7 @@ function storedConnectorContextFromSnapshot(
       ),
     ),
     secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
     connectorTypes: snapshot.allowedConnectorRows.map((row) => {
       return row.connectorType;
     }),
@@ -2734,6 +2781,9 @@ async function materializeStoredConnectorContext(
         secrets: compactRecord(resolved.secrets),
         vars: compactRecord(resolved.vars),
         secretConnectorMap: compactRecord(resolved.secretConnectorMap),
+        secretConnectorMetadataMap: compactRecord(
+          resolved.secretConnectorMetadataMap,
+        ),
         connectorTypes: snapshot.allowedConnectorRows.map((row) => {
           return row.connectorType;
         }),
@@ -3883,7 +3933,10 @@ async function orgTier(
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
-  return row?.tier === "pro" || row?.tier === "team" ? row.tier : "free";
+  if (row?.tier === "pro" || row?.tier === "team" || row?.tier === "custom") {
+    return row.tier;
+  }
+  return "free";
 }
 
 async function checkRunConcurrencyLimit(
@@ -3921,38 +3974,16 @@ async function checkRunConcurrencyLimit(
 
 async function checkVm0Credits(
   db: Db,
-  args: { readonly orgId: string },
+  args: { readonly orgId: string; readonly selectedModel?: string | null },
 ): Promise<CreateRunErrorResult | null> {
-  const { rows } = await db.execute<CreditCheckRow>(sql`
-    WITH org AS (
-      SELECT tier, credits FROM org_metadata
-      WHERE org_id = ${args.orgId}
-      LIMIT 1
-    ),
-    expired AS (
-      SELECT COALESCE(SUM(remaining), 0)::bigint AS total
-      FROM credit_expires_record
-      WHERE org_id = ${args.orgId}
-        AND expires_at <= now()
-        AND remaining > 0
-    )
-    SELECT
-      (SELECT tier FROM org) AS tier,
-      (SELECT credits FROM org) AS credits,
-      (SELECT total FROM expired) AS unsettled_expired
-  `);
-
-  const row = rows[0];
-  if (!row || row.credits === null) {
-    return insufficientCredits();
-  }
-  if (row.tier === "pro-suspend") {
-    return insufficientCredits();
-  }
-
-  const credits = Number(row.credits);
-  const unsettledExpired = Number(row.unsettled_expired ?? 0);
-  return credits - unsettledExpired > 0 ? null : insufficientCredits();
+  return (
+    (await checkOrgCreditsForRunAdmission({
+      db,
+      orgId: args.orgId,
+      modelProviderType: "vm0",
+      selectedModel: args.selectedModel,
+    })) ?? null
+  );
 }
 
 async function checkOrgRunTier(
@@ -4656,7 +4687,15 @@ async function insertRunRecord(
     runnerGroup: undefined,
     error: undefined,
   });
-  return runRecordFromLaunchIdentity(identity, "pending", createdAt);
+  const run = runRecordFromLaunchIdentity(identity, "pending", createdAt);
+  if (args.modelProvider?.type === "vm0") {
+    await activateUsageAllowanceWindowsForRun(tx, {
+      orgId: args.orgId,
+      runId: run.id,
+      runCreatedAt: run.createdAt,
+    });
+  }
+  return run;
 }
 
 async function insertQueuedRunRecord(
@@ -4697,7 +4736,15 @@ async function insertQueuedRunRecord(
     runnerGroup: undefined,
     error: undefined,
   });
-  return runRecordFromLaunchIdentity(identity, "queued", createdAt);
+  const run = runRecordFromLaunchIdentity(identity, "queued", createdAt);
+  if (args.modelProvider?.type === "vm0") {
+    await activateUsageAllowanceWindowsForRun(tx, {
+      orgId: args.orgId,
+      runId: run.id,
+      runCreatedAt: run.createdAt,
+    });
+  }
+  return run;
 }
 
 async function buildStoredExecutionContext(args: {
@@ -4759,8 +4806,7 @@ async function buildStoredExecutionContext(args: {
       secretConnectorMap: executionSecrets.secretConnectorMap,
       secretConnectorMetadataMap: executionSecrets.secretConnectorMetadataMap,
       cliAgentType: args.framework,
-      debugNoMockClaude: args.body.debugNoMockClaude || undefined,
-      debugNoMockCodex: args.body.debugNoMockCodex || undefined,
+      realAgentInPreview: args.body.realAgentInPreview || undefined,
       captureNetworkBodies: args.body.captureNetworkBodies || undefined,
       apiStartTime: args.apiStartTime,
       userTimezone: args.userTimezone,
@@ -4773,6 +4819,7 @@ async function buildStoredExecutionContext(args: {
       featureFlags: getAllFeatureStates(args.featureSwitchContext),
       billableFirewalls: [...args.billableFirewalls],
       modelUsageProvider: args.modelUsageProvider,
+      codexRuntimeConfig: args.modelProvider?.codexRuntimeConfig ?? null,
     },
     secretNames,
     secretValues,
@@ -4954,12 +5001,22 @@ function buildStoredExecutionSecrets(args: {
       args.customConnectorContext.reservedSecretAliases,
     ],
   });
+  const filteredConnectorMetadataMap = filterSecretConnectorMetadataMap({
+    secretConnectorMetadataMap:
+      args.connectorContext.secretConnectorMetadataMap,
+    secretConnectorMap: filteredConnectorMap,
+  });
   const filteredModelProviderMetadataMap = filterSecretConnectorMetadataMap({
     secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
     secretConnectorMap: filteredModelProviderMap,
   });
   const secretConnectorMap =
     mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null;
+  const secretConnectorMetadataMap =
+    mergeRecords(
+      filteredConnectorMetadataMap,
+      filteredModelProviderMetadataMap,
+    ) ?? null;
   const secrets = mergeRecords(
     args.connectorContext.secrets,
     args.modelProvider?.secrets,
@@ -4972,7 +5029,7 @@ function buildStoredExecutionSecrets(args: {
   return {
     secrets: secrets ?? (secretConnectorMap ? {} : undefined),
     secretConnectorMap,
-    secretConnectorMetadataMap: filteredModelProviderMetadataMap ?? null,
+    secretConnectorMetadataMap,
   };
 }
 
@@ -5679,11 +5736,19 @@ async function insertAtomicLaunchRunRecord(args: {
       });
     },
   );
-  return runRecordFromLaunchIdentity(
+  const run = runRecordFromLaunchIdentity(
     args.commit.identity,
     args.status,
     createdAt,
   );
+  if (args.commit.context.modelProvider?.type === "vm0") {
+    await activateUsageAllowanceWindowsForRun(args.tx, {
+      orgId: args.commit.createArgs.orgId,
+      runId: run.id,
+      runCreatedAt: run.createdAt,
+    });
+  }
+  return run;
 }
 
 async function commitQueuedPreparedLaunch(
@@ -5988,7 +6053,10 @@ async function resolveRunModelProvider(
   }
 
   if (args.enforceVm0Credits && args.modelProviderType === "vm0") {
-    const creditGate = await checkVm0Credits(db, { orgId: args.orgId });
+    const creditGate = await checkVm0Credits(db, {
+      orgId: args.orgId,
+      selectedModel: args.selectedModelOverride,
+    });
     options.signal.throwIfAborted();
     if (creditGate) {
       return creditGate;
@@ -6616,6 +6684,11 @@ function prepareRunContext(
       if (isRouteError(runtimeContext)) {
         return runtimeContext;
       }
+      const body = withFinalFrameworkAppendSystemPrompt(
+        bodyContext.body,
+        runtimeContext.framework,
+        args.chatThreadId,
+      );
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -6624,7 +6697,7 @@ function prepareRunContext(
           return await Promise.resolve(
             validateRunEnvironmentReferences({
               resolved: bodyContext.resolved,
-              body: bodyContext.body,
+              body,
               modelProvider: runtimeContext.modelProvider,
               connectorContext: runtimeContext.connectorContext,
               customConnectorContext: runtimeContext.customConnectorContext,
@@ -6657,7 +6730,7 @@ function prepareRunContext(
               connectorScope: bodyContext.connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
-              body: bodyContext.body,
+              body,
               resolved: bodyContext.resolved,
             }),
           );
@@ -6665,7 +6738,7 @@ function prepareRunContext(
       );
 
       return {
-        body: bodyContext.body,
+        body,
         resolved: bodyContext.resolved,
         framework: runtimeContext.framework,
         modelProvider: runtimeContext.modelProvider,
@@ -7257,7 +7330,12 @@ export const createAgentRun$ = command(
         "api_dispatch_check_vm0_credits",
         "top_level",
         async () => {
-          return await checkVm0Credits(db, { orgId: args.orgId });
+          return await checkVm0Credits(db, {
+            orgId: args.orgId,
+            selectedModel:
+              context.modelProvider?.selectedModel ??
+              args.selectedModelOverride,
+          });
         },
       );
       signal.throwIfAborted();

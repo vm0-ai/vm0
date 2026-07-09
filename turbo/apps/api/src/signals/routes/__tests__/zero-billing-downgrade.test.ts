@@ -51,7 +51,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: {},
       }),
       [503],
@@ -69,7 +69,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: {},
       }),
       [401],
@@ -87,7 +87,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -125,7 +125,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [409],
@@ -473,6 +473,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const periodStartUnix = Math.floor((now() - 86_400 * 1000) / 1000);
     const periodEndUnix = Math.floor(periodEnd.getTime() / 1000);
+    const expectedEffectiveDate = new Date(periodEndUnix * 1000).toISOString();
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
       schedule: null,
@@ -496,7 +497,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -504,7 +505,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     expect(response.body).toStrictEqual({
       success: true,
-      effectiveDate: periodEnd.toISOString(),
+      effectiveDate: expectedEffectiveDate,
     });
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       subId,
@@ -518,12 +519,12 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.cancelAtPeriodEnd).toBeTruthy();
     expect(status.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
-      effectiveDate: periodEnd.toISOString(),
+      targetTier: "limited-free-1",
+      effectiveDate: expectedEffectiveDate,
     });
   });
 
-  it("downgrades team to pro-suspend via cancel at period end", async () => {
+  it("downgrades team to limited-free-1 via cancel at period end", async () => {
     const subId = `sub-team-suspend-${randomUUID().slice(0, 8)}`;
     const periodEnd = new Date(now() + 30 * 86_400 * 1000);
     const fixture = await track(
@@ -542,6 +543,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     const periodStartUnix = Math.floor((now() - 86_400 * 1000) / 1000);
     const periodEndUnix = Math.floor(periodEnd.getTime() / 1000);
+    const expectedEffectiveDate = new Date(periodEndUnix * 1000).toISOString();
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: subId,
       schedule: null,
@@ -565,7 +567,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -573,7 +575,7 @@ describe("POST /api/zero/billing/downgrade", () => {
 
     expect(response.body).toStrictEqual({
       success: true,
-      effectiveDate: periodEnd.toISOString(),
+      effectiveDate: expectedEffectiveDate,
     });
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
       subId,
@@ -581,7 +583,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     );
   });
 
-  it("preserves fixed-term team access when cancelling to pro-suspend", async () => {
+  it("preserves fixed-term team access when cancelling to limited-free-1", async () => {
     const subId = `sub-team-fixed-term-${randomUUID().slice(0, 8)}`;
     const periodStart = 1_782_809_751;
     const periodEnd = 1_785_401_751;
@@ -624,7 +626,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -649,7 +651,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.currentPeriodEnd).toBe(finalEndDate.toISOString());
     expect(status.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: finalEndDate.toISOString(),
     });
   });
@@ -697,7 +699,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -717,7 +719,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.currentPeriodEnd).toBe(cancelAtDate.toISOString());
     expect(status.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: cancelAtDate.toISOString(),
     });
   });
@@ -779,7 +781,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -802,7 +804,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.currentPeriodEnd).toBe(finalEndDate.toISOString());
     expect(status.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: finalEndDate.toISOString(),
     });
   });
@@ -857,7 +859,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     const client = setupApp({ context })(zeroBillingDowngradeContract);
     const response = await accept(
       client.create({
-        body: { targetTier: "pro-suspend" },
+        body: { targetTier: "limited-free-1" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -888,7 +890,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(status.body.cancelAtPeriodEnd).toBeTruthy();
     expect(status.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: currentPeriodEnd.toISOString(),
     });
   });

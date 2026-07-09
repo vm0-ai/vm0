@@ -38,8 +38,9 @@ mod telemetry;
 
 pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use agent_run::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
+pub(crate) use cli_framework::effective_cli_framework;
 pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
-pub(crate) use session_history_download::SessionHistoryMaterializer;
+pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
 
 use crate::active_input::ActiveInputSource;
 use agent_run::{ProcessCancelTimeouts, RunControls};
@@ -107,8 +108,6 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "NODE_OPTIONS",
 ];
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
-const GUEST_USER_ENV_DIR_NAME: &str = "user-env";
-const GUEST_USER_ENV_FILENAME: &str = "env.json";
 const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
     include_str!("../../scripts/agent-abnormal-exit-diagnostics.sh");
 
@@ -158,6 +157,7 @@ pub struct ExecutorConfig {
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
     pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
+    pub(crate) session_history_probe: SessionHistoryProbe,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,
 }

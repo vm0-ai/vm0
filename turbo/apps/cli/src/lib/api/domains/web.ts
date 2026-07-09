@@ -10,6 +10,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { ApiRequestError, getBaseUrl } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import { headersWithCliClientHeaders } from "../client-headers";
 
 const BUILT_IN_GENERATION_POLL_INTERVAL_MS = 2_000;
 const BUILT_IN_GENERATION_WAIT_TIMEOUT_MS_BY_TYPE = {
@@ -150,7 +151,9 @@ export async function downloadWebFile(
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, {
+    headers: headersWithCliClientHeaders(headers),
+  });
 
   if (!response.ok) {
     let message = `Failed to download web file (HTTP ${response.status})`;
@@ -379,7 +382,7 @@ async function parseErrorBody(
   return { message, code };
 }
 
-function authenticatedJsonHeaders(token: string): Record<string, string> {
+function authenticatedJsonHeaders(token: string): Headers {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -388,7 +391,7 @@ function authenticatedJsonHeaders(token: string): Record<string, string> {
   if (bypassSecret) {
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
-  return headers;
+  return headersWithCliClientHeaders(headers);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -730,7 +733,7 @@ export async function uploadWebFile(
   const prepareUrl = new URL("/api/zero/uploads/prepare", baseUrl);
   const prepareRes = await fetch(prepareUrl, {
     method: "POST",
-    headers: prepareHeaders,
+    headers: headersWithCliClientHeaders(prepareHeaders),
     body: JSON.stringify({ filename, contentType, size: stats.size }),
   });
 
@@ -762,7 +765,7 @@ export async function uploadWebFile(
   const completeUrl = new URL("/api/zero/uploads/complete", baseUrl);
   const completeRes = await fetch(completeUrl, {
     method: "POST",
-    headers: prepareHeaders,
+    headers: headersWithCliClientHeaders(prepareHeaders),
     body: JSON.stringify({
       id: prepared.id,
       contentType: prepared.contentType,
@@ -813,7 +816,7 @@ export async function generateWebVoice(
 
   const response = await fetch(new URL("/api/zero/voice-io/speech", baseUrl), {
     method: "POST",
-    headers,
+    headers: headersWithCliClientHeaders(headers),
     body: JSON.stringify({
       text: options.text,
       ...(options.voice ? { voice: options.voice } : {}),
@@ -859,7 +862,7 @@ export async function generateWebImage(
     new URL("/api/zero/image-io/generate", baseUrl),
     {
       method: "POST",
-      headers,
+      headers: headersWithCliClientHeaders(headers),
       body: JSON.stringify({
         prompt: options.prompt,
         ...(options.model ? { model: options.model } : {}),
@@ -935,7 +938,7 @@ export async function generateWebVideo(
     new URL("/api/zero/video-io/generate", baseUrl),
     {
       method: "POST",
-      headers,
+      headers: headersWithCliClientHeaders(headers),
       body: JSON.stringify(generateWebVideoPayload(options)),
     },
   );
@@ -1007,7 +1010,7 @@ export async function transcribeAudio(
 
   const response = await fetch(url, {
     method: "POST",
-    headers,
+    headers: headersWithCliClientHeaders(headers),
     body: formData,
   });
 

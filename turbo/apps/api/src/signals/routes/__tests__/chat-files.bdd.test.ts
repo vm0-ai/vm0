@@ -33,8 +33,6 @@ const context = testContext();
 const bdd = createBddApi(context);
 const api = createChatFilesBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 
 describe("CHAT-01 chat thread lifecycle", () => {
   it("creates, mutates, searches, and deletes a thread through visible APIs", async () => {
@@ -173,10 +171,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
 
     await api.renameThread(owner, thread.id, "Pinned launch plan");
-    await api.updateThreadModelSelection(owner, thread.id, {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: "gpt-5.4-mini",
-    });
+    await api.updateThreadModelSelection(owner, thread.id, "gpt-5.4-mini");
     await api.pinThread(owner, thread.id);
     const readEmpty = await api.markThreadRead(owner, thread.id);
 
@@ -558,10 +553,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
       {
         agentId: agent.agentId,
         prompt: "Persist the model selected at send time",
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.4-mini",
-        },
+        model: "gpt-5.4-mini",
       },
       [201],
     );

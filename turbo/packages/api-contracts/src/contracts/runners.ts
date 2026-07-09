@@ -7,6 +7,7 @@ import {
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import { apiErrorSchema } from "./errors";
+import { modelProviderCodexRuntimeConfigSchema } from "./model-providers";
 
 const c = initContract();
 
@@ -27,6 +28,10 @@ export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
 export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
 export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
 export const SESSION_HISTORY_ENCODING_ZSTD = "zstd";
+export const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT =
+  "configured_public_endpoint";
+export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
+  "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
@@ -34,6 +39,10 @@ export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
   SESSION_HISTORY_ENCODING_GZIP,
   SESSION_HISTORY_ENCODING_ZSTD,
+]);
+export const sessionHistoryDownloadSourceSchema = z.enum([
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
 ]);
 
 export function elapsedSinceApiStartMs(
@@ -60,11 +69,25 @@ export const runnerClaimPollReasonSchema = z.enum([
 ]);
 
 const runnerClaimDiscoverySourceSchema = z.enum(["ably", "poll"]);
+const runnerPreLocalAdmissionOutcomeSchema = z.enum([
+  "not_protected",
+  "local_holder",
+  "missing_session_metadata",
+]);
 
 const runnerClaimTelemetrySchema = z.object({
   discoverySource: runnerClaimDiscoverySourceSchema.optional(),
   jobDiscoveredToClaimRequestMs: z.number().int().nonnegative().optional(),
   localAdmissionToClaimRequestMs: z.number().int().nonnegative().optional(),
+  directCandidateNotificationToEnqueueMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional(),
+  directCandidateInboxWaitMs: z.number().int().nonnegative().optional(),
+  providerDiscoveryToMainLoopMs: z.number().int().nonnegative().optional(),
+  mainLoopToLocalAdmissionMs: z.number().int().nonnegative().optional(),
+  preLocalAdmissionOutcome: runnerPreLocalAdmissionOutcomeSchema.optional(),
   pollDueToJobDiscoveredMs: z.number().int().nonnegative().optional(),
   pollHttpRequestMs: z.number().int().nonnegative().optional(),
   pollReason: runnerClaimPollReasonSchema.optional(),
@@ -90,12 +113,15 @@ const runnerBuiltinFirewallNameSchema = z
   .min(1)
   .max(128)
   .regex(/^(?:[a-z0-9][a-z0-9-]*|model-provider:[a-z0-9][a-z0-9-]*)$/);
-const runnerBuiltinFirewallsResolveBodySchema = z.object({
-  names: z
-    .array(runnerBuiltinFirewallNameSchema)
-    .min(1)
-    .max(RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX),
-});
+const runnerBuiltinFirewallsResolveBodySchema = z
+  .object({
+    names: z
+      .array(runnerBuiltinFirewallNameSchema)
+      .min(1)
+      .max(RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX)
+      .optional(),
+  })
+  .strict();
 const runnerBuiltinFirewallsResolveResponseSchema = z.object({
   catalogDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   catalogVersion: z.string().min(1),
@@ -197,14 +223,27 @@ export const artifactMissingRootPolicySchema = z.enum([
   "preserveParentVersion",
 ]);
 
-export const artifactEntrySchema = z.object({
-  mountPath: z.string(),
-  vasStorageName: z.string(),
-  vasStorageId: z.string(),
-  vasVersionId: z.string(),
-  archiveUrl: z.string(),
-  missingRootPolicy: artifactMissingRootPolicySchema.optional(),
-});
+export const artifactEntrySchema = z
+  .object({
+    mountPath: z.string(),
+    vasStorageName: z.string(),
+    vasStorageId: z.string(),
+    vasVersionId: z.string(),
+    archiveUrl: z.string().optional(),
+    empty: z.boolean().optional(),
+    missingRootPolicy: artifactMissingRootPolicySchema.optional(),
+  })
+  .superRefine((artifact, ctx) => {
+    if (artifact.empty === true || artifact.archiveUrl !== undefined) {
+      return;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["archiveUrl"],
+      message: "archiveUrl is required unless empty is true",
+    });
+  });
 
 /**
  * Storage manifest with presigned URLs for download
@@ -227,6 +266,9 @@ const resumeSessionHistoryBlobRefSchema = z.object({
   kind: z.literal("blob"),
   hash: z.string().regex(/^[a-f0-9]{64}$/),
 });
+const resumeSessionHistoryDownloadSourceFieldSchema = {
+  downloadSource: sessionHistoryDownloadSourceSchema.optional(),
+};
 const resumeSessionHistoryRawSizeSchema = z
   .number()
   .int()
@@ -251,6 +293,7 @@ const resumeSessionIdentityHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     encoding: z.literal("identity").optional(),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
+    ...resumeSessionHistoryDownloadSourceFieldSchema,
   })
   .strict();
 
@@ -260,6 +303,7 @@ const resumeSessionGzipHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     encoding: z.literal("gzip"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
+    ...resumeSessionHistoryDownloadSourceFieldSchema,
   })
   .strict();
 
@@ -269,6 +313,7 @@ const resumeSessionZstdHistoryRefSchema = resumeSessionHistoryBlobRefSchema
     encoding: z.literal("zstd"),
     rawSize: resumeSessionHistoryRawSizeSchema,
     encodedSize: resumeSessionHistoryEncodedSizeSchema,
+    ...resumeSessionHistoryDownloadSourceFieldSchema,
   })
   .strict();
 
@@ -329,10 +374,9 @@ export const storedExecutionContextSchema = z.object({
     .nullable()
     .optional(),
   cliAgentType: z.string(),
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
-  // Debug flag to force real Codex in mock environments (internal use only)
-  debugNoMockCodex: z.boolean().optional(),
+  // Preview evaluation escape hatch: bypass preview mock CLIs and use the real
+  // agent runtime.
+  realAgentInPreview: z.boolean().optional(),
   // Capture HTTP header names, selected safe header values, request bodies, and response bodies
   // in network logs
   captureNetworkBodies: z.boolean().optional(),
@@ -363,6 +407,10 @@ export const storedExecutionContextSchema = z.object({
   // this model id for built-in billing rows and model usage observations;
   // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
+  // API-owned Codex provider/runtime metadata forwarded through the runner.
+  codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
+    .nullable()
+    .optional(),
 });
 
 /**
@@ -398,10 +446,9 @@ export const executionContextSchema = z.object({
     .nullable()
     .optional(),
   cliAgentType: z.string(),
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
-  // Debug flag to force real Codex in mock environments (internal use only)
-  debugNoMockCodex: z.boolean().optional(),
+  // Preview evaluation escape hatch: bypass preview mock CLIs and use the real
+  // agent runtime.
+  realAgentInPreview: z.boolean().optional(),
   // Capture HTTP header names, selected safe header values, request bodies, and response bodies
   // in network logs
   captureNetworkBodies: z.boolean().optional(),
@@ -432,6 +479,10 @@ export const executionContextSchema = z.object({
   // this model id for built-in billing rows and model usage observations;
   // billing eligibility is decided from API-owned run context.
   modelUsageProvider: z.string().optional(),
+  // API-owned Codex provider/runtime metadata forwarded through the runner.
+  codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
+    .nullable()
+    .optional(),
 });
 
 /**
@@ -529,7 +580,7 @@ export const heartbeatBodySchema = z.object({
   runningCount: z.number().int().nonnegative(),
   admittableProfiles: runnerProfileListSchema,
   heldSessionStates: z.array(heldSessionStateSchema).max(1024),
-  mode: z.enum(["running", "draining", "stopping"]),
+  mode: z.enum(["starting", "running", "draining", "stopping"]),
 });
 
 /**
@@ -580,5 +631,8 @@ export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
+export type SessionHistoryDownloadSource = z.infer<
+  typeof sessionHistoryDownloadSourceSchema
+>;
 
 export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

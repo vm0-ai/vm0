@@ -46,10 +46,18 @@ import {
   type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
+import {
+  consumePendingAccountMenuSettingsSection$,
+  openSettingsDialogAt$,
+  setPendingAccountMenuSettingsSection$,
+  type SettingsSection,
+} from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import {
+  billingStatusAsync$,
+  reloadBillingStatus$,
+} from "../../signals/zero-page/billing.ts";
 import {
   accountMenuCodexResetDialog$,
   personalActionPromise$,
@@ -61,6 +69,7 @@ import {
   AccountMenuSubscriptionsPanel,
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 
 interface SessionAccount {
   sessionId: string;
@@ -390,8 +399,8 @@ function CreditBalanceItem({
   onOpenCreditBalance: () => void;
 }) {
   return (
-    <DropdownMenuItem
-      onClick={onOpenCreditBalance}
+    <DropdownMenuModalItem
+      onModalSelect={onOpenCreditBalance}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
       <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
@@ -402,7 +411,7 @@ function CreditBalanceItem({
           creditLabel
         )}
       </span>
-    </DropdownMenuItem>
+    </DropdownMenuModalItem>
   );
 }
 
@@ -430,8 +439,8 @@ function UnifiedSettingsGroup({
           <span>Memory</span>
         </DropdownMenuItem>
       )}
-      <DropdownMenuItem
-        onClick={onOpenSettings}
+      <DropdownMenuModalItem
+        onModalSelect={onOpenSettings}
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
         <IconSettings
@@ -440,7 +449,7 @@ function UnifiedSettingsGroup({
           className="text-muted-foreground"
         />
         <span>Settings</span>
-      </DropdownMenuItem>
+      </DropdownMenuModalItem>
       {labEnabled && (
         <DropdownMenuItem
           onClick={() => {
@@ -569,10 +578,12 @@ function SignOutItem({
 
 export function AccountDropdown({
   onAccountAction,
+  settingsOwnerId,
   collapsed = false,
   hidePreferences = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
+  settingsOwnerId: string;
   collapsed?: boolean;
   hidePreferences?: boolean;
 }) {
@@ -587,7 +598,14 @@ export function AccountDropdown({
     features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
+  const setPendingSettingsSection = useSet(
+    setPendingAccountMenuSettingsSection$,
+  );
+  const consumePendingSettingsSection = useSet(
+    consumePendingAccountMenuSettingsSection$,
+  );
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
+  const reloadBilling = useSet(reloadBillingStatus$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
   );
@@ -660,14 +678,17 @@ export function AccountDropdown({
     setSidebarExpanded(false);
   };
 
-  const handleOpenSettings = () => {
+  const queueSettingsOpen = (section: SettingsSection) => {
     setSidebarExpanded(false);
-    detach(openSettings("preference", pageSignal), Reason.DomCallback);
+    setPendingSettingsSection(settingsOwnerId, section);
+  };
+
+  const handleOpenSettings = () => {
+    queueSettingsOpen("preference");
   };
 
   const handleOpenCreditBalance = () => {
-    setSidebarExpanded(false);
-    detach(openSettings("usage", pageSignal), Reason.DomCallback);
+    queueSettingsOpen("usage");
   };
 
   const handleOpenCodexReset = (resetCredits: number | null) => {
@@ -693,7 +714,17 @@ export function AccountDropdown({
   };
 
   const handleMenuOpenChange = (open: boolean) => {
-    if (!open || hidePreferences || !subscriptionsEnabled) {
+    if (!open) {
+      return;
+    }
+    setPendingSettingsSection(settingsOwnerId, null);
+    if (hidePreferences) {
+      return;
+    }
+    // Refresh the org credit balance every time the menu opens so the
+    // displayed remaining credit reflects the latest usage.
+    reloadBilling();
+    if (!subscriptionsEnabled) {
       return;
     }
 
@@ -716,6 +747,14 @@ export function AccountDropdown({
           align="start"
           sideOffset={8}
           className="w-[240px]"
+          onCloseAutoFocus={(event) => {
+            const section = consumePendingSettingsSection(settingsOwnerId);
+            if (section === null) {
+              return;
+            }
+            event.preventDefault();
+            detach(openSettings(section, pageSignal), Reason.DomCallback);
+          }}
         >
           <CurrentAccountHeader
             display={accountDisplay}

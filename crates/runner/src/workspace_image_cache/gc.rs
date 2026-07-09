@@ -485,9 +485,12 @@ impl SessionWorkspaceCache {
             Err(_) if self.inner.cache_scope.is_empty() => String::new(),
             Err(_) => return None,
         };
+        let sidecar_allocated = self
+            .session_history_sidecar_allocated_bytes(&cache_key)
+            .await;
         Some(GcCandidate {
             cache_key,
-            allocated_bytes: allocated_bytes(&file_metadata),
+            allocated_bytes: allocated_bytes(&file_metadata).saturating_add(sidecar_allocated),
             file_dev: file_metadata.dev(),
             file_ino: file_metadata.ino(),
             last_used_at,

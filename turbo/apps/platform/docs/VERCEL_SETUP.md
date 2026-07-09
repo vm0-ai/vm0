@@ -57,14 +57,16 @@ for missing static assets.
 2. Verify the `deploy-platform` job triggers in CI
 3. Check that preview URL is posted to PR
 
-## Environment Variables (Optional)
+## Environment Variables
 
-For future features, these variables may be needed:
+The app derives sibling service URLs from the current browser host by preserving
+the root domain and replacing the service subdomain segment. For example,
+`app.vm0.ai` resolves API traffic to `api.vm0.ai`, and `pr-123-app.vm6.ai`
+resolves API traffic to `pr-123-api.vm6.ai`.
 
-| Variable                     | Description          | Required            |
-| ---------------------------- | -------------------- | ------------------- |
-| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk authentication | For auth feature    |
-| `VITE_API_URL`               | Backend API URL      | For API integration |
+| Variable                     | Description          | Required         |
+| ---------------------------- | -------------------- | ---------------- |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk authentication | For auth feature |
 
 ## Troubleshooting
 

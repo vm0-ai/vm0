@@ -397,6 +397,7 @@ function artifactDialogSyncTarget(
   }
   return {
     agentId: artifact.agentId,
+    disconnected: artifact.googleDriveDisconnected,
     fileId: artifact.fileId,
     filename: artifact.filename,
     onSyncSuccess:
@@ -438,6 +439,8 @@ function artifactDialogMetadataFromItem(params: {
     createdAt: params.item.file.createdAt,
     fileId: params.item.file.id,
     filename: params.item.file.filename,
+    googleDriveDisconnected:
+      params.item.file.googleDriveSync?.status === "disconnected",
     googleDriveSynced: params.item.file.googleDriveSync?.status === "synced",
     onSyncSuccess: params.onSyncSuccess,
     runId: params.item.runId,

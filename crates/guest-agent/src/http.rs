@@ -4,6 +4,10 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::urls;
+use api_contracts::generated::constants::client::headers::{
+    CLIENT_REQUEST_ID_HEADER, CLIENT_SESSION_ID_HEADER, CLIENT_TYPE_HEADER, CLIENT_VERSION_HEADER,
+};
+use api_contracts::generated::constants::client::types::CLIENT_TYPE_GUEST_AGENT;
 use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
@@ -18,10 +22,12 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
+use uuid::Uuid;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
+const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn format_reqwest_error(error: reqwest::Error) -> String {
     error.without_url().to_string()
@@ -45,6 +51,7 @@ struct ApiHttpConfig {
     urls: ApiUrls,
     token: String,
     vercel_bypass: String,
+    client_session_id: String,
 }
 
 #[derive(Clone)]
@@ -88,6 +95,7 @@ impl HttpClient {
         base_url: impl Into<String>,
         token: impl Into<String>,
         vercel_bypass: impl Into<String>,
+        client_session_id: impl Into<String>,
         retry_delay: Duration,
     ) -> Result<Self, AgentError> {
         Self::build(
@@ -95,6 +103,7 @@ impl HttpClient {
                 base_url.into(),
                 token.into(),
                 vercel_bypass.into(),
+                client_session_id.into(),
             )?),
             retry_delay,
         )
@@ -122,6 +131,7 @@ impl HttpClient {
             &config.api_url,
             &config.api_token,
             &config.vercel_bypass,
+            &config.run_id,
         )?
         else {
             return Ok(Self {
@@ -160,6 +170,7 @@ impl HttpClient {
         base_url: &str,
         token: &str,
         vercel_bypass: &str,
+        client_session_id: &str,
     ) -> Result<Option<ApiHttpConfig>, AgentError> {
         if token.is_empty() {
             return Ok(None);
@@ -169,6 +180,7 @@ impl HttpClient {
             base_url.to_string(),
             token.to_string(),
             vercel_bypass.to_string(),
+            client_session_id.to_string(),
         )?))
     }
 
@@ -206,7 +218,12 @@ impl HttpClient {
 }
 
 impl ApiHttpConfig {
-    fn new(base_url: String, token: String, vercel_bypass: String) -> Result<Self, AgentError> {
+    fn new(
+        base_url: String,
+        token: String,
+        vercel_bypass: String,
+        client_session_id: String,
+    ) -> Result<Self, AgentError> {
         if base_url.is_empty() {
             return Err(AgentError::Http(
                 "VM0_API_URL is required when VM0_API_TOKEN is set".into(),
@@ -217,10 +234,13 @@ impl ApiHttpConfig {
                 "VM0_API_TOKEN is required for enabled API HTTP config".into(),
             ));
         }
+        reqwest::header::HeaderValue::from_str(&client_session_id)
+            .map_err(|e| AgentError::Http(format!("invalid client session id: {e}")))?;
         Ok(Self {
             urls: ApiUrls::new(&base_url),
             token,
             vercel_bypass,
+            client_session_id,
         })
     }
 }
@@ -305,6 +325,7 @@ impl HttpClient {
             self.retry_delay,
             format!("POST failed after {max_retries} attempts to {url}"),
             || {
+                let request_id = Uuid::new_v4().to_string();
                 let mut req = client
                     .post(url)
                     .header("Authorization", format!("Bearer {}", api.token))
@@ -313,6 +334,12 @@ impl HttpClient {
                 if !api.vercel_bypass.is_empty() {
                     req = req.header("x-vercel-protection-bypass", &api.vercel_bypass);
                 }
+
+                req = req
+                    .header(CLIENT_VERSION_HEADER, GUEST_AGENT_CLIENT_VERSION)
+                    .header(CLIENT_TYPE_HEADER, CLIENT_TYPE_GUEST_AGENT)
+                    .header(CLIENT_SESSION_ID_HEADER, api.client_session_id.as_str())
+                    .header(CLIENT_REQUEST_ID_HEADER, request_id);
 
                 std::future::ready(Ok(req))
             },

@@ -26,12 +26,13 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createDeferredPromise } from "../../utils";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -44,6 +45,7 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
@@ -51,6 +53,7 @@ import {
   readAutomationsFakeKmsDecryptCallCount,
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
+  seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
 } from "./helpers/automations";
 import {
   setSecretKmsClientForTests,
@@ -69,10 +72,7 @@ const context = testContext();
 const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
-// Sentinel provider id for model-first thread selections (the wire-protocol
-// value the chat composer sends when picking a model instead of a provider).
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_custom_connector_auth_refs",
   "api_dispatch_insert_runner_job_queue",
@@ -118,7 +118,13 @@ const RUNNER_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_request_to_job_response",
   "runner_queue_to_poll_response",
 ] as const;
-const RUNNER_CLAIM_TELEMETRY_ACTION_TYPES = [
+const RUNNER_CLAIM_ABLY_TIMING_ACTION_TYPES = [
+  "direct_candidate_notification_to_enqueue",
+  "direct_candidate_inbox_wait",
+  "provider_discovery_to_main_loop",
+  "main_loop_to_local_admission",
+] as const;
+const RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_due_to_job_discovered",
   "runner_poll_http_request",
 ] as const;
@@ -154,7 +160,6 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
-  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
@@ -177,7 +182,6 @@ const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_refetch_storage",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_skip_initialized",
-  "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
   "api_dispatch_prepare_storage_manifest_ensure_artifact_insert_initial_version",
   "api_dispatch_prepare_storage_manifest_load_storage_index",
   "api_dispatch_prepare_storage_manifest_build_entries",
@@ -207,6 +211,35 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_load_workflows",
   "api_dispatch_pre_create_zero_resolve_permission_policies",
   "api_dispatch_pre_create_zero_build_create_run_args",
+] as const;
+const API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+] as const;
+const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_memory_profile_static",
+  "api_dispatch_pre_create_zero_memory_profile_dynamic",
+  "api_dispatch_pre_create_zero_memory_profile_search",
+  "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+  "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+  "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+  "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion",
+  "api_dispatch_pre_create_zero_memory_profile_search_seed_rank",
+  "api_dispatch_pre_create_zero_memory_profile_search_final_rank",
+  "api_dispatch_pre_create_zero_memory_profile_hydrate",
+  "api_dispatch_pre_create_zero_memory_profile_load_sources",
+] as const;
+const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
+  "memory_runtime_prompt_length_bucket",
+  "memory_profile_static_result_count_bucket",
+  "memory_profile_dynamic_result_count_bucket",
+  "memory_profile_search_result_count_bucket",
+  "memory_profile_lexical_candidate_count_bucket",
+  "memory_profile_semantic_candidate_count_bucket",
+  "memory_profile_expansion_candidate_count_bucket",
+  "memory_profile_seed_ranked_count_bucket",
+  "memory_profile_final_ranked_count_bucket",
+  "memory_profile_hydrated_count_bucket",
+  "memory_profile_source_loaded_count_bucket",
 ] as const;
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
@@ -380,6 +413,13 @@ async function seedVm0ManagedDefaultModelKey(): Promise<string> {
     await deleteVm0ManagedDefaultModelKey(context);
   });
   return await seedVm0ManagedDefaultModelKeyState(context);
+}
+
+async function seedVm0ManagedModelKey(selectedModel: string): Promise<string> {
+  onTestFinished(async () => {
+    await deleteVm0ManagedDefaultModelKey(context);
+  });
+  return await seedVm0ManagedModelKeyState(context, selectedModel);
 }
 
 function useSecretKmsClientForTests(args: {
@@ -588,6 +628,17 @@ function singleApiDispatchEvent(
   return matchingEvents[0]!;
 }
 
+function singleSandboxOperationEvent(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): Record<string, unknown> {
+  const matchingEvents = events.filter((event) => {
+    return event.op_type === actionType;
+  });
+  expect(matchingEvents).toHaveLength(1);
+  return matchingEvents[0]!;
+}
+
 function expectCustomConnectorRuntimePhaseTimingEvents(
   events: readonly Record<string, unknown>[],
 ): void {
@@ -600,6 +651,38 @@ function expectCustomConnectorRuntimePhaseTimingEvents(
     const event = singleApiDispatchEvent(events, actionType);
     for (const key of CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS) {
       expect(typeof event[key]).toBe("string");
+    }
+  }
+}
+
+function expectApiDispatchEventsSpanKind(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+  spanKind: string,
+): void {
+  for (const actionType of expectedActionTypes) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents.length).toBeGreaterThan(0);
+    for (const event of matchingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          span_kind: spanKind,
+        }),
+      );
+    }
+  }
+}
+
+function expectZeroMemoryTimingBucketDimensions(
+  events: readonly Record<string, unknown>[],
+): void {
+  for (const event of events) {
+    for (const key of ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS) {
+      if (key in event) {
+        expect(typeof event[key]).toBe("string");
+      }
     }
   }
 }
@@ -617,6 +700,80 @@ function expectApiDispatchTimingEventsNotToLeak(
       expect(serialized).not.toContain(forbiddenValue);
     }
   }
+}
+
+function expectDirectAblyClaimTimingEvents(args: {
+  readonly events: readonly Record<string, unknown>[];
+  readonly runId: string;
+  readonly runnerGroup: string;
+  readonly forbiddenValues: readonly string[];
+}): void {
+  for (const actionType of RUNNER_CLAIM_ABLY_TIMING_ACTION_TYPES) {
+    const event = singleSandboxOperationEvent(args.events, actionType);
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        sandbox_type: "runner",
+        run_id: args.runId,
+        success: true,
+        runner_group: args.runnerGroup,
+        profile: "vm0/default",
+        auth_type: "user",
+        discovery_source: "ably",
+        pre_local_admission_outcome: "local_holder",
+      }),
+    );
+    expect(event).not.toHaveProperty("poll_reason");
+  }
+
+  expect(
+    singleSandboxOperationEvent(
+      args.events,
+      "direct_candidate_notification_to_enqueue",
+    ),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 12,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+  expect(
+    singleSandboxOperationEvent(args.events, "direct_candidate_inbox_wait"),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 34,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+  expect(
+    singleSandboxOperationEvent(args.events, "provider_discovery_to_main_loop"),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 45,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+  expect(
+    singleSandboxOperationEvent(args.events, "main_loop_to_local_admission"),
+  ).toStrictEqual(
+    expect.objectContaining({
+      duration_ms: 67,
+      pre_local_admission_outcome: "local_holder",
+    }),
+  );
+
+  const ablyTimingActionTypes = new Set<string>(
+    RUNNER_CLAIM_ABLY_TIMING_ACTION_TYPES,
+  );
+  expectApiDispatchTimingEventsNotToLeak(
+    args.events.filter((event) => {
+      return (
+        typeof event.op_type === "string" &&
+        ablyTimingActionTypes.has(event.op_type)
+      );
+    }),
+    args.forbiddenValues,
+  );
 }
 
 function s3CommandName(command: unknown): string | undefined {
@@ -775,7 +932,10 @@ async function sendChatRunMessage(
   const chat = createChatFilesBddApi(context);
   const sent = await chat.requestSendMessage(
     actor,
-    { ...body, modelProvider: "anthropic-api-key" },
+    {
+      ...body,
+      ...(body.threadId === undefined ? { model: "claude-sonnet-5" } : {}),
+    },
     [201],
   );
   if (sent.status !== 201 || sent.body.runId === null) {
@@ -900,6 +1060,165 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [prompt, agentId]);
   });
 
+  it("emits memory runtime attribution timing for zero runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime timing test requires an org");
+    }
+    const prompt = "security review answer";
+    const seededMemoryText = "Send the security review answer to the customer.";
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const seeded = await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Security Review",
+      kind: "preference",
+      text: seededMemoryText,
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    const zeroMemoryActionTypes = new Set<string>([
+      ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
+    const memoryTimingEvents = timingEvents.filter((event) => {
+      return (
+        typeof event.op_type === "string" &&
+        zeroMemoryActionTypes.has(event.op_type)
+      );
+    });
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+    );
+    const expectedProfileActionTypes =
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES.filter((actionType) => {
+        return (
+          actionType !==
+          "api_dispatch_pre_create_zero_memory_profile_search_semantic_query"
+        );
+      });
+    expectApiDispatchActions(timingEvents, expectedProfileActionTypes);
+    expectApiDispatchEventsSpanKind(
+      timingEvents,
+      [
+        ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+        ...expectedProfileActionTypes,
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+    ]);
+
+    const runtimeEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+    );
+    expect(runtimeEvent).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        zero_run_origin: "zero_run",
+        trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_static",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_static_result_count_bucket: expect.any(String),
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_semantic_embedding_result: "empty",
+      }),
+    );
+    expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
+    expectApiDispatchTimingEventsNotToLeak(memoryTimingEvents, [
+      prompt,
+      agentId,
+      actor.userId,
+      actor.orgId,
+      seeded.entityId,
+      seeded.memoryId,
+      seededMemoryText,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("emits disabled memory runtime attribution without profile spans", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime disabled timing test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: false,
+      },
+    );
+    const prompt = "memory runtime disabled timing should not leak prompt";
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
+    const runtimeEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+    );
+    expect(runtimeEvent).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "false",
+        memory_runtime_prompt_length_bucket: "1_256",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(
+      [runtimeEvent],
+      [prompt, agentId, actor.userId, actor.orgId],
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("emits api dispatch timing for direct create route runs", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor } = await entitledRunActor();
@@ -919,6 +1238,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       compose.composeId,
     );
 
+    context.mocks.s3.send.mockClear();
     const created = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
       prompt,
@@ -1023,6 +1343,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
 
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    const emptyArtifactPutCount = context.mocks.s3.send.mock.calls.filter(
+      ([command]) => {
+        return (
+          s3CommandName(command) === "PutObjectCommand" &&
+          s3CommandKey(command)?.includes("/artifact/memory/")
+        );
+      },
+    ).length;
+    expect(emptyArtifactPutCount).toBe(0);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+    ]);
     expect(
       singleApiDispatchEvent(
         timingEvents,
@@ -1040,7 +1372,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_final_storage_count_bucket: "1",
         storage_manifest_final_artifact_count_bucket: "1",
         storage_manifest_dropped_compose_count_bucket: "1",
-        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_planned_presign_count_bucket: "1",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
         storage_manifest_source_compose_volume_resolved_count_bucket: "1",
         storage_manifest_source_compose_volume_planned_presign_count_bucket:
@@ -1054,8 +1386,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
           "1",
         storage_manifest_source_artifact_resolved_count_bucket: "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
         storage_manifest_artifact_ensure_already_initialized_count_bucket: "0",
         storage_manifest_artifact_ensure_missing_storage_count_bucket: "1",
         storage_manifest_artifact_ensure_created_storage_count_bucket: "1",
@@ -1091,7 +1423,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         storage_manifest_resolved_compose_count_bucket: "1",
         storage_manifest_resolved_additional_count_bucket: "1",
         storage_manifest_resolved_artifact_count_bucket: "1",
-        storage_manifest_planned_presign_count_bucket: "2_4",
+        storage_manifest_planned_presign_count_bucket: "1",
         storage_manifest_duplicate_presign_candidate_count_bucket: "0",
         storage_manifest_source_compose_volume_resolved_count_bucket: "1",
         storage_manifest_source_request_additional_volume_resolved_count_bucket:
@@ -1101,8 +1433,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           "1",
         storage_manifest_source_request_additional_volume_non_system_presign_count_bucket:
           "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
       }),
     );
     expect(
@@ -1141,9 +1473,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        storage_manifest_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_planned_presign_count_bucket: "1",
-        storage_manifest_source_artifact_non_system_presign_count_bucket: "1",
+        storage_manifest_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_planned_presign_count_bucket: "0",
+        storage_manifest_source_artifact_non_system_presign_count_bucket: "0",
         storage_manifest_source_request_additional_volume_planned_presign_count_bucket:
           "0",
       }),
@@ -1174,7 +1506,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       return artifact.vasStorageName === "memory";
     });
     expect(memoryArtifact).toMatchObject({
-      archiveUrl: expect.any(String),
+      empty: true,
       vasStorageId: expect.any(String),
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
@@ -1182,8 +1514,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (!memoryArtifact) {
       throw new Error("Expected the claim manifest to include memory");
     }
+    expect(memoryArtifact.archiveUrl).toBeUndefined();
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      memoryArtifact.archiveUrl,
       memoryArtifact.vasStorageId,
       memoryArtifact.vasVersionId,
     ]);
@@ -1234,12 +1566,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           "0",
       }),
     );
-    expect(
-      singleApiDispatchEvent(
-        initializedTimingEvents,
-        "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
-      ).duration_ms,
-    ).toBe(0);
+    expectNoApiDispatchActions(initializedTimingEvents, [
+      "api_dispatch_prepare_storage_manifest_ensure_artifact_upload_empty_objects",
+    ]);
     expect(
       singleApiDispatchEvent(
         initializedTimingEvents,
@@ -1257,11 +1586,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, initialized.runId, [200]);
   });
 
-  it("keeps a committed artifact head when stale empty initialization finishes later", async () => {
+  it("keeps a committed artifact head after initial empty artifact creation", async () => {
     const api = createRunsAutomationsApi(context);
     const storages = createStoragesBddApi(context);
     const { actor } = await entitledRunActor();
-    const composeName = `bdd-artifact-head-race-${randomUUID().slice(0, 8)}`;
+    const composeName = `bdd-artifact-head-commit-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
       agents: {
@@ -1276,72 +1605,80 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       compose.composeId,
     );
 
-    const emptyUploadsGate = createDeferredPromise<void>(context.signal);
-    const releaseEmptyUploads = (): void => {
-      if (!emptyUploadsGate.settled()) {
-        emptyUploadsGate.resolve(undefined);
-      }
-    };
-    const emptyUploadStarted = createDeferredPromise<void>(context.signal);
-    const markEmptyUploadStarted = (): void => {
-      if (!emptyUploadStarted.settled()) {
-        emptyUploadStarted.resolve(undefined);
-      }
-    };
-
-    let blockedEmptyPutCount = 0;
-    context.mocks.s3.send.mockImplementation((command: unknown) => {
-      if (
-        s3CommandName(command) === "PutObjectCommand" &&
-        s3CommandKey(command)?.includes("/artifact/memory/")
-      ) {
-        blockedEmptyPutCount += 1;
-        markEmptyUploadStarted();
-        return emptyUploadsGate.promise.then(() => {
-          return {};
-        });
-      }
-      return Promise.resolve({});
-    });
-
-    const staleInitializerRun = api.createDirectRun(actor, {
+    const initialRun = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
-      prompt: "stale empty artifact initialization must not overwrite head",
+      prompt: "initial empty artifact creation should not block later commits",
     });
     onTestFinished(async () => {
-      releaseEmptyUploads();
-      const created = await staleInitializerRun.then(
-        (run) => {
-          return run;
-        },
-        () => {
-          return undefined;
-        },
-      );
-      if (created) {
-        await api.requestCancelRun(actor, created.runId, [200]);
-      }
+      await api.requestCancelRun(actor, initialRun.runId, [200]);
     });
+    const initialClaim = await api.claimRunnerJob(initialRun.runId);
+    const initialMemory = initialClaim.storageManifest?.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "memory";
+      },
+    );
+    expect(initialMemory).toMatchObject({
+      empty: true,
+      vasVersionId: expect.any(String),
+    });
+    expect(initialMemory?.archiveUrl).toBeUndefined();
+    const initialMemoryVersionId = initialMemory?.vasVersionId;
+    if (!initialMemoryVersionId) {
+      throw new Error("Expected initial memory artifact version id");
+    }
 
-    const gateResult = await Promise.race([
-      emptyUploadStarted.promise.then(() => {
-        return "empty-upload-started" as const;
-      }),
-      staleInitializerRun.then(() => {
-        return "run-finished" as const;
-      }),
-    ]);
-    expect(gateResult).toBe("empty-upload-started");
+    context.mocks.s3.send.mockClear();
+    const preparedInitialEmpty = await storages.prepareStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      files: [],
+    });
+    expect(preparedInitialEmpty).toStrictEqual({
+      versionId: initialMemoryVersionId,
+      existing: true,
+    });
+    const committedInitialEmpty = await storages.commitStorage(actor, {
+      storageName: "memory",
+      storageType: "artifact",
+      versionId: initialMemoryVersionId,
+      files: [],
+    });
+    expect(committedInitialEmpty).toMatchObject({
+      success: true,
+      versionId: initialMemoryVersionId,
+      fileCount: 0,
+      deduplicated: true,
+    });
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
     const artifactFile = storageTextFile(
       "artifact.txt",
       `committed artifact ${randomUUID()}`,
     );
+    context.mocks.s3.send.mockClear();
     const prepared = await storages.prepareStorage(actor, {
       storageName: "memory",
       storageType: "artifact",
+      baseVersion: initialMemoryVersionId,
+      changes: {
+        added: [artifactFile.path],
+        modified: [],
+        deleted: [],
+      },
       files: [artifactFile],
     });
+    const emptyBaseManifestReads = context.mocks.s3.send.mock.calls.filter(
+      ([command]) => {
+        return (
+          s3CommandName(command) === "GetObjectCommand" &&
+          s3CommandKey(command)?.includes(
+            `/artifact/memory/${initialMemoryVersionId}/manifest.json`,
+          ) === true
+        );
+      },
+    );
+    expect(emptyBaseManifestReads).toHaveLength(0);
     await storages.commitStorage(actor, {
       storageName: "memory",
       storageType: "artifact",
@@ -1360,9 +1697,24 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
 
-    releaseEmptyUploads();
-    await staleInitializerRun;
-    expect(blockedEmptyPutCount).toBe(2);
+    const committedRun = await api.createDirectRun(actor, {
+      agentComposeVersionId: headVersionId,
+      prompt: "committed artifact head should stay non-empty",
+    });
+    onTestFinished(async () => {
+      await api.requestCancelRun(actor, committedRun.runId, [200]);
+    });
+    const committedClaim = await api.claimRunnerJob(committedRun.runId);
+    const committedMemory = committedClaim.storageManifest?.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "memory";
+      },
+    );
+    expect(committedMemory).toMatchObject({
+      archiveUrl: expect.any(String),
+      vasVersionId: prepared.versionId,
+    });
+    expect(committedMemory?.empty).toBeUndefined();
     await expect(
       storages.downloadStorage(actor, {
         name: "memory",
@@ -1838,7 +2190,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
 
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
-      readonly mode?: "running" | "draining" | "stopping";
+      readonly mode?: "starting" | "running" | "draining" | "stopping";
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
@@ -1941,6 +2293,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(finalHeartbeatHolder.job?.affinityProtectedUntil).toStrictEqual(
       expect.any(String),
     );
+
+    await heartbeatHolder({
+      admittableProfiles: ["vm0/default"],
+      mode: "starting",
+    });
+    const startingHolder = await pollFollowUp(
+      "continue while holder is starting",
+    );
+    expect(startingHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+    expect(startingHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
       admittableProfiles: [],
@@ -2049,11 +2411,20 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     api.configureRunnerGroup();
 
     await bdd.setupOnboarding(actor, { displayName: "BDD Suspended Agent" });
+    if (!actor.orgId) {
+      throw new Error("Expected suspended run actor to have an org");
+    }
+    await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 20_000 });
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
       displayName: "BDD suspended-org agent",
       description: "Covers the pro-suspend admission branch.",
       visibility: "private",
+    });
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
     });
 
     const rejected = await api.requestCreateRun(
@@ -2852,6 +3223,206 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("does not add Codex image upload guidance outside web chat Codex runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedOrgCodexProvider(actor, {
+      accessToken: "chatgpt-access-image-guidance",
+      refreshToken: "chatgpt-refresh-image-guidance",
+      accountId: "workspace-id-image-guidance",
+      idToken: "chatgpt-id-token-image-guidance",
+      expiresIn: 3600,
+    });
+
+    const codexWebRun = await api.createRun(actor, {
+      agentId,
+      prompt: "generate an image with codex without a chat thread",
+      modelProvider: "codex-oauth-token",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const codexWebClaim = await api.claimRunnerJob(codexWebRun.runId);
+    const codexWebPrompt = codexWebClaim.appendSystemPrompt ?? "";
+    expect(codexWebClaim.cliAgentType).toBe("codex");
+    expect(codexWebPrompt).not.toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
+    expect(codexWebPrompt).not.toContain("When running in Codex");
+    await api.requestCancelRun(actor, codexWebRun.runId, [200]);
+
+    const claudeWebRun = await api.createRun(actor, {
+      agentId,
+      prompt: "generate an image with claude",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claudeWebClaim = await api.claimRunnerJob(claudeWebRun.runId);
+    expect(claudeWebClaim.cliAgentType).toBe("claude-code");
+    expect(claudeWebClaim.appendSystemPrompt ?? "").not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    await api.requestCancelRun(actor, claudeWebRun.runId, [200]);
+
+    const codexSlackRun = await api.createDirectRun(actor, {
+      agentComposeId: agentId,
+      prompt: "generate an image from slack",
+      modelProviderType: "codex-oauth-token",
+      triggerSource: "slack",
+      vars: { ZERO_AGENT_ID: agentId },
+      secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const codexSlackClaim = await api.claimRunnerJob(codexSlackRun.runId);
+    expect(codexSlackClaim.cliAgentType).toBe("codex");
+    expect(codexSlackClaim.appendSystemPrompt ?? "").not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    await api.requestCancelRun(actor, codexSlackRun.runId, [200]);
+  });
+
+  it("claims MiniMax Codex runs with structured runtime config", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("MiniMax Codex feature switch test requires an org");
+    }
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    );
+    await api.createOrgModelProvider(actor, {
+      type: "minimax-api-key",
+      secret: "sk-minimax-bdd",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "minimax codex provider",
+      modelProvider: "minimax-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const minimaxApiKeyPlaceholder = getModelProviderFirewall(
+      "minimax-api-key",
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    )?.placeholders?.MINIMAX_API_KEY;
+    if (!minimaxApiKeyPlaceholder) {
+      throw new Error("Missing MiniMax Codex API key placeholder");
+    }
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: minimaxApiKeyPlaceholder,
+      OPENAI_MODEL: "MiniMax-M3",
+    });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "minimax",
+      name: "MiniMax",
+      baseUrl: "https://api.minimax.io/v1",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+    });
+    expect(claim.codexRuntimeConfig?.modelCatalog).toMatchObject({
+      models: [expect.objectContaining({ slug: "MiniMax-M3" })],
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:minimax-api-key");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("claims vm0-managed MiniMax Codex runs with structured runtime config", async () => {
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = await seedVm0ManagedModelKey("MiniMax-M3");
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("MiniMax Codex feature switch test requires an org");
+    }
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+      {
+        model: "MiniMax-M3",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 managed minimax codex provider",
+        model: selectedModel,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the MiniMax chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+    const minimaxApiKeyPlaceholder = getModelProviderFirewall(
+      "minimax-api-key",
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    )?.placeholders?.MINIMAX_API_KEY;
+    if (!minimaxApiKeyPlaceholder) {
+      throw new Error("Missing MiniMax Codex API key placeholder");
+    }
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: minimaxApiKeyPlaceholder,
+      OPENAI_MODEL: "MiniMax-M3",
+    });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "minimax",
+      name: "MiniMax",
+      baseUrl: "https://api.minimax.io/v1",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+    });
+    expect(claim.modelUsageProvider).toBe("MiniMax-M3");
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:minimax-api-key");
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
   it("uses the requested provider instead of the caller's personal default", async () => {
     const api = createRunsAutomationsApi(context);
     const misc = createMiscRoutesApi(context);
@@ -2945,10 +3516,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         agentId: agent.agentId,
         threadId: thread.id,
         prompt: "run on the pinned member provider",
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.4-mini",
-        },
+        model: "gpt-5.4-mini",
       },
       [201],
     );
@@ -3775,11 +4343,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("withholds platform secrets from the sandbox environment", async () => {
+  it("emits lazy platform-secret metadata without snapshotting platform secrets", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token-bdd");
+    mockOptionalEnv(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+      "developer-token-before-claim",
+    );
 
     await fw.seedTestConnector(actor, {
       connectorName: "google-ads",
@@ -3800,6 +4371,102 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
     expect(claim.secretConnectorMap).toMatchObject({
       GOOGLE_ADS_TOKEN: "google-ads",
+      GOOGLE_ADS_DEVELOPER_TOKEN: "google-ads",
+    });
+    expect(claim.secretConnectorMetadataMap).toMatchObject({
+      GOOGLE_ADS_DEVELOPER_TOKEN: { sourceType: "platform-secret" },
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("google-ads");
+    if (!claim.encryptedSecrets) {
+      throw new Error(
+        "Expected the google ads claim to carry encrypted secrets",
+      );
+    }
+
+    mockOptionalEnv(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+      "developer-token-after-claim",
+    );
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer \${{ secrets.GOOGLE_ADS_TOKEN }}`,
+          "developer-token": `\${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected google ads firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer google-ads-bdd-access",
+      "developer-token": "developer-token-after-claim",
+    });
+
+    const missingWithoutMetadata = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "developer-token": `\${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}`,
+        },
+      },
+      [424],
+    );
+    if (missingWithoutMetadata.status !== 424) {
+      throw new Error(
+        "Expected google ads platform secret to require lazy metadata",
+      );
+    }
+    expect(missingWithoutMetadata.body.error.code).toBe(
+      "CONNECTOR_NOT_CONFIGURED",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("filters platform-secret metadata when request secrets override the alias", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "platform-developer-token");
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "google-ads",
+      authMethod: "oauth",
+      accessToken: "google-ads-bdd-access",
+      refreshToken: "google-ads-bdd-refresh",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["google-ads"]);
+
+    const run = await api.createDirectRun(actor, {
+      ...zeroBackedDirectRunBody({
+        agentId,
+        prompt: "use google ads with explicit developer token",
+      }),
+      secrets: {
+        ZERO_TOKEN: "bdd-zero-direct-token",
+        GOOGLE_ADS_DEVELOPER_TOKEN: "body-developer-token",
+      },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
+    expect(claim.secretConnectorMap).toMatchObject({
+      GOOGLE_ADS_TOKEN: "google-ads",
     });
     expect(claim.secretConnectorMap ?? {}).not.toHaveProperty(
       "GOOGLE_ADS_DEVELOPER_TOKEN",
@@ -3807,11 +4474,33 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.secretConnectorMetadataMap ?? {}).not.toHaveProperty(
       "GOOGLE_ADS_DEVELOPER_TOKEN",
     );
-    expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("google-ads");
+    if (!claim.encryptedSecrets) {
+      throw new Error(
+        "Expected the google ads claim to carry encrypted secrets",
+      );
+    }
+
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          "developer-token": `\${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error(
+        "Expected explicit google ads developer token to resolve",
+      );
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      "developer-token": "body-developer-token",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -4958,11 +5647,19 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
       "zero workflow --help",
+      "Workflow and automation requests use the `workflow-setup` skill first",
       "Local changes or newly-created workflow folders",
       "runtime-only and will not persist, sync back, or affect future runs",
-      "zero workflow create|edit <name> --dir <path>",
+      "Create or update a durable workflow with `zero workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`",
+      "`--dir <path>` uploads supplementary files only and must not contain a `SKILL.md`",
+      "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
+      "zero slack message send --help",
+      "zero telegram bot list",
+      "zero telegram message send --help",
+      "zero phone message --help",
+      "do not invent `zero github message`, `zero teams message`, or `zero email message` commands",
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }
@@ -4974,6 +5671,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     ]) {
       expect(appendSystemPrompt).not.toContain(otherIntegrationHint);
     }
+    expect(appendSystemPrompt).not.toContain("zero memory recall");
+    expect(appendSystemPrompt).not.toContain("zero memory context");
     expect(appendSystemPrompt).toContain("# Current User Info");
     expect(appendSystemPrompt).toContain("Name: BDD User");
     expect(appendSystemPrompt).toContain(`Email: ${actor.email}`);
@@ -5028,6 +5727,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.MemoryViewer]: true,
+    });
+    // The memory summarize cron globally sweeps every MemoryViewer-enabled
+    // user in the shared database; leaving this actor opted in would hand
+    // that sweep this actor's storages in every later run. Opt back out
+    // through the same product API.
+    onTestFinished(async () => {
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.MemoryViewer]: false,
+      });
     });
 
     const firstStartedAt = now();
@@ -5333,7 +6041,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
     }
-    for (const actionType of RUNNER_CLAIM_TELEMETRY_ACTION_TYPES) {
+    for (const actionType of RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES) {
       const events = timingEvents.filter((event) => {
         return event.op_type === actionType;
       });
@@ -5376,7 +6084,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
     const newRunnerTimingActionTypes = new Set<string>([
       ...RUNNER_POLL_TIMING_ACTION_TYPES,
-      ...RUNNER_CLAIM_TELEMETRY_ACTION_TYPES,
+      ...RUNNER_CLAIM_POLL_TIMING_ACTION_TYPES,
     ]);
     for (const event of timingEvents.filter((timingEvent) => {
       return (
@@ -5395,9 +6103,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     const claimedRun = await api.readRun(actor, first.runId);
     expect(claimedRun.status).toBe("running");
 
+    const secondPrompt = "user runner job two";
     const second = await api.createRun(actor, {
       agentId,
-      prompt: "user runner job two",
+      prompt: secondPrompt,
       modelProvider: "anthropic-api-key",
     });
 
@@ -5420,6 +6129,39 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
     expectApiError(crossClaim.body);
     expect(crossClaim.body.error.message).toBe("Job does not belong to user");
+
+    const directClaimed = await api.requestClaimRunnerJobAs(
+      bearer,
+      second.runId,
+      [200],
+      {
+        telemetry: {
+          discoverySource: "ably",
+          jobDiscoveredToClaimRequestMs: 111,
+          localAdmissionToClaimRequestMs: 22,
+          directCandidateNotificationToEnqueueMs: 12,
+          directCandidateInboxWaitMs: 34,
+          providerDiscoveryToMainLoopMs: 45,
+          mainLoopToLocalAdmissionMs: 67,
+          preLocalAdmissionOutcome: "local_holder",
+        },
+      },
+    );
+    if (directClaimed.status !== 200) {
+      throw new Error("Expected the direct Ably runner claim to succeed");
+    }
+    expect(directClaimed.body.prompt).toBe(secondPrompt);
+
+    expectDirectAblyClaimTimingEvents({
+      events: sandboxOperationEventsForRun(second.runId),
+      runId: second.runId,
+      runnerGroup,
+      forbiddenValues: [
+        secondPrompt,
+        directClaimed.body.sandboxToken,
+        apiKey.token,
+      ],
+    });
 
     const tokenRequest = {
       keyName: "bdd-key",
@@ -6313,7 +7055,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     expect(mountPaths).toContain("/cache");
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
 
-    await webhooks.requestAgentTelemetry(
+    await webhooks.requestAgentTelemetryUnchecked(
       {
         runId: created.runId,
         networkLogs: [
@@ -6355,6 +7097,13 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             session_history_raw_size_bucket: "64_256_kib",
             session_history_encoded_size_bucket: "lt_64_kib",
             session_history_compression_ratio_bucket: "lt_0_25",
+            session_history_ref_seen_recently: "true",
+            session_history_ref_download_inflight: "false",
+            session_history_content_length_state: "matches_expected",
+            session_history_content_encoding_state: "absent",
+            session_history_transfer_encoding_state: "chunked",
+            session_history_download_source: "configured_public_endpoint",
+            session_history_ref_hash: "should-not-forward",
           },
         ],
       },
@@ -6393,10 +7142,25 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
           session_history_raw_size_bucket: "64_256_kib",
           session_history_encoded_size_bucket: "lt_64_kib",
           session_history_compression_ratio_bucket: "lt_0_25",
+          session_history_ref_seen_recently: "true",
+          session_history_ref_download_inflight: "false",
+          session_history_content_length_state: "matches_expected",
+          session_history_content_encoding_state: "absent",
+          session_history_transfer_encoding_state: "chunked",
+          session_history_download_source: "configured_public_endpoint",
           source: "sandbox",
         }),
       ],
     );
+    const sandboxOperationIngestCall =
+      context.mocks.axiom.sdkIngest.mock.calls.find(([dataset]) => {
+        return dataset === "vm0-sandbox-op-log-dev";
+      });
+    expect(sandboxOperationIngestCall?.[1]).toStrictEqual([
+      expect.not.objectContaining({
+        session_history_ref_hash: "should-not-forward",
+      }),
+    ]);
 
     const observed = await webhooks.requestAgentModelUsageObservation(
       {

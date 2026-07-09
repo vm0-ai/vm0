@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 
-import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
+  SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
+} from "@vm0/api-contracts/contracts/runners";
 import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
@@ -766,7 +770,8 @@ describe("RUN-04: session and checkpoint reads", () => {
     if (!outArtifact) {
       throw new Error("Expected the claim manifest to mount bdd-out");
     }
-    expect(outArtifact.archiveUrl).toStrictEqual(expect.any(String));
+    expect(outArtifact.empty).toBeTruthy();
+    expect(outArtifact.archiveUrl).toBeUndefined();
     expect(outArtifact.vasStorageId).toStrictEqual(expect.any(String));
     expect(outArtifact.vasVersionId).toStrictEqual(expect.any(String));
     expect("manifestUrl" in outArtifact).toBeFalsy();
@@ -948,6 +953,8 @@ describe("RUN-04: session and checkpoint reads", () => {
 
 describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning", () => {
   it("returns compressed resume history refs", async () => {
+    mockEnv("S3_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", "https://public-s3.example.test");
     const actor = await entitledActor();
     const composeName = `bdd-gzip-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -1041,12 +1048,16 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "gzip",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: compressedHistory.length,
+        downloadSource:
+          SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);
   });
 
   it("returns zstd-compressed resume history refs", async () => {
+    mockEnv("S3_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const actor = await entitledActor();
     const composeName = `bdd-zstd-resume-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -1144,6 +1155,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "zstd",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: compressedHistory.length,
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, compressedResume.runId, [200]);
@@ -1328,6 +1340,8 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
   });
 
   it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
+    mockEnv("S3_ENDPOINT", undefined);
+    mockEnv("S3_PUBLIC_ENDPOINT", undefined);
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
     storages.mockStoragePresignedUrls();
@@ -1407,7 +1421,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     });
     expect(memory1).toMatchObject({
       mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-      archiveUrl: expect.any(String),
+      empty: true,
       vasStorageId: expect.any(String),
       vasVersionId: expect.any(String),
       missingRootPolicy: "preserveParentVersion",
@@ -1415,6 +1429,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     if (!memory1) {
       throw new Error("Expected the claim manifest to mount memory");
     }
+    expect(memory1.archiveUrl).toBeUndefined();
     expect("manifestUrl" in memory1).toBeFalsy();
     expect(
       hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
@@ -1472,6 +1487,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "identity",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: Buffer.byteLength(history, "utf8"),
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     await api.requestCancelRun(actor, refResumed.runId, [200]);
@@ -1500,6 +1516,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "identity",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: Buffer.byteLength(history, "utf8"),
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     expect(claim2.storageManifest?.storages).toMatchObject([
@@ -1633,6 +1650,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         encoding: "identity",
         rawSize: Buffer.byteLength(history, "utf8"),
         encodedSize: Buffer.byteLength(history, "utf8"),
+        downloadSource: SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
       },
     });
     const continuedMemory = continuedClaim.storageManifest?.artifacts.find(
@@ -3984,6 +4002,89 @@ describe("RUN-04/OPS-01: zero run logs", () => {
     });
     expect(sinceFilteredIds).toContain(sinceBoundaryRun.runId);
     expect(sinceFilteredIds).not.toContain(beforeBoundaryRun.runId);
+  });
+
+  it("resolves zero log agent identity from the run session when compose versions are shared", async () => {
+    const misc = createMiscRoutesApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const actor = await entitledActor();
+    const foreignActor = bdd.user();
+    await api.ensureOrgModelProvider(actor);
+    const foreignAgent = await bdd.createAgent(foreignActor, {
+      displayName: "Foreign shared agent",
+      description: "Owns the first shared compose version row.",
+      visibility: "private",
+    });
+    const foreignCompose = await authOrg.readComposeById(
+      foreignActor,
+      foreignAgent.agentId,
+    );
+    if (!foreignCompose.content || !foreignCompose.headVersionId) {
+      throw new Error("Expected foreign zero agent compose content");
+    }
+
+    const currentCompose = await authOrg.createCompose(
+      actor,
+      foreignCompose.content,
+    );
+    expect(currentCompose.versionId).toBe(foreignCompose.headVersionId);
+
+    const sharedRun = await api.createDirectRun(actor, {
+      agentComposeId: currentCompose.composeId,
+      prompt: "shared compose version log",
+      vars: { ZERO_AGENT_ID: currentCompose.composeId },
+      secrets: { ZERO_TOKEN: "bdd-zero-token" },
+    });
+
+    const listed = await reads.requestListLogs(actor, {}, [200]);
+    mustOk(listed, "the shared-version log list");
+    expect(listed.body.data).toContainEqual(
+      expect.objectContaining({
+        id: sharedRun.runId,
+        agentId: null,
+        displayName: null,
+        framework: "claude-code",
+      }),
+    );
+    expect(listed.body.filters.agents).not.toContain(foreignAgent.agentId);
+
+    const foreignAgentList = await reads.requestListLogs(
+      actor,
+      { agentId: foreignAgent.agentId },
+      [200],
+    );
+    mustOk(foreignAgentList, "the foreign-agent filtered log list");
+    expect(foreignAgentList.body.data).toStrictEqual([]);
+
+    const detail = await reads.requestReadLogById(
+      actor,
+      sharedRun.runId,
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      id: sharedRun.runId,
+      agentId: null,
+      displayName: null,
+      framework: "claude-code",
+    });
+
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl === "string" && apl.includes(sharedRun.runId)) {
+        return Promise.resolve([
+          agentEvent(sharedRun.runId, 1, "shared match"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const searched = await misc.searchLogs(actor, "shared");
+    expect(searched.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: sharedRun.runId,
+        agentName: currentCompose.composeId,
+        framework: "claude-code",
+      }),
+    );
   });
 
   it("splits multi-run log searches into a bounded run-id filter", async () => {

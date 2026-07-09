@@ -3,13 +3,15 @@ import type {
   ComputerUseAuthorizationRequestCreateResponse,
   ComputerUseCommandCreateResponse,
   ComputerUseCommandResponse,
+  ComputerUseHost,
   ComputerUseReadCommandKind,
   ComputerUseWriteCommandKind,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import type { ComputerUsePluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import type { ComputerUseAnyPluginCallBody } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   zeroComputerUseAuthorizationRequestsContract,
   zeroComputerUseCommandContract,
+  zeroComputerUseHostsContract,
   zeroComputerUsePluginCommandContract,
   zeroComputerUseWriteCommandContract,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
@@ -19,6 +21,10 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getActiveToken } from "../config";
+import {
+  cliClientHeaderApi,
+  headersWithCliClientHeaders,
+} from "../client-headers";
 
 function normalizeConfiguredUrl(value: string): string {
   return value.startsWith("http") ? value : `https://${value}`;
@@ -59,6 +65,7 @@ async function getComputerUseClientConfig() {
     baseUrl,
     baseHeaders: buildHeaders(token),
     jsonQuery: false as const,
+    api: cliClientHeaderApi,
   };
 }
 
@@ -139,7 +146,7 @@ export async function createComputerUseWriteCommand(
 }
 
 export async function createComputerUsePluginCommand(
-  params: ComputerUsePluginCallBody,
+  params: ComputerUseAnyPluginCallBody,
 ): Promise<ComputerUseCommandCreateResponse> {
   const config = await getComputerUseClientConfig();
   const client = initClient(zeroComputerUsePluginCommandContract, config);
@@ -150,6 +157,20 @@ export async function createComputerUsePluginCommand(
   }
 
   handleError(result, "Failed to create computer-use plugin command");
+}
+
+export async function listComputerUseHosts(): Promise<
+  readonly ComputerUseHost[]
+> {
+  const config = await getComputerUseClientConfig();
+  const client = initClient(zeroComputerUseHostsContract, config);
+  const result = await client.list({});
+
+  if (result.status === 200) {
+    return result.body.hosts;
+  }
+
+  handleError(result, "Failed to list computer-use hosts");
 }
 
 export async function getComputerUseCommand(
@@ -195,7 +216,7 @@ export async function fetchComputerUseScreenshot(
     `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/screenshot`,
-    { headers: config.baseHeaders },
+    { headers: headersWithCliClientHeaders(config.baseHeaders) },
   );
 
   if (!response.ok) {
@@ -224,7 +245,7 @@ export async function fetchComputerUsePluginContent(
     `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
       commandId,
     )}/plugin-content`,
-    { headers: config.baseHeaders },
+    { headers: headersWithCliClientHeaders(config.baseHeaders) },
   );
 
   if (!response.ok) {

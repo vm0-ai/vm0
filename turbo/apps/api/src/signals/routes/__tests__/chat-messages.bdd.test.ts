@@ -5,6 +5,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -13,13 +14,8 @@ import {
   type AttachFile,
   type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
-  type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type {
-  TestChatMessagesStateActionBody,
-  TestChatMessagesStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -29,11 +25,11 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -48,7 +44,11 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
+import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
+import {
+  deleteBddVm0ApiKeys,
+  replaceBddVm0ApiKeys,
+} from "../../../test-fixtures/chat-messages";
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -69,8 +69,7 @@ const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const misc = createMiscRoutesApi(context);
 const routeMocks = createZeroRouteMocks(context);
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
@@ -173,7 +172,7 @@ interface ChatRunSendBody {
   readonly threadId?: string;
   readonly clientThreadId?: string;
   readonly clientMessageId?: string;
-  readonly modelSelection?: ModelSelectionRequest;
+  readonly model?: string;
   readonly runOptions?: ChatRunOptionsRequest;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly attachFiles?: readonly AttachFile[];
@@ -584,245 +583,12 @@ function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
 }
 
-function requestChatMessagesState(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testChatMessagesStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function postChatMessagesStateAction(
-  body: TestChatMessagesStateActionBody,
-): Promise<TestChatMessagesStateActionResponse> {
-  const response = await requestChatMessagesState(
-    "/api/test/chat-messages-state/action",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `chat messages state action ${body.action} failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestChatMessagesStateActionResponse;
-}
-
-type SeedThreadMessage = Extract<
-  TestChatMessagesStateActionBody,
-  { action: "seed-thread-messages" }
->["messages"][number];
-
-async function seedThreadMessages(
-  threadId: string,
-  messages: readonly SeedThreadMessage[],
-): Promise<void> {
-  await postChatMessagesStateAction({
-    action: "seed-thread-messages",
-    thread_id: threadId,
-    messages: [...messages],
-  });
-}
-
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
   routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   return { authorization: "Bearer clerk-session" };
 }
-
-describe("CHAT-02: chat thread message pagination", () => {
-  it("uses message id as the cursor tie-breaker and scopes cursors to the thread", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const threadId = randomUUID();
-    const otherThreadId = randomUUID();
-    await chat.createThread(actor, {
-      agentId,
-      title: "Cursor ties",
-      clientThreadId: threadId,
-    });
-    await chat.createThread(actor, {
-      agentId,
-      title: "Other cursor thread",
-      clientThreadId: otherThreadId,
-    });
-
-    const createdAt = "2026-06-09T10:00:00.000Z";
-    const ids = [
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-    ].sort() as [string, string, string, string];
-
-    await seedThreadMessages(threadId, [
-      {
-        id: ids[0],
-        role: "user",
-        content: "first tied message",
-        created_at: createdAt,
-        sequence_number: null,
-      },
-      {
-        id: ids[1],
-        role: "assistant",
-        content: "second tied message",
-        created_at: createdAt,
-        sequence_number: null,
-      },
-      {
-        id: ids[2],
-        role: "assistant",
-        content: "third tied message",
-        created_at: createdAt,
-        sequence_number: null,
-      },
-      {
-        id: ids[3],
-        role: "assistant",
-        content: null,
-        created_at: createdAt,
-        sequence_number: null,
-        run_lifecycle_event: "completed",
-        recommended_followups: [
-          { prompt: "Turn this into a checklist", kind: "talk" },
-        ],
-      },
-    ]);
-
-    const otherMessageId = randomUUID();
-    await seedThreadMessages(otherThreadId, [
-      {
-        id: otherMessageId,
-        role: "user",
-        content: "other thread cursor",
-        created_at: "2026-06-09T09:59:59.000Z",
-        sequence_number: null,
-      },
-    ]);
-
-    const initial = await chat.listThreadMessages(actor, threadId, {
-      limit: 2,
-    });
-    expect(
-      initial.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([ids[2], ids[3]]);
-    expect(initial.hasHistoryBefore).toBeTruthy();
-
-    const afterFirst = await chat.listThreadMessages(actor, threadId, {
-      sinceId: ids[0],
-    });
-    expect(
-      afterFirst.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([ids[1], ids[2], ids[3]]);
-
-    const beforeLast = await chat.listThreadMessages(actor, threadId, {
-      beforeId: ids[3],
-    });
-    expect(
-      beforeLast.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([ids[0], ids[1], ids[2]]);
-
-    const foreignCursor = await chat.listThreadMessages(actor, threadId, {
-      sinceId: otherMessageId,
-    });
-    expect(foreignCursor.messages).toStrictEqual([]);
-
-    const marker = await chat.getThreadMessage(actor, threadId, ids[3]);
-    expect(marker).toMatchObject({
-      id: ids[3],
-      role: "assistant",
-      content: null,
-      runLifecycleEvent: "completed",
-      recommendedFollowups: [
-        { prompt: "Turn this into a checklist", kind: "talk" },
-      ],
-    });
-
-    const crossThreadRead = await chat.requestGetThreadMessage(
-      actor,
-      otherThreadId,
-      ids[3],
-      [404],
-    );
-    expect(crossThreadRead.status).toBe(404);
-  });
-
-  it("filters historical raw JSON syntax follow-up prompts when reading messages", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const threadId = randomUUID();
-    await chat.createThread(actor, {
-      agentId,
-      title: "Historical follow-up cleanup",
-      clientThreadId: threadId,
-    });
-
-    const markerId = randomUUID();
-    await seedThreadMessages(threadId, [
-      {
-        id: markerId,
-        role: "assistant",
-        content: null,
-        created_at: "2026-06-09T10:00:00.000Z",
-        sequence_number: null,
-        run_lifecycle_event: "completed",
-        recommended_followups: [
-          { prompt: "[", kind: "talk" },
-          { prompt: "{", kind: "talk" },
-          { prompt: '"prompt": "Investigate this",', kind: "talk" },
-          {
-            prompt: '{"prompt": "Investigate this", "kind": "talk"},',
-            kind: "talk",
-          },
-          {
-            prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
-            kind: "talk",
-          },
-          { prompt: "}]", kind: "talk" },
-          { prompt: "}, {", kind: "talk" },
-          {
-            prompt: '}, {"prompt": "Investigate this", "kind": "talk"}',
-            kind: "talk",
-          },
-          { prompt: "Review the valid suggestion", kind: "talk" },
-          {
-            prompt: "Generate a follow-up website",
-            kind: "generate",
-            generationType: "website",
-          },
-        ],
-      },
-    ]);
-
-    const marker = await chat.getThreadMessage(actor, threadId, markerId);
-    expect(marker).toMatchObject({
-      id: markerId,
-      role: "assistant",
-      content: null,
-      runLifecycleEvent: "completed",
-      recommendedFollowups: [
-        { prompt: "Review the valid suggestion", kind: "talk" },
-        {
-          prompt: "Generate a follow-up website",
-          kind: "generate",
-          generationType: "website",
-        },
-      ],
-    });
-  });
-});
 
 /** Org-admin model provider upsert through the public route. */
 async function upsertOrgModelProvider(
@@ -849,27 +615,12 @@ async function upsertOrgModelProvider(
   };
 }
 
-async function overwriteOrgModelProviderSecret(
-  orgId: string,
-  name: string,
-  value: string,
-): Promise<void> {
-  await postChatMessagesStateAction({
-    action: "overwrite-org-model-provider-secret",
-    org_id: orgId,
-    name,
-    value,
-  });
-}
-
 async function readThreadComputerUseHostId(
+  actor: ApiTestUser,
   threadId: string,
 ): Promise<string | null> {
-  const response = await postChatMessagesStateAction({
-    action: "read-thread-computer-use-host-id",
-    thread_id: threadId,
-  });
-  return response.computer_use_host_id ?? null;
+  const thread = await chat.readThread(actor, threadId);
+  return thread.computerUseHostId ?? null;
 }
 
 /**
@@ -1650,7 +1401,7 @@ describe("CHAT-02: dispatch failure", () => {
 });
 
 describe("CHAT-02: admission without spendable credits", () => {
-  it("blocks admission for provider-pinned sends through visible chat messages", async () => {
+  it("blocks admission for model-first sends through visible chat messages", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     await bdd.setupOnboarding(actor, {
@@ -1659,18 +1410,29 @@ describe("CHAT-02: admission without spendable credits", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+    if (!actor.orgId) {
+      throw new Error("Expected pro-suspend chat actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
     });
 
     const clientMessageId = randomUUID();
     const sendBody: ChatRunSendBody = {
       agentId: agent.agentId,
       prompt: "blocked by suspended plan",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
       clientMessageId,
     };
     const sent = await chat.requestSendMessage(actor, sendBody, [201]);
@@ -1706,22 +1468,68 @@ describe("CHAT-02: admission without spendable credits", () => {
   }, 60_000);
 });
 
-describe("CHAT-02: explicit provider pins", () => {
-  it("routes explicit provider pins into the runner claim", async () => {
+describe("CHAT-02: model-first provider policies", () => {
+  it("adds Codex image upload guidance for web chat Codex sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secrets: { CODEX_AUTH_JSON: codexAuthJson() },
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "gpt-5.4",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "generate an image in web chat",
+      model: "gpt-5.4",
+    });
+    const { claim } = await claimChatRun(runnerGroup, run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(claim.cliAgentType).toBe("codex");
+    expect(appendSystemPrompt).toContain(
+      "You are currently running inside: Web",
+    );
+    expect(appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
+    expect(appendSystemPrompt).not.toContain("When running in Codex");
+    await cancelChatRun(actor, run.runId);
+  });
+
+  it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
       type: "deepseek-api-key",
       secret: "selected-deepseek-key",
     });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-pro",
+        isDefault: true,
+        defaultProviderType: "deepseek-api-key",
+        credentialScope: "org",
+        modelProviderId: deepseekId,
+      },
+    ]);
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected deepseek provider",
-      modelSelection: {
-        modelProviderId: deepseekId,
-        selectedModel: "deepseek-v4-pro",
-      },
+      model: "deepseek-v4-pro",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -1792,16 +1600,19 @@ describe("CHAT-02: explicit provider pins", () => {
     // database: 503 when no vm0 execution key exists (no public provisioning
     // surface), 201 when another suite's alive legacy test has seeded a
     // global vm0 key. Both prove the credits-ok admission arm.
-    const { providerId: vm0Id } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
     const vm0Send = await requestSendMessageRaw(actor, {
       agentId,
       prompt: "vm0-backed admission with spendable credits",
-      modelSelection: {
-        modelProviderId: vm0Id,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
     expect([201, 503]).toContain(vm0Send.status);
     if (vm0Send.status === 503) {
@@ -1859,10 +1670,7 @@ describe("CHAT-02: explicit provider pins", () => {
         agentId,
         prompt: "run codex fast with switch off",
         clientThreadId: switchOffThreadId,
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.5",
-        },
+        model: "gpt-5.5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -1880,10 +1688,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const fast = await sendChatRun(actor, {
       agentId,
       prompt: "run codex fast",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
-      },
+      model: "gpt-5.5",
       runOptions: { codexServiceTier: "fast" },
     });
     expect((await chat.readThread(actor, fast.threadId)).codexServiceTier).toBe(
@@ -1908,10 +1713,7 @@ describe("CHAT-02: explicit provider pins", () => {
     const invalidFastPatch = await chat.requestUpdateThreadModelSelection(
       actor,
       fast.threadId,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.4",
-      },
+      "gpt-5.4",
       [400],
       { codexServiceTier: "fast" },
     );
@@ -1923,15 +1725,9 @@ describe("CHAT-02: explicit provider pins", () => {
       "fast",
     );
 
-    await chat.updateThreadModelSelection(
-      actor,
-      fast.threadId,
-      {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.4",
-      },
-      { codexServiceTier: null },
-    );
+    await chat.updateThreadModelSelection(actor, fast.threadId, "gpt-5.4", {
+      codexServiceTier: null,
+    });
     const updatedFastThread = await chat.readThread(actor, fast.threadId);
     expect(updatedFastThread).not.toHaveProperty("selectedModel");
     expect(updatedFastThread.codexServiceTier).toBeNull();
@@ -1956,10 +1752,7 @@ describe("CHAT-02: explicit provider pins", () => {
       agentId,
       threadId: fast.threadId,
       prompt: "run codex standard",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "gpt-5.5",
-      },
+      model: "gpt-5.5",
     });
     expect(
       (await chat.readThread(actor, standard.threadId)).codexServiceTier,
@@ -1980,10 +1773,7 @@ describe("CHAT-02: explicit provider pins", () => {
         agentId,
         prompt: "5.4 cannot fast",
         clientThreadId: rejectedThreadId,
-        modelSelection: {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: "gpt-5.4",
-        },
+        model: "gpt-5.4",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -2002,14 +1792,20 @@ describe("CHAT-02: explicit provider pins", () => {
       type: "openrouter-api-key",
       secret: "test-openrouter-key",
     });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-7",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected openrouter provider",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "claude-opus-4-7",
-      },
+      model: "claude-opus-4-7",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -2081,13 +1877,12 @@ describe("CHAT-02: explicit provider pins", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
 
-    await postChatMessagesStateAction({
-      action: "replace-vm0-api-keys",
+    await replaceBddVm0ApiKeys({
       vendor: "moonshot",
       model: "kimi-k2.7-code",
       keys: [
         {
-          api_key: `vm0-key-bdd-dev-seed-${keySuffix}`,
+          apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
           label: "dev-seed",
         },
       ],
@@ -2100,8 +1895,7 @@ describe("CHAT-02: explicit provider pins", () => {
       }
     };
     const deleteVm0KimiKeys = async () => {
-      await postChatMessagesStateAction({
-        action: "delete-vm0-api-keys",
+      await deleteBddVm0ApiKeys({
         vendor: "moonshot",
         model: "kimi-k2.7-code",
       });
@@ -2111,17 +1905,20 @@ describe("CHAT-02: explicit provider pins", () => {
     };
 
     await (async () => {
-      const { providerId } = await upsertOrgModelProvider(actor, {
-        type: "vm0",
-      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: "kimi-k2.7-code",
+          isDefault: true,
+          defaultProviderType: "vm0",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ]);
 
       const run = await sendChatRun(actor, {
         agentId,
         prompt: "run with the selected vm0 kimi provider",
-        modelSelection: {
-          modelProviderId: providerId,
-          selectedModel: "kimi-k2.7-code",
-        },
+        model: "kimi-k2.7-code",
       });
       runId = run.runId;
 
@@ -2148,32 +1945,35 @@ describe("CHAT-02: explicit provider pins", () => {
     const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
 
-    await postChatMessagesStateAction({
-      action: "replace-openrouter-vm0-api-keys",
-      model: "z-ai/glm-5.2",
+    await replaceBddVm0ApiKeys({
+      vendor: "zai",
+      model: "glm-5.2",
       keys: [
         {
-          api_key: fakeKey,
+          apiKey: fakeKey,
           label: `bdd-fake-${keySuffix}`,
         },
         {
-          api_key: devSeedKey,
+          apiKey: devSeedKey,
           label: "dev-seed",
         },
       ],
     });
 
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "glm-5.2",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected vm0 provider",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "glm-5.2",
-      },
+      model: "glm-5.2",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -2182,13 +1982,12 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     const environment = claimEnvironment(claim);
     expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder(
-        "openrouter-api-key",
-        "OPENROUTER_API_KEY",
-      ),
+      modelProviderSecretPlaceholder("zai-api-key", "ZAI_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
-    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.2");
+    expect(environment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.z.ai/api/anthropic",
+    );
+    expect(environment.ANTHROPIC_MODEL).toBe("glm-5.2");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -2198,7 +1997,7 @@ describe("CHAT-02: explicit provider pins", () => {
       {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: {
-          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          Authorization: `Bearer ${secretTemplate("ZAI_API_KEY")}`,
         },
       },
       [200],
@@ -2209,32 +2008,37 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await postChatMessagesStateAction({
-      action: "delete-openrouter-vm0-api-keys",
-      model: "z-ai/glm-5.2",
+    await deleteBddVm0ApiKeys({
+      vendor: "zai",
+      model: "glm-5.2",
     });
   }, 90_000);
-
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const orgId = actor.orgId;
-    if (!orgId) {
-      throw new Error("Expected entitled actor to have an org");
-    }
     const { providerId } = await upsertOrgModelProvider(actor, {
       type: "openrouter-api-key",
       secret: "test-openrouter-key",
     });
-    await overwriteOrgModelProviderSecret(orgId, "OPENROUTER_API_KEY", "   ");
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-opus-4-7",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await overwriteModelProviderSecretForTests(context.signal, {
+      providerId,
+      secretName: "OPENROUTER_API_KEY",
+      secret: "   ",
+    });
 
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with a legacy blank openrouter provider",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "claude-opus-4-7",
-      },
+      model: "claude-opus-4-7",
     });
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
@@ -2290,10 +2094,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-opus-4-6",
-      },
+      model: "claude-opus-4-6",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
@@ -2323,10 +2124,7 @@ describe("CHAT-02: run-level model overrides", () => {
       agentId,
       threadId: first.threadId,
       prompt: "switch to sonnet",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
@@ -2372,10 +2170,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "pin sonnet model-first",
-      modelSelection: {
-        modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-        selectedModel: "claude-sonnet-4-6",
-      },
+      model: "claude-sonnet-4-6",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -2430,34 +2225,7 @@ describe("CHAT-02: run-level model overrides", () => {
       displayName: "Invalid model selection agent",
     });
 
-    // A provider id from another workspace is unknown here.
-    const outsider = bdd.user();
-    const foreign = await upsertOrgModelProvider(outsider, {
-      type: "anthropic-api-key",
-      secret: "foreign-org-key",
-    });
-    const foreignThreadId = randomUUID();
-    const foreignPin = await chat.requestSendMessage(
-      actor,
-      {
-        agentId: agent.agentId,
-        prompt: "use a foreign provider",
-        clientThreadId: foreignThreadId,
-        modelSelection: {
-          modelProviderId: foreign.providerId,
-          selectedModel: "claude-sonnet-4-6",
-        },
-      },
-      [400],
-    );
-    expectApiError(foreignPin.body);
-    expect(foreignPin.body.error.message).toBe(
-      "Unknown model provider for this workspace",
-    );
-    await chat.requestReadThread(actor, foreignThreadId, [404]);
-
-    // A vm0 provider pin only accepts supported run models.
-    const vm0Provider = await upsertOrgModelProvider(actor, { type: "vm0" });
+    // Chat send only accepts supported run models.
     const vm0ThreadId = randomUUID();
     const invalidVm0Model = await chat.requestSendMessage(
       actor,
@@ -2465,15 +2233,14 @@ describe("CHAT-02: run-level model overrides", () => {
         agentId: agent.agentId,
         prompt: "use an unsupported vm0 model",
         clientThreadId: vm0ThreadId,
-        modelSelection: {
-          modelProviderId: vm0Provider.providerId,
-          selectedModel: "codex",
-        },
+        model: "codex",
       },
       [400],
     );
     expectApiError(invalidVm0Model.body);
-    expect(invalidVm0Model.body.error.message).toBe("Invalid model selection");
+    expect(invalidVm0Model.body.error.message).toBe(
+      "model: Invalid model selection",
+    );
     await chat.requestReadThread(actor, vm0ThreadId, [404]);
 
     // Removed sentinel models fail contract validation.
@@ -2488,17 +2255,14 @@ describe("CHAT-02: run-level model overrides", () => {
           agentId: agent.agentId,
           prompt: `removed ${selectedModel}`,
           clientThreadId: removedThreadId,
-          modelSelection: {
-            modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-            selectedModel,
-          },
+          model: selectedModel,
         },
         [400],
       );
       expectApiError(removed.body);
       expect(removed.body.error).toMatchObject({
         code: "BAD_REQUEST",
-        message: "modelSelection.selectedModel: Invalid model selection",
+        message: "model: Invalid model selection",
       });
       await chat.requestReadThread(actor, removedThreadId, [404]);
     }
@@ -2844,6 +2608,43 @@ describe("CHAT-02: generation templates and attachments", () => {
       `zero generate video --provider built-in --template ${videoTemplate.id}`,
     );
     await cancelChatRun(actor, video.runId);
+
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0];
+    if (!websiteTemplate) {
+      throw new Error("Expected a registered website template");
+    }
+    if (!actor.orgId) {
+      throw new Error("Expected entitled actor to belong to an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.WebsiteTemplates]: true,
+    });
+    const website = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a campaign landing page",
+      generationTemplate: {
+        type: "website",
+        selection: { websiteTemplateId: websiteTemplate.id },
+      },
+    });
+    const websiteRun = await api.readRun(actor, website.runId);
+    const websitePrompt = websiteRun.appendSystemPrompt ?? "";
+    expect(websitePrompt).toContain("# Artifact Template Context");
+    expect(websitePrompt).toContain(
+      `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
+    );
+    expect(websitePrompt).toContain(
+      `zero resource pull ${websiteTemplate.resourceId} --dir ./generated/resources`,
+    );
+    expect(websitePrompt).toContain(
+      `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
+    );
+    expect(websitePrompt).toContain(
+      `./generated/resources/${websiteTemplate.sourcePath}/resolve-images.mjs`,
+    );
+    expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
+    await cancelChatRun(actor, website.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {
@@ -2867,8 +2668,9 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(firstPrompt).toContain("# Artifact Template Context");
     expect(firstPrompt).toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
+      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
+    expect(firstPrompt).toContain("--compiled-prompt");
     expect(firstPrompt).toContain(style.illustrationStyleId);
 
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
@@ -2934,7 +2736,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     // to this message, and prior/incomplete context no longer repeats template
     // selections.
     expect(thirdPrompt).not.toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId}`,
+      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(thirdPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, third.runId);
@@ -3024,11 +2826,46 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, followUp.runId);
   }, 120_000);
 
+  it("rejects website template selections while the feature switch is off", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const template = WEBSITE_TEMPLATE_ITEMS[0];
+    if (!template) {
+      throw new Error("Expected a registered website template");
+    }
+
+    const clientThreadId = randomUUID();
+    const rejected = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "make a landing page",
+        clientThreadId,
+        generationTemplate: {
+          type: "website",
+          selection: { websiteTemplateId: template.id },
+        },
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Website templates are not enabled",
+    );
+    await chat.requestReadThread(actor, clientThreadId, [404]);
+  }, 60_000);
+
   it("rejects unknown generation template selections", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     const agent = await bdd.createAgent(actor, {
       displayName: "Invalid template agent",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected test actor to belong to an org");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.WebsiteTemplates]: true,
     });
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
     if (!template) {
@@ -3084,6 +2921,13 @@ describe("CHAT-02: generation templates and attachments", () => {
           selection: { workflowTemplateId: "workflow-template:missing" },
         },
         message: "Unknown workflow template",
+      },
+      {
+        generationTemplate: {
+          type: "website",
+          selection: { websiteTemplateId: "website-template:missing" },
+        },
+        message: "Unknown website template",
       },
     ];
     for (const arm of arms) {
@@ -3358,7 +3202,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     await cu.stopComputerUseHost(stopped.hostToken);
     await expect(
-      readThreadComputerUseHostId(stoppedPinned.body.threadId),
+      readThreadComputerUseHostId(actor, stoppedPinned.body.threadId),
     ).resolves.toBeNull();
     const revokedHost = await chat.requestSendMessage(
       actor,
@@ -3390,7 +3234,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     await cu.stopComputerUseHost(installed.hostToken);
     await expect(
-      readThreadComputerUseHostId(installedPinned.body.threadId),
+      readThreadComputerUseHostId(actor, installedPinned.body.threadId),
     ).resolves.toBe(installed.hostId);
     const stoppedInstalledHost = await chat.requestSendMessage(
       actor,
@@ -3429,7 +3273,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     expect(pinned.body.runId).toBeNull();
     await cu.deleteComputerUseHost(actor, sticky.hostId);
     await expect(
-      readThreadComputerUseHostId(pinned.body.threadId),
+      readThreadComputerUseHostId(actor, pinned.body.threadId),
     ).resolves.toBeNull();
     const clearedSend = await chat.requestSendMessage(
       actor,

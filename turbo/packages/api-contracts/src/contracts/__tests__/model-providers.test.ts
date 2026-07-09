@@ -6,6 +6,7 @@ import {
   getModels,
   getDefaultModel,
   getModelProviderEnvBindings,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderFirewall,
   getFrameworkForType,
   getVm0VisibleModels,
@@ -17,6 +18,8 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
+  getVm0ConcreteProviderType,
+  getVm0Vendor,
   getVm0ModelPriceTier,
   getVm0ModelPriceTierLabel,
   isModelSupportedByProvider,
@@ -29,6 +32,7 @@ import {
   modelProviderCredentialScopeSchema,
   supportedRunModelSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -142,10 +146,10 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-5")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.6"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.5"),
     ).toBe(true);
@@ -354,8 +358,12 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5")).toBe(
       "anthropic/claude-fable-5",
     );
-    expect(getProviderRuntimeModel("vm0", "glm-5.2")).toBe("z-ai/glm-5.2");
-    expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
+    expect(getProviderRuntimeModel("vm0", "glm-5.2")).toBe("glm-5.2");
+    expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("glm-5.1");
+    expect(getVm0ConcreteProviderType("glm-5.2")).toBe("zai-api-key");
+    expect(getVm0ConcreteProviderType("glm-5.1")).toBe("zai-api-key");
+    expect(getVm0Vendor("glm-5.2")).toBe("zai");
+    expect(getVm0Vendor("glm-5.1")).toBe("zai");
     expect(getProviderRuntimeModel("vm0", "mimo-v2.5")).toBe(
       "xiaomi/mimo-v2.5",
     );
@@ -377,9 +385,11 @@ describe("model-first canonical catalog", () => {
       "gpt-5.5",
       "claude-opus-4-8",
       "claude-sonnet-5",
+      "claude-sonnet-4-6",
       "MiniMax-M3",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("MiniMax-M3");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
+    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("claude-sonnet-4-6");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
@@ -392,6 +402,13 @@ describe("model-first canonical catalog", () => {
         };
       }),
     );
+    expect(
+      getDefaultOrgModelPolicySeed(LIMITED_FREE1_DEFAULT_RUN_MODEL).find(
+        (seed) => {
+          return seed.isDefault;
+        },
+      )?.model,
+    ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
   it("exposes VM0 price tiers for built-in reasoning models", () => {
@@ -460,7 +477,7 @@ describe("getProviderBaseUrl", () => {
     },
   );
 
-  it("returns MiniMax OpenAI base URL when Codex framework switch is enabled", () => {
+  it("returns MiniMax Codex runtime base URL when the framework switch is enabled", () => {
     expect(
       getProviderBaseUrl("minimax-api-key", {
         [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
@@ -730,14 +747,38 @@ describe("minimax-api-key provider", () => {
     expect(getSecretNameForType("minimax-api-key")).toBe("MINIMAX_API_KEY");
   });
 
-  it("maps OpenAI-style Codex env bindings when the feature flag is enabled", () => {
+  it("maps MiniMax Codex env bindings without provider base URL", () => {
     const envBindings = getModelProviderEnvBindings("minimax-api-key", {
       [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
     });
-    expect(envBindings).toBeDefined();
-    expect(envBindings!["OPENAI_API_KEY"]).toBe("$secret");
-    expect(envBindings!["OPENAI_BASE_URL"]).toBe("https://api.minimax.io/v1");
-    expect(envBindings!["OPENAI_MODEL"]).toBe("$model");
+    expect(envBindings).toStrictEqual({
+      OPENAI_API_KEY: "$secret",
+      OPENAI_MODEL: "$model",
+    });
+  });
+
+  it("declares MiniMax Codex runtime config when the feature flag is enabled", () => {
+    const config = getModelProviderCodexRuntimeConfig("minimax-api-key", {
+      [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+    });
+
+    expect(config).toMatchObject({
+      providerId: "minimax",
+      name: "MiniMax",
+      baseUrl: "https://api.minimax.io/v1",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+    });
+    expect(config?.modelCatalog).toMatchObject({
+      models: [expect.objectContaining({ slug: "MiniMax-M3" })],
+    });
+  });
+
+  it("omits MiniMax Codex runtime config when the feature flag is disabled", () => {
+    expect(
+      getModelProviderCodexRuntimeConfig("minimax-api-key"),
+    ).toBeUndefined();
   });
 
   it("does not add a second selectable provider when the feature switch is enabled", () => {

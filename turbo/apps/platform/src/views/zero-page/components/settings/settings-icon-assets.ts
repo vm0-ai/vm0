@@ -268,6 +268,8 @@ const SETTINGS_ICON_ASSET_PATHS = {
   neon: "views/zero-page/components/settings/icons/neon-2b1aaef0b2de.svg",
   netdata: "views/zero-page/components/settings/icons/netdata-df49d68a3ecd.svg",
   netter: "views/zero-page/components/settings/icons/netter-4c7de538303c.svg",
+  "nintendo-eshop-catalog":
+    "views/zero-page/components/settings/icons/nintendo-eshop-catalog-f3c8ad8b8d85.svg",
   notion: "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
   novita: "views/zero-page/components/settings/icons/novita-3aa7cdf6fd0b.svg",
   nyne: "views/zero-page/components/settings/icons/nyne-cb5e80de7d46.svg",
@@ -304,6 +306,8 @@ const SETTINGS_ICON_ASSET_PATHS = {
   plain: "views/zero-page/components/settings/icons/plain-a9121ba278e5.svg",
   plausible:
     "views/zero-page/components/settings/icons/plausible-ff49eddd163e.svg",
+  playstation:
+    "views/zero-page/components/settings/icons/playstation-93cfdbb255ce.svg",
   podchaser:
     "views/zero-page/components/settings/icons/podchaser-86cc6b891620.svg",
   porkbun: "views/zero-page/components/settings/icons/porkbun-6c11e42ddc44.svg",

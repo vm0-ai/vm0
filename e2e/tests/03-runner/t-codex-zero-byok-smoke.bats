@@ -31,18 +31,20 @@ setup_file() {
     # 1. Feature switch on (also fails the file early if not yet wired)
     enable_codex_beta
 
-    # 2. Org-level openai-api-key provider. The selected model is explicitly
-    # pinned to this provider on the chat message, without provider defaults or
-    # shared org policy mutation.
+    # 2. Org-level openai-api-key provider. Chat writes only carry the selected
+    # model; provider resolution comes from org model policy.
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
     export OPENAI_PROVIDER_ID
     OPENAI_PROVIDER_ID=$(zero_model_provider_id_by_type "openai-api-key")
     export CODEX_ZERO_SELECTED_MODEL="gpt-5.4-mini"
-    export CODEX_ZERO_MODEL_PROVIDER_ID="$OPENAI_PROVIDER_ID"
+    configure_codex_zero_model_policy \
+        "$CODEX_ZERO_SELECTED_MODEL" \
+        "openai-api-key" \
+        "$OPENAI_PROVIDER_ID"
 
     # 3. Compose declares framework: codex explicitly. The framework is
-    # resolved from the explicit model-first provider pin. At secret resolution
-    # the provider's declared framework wins (Epic #11520) and is propagated
+    # resolved from the org model policy route. At secret resolution the
+    # provider's declared framework wins (Epic #11520) and is propagated
     # downstream via build-zero-context.ts's resolvedFramework, with no
     # compose-vs-provider equality check.
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
@@ -60,18 +62,11 @@ EOF
     [[ -n "$AGENT_ID" && "$AGENT_ID" != "null" ]] \
         || { echo "# compose --json output: $compose_json" >&2; return 1; }
 
-    # 4. Seed the zero_agents row (PK = composeId). vm0 compose's
-    # POST /api/agent/composes only inserts agent_composes +
-    # agent_compose_versions; the zero_agents row is created lazily by
-    # the web composer's metadata upsert. POST /api/zero/chat/messages
-    # requires that row (route.ts calls fetchZeroAgentForRun WHERE id =
-    # body.agentId and 404s when undefined). PATCHing metadata is the
-    # smallest write that triggers the upsert in
-    # zero-compose-service.ts updateComposeMetadata.
-    _codex_zero_curl "/api/zero/composes/$AGENT_ID/metadata" \
-        -X PATCH -d '{"displayName":"BYOK codex e2e"}' >/dev/null
-    _codex_zero_curl "/api/zero/agents/$AGENT_ID" \
-        -X PATCH -d '{"visibility":"private"}' >/dev/null
+    # 4. Seed the zero_agents row (PK = composeId) without changing the
+    # compose version created above; the product PUT route rewrites server-side
+    # agent compose content and would erase framework: codex from this fixture.
+    _codex_zero_test_curl "/api/test/zero-agent-state/action" \
+        -X POST -d "{\"action\":\"seed-agent\",\"agent_id\":\"$AGENT_ID\",\"display_name\":\"BYOK codex e2e\",\"visibility\":\"private\"}" >/dev/null
 }
 
 teardown_file() {
@@ -110,10 +105,10 @@ teardown_file() {
     # survive the subshell boundary.
     wait_for_chat_assistant_done "$THREAD_ID"
 
-    # Assert: real codex produced the expected sentinel. The org's only
-    # provider is openai-api-key, so a real (non-mock) codex completion
-    # already proves the BYOK provider routing chain resolved end-to-end —
-    # without the key the run cannot produce the sentinel.
+    # Assert: real codex produced the expected sentinel. The selected model's
+    # policy routes to openai-api-key, so a real (non-mock) codex completion
+    # proves the BYOK provider routing chain resolved end-to-end — without the
+    # key the run cannot produce the sentinel.
     [[ "$LAST_MSG_CONTENT" == *"RESULT=579"* ]] \
         || fail "Expected 'RESULT=579' in assistant content, got: $LAST_MSG_CONTENT"
 }

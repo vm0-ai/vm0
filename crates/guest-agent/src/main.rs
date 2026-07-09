@@ -20,8 +20,9 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
-    AgentFramework, CliTerminationDiagnostic, CliTerminationReason, FailureClass,
-    FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
+    FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata,
+    SessionHistoryStatus,
 };
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
@@ -61,33 +62,65 @@ fn helper_exit_code_from_args() -> Option<i32> {
     let mut args = std::env::args_os();
     let _program = args.next()?;
     let command = args.next()?;
-    if command != "verify-session-history-identity" {
-        return None;
-    }
-    let metadata_path = args
-        .next()
-        .unwrap_or_else(final_session_history_identity_path_from_process_env);
-    let remaining = args.collect::<Vec<_>>();
-    let expected = match parse_session_history_identity_expectation(&remaining) {
-        Ok(expected) => expected,
-        Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
-    };
-    Some(
-        match session_history_identity::verify_final_session_history_identity_file(
-            metadata_path,
-            expected.as_ref(),
-        ) {
-            Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
-            Err(error) => {
-                let exit_code = error.helper_exit_code();
-                if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
-                    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
-                } else {
-                    exit_code
-                }
+    match command.to_str()? {
+        "verify-session-history-identity" => {
+            let metadata_path = args
+                .next()
+                .unwrap_or_else(final_session_history_identity_path_from_process_env);
+            let remaining = args.collect::<Vec<_>>();
+            let expected = match parse_session_history_identity_expectation(&remaining) {
+                Ok(expected) => expected,
+                Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
+            };
+            Some(
+                match session_history_identity::verify_final_session_history_identity_file(
+                    metadata_path,
+                    expected.as_ref(),
+                ) {
+                    Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+                    Err(error) => session_history_identity_helper_exit_code(&error),
+                },
+            )
+        }
+        "export-session-history-sidecar" => {
+            let Some(metadata_path) = args.next() else {
+                return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS);
+            };
+            let Some(export_path) = args.next() else {
+                return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS);
+            };
+            if args.next().is_some() {
+                return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS);
             }
-        },
-    )
+            Some(
+                match session_history_identity::export_final_session_history_sidecar_file(
+                    metadata_path,
+                    export_path,
+                ) {
+                    Ok(metadata) => match serde_json::to_string(&metadata) {
+                        Ok(json) => {
+                            println!("{json}");
+                            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS
+                        }
+                        Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+                    },
+                    Err(error) => session_history_identity_helper_exit_code(&error),
+                },
+            )
+        }
+        _ => None,
+    }
+}
+
+fn session_history_identity_helper_exit_code(
+    error: &session_history_identity::FinalSessionHistoryIdentityVerifyError,
+) -> i32 {
+    let exit_code = error.helper_exit_code();
+    if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
+        SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
+    } else {
+        exit_code
+    }
 }
 
 #[allow(clippy::panic)]
@@ -295,16 +328,13 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
-    // Codex auth reconciliation must complete before the CLI starts. On reused
-    // sandboxes, continuing after a setup failure can inherit stale auth state
+    // Codex setup must complete before the CLI starts. On reused sandboxes,
+    // continuing after a setup failure can inherit stale auth or runtime state
     // from an earlier run.
     if matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
-        let msg = format!(
-            "Codex auth setup failed: {}",
-            masker.mask_string(&e.to_string())
-        );
+        let msg = format!("Codex setup failed: {}", masker.mask_string(&e.to_string()));
         log_error!(LOG_TAG, "{msg}");
         write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
         write_guest_failure_diagnostic(
@@ -358,6 +388,7 @@ async fn execute(
                     cli_exit_code,
                     cli_result.claude_result,
                 );
+                let diagnostic = with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
                 let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
                 (cli_exit_code, 1, msg, false, Some(diagnostic), false)
             } else if preserves_successful_post_result_cleanup(config.framework, &cli_result) {
@@ -376,6 +407,7 @@ async fn execute(
                     cli_result.claude_result,
                 )
                 .with_failure_detail_source(failure_message.source);
+                let diagnostic = with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
                 let diagnostic = with_cli_termination(diagnostic, cli_result.cli_termination);
                 let diagnostic = with_cli_failure_reason(diagnostic, &failure_message);
                 (
@@ -406,6 +438,8 @@ async fn execute(
                     .with_cli_exit_code(cli_exit_code)
                     .with_claude_num_turns(Some(0))
                     .with_session_history_status(session_history_status);
+                    let diagnostic =
+                        with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit);
                     (
                         cli_exit_code,
                         1,
@@ -501,6 +535,17 @@ fn with_cli_termination(
 ) -> FailureDiagnostic {
     if let Some(cli_termination) = cli_termination {
         diagnostic.with_cli_termination(cli_termination)
+    } else {
+        diagnostic
+    }
+}
+
+fn with_cli_observed_exit(
+    diagnostic: FailureDiagnostic,
+    cli_observed_exit: Option<CliObservedExitDiagnostic>,
+) -> FailureDiagnostic {
+    if let Some(cli_observed_exit) = cli_observed_exit {
+        diagnostic.with_cli_observed_exit(cli_observed_exit)
     } else {
         diagnostic
     }
@@ -1276,7 +1321,14 @@ mod tests {
     }
 
     fn test_http_client(server: &MockServer) -> HttpClient {
-        HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
+        HttpClient::with_api_config(
+            server.base_url(),
+            "test-token",
+            "",
+            "test-run-001",
+            Duration::ZERO,
+        )
+        .unwrap()
     }
 
     fn test_guest_config(server: &MockServer, prompt: Option<&str>) -> env::GuestConfig {
@@ -2696,9 +2748,34 @@ mod tests {
     }
 
     #[test]
+    fn cli_observed_exit_is_attached_without_changing_failure_reason() {
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("plain prompt"),
+        )
+        .with_cli_exit_code(137)
+        .with_failure_reason(FailureReason::ProviderOverloaded);
+        let observed_exit = CliObservedExitDiagnostic::from_signal(libc::SIGKILL);
+
+        let with_observed_exit =
+            with_cli_observed_exit(diagnostic.clone(), Some(observed_exit.clone()));
+        let unchanged = with_cli_observed_exit(diagnostic.clone(), None);
+
+        assert_eq!(with_observed_exit.failure_class, FailureClass::CliNonzero);
+        assert_eq!(
+            with_observed_exit.failure_reason,
+            Some(FailureReason::ProviderOverloaded)
+        );
+        assert_eq!(with_observed_exit.cli_observed_exit, Some(observed_exit));
+        assert_eq!(unchanged, diagnostic);
+    }
+
+    #[test]
     fn is_claude_zero_turn_result_requires_all_guards() {
         let zero_turn = cli::CliExecutionResult {
             exit_code: 0,
+            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary {
@@ -2712,6 +2789,7 @@ mod tests {
         };
         let one_turn = cli::CliExecutionResult {
             exit_code: 0,
+            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary {
@@ -2725,6 +2803,7 @@ mod tests {
         };
         let failed_zero_turn = cli::CliExecutionResult {
             exit_code: 1,
+            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(1)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary {
@@ -2738,6 +2817,7 @@ mod tests {
         };
         let unknown_zero_turn = cli::CliExecutionResult {
             exit_code: 0,
+            cli_observed_exit: Some(CliObservedExitDiagnostic::from_exit_code(0)),
             stderr_lines: Vec::new(),
             last_event_sequence: None,
             claude_result: Some(cli::ClaudeResultSummary {
@@ -2786,6 +2866,7 @@ mod tests {
                 .with_observed_exit_code(143);
             cli::CliExecutionResult {
                 exit_code: 143,
+                cli_observed_exit: Some(CliObservedExitDiagnostic::from_signal(libc::SIGTERM)),
                 stderr_lines: Vec::new(),
                 last_event_sequence: None,
                 claude_result: Some(claude_result),

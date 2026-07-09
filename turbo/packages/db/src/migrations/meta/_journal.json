@@ -3879,6 +3879,83 @@
       "when": 1783376000778,
       "tag": "0553_drop_legacy_automation_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 554,
+      "version": "7",
+      "when": 1783376000779,
+      "tag": "0554_vengeful_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 555,
+      "version": "7",
+      "when": 1783415065639,
+      "tag": "0555_notion_database_item_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 556,
+      "version": "7",
+      "when": 1783424318236,
+      "tag": "0556_notion_page_content_updated_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 557,
+      "version": "7",
+      "when": 1783483137762,
+      "tag": "0557_mute_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 558,
+      "version": "7",
+      "when": 1783483137763,
+      "tag": "0558_backfill_relationship_graph_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 559,
+      "version": "7",
+      "when": 1783559971800,
+      "tag": "0559_empty_owl",
+      "breakpoints": true
+    },
+    {
+      "idx": 560,
+      "version": "7",
+      "when": 1783560031204,
+      "tag": "0560_luxuriant_titania",
+      "breakpoints": true
+    },
+    {
+      "idx": 561,
+      "version": "7",
+      "when": 1783579045330,
+      "tag": "0561_low_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 562,
+      "version": "7",
+      "when": 1783583686379,
+      "tag": "0562_migrate_zai_glm_5_2_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 563,
+      "version": "7",
+      "when": 1783586015280,
+      "tag": "0563_cool_gideon",
+      "breakpoints": true
+    },
+    {
+      "idx": 564,
+      "version": "7",
+      "when": 1783586015281,
+      "tag": "0564_soft_gargoyle",
+      "breakpoints": true
     }
   ]
 }

@@ -3504,6 +3504,51 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
           "Authorization"
         ],
         "authQueryParamNames": [],
+        "base": "https://m.np.playstation.com",
+        "envNames": [
+          "PLAYSTATION_TOKEN"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://us-prof.np.community.playstation.net",
+        "envNames": [
+          "PLAYSTATION_TOKEN"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://web.np.playstation.com",
+        "envNames": [
+          "PLAYSTATION_TOKEN"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://dms.api.playstation.com",
+        "envNames": [
+          "PLAYSTATION_TOKEN"
+        ]
+      }
+    ],
+    "name": "playstation"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
         "base": "https://api.podchaser.com",
         "envNames": [
           "PODCHASER_TOKEN"

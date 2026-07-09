@@ -2,7 +2,7 @@ import { Command, InvalidArgumentError } from "commander";
 import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { createStyledImageAuthoringPacket } from "./image-style-authoring";
+import { createStyledImageCompilationPacket } from "./image-style-authoring";
 import { findImageStyle, listImageStyles } from "./resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
@@ -10,6 +10,8 @@ import type { GenerationType } from "../generate/lib/lister";
 
 interface ImageOptions {
   prompt?: string;
+  compiledPrompt?: string;
+  rawPrompt?: string;
   provider?: string;
   model: string;
   size: string;
@@ -26,7 +28,7 @@ interface ImageOptions {
   inputFidelity?: string;
   imagePromptStrength?: string;
   style?: string;
-  skipStyle?: boolean;
+  compile?: boolean;
   all?: boolean;
 }
 
@@ -37,17 +39,20 @@ interface ImageGenerateCommandConfig {
   examples: string;
 }
 
-function requireStyleError(usageCommand: string): Error {
+type ImagePromptMode = "compile" | "compiled" | "raw";
+
+function requireImageModeError(usageCommand: string): Error {
   const styles = listImageStyles();
   const message = [
-    "--style <id> or --skip-style is required",
+    "Choose one image prompt mode",
+    "",
+    "Modes:",
+    `  Compile styled prompt: ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..." --compile`,
+    `  Generate compiled prompt: ${usageCommand} --compiled-prompt "..."`,
+    `  Generate raw prompt: ${usageCommand} --raw-prompt "..."`,
     "",
     "Available styles:",
     formatRegistryListing(styles, "image styles"),
-    "",
-    `Examples:`,
-    `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
-    `  ${usageCommand} --skip-style --prompt "..."`,
   ].join("\n");
   return new Error(message);
 }
@@ -61,7 +66,7 @@ function unknownStyleError(id: string, usageCommand: string): Error {
     formatRegistryListing(styles, "image styles"),
     "",
     `Example:`,
-    `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..."`,
+    `  ${usageCommand} --style ${styles[0]?.id ?? "<style-id>"} --prompt "..." --compile`,
   ].join("\n");
   return new Error(message);
 }
@@ -114,13 +119,73 @@ function parseImagePromptStrength(
   return strength;
 }
 
+function resolvePromptInput(options: ImageOptions): string | undefined {
+  return options.compiledPrompt ?? options.rawPrompt ?? options.prompt;
+}
+
+function hasImagePromptModeRequest(options: ImageOptions): boolean {
+  return (
+    options.style !== undefined ||
+    options.compile === true ||
+    options.prompt !== undefined ||
+    options.compiledPrompt !== undefined ||
+    options.rawPrompt !== undefined
+  );
+}
+
+function resolveImagePromptMode(
+  options: ImageOptions,
+  usageCommand: string,
+): ImagePromptMode {
+  const hasCompiledPrompt = options.compiledPrompt !== undefined;
+  const hasRawPrompt = options.rawPrompt !== undefined;
+  const compile = options.compile === true;
+
+  if (!compile && options.style) {
+    throw new Error("--style can only be used with --compile");
+  }
+
+  if ([compile, hasCompiledPrompt, hasRawPrompt].filter(Boolean).length !== 1) {
+    throw requireImageModeError(usageCommand);
+  }
+
+  if (compile && !options.style) {
+    throw new Error("--compile requires --style <id>");
+  }
+
+  if (!compile && options.prompt !== undefined) {
+    throw new Error(
+      "--prompt can only be used with --style <id> --compile; use --compiled-prompt or --raw-prompt to generate",
+    );
+  }
+
+  if (compile) {
+    return "compile";
+  }
+  if (hasCompiledPrompt) {
+    return "compiled";
+  }
+  return "raw";
+}
+
 export function createImageGenerateCommand(
   config: ImageGenerateCommandConfig,
 ): Command {
   return new Command()
     .name(config.name)
     .description("Generate a billed image file from a prompt")
-    .option("--prompt <text>", "Image prompt; can also be piped via stdin")
+    .option(
+      "--prompt <text>",
+      "User prompt to compile with --style and --compile; can also be piped via stdin",
+    )
+    .option(
+      "--compiled-prompt <text>",
+      "Final image prompt produced from a prompt-compilation packet",
+    )
+    .option(
+      "--raw-prompt <text>",
+      "Final image prompt for unstyled/model-native generation",
+    )
     .option(
       "--provider <name>",
       "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
@@ -179,11 +244,11 @@ export function createImageGenerateCommand(
     )
     .option(
       "--style <id>",
-      "Image style id from the registry (see Image Styles below)",
+      "Image style id to compile from the registry (see Image Styles below)",
     )
     .option(
-      "--skip-style",
-      "Opt out of styled image generation for this invocation",
+      "--compile",
+      "Resolve the selected style and print a prompt-compilation packet",
     )
     .addHelpText("after", () => {
       const styles = listImageStyles();
@@ -192,9 +257,9 @@ Examples:
 ${config.examples}
 
 Output:
-  Prints the generated /f/ image file URL and metadata. With --style <id>,
-  prints a source-selection packet for the current agent
-  with the selected style locked in.
+  Prints the generated /f/ image file URL and metadata with --compiled-prompt
+  or --raw-prompt. With --style <id> --prompt "..." --compile, prints a
+  prompt-compilation packet for the current agent.
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires file:write capability)
@@ -210,9 +275,10 @@ Models:
     megapixel, depending on the model.
 
 Options:
-  - Prompt: required, up to 32,000 characters; stdin is supported.
-  - Style: required. Pass --style <id> to generate in a registered style
-    or --skip-style to bypass styled generation entirely.
+  - Prompt modes: choose exactly one mode. Use --style <id> --prompt "..."
+    --compile to prepare a styled prompt-compilation packet, --compiled-prompt
+    to generate from an agent-compiled prompt, or --raw-prompt to generate
+    without a style. stdin is supported for --prompt in compile mode.
   - Size: gpt-image-2 accepts auto or WIDTHxHEIGHT. Popular sizes include
     1024x1024,
     1536x1024, 1024x1536, 2048x2048, 2048x1152, 3840x2160,
@@ -241,26 +307,30 @@ ${formatRegistryListing(styles, "image styles")}`;
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           provider: options.provider,
-          prompt: options.prompt,
+          prompt: resolvePromptInput(options),
           all: options.all,
+          listOnMissingPrompt: !hasImagePromptModeRequest(options),
+          missingPromptError:
+            options.compile || options.style
+              ? "--compile requires --prompt <text> or piped stdin"
+              : undefined,
         });
         if (dispatch.outcome === "handled") return;
-        const prompt = dispatch.prompt;
+        const resolvedPrompt = dispatch.prompt;
+        const mode = resolveImagePromptMode(options, config.usageCommand);
 
-        if (options.style && options.skipStyle) {
-          throw new Error("--style and --skip-style cannot be combined");
-        }
-        if (!options.style && !options.skipStyle) {
-          throw requireStyleError(config.usageCommand);
-        }
-        if (options.style) {
-          const style = findImageStyle(options.style);
+        if (mode === "compile") {
+          const styleId = options.style;
+          if (!styleId) {
+            throw new Error("--compile requires --style <id>");
+          }
+          const style = findImageStyle(styleId);
           if (!style) {
-            throw unknownStyleError(options.style, config.usageCommand);
+            throw unknownStyleError(styleId, config.usageCommand);
           }
 
-          const packet = createStyledImageAuthoringPacket({
-            prompt,
+          const packet = createStyledImageCompilationPacket({
+            prompt: resolvedPrompt,
             style,
             details: [
               `Model preference if direct image generation is used: ${options.model}`,
@@ -292,7 +362,7 @@ ${formatRegistryListing(styles, "image styles")}`;
             ? "auto"
             : options.size;
         const result = await generateWebImage({
-          prompt,
+          prompt: resolvedPrompt,
           model: options.model,
           size,
           quality: options.quality,

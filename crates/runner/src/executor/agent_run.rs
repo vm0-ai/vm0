@@ -17,6 +17,7 @@ use sandbox::{
     Sandbox, StartProcessRequest,
 };
 use shell_quote::quote_shell_arg;
+use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
@@ -27,8 +28,10 @@ use super::diagnostics::{
     log_agent_abnormal_exit_env_diagnostics, log_agent_bootstrap_abnormal_exit_diagnostics,
     log_agent_process_exit_summary, read_guest_error_file, read_guest_failure_diagnostic_file,
     should_collect_agent_abnormal_exit_diagnostics,
+    should_collect_unattributed_sigkill_resource_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
+use super::effective_cli_framework;
 use super::env::{
     build_env_json_for_run, build_run_payload_for_run, build_user_env_json, write_run_payload_file,
     write_user_env_file,
@@ -37,6 +40,7 @@ use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
     SessionHistoryMaterialization, SessionHistoryMaterializer,
+    verify_codex_zstd_session_history_bytes, verify_identity_session_history_bytes,
 };
 use super::session_restore::{MaterializedResumeSession, restore_session};
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
@@ -57,6 +61,9 @@ use crate::restored_session_identity::{
 };
 use crate::telemetry::{JobTelemetry, SessionHistoryTelemetryMetadata};
 use crate::types::{ExecutionContext, GuestDownloadManifest};
+use crate::workspace_image_cache::{
+    WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
+};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
@@ -233,6 +240,12 @@ fn record_session_history_download_timings(
     );
     record_session_history_download_phase(
         telemetry,
+        "session_history_download_decompression",
+        timings.decompression(),
+        metadata,
+    );
+    record_session_history_download_phase(
+        telemetry,
         "session_history_download_hash_verification",
         timings.hash_verification(),
         metadata,
@@ -286,13 +299,94 @@ fn record_session_history_materializer_state(
     }
 }
 
+fn record_session_history_restore_fallback(
+    telemetry: &mut JobTelemetry,
+    fallback: Option<SessionHistoryRestoreFallback>,
+) {
+    if let Some(fallback) = fallback {
+        telemetry.record(fallback.action_type(), Duration::ZERO, true, None);
+        if let Some(reason) = fallback.identity_mismatch_reason() {
+            record_session_history_identity_mismatch_reason(telemetry, reason);
+        }
+        if matches!(fallback, SessionHistoryRestoreFallback::MissingIdleIdentity) {
+            telemetry.record(
+                "session_history_identity_reuse_missing",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            record_session_history_identity_reason(
+                telemetry,
+                SessionHistoryIdentityReason::ReuseMissingNoIdleIdentity,
+            );
+        }
+    }
+}
+
+async fn materialize_session_history_sidecar(
+    context: &ExecutionContext,
+    sidecar: &WorkspaceSessionHistorySidecar,
+) -> RunnerResult<MaterializedResumeSession<'static>> {
+    let resume_session = context.resume_session.as_ref().ok_or_else(|| {
+        RunnerError::Internal("resume session missing for sidecar restore".into())
+    })?;
+    let history_ref = resume_session.history_ref().ok_or_else(|| {
+        RunnerError::Internal("resume session history ref missing for sidecar restore".into())
+    })?;
+    let bytes = read_session_history_sidecar_bytes(sidecar).await?;
+    match sidecar.representation {
+        WorkspaceSessionHistorySidecarRepresentation::Raw => {
+            verify_identity_session_history_bytes(&bytes, history_ref.raw_size, &history_ref.hash)?;
+            Ok(MaterializedResumeSession::new(
+                resume_session.cli_agent_session_id.clone(),
+                bytes,
+            ))
+        }
+        WorkspaceSessionHistorySidecarRepresentation::CodexZstd => {
+            let timestamp = verify_codex_zstd_session_history_bytes(
+                &bytes,
+                history_ref.raw_size,
+                &history_ref.hash,
+            )?;
+            Ok(MaterializedResumeSession::new_codex_zstd(
+                resume_session.cli_agent_session_id.clone(),
+                bytes,
+                timestamp,
+            ))
+        }
+    }
+}
+
+async fn read_session_history_sidecar_bytes(
+    sidecar: &WorkspaceSessionHistorySidecar,
+) -> RunnerResult<Vec<u8>> {
+    let file = tokio::fs::File::open(&sidecar.path).await?;
+    let mut bytes = Vec::with_capacity(sidecar.encoded_size.min(1024 * 1024) as usize);
+    file.take(sidecar.encoded_size.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() as u64 != sidecar.encoded_size {
+        return Err(RunnerError::Internal(
+            "workspace session history sidecar size mismatch".into(),
+        ));
+    }
+    Ok(bytes)
+}
+
 #[derive(Default)]
 #[must_use = "restore plans decide whether resume history download can be skipped"]
 pub(crate) enum SessionHistoryRestorePlan {
     #[default]
     Default,
+    DeferredHashBacked {
+        fallback: Option<SessionHistoryRestoreFallback>,
+    },
     Prestarted {
         materializer: SessionHistoryMaterializer,
+        fallback: Option<SessionHistoryRestoreFallback>,
+    },
+    LocalSidecar {
+        sidecar: WorkspaceSessionHistorySidecar,
         fallback: Option<SessionHistoryRestoreFallback>,
     },
     SkipVerified(RestoredSessionIdentity),
@@ -822,8 +916,23 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {
         let runtime_dir = guest_runtime_dir(context.run_id)?;
-        let guest_manifest =
-            GuestDownloadManifest::from_storage_manifest_for_run(manifest, runtime_dir.as_str());
+        let conversion_t = Instant::now();
+        let guest_manifest = match GuestDownloadManifest::from_storage_manifest_for_run(
+            manifest,
+            runtime_dir.as_str(),
+        ) {
+            Ok(guest_manifest) => guest_manifest,
+            Err(error) => {
+                let error_message = error.to_string();
+                telemetry.record(
+                    "runner_storage_manifest_apply",
+                    conversion_t.elapsed(),
+                    false,
+                    Some(&error_message),
+                );
+                return Err(error);
+            }
+        };
         let mut effective: GuestDownloadManifest = match start.prev_storage {
             Some(prev) => {
                 let t = Instant::now();
@@ -901,7 +1010,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let mut session_restore_diagnostics = None;
     let mut restored_session_identity = None;
-    let session_history_materializer = match session_history_restore_plan {
+    let mut local_session_history_sidecar = None;
+    let mut session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
             match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
                 Ok(identity) => {
@@ -926,41 +1036,113 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     Some(SessionHistoryMaterializer::start_cancellable(
                         &config.http,
                         context.resume_session.as_ref(),
+                        effective_cli_framework(&context.cli_agent_type),
                         cancel.clone(),
+                        Some(&config.session_history_probe),
                     ))
                 }
             }
         }
+        SessionHistoryRestorePlan::DeferredHashBacked { fallback } => {
+            record_session_history_restore_fallback(telemetry, fallback);
+            Some(SessionHistoryMaterializer::start_cancellable(
+                &config.http,
+                context.resume_session.as_ref(),
+                effective_cli_framework(&context.cli_agent_type),
+                cancel.clone(),
+                Some(&config.session_history_probe),
+            ))
+        }
         SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
             &config.http,
             context.resume_session.as_ref(),
+            effective_cli_framework(&context.cli_agent_type),
             cancel.clone(),
+            Some(&config.session_history_probe),
         )),
         SessionHistoryRestorePlan::Prestarted {
             materializer,
             fallback,
         } => {
-            if let Some(fallback) = fallback {
-                telemetry.record(fallback.action_type(), Duration::ZERO, true, None);
-                if let Some(reason) = fallback.identity_mismatch_reason() {
-                    record_session_history_identity_mismatch_reason(telemetry, reason);
-                }
-                if matches!(fallback, SessionHistoryRestoreFallback::MissingIdleIdentity) {
+            record_session_history_restore_fallback(telemetry, fallback);
+            Some(materializer)
+        }
+        SessionHistoryRestorePlan::LocalSidecar { sidecar, fallback } => {
+            record_session_history_restore_fallback(telemetry, fallback);
+            local_session_history_sidecar = Some(sidecar);
+            None
+        }
+    };
+    if let Some(sidecar) = local_session_history_sidecar {
+        let restore_started = Instant::now();
+        match materialize_session_history_sidecar(context, &sidecar).await {
+            Ok(session) => match restore_session(sandbox, context, &session).await {
+                Ok(diagnostics) => {
                     telemetry.record(
-                        "session_history_identity_reuse_missing",
-                        Duration::ZERO,
+                        "session_history_workspace_cache_restore",
+                        restore_started.elapsed(),
                         true,
                         None,
                     );
-                    record_session_history_identity_reason(
-                        telemetry,
-                        SessionHistoryIdentityReason::ReuseMissingNoIdleIdentity,
-                    );
+                    telemetry.record("session_restore", restore_started.elapsed(), true, None);
+                    session_restore_diagnostics = Some(diagnostics);
                 }
+                Err(error) => {
+                    telemetry.record(
+                        "session_history_workspace_cache_restore",
+                        restore_started.elapsed(),
+                        false,
+                        Some("restore_error"),
+                    );
+                    telemetry.record(
+                        "session_history_workspace_cache_miss",
+                        Duration::ZERO,
+                        true,
+                        Some("restore_error"),
+                    );
+                    warn!(
+                        run_id = %context.run_id,
+                        error = %error,
+                        "workspace session history sidecar restore failed; falling back to remote history"
+                    );
+                    session_history_materializer =
+                        Some(SessionHistoryMaterializer::start_cancellable(
+                            &config.http,
+                            context.resume_session.as_ref(),
+                            effective_cli_framework(&context.cli_agent_type),
+                            cancel.clone(),
+                            Some(&config.session_history_probe),
+                        ));
+                }
+            },
+            Err(error) => {
+                telemetry.record(
+                    "session_history_workspace_cache_restore",
+                    restore_started.elapsed(),
+                    false,
+                    Some("materialize_error"),
+                );
+                telemetry.record(
+                    "session_history_workspace_cache_miss",
+                    Duration::ZERO,
+                    true,
+                    Some("materialize_error"),
+                );
+                warn!(
+                    run_id = %context.run_id,
+                    error = %error,
+                    "workspace session history sidecar materialization failed; falling back to remote history"
+                );
+                session_history_materializer = Some(SessionHistoryMaterializer::start_cancellable(
+                    &config.http,
+                    context.resume_session.as_ref(),
+                    effective_cli_framework(&context.cli_agent_type),
+                    cancel.clone(),
+                    Some(&config.session_history_probe),
+                ));
             }
-            Some(materializer)
         }
-    };
+    }
     if let Some(session_history_materializer) = session_history_materializer {
         // 4. Restore session history. Hash-backed history downloads can start
         // before sandbox preparation, then materialize here right before restore.
@@ -1497,6 +1679,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             failure_diagnostic.as_ref(),
             guest_error.as_deref(),
         );
+        let should_collect_sigkill_resource_diagnostics =
+            should_collect_unattributed_sigkill_resource_diagnostics(
+                wait_cancelled,
+                &exit,
+                failure_diagnostic.as_ref(),
+            );
+        let should_collect_resource_diagnostics =
+            should_collect_resource_diagnostics || should_collect_sigkill_resource_diagnostics;
         let mut resource_diagnostics = None;
         if should_log_bootstrap_diagnostics || should_collect_resource_diagnostics {
             let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);

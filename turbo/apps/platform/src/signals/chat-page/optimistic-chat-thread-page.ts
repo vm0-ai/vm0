@@ -2,6 +2,7 @@ import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatMessagesContract,
+  chatThreadModelSelectionContract,
   chatThreadsContract,
   type AttachFile,
   type ChatThreadEvent,
@@ -34,15 +35,17 @@ import {
   appendOptimisticChatMessage$,
   type OptimisticChatMessageEntry,
 } from "./optimistic-chat-messages.ts";
-import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
+import {
+  applyCodexFastModeDefault,
+  resolveModelFirstUserDefaultSelection,
+} from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { codexFastModeLocalDefault$ } from "../zero-page/codex-fast-local-default.ts";
+import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { logger } from "../log.ts";
-import {
-  modelSelectionRequestFromSelection,
-  runOptionsFromModelProviderSelection,
-} from "./model-selection-request.ts";
+import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 
@@ -108,6 +111,7 @@ function newThreadSendBody({
   prepared,
   modelSelection,
   codexFastModeEnabled,
+  realAgentInPreviewEnabled,
   generationTemplate,
   computerUseHostId,
 }: {
@@ -117,6 +121,7 @@ function newThreadSendBody({
   prepared: PreparedNewThreadPayload;
   modelSelection: ModelProviderSelection;
   codexFastModeEnabled: boolean;
+  realAgentInPreviewEnabled: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }) {
@@ -131,6 +136,7 @@ function newThreadSendBody({
     hasTextContent: prepared.hasTextContent,
     clientMessageId,
     ...(runOptions ? { runOptions } : {}),
+    ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     attachFiles: prepared.attachFiles,
@@ -148,14 +154,21 @@ function resolveNewThreadModelSelection(
   args: {
     readonly policies: OrgModelPoliciesResponse | null | undefined;
     readonly userPreference: UserModelPreferenceResponse | null | undefined;
+    readonly codexFastModeDefault: boolean;
+    readonly codexFastModeEnabled: boolean;
   },
 ): ModelProviderSelection | null {
   if (modelSelection) {
     return modelSelection;
   }
-  return resolveModelFirstUserDefaultSelection({
-    userPreference: args.userPreference,
+  return applyCodexFastModeDefault({
+    selection: resolveModelFirstUserDefaultSelection({
+      userPreference: args.userPreference,
+      policies: args.policies,
+    }),
     policies: args.policies,
+    codexFastModeEnabled: args.codexFastModeEnabled,
+    codexFastModeDefault: args.codexFastModeDefault,
   });
 }
 
@@ -283,15 +296,31 @@ async function createChatThread(args: {
         agentId: args.agentId,
         clientThreadId: args.clientThreadId,
         eventId: args.eventId,
-        modelSelection: modelSelectionRequestFromSelection(
-          args.modelSelection,
-        )!,
+        model: args.modelSelection.selectedModel,
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal: args.signal },
     }),
     [201],
   );
+  args.signal.throwIfAborted();
+  if (args.modelSelection.codexServiceTier === "fast") {
+    const modelSelectionClient = args.createClient(
+      chatThreadModelSelectionContract,
+    );
+    await accept(
+      modelSelectionClient.update({
+        params: { id: args.clientThreadId },
+        body: {
+          model: args.modelSelection.selectedModel,
+          codexServiceTier: "fast",
+          eventId: crypto.randomUUID(),
+        },
+        fetchOptions: { signal: args.signal },
+      }),
+      [204],
+    );
+  }
 }
 
 const startNewChatThreadCreate$ = command(
@@ -309,9 +338,15 @@ const startNewChatThreadCreate$ = command(
     signal.throwIfAborted();
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
+    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
+    signal.throwIfAborted();
+    const featureSwitches = get(featureSwitch$);
     const modelSelection = resolveNewThreadModelSelection(null, {
       policies,
       userPreference,
+      codexFastModeDefault,
+      codexFastModeEnabled:
+        featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
     });
     if (!modelSelection) {
       throw new Error("A model selection is required");
@@ -378,18 +413,28 @@ const sendNewThreadMessage$ = command(
     readonly threadId: string;
     readonly sendResult: Promise<SendNewThreadMessageResult>;
   } | null> => {
-    const { agentId, prompt, modelSelection, generationTemplate } = request;
+    const { agentId, prompt, modelSelection } = request;
+    const generationTemplate = generationTemplateForFeatureSwitches(
+      request.generationTemplate,
+      get(featureSwitch$),
+    );
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
     const policies = await get(orgModelPolicies$);
     signal.throwIfAborted();
     const userPreference = await get(userModelPreference$);
     signal.throwIfAborted();
+    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
+    signal.throwIfAborted();
+    const featureSwitches = get(featureSwitch$);
     const resolvedModelSelection = resolveNewThreadModelSelection(
       modelSelection,
       {
         policies,
         userPreference,
+        codexFastModeDefault,
+        codexFastModeEnabled:
+          featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
       },
     );
     if (!resolvedModelSelection) {
@@ -461,6 +506,8 @@ const sendNewThreadMessage$ = command(
           prepared,
           modelSelection: resolvedModelSelection,
           codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+          realAgentInPreviewEnabled:
+            get(featureSwitch$)[FeatureSwitchKey.RealAgentInPreview] ?? false,
           generationTemplate,
           computerUseHostId,
         }),

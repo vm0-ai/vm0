@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
+use std::future::Future;
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::time::{Duration, SystemTime};
 
 use clap::Args;
@@ -206,6 +208,12 @@ struct GcCandidate {
 }
 
 type ProtectedImageRefs = HashMap<String, HashSet<String>>;
+type ServiceUninstallFuture<'a> = Pin<Box<dyn Future<Output = RunnerResult<()>> + 'a>>;
+type ServiceUninstallFn = for<'a> fn(&'a service::RunnerServiceUnit) -> ServiceUninstallFuture<'a>;
+
+fn real_uninstall_service_unit(unit: &service::RunnerServiceUnit) -> ServiceUninstallFuture<'_> {
+    Box::pin(service::uninstall_service_unit(unit))
+}
 
 #[derive(serde::Deserialize)]
 struct ConfigImageRefs {
@@ -1609,6 +1617,20 @@ async fn version_retention_reason(
 }
 
 #[cfg(test)]
+fn successful_fake_uninstall_service_unit(
+    _unit: &service::RunnerServiceUnit,
+) -> ServiceUninstallFuture<'_> {
+    Box::pin(async { Ok(()) })
+}
+
+#[cfg(test)]
+fn failing_fake_uninstall_service_unit(
+    _unit: &service::RunnerServiceUnit,
+) -> ServiceUninstallFuture<'_> {
+    Box::pin(async { Err(RunnerError::Internal("fake uninstall failed".to_string())) })
+}
+
+#[cfg(test)]
 async fn gc_versions(
     home: &HomePaths,
     dry_run: bool,
@@ -1616,7 +1638,13 @@ async fn gc_versions(
     keep_latest: Option<usize>,
 ) -> RunnerResult<Vec<String>> {
     let analysis = analyze_version_gc(home, protect, keep_latest).await?;
-    gc_versions_with_analysis(home, dry_run, analysis).await
+    gc_versions_with_analysis_and_uninstall(
+        home,
+        dry_run,
+        analysis,
+        successful_fake_uninstall_service_unit,
+    )
+    .await
 }
 
 /// Remove old deployment version directories that are not actively running.
@@ -1639,6 +1667,16 @@ async fn gc_versions_with_analysis(
     home: &HomePaths,
     dry_run: bool,
     analysis: VersionGcAnalysis,
+) -> RunnerResult<Vec<String>> {
+    gc_versions_with_analysis_and_uninstall(home, dry_run, analysis, real_uninstall_service_unit)
+        .await
+}
+
+async fn gc_versions_with_analysis_and_uninstall(
+    home: &HomePaths,
+    dry_run: bool,
+    analysis: VersionGcAnalysis,
+    uninstall_service: ServiceUninstallFn,
 ) -> RunnerResult<Vec<String>> {
     let bin_dir = home.bin_dir();
     let mut removed: Vec<String> = Vec::new();
@@ -1723,10 +1761,9 @@ async fn gc_versions_with_analysis(
             }
             Ok(false) => {}
             Err(e) => {
-                // systemctl unavailable (e.g. in tests or broken PATH).
-                // Log and treat as inactive — the version dir will still be
-                // removed, which is preferable to silently accumulating stale
-                // versions when systemd units are already gone.
+                // systemctl may be unavailable on non-systemd hosts. Continue
+                // to the uninstall step; it will refuse deletion if it cannot
+                // prove the service is stopped.
                 warn!("version {name}: cannot check unit status ({e}), assuming inactive");
             }
         }
@@ -1738,8 +1775,14 @@ async fn gc_versions_with_analysis(
                 warn!("version {name}: service lock missing before delete, skipping");
                 continue;
             };
-            // Best-effort uninstall the systemd service (may not exist).
-            let _ = service::uninstall_service_unit(&unit).await;
+            // Uninstall is best-effort for missing/inactive units, but it
+            // returns an error when it cannot prove the service is stopped.
+            // In that case the version may still be backing a live runner, so
+            // keep the bin/config directories for the next GC pass.
+            if let Err(e) = uninstall_service(&unit).await {
+                warn!("version {name}: cannot uninstall service safely ({e}), skipping");
+                continue;
+            }
 
             // Remove bin directory.
             if let Err(e) = tokio::fs::remove_dir_all(&version_bin).await
@@ -2778,6 +2821,7 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use clap::Parser;
 
     /// `--r2-keep-days 0` would wipe even just-uploaded images. Verify the
@@ -3818,7 +3862,6 @@ server:
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
         age_versions_past_gc_min_age(&home, &["v1.0.0", "v2.0.0"]);
 
-        // systemctl will fail in test env, so versions are treated as inactive
         let mut removed = gc_versions(&home, false, None, None).await.unwrap();
         removed.sort();
         assert_eq!(removed, ["v1.0.0", "v2.0.0"]);
@@ -3829,6 +3872,39 @@ server:
             "non-semver should be untouched"
         );
         assert!(!runners_dir.join("v1.0.0").exists());
+    }
+
+    #[tokio::test]
+    async fn gc_versions_keeps_version_when_service_uninstall_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let bin_dir = home.bin_dir();
+        let runners_dir = home.runners_dir();
+        let version = "v1.0.0";
+
+        std::fs::create_dir_all(bin_dir.join(version)).unwrap();
+        std::fs::create_dir_all(runners_dir.join(version)).unwrap();
+        age_version_past_gc_min_age(&home, version);
+
+        let analysis = analyze_version_gc(&home, None, None).await.unwrap();
+        let removed = gc_versions_with_analysis_and_uninstall(
+            &home,
+            false,
+            analysis,
+            failing_fake_uninstall_service_unit,
+        )
+        .await
+        .unwrap();
+
+        assert!(removed.is_empty());
+        assert!(
+            bin_dir.join(version).exists(),
+            "failed service uninstall must keep version bin dir"
+        );
+        assert!(
+            runners_dir.join(version).exists(),
+            "failed service uninstall must keep version config dir"
+        );
     }
 
     #[tokio::test]
@@ -6980,35 +7056,20 @@ server:
 
     const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_STORAGE_GC_CHILD";
 
-    #[test]
-    fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .env(LOW_FD_STORAGE_GC_CHILD_ENV, "1")
-            .arg("gc_storage_cache_many_candidates_low_fd_child")
-            .arg("--ignored")
-            .arg("--nocapture")
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        assert!(
-            output.status.success(),
-            "low-fd storage GC child failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            stdout,
-            stderr
-        );
-        assert!(
-            stdout.contains("gc_storage_cache_many_candidates_low_fd_child"),
-            "low-fd storage GC child did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
-        );
+    #[tokio::test]
+    async fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
+        run_ignored_child_test(
+            "cmd::gc::tests::gc_storage_cache_many_candidates_low_fd_child",
+            (LOW_FD_STORAGE_GC_CHILD_ENV, "1"),
+            Duration::from_secs(60),
+        )
+        .await;
     }
 
     #[tokio::test]
     #[ignore = "spawned by gc_storage_cache_many_candidates_does_not_exhaust_lock_fds"]
     async fn gc_storage_cache_many_candidates_low_fd_child() {
-        if std::env::var_os(LOW_FD_STORAGE_GC_CHILD_ENV).is_none() {
+        if !ignored_child_test_env_guard_enabled((LOW_FD_STORAGE_GC_CHILD_ENV, "1")) {
             return;
         }
 
@@ -7032,7 +7093,7 @@ server:
             "test storage entries must consume disk blocks"
         );
 
-        set_soft_nofile_limit_for_child(128);
+        let _nofile_limit = set_soft_nofile_limit_for_child(128);
 
         let cap = entry_size * keep_count as u64;
         let freed = gc_storage_cache_with_cap(&home, cap, false).await.unwrap();
@@ -7044,9 +7105,30 @@ server:
         );
     }
 
-    fn set_soft_nofile_limit_for_child(limit: u64) {
-        // This helper runs only in the spawned child process, so lowering the
-        // process-wide fd limit cannot leak into the parent test runner.
+    struct SoftNofileLimitGuard {
+        original: nix::libc::rlimit,
+    }
+
+    impl Drop for SoftNofileLimitGuard {
+        fn drop(&mut self) {
+            unsafe {
+                let rc = nix::libc::setrlimit(nix::libc::RLIMIT_NOFILE, &self.original);
+                if rc != 0 {
+                    let message = format!(
+                        "restore RLIMIT_NOFILE failed: {}",
+                        std::io::Error::last_os_error()
+                    );
+                    if std::thread::panicking() {
+                        eprintln!("{message}");
+                    } else {
+                        panic!("{message}");
+                    }
+                }
+            }
+        }
+    }
+
+    fn set_soft_nofile_limit_for_child(limit: u64) -> SoftNofileLimitGuard {
         unsafe {
             let mut current = std::mem::MaybeUninit::<nix::libc::rlimit>::uninit();
             let rc = nix::libc::getrlimit(nix::libc::RLIMIT_NOFILE, current.as_mut_ptr());
@@ -7074,6 +7156,7 @@ server:
                 "setrlimit(RLIMIT_NOFILE) failed: {}",
                 std::io::Error::last_os_error()
             );
+            SoftNofileLimitGuard { original: current }
         }
     }
 

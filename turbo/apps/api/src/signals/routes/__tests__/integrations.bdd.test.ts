@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +9,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
@@ -18,6 +20,7 @@ import {
 } from "./helpers/api-bdd-integrations";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
 helper gap:
@@ -1179,8 +1182,20 @@ describe("INT-01: Slack app deep webhook flows", () => {
       "api_dispatch_pre_create_zero_slack_entrypoint_gap",
       "api_dispatch_pre_create_zero_slack_background_start_gap",
       "api_dispatch_pre_create_zero_slack_resolve_message",
+      "api_dispatch_pre_create_zero_slack_record_memory_source",
       "api_dispatch_pre_create_zero_slack_set_thread_status",
       "api_dispatch_pre_create_zero_slack_build_run_params",
+      "api_dispatch_pre_create_zero_slack_build_run_params_enrich_message",
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_model_route",
+      "api_dispatch_pre_create_zero_slack_build_run_params_load_thread_binding",
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_session",
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_computer_use_host",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+      "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
+      "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {
       expect(slackTimingActionTypes).toContain(actionType);
@@ -1191,6 +1206,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const serializedSlackTimingEvents = JSON.stringify(slackTimingEvents);
     for (const forbiddenValue of [
       "summarize this thread",
+      teamId,
       channelId,
       threadTs,
       slackUserId,
@@ -1242,6 +1258,21 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run2Id = await pollSlackRun(runnerGroup);
     const claim2 = await runs.claimRunnerJob(run2Id);
+    const slackThreadTimingActionTypes = Array.from(
+      new Set(
+        sandboxOperationEventsForRun(run2Id).map((event) => {
+          return event.op_type;
+        }),
+      ),
+    );
+    expect(slackThreadTimingActionTypes).toStrictEqual(
+      expect.arrayContaining([
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_replies",
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+        "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+      ]),
+    );
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${run1Id}`);
     await completeSlackTriggeredRun({
       runId: run2Id,
@@ -1347,6 +1378,73 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run5 = await runs.readRun(actor, run5Id);
     expect(run5.result?.agentSessionId).not.toBe(session4);
+  });
+
+  it("starts a new Slack session when MiniMax switches framework", async () => {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("MiniMax framework switch test requires an org");
+    }
+
+    runs.acceptStorageDownloads();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackMiniMaxModelPolicy(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "C_BDD_MINIMAX_FRAMEWORK";
+    const threadTs = "3300.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "start on minimax claude",
+      ts: threadTs,
+      channel: channelId,
+    });
+    const run1Id = await pollSlackRun(runnerGroup);
+    const claim1 = await runs.claimRunnerJob(run1Id);
+    expect(claim1.cliAgentType).toBe("claude-code");
+    expect(claim1.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: run1Id,
+      sandboxToken: claim1.sandboxToken,
+      cliAgentType: "claude-code",
+    });
+    const run1 = await runs.readRun(actor, run1Id);
+    expect(run1.result?.agentSessionId).toStrictEqual(expect.any(String));
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.CodexFrameworkForMinimax]: true,
+      },
+    );
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: "continue after minimax codex switch",
+      ts: "3300.000200",
+      thread_ts: threadTs,
+      channel: channelId,
+    });
+    const run2Id = await pollSlackRun(runnerGroup);
+    const claim2 = await runs.claimRunnerJob(run2Id);
+    expect(claim2.cliAgentType).toBe("codex");
+    expect(claim2.resumeSession).toBeNull();
+    expect(claim2.codexRuntimeConfig).toMatchObject({
+      providerId: "minimax",
+      supportsWebsockets: false,
+    });
+
+    await runs.requestCancelRun(actor, run2Id, [200]);
   });
 
   it("prompts disconnected Slack users and filters non-actionable messages", async () => {
@@ -1966,6 +2064,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     const { teamId } = await integrations.installSlackWorkspace(actor, {
       installerSlackUserId: slackUserId,
     });
+    await flushWaitUntilForTest();
     integrations.clearSlackCallHistory();
 
     const switchResponse = await integrations.postSlackCommand({
@@ -2036,11 +2135,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       tab: "home",
       channel: "D_BDD_HIDDEN_HOME",
     });
-    await waitForExpectation(() => {
-      expect(
-        JSON.stringify(context.mocks.slack.views.publish.mock.calls),
-      ).toContain("_No agent configured yet._");
-    });
+    await flushWaitUntilForTest();
     const homeViewJson = JSON.stringify(
       context.mocks.slack.views.publish.mock.calls.at(-1),
     );
@@ -2220,7 +2315,20 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await bdd.setupOnboarding(actor, {
       displayName: "BDD Slack Failing Default",
     });
+    if (!actor.orgId) {
+      throw new Error("Expected Slack failing default actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro",
+      credits: 20_000,
+    });
     await integrations.configureSlackRunModelPolicies(actor);
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
     const agentB = await bdd.createAgent(actor, {
       displayName: "BDD Slack Failing Override",
     });

@@ -1053,12 +1053,21 @@ jobs:
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
           SVC="${JOB_REF}-exec"
           GROUP="vm0/exec-${JOB_REF}"
+          SUBMIT_PID=""
 
           fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup_submit_pid() {
+            local pid=$1
+            [ -n "$pid" ] || return 0
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
 
           cleanup() {
             echo "--- Cleanup ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            cleanup_submit_pid "$SUBMIT_PID"
           }
           trap cleanup EXIT
 
@@ -1074,6 +1083,7 @@ jobs:
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          SUBMIT_PID=$!
 
           # Wait for OUR runner's sandbox to have a control socket.
           # Read the sandbox_id from our runner's status.json (not from
@@ -1293,6 +1303,8 @@ jobs:
 
           # Stop transient service (kills sandbox, submit terminates naturally)
           sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          cleanup_submit_pid "$SUBMIT_PID"
+          SUBMIT_PID=""
           trap - EXIT
 
           echo "=== Exec test passed ==="
@@ -1343,12 +1355,21 @@ jobs:
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-cancel"
           SVC="${JOB_REF}-cancel"
           GROUP="vm0/cancel-${JOB_REF}"
+          SUBMIT_PID=""
 
           fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup_submit_pid() {
+            local pid=$1
+            [ -n "$pid" ] || return 0
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
 
           cleanup() {
             echo "--- Cleanup ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            cleanup_submit_pid "$SUBMIT_PID"
           }
           trap cleanup EXIT
 
@@ -1395,6 +1416,7 @@ jobs:
           SECONDS=0
           wait "$SUBMIT_PID"
           SUBMIT_EXIT=$?
+          SUBMIT_PID=""
           ELAPSED=$SECONDS
           echo "Submit exited with code $SUBMIT_EXIT in ${ELAPSED}s"
           # Cancel should kill the job within 30s, not after the 300s submit timeout
@@ -1455,16 +1477,32 @@ jobs:
           RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-drain"
           SVC="${JOB_REF}-drain"
           UNIT="vm0-runner-${SVC}.service"
+          DRAIN_DROP_IN="/run/systemd/system/${UNIT}.d/50-vm0-drain.conf"
           GROUP="vm0/drain-${JOB_REF}"
+          SUBMIT_A_PID=""
+          SUBMIT_B_PID=""
+          RELEASE_FIFO_READY=""
 
           fail() { echo "FAIL: $1"; exit 1; }
           status_mode() {
             sudo jq -r '.mode // empty' "$RUNNER_DIR/status.json" 2>/dev/null
           }
+          restart_policy() {
+            sudo systemctl show "$UNIT" --property=Restart --value 2>/dev/null
+          }
+
+          cleanup_submit_pid() {
+            local pid=$1
+            [ -n "$pid" ] || return 0
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
 
           cleanup() {
             echo "--- Cleanup ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            cleanup_submit_pid "$SUBMIT_B_PID"
+            cleanup_submit_pid "$SUBMIT_A_PID"
           }
           trap cleanup EXIT
 
@@ -1476,12 +1514,11 @@ jobs:
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
-          # Submit a long-running job in background so we can drain mid-flight.
-          # Duration must exceed the drain+verify+resume+verify window below
-          # so the job survives the round trip — otherwise jobs.is_empty()
-          # would auto-Stop the runner before resume can take effect.
+          # Submit a host-released job in background so we can drain mid-flight.
+          # A fixed sleep would force CI to wait for the whole duration even
+          # after the drain/resume assertions finish.
           echo "--- Submitting long-running job ---"
-          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 45 && echo done' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'rm -f /tmp/vm0-drain-release-a && mkfifo /tmp/vm0-drain-release-a && cat /tmp/vm0-drain-release-a >/dev/null && echo done' &
           SUBMIT_A_PID=$!
 
           # Wait for sandbox to appear in status.json.
@@ -1489,11 +1526,19 @@ jobs:
           for i in $(seq 1 60); do
             RUN_ID=$(sudo jq -r '.active_runs[0].run_id // empty' \
               "$RUNNER_DIR/status.json" 2>/dev/null)
-            [ -n "$RUN_ID" ] && break
+            SANDBOX_ID=$(sudo jq -r '.active_runs[0].sandbox_id // empty' \
+              "$RUNNER_DIR/status.json" 2>/dev/null)
+            if [ -n "$RUN_ID" ] && [ -n "$SANDBOX_ID" ] \
+              && sudo timeout 3 "$BIN_DIR/runner" exec --timeout 2 --sandbox "$SANDBOX_ID" -- test -p /tmp/vm0-drain-release-a 2>/dev/null; then
+              RELEASE_FIFO_READY=1
+              break
+            fi
             sleep 1
           done
           [ -z "$RUN_ID" ] && fail "sandbox not found after 60s"
-          echo "Found run $RUN_ID"
+          [ -z "$SANDBOX_ID" ] && fail "sandbox id not found after 60s"
+          [ -z "$RELEASE_FIFO_READY" ] && fail "release FIFO not ready after 60s"
+          echo "Found run $RUN_ID (sandbox $SANDBOX_ID)"
 
           # Test 1: drain while the job is in-flight → mode=draining.
           echo "--- Test: service drain (mid-flight) ---"
@@ -1510,6 +1555,12 @@ jobs:
           # Unit must still be active — the in-flight job keeps it alive.
           sudo systemctl is-active --quiet "$UNIT" \
             || fail "unit should still be active during Draining"
+          RESTART_POLICY=$(restart_policy)
+          [ "$RESTART_POLICY" = "no" ] \
+            || fail "expected Restart=no during drain, got '$RESTART_POLICY'"
+          [ -f "$DRAIN_DROP_IN" ] \
+            || fail "expected drain drop-in at $DRAIN_DROP_IN"
+          echo "PASS: Restart=no applied during drain"
 
           # Test 2: a job submitted *during* Draining must stay pending —
           # the Draining arm does not poll discover, so the queued file
@@ -1545,12 +1596,19 @@ jobs:
           [ "$(status_mode)" = "running" ] \
             || fail "expected mode=running after resume, got '$(status_mode)'"
           echo "PASS: mode=running after resume"
+          RESTART_POLICY=$(restart_policy)
+          [ "$RESTART_POLICY" = "on-failure" ] \
+            || fail "expected Restart=on-failure after resume, got '$RESTART_POLICY'"
+          [ ! -e "$DRAIN_DROP_IN" ] \
+            || fail "drain drop-in remained after resume at $DRAIN_DROP_IN"
+          echo "PASS: Restart policy restored after resume"
 
           # Test 4: the pending B is picked up after resume and completes.
           echo "--- Test: drain-era submit executes after resume ---"
           SECONDS=0
           wait "$SUBMIT_B_PID"
           SUBMIT_B_EXIT=$?
+          SUBMIT_B_PID=""
           B_ELAPSED=$SECONDS
           echo "B exited with code $SUBMIT_B_EXIT in ${B_ELAPSED}s"
           [ "$SUBMIT_B_EXIT" -eq 0 ] \
@@ -1569,8 +1627,11 @@ jobs:
           # Test 6: the long-running A that straddled drain+resume finishes
           # normally (exit 0) — drain must not cancel in-flight jobs.
           echo "--- Test: A completes normally through drain+resume ---"
+          sudo timeout 20 "$BIN_DIR/runner" exec --timeout 15 --sandbox "$SANDBOX_ID" -- timeout 10 sh -c 'printf release > /tmp/vm0-drain-release-a' \
+            || fail "failed to release A after drain+resume"
           wait "$SUBMIT_A_PID"
           SUBMIT_A_EXIT=$?
+          SUBMIT_A_PID=""
           [ "$SUBMIT_A_EXIT" -eq 0 ] \
             || fail "A expected exit 0, got $SUBMIT_A_EXIT — job was killed"
           echo "PASS: A completed normally through drain+resume"
@@ -1589,6 +1650,11 @@ jobs:
             fail "unit still active 30s after drain on idle runner"
           fi
           echo "PASS: unit stopped via auto-Stop"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force \
+            || fail "stop after idle drain failed"
+          [ ! -e "$DRAIN_DROP_IN" ] \
+            || fail "drain drop-in remained after stop at $DRAIN_DROP_IN"
+          echo "PASS: stop cleaned drain drop-in"
 
           # Test 8: resume refused on an inactive unit (is_unit_active guard).
           echo "--- Test: resume refused after stop ---"
@@ -1921,9 +1987,18 @@ jobs:
           RUNNER_DIR_B="/var/lib/vm0-runner/runners/${JOB_REF}-upgrade-b"
           SVC_A="${JOB_REF}-upgrade-a"
           SVC_B="${JOB_REF}-upgrade-b"
+          SUBMIT1_PID=""
+          SUBMIT2_PID=""
 
           FAILED=0
           fail() { FAILED=1; echo "FAIL: $1"; exit 1; }
+
+          cleanup_submit_pid() {
+            local pid=$1
+            [ -n "$pid" ] || return 0
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+          }
 
           # Poll `systemctl is-active` with a bounded budget; fail if the unit
           # is still active afterward so the EXIT trap dumps journalctl at the
@@ -1950,6 +2025,8 @@ jobs:
             echo "--- Cleanup: uninstalling services ---"
             sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force 2>/dev/null || true
             sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" --force 2>/dev/null || true
+            cleanup_submit_pid "$SUBMIT2_PID"
+            cleanup_submit_pid "$SUBMIT1_PID"
             if [ "$FAILED" -ne 0 ]; then
               echo "--- Cleanup: dumping logs (test failed) ---"
               journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
@@ -1988,9 +2065,11 @@ jobs:
 
           # 6. Verify both jobs complete despite drain
           echo "--- Waiting for job 1 ---"
-          wait $SUBMIT1_PID || fail "Job 1 failed"
+          wait "$SUBMIT1_PID" || fail "Job 1 failed"
+          SUBMIT1_PID=""
           echo "--- Waiting for job 2 ---"
-          wait $SUBMIT2_PID || fail "Job 2 failed"
+          wait "$SUBMIT2_PID" || fail "Job 2 failed"
+          SUBMIT2_PID=""
 
           # 7. Wait for A to exit after drain, then verify drain still disables
           # an inactive-but-enabled installed unit.

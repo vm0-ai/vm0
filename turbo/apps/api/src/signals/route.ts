@@ -1,5 +1,6 @@
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
+import { webClientCompatibilityContract } from "@vm0/api-contracts/contracts/web-client-compatibility";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
@@ -13,7 +14,7 @@ import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import { cliAuthRoutes } from "./routes/cli-auth";
-import { cliAuthTestRoutes } from "./routes/cli-auth-test";
+import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
@@ -40,6 +41,7 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
+import { webClientCompatibility$ } from "./routes/web-client-compatibility";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
@@ -69,6 +71,7 @@ import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
+import { zeroArtifactsRoutes } from "./routes/zero-artifacts";
 import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
@@ -165,6 +168,7 @@ import { zeroSteamPlayerRoutes } from "./routes/zero-steam-player";
 import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
+import { zeroTeamsOauthRoutes } from "./routes/zero-teams-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
@@ -186,32 +190,6 @@ import { storagesCommitRoutes } from "./routes/storages-commit";
 import { storagesDownloadRoutes } from "./routes/storages-download";
 import { storagesListRoutes } from "./routes/storages-list";
 import { storagesPrepareRoutes } from "./routes/storages-prepare";
-import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
-import { testOAuthProviderDeviceAuthRoutes } from "./routes/test-oauth-provider-device-auth";
-import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
-import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
-import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
-import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe";
-import { testSlackMockRoutes } from "./routes/test-slack-mock";
-import { testSlackStateRoutes } from "./routes/test-slack-state";
-import { testSystemStoragePresignedUrlCacheStateRoutes } from "./routes/test-system-storage-presigned-url-cache-state";
-import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "./routes/test-workflow-skill-storage-presigned-url-cache-state";
-import { testEmailStateRoutes } from "./routes/test-email-state";
-import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
-import { testBillingStatusStateRoutes } from "./routes/test-billing-status-state";
-import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
-import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
-import { testTelegramStateRoutes } from "./routes/test-telegram-state";
-import { testGenerationStateRoutes } from "./routes/test-generation-state";
-import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
-import { testMemoryStateRoutes } from "./routes/test-memory-state";
-import { testRelationshipStateRoutes } from "./routes/test-relationship-state";
-import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
-import { testUsageStateRoutes } from "./routes/test-usage-state";
-import { testUserExportStateRoutes } from "./routes/test-user-export-state";
-import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
-import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
-import { testWebhooksStateRoutes } from "./routes/test-webhooks-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -222,9 +200,12 @@ export const ROUTES: readonly RouteEntry[] = [
     route: buildInfoContract.get,
     handler: apiBuildInfo$,
   },
+  {
+    route: webClientCompatibilityContract.get,
+    handler: webClientCompatibility$,
+  },
   ...authMeRoutes,
   ...cliAuthRoutes,
-  ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
@@ -281,6 +262,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,
+  ...zeroArtifactsRoutes,
   ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
@@ -367,6 +349,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
   ...zeroTeamsConnectRoutes,
+  ...zeroTeamsOauthRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,
@@ -404,30 +387,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,
-  ...testOAuthProviderAuthorizeRoutes,
-  ...testOAuthProviderDeviceAuthRoutes,
-  ...testOAuthProviderEchoRoutes,
-  ...testOAuthProviderTokenRoutes,
-  ...testOAuthProviderUserinfoRoutes,
-  ...testSlackDispatchProbeRoutes,
-  ...testSlackMockRoutes,
-  ...testSlackStateRoutes,
-  ...testSystemStoragePresignedUrlCacheStateRoutes,
-  ...testWorkflowSkillStoragePresignedUrlCacheStateRoutes,
-  ...testEmailStateRoutes,
-  ...testBillingRedeemStateRoutes,
-  ...testBillingStatusStateRoutes,
-  ...testTelegramDispatchProbeRoutes,
-  ...testTelegramMockRoutes,
-  ...testTelegramStateRoutes,
-  ...testGenerationStateRoutes,
-  ...testOnboardingStatusStateRoutes,
-  ...testMemoryStateRoutes,
-  ...testRelationshipStateRoutes,
-  ...testUsageInsightStateRoutes,
-  ...testUsageStateRoutes,
-  ...testUserExportStateRoutes,
-  ...testWorkflowTriggerStateRoutes,
-  ...testChatMessagesStateRoutes,
-  ...testWebhooksStateRoutes,
+  ...E2E_ROUTES,
 ];

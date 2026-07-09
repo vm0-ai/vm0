@@ -3,6 +3,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   relationshipMemorySettings,
   relationshipSyncJobs,
+  type RelationshipMemoryProvider,
   type RelationshipSyncJobPayload,
 } from "@vm0/db/schema/relationship-memory";
 
@@ -47,8 +48,6 @@ export interface RelationshipTarget {
   readonly displayName: string;
   readonly primaryEmail: string | null;
   readonly domain: string | null;
-  readonly relationshipType: string;
-  readonly fallbackSummary: string;
 }
 
 function normalizeEmail(value: string): string {
@@ -113,10 +112,6 @@ export function relationshipTargets(
       continue;
     }
 
-    const personSummary =
-      message.direction === "sent"
-        ? `${address.displayName} received recent Gmail messages from the user.`
-        : `${address.displayName} has recent Gmail interactions with the user.`;
     const organizationName = displayNameFromDomain(address.domain);
 
     targets.set(`person:${address.email}`, {
@@ -125,8 +120,6 @@ export function relationshipTargets(
       displayName: address.displayName,
       primaryEmail: address.email,
       domain: address.domain,
-      relationshipType: "External contact",
-      fallbackSummary: personSummary,
     });
     targets.set(`organization:${address.domain}`, {
       type: "organization",
@@ -134,8 +127,6 @@ export function relationshipTargets(
       displayName: organizationName,
       primaryEmail: null,
       domain: address.domain,
-      relationshipType: "Organization",
-      fallbackSummary: `${organizationName} appears in recent Gmail interactions.`,
     });
   }
 
@@ -154,17 +145,18 @@ export async function relationshipMemoryFeatureEnabled(
   return isFeatureEnabled(FeatureSwitchKey.RelationshipMemory, context);
 }
 
-function gmailRefreshDedupeKey(args: {
+function memorySourceExtractionDedupeKey(args: {
   readonly orgId: string;
   readonly userId: string;
-  readonly messageId: string;
+  readonly provider: RelationshipMemoryProvider;
+  readonly externalId: string;
 }): string {
   return [
     args.orgId,
     args.userId,
-    "gmail",
-    "gmail_relationship_refresh",
-    args.messageId,
+    args.provider,
+    "memory_source_relationship_extract",
+    args.externalId,
   ].join(":");
 }
 
@@ -196,31 +188,100 @@ export async function enqueueGmailRelationshipRefreshJob(
     return false;
   }
 
-  const currentTime = nowDate();
+  const didRecordSource = await recordMemorySource(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    provider: "gmail",
+    sourceType: "gmail_message",
+    externalId: args.message.messageId,
+    connectorId: args.connectorId,
+    occurredAt: parsedOccurredAt(args.message.occurredAt),
+    title: args.message.subject,
+    metadata: {
+      mailboxEmail: args.message.mailboxEmail,
+      historyId: args.message.historyId,
+      threadId: args.message.threadId,
+      messageId: args.message.messageId,
+      direction: args.message.direction ?? "unknown",
+      from: args.message.from,
+      to: args.message.to,
+      cc: args.message.cc,
+      reason: args.reason ?? "gmail_webhook",
+    },
+  });
+
+  if (!didRecordSource) {
+    return false;
+  }
+
   const gmailMessage: PersistedGmailRelationshipMessage = {
     historyId: args.message.historyId,
     messageId: args.message.messageId,
     threadId: args.message.threadId,
   };
-  const payload: RelationshipSyncJobPayload = {
+
+  return await enqueueMemorySourceRelationshipExtractionJob(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    provider: "gmail",
+    sourceExternalId: args.message.messageId,
     connectorId: args.connectorId,
     gmailThreadId: args.message.threadId ?? undefined,
     gmailMessageIds: [args.message.messageId],
     historyId: args.message.historyId,
     gmailMessage,
     reason: args.reason ?? "gmail_webhook",
+    priority: args.priority,
+    replaceExisting: args.reason !== "gmail_backfill",
+  });
+}
+
+export async function enqueueMemorySourceRelationshipExtractionJob(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly provider: RelationshipMemoryProvider;
+    readonly sourceExternalId: string;
+    readonly connectorId?: string | null;
+    readonly priority?: number;
+    readonly replaceExisting?: boolean;
+    readonly gmailMessage?: PersistedGmailRelationshipMessage;
+    readonly gmailThreadId?: string;
+    readonly gmailMessageIds?: readonly string[];
+    readonly historyId?: string;
+    readonly reason?: string;
+  },
+): Promise<boolean> {
+  if (!(await relationshipMemoryFeatureEnabled(db, args.orgId, args.userId))) {
+    return false;
+  }
+
+  const currentTime = nowDate();
+  const payload: RelationshipSyncJobPayload = {
+    memorySource: {
+      provider: args.provider,
+      externalId: args.sourceExternalId,
+    },
+    ...(args.connectorId ? { connectorId: args.connectorId } : {}),
+    ...(args.gmailThreadId ? { gmailThreadId: args.gmailThreadId } : {}),
+    ...(args.gmailMessageIds ? { gmailMessageIds: args.gmailMessageIds } : {}),
+    ...(args.historyId ? { historyId: args.historyId } : {}),
+    ...(args.gmailMessage ? { gmailMessage: args.gmailMessage } : {}),
+    ...(args.reason ? { reason: args.reason } : {}),
   };
   const priority = args.priority ?? 0;
-  const dedupeKey = gmailRefreshDedupeKey({
+  const dedupeKey = memorySourceExtractionDedupeKey({
     orgId: args.orgId,
     userId: args.userId,
-    messageId: args.message.messageId,
+    provider: args.provider,
+    externalId: args.sourceExternalId,
   });
   const jobValues: typeof relationshipSyncJobs.$inferInsert = {
     orgId: args.orgId,
     userId: args.userId,
-    kind: "gmail_relationship_refresh",
-    provider: "gmail",
+    kind: "memory_source_relationship_extract",
+    provider: args.provider,
     status: "pending",
     priority,
     dedupeKey,
@@ -231,7 +292,7 @@ export async function enqueueGmailRelationshipRefreshJob(
     updatedAt: currentTime,
   };
 
-  if (args.reason === "gmail_backfill") {
+  if (args.replaceExisting === false) {
     const inserted = await db
       .insert(relationshipSyncJobs)
       .values(jobValues)
@@ -264,7 +325,7 @@ export async function enqueueGmailRelationshipRefreshJob(
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      provider: "gmail",
+      provider: args.provider,
       enabled: true,
       bootstrapStatus: "pending",
       createdAt: currentTime,
@@ -281,28 +342,6 @@ export async function enqueueGmailRelationshipRefreshJob(
         updatedAt: currentTime,
       },
     });
-
-  await recordMemorySource(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    provider: "gmail",
-    sourceType: "gmail_message",
-    externalId: args.message.messageId,
-    connectorId: args.connectorId,
-    occurredAt: parsedOccurredAt(args.message.occurredAt),
-    title: args.message.subject,
-    metadata: {
-      mailboxEmail: args.message.mailboxEmail,
-      historyId: args.message.historyId,
-      threadId: args.message.threadId,
-      messageId: args.message.messageId,
-      direction: args.message.direction ?? "unknown",
-      from: args.message.from,
-      to: args.message.to,
-      cc: args.message.cc,
-      reason: args.reason ?? "gmail_webhook",
-    },
-  });
 
   return true;
 }

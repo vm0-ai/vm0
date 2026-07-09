@@ -14,6 +14,8 @@ pub(super) struct CacheEntryPaths {
     entry_dir: PathBuf,
     metadata: PathBuf,
     current_image: PathBuf,
+    session_history_sidecar: PathBuf,
+    session_history_sidecar_metadata: PathBuf,
 }
 
 impl CacheEntryPaths {
@@ -22,6 +24,8 @@ impl CacheEntryPaths {
         Self {
             metadata: entry_dir.join("metadata.json"),
             current_image: entry_dir.join("current.ext4"),
+            session_history_sidecar: entry_dir.join("session-history.blob"),
+            session_history_sidecar_metadata: entry_dir.join("session-history.metadata.json"),
             entry_dir,
         }
     }
@@ -42,8 +46,26 @@ impl CacheEntryPaths {
         &self.current_image
     }
 
+    pub(super) fn session_history_sidecar(&self) -> &Path {
+        &self.session_history_sidecar
+    }
+
+    pub(super) fn session_history_sidecar_metadata(&self) -> &Path {
+        &self.session_history_sidecar_metadata
+    }
+
     pub(super) fn tmp_image(&self, run_id: RunId) -> PathBuf {
         self.entry_dir.join(format!("current.ext4.tmp.{run_id}"))
+    }
+
+    pub(super) fn tmp_session_history_sidecar(&self, run_id: RunId) -> PathBuf {
+        self.entry_dir
+            .join(format!("session-history.blob.tmp.{run_id}"))
+    }
+
+    pub(super) fn tmp_session_history_sidecar_metadata(&self, run_id: RunId) -> PathBuf {
+        self.entry_dir
+            .join(format!("session-history.metadata.json.tmp.{run_id}"))
     }
 }
 
@@ -74,6 +96,24 @@ impl SessionWorkspaceCache {
         run_id: RunId,
     ) -> PathBuf {
         self.entry_paths(cache_key).tmp_image(run_id)
+    }
+
+    pub(super) fn session_workspace_cache_tmp_sidecar(
+        &self,
+        cache_key: &str,
+        run_id: RunId,
+    ) -> PathBuf {
+        self.entry_paths(cache_key)
+            .tmp_session_history_sidecar(run_id)
+    }
+
+    pub(super) fn session_workspace_cache_tmp_sidecar_metadata(
+        &self,
+        cache_key: &str,
+        run_id: RunId,
+    ) -> PathBuf {
+        self.entry_paths(cache_key)
+            .tmp_session_history_sidecar_metadata(run_id)
     }
 
     pub(super) fn scoped_cache_key(

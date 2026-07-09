@@ -1,31 +1,27 @@
 import { randomUUID } from "node:crypto";
 
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
-import { createStore } from "ccstate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
 
 const FIXED_NOW_ISO = "2026-05-12T12:00:00.000Z";
 
-interface UsageFixture extends UsageInsightFixture {
-  readonly composeId: string;
+interface UsageActor {
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly runnerGroup: string;
 }
 
 interface CompletedRunArgs {
@@ -41,53 +37,51 @@ function apiClient() {
   return setupApp({ context })(usageContract);
 }
 
-async function deleteUsageFixture(fixture: UsageFixture): Promise<void> {
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+async function entitledUsageActor(): Promise<UsageActor> {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  const runnerGroup = api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Usage summary agent",
+    visibility: "private",
+  });
+  return { actor, agentId: agent.agentId, runnerGroup };
 }
 
-async function seedUsageFixture(): Promise<UsageFixture> {
-  const base = await store.set(
-    seedUsageInsightFixture$,
-    undefined,
-    context.signal,
-  );
-  const { composeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: base.orgId,
-      userId: base.userId,
-      name: `usage-${randomUUID().slice(0, 8)}`,
-    },
-    context.signal,
-  );
-  return { ...base, composeId };
-}
-
-async function seedCompletedRun(
-  fixture: UsageFixture,
+/**
+ * Drives a run through its production lifecycle at a mocked clock: creation
+ * and the runner claim happen at `createdAt` (stamping created_at/started_at),
+ * and the sandbox completion webhook fires `durationMs` later (stamping
+ * completed_at). The failure-path completion is used because it terminates a
+ * run without checkpoint plumbing; /api/usage aggregates every finished run.
+ */
+async function runFinishedRun(
+  fixture: UsageActor,
   args: CompletedRunArgs,
 ): Promise<string> {
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      composeId: fixture.composeId,
-      status: "completed",
-      createdAt: args.createdAt,
-      startedAt: args.createdAt,
-      completedAt: new Date(args.createdAt.getTime() + args.durationMs),
-    },
-    context.signal,
+  mockNow(args.createdAt);
+  const run = await api.createRun(fixture.actor, {
+    agentId: fixture.agentId,
+    prompt: "usage summary run",
+    modelProvider: "anthropic-api-key",
+  });
+  await api.heartbeatRunner(fixture.runnerGroup);
+  const claim = await api.claimRunnerJob(run.runId);
+  mockNow(new Date(args.createdAt.getTime() + args.durationMs));
+  await webhooks.requestAgentComplete(
+    { runId: run.runId, exitCode: 1, error: "bdd usage summary run" },
+    { authorization: `Bearer ${claim.sandboxToken}` },
+    [200],
   );
-  return runId;
+  mockNow(new Date(FIXED_NOW_ISO));
+  return run.runId;
 }
 
 describe("GET /api/usage", () => {
-  const track = createFixtureTracker<UsageFixture>((fixture) => {
-    return deleteUsageFixture(fixture);
-  });
-
   beforeEach(() => {
     mockNow(new Date(FIXED_NOW_ISO));
   });
@@ -108,16 +102,16 @@ describe("GET /api/usage", () => {
   });
 
   it("returns usage data with the default 7 day range", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T10:00:00.000Z"),
       durationMs: 60_000,
     });
-    await seedCompletedRun(fixture, {
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T11:00:00.000Z"),
       durationMs: 120_000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -141,8 +135,7 @@ describe("GET /api/usage", () => {
   });
 
   it("accepts a custom date range", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -162,12 +155,12 @@ describe("GET /api/usage", () => {
   });
 
   it("treats empty date query parameters as the default range", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T10:00:00.000Z"),
       durationMs: 60_000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -188,8 +181,7 @@ describe("GET /api/usage", () => {
   });
 
   it("rejects invalid start_date format", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -203,8 +195,7 @@ describe("GET /api/usage", () => {
   });
 
   it("rejects invalid end_date format", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -218,8 +209,7 @@ describe("GET /api/usage", () => {
   });
 
   it("rejects start_date after end_date", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -238,8 +228,7 @@ describe("GET /api/usage", () => {
   });
 
   it("rejects ranges exceeding 30 days", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -258,16 +247,16 @@ describe("GET /api/usage", () => {
   });
 
   it("returns daily breakdown rows and summary totals", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T09:00:00.000Z"),
       durationMs: 45_000,
     });
-    await seedCompletedRun(fixture, {
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T10:00:00.000Z"),
       durationMs: 15_000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -283,17 +272,17 @@ describe("GET /api/usage", () => {
     }
   });
 
-  it("calculates run times correctly with explicit timestamps", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+  it("calculates run times from claim to completion", async () => {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T09:00:00.000Z"),
       durationMs: 60_000,
     });
-    await seedCompletedRun(fixture, {
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T10:00:00.000Z"),
       durationMs: 120_000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -305,16 +294,16 @@ describe("GET /api/usage", () => {
   });
 
   it("aggregates historical runs across multiple days", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-08T10:00:00.000Z"),
       durationMs: 5000,
     });
-    await seedCompletedRun(fixture, {
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-09T10:00:00.000Z"),
       durationMs: 8000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -338,16 +327,16 @@ describe("GET /api/usage", () => {
   });
 
   it("uses agent_runs for partial start day boundaries", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-10T08:00:00.000Z"),
       durationMs: 3000,
     });
-    await seedCompletedRun(fixture, {
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-10T14:00:00.000Z"),
       durationMs: 5000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -366,12 +355,12 @@ describe("GET /api/usage", () => {
   });
 
   it("caches computed historical results for subsequent queries", async () => {
-    const fixture = await track(seedUsageFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-08T10:00:00.000Z"),
       durationMs: 6000,
     });
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const request = {
       query: {
@@ -391,17 +380,17 @@ describe("GET /api/usage", () => {
   });
 
   it("only returns usage for the authenticated org", async () => {
-    const fixture = await track(seedUsageFixture());
-    const otherFixture = await track(seedUsageFixture());
-    await seedCompletedRun(fixture, {
+    const fixture = await entitledUsageActor();
+    const otherFixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
       createdAt: new Date("2026-05-12T10:00:00.000Z"),
       durationMs: 5000,
     });
-    await seedCompletedRun(otherFixture, {
+    await runFinishedRun(otherFixture, {
       createdAt: new Date("2026-05-12T10:00:00.000Z"),
       durationMs: 8000,
     });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),

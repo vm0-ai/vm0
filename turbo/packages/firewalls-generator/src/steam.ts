@@ -162,6 +162,7 @@ export const STEAM_PERMISSION_MANIFEST: readonly SteamPermissionManifestEntry[] 
       description: "Read public Steam app metadata and version status",
       methods: [
         "ISteamApps/GetAppList",
+        "ISteamWebAPIUtil/GetSupportedAPIList",
         "IStoreService/GetAppList",
         "ISteamApps/GetSDRConfig",
         "ISteamApps/GetServersAtAddress",

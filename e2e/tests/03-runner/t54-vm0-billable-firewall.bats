@@ -2,11 +2,12 @@
 
 # Verify firewall_billable propagation through the full stack.
 #
-# Uses explicit model-first pins for provider selection. The test never changes
-# the shared e2e org's workspace default, so no race with other chunks.
+# BYOK selection uses the runner provider-type path so chat writes do not carry
+# provider pins. The vm0 case exercises the web chat model-only path and relies
+# on org model policy for provider resolution.
 #
-# t54-0: run pinned to org BYOK anthropic-api-key; "$" marker absent.
-# t54-1: run uses the model policy's vm0 route; billableFirewalls covers
+# t54-0: direct run with org BYOK anthropic-api-key; "$" marker absent.
+# t54-1: chat run uses the model policy's vm0 route; billableFirewalls covers
 #   the concrete anthropic firewall → "$" marker present.
 
 load '../../helpers/setup'
@@ -17,13 +18,26 @@ setup_file() {
     fi
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    export TEST_DIR="$(mktemp -d)"
+    export RUN_AGENT_NAME="e2e-billable-runner-${UNIQUE_ID}"
     export THREAD_IDS=""
 
     $ZERO_CLI org model-provider setup \
         --type anthropic-api-key \
         --secret "$ANTHROPIC_API_KEY" >/dev/null
-    export ANTHROPIC_PROVIDER_ID
-    ANTHROPIC_PROVIDER_ID=$(zero_model_provider_id_by_type "anthropic-api-key")
+    zero_model_provider_id_by_type "anthropic-api-key" >/dev/null
+
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+agents:
+  ${RUN_AGENT_NAME}:
+    description: "Billable firewall BYOK e2e"
+    framework: claude-code
+    environment:
+      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+EOF
+
+    $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
 
     # Create a private zero agent for this file so CI does not consume the
     # shared org's limited public-agent slots.
@@ -46,26 +60,26 @@ teardown_file() {
         zero_curl "/api/zero/chat-threads/$thread_id" -X DELETE >/dev/null 2>&1 || true
     done
     [ -n "$AGENT_ID" ] && $ZERO_CLI agent delete "$AGENT_ID" -y 2>/dev/null || true
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
+    fi
 }
 
 @test "t54-0: BYOK provider — firewall not billable" {
-    zero_chat_run_with_model_selection \
-        "$AGENT_ID" \
-        "Reply with exactly: DONE" \
-        "$ANTHROPIC_PROVIDER_ID" \
-        "claude-sonnet-4-6" \
-        true \
-        false
-    THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
-    export THREAD_IDS
+    run $VM0_CLI run "$RUN_AGENT_NAME" \
+        --model-provider-type "anthropic-api-key" \
+        --real-agent-in-preview \
+        "Reply with exactly: DONE"
 
-    RUN_ID="$LAST_RUN_ID"
+    echo "$output"
+    assert_success
+
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
         return 1
     }
 
-    wait_for_zero_run_completed "$RUN_ID"
     WAIT_FOR_LOG_TIMEOUT=60 wait_for_log "$RUN_ID" --network -- "[model-provider:anthropic-api-key]"
     refute_output --partial '[model-provider:anthropic-api-key $]'
 
@@ -74,13 +88,11 @@ teardown_file() {
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
-    zero_chat_run_with_model_selection \
+    zero_chat_run_with_model \
         "$AGENT_ID" \
         "Reply with exactly: DONE" \
-        "$(zero_model_first_selection_provider_id)" \
         "claude-sonnet-4-6" \
-        true \
-        false
+        true
     THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
     export THREAD_IDS
 

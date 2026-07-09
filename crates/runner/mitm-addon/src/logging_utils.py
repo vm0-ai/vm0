@@ -5,16 +5,28 @@ log entries, and extracting firewall metadata.
 """
 
 import json
+import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from mitmproxy import ctx, http
 
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import jsonl_writer
 import network_log_sanitization
 
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
+
+# Network log size fields are consumed as JavaScript numbers downstream.
+NETWORK_LOG_MAX_SAFE_SIZE = 9_007_199_254_740_991
+NETWORK_LOG_MAX_SAFE_SIZE_DIGITS = len(str(NETWORK_LOG_MAX_SAFE_SIZE))
+
+
+def elapsed_ms(start_time: float | None) -> int:
+    if not start_time:
+        return 0
+    return max(0, int((time.monotonic() - start_time) * 1000))
 
 
 def _utc_log_timestamp() -> str:
@@ -115,11 +127,6 @@ def _metadata_optional_str(meta: Mapping[str, object], key: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _metadata_bool(meta: Mapping[str, object], key: str, default: bool = False) -> bool:
-    value = meta.get(key)
-    return value if isinstance(value, bool) else default
-
-
 def _metadata_optional_bool(meta: Mapping[str, object], key: str) -> bool | None:
     value = meta.get(key)
     return value if isinstance(value, bool) else None
@@ -153,16 +160,16 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
-    log_entry["firewall_base"] = _metadata_str(meta, metadata_keys.FIREWALL_BASE)
-    log_entry["firewall_name"] = _metadata_str(meta, metadata_keys.FIREWALL_NAME)
-    log_entry["firewall_permission"] = _metadata_str(meta, metadata_keys.FIREWALL_PERMISSION)
+    log_entry["firewall_base"] = flow_metadata.firewall_base(meta)
+    log_entry["firewall_name"] = flow_metadata.firewall_name(meta)
+    log_entry["firewall_permission"] = flow_metadata.firewall_permission(meta)
     log_entry["firewall_rule_match"] = _metadata_str(meta, metadata_keys.FIREWALL_RULE_MATCH)
-    log_entry["firewall_billable"] = _metadata_bool(meta, metadata_keys.FIREWALL_BILLABLE)
+    log_entry["firewall_billable"] = flow_metadata.is_firewall_billable(meta)
 
     # Optional fields — only include when present with the network-log schema type.
     for log_key, value in (
         ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
-        ("firewall_error", _metadata_optional_str(meta, metadata_keys.FIREWALL_ERROR)),
+        ("firewall_error", flow_metadata.firewall_error(meta)),
         (
             "connector_diagnostic_type",
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE),

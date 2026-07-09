@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.20.57](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.56...guest-download-v0.20.57) (2026-07-09)
+
+## [0.20.56](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.55...guest-download-v0.20.56) (2026-07-08)
+
+## [0.20.55](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.54...guest-download-v0.20.55) (2026-07-08)
+
+## [0.20.54](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.53...guest-download-v0.20.54) (2026-07-08)
+
+
+### Refactoring
+
+* clean up empty artifact compatibility ([#20574](https://github.com/vm0-ai/vm0/issues/20574)) ([dc86eae](https://github.com/vm0-ai/vm0/commit/dc86eae0bf05e3c6a5787c330b9490548c3512a4))
+
+## [0.20.53](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.52...guest-download-v0.20.53) (2026-07-07)
+
+
+### Performance Improvements
+
+* skip empty artifact uploads during run creation ([#20447](https://github.com/vm0-ai/vm0/issues/20447)) ([85f5231](https://github.com/vm0-ai/vm0/commit/85f5231cceb002fdcbf8faf826d8ca7df7332a39))
+
 ## [0.20.52](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.51...guest-download-v0.20.52) (2026-07-06)
 
 

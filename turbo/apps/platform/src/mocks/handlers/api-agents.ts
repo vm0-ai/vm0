@@ -2,10 +2,7 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@vm0/api-contracts/contracts/zero-team";
-import {
-  zeroComposesListContract,
-  zeroComposesByIdContract,
-} from "@vm0/api-contracts/contracts/zero-composes";
+import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroAgentsByIdContract,
@@ -22,6 +19,7 @@ import {
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatThreadArtifactsContract,
+  artifactsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ComposeListItem } from "@vm0/api-contracts/contracts/composes";
 import { mockApi } from "../msw-contract.ts";
@@ -102,21 +100,6 @@ export const apiAgentsHandlers = [
   // GET /api/zero/composes/list
   mockApi(zeroComposesListContract.list, ({ respond }) => {
     return respond(200, { composes: mockComposesList });
-  }),
-
-  // GET /api/zero/composes/:id (kept for backwards compat with other tests)
-  mockApi(zeroComposesByIdContract.getById, ({ params, respond }) => {
-    return respond(200, {
-      id: params.id,
-      name: "zero",
-      headVersionId: "version_1",
-      content: {
-        version: "1",
-        agents: { zero: { framework: "claude-code" } },
-      },
-      createdAt: "2024-01-01T00:00:00Z",
-      updatedAt: "2024-01-01T00:00:00Z",
-    });
   }),
 
   // GET /api/zero/agents/:id/user-connectors
@@ -217,6 +200,11 @@ export const apiAgentsHandlers = [
   // GET /api/zero/chat-threads/:threadId/artifacts
   mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, { runs: [] });
+  }),
+
+  // GET /api/zero/artifacts
+  mockApi(artifactsContract.list, ({ respond }) => {
+    return respond(200, { artifacts: [], truncated: false, nextCursor: null });
   }),
 
   // GET /api/zero/chat-threads/:id (thread detail)

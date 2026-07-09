@@ -42,6 +42,14 @@ fn materialized_bytes_session(
     MaterializedResumeSession::new(session_id.into(), history.to_vec())
 }
 
+fn materialized_codex_zstd_session(
+    session_id: impl Into<String>,
+    history: &[u8],
+    timestamp: chrono::DateTime<chrono::Utc>,
+) -> MaterializedResumeSession<'static> {
+    MaterializedResumeSession::new_codex_zstd(session_id.into(), history.to_vec(), Some(timestamp))
+}
+
 fn history_ref(hash: impl Into<String>, raw_size: u64) -> ResumeSessionHistoryRef {
     ResumeSessionHistoryRef {
         kind: ResumeSessionHistoryRefKind::Blob,
@@ -50,6 +58,7 @@ fn history_ref(hash: impl Into<String>, raw_size: u64) -> ResumeSessionHistoryRe
         encoding: None,
         raw_size,
         encoded_size: raw_size,
+        download_source: None,
     }
 }
 

@@ -11,6 +11,7 @@ from unittest.mock import patch
 from mitmproxy.addonmanager import Loader
 
 import mitm_addon
+import platform_api
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
@@ -58,9 +59,13 @@ class _Options:
         *,
         usage_state_id: str = "runner-usage-state-id",
         flush_interval_seconds: float = usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
+        client_session_id: str = "runner-session-test",
+        client_version: str = "runner-version-test",
     ) -> None:
         self.vm0_usage_state_id = usage_state_id
         self.vm0_usage_flush_interval_seconds = flush_interval_seconds
+        self.vm0_client_session_id = client_session_id
+        self.vm0_client_version = client_version
 
 
 def _addon_file_path(tmp_path: Path) -> str:
@@ -105,6 +110,8 @@ class TestAddonConfiguration:
 
         option_names = [option.name for option in master.options.added]
         assert "vm0_usage_state_id" in option_names
+        assert "vm0_client_session_id" in option_names
+        assert "vm0_client_version" in option_names
         assert "vm0_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()
         signal_handler.assert_called_once_with(
@@ -153,6 +160,23 @@ class TestAddonConfiguration:
             mitm_addon.configure({"vm0_api_url"})
 
         assert not pending_path.exists()
+
+    def test_configure_snapshots_client_headers(self):
+        with patch.object(
+            mitm_addon.ctx,
+            "options",
+            _Options(
+                client_session_id="runner-session-configured",
+                client_version="runner-version-configured",
+            ),
+            create=True,
+        ):
+            mitm_addon.configure({"vm0_client_session_id", "vm0_client_version"})
+
+        req = platform_api.make_api_request("https://api.vm0.ai/webhook", b"{}", "tok")
+        normalized_headers = {name.lower(): value for name, value in req.header_items()}
+        assert normalized_headers["x-client-session-id"] == "runner-session-configured"
+        assert normalized_headers["x-client-version"] == "runner-version-configured"
 
     def test_configure_updates_usage_flush_interval(self, tmp_path):
         timers = install_recording_usage_timer()

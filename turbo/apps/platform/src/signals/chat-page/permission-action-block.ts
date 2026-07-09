@@ -1,8 +1,11 @@
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import {
+  resolvePlatformOriginForTarget,
+  rewritePlatformHostname,
+} from "../api-base.ts";
 import { parseUserPermissionGrantExpiresIn } from "../permission-allow/permission-grant-expiration.ts";
 
 type PermissionAction = "allow" | "deny";
-type PlatformHostTarget = "api" | "www" | "app" | "platform";
 
 export interface PermissionActionDescriptor {
   scope: "agent";
@@ -36,13 +39,6 @@ function browserOrigin(): string | null {
   return location.origin;
 }
 
-function rewritePlatformHostname(
-  hostname: string,
-  target: PlatformHostTarget,
-): string {
-  return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
-}
-
 function addPermissionActionOriginVariants(
   origins: Set<string>,
   baseUrl: string | null,
@@ -63,17 +59,18 @@ function addPermissionActionOriginVariants(
 
 function permissionActionOrigins(): Set<string> {
   const origins = new Set<string>();
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
 
   addPermissionActionOriginVariants(origins, browserOrigin());
-  addPermissionActionOriginVariants(origins, configuredApiUrl ?? null);
+  addPermissionActionOriginVariants(
+    origins,
+    resolvePlatformOriginForTarget("api"),
+  );
 
   return origins;
 }
 
 function permissionActionBaseUrl(): string | null {
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
-  return browserOrigin() ?? configuredApiUrl ?? null;
+  return browserOrigin() ?? resolvePlatformOriginForTarget("api");
 }
 
 function stripUrlParserIgnoredPrefix(value: string): string {

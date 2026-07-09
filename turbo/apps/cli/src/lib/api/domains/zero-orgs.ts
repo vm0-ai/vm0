@@ -20,6 +20,7 @@ import {
   handleError,
 } from "../core/client-factory";
 import { getToken } from "../config";
+import { cliClientHeaderApi } from "../client-headers";
 
 /**
  * Get client config that always uses the user token,
@@ -29,6 +30,7 @@ async function getUserTokenClientConfig(): Promise<{
   baseUrl: string;
   baseHeaders: Record<string, string>;
   jsonQuery: false;
+  api: typeof cliClientHeaderApi;
 }> {
   const baseUrl = await getBaseUrl();
   const token = await getToken();
@@ -42,7 +44,12 @@ async function getUserTokenClientConfig(): Promise<{
   if (bypassSecret) {
     headers["x-vercel-protection-bypass"] = bypassSecret;
   }
-  return { baseUrl, baseHeaders: headers, jsonQuery: false };
+  return {
+    baseUrl,
+    baseHeaders: headers,
+    jsonQuery: false,
+    api: cliClientHeaderApi,
+  };
 }
 
 /**

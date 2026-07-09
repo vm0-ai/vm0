@@ -1087,6 +1087,118 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("does not scroll the current chat into view from pointer focus after virtual scrolling", async () => {
+    prepareDefaultAgent();
+    const overflowThreads = Array.from({ length: 23 }, (_, index) => {
+      return createThread(
+        `b2100000-0000-4000-a000-${String(index).padStart(12, "0")}`,
+        `Touchable overflow ${index + 1}`,
+      );
+    });
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ],
+      [
+        ...overflowThreads,
+        createThread(ARCHIVED_THREAD_ID, "Archived context"),
+      ],
+    );
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("sidebar-chat-threads-virtual-list"),
+      ).toBeInTheDocument();
+    });
+
+    const scrollArea = screen.getByTestId("sidebar-scroll-area");
+    let scrollTop = 780;
+    Object.defineProperty(scrollArea, "clientHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(scrollArea, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollArea, "scrollTop", {
+      configurable: true,
+      get: () => {
+        return scrollTop;
+      },
+      set: (value) => {
+        scrollTop = value;
+      },
+    });
+    fireEvent.scroll(scrollArea);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(scrollArea, { pointerType: "touch" });
+    fireEvent.focus(scrollArea);
+
+    expect(scrollTop).toBe(780);
+    expect(within(sidebar()).getByText("Archived context")).toBeInTheDocument();
+  });
+
+  it("keeps the chat thread focus ring inside the virtual row", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    const link = await waitFor(() => {
+      return threadLinkByTitle("Release plan");
+    });
+
+    expect(link).toHaveClass("focus-visible:outline-none");
+    expect(link).toHaveClass("focus-visible:ring-2");
+    expect(link).toHaveClass("focus-visible:ring-inset");
+    expect(link).toHaveClass("focus-visible:ring-ring");
+  });
+
+  it("focuses the current main chat when the thread list receives focus", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    screen.getByTestId("sidebar-scroll-area").focus();
+
+    await waitFor(() => {
+      expect(threadLinkByTitle("Release plan")).toHaveFocus();
+    });
+    expect(threadLinkByTitle("Incident notes")).not.toHaveFocus();
+  });
+
   it("keeps pinned agents and the chat title outside the thread list scroll area", async () => {
     prepareAgentTeam();
     context.mocks.data.userPreferences({

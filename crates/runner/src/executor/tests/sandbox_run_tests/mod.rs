@@ -8,7 +8,8 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
 use guest_contracts::diagnostics::{
-    AgentFramework, FailureClass, FailureDiagnostic, PromptMetadata,
+    AgentFramework, CliObservedExitDiagnostic, FailureClass, FailureDetailSource,
+    FailureDiagnostic, PromptMetadata,
 };
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,

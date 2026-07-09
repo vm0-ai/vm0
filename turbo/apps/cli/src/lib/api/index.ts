@@ -196,6 +196,7 @@ export {
   getZeroChatThread,
   renameZeroChatThread,
   searchZeroChat,
+  updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
 
 // Domain modules - Zero Relationships
@@ -203,6 +204,9 @@ export {
   resolveZeroRelationship,
   searchZeroRelationships,
 } from "./domains/zero-relationships";
+
+// Domain modules - Zero Memory
+export { recallZeroMemory, getZeroMemoryContext } from "./domains/zero-memory";
 
 // Domain modules - Logs
 export {
@@ -227,6 +231,7 @@ export {
 export {
   createComputerUseAuthorizationRequest,
   createComputerUsePluginCommand,
+  listComputerUseHosts,
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
   fetchComputerUsePluginContent,

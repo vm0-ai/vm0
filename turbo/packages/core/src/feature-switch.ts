@@ -101,6 +101,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
+  [FeatureSwitchKey.NintendoEshopCatalogConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Nintendo eShop public catalog connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
@@ -177,12 +184,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.SteamConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Steam player connector integration",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -257,7 +258,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Expose the experimental MiniMax Codex framework provider route for Responses API compatibility testing.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
@@ -266,12 +266,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ComposerModelPickerPopover]: {
+  [FeatureSwitchKey.RealAgentInPreview]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Use the Popover-based chat composer model picker instead of Radix Select.",
+      "Send preview chat runs through real agent CLIs instead of preview mock runners.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
@@ -286,13 +285,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatThreadEmoji]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut for staff orgs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -304,6 +296,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Inject compact relationship memory profile and prompt-relevant memories into Zero run system prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -328,12 +327,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PresentationImageUnsplashPreferred]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Prefer Unsplash for presentation image resolution, falling back to Pexels when Unsplash has no result or is unconfigured. When off, presentation images are resolved directly from Pexels.",
-    enabled: false,
-  },
   [FeatureSwitchKey.AgentUnreadIndicators]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -346,7 +339,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show unread chat thread shortcuts between the mobile agent chat composer and suggested prompt cards.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ChatThreadUnifiedSearch]: {
     maintainer: "ethan@vm0.ai",
@@ -361,12 +353,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable left/right keyboard and button navigation between image artifacts within the same chat message, in both the lightbox modal and the artifact sidebar.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.AgentsPageRedesign]: {
-    maintainer: "ming@vm0.ai",
-    description:
-      "New Agents page with Public/Private tabs, a public-slot indicator, a Created by footer on every card, a name-first create dialog with a visibility select, and a private empty state.",
-    enabled: false,
   },
   [FeatureSwitchKey.SidebarManageIconCollapse]: {
     maintainer: "ming@vm0.ai",
@@ -389,12 +375,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.BytePlusVoiceInputStt]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Route voice input speech-to-text requests through BytePlus Seed ASR flash mode instead of OpenAI.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ImageEditing]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -406,6 +386,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Enable uploading a presentation artifact to the user's Google Drive as a native, editable Google Slides deck.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.Artifacts]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Show the Artifacts manage page for generated artifacts in the current organization.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowTemplateCatalog]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Show the full persona-grouped built-in workflow template catalog in the chat composer template picker. Off shows only the General starter template.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -1,16 +1,7 @@
 import type { ReactNode, SyntheticEvent } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { IconBolt, IconCheck, IconCpu } from "@tabler/icons-react";
 import {
-  IconBolt,
-  IconCheck,
-  IconChevronDown,
-  IconCpu,
-} from "@tabler/icons-react";
-import {
-  Popover,
-  PopoverClose,
-  PopoverContent,
-  PopoverTrigger,
   Select,
   SelectContent,
   SelectGroup,
@@ -93,8 +84,6 @@ interface ModelProviderPickerProps {
    * not user/workspace defaults.
    */
   resolveDefaultSelection?: boolean;
-  /** Controls which trigger/content primitive backs the model picker. */
-  pickerMode?: "select" | "popover";
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -474,40 +463,6 @@ function ModelFirstPolicyRow({
   );
 }
 
-function ModelFirstPolicyOption({
-  policy,
-  limitedFree1,
-  selected,
-  onSelect,
-}: {
-  policy: OrgModelPolicy;
-  limitedFree1: boolean;
-  selected: boolean;
-  onSelect: (model: string) => void;
-}) {
-  const disabled = policy.routeStatus !== "valid";
-  return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      aria-disabled={disabled || undefined}
-      disabled={disabled}
-      className="relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-      onClick={() => {
-        onSelect(policy.model);
-      }}
-    >
-      <ModelFirstPolicyRowContent
-        policy={policy}
-        limitedFree1={limitedFree1}
-        selected={selected}
-        showSelectedIndicator
-      />
-    </button>
-  );
-}
-
 function ModelFirstPolicyItems({
   policies,
   explicitSelectedModel,
@@ -725,133 +680,6 @@ function ModelFirstModelPickerContent({
   );
 }
 
-function ModelFirstModelPickerPopoverTrigger({
-  triggerAriaLabel,
-  selectedModel,
-  codexServiceTier,
-  placeholder,
-  mobileIconTrigger,
-  triggerClassName,
-  open,
-}: {
-  triggerAriaLabel: string;
-  selectedModel: string | null;
-  codexServiceTier: CodexServiceTier | undefined;
-  placeholder: string;
-  mobileIconTrigger: boolean;
-  triggerClassName: string | undefined;
-  open: boolean;
-}) {
-  return (
-    <PopoverTrigger asChild>
-      <button
-        type="button"
-        role="combobox"
-        aria-label={triggerAriaLabel}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        className={cn(
-          "flex h-9 w-full items-center justify-start gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1 [&>span]:w-full [&>span]:text-left",
-          triggerClassName,
-        )}
-      >
-        <ModelFirstTriggerLabel
-          selectedModel={selectedModel}
-          codexServiceTier={codexServiceTier}
-          placeholder={placeholder}
-          mobileIcon={mobileIconTrigger}
-        />
-        <IconChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-      </button>
-    </PopoverTrigger>
-  );
-}
-
-function ModelFirstModelPickerPopoverContent({
-  policies,
-  limitedFree1,
-  codexFastModeAvailable,
-  selectedModel,
-  codexServiceTier,
-  onSelectModel,
-  onChange,
-}: {
-  policies: OrgModelPolicy[];
-  limitedFree1: boolean;
-  codexFastModeAvailable: boolean;
-  selectedModel: string | null;
-  codexServiceTier: CodexServiceTier | undefined;
-  onSelectModel: (model: string) => void;
-  onChange: (value: ModelProviderSelection | null) => void;
-}) {
-  return (
-    <PopoverContent
-      align="end"
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-      }}
-      onFocusOutside={(event) => {
-        event.preventDefault();
-      }}
-      onInteractOutside={(event) => {
-        const originalEvent = (event.detail as { originalEvent?: Event })
-          .originalEvent;
-        if (originalEvent instanceof FocusEvent) {
-          event.preventDefault();
-        }
-      }}
-      className={cn(
-        "max-h-[280px] overflow-hidden p-0",
-        codexFastModeAvailable ? "min-w-[372px]" : "min-w-[260px]",
-      )}
-    >
-      <div
-        className={cn(
-          "min-w-0",
-          codexFastModeAvailable && "grid grid-cols-[minmax(0,1fr)_132px]",
-        )}
-      >
-        <div
-          role="listbox"
-          aria-label="Models"
-          className="max-h-[280px] min-w-0 overflow-y-auto p-1"
-        >
-          {policies.length === 0 ? (
-            <div className="px-2 py-2 text-sm text-muted-foreground">
-              No configured models
-            </div>
-          ) : (
-            <>
-              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                Models
-              </div>
-              {policies.map((policy) => {
-                return (
-                  <PopoverClose key={policy.id} asChild>
-                    <ModelFirstPolicyOption
-                      policy={policy}
-                      limitedFree1={limitedFree1}
-                      selected={selectedModel === policy.model}
-                      onSelect={onSelectModel}
-                    />
-                  </PopoverClose>
-                );
-              })}
-            </>
-          )}
-        </div>
-        {codexFastModeAvailable && selectedModel && (
-          <CodexFastModeSelectControl
-            selectedModel={selectedModel}
-            codexServiceTier={codexServiceTier}
-            onChange={onChange}
-          />
-        )}
-      </div>
-    </PopoverContent>
-  );
-}
-
 interface ModelFirstModelPickerState {
   policies: OrgModelPolicy[];
   selectablePolicies: OrgModelPolicy[];
@@ -969,58 +797,6 @@ function ModelFirstSelectPicker({
   );
 }
 
-function ModelFirstPopoverPicker({
-  state,
-  placeholder,
-  triggerClassName,
-  mobileIconTrigger,
-  limitedFree1,
-  open,
-  onOpenChange,
-  onValueChange,
-  onChange,
-}: {
-  state: ModelFirstModelPickerState;
-  placeholder: string;
-  triggerClassName: string | undefined;
-  mobileIconTrigger: boolean;
-  limitedFree1: boolean;
-  open: boolean | undefined;
-  onOpenChange: ((open: boolean) => void) | undefined;
-  onValueChange: (raw: string) => void;
-  onChange: (value: ModelProviderSelection | null) => void;
-}) {
-  const popoverOpen = open ?? false;
-  return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <ModelFirstModelPickerPopoverTrigger
-        triggerAriaLabel={state.triggerAriaLabel}
-        selectedModel={state.selectedModel}
-        codexServiceTier={state.codexServiceTier}
-        placeholder={placeholder}
-        mobileIconTrigger={mobileIconTrigger}
-        triggerClassName={triggerClassName}
-        open={popoverOpen}
-      />
-      <ModelFirstModelPickerPopoverContent
-        policies={state.policies}
-        limitedFree1={limitedFree1}
-        codexFastModeAvailable={state.codexFastModeAvailable}
-        selectedModel={state.selectedModel}
-        codexServiceTier={state.codexServiceTier}
-        onSelectModel={(model) => {
-          onOpenChange?.(false);
-          if (model === state.selectValue) {
-            return;
-          }
-          onValueChange(model);
-        }}
-        onChange={onChange}
-      />
-    </Popover>
-  );
-}
-
 function ModelFirstModelPicker({
   value,
   onChange,
@@ -1034,7 +810,6 @@ function ModelFirstModelPicker({
   disabled,
   userPreference,
   resolveDefaultSelection,
-  pickerMode = "select",
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
@@ -1101,22 +876,6 @@ function ModelFirstModelPicker({
     );
   };
 
-  if (pickerMode === "popover") {
-    return (
-      <ModelFirstPopoverPicker
-        state={state}
-        placeholder={placeholder}
-        triggerClassName={triggerClassName}
-        mobileIconTrigger={mobileIconTrigger}
-        limitedFree1={limitedFree1}
-        open={open}
-        onOpenChange={onOpenChange}
-        onValueChange={handleRawValueChange}
-        onChange={onChange}
-      />
-    );
-  }
-
   return (
     <ModelFirstSelectPicker
       state={state}
@@ -1161,7 +920,6 @@ export function ModelProviderPicker({
   onOpenChange,
   disabled = false,
   resolveDefaultSelection = true,
-  pickerMode = "select",
 }: ModelProviderPickerProps) {
   const props = {
     value,
@@ -1174,7 +932,6 @@ export function ModelProviderPicker({
     open,
     onOpenChange,
     disabled,
-    pickerMode,
   };
   if (resolveDefaultSelection) {
     return <ModelFirstModelPickerWithDefaultSelection {...props} />;

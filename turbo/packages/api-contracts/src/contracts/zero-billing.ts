@@ -42,7 +42,9 @@ const creditGrantSchema = z.object({
 
 const scheduledBillingChangeSchema = z.object({
   type: z.enum(["cancel", "downgrade"]),
-  targetTier: z.enum(["pro-suspend", "pro", "team"]).nullable(),
+  targetTier: z
+    .enum(["limited-free-1", "pro-suspend", "pro", "team"])
+    .nullable(),
   effectiveDate: z.string().nullable(),
 });
 
@@ -51,6 +53,20 @@ const concurrencySubscriptionSchema = z.object({
   quantity: z.number().int().nonnegative(),
   currentPeriodEnd: z.string().nullable(),
   cancelAtPeriodEnd: z.boolean(),
+});
+
+const usageAllowanceWindowSchema = z.object({
+  kind: z.enum(["short", "weekly"]),
+  windowSeconds: z.number().int().positive(),
+  unitLimit: z.number(),
+  consumedUnits: z.number(),
+  remainingUnits: z.number(),
+  startsAt: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+});
+
+const usageAllowanceSchema = z.object({
+  windows: z.array(usageAllowanceWindowSchema),
 });
 
 const billingStatusResponseSchema = z.object({
@@ -68,6 +84,7 @@ const billingStatusResponseSchema = z.object({
   creditGrants: z.array(creditGrantSchema),
   concurrencyLimit: z.number().int().nonnegative(),
   concurrencySubscriptions: z.array(concurrencySubscriptionSchema),
+  usageAllowance: usageAllowanceSchema.nullable().optional(),
 });
 
 const checkoutResponseSchema = z.object({
@@ -451,7 +468,7 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 // ---------------------------------------------------------------------------
 
 const downgradeRequestSchema = z.object({
-  targetTier: z.enum(["pro-suspend", "pro"]),
+  targetTier: z.enum(["limited-free-1", "pro-suspend", "pro"]),
   returnUrl: z.string().url().optional(),
 });
 

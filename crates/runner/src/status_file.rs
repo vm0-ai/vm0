@@ -69,6 +69,12 @@ pub(crate) struct StatusForGate {
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct StatusForReadiness {
+    pub(crate) mode: String,
+    pub(crate) max_concurrent: usize,
+}
+
+#[derive(Debug, Deserialize)]
 pub(crate) struct StatusGateActiveRun {
     pub(crate) run_id: RunId,
 }
@@ -107,7 +113,11 @@ pub(crate) struct StatusActiveRunMapping {
 pub(crate) struct StatusActiveRun {
     pub(crate) run_id: String,
     pub(crate) sandbox_id: String,
+    // Optional for rolling compatibility with status files written before
+    // active-run phases were added. Current writers always serialize it.
     pub(crate) phase: Option<String>,
+    // Optional for the same compatibility reason. Current writers always
+    // serialize it as the current phase start time.
     pub(crate) phase_started_at: Option<String>,
 }
 
@@ -227,6 +237,30 @@ mod tests {
         let status = read_as::<StatusForGate>(dir.path()).await.unwrap().unwrap();
 
         assert_eq!(status.mode, "running");
+    }
+
+    #[tokio::test]
+    async fn readiness_shape_reads_only_mode_and_max_concurrent() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(
+            dir.path().join("status.json"),
+            r#"{
+                "mode":"running",
+                "max_concurrent":4,
+                "active_runs":null,
+                "started_at":{}
+            }"#,
+        )
+        .await
+        .unwrap();
+
+        let status = read_as::<StatusForReadiness>(dir.path())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(status.mode, "running");
+        assert_eq!(status.max_concurrent, 4);
     }
 
     #[tokio::test]

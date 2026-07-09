@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.6...guest-contracts-v0.3.7) (2026-07-09)
+
+
+### Performance Improvements
+
+* cache session history with workspace images ([#20733](https://github.com/vm0-ai/vm0/issues/20733)) ([d588e5a](https://github.com/vm0-ai/vm0/commit/d588e5a9aa6e67ca18199cd74cadfa7dd4d66418))
+
+## [0.3.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.5...guest-contracts-v0.3.6) (2026-07-08)
+
+
+### Bug Fixes
+
+* add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
+
+
+### Refactoring
+
+* centralize guest private runtime file handling ([#20671](https://github.com/vm0-ai/vm0/issues/20671)) ([24ca30c](https://github.com/vm0-ai/vm0/commit/24ca30c56b4c9b657a3aad8da2affac5a49e5b4b))
+
+## [0.3.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.4...guest-contracts-v0.3.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
+
 ## [0.3.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.3...guest-contracts-v0.3.4) (2026-07-05)
 
 

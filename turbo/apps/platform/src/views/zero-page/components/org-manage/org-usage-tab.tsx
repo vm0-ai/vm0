@@ -16,6 +16,7 @@ import {
   apiTierToBillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { openBillingPlans$ } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { formatSubscriptionUsageReset } from "../../subscription-usage-format.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,6 +73,8 @@ function segmentKey(seg: CreditSegment): string {
 }
 
 type CreditGrant = BillingStatusResponse["creditGrants"][number];
+type UsageAllowance = NonNullable<BillingStatusResponse["usageAllowance"]>;
+type UsageAllowanceWindow = UsageAllowance["windows"][number];
 
 function descriptionForSegment(
   seg: CreditSegment,
@@ -99,6 +102,131 @@ function expiresLabel(grant: CreditGrant): string {
     return "Never expires";
   }
   return `Expires ${formatCreditDate(grant.expiresAt)}`;
+}
+
+function allowanceRemainingPercent(window: UsageAllowanceWindow): number {
+  if (window.unitLimit <= 0) {
+    return 0;
+  }
+  return (window.remainingUnits / window.unitLimit) * 100;
+}
+
+function usageTone(remainingPercent: number | null): {
+  readonly barClassName: string;
+  readonly textClassName: string;
+  readonly trackClassName: string;
+} {
+  if (remainingPercent !== null && remainingPercent < 20) {
+    return {
+      barClassName: "bg-red-500",
+      textClassName: "text-red-600 dark:text-red-400",
+      trackClassName: "bg-red-500/15",
+    };
+  }
+  if (remainingPercent !== null && remainingPercent < 50) {
+    return {
+      barClassName: "bg-amber-500",
+      textClassName: "text-amber-600 dark:text-amber-400",
+      trackClassName: "bg-amber-500/15",
+    };
+  }
+  return {
+    barClassName: "bg-emerald-500",
+    textClassName: "text-emerald-600 dark:text-emerald-400",
+    trackClassName: "bg-emerald-500/15",
+  };
+}
+
+function formatAllowanceWindowLabel(window: UsageAllowanceWindow): string {
+  if (window.kind === "weekly" || window.windowSeconds % 604_800 === 0) {
+    const weeks = Math.max(1, window.windowSeconds / 604_800);
+    return `${weeks}w`;
+  }
+  if (window.windowSeconds % 86_400 === 0) {
+    return `${window.windowSeconds / 86_400}d`;
+  }
+  if (window.windowSeconds % 3600 === 0) {
+    return `${window.windowSeconds / 3600}h`;
+  }
+  if (window.windowSeconds % 60 === 0) {
+    return `${window.windowSeconds / 60}m`;
+  }
+  return window.kind;
+}
+
+function formatAllowanceReset(window: UsageAllowanceWindow): string {
+  const reset = formatSubscriptionUsageReset(window.expiresAt);
+  if (reset === null) {
+    return "";
+  }
+  if ("fallbackText" in reset) {
+    return reset.fallbackText;
+  }
+  return `Resets ${reset.absoluteText}`;
+}
+
+function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
+  const remainingPercent = allowanceRemainingPercent(window);
+  const tone = usageTone(remainingPercent);
+  const label = formatAllowanceWindowLabel(window);
+  const width = Math.min(100, Math.max(0, remainingPercent));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-foreground">{label}</div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {formatAllowanceReset(window)}
+          </div>
+        </div>
+        <div className="shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground">
+          {window.remainingUnits.toLocaleString()} /{" "}
+          {window.unitLimit.toLocaleString()} credits
+        </div>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`Usage allowance ${label} remaining`}
+        aria-valuemin={0}
+        aria-valuemax={window.unitLimit}
+        aria-valuenow={window.remainingUnits}
+        className={`h-2.5 overflow-hidden rounded-full ${tone.trackClassName}`}
+      >
+        <span
+          className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function UsageAllowanceCard({
+  allowance,
+}: {
+  allowance: UsageAllowance | null | undefined;
+}) {
+  const windows = allowance?.windows.filter((window) => {
+    return window.unitLimit > 0;
+  });
+  if (!windows || windows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="usage-allowance-section"
+      className="overflow-hidden rounded-xl bg-card px-5 py-4 zero-border"
+    >
+      <p className="text-sm font-medium text-foreground">Usage allowance</p>
+      <div className="mt-3 flex flex-col gap-4">
+        {windows.map((window) => {
+          return <UsageAllowanceWindowRow key={window.kind} window={window} />;
+        })}
+      </div>
+    </div>
+  );
 }
 
 function CreditGrantRow({ grant }: { grant: CreditGrant }) {
@@ -320,21 +448,29 @@ export function CreditBalanceCard({
   const billingLoading = billingLoadable.state === "loading";
 
   return (
-    <div className="overflow-hidden rounded-xl bg-card zero-border">
-      {billingLoading && !billing ? (
-        <div className="px-5 py-4 space-y-2">
-          <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
-          <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
-        </div>
-      ) : billing ? (
-        <CreditBalanceChart billing={billing} onComparePlans={onComparePlans} />
-      ) : (
-        <div className="px-5 py-4">
-          <p className="text-sm text-muted-foreground">
-            Credit balance unavailable.
-          </p>
-        </div>
-      )}
+    <div className="flex flex-col gap-3">
+      {billing ? (
+        <UsageAllowanceCard allowance={billing.usageAllowance} />
+      ) : null}
+      <div className="overflow-hidden rounded-xl bg-card zero-border">
+        {billingLoading && !billing ? (
+          <div className="px-5 py-4 space-y-2">
+            <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
+            <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
+          </div>
+        ) : billing ? (
+          <CreditBalanceChart
+            billing={billing}
+            onComparePlans={onComparePlans}
+          />
+        ) : (
+          <div className="px-5 py-4">
+            <p className="text-sm text-muted-foreground">
+              Credit balance unavailable.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -429,8 +565,10 @@ function OverviewSection({
         </section>
       )}
 
-      {/* Members — only for paid plans */}
-      {(currentTier === "pro" || currentTier === "team") && (
+      {/* Members — only for workspaces with shared usage access */}
+      {(currentTier === "pro" ||
+        currentTier === "team" ||
+        currentTier === "custom") && (
         <section className="flex flex-col gap-3">
           <h3 className="text-sm font-medium text-foreground">Members</h3>
 

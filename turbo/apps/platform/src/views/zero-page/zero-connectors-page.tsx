@@ -33,6 +33,8 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  connectConnectorNoAuth$,
+  connectFlowType$,
   connectorsSearch$,
   connectorsConnectionFilter$,
   closePermissionDialog$,
@@ -51,6 +53,7 @@ import {
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
   getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusNoAuthMethod,
   getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
@@ -78,7 +81,7 @@ import {
   setManagedConnectorAccessType$,
 } from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -715,22 +718,14 @@ function GlobalConnectorCard({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 {connectionStatus === "reconnect-required" ? (
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      runAfterDropdownMenuClose(onConnect);
-                    }}
-                  >
+                  <DropdownMenuModalItem onModalSelect={onConnect}>
                     Reconnect
-                  </DropdownMenuItem>
+                  </DropdownMenuModalItem>
                 ) : null}
                 {connectionStatus === "scope-mismatch" && onReviewScopes ? (
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      runAfterDropdownMenuClose(onReviewScopes);
-                    }}
-                  >
+                  <DropdownMenuModalItem onModalSelect={onReviewScopes}>
                     Review permissions
-                  </DropdownMenuItem>
+                  </DropdownMenuModalItem>
                 ) : null}
                 <DropdownMenuItem
                   onClick={onDisconnect}
@@ -918,7 +913,9 @@ export function ZeroConnectorsPage() {
   const catalogStatusLoadable = useLastLoadable(connectorCatalogStatus$);
   const pollingAuthCodeType = useGet(pollingOAuthAuthCodeConnectorType$);
   const pollingDeviceAuthType = useGet(pollingOAuthDeviceAuthConnectorType$);
+  const connectFlowType = useGet(connectFlowType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
+  const connectNoAuth = useSet(connectConnectorNoAuth$);
   const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
   const selectedType = useGet(selectedConnectorType$);
@@ -977,7 +974,9 @@ export function ZeroConnectorsPage() {
     const launchMode = getConnectorStatusConnectLaunchMode(ct);
     if (launchMode === "modal") {
       setSelected(type);
-    } else {
+      return;
+    }
+    if (launchMode === "browser-auth") {
       const authMethod = getOnlyAvailableStatusBrowserAuthMethod(ct);
       if (!authMethod) {
         setSelected(type);
@@ -992,7 +991,24 @@ export function ZeroConnectorsPage() {
         ),
         Reason.DomCallback,
       );
+      return;
     }
+    const authMethod = getOnlyAvailableStatusNoAuthMethod(ct);
+    if (!authMethod) {
+      setSelected(type);
+      return;
+    }
+    detach(
+      connectNoAuth(
+        {
+          type,
+          authMethod,
+          options: { showPermissionDialog: true, connectorLabel: ct.label },
+        },
+        signal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const disconnectHandler = async (
@@ -1014,7 +1030,9 @@ export function ZeroConnectorsPage() {
   const renderCard = (c: ConnectorTypeWithStatus) => {
     const optimisticConnector = getOptimisticConnector(c);
     const isPolling =
-      pollingAuthCodeType === c.type || pollingDeviceAuthType === c.type;
+      pollingAuthCodeType === c.type ||
+      pollingDeviceAuthType === c.type ||
+      connectFlowType === c.type;
     if (!optimisticConnector.connected) {
       return (
         <AvailableConnectorCard

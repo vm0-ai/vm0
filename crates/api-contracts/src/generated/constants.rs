@@ -3,6 +3,45 @@
 //! These constants are shared TypeScript/Rust contract values.
 //! Token-shaped placeholder values in this module are fake marker bytes, not secrets.
 
+/// Client request contract constants shared by TypeScript and Rust.
+pub mod client {
+    /// HTTP header names used to identify vm0 clients in API request logs.
+    pub mod headers {
+        /// HTTP header carrying the per-request vm0 client request identifier.
+        pub const CLIENT_REQUEST_ID_HEADER: &str = "X-Client-Request-Id";
+
+        /// HTTP header carrying the sending vm0 client session identifier.
+        pub const CLIENT_SESSION_ID_HEADER: &str = "X-Client-Session-Id";
+
+        /// HTTP header carrying the sending vm0 client component type.
+        pub const CLIENT_TYPE_HEADER: &str = "X-Client-Type";
+
+        /// HTTP header carrying the sending vm0 client component version.
+        pub const CLIENT_VERSION_HEADER: &str = "X-Client-Version";
+    }
+
+    /// Client type values used to identify vm0 API request originators.
+    pub mod types {
+        /// Client type value for the platform web app.
+        pub const CLIENT_TYPE_APP: &str = "App";
+
+        /// Client type value for the CLI.
+        pub const CLIENT_TYPE_CLI: &str = "CLI";
+
+        /// Client type value for the desktop client.
+        pub const CLIENT_TYPE_DESKTOP: &str = "Desktop";
+
+        /// Client type value for the guest agent.
+        pub const CLIENT_TYPE_GUEST_AGENT: &str = "GuestAgent";
+
+        /// Client type value for the mitmproxy addon.
+        pub const CLIENT_TYPE_MITM_ADDON: &str = "MitmAddon";
+
+        /// Client type value for the runner.
+        pub const CLIENT_TYPE_RUNNER: &str = "Runner";
+    }
+}
+
 /// Codex OAuth token contract constants shared by TypeScript and Rust.
 pub mod codex_oauth_token {
     /// Fake Codex OAuth token placeholder marker values.
@@ -68,6 +107,15 @@ pub mod runners {
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
+
+    /// Telemetry value for session history downloads signed with a configured S3 endpoint.
+    /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
+    pub const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT: &str =
+        "configured_public_endpoint";
+
+    /// Telemetry value for session history downloads signed with the default R2 endpoint.
+    /// Rust and TypeScript components use this shared contract value when attributing runner download latency.
+    pub const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT: &str = "default_r2_endpoint";
 
     /// Wire and blob metadata value for gzip-compressed resume session history.
     /// Rust and TypeScript components use this shared contract value when negotiating session history uploads and claim responses.

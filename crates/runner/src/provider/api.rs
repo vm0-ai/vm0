@@ -1,5 +1,6 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -7,20 +8,27 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
-use reqwest::{RequestBuilder, Response, StatusCode};
+use reqwest::{Response, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
 };
-use super::api_direct_candidates::{DirectCandidateInbox, DirectJobCandidate};
+use super::api_direct_candidates::{
+    DIRECT_CANDIDATE_STALE_AFTER, DirectCandidateInbox, DirectCandidatePruneSnapshot,
+    DirectJobCandidate,
+};
+use super::builtin_firewall_catalog::{
+    BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshHandle,
+};
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
     ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
+    PreLocalAdmissionOutcome,
 };
 use crate::duration::duration_ms;
 use crate::error::{RunnerError, RunnerResult};
-use crate::http::HttpClient;
+use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
 use crate::types::{
@@ -43,6 +51,16 @@ struct ClaimRequestTelemetry {
     job_discovered_to_claim_request_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_admission_to_claim_request_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    direct_candidate_notification_to_enqueue_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    direct_candidate_inbox_wait_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_discovery_to_main_loop_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    main_loop_to_local_admission_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pre_local_admission_outcome: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     poll_due_to_job_discovered_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,6 +89,7 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
 const DIRECT_CANDIDATE_INBOX_CAPACITY: usize = 128;
 const NETWORK_POLICY_REFRESH_TIMEOUT: Duration = Duration::from_secs(3);
+const BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
 
 enum DiscoveryWakeup {
     Direct(DirectJobCandidate),
@@ -102,8 +121,14 @@ pub struct ApiProvider {
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
     network_policy_refresh: NetworkPolicyRefreshHandle,
+    builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle,
     /// Shutdown signal.
     cancel: CancellationToken,
+}
+
+pub struct BuiltinFirewallCatalogCachePaths {
+    pub cache_path: PathBuf,
+    pub lock_path: PathBuf,
 }
 
 impl ApiProvider {
@@ -113,13 +138,24 @@ impl ApiProvider {
         token: String,
         group: String,
         supported_profiles: Vec<String>,
+        builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
+        let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshHandle::start(
+            api.clone(),
+            builtin_firewall_catalog_cache_paths.cache_path,
+            builtin_firewall_catalog_cache_paths.lock_path,
+            cancel.clone(),
+        )
+        .await;
         let poll_wakeups = Arc::new(PollWakeups::new(false));
-        let direct_candidates = DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY);
+        let direct_candidates = DirectCandidateInbox::new(
+            DIRECT_CANDIDATE_INBOX_CAPACITY,
+            DIRECT_CANDIDATE_STALE_AFTER,
+        );
         let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
             api: api.clone(),
             group: group.clone(),
@@ -139,6 +175,7 @@ impl ApiProvider {
             direct_candidates,
             ably_supervisor,
             network_policy_refresh,
+            builtin_firewall_catalog_refresh,
             cancel,
         })
     }
@@ -148,11 +185,41 @@ impl ApiProvider {
     }
 
     async fn try_recv_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        self.direct_candidates.try_pop().await
+        let outcome = self.direct_candidates.try_pop_with_prune().await;
+        if let Some(pruned) = outcome.pruned {
+            Self::log_direct_candidate_pruned("pop", pruned);
+            if outcome.candidate.is_none() {
+                self.poll_wakeups.request_immediate_poll().await;
+            }
+        }
+        outcome.candidate
     }
 
     async fn wait_for_direct_candidate(&self) -> Option<DirectJobCandidate> {
-        self.direct_candidates.wait_pop(&self.cancel).await
+        loop {
+            if let Some(candidate) = self.try_recv_direct_candidate().await {
+                return Some(candidate);
+            }
+            if !self
+                .direct_candidates
+                .wait_for_notification(&self.cancel)
+                .await
+            {
+                return None;
+            }
+        }
+    }
+
+    fn log_direct_candidate_pruned(source: &'static str, pruned: DirectCandidatePruneSnapshot) {
+        info!(
+            source,
+            pruned_count = pruned.pruned_count,
+            depth = pruned.depth,
+            capacity = pruned.capacity,
+            stale_after_ms = duration_ms(pruned.stale_after),
+            oldest_pruned_wait_ms = duration_ms(pruned.oldest_pruned_wait_elapsed),
+            "ably: stale direct candidates pruned"
+        );
     }
 
     async fn wait_for_discovery_wakeup(&self) -> Option<DiscoveryWakeup> {
@@ -187,12 +254,13 @@ impl JobProvider for ApiProvider {
                 DiscoveryWakeup::Direct(direct) => {
                     let run_id = direct.run_id();
                     let profile = direct.profile_name().to_owned();
-                    let candidate = direct.into_job_candidate();
                     info!(
                         run_id = %run_id,
                         profile = %profile,
                         "ably: direct job candidate discovered"
                     );
+                    let mut candidate = direct.into_job_candidate();
+                    candidate.mark_provider_discovery_returned();
                     return Some(candidate);
                 }
                 DiscoveryWakeup::Poll(due) => due,
@@ -216,7 +284,9 @@ impl JobProvider for ApiProvider {
                             poll_reason = ?reason,
                             "ably: direct job candidate interrupted poll"
                         );
-                        return Some(direct.into_job_candidate());
+                        let mut candidate = direct.into_job_candidate();
+                        candidate.mark_provider_discovery_returned();
+                        return Some(candidate);
                     }
                     return None;
                 }
@@ -252,13 +322,13 @@ impl JobProvider for ApiProvider {
                         .experimental_profile
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
-                    return Some(
-                        JobCandidate::new(run_id, profile)
-                            .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
-                            .with_discovery_source(JobDiscoverySource::Poll)
-                            .with_poll_reason(poll_reason_value(reason))
-                            .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed),
-                    );
+                    let mut candidate = JobCandidate::new(run_id, profile)
+                        .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
+                        .with_discovery_source(JobDiscoverySource::Poll)
+                        .with_poll_reason(poll_reason_value(reason))
+                        .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
+                    candidate.mark_provider_discovery_returned();
+                    return Some(candidate);
                 }
                 Ok(PollApiResult { job: None, .. }) => {
                     self.poll_wakeups
@@ -284,7 +354,9 @@ impl JobProvider for ApiProvider {
             profile = %profile,
             "ably: ready direct job candidate drained"
         );
-        Some(direct.into_job_candidate())
+        let mut candidate = direct.into_job_candidate();
+        candidate.mark_provider_discovery_returned();
+        Some(candidate)
     }
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
@@ -319,7 +391,7 @@ impl JobProvider for ApiProvider {
 
     async fn heartbeat(&self, state: &HeartbeatState) {
         if let Err(e) = self.api.heartbeat(state).await {
-            warn!(error = %e, "heartbeat failed");
+            log_heartbeat_failure(state, &e);
         }
     }
 
@@ -330,6 +402,7 @@ impl JobProvider for ApiProvider {
     async fn shutdown(&self) {
         self.ably_supervisor.shutdown().await;
         self.network_policy_refresh.shutdown().await;
+        self.builtin_firewall_catalog_refresh.shutdown().await;
     }
 
     async fn complete(
@@ -377,6 +450,44 @@ impl JobProvider for ApiProvider {
             }
         }
     }
+}
+
+fn log_heartbeat_failure(state: &HeartbeatState, error: &RunnerError) {
+    let sessions = state.held_session_states.len();
+    if let RunnerError::ApiTransport(api_error) = error {
+        let request = &api_error.request;
+        warn!(
+            error = %error,
+            endpoint = request.endpoint_label,
+            method = %request.method,
+            host = %request.host,
+            path = %request.path,
+            client_request_id = %request.client_request_id,
+            client_session_id = %request.client_session_id,
+            client_version = %request.client_version,
+            failure_kind = api_error.failure_kind.as_str(),
+            error_summary = %api_error.summary,
+            runner_id = %state.runner_id,
+            runner_name = %state.runner_name,
+            runner_group = %state.group,
+            mode = %state.mode,
+            running = state.running_count,
+            sessions,
+            "heartbeat failed"
+        );
+        return;
+    }
+
+    warn!(
+        error = %error,
+        runner_id = %state.runner_id,
+        runner_name = %state.runner_name,
+        runner_group = %state.group,
+        mode = %state.mode,
+        running = state.running_count,
+        sessions,
+        "heartbeat failed"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -548,7 +659,7 @@ impl ApiClient {
         &self,
         run_id: &str,
         connector_refs: &[String],
-    ) -> RequestBuilder {
+    ) -> ApiRequestBuilder {
         self.http
             .request_resolved_route(
                 routes::runners::runs::by_run_id::network_policy_refresh::route(
@@ -559,9 +670,64 @@ impl ApiClient {
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
             .json(&serde_json::json!({ "connectorRefs": connector_refs }))
     }
+
+    pub(super) async fn resolve_builtin_firewall_catalog(
+        &self,
+    ) -> RunnerResult<BuiltinFirewallCatalog> {
+        let resp = send_api(
+            self.http
+                .request_route(
+                    routes::runners::builtin_firewalls::resolve::RESOLVE,
+                    &self.token,
+                )
+                .timeout(BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
+                .json(&serde_json::json!({})),
+            "builtin firewall catalog resolve",
+        )
+        .await?;
+
+        let resp = check_api_status(resp, "builtin firewall catalog resolve").await?;
+        let catalog: BuiltinFirewallCatalog =
+            decode_api_json(resp, "builtin firewall catalog resolve").await?;
+        catalog.validate_for_api_response().map_err(|e| {
+            RunnerError::Api(format!(
+                "builtin firewall catalog resolve invalid catalog: {e}"
+            ))
+        })?;
+        Ok(catalog)
+    }
 }
 
 fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
+    let is_ably_candidate = candidate.discovery_source() == Some(JobDiscoverySource::Ably);
+    let (
+        direct_candidate_notification_to_enqueue_ms,
+        direct_candidate_inbox_wait_ms,
+        provider_discovery_to_main_loop_ms,
+        main_loop_to_local_admission_ms,
+        pre_local_admission_outcome,
+    ) = if is_ably_candidate {
+        (
+            candidate
+                .direct_candidate_notification_to_enqueue_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .direct_candidate_inbox_wait_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .provider_discovery_to_main_loop_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .main_loop_to_local_admission_elapsed()
+                .map(claim_telemetry_duration_ms),
+            candidate
+                .pre_local_admission_outcome()
+                .map(PreLocalAdmissionOutcome::as_str),
+        )
+    } else {
+        (None, None, None, None, None)
+    };
+
     ClaimRequestBody {
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
@@ -571,6 +737,11 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
             local_admission_to_claim_request_ms: candidate
                 .local_admission_elapsed()
                 .map(claim_telemetry_duration_ms),
+            direct_candidate_notification_to_enqueue_ms,
+            direct_candidate_inbox_wait_ms,
+            provider_discovery_to_main_loop_ms,
+            main_loop_to_local_admission_ms,
+            pre_local_admission_outcome,
             poll_due_to_job_discovered_ms: candidate
                 .poll_due_to_job_discovered_elapsed()
                 .map(claim_telemetry_duration_ms),
@@ -612,10 +783,12 @@ fn poll_reason_value(reason: PollReason) -> &'static str {
     }
 }
 
-async fn send_api(req: RequestBuilder, label: &str) -> RunnerResult<Response> {
-    req.send()
-        .await
-        .map_err(|e| RunnerError::Api(format!("{label}: {e}")))
+async fn send_api(req: ApiRequestBuilder, label: &'static str) -> RunnerResult<Response> {
+    match req.send(label).await {
+        Ok(resp) => Ok(resp),
+        Err(RunnerError::Api(message)) => Err(RunnerError::Api(format!("{label}: {message}"))),
+        Err(error) => Err(error),
+    }
 }
 
 async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response> {
@@ -727,24 +900,28 @@ fn is_static_json_field(field: &str) -> bool {
     matches!(
         field,
         "allow"
+            | "allowNonDefaultPort"
             | "apiStartTime"
             | "apis"
             | "archiveUrl"
             | "artifacts"
             | "ask"
             | "auth"
+            | "accessKeyId"
+            | "awsSigv4"
             | "base"
             | "baseUrlVars"
             | "billableFirewalls"
             | "cached"
             | "capability"
+            | "catalogDigest"
+            | "catalogVersion"
             | "captureNetworkBodies"
             | "checkpointId"
             | "cliAgentType"
             | "cliAgentSessionId"
             | "clientId"
-            | "debugNoMockClaude"
-            | "debugNoMockCodex"
+            | "realAgentInPreview"
             | "deny"
             | "description"
             | "disallowedTools"
@@ -754,12 +931,14 @@ fn is_static_json_field(field: &str) -> bool {
             | "environment"
             | "experimentalProfile"
             | "expires"
+            | "exactHosts"
             | "featureFlags"
             | "firewall"
             | "firewalls"
             | "headers"
             | "hash"
             | "historyRef"
+            | "hostPolicy"
             | "heldSessionStates"
             | "issued"
             | "job"
@@ -783,7 +962,9 @@ fn is_static_json_field(field: &str) -> bool {
             | "sandboxToken"
             | "secretConnectorMap"
             | "secretConnectorMetadataMap"
+            | "secretAccessKey"
             | "secretValues"
+            | "sessionToken"
             | "sessionHistory"
             | "sessionId"
             | "settings"
@@ -792,6 +973,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "sourceUserId"
             | "storageManifest"
             | "storages"
+            | "suffixes"
             | "timestamp"
             | "token"
             | "lastCompletedAt"
@@ -883,6 +1065,10 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
     use tokio::task::JoinHandle;
+    use tracing::Level;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+    use uuid::Uuid;
 
     use crate::http::HttpClientConfig;
 
@@ -891,6 +1077,7 @@ mod tests {
             HttpClient::new(HttpClientConfig {
                 api_url: server.base_url(),
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .unwrap(),
             "runner-token".to_string(),
@@ -924,6 +1111,123 @@ mod tests {
         );
     }
 
+    #[test]
+    fn builtin_firewall_catalog_resolve_request_uses_bounded_timeout_and_empty_body() {
+        let server = MockServer::start();
+        let api = api_client_for_server(&server);
+
+        let request = api
+            .http
+            .request_route(
+                routes::runners::builtin_firewalls::resolve::RESOLVE,
+                &api.token,
+            )
+            .timeout(BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
+            .json(&serde_json::json!({}))
+            .build()
+            .expect("builtin firewall catalog resolve request should build");
+
+        assert_eq!(
+            request.timeout(),
+            Some(&BUILTIN_FIREWALL_CATALOG_RESOLVE_TIMEOUT)
+        );
+        assert_eq!(
+            request.url().path(),
+            "/api/runners/builtin-firewalls/resolve"
+        );
+        assert_eq!(
+            request
+                .body()
+                .and_then(reqwest::Body::as_bytes)
+                .expect("request should include JSON body"),
+            br#"{}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn api_client_resolves_builtin_firewall_catalog() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::builtin_firewalls::resolve::RESOLVE.path)
+                    .json_body(serde_json::json!({}));
+                then.status(200).json_body(serde_json::json!({
+                    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "catalogVersion": "test-catalog",
+                    "firewalls": {
+                        "aws": {
+                            "name": "aws",
+                            "apis": [{
+                                "base": "https://s3.amazonaws.com",
+                                "hostPolicy": {
+                                    "kind": "providerOwned",
+                                    "exactHosts": ["s3.amazonaws.com"]
+                                },
+                                "auth": {
+                                    "awsSigv4": {
+                                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+                                    }
+                                },
+                                "permissions": [{"name": "read", "rules": ["GET /{bucket}"]}]
+                            }]
+                        }
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let catalog = api.resolve_builtin_firewall_catalog().await.unwrap();
+
+        assert_eq!(catalog.catalog_version, "test-catalog");
+        assert_eq!(
+            catalog.firewalls["aws"].apis[0].base,
+            "https://s3.amazonaws.com"
+        );
+        assert!(catalog.firewalls["aws"].apis[0].host_policy.is_some());
+        assert!(catalog.firewalls["aws"].apis[0].auth.aws_sigv4.is_some());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_rejects_builtin_firewall_catalog_key_name_mismatch() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::builtin_firewalls::resolve::RESOLVE.path);
+                then.status(200).json_body(serde_json::json!({
+                    "catalogDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "catalogVersion": "test-catalog",
+                    "firewalls": {
+                        "github": {
+                            "name": "slack",
+                            "apis": [{
+                                "base": "https://slack.com/api",
+                                "auth": {"headers": {}},
+                                "permissions": []
+                            }]
+                        }
+                    }
+                }));
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let error = api.resolve_builtin_firewall_catalog().await.unwrap_err();
+
+        match error {
+            RunnerError::Api(message) => assert!(
+                message.contains("does not match firewall.name"),
+                "unexpected error: {message}"
+            ),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+        mock.assert_async().await;
+    }
+
     fn assert_api_error(err: RunnerError, expected: &str) {
         match err {
             RunnerError::Api(message) => assert_eq!(message, expected),
@@ -940,20 +1244,78 @@ mod tests {
             HttpClient::new(HttpClientConfig {
                 api_url,
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .unwrap(),
             "runner-token".to_string(),
         );
         Arc::new(ApiProvider {
             network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
+            builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle::disabled(),
             api,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
-            direct_candidates: DirectCandidateInbox::new(DIRECT_CANDIDATE_INBOX_CAPACITY),
+            direct_candidates: DirectCandidateInbox::new(
+                DIRECT_CANDIDATE_INBOX_CAPACITY,
+                DIRECT_CANDIDATE_STALE_AFTER,
+            ),
             ably_supervisor: AblySupervisor::disabled(),
             cancel,
         })
+    }
+
+    async fn capture_api_provider_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
+    where
+        F: std::future::Future,
+    {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+        let output = future.await;
+        drop(guard);
+        (output, captured.entries())
+    }
+
+    fn captured_event<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+            })
+            .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
+    }
+
+    fn event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
+        event
+            .fields
+            .get(field)
+            .map(String::as_str)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
+    }
+
+    fn heartbeat_state_for_test() -> HeartbeatState {
+        HeartbeatState {
+            runner_id: "runner-heartbeat-test".to_string(),
+            runner_name: "runner test".to_string(),
+            group: "vm0/test".to_string(),
+            total_vcpu: 8,
+            total_memory_mb: 32768,
+            max_concurrent: 4,
+            allocated_vcpu: 2,
+            allocated_memory_mb: 4096,
+            running_count: 1,
+            admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
+            held_session_states: vec![crate::types::HeldSessionState {
+                session_id: "held-session-test".to_string(),
+                last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+            }],
+            mode: "running".to_string(),
+        }
     }
 
     async fn push_direct_candidate_for_test(provider: &ApiProvider, candidate: DirectJobCandidate) {
@@ -1056,6 +1418,65 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn heartbeat_send_failure_logs_transport_and_state_context_without_secrets() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let server_task = tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+        });
+        let provider = api_provider_for_test(
+            api_url.clone(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let state = heartbeat_state_for_test();
+
+        let (_, events) = capture_api_provider_events(provider.heartbeat(&state)).await;
+        server_task.abort();
+        let _ = server_task.await;
+        let event = captured_event(&events, "heartbeat failed");
+
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event_field(event, "runner_id"), "runner-heartbeat-test");
+        assert_eq!(event_field(event, "runner_name"), "runner test");
+        assert_eq!(event_field(event, "runner_group"), "vm0/test");
+        assert_eq!(event_field(event, "mode"), "running");
+        assert_eq!(event_field(event, "running"), "1");
+        assert_eq!(event_field(event, "sessions"), "1");
+        assert_eq!(event_field(event, "endpoint"), "heartbeat");
+        assert_eq!(event_field(event, "method"), "POST");
+        assert_eq!(
+            event_field(event, "path"),
+            routes::runners::heartbeat::HEARTBEAT.path
+        );
+        assert_eq!(
+            event_field(event, "client_session_id"),
+            "runner-session-test"
+        );
+        assert_eq!(
+            event_field(event, "client_version"),
+            env!("CARGO_PKG_VERSION")
+        );
+        assert!(!event_field(event, "failure_kind").is_empty());
+        assert!(
+            event_field(event, "host").starts_with("127.0.0.1:"),
+            "host should include only host and port; event={event:#?}"
+        );
+        Uuid::parse_str(event_field(event, "client_request_id"))
+            .expect("client_request_id should be a UUID");
+
+        let event_debug = format!("{event:#?}");
+        assert!(
+            !event_debug.contains(&api_url),
+            "event should not include full URL: {event_debug}"
+        );
+        assert!(
+            !event_debug.contains("runner-token") && !event_debug.contains("held-session-test"),
+            "event should not include bearer token or heartbeat body: {event_debug}"
+        );
+    }
+
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
@@ -1104,6 +1525,84 @@ mod tests {
     }
 
     #[test]
+    fn claim_request_body_serializes_pre_claim_timing_splits() {
+        let mut candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_discovery_source(JobDiscoverySource::Ably)
+                .with_direct_candidate_timing(
+                    Some(Duration::from_millis(3)),
+                    Some(Duration::from_millis(5)),
+                )
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder);
+        candidate.mark_provider_discovery_returned();
+        candidate.mark_main_loop_handling_started();
+        candidate.mark_local_admission_started();
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert_eq!(body["telemetry"]["discoverySource"], "ably");
+        assert_eq!(
+            body["telemetry"]["directCandidateNotificationToEnqueueMs"],
+            3
+        );
+        assert_eq!(body["telemetry"]["directCandidateInboxWaitMs"], 5);
+        assert!(
+            body["telemetry"]["providerDiscoveryToMainLoopMs"]
+                .as_u64()
+                .is_some()
+        );
+        assert!(
+            body["telemetry"]["mainLoopToLocalAdmissionMs"]
+                .as_u64()
+                .is_some()
+        );
+        assert_eq!(
+            body["telemetry"]["preLocalAdmissionOutcome"],
+            "local_holder"
+        );
+    }
+
+    #[test]
+    fn claim_request_body_omits_ably_only_timing_splits_for_poll_candidates() {
+        let mut candidate =
+            JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
+                .with_discovery_source(JobDiscoverySource::Poll)
+                .with_direct_candidate_timing(
+                    Some(Duration::from_millis(3)),
+                    Some(Duration::from_millis(5)),
+                )
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected);
+        candidate.mark_provider_discovery_returned();
+        candidate.mark_main_loop_handling_started();
+        candidate.mark_local_admission_started();
+
+        let body = serde_json::to_value(claim_request_body(&candidate)).unwrap();
+
+        assert_eq!(body["telemetry"]["discoverySource"], "poll");
+        assert!(
+            body["telemetry"]
+                .get("directCandidateNotificationToEnqueueMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("directCandidateInboxWaitMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("providerDiscoveryToMainLoopMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("mainLoopToLocalAdmissionMs")
+                .is_none()
+        );
+        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
+    }
+
+    #[test]
     fn claim_request_body_saturates_wire_timing_to_js_safe_integer() {
         let candidate =
             JobCandidate::new(RunId::nil(), crate::profile::DEFAULT_PROFILE.to_string())
@@ -1149,6 +1648,27 @@ mod tests {
         assert!(body["telemetry"].get("pollDueToJobDiscoveredMs").is_none());
         assert!(body["telemetry"].get("pollHttpRequestMs").is_none());
         assert!(body["telemetry"].get("pollReason").is_none());
+        assert!(
+            body["telemetry"]
+                .get("directCandidateNotificationToEnqueueMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("directCandidateInboxWaitMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("providerDiscoveryToMainLoopMs")
+                .is_none()
+        );
+        assert!(
+            body["telemetry"]
+                .get("mainLoopToLocalAdmissionMs")
+                .is_none()
+        );
+        assert!(body["telemetry"].get("preLocalAdmissionOutcome").is_none());
     }
 
     #[test]
@@ -1300,6 +1820,17 @@ mod tests {
             Some(JobDiscoverySource::Ably)
         );
         assert!(discovered.job_discovered_elapsed() >= Duration::from_millis(25));
+        assert!(
+            discovered
+                .direct_candidate_notification_to_enqueue_elapsed()
+                .is_some()
+        );
+        assert!(discovered.direct_candidate_inbox_wait_elapsed().is_some());
+        assert!(
+            discovered
+                .provider_discovery_to_main_loop_elapsed()
+                .is_none()
+        );
         assert!(discovered.poll_due_to_job_discovered_elapsed().is_none());
         assert!(discovered.poll_http_request_elapsed().is_none());
         poll_mock.assert_calls_async(0).await;
@@ -1340,6 +1871,68 @@ mod tests {
         );
         assert!(provider.try_discover_ready().await.is_none());
         poll_mock.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn discover_prunes_stale_direct_candidate_and_polls_immediately() {
+        let server = MockServer::start_async().await;
+        let stale_run_id: RunId = "00000000-0000-0000-0000-000000000017".parse().unwrap();
+        let poll_run_id: RunId = "00000000-0000-0000-0000-000000000018".parse().unwrap();
+        let poll_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::runners::poll::POLL.path)
+                    .json_body(serde_json::json!({
+                        "group": "default",
+                        "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
+                        "telemetry": {
+                            "pollReason": "immediate"
+                        }
+                    }));
+                then.status(200).json_body(serde_json::json!({
+                    "job": {
+                        "runId": poll_run_id,
+                        "experimentalProfile": crate::profile::DEFAULT_PROFILE
+                    }
+                }));
+            })
+            .await;
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let initial_poll = wakeups
+            .wait_for_poll_due(&CancellationToken::new(), POLL_SLOW, POLL_FAST)
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial_poll, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::clone(&wakeups),
+        );
+        let stale_enqueued_at = Instant::now() - Duration::from_secs(120);
+        push_direct_candidate_for_test(
+            &provider,
+            DirectJobCandidate::new_with_enqueued_at(
+                stale_run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+                stale_enqueued_at,
+                stale_enqueued_at,
+            ),
+        )
+        .await;
+
+        let discovered = tokio::time::timeout(Duration::from_secs(1), provider.discover())
+            .await
+            .expect("stale direct pruning should wake immediate poll")
+            .unwrap();
+
+        assert_eq!(discovered.run_id(), poll_run_id);
+        assert_eq!(
+            discovered.discovery_source(),
+            Some(JobDiscoverySource::Poll)
+        );
+        poll_mock.assert_async().await;
     }
 
     #[tokio::test]

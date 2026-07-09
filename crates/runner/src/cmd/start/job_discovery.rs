@@ -22,14 +22,15 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, validate_resume_session_id,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer, SessionHistoryProbe,
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
+    validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::paths::short_digest;
-use crate::provider::{ClaimedJob, JobCandidate};
+use crate::provider::{ClaimedJob, JobCandidate, PreLocalAdmissionOutcome};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
@@ -100,7 +101,8 @@ pub(super) async fn handle_discovered_job(
     job: DiscoveredJob,
     mut ctx: DiscoveredJobContext<'_>,
 ) -> bool {
-    let DiscoveredJob { candidate } = job;
+    let DiscoveredJob { mut candidate } = job;
+    candidate.mark_main_loop_handling_started();
     let run_id = candidate.run_id();
     let profile_name = candidate.profile_name().to_owned();
     // Look up profile config for resource requirements.
@@ -165,9 +167,12 @@ pub(super) async fn handle_discovered_job(
         claimed.context(),
         resume_session_valid,
         &job_cancel,
-        reuse_entry.as_ref(),
-        reuse_result,
+        SessionHistoryRestoreReuse {
+            entry: reuse_entry.as_ref(),
+            result: reuse_result,
+        },
         &mut pre_spawn_timing,
+        Some(&ctx.spawn_ctx.exec_config.session_history_probe),
     );
 
     // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
@@ -216,14 +221,19 @@ pub(super) async fn handle_discovered_job(
     needs_session_affinity_refresh
 }
 
+struct SessionHistoryRestoreReuse<'a> {
+    entry: Option<&'a ReusableIdleSandbox>,
+    result: SandboxReuseResult,
+}
+
 fn build_session_history_restore_plan(
     http: &HttpClient,
     context: &ExecutionContext,
     resume_session_valid: bool,
     cancel: &RunCancellationHandle,
-    reuse_entry: Option<&ReusableIdleSandbox>,
-    reuse_result: SandboxReuseResult,
+    reuse: SessionHistoryRestoreReuse<'_>,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
+    probe: Option<&SessionHistoryProbe>,
 ) -> SessionHistoryRestorePlan {
     if !resume_session_valid {
         return SessionHistoryRestorePlan::Default;
@@ -235,11 +245,14 @@ fn build_session_history_restore_plan(
         return SessionHistoryRestorePlan::Default;
     }
 
-    let fallback = match reuse_result {
+    let fallback = match reuse.result {
         SandboxReuseResult::Reused => {
             let requested_identity = RestoredSessionIdentity::from_context(context);
             if let Some(requested_identity) = requested_identity {
-                match reuse_entry.and_then(ReusableIdleSandbox::restored_session_identity) {
+                match reuse
+                    .entry
+                    .and_then(ReusableIdleSandbox::restored_session_identity)
+                {
                     Some(restored_identity)
                         if restored_identity.is_verified_match_for_request(&requested_identity) =>
                     {
@@ -274,9 +287,18 @@ fn build_session_history_restore_plan(
         | SandboxReuseResult::UnparkFailed => Some(SessionHistoryRestoreFallback::NonReuse),
     };
 
+    if reuse.result != SandboxReuseResult::Reused {
+        return SessionHistoryRestorePlan::DeferredHashBacked { fallback };
+    }
+
     let started_at = Instant::now();
-    let materializer =
-        SessionHistoryMaterializer::start_cancellable(http, Some(resume_session), cancel.token());
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        http,
+        Some(resume_session),
+        effective_cli_framework(&context.cli_agent_type),
+        cancel.token(),
+        probe,
+    );
     pre_spawn_timing.record_phase_elapsed(
         RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
         started_at,
@@ -346,6 +368,10 @@ async fn claim_with_local_admission(
     let mode = *ctx.mode_rx.borrow();
     match mode {
         RunnerMode::Running => {}
+        RunnerMode::Starting => {
+            admission.rollback(ctx.cancel_tokens).await;
+            return None;
+        }
         RunnerMode::Draining => {
             admission.rollback(ctx.cancel_tokens).await;
             return None;
@@ -385,10 +411,15 @@ async fn prepare_affinity_protected_candidate(
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<JobCandidate> {
     if !candidate.is_affinity_protected() {
-        return Some(candidate);
+        return Some(
+            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
+        );
     }
     let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
-        return Some(candidate);
+        return Some(
+            candidate
+                .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::MissingSessionMetadata),
+        );
     };
 
     let held_session_states = current_local_held_session_states(ctx).await;
@@ -396,7 +427,9 @@ async fn prepare_affinity_protected_candidate(
         .iter()
         .any(|state| state.session_id == cli_agent_session_id)
     {
-        return Some(candidate);
+        return Some(
+            candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
+        );
     }
 
     let delay = candidate
@@ -684,6 +717,7 @@ mod tests {
         HttpClient::new(HttpClientConfig {
             api_url: "http://localhost".into(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap()
     }
@@ -704,6 +738,7 @@ mod tests {
                     encoding: None,
                     raw_size: size,
                     encoded_size: size,
+                    download_source: None,
                 },
             },
         });
@@ -877,9 +912,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -908,6 +946,7 @@ mod tests {
                     encoding: None,
                     raw_size: 12,
                     encoded_size: 12,
+                    download_source: None,
                 },
             },
         });
@@ -938,9 +977,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -983,9 +1025,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1010,9 +1055,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1055,9 +1103,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1086,9 +1137,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1115,9 +1169,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1145,9 +1202,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1160,6 +1220,34 @@ mod tests {
                 );
             }
             _ => panic!("mismatched reused identity should fall back to restore"),
+        }
+    }
+
+    #[test]
+    fn restore_plan_defers_hash_backed_history_for_non_reuse() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            SessionHistoryRestoreReuse {
+                entry: None,
+                result: SandboxReuseResult::PoolMiss,
+            },
+            &mut timing,
+            None,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::DeferredHashBacked { fallback } => {
+                assert_eq!(fallback, Some(SessionHistoryRestoreFallback::NonReuse));
+            }
+            _ => panic!("non-reuse hash-backed history should defer materialization"),
         }
     }
 
@@ -1184,9 +1272,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {
@@ -1223,9 +1314,12 @@ mod tests {
             &context,
             true,
             &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
+            SessionHistoryRestoreReuse {
+                entry: Some(&reusable_sandbox),
+                result: SandboxReuseResult::Reused,
+            },
             &mut timing,
+            None,
         );
 
         match plan {

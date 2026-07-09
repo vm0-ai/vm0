@@ -17,6 +17,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
   r2ImageTransformUrl,
   type PresentationTemplateItem,
@@ -49,6 +50,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
+import { resetChatPageModelSelection$ } from "../../../signals/zero-page/zero-chat-page.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
 import {
   click,
@@ -69,6 +73,10 @@ const THREAD_ID = "b1000000-0000-4000-a000-000000000101";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
+const {
+  set$: setCodexFastModeDefaultStorageForTest$,
+  clear$: clearCodexFastModeDefaultStorageForTest$,
+} = localStorageSignals(CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY);
 
 function applyUserConnectorUpdate(
   current: readonly string[],
@@ -1108,19 +1116,13 @@ describe("chat composer models", () => {
     });
     let sentBody:
       | {
-          modelSelection?: {
-            modelProviderId: string;
-            selectedModel: string;
-          } | null;
+          model?: string;
           runOptions?: { codexServiceTier?: "fast" };
         }
       | undefined;
     let createdBody:
       | {
-          modelSelection: {
-            modelProviderId: string;
-            selectedModel: string;
-          };
+          model?: string;
         }
       | undefined;
 
@@ -1172,15 +1174,177 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(createdBody?.modelSelection).toStrictEqual({
-        modelProviderId: "00000000-0000-4000-8000-000000000000",
-        selectedModel: "gpt-5.5",
-      });
-      expect(sentBody?.modelSelection).toBeUndefined();
+      expect(createdBody?.model).toBe("gpt-5.5");
+      expect(sentBody?.model).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
     });
+  });
+
+  it("remembers Codex fast mode for new chats in the current browser account", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000923",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+    let updatedModelSelection:
+      | {
+          modelSelection?: {
+            modelProviderId: string;
+            selectedModel: string;
+          } | null;
+          codexServiceTier?: "fast" | null;
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000924",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    mockChatLifecycle(context, {
+      onModelSelectionUpdate: (body) => {
+        updatedModelSelection = body;
+      },
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT 5.5"));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    click(buttonContainingText("Fast", runSpeed));
+    await waitFor(() => {
+      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    act(() => {
+      context.store.set(resetChatPageModelSelection$);
+    });
+
+    await expectComposerModel("GPT 5.5");
+
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Remember fast mode",
+    );
+
+    await waitFor(() => {
+      expect(updatedModelSelection?.modelSelection).toStrictEqual({
+        modelProviderId: "00000000-0000-4000-8000-000000000000",
+        selectedModel: "gpt-5.5",
+      });
+      expect(updatedModelSelection?.codexServiceTier).toBe("fast");
+      expect(sentBody?.runOptions).toStrictEqual({
+        codexServiceTier: "fast",
+      });
+    });
+  });
+
+  it("does not apply a remembered Codex fast mode default when the switch is off", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000925",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+    act(() => {
+      context.store.set(
+        setCodexFastModeDefaultStorageForTest$,
+        JSON.stringify({ "test-user-123:org_default": true }),
+      );
+    });
+
+    try {
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000926",
+          model: "gpt-5.5",
+          modelLabel: "GPT 5.5",
+          isDefault: true,
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+        }),
+      ]);
+      context.mocks.data.personalModelProviders([codexProvider]);
+      mockAgent();
+      mockChatLifecycle(context, {
+        onRunCreate: (body) => {
+          sentBody = body;
+        },
+      });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.CodexFastMode]: false },
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("combobox", { name: /^GPT 5\.5$/ }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("group", { name: "Run speed" }),
+        ).not.toBeInTheDocument();
+      });
+
+      await sendMessageInUI(
+        user,
+        screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+        "Use standard mode",
+      );
+
+      await waitFor(() => {
+        expect(sentBody?.runOptions).toBeUndefined();
+      });
+    } finally {
+      act(() => {
+        context.store.set(clearCodexFastModeDefaultStorageForTest$);
+      });
+    }
   });
 
   it("keeps Codex fast mode when continuing a hydrated thread", async () => {
@@ -1635,44 +1799,6 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });
-  });
-
-  it("uses the popover model picker behind the feature switch", async () => {
-    const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
-    mockAgent();
-
-    detachedSetupPage({
-      context,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerModelPickerPopover]: true,
-      },
-      path: `/agents/${AGENT_ID}/chat`,
-    });
-
-    const trigger = await findComposerModel("Kimi K2.7 Code");
-    fireEvent.click(trigger);
-
-    await waitFor(() => {
-      const openTrigger = screen.getByRole("combobox", {
-        name: "Kimi K2.7 Code",
-      });
-      expect(openTrigger).toHaveAttribute("aria-expanded", "true");
-      expect(openTrigger).toHaveAttribute("data-state", "open");
-      expect(openTrigger).toHaveClass("data-[state=open]:bg-accent");
-      expect(openTrigger).not.toHaveClass("data-[state=open]:ring-2");
-    });
-    expect(screen.getByRole("listbox", { name: "Models" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: /Kimi K2\.7 Code/ }),
-    ).toHaveAttribute("aria-selected", "true");
-
-    await user.click(
-      screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
-    );
-
-    await expectComposerModel("Claude Sonnet 4.6");
-    expect(screen.queryByRole("listbox", { name: "Models" })).toBeNull();
   });
 
   it("blocks routed model sends until the matching device login is opened", async () => {
@@ -2312,6 +2438,7 @@ describe("chat composer templates", () => {
     expect(tabByText("Presentation")).toBeInTheDocument();
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
+    expect(screen.queryByText("Website")).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
 
     const tabScroller = document.querySelector(
@@ -4144,6 +4271,147 @@ describe("chat composer templates", () => {
       expect(
         screen.queryByLabelText(
           `Remove workflow template ${workflowTemplate.title}`,
+        ),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("selects and sends a website template behind the feature switch", async () => {
+    const user = userEvent.setup({ delay: null });
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
+    let submittedTemplate: GenerationTemplateRequest | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate: (body) => {
+        submittedTemplate = body.generationTemplate;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.WebsiteTemplates]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await waitFor(() => {
+      expect(tabByText("Website")).toBeInTheDocument();
+    });
+    click(tabByText("Website"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(
+          `Select website template ${websiteTemplate.title}`,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`)
+          .tagName,
+      ).toBe("IMG");
+      expect(screen.queryByText(websiteTemplate.description)).toBeNull();
+      expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
+      expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
+    });
+
+    await fill(screen.getByLabelText("Search templates"), "no website match");
+    await waitFor(() => {
+      expect(screen.getByText("No matches")).toBeInTheDocument();
+    });
+
+    await fill(
+      screen.getByLabelText("Search templates"),
+      websiteTemplate.title,
+    );
+    click(
+      screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(
+        screen.getByLabelText(
+          `Remove website template ${websiteTemplate.title}`,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    click(
+      screen.getByLabelText(
+        `Preview website template ${websiteTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`)
+          .tagName,
+      ).toBe("IMG");
+    });
+
+    click(
+      within(screen.getByRole("dialog")).getByLabelText(
+        `Preview website template ${websiteTemplate.title}`,
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website full preview`),
+      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+    });
+    const websitePreviewDialog = screen.getByRole("dialog", {
+      name: `Website / ${websiteTemplate.title}`,
+    });
+    const websiteBackButton = queryAllByRoleFast(
+      "button",
+      websitePreviewDialog,
+    ).find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === "Website";
+    });
+    if (!websiteBackButton) {
+      throw new Error("Website back button not found");
+    }
+    click(websiteBackButton);
+    await waitFor(() => {
+      expect(
+        screen.queryByTitle(`${websiteTemplate.title} website full preview`),
+      ).not.toBeInTheDocument();
+      expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    const editor = await findComposerEditor();
+    await sendMessageInUI(user, editor, "Create a warm website");
+
+    await waitFor(() => {
+      expect(submittedTemplate).toStrictEqual({
+        type: "website",
+        selection: { websiteTemplateId: websiteTemplate.id },
+      });
+      expect(screen.getByLabelText("Template")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(
+        screen.queryByLabelText(
+          `Remove website template ${websiteTemplate.title}`,
         ),
       ).not.toBeInTheDocument();
     });

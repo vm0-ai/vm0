@@ -35,8 +35,8 @@ import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadFollowupsFinished,
   publishChatThreadMessageCreatedSafely,
-  publishChatThreadRunFinished,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -267,6 +267,19 @@ interface AxiomChatOutputEvent {
 interface AssistantEventItem {
   readonly sequenceNumber: number;
   readonly content: string;
+}
+
+function terminalCallbackErrorMessage(
+  callbackError: string | null | undefined,
+  runError: string | null | undefined,
+): string {
+  if (callbackError !== null && callbackError !== undefined) {
+    return callbackError;
+  }
+  if (runError !== null && runError !== undefined) {
+    return runError;
+  }
+  return "Run failed";
 }
 
 interface ResultEventItem {
@@ -800,7 +813,6 @@ async function insertAssistantErrorMessage(args: {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
-  readonly publishRunFinished: boolean;
   readonly lifecycleEvent: "failed" | "cancelled";
   readonly getFormattedError: () => Promise<string>;
 }): Promise<FailedChatCallbackResult> {
@@ -842,12 +854,6 @@ async function insertAssistantErrorMessage(args: {
     `chatThreadMessageCreated:${args.threadId}`,
   );
   await publishThreadListChanged(args.userId);
-  if (args.publishRunFinished) {
-    await publishChatThreadRunFinished({
-      userId: args.userId,
-      threadId: args.threadId,
-    });
-  }
   return { displayErrorMessage, inserted: true };
 }
 
@@ -856,7 +862,6 @@ async function insertRunLifecycleMarker(args: {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
-  readonly publishRunFinished: boolean;
   readonly event: "completed" | "cancelled";
 }): Promise<boolean> {
   const markerCreatedAt = nowDate();
@@ -892,12 +897,6 @@ async function insertRunLifecycleMarker(args: {
     `chatThreadMessageCreated:${args.threadId}`,
   );
   await publishThreadListChanged(args.userId);
-  if (args.publishRunFinished) {
-    await publishChatThreadRunFinished({
-      userId: args.userId,
-      threadId: args.threadId,
-    });
-  }
   return true;
 }
 
@@ -1053,7 +1052,6 @@ async function handleCompletedChatCallback(args: {
         runId: args.runId,
         threadId: args.chatThread.chatThreadId,
         userId: args.chatThread.userId,
-        publishRunFinished: args.chatThread.triggerSource === "web",
         event: "completed",
       });
     },
@@ -1105,23 +1103,28 @@ async function runCompletedChatCallbackSideEffects(args: {
     currentAssistantReply: args.lastResultText ?? undefined,
   });
 
-  const lifecycleMarkerStep = (async () => {
+  const followupsStep = (async () => {
     const recommendedFollowups =
       await generateRecommendedFollowupsForCompletedRun({
         followupContext: args.followupContext,
         threadId: args.chatThread.chatThreadId,
         signal: args.signal,
       });
-    if (!recommendedFollowups) {
-      return;
+    if (recommendedFollowups) {
+      await insertRecommendedFollowupsMessage({
+        db: args.db,
+        runId: args.runId,
+        threadId: args.chatThread.chatThreadId,
+        userId: args.chatThread.userId,
+        recommendedFollowups,
+      });
     }
-    await insertRecommendedFollowupsMessage({
-      db: args.db,
-      runId: args.runId,
-      threadId: args.chatThread.chatThreadId,
-      userId: args.chatThread.userId,
-      recommendedFollowups,
-    });
+    if (args.chatThread.triggerSource === "web") {
+      await publishChatThreadFollowupsFinished({
+        userId: args.chatThread.userId,
+        threadId: args.chatThread.chatThreadId,
+      });
+    }
   })();
 
   const pushStep = (async () => {
@@ -1168,7 +1171,7 @@ async function runCompletedChatCallbackSideEffects(args: {
   const results = await Promise.allSettled([
     saveSummaryStep,
     titleStep,
-    lifecycleMarkerStep,
+    followupsStep,
     pushStep,
   ]);
   const errors = results.flatMap((result) => {
@@ -1202,7 +1205,6 @@ async function handleFailedChatCallback(args: {
     runId: args.runId,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
-    publishRunFinished: args.chatThread.triggerSource === "web",
     lifecycleEvent,
     getFormattedError: args.getFormattedError,
   });
@@ -2591,7 +2593,10 @@ async function processTerminalChatCallback(args: {
           runId,
           run,
           chatThread,
-          errorMessage: args.callback.error ?? run.error ?? "Run failed",
+          errorMessage: terminalCallbackErrorMessage(
+            args.callback.error,
+            run.error,
+          ),
           dependencies: args.dependencies,
           timing,
           signal: args.signal,

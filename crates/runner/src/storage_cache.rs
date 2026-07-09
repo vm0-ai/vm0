@@ -50,6 +50,7 @@ use crate::types::GuestDownloadManifest;
 
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
+const BODY_BUFFER_FALLBACK_CAPACITY: usize = 64 * 1024;
 
 /// Parallel (probe GET / full GET / flock / vsock) operations per `populate_cache` call.
 const CONCURRENCY: usize = 4;
@@ -1294,29 +1295,30 @@ async fn fetch_cache_target(
     }
 
     let t = Instant::now();
-    let bytes =
-        match retry_cache_fetch(|| download_tarball(http, &target.archive_url, CACHE_MAX_SIZE))
-            .await
-        {
-            Ok(body) => body,
-            Err(e) => {
-                let reason = e.to_string();
-                match e.into_error() {
-                    CacheDownloadError::Http(_) => {
-                        warn!(
-                            name = %target.name,
-                            version = %target.version,
-                            error = %reason,
-                            "storage_cache: full download failed, passthrough"
-                        );
-                        return Ok(CacheFetchOutcome::Skipped(
-                            TargetOutcome::SkippedInvalidDownload { reason },
-                        ));
-                    }
-                    CacheDownloadError::Internal(e) => return Err(e),
+    let body = retry_cache_fetch(|| {
+        download_tarball(http, &target.archive_url, Some(size), CACHE_MAX_SIZE)
+    })
+    .await;
+    let bytes = match body {
+        Ok(body) => body,
+        Err(e) => {
+            let reason = e.to_string();
+            match e.into_error() {
+                CacheDownloadError::Http(_) => {
+                    warn!(
+                        name = %target.name,
+                        version = %target.version,
+                        error = %reason,
+                        "storage_cache: full download failed, passthrough"
+                    );
+                    return Ok(CacheFetchOutcome::Skipped(
+                        TargetOutcome::SkippedInvalidDownload { reason },
+                    ));
                 }
+                CacheDownloadError::Internal(e) => return Err(e),
             }
-        };
+        }
+    };
     let bytes = match bytes {
         DownloadBody::Complete(bytes) => bytes,
         DownloadBody::Empty => {
@@ -1504,7 +1506,7 @@ async fn read_cache_entry(
         Ok(metadata) if metadata.len() == 0 => Ok(CachedArchive::Empty),
         Ok(metadata) if metadata.len() <= CACHE_MAX_SIZE => {
             let started_at = Instant::now();
-            match read_cached_archive(archive_path, CACHE_MAX_SIZE).await? {
+            match read_cached_archive(archive_path, Some(metadata.len()), CACHE_MAX_SIZE).await? {
                 DownloadBody::Complete(bytes) => {
                     metrics.record(STORAGE_CACHE_HIT_READ, started_at.elapsed(), true, None);
                     touch_mtime(cache_dir);
@@ -1857,6 +1859,7 @@ fn parse_ascii_decimal_u64(value: &str) -> Option<u64> {
 async fn download_tarball(
     http: &Client,
     url: &str,
+    expected_size: Option<u64>,
     max_size: u64,
 ) -> Result<DownloadBody, CacheDownloadError> {
     let mut resp = http
@@ -1870,7 +1873,8 @@ async fn download_tarball(
         return Err(CacheHttpError::status("GET", status).into());
     }
 
-    if let Some(content_length) = resp.content_length()
+    let content_length = resp.content_length();
+    if let Some(content_length) = content_length
         && content_length > max_size
     {
         return Ok(DownloadBody::OverSize {
@@ -1878,7 +1882,11 @@ async fn download_tarball(
         });
     }
 
-    let mut bytes = Vec::with_capacity(max_size.min(64 * 1024) as usize);
+    let mut bytes = Vec::with_capacity(initial_body_capacity(
+        content_length,
+        expected_size,
+        max_size,
+    ));
     let mut downloaded = 0u64;
 
     while let Some(chunk) = resp
@@ -1900,11 +1908,15 @@ async fn download_tarball(
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
 }
 
-async fn read_cached_archive(path: &Path, max_size: u64) -> RunnerResult<DownloadBody> {
+async fn read_cached_archive(
+    path: &Path,
+    expected_size: Option<u64>,
+    max_size: u64,
+) -> RunnerResult<DownloadBody> {
     let mut file = fs::File::open(path)
         .await
         .map_err(|e| RunnerError::Internal(format!("open cached {}: {e}", path.display())))?;
-    let mut bytes = Vec::with_capacity(max_size.min(64 * 1024) as usize);
+    let mut bytes = Vec::with_capacity(initial_body_capacity(None, expected_size, max_size));
     let mut downloaded = 0u64;
     let mut buf = [0u8; 64 * 1024];
 
@@ -1934,6 +1946,18 @@ async fn read_cached_archive(path: &Path, max_size: u64) -> RunnerResult<Downloa
     }
 
     Ok(DownloadBody::Complete(Bytes::from(bytes)))
+}
+
+fn initial_body_capacity(
+    primary_size: Option<u64>,
+    fallback_size: Option<u64>,
+    max_size: u64,
+) -> usize {
+    let capacity = primary_size
+        .filter(|size| *size <= max_size)
+        .or_else(|| fallback_size.filter(|size| *size <= max_size))
+        .unwrap_or_else(|| max_size.min(BODY_BUFFER_FALLBACK_CAPACITY as u64));
+    usize::try_from(capacity).unwrap_or(BODY_BUFFER_FALLBACK_CAPACITY)
 }
 
 fn append_limited_chunk(
@@ -2439,6 +2463,7 @@ mod tests {
         let http = HttpClient::new(HttpClientConfig {
             api_url: api_url.to_string(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap();
         JobTelemetry::new(http, RunId::nil(), "test-token".to_string())
@@ -2554,6 +2579,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: format!("/mnt/artifact-{name}"),
                 archive_url: Some(url),
+                empty: false,
                 cached: false,
                 vas_storage_name: name.to_string(),
                 vas_storage_id: format!("{name}-id"),
@@ -4768,6 +4794,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
+                empty: false,
                 cached: false,
                 vas_storage_name: name.to_string(),
                 vas_storage_id: String::new(),
@@ -5149,6 +5176,17 @@ mod tests {
     }
 
     #[test]
+    fn initial_body_capacity_uses_bounded_hints() {
+        assert_eq!(initial_body_capacity(Some(5), Some(6), 10), 5);
+        assert_eq!(initial_body_capacity(Some(11), Some(6), 10), 6);
+        assert_eq!(initial_body_capacity(Some(11), Some(12), 10), 10);
+        assert_eq!(
+            initial_body_capacity(None, None, 128 * 1024),
+            BODY_BUFFER_FALLBACK_CAPACITY
+        );
+    }
+
+    #[test]
     fn limited_body_allows_exact_limit() {
         let mut bytes = Vec::new();
         let mut downloaded = 0u64;
@@ -5190,7 +5228,7 @@ mod tests {
             .await;
         let http = Client::builder().build().unwrap();
 
-        let result = download_tarball(&http, &server.url("/too-long.tar.gz"), 6)
+        let result = download_tarball(&http, &server.url("/too-long.tar.gz"), Some(6), 6)
             .await
             .unwrap();
 
@@ -5216,7 +5254,7 @@ mod tests {
         .await;
         let http = Client::builder().build().unwrap();
 
-        let result = download_tarball(&http, &url, 6).await.unwrap();
+        let result = download_tarball(&http, &url, Some(6), 6).await.unwrap();
         server_task.await.unwrap().unwrap();
 
         match result {
@@ -5237,7 +5275,9 @@ mod tests {
         let archive_path = temp.path().join("archive.tar.gz");
         fs::write(&archive_path, b"abcdefg").await.unwrap();
 
-        let result = read_cached_archive(&archive_path, 6).await.unwrap();
+        let result = read_cached_archive(&archive_path, Some(7), 6)
+            .await
+            .unwrap();
 
         match result {
             DownloadBody::Complete(bytes) => {
@@ -5708,6 +5748,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/artifact.tar.gz".into()),
+                empty: false,
                 cached: false,
                 vas_storage_name: name.to_string(),
                 vas_storage_id: "storage-id".into(),
@@ -6200,6 +6241,7 @@ mod tests {
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/nameless".into(),
                 archive_url: Some(original.clone()),
+                empty: false,
                 cached: false,
                 vas_storage_name: String::new(),
                 vas_storage_id: String::new(),

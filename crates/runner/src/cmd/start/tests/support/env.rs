@@ -163,7 +163,7 @@ fn build_mock_run_config_with_runtime(
     let (provider, handle) = make_provider(cancel.clone());
     let provider_ref = Arc::clone(&provider);
 
-    let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+    let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Starting);
     let parking_gate = ParkingGate::new_open();
     let lifecycle = LifecycleController::new(mode_tx, parking_gate.clone());
     let start_observer = StartLoopTestObserver::default();
@@ -246,6 +246,7 @@ fn build_mock_run_config_with_runtime(
             http: crate::http::HttpClient::new(crate::http::HttpClientConfig {
                 api_url: api_url.to_string(),
                 vercel_bypass: None,
+                client_session_id: "runner-session-test".to_string(),
             })
             .unwrap(),
             log_paths: crate::paths::LogPaths::new(log_dir),
@@ -253,6 +254,7 @@ fn build_mock_run_config_with_runtime(
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             mitm_jsonl_flush: None,
             network_policy_refresh: None,
+            session_history_probe: executor::SessionHistoryProbe::default(),
             home,
             workspace_cache: None,
         }),

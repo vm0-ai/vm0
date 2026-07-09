@@ -6,18 +6,8 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-
-export interface ChatThreadSnapshotProjection {
-  readonly id: string;
-  readonly agentId: string;
-  readonly title: string | null;
-  readonly sortAt: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly pinnedAt: string | null;
-  readonly renamedAt: string | null;
-  readonly selectedModel: string | null;
-}
+import type { ChatThreadSnapshotProjections } from "@vm0/db/jsonb-contracts/chat-thread-snapshot";
+export type { ChatThreadSnapshotProjection } from "@vm0/db/jsonb-contracts/chat-thread-snapshot";
 
 export const chatThreadSnapshots = pgTable(
   "chat_thread_snapshots",
@@ -26,7 +16,7 @@ export const chatThreadSnapshots = pgTable(
     orgId: text("org_id").notNull(),
     latestEventId: uuid("latest_event_id"),
     chatThreads: jsonb("chat_threads")
-      .$type<ChatThreadSnapshotProjection[]>()
+      .$type<ChatThreadSnapshotProjections>()
       .notNull()
       .default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),

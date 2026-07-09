@@ -14,10 +14,11 @@ mod manifest;
 mod plan;
 mod source;
 
-use guest_common::log_error;
+use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
 use manifest::{Manifest, ManifestLoadError};
-use plan::RunPlan;
+use plan::{EmptyArtifactPreparation, RunPlan};
 use std::fs;
+use std::time::Instant;
 
 const LOG_TAG: &str = "sandbox:download";
 
@@ -58,6 +59,7 @@ fn run_manifest(manifest: Manifest) -> bool {
         cleanup_paths,
         instruction_cleanups,
         preserved_paths,
+        empty_artifacts,
         download_tasks,
         instruction_files,
     } = RunPlan::from_manifest(&manifest);
@@ -83,6 +85,10 @@ fn run_manifest(manifest: Manifest) -> bool {
             return false;
         }
     }
+    if !prepare_empty_artifacts(&empty_artifacts) {
+        instructions::cleanup_staged_instruction_sources(&instruction_files);
+        return false;
+    }
 
     let success = download::download_all_parallel(download_tasks);
     if success {
@@ -91,6 +97,38 @@ fn run_manifest(manifest: Manifest) -> bool {
         instructions::cleanup_staged_instruction_sources(&instruction_files);
     }
     success
+}
+
+fn prepare_empty_artifacts(entries: &[EmptyArtifactPreparation]) -> bool {
+    for entry in entries {
+        let start = Instant::now();
+        match fs::create_dir_all(&entry.mount_path) {
+            Ok(()) => {
+                record_sandbox_op("artifact_empty_prepare", start.elapsed(), true, None);
+                log_info!(
+                    LOG_TAG,
+                    "{} prepared in {}ms",
+                    entry.label,
+                    start.elapsed().as_millis()
+                );
+            }
+            Err(e) => {
+                let failure_detail = format!(
+                    "{} prepare failed: failed to create directory: {e}",
+                    entry.label
+                );
+                record_sandbox_op(
+                    "artifact_empty_prepare",
+                    start.elapsed(),
+                    false,
+                    Some(&failure_detail),
+                );
+                log_error!(LOG_TAG, "{failure_detail}");
+                return false;
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -121,6 +159,48 @@ mod tests {
         assert!(!success);
         assert!(!extract_path.exists());
         assert!(!extract_parent.exists());
+    }
+
+    #[test]
+    fn run_manifest_prepares_explicit_empty_artifact_without_opening_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("memory");
+        let missing_archive = dir.path().join("missing-empty.tar.gz");
+        let manifest = json!({
+            "storages": [],
+            "artifacts": [{
+                "mountPath": mount,
+                "archiveUrl": format!("file://{}", missing_archive.display()),
+                "empty": true,
+                "vasStorageName": "memory",
+                "vasVersionId": "empty-v1"
+            }]
+        });
+
+        let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
+
+        assert!(success);
+        assert!(mount.is_dir());
+    }
+
+    #[test]
+    fn run_manifest_prepares_explicit_empty_artifact_without_archive_url() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("memory");
+        let manifest = json!({
+            "storages": [],
+            "artifacts": [{
+                "mountPath": mount,
+                "empty": true,
+                "vasStorageName": "memory",
+                "vasVersionId": "empty-v1"
+            }]
+        });
+
+        let success = super::run_manifest_bytes(&serde_json::to_vec(&manifest).unwrap());
+
+        assert!(success);
+        assert!(mount.is_dir());
     }
 
     #[test]

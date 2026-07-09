@@ -5,13 +5,16 @@ import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { AppSkeletonOverlay, Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
+import { ForceUpgradeDialog } from "./components/force-upgrade-dialog.tsx";
 import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
 } from "../signals/chat-thread-list-reload.ts";
-import { subscribeBackgroundChatThreadRunFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
+import { pollForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
+import { subscribeBackgroundChatThreadFollowupsFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
 import { subscribeEventDrivenChatThreads$ } from "../signals/chat-page/chat-thread-event-sourcing.ts";
+import { setupBillingRealtime$ } from "../signals/zero-page/billing.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import { IN_VITEST } from "../env.ts";
@@ -24,14 +27,20 @@ export const setupRouter = (
   const signal = store.get(rootSignal$);
   detach(store.set(subscribeThreadListChanged$, signal), Reason.Daemon);
   detach(
+    store.set(pollForceUpgradeDialog$, signal),
+    Reason.Daemon,
+    "force-upgrade",
+  );
+  detach(
     store.set(subscribeChatThreadReadCursorUpdated$, signal),
     Reason.Daemon,
   );
   detach(
-    store.set(subscribeBackgroundChatThreadRunFinished$, signal),
+    store.set(subscribeBackgroundChatThreadFollowupsFinished$, signal),
     Reason.Daemon,
   );
   detach(store.set(subscribeEventDrivenChatThreads$, signal), Reason.Daemon);
+  detach(store.set(setupBillingRealtime$, signal), Reason.Daemon);
   render(
     <StrictMode>
       <StoreProvider value={store}>
@@ -41,6 +50,7 @@ export const setupRouter = (
             <Router />
           </VM0ClerkProvider>
           <InspectLogFileInput />
+          <ForceUpgradeDialog />
         </ErrorBoundary>
         <Toaster
           position="top-center"

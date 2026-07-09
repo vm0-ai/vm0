@@ -29,6 +29,19 @@ vi.mock("../lib/log", async () => {
 
 const c = initContract();
 
+function axiomRequestLogEvents(
+  context: ReturnType<typeof testContext>,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.ingest.mock.calls.flatMap(([dataset, events]) => {
+    if (dataset !== "request-log" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return typeof event === "object" && event !== null;
+    });
+  });
+}
+
 const errorTestContract = c.router({
   boom: {
     method: "GET",
@@ -544,6 +557,103 @@ describe("createApp", () => {
     });
   });
 
+  describe("preview automation bypass", () => {
+    it("rejects preview requests without the Vercel bypass header or cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Preview automation bypass required",
+        debug: {
+          expected: "582906dc0bca",
+          cookieHeaderPresent: false,
+        },
+      });
+    });
+
+    it("allows preview requests with the matching Vercel bypass header", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { "x-vercel-protection-bypass": "preview-secret" },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("allows preview requests with a matching Vercel bypass cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          cookie: "unrelated=1; x-vercel-protection-bypass=preview-secret",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("rejects preview requests with the bypass secret in an unrelated cookie", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { cookie: "unrelated=preview-secret" },
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    it("allows preview requests with the matching Vercel bypass query", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      const response = await app.request(
+        "/health?x-vercel-protection-bypass=preview-secret",
+        { method: "GET" },
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("exempts external webhook paths from the guard without the bypass secret", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      // A non-webhook path is still rejected by the guard before route matching.
+      const guarded = await app.request("/api/legacy/fallthrough", {
+        method: "GET",
+      });
+      expect(guarded.status).toBe(403);
+
+      // Stripe (and every other) webhook is exempt, so the request reaches
+      // routing instead of the guard. GET does not match the POST-only handler,
+      // yielding a normal 404 rather than a bypass rejection — proof the
+      // server-to-server webhook would have reached its handler.
+      const webhook = await app.request("/api/webhooks/stripe", {
+        method: "GET",
+      });
+      expect(webhook.status).toBe(404);
+      await expect(webhook.json()).resolves.toStrictEqual({
+        error: "Not found",
+      });
+    });
+  });
+
   describe("cors", () => {
     it("echoes allowed cross-origin on registered route responses", async () => {
       mockEnv("ENV", "production");
@@ -584,7 +694,8 @@ describe("createApp", () => {
         headers: {
           origin: "https://app.vm0.ai",
           "access-control-request-method": "GET",
-          "access-control-request-headers": "authorization",
+          "access-control-request-headers":
+            "authorization,x-client-version,x-client-type,x-client-session-id,x-client-request-id",
         },
       });
 
@@ -595,6 +706,39 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-methods")).toContain(
         "GET",
       );
+      const allowHeaders =
+        response.headers.get("access-control-allow-headers") ?? "";
+      expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
+      expect(allowHeaders).toContain("X-Client-Version");
+      expect(allowHeaders).toContain("X-Client-Type");
+      expect(allowHeaders).toContain("X-Client-Session-Id");
+      expect(allowHeaders).toContain("X-Client-Request-Id");
+    });
+
+    it("answers preview preflight before enforcing the automation bypass", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/org", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://pr-20640-app.vm6.ai",
+          "access-control-request-method": "GET",
+          "access-control-request-headers":
+            "authorization,x-vercel-protection-bypass,x-client-version",
+        },
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://pr-20640-app.vm6.ai",
+      );
+      const allowHeaders =
+        response.headers.get("access-control-allow-headers") ?? "";
+      expect(allowHeaders).toContain("Authorization");
+      expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
+      expect(allowHeaders).toContain("X-Client-Version");
     });
 
     it("rejects disallowed origins by omitting the allow-origin header", async () => {
@@ -633,6 +777,65 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://www.vm7.ai:3042",
       );
+    });
+  });
+
+  describe("axiom request log", () => {
+    it("records client headers on request log events", async () => {
+      context.mocks.axiom.flush.mockResolvedValue(undefined);
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("https://api.vm0.test/health", {
+        method: "GET",
+        headers: {
+          "user-agent": "zero-test-agent",
+          "x-forwarded-for": "203.0.113.10, 198.51.100.5",
+          "x-client-version": "0.569.1",
+          "x-client-type": "App",
+          "x-client-session-id": "session-test",
+          "x-client-request-id": "request-test",
+        },
+      });
+
+      expect(response.status).toBe(200);
+      await flushWaitUntilForTest();
+
+      const [event] = axiomRequestLogEvents(context);
+      expect(event).toMatchObject({
+        method: "GET",
+        status: 200,
+        host: "api.vm0.test",
+        path_template: "/health",
+        remote_addr: "203.0.113.10",
+        user_agent: "zero-test-agent",
+        x_client_version: "0.569.1",
+        x_client_type: "App",
+        x_client_session_id: "session-test",
+        x_client_request_id: "request-test",
+      });
+      expect(event?._time).toStrictEqual(expect.any(String));
+      expect(event?.request_time_ms).toStrictEqual(expect.any(Number));
+      expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
+        client: "telemetry",
+      });
+    });
+
+    it("omits client header fields when they are absent", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(200);
+      await flushWaitUntilForTest();
+
+      const [event] = axiomRequestLogEvents(context);
+      expect(event).toMatchObject({
+        method: "GET",
+        status: 200,
+        path_template: "/health",
+      });
+      expect(event).not.toHaveProperty("x_client_version");
+      expect(event).not.toHaveProperty("x_client_type");
+      expect(event).not.toHaveProperty("x_client_session_id");
+      expect(event).not.toHaveProperty("x_client_request_id");
     });
   });
 

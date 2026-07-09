@@ -120,6 +120,11 @@ type ConnectManualGrantConnectorResult =
   | { readonly status: "connected"; readonly connector: ConnectorResponse }
   | { readonly status: "invalid"; readonly message: string };
 
+type ConnectNoAuthConnectorResult = {
+  readonly status: "connected";
+  readonly connector: ConnectorResponse;
+};
+
 interface EncryptedManualGrantSecret {
   readonly name: string;
   readonly encryptedValue: string;
@@ -475,11 +480,15 @@ export function zeroConnectorList(args: {
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
+    const configuredTypes = getRuntimeAvailableConnectorTypes((name) => {
+      return optionalEnv(name);
+    }).filter((type) => {
+      return storedConnectorTypeIsVisible(type, featureStates);
+    });
+
     return {
       connectors: connectorList,
-      configuredTypes: getRuntimeAvailableConnectorTypes((name) => {
-        return optionalEnv(name);
-      }),
+      configuredTypes,
       connectorProvidedBindings,
     };
   });
@@ -960,7 +969,7 @@ async function upsertConnectorVariable(
     });
 }
 
-async function upsertManualGrantConnectorRow(
+async function upsertLocalConnectorRow(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1013,7 +1022,7 @@ async function upsertManualGrantConnectorRow(
     });
 
   if (!row) {
-    throw new Error("Failed to upsert manual grant connector");
+    throw new Error("Failed to upsert local connector");
   }
 
   return row;
@@ -1117,7 +1126,7 @@ async function deleteConnectorScopedVariableNames(
   args.signal.throwIfAborted();
 }
 
-async function cleanupExistingStoredConnectorForManualGrantConnect(
+async function cleanupExistingStoredConnectorForLocalConnect(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1224,14 +1233,16 @@ export const connectManualGrantConnector$ = command(
       });
       signal.throwIfAborted();
 
-      pendingTokenRevoke =
-        await cleanupExistingStoredConnectorForManualGrantConnect(tx, {
+      pendingTokenRevoke = await cleanupExistingStoredConnectorForLocalConnect(
+        tx,
+        {
           orgId: args.orgId,
           userId: args.userId,
           type: args.type,
           featureSwitchContext,
           signal,
-        });
+        },
+      );
 
       await deleteConnectorScopedSecretNames(tx, {
         orgId: args.orgId,
@@ -1266,7 +1277,7 @@ export const connectManualGrantConnector$ = command(
         signal.throwIfAborted();
       }
 
-      connectorRow = await upsertManualGrantConnectorRow(tx, {
+      connectorRow = await upsertLocalConnectorRow(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
@@ -1293,6 +1304,81 @@ export const connectManualGrantConnector$ = command(
 
     if (!connectorRow) {
       throw new Error("Expected manual grant connector upsert to return a row");
+    }
+
+    await finalizeConnectorStateChangeAfterCommit({
+      userId: args.userId,
+      pendingTokenRevoke,
+      signal,
+      postCommitAbort,
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: "connected",
+      connector: storedConnectorRowToResponse(
+        connectorRow,
+        args.type,
+        nowDate(),
+      ),
+    };
+  },
+);
+
+export const connectNoAuthConnector$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+    },
+    signal: AbortSignal,
+  ): Promise<ConnectNoAuthConnectorResult> => {
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+
+    const writeDb = set(writeDb$);
+    let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
+    let connectorRow: StoredConnectorRow | null = null;
+    let postCommitAbort: unknown = null;
+
+    await writeDb.transaction(async (tx) => {
+      await lockConnectorState(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+      });
+      signal.throwIfAborted();
+
+      pendingTokenRevoke = await cleanupExistingStoredConnectorForLocalConnect(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          type: args.type,
+          featureSwitchContext,
+          signal,
+        },
+      );
+
+      connectorRow = await upsertLocalConnectorRow(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        authMethod: args.authMethod,
+      });
+      signal.throwIfAborted();
+    });
+    if (signal.aborted) {
+      postCommitAbort ??= signal.reason;
+    }
+
+    if (!connectorRow) {
+      throw new Error("Expected no-auth connector upsert to return a row");
     }
 
     await finalizeConnectorStateChangeAfterCommit({

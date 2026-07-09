@@ -9,6 +9,7 @@ import {
   findTemplate,
   findTool,
   findVideoTemplate,
+  findWebsiteTemplateResource,
   type RegistryEntry,
   type VideoTemplateRegistryEntry,
 } from "@vm0/core/resource-registry";
@@ -130,6 +131,25 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "423c53c83c3f7a4b3ca9c6f9ce314b8bec4555cf2497a0fcc9fbd20c36a13acb",
   "template:html-ppt-vantage-runbook":
     "366c1c2028815fcb13b4c8798550ded9e0853cf55fd2df9124ab4327ff012362",
+  // Website template packages (self-contained per-template archives).
+  "template:black-slabs":
+    "eaca342df50857477c64a1ca73faffb4a1819879948fc8610ff095fae9fe3f22",
+  "template:blueprint-grid":
+    "78988a658604a25feb259d54e4543bfe6d57f85efe7ad67737e02c794d25e491",
+  "template:coastal-hotel":
+    "3907cdbed6078702a058ed9c66c1cdeb76f83f1062efcf3b046cce0bd5c8ed06",
+  "template:frame-stack":
+    "efbf1788c8b084aa12b7cd48f7a3bf5fc9964d1e6115edbd9124f8cacfbfb3ca",
+  "template:gallery-wall":
+    "9e81cd8b35f9f6374440cd3a4a8fc214db4a137962797df69bde46248c4e75f3",
+  "template:glass-bloom":
+    "52d38ebc1e62b974f7ab2f6dba8823b0a2f7c43d5c11d8079f32e3ff85df1e50",
+  "template:serif-stack":
+    "adee3b87f670c52a3cc4971e5dd8795f8ca05690087caff4b0d8b32b9029bead",
+  "template:sticker-pop":
+    "ddae2ff9236b0a4663dc19ad23b374488c0d4d9eddf9b5a4e8cad36011b0b420",
+  "template:warm-cards":
+    "0a87c99afe9cf24424aa1a1740a57cc3698e43f3c571b8ef1fd4560192f38746",
 } as const satisfies Record<string, string>;
 
 function privateRegistryResourceArchive(
@@ -158,7 +178,8 @@ function findRegistryResource(id: string): PullableRegistryEntry | undefined {
     findColorSystem(id) ??
     findImageStyle(id) ??
     findVideoTemplate(id) ??
-    findPresentationRunbookResource(id)
+    findPresentationRunbookResource(id) ??
+    findWebsiteTemplateResource(id)
   );
 }
 

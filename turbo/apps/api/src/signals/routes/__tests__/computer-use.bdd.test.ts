@@ -8,6 +8,7 @@ import type {
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
+  computerUseMcpServerCapability,
   computerUsePluginCapability,
   computerUsePluginToolCapability,
 } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
@@ -551,6 +552,53 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ]);
   });
 
+  it("scopes host discovery to the bound host for zero run tokens", async () => {
+    const actor = bdd.user();
+    await api.startComputerUseHost(actor, {
+      hostName: "Other Desktop",
+      supportedCapabilities: [
+        "plugin.call",
+        computerUseMcpServerCapability("other"),
+      ],
+    });
+    const host = await api.startComputerUseHost(actor, {
+      hostName: "Apple Notes Desktop",
+      supportedCapabilities: [
+        "plugin.call",
+        computerUseMcpServerCapability("apple-notes"),
+      ],
+    });
+    mockClerkMembership(context, actor, "org:admin");
+
+    const bound = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      capabilities: ["computer-use:write"],
+      computerUseHostId: host.hostId,
+    });
+    const listed = await api.listComputerUseHosts({ bearer: bound.token });
+    expect(listed.hosts).toHaveLength(1);
+    expect(listed.hosts[0]).toMatchObject({
+      id: host.hostId,
+      hostName: "Apple Notes Desktop",
+      supportedCapabilities: [
+        "plugin.call",
+        computerUseMcpServerCapability("apple-notes"),
+      ],
+    });
+
+    const unbound = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      capabilities: ["computer-use:write"],
+    });
+    const rejected = await api.requestListComputerUseHosts(
+      { bearer: unbound.token },
+      [403],
+    );
+    expectApiError(rejected.body);
+  });
+
   it("publishes computer-use host list changes", async () => {
     const actor = bdd.user();
     const base = now();
@@ -988,6 +1036,69 @@ describe("FILE-03 desktop computer-use runtime", () => {
         plugin: "filesystem",
         tool: "read_text_file",
         arguments: { path: "/tmp/notes.txt" },
+      },
+    });
+  });
+
+  it("routes mcp plugin commands by server capability and passes arguments through", async () => {
+    const actor = bdd.user();
+    await enableComputerUseDesktopPlugins(actor);
+
+    const invalidName = await api.requestCreateComputerUsePluginCommand(
+      actor,
+      {
+        plugin: "mcp",
+        server: "Bad Name!",
+        tool: "create_note",
+        arguments: {},
+      },
+      [400],
+    );
+    expectApiError(invalidName.body);
+
+    const notesHost = await api.startComputerUseHost(actor, {
+      supportedCapabilities: ["plugin.call", "plugin.mcp.notes"],
+    });
+
+    const unsupported = await api.requestCreateComputerUsePluginCommand(
+      actor,
+      {
+        plugin: "mcp",
+        server: "figma",
+        tool: "get_selection",
+        arguments: {},
+      },
+      [409],
+    );
+    expectApiError(unsupported.body);
+    expect(unsupported.body.error.message).toBe(
+      "No online computer-use host supports this plugin tool",
+    );
+
+    const created = await api.createComputerUsePluginCommand(actor, {
+      plugin: "mcp",
+      server: "notes",
+      tool: "create_note",
+      arguments: { title: "hello", nested: { tags: ["a", "b"] } },
+    });
+
+    const claimed = await api.claimNextComputerUseCommand(notesHost.hostToken, [
+      "plugin.call",
+      "plugin.mcp.notes",
+    ]);
+    expect(claimed.status).toBe("command");
+    if (claimed.status !== "command") {
+      throw new Error("Expected notes host to claim the mcp plugin command");
+    }
+    expect(claimed.command).toMatchObject({
+      id: created.commandId,
+      hostId: notesHost.hostId,
+      kind: "plugin.call",
+      payload: {
+        plugin: "mcp",
+        server: "notes",
+        tool: "create_note",
+        arguments: { title: "hello", nested: { tags: ["a", "b"] } },
       },
     });
   });

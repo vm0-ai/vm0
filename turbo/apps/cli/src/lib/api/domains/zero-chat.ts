@@ -1,6 +1,7 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   chatThreadMetadataContract,
+  chatThreadModelSelectionContract,
   chatThreadRenameContract,
   chatSearchContract,
   type ChatThreadMetadata,
@@ -60,4 +61,23 @@ export async function getZeroChatThread(options: {
     return result.body;
   }
   handleError(result, "Failed to get chat thread");
+}
+
+export async function updateZeroChatThreadModelSelection(options: {
+  threadId: string;
+  model: string | null;
+}): Promise<{ threadId: string; selectedModel: string | null }> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadModelSelectionContract, config);
+  const result = await client.update({
+    params: { id: options.threadId },
+    body: { model: options.model },
+  });
+  if (result.status === 204) {
+    return {
+      threadId: options.threadId,
+      selectedModel: options.model,
+    };
+  }
+  handleError(result, "Failed to update chat thread model");
 }

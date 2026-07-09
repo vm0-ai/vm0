@@ -1,4 +1,9 @@
 import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  resolvePlatformOriginForTarget,
+  rewritePlatformHostname,
+} from "../../signals/api-base.ts";
+import { resolvePublicArtifactsBaseUrl } from "../../lib/platform-host.ts";
 import { logger } from "../../signals/log.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 
@@ -16,11 +21,7 @@ export function attachmentFilenameFromUrl(url: string): string {
 }
 
 function publicArtifactsBaseUrl(): string | null {
-  const baseUrl = import.meta.env.PUBLIC_ARTIFACTS_BASE_URL;
-  if (!baseUrl || !URL.canParse(baseUrl)) {
-    return null;
-  }
-  return baseUrl.replace(/\/+$/, "");
+  return resolvePublicArtifactsBaseUrl();
 }
 
 function hasExplicitUrlOrigin(url: string): boolean {
@@ -32,15 +33,6 @@ function browserOrigin(): string | null {
     return null;
   }
   return window.location.origin;
-}
-
-type PlatformHostTarget = "api" | "www";
-
-function rewritePlatformHostname(
-  hostname: string,
-  target: PlatformHostTarget,
-): string {
-  return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
 }
 
 function addOrigin(origins: Set<string>, baseUrl: string | null) {
@@ -70,10 +62,9 @@ function addPlatformOriginVariants(
 
 function platformFileOrigins(): Set<string> {
   const origins = new Set<string>();
-  const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
 
   addPlatformOriginVariants(origins, browserOrigin());
-  addPlatformOriginVariants(origins, configuredApiUrl ?? null);
+  addPlatformOriginVariants(origins, resolvePlatformOriginForTarget("api"));
   addOrigin(origins, publicArtifactsBaseUrl());
 
   return origins;

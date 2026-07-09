@@ -52,21 +52,28 @@ import {
 import {
   enrichMessageContent,
   fetchConversationContexts,
+  type SlackConversationContextObserver,
+  type SlackConversationContextPhase,
+  type SlackConversationContextTelemetryDimensions,
   type SlackFile,
 } from "../../lib/slack-webhook-context";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import {
   createSlackClient,
+  createSlackUserInfoResolver,
   openView,
   postMessage,
   publishAppHome,
   setThreadStatus,
+  type SlackUserInfoResolverStats,
 } from "../external/slack-message-client";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
 import {
   ApiDispatchTimingCollector,
+  type ApiDispatchTimingActionType,
+  type ApiDispatchTimingDimensions,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
@@ -76,9 +83,9 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import {
-  memoryContentHash,
-  recordMemorySource,
-} from "./memory-substrate.service";
+  recordSlackMessageMemorySource,
+  type SlackMemoryChannelType,
+} from "./slack-memory-source.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
@@ -99,6 +106,11 @@ const MODEL_PICKER_MAX_OPTIONS = 100;
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
 type SlackConnection = typeof slackOrgConnections.$inferSelect;
 type SlackCallbackPayload = SlackOrgCallbackPayload;
+
+interface SlackThreadBinding {
+  readonly agentSessionId: string | null;
+  readonly computerUseHostId: string | null;
+}
 
 interface SlackCommandPayload {
   readonly team_id: string;
@@ -245,6 +257,23 @@ interface RunAgentParams {
   readonly timing: ApiDispatchTimingCollector;
 }
 
+interface SlackRunParamInputBundle {
+  readonly prompt: string;
+  readonly userInfoExtras: RunAgentParams["userInfoExtras"];
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
+  readonly executionContext: string;
+}
+
+interface SlackRunThreadContext {
+  readonly existingSessionId: string | undefined;
+  readonly computerUseHostId: string | undefined;
+}
+
+interface SlackRunParamBundle {
+  readonly inputs: SlackRunParamInputBundle;
+  readonly threadContext: SlackRunThreadContext;
+}
+
 interface SlackEventCallbackArgs {
   readonly db: Db;
   readonly payload: SlackEventCallback;
@@ -255,8 +284,6 @@ interface SlackEventCallbackArgs {
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
-
-type SlackMemoryChannelType = "channel" | "group" | "mpim" | "im" | "unknown";
 
 interface WorkspaceAgentSummary {
   readonly id: string;
@@ -408,77 +435,6 @@ function buildOrgConnectUrl(
     params.set("t", threadTs);
   }
   return `${env("APP_URL")}/settings/slack?${params.toString()}`;
-}
-
-function dateFromSlackTs(value: string): Date | null {
-  const [secondsText] = value.split(".");
-  const seconds = Number(secondsText);
-  return Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
-}
-
-function slackMemoryExternalId(args: {
-  readonly workspaceId: string;
-  readonly channelId: string;
-  readonly messageTs: string;
-}): string {
-  return [args.workspaceId, args.channelId, args.messageTs].join(":");
-}
-
-function slackMemorySourceTitle(channelType: SlackMemoryChannelType): string {
-  switch (channelType) {
-    case "im": {
-      return "Slack direct message";
-    }
-    case "mpim": {
-      return "Slack group direct message";
-    }
-    case "group": {
-      return "Slack private channel message";
-    }
-    case "channel": {
-      return "Slack channel message";
-    }
-    case "unknown": {
-      return "Slack message";
-    }
-  }
-}
-
-async function recordSlackMessageMemorySource(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly workspaceId: string;
-  readonly channelId: string;
-  readonly channelType: SlackMemoryChannelType;
-  readonly slackUserId: string;
-  readonly messageText: string;
-  readonly messageTs: string;
-  readonly threadTs?: string;
-  readonly files?: readonly SlackFile[];
-}): Promise<void> {
-  await recordMemorySource(args.db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    provider: "slack",
-    sourceType: "slack_message",
-    externalId: slackMemoryExternalId(args),
-    occurredAt: dateFromSlackTs(args.messageTs),
-    title: slackMemorySourceTitle(args.channelType),
-    contentHash: args.messageText ? memoryContentHash(args.messageText) : null,
-    metadata: {
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      threadId: args.threadTs ?? null,
-      messageTs: args.messageTs,
-      senderId: args.slackUserId,
-      participantIds: [args.slackUserId],
-      fileIds: (args.files ?? []).flatMap((file) => {
-        return file.id ? [file.id] : [];
-      }),
-    },
-  });
 }
 
 function buildNotInstalledMessage(detail?: string): unknown[] {
@@ -1339,27 +1295,12 @@ const runAgentForSlackOrg$ = command(
 
 async function resolveCompatibleThreadSession(args: {
   readonly db: Db;
-  readonly channelId: string;
-  readonly threadTs: string;
-  readonly connectionId: string;
+  readonly binding: SlackThreadBinding | undefined;
   readonly userId: string;
   readonly agentComposeId: string;
   readonly modelRoute: IntegrationModelRoutePin | undefined;
 }): Promise<string | undefined> {
-  const [session] = await args.db
-    .select({
-      agentSessionId: slackOrgThreadSessions.agentSessionId,
-    })
-    .from(slackOrgThreadSessions)
-    .where(
-      and(
-        eq(slackOrgThreadSessions.connectionId, args.connectionId),
-        eq(slackOrgThreadSessions.slackChannelId, args.channelId),
-        eq(slackOrgThreadSessions.slackThreadTs, args.threadTs),
-      ),
-    )
-    .limit(1);
-  if (!session?.agentSessionId) {
+  if (!args.binding?.agentSessionId) {
     return undefined;
   }
   const [agentSession] = await args.db
@@ -1369,7 +1310,7 @@ async function resolveCompatibleThreadSession(args: {
     .from(agentSessions)
     .where(
       and(
-        eq(agentSessions.id, session.agentSessionId),
+        eq(agentSessions.id, args.binding.agentSessionId),
         eq(agentSessions.userId, args.userId),
       ),
     )
@@ -1381,7 +1322,7 @@ async function resolveCompatibleThreadSession(args: {
   if (args.modelRoute) {
     const canReuseSession = await canReuseIntegrationSessionForModelRoute({
       db: args.db,
-      sessionId: session.agentSessionId,
+      sessionId: args.binding.agentSessionId,
       modelRoute: args.modelRoute,
     });
     if (!canReuseSession) {
@@ -1389,19 +1330,46 @@ async function resolveCompatibleThreadSession(args: {
     }
   }
 
-  return session.agentSessionId;
+  return args.binding.agentSessionId;
 }
 
 async function resolveComputerUseHostForSlackThread(args: {
   readonly db: Db;
-  readonly channelId: string;
-  readonly threadTs: string;
-  readonly connectionId: string;
+  readonly binding: SlackThreadBinding | undefined;
   readonly orgId: string;
   readonly userId: string;
 }): Promise<string | undefined> {
+  if (!args.binding?.computerUseHostId) {
+    return undefined;
+  }
+
+  const [host] = await args.db
+    .select({ id: computerUseHosts.id })
+    .from(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.id, args.binding.computerUseHostId),
+        eq(computerUseHosts.orgId, args.orgId),
+        eq(computerUseHosts.userId, args.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+
+  return host?.id;
+}
+
+async function loadSlackThreadBinding(args: {
+  readonly db: Db;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly connectionId: string;
+}): Promise<SlackThreadBinding | undefined> {
   const [binding] = await args.db
-    .select({ computerUseHostId: slackOrgThreadSessions.computerUseHostId })
+    .select({
+      agentSessionId: slackOrgThreadSessions.agentSessionId,
+      computerUseHostId: slackOrgThreadSessions.computerUseHostId,
+    })
     .from(slackOrgThreadSessions)
     .where(
       and(
@@ -1412,24 +1380,296 @@ async function resolveComputerUseHostForSlackThread(args: {
     )
     .limit(1);
 
-  if (!binding?.computerUseHostId) {
-    return undefined;
+  return binding;
+}
+
+function settledValue<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") {
+    throw result.reason;
   }
 
-  const [host] = await args.db
-    .select({ id: computerUseHosts.id })
-    .from(computerUseHosts)
-    .where(
-      and(
-        eq(computerUseHosts.id, binding.computerUseHostId),
-        eq(computerUseHosts.orgId, args.orgId),
-        eq(computerUseHosts.userId, args.userId),
-        isNull(computerUseHosts.revokedAt),
-      ),
-    )
-    .limit(1);
+  return result.value;
+}
 
-  return host?.id;
+async function clearSlackThreadStatusBestEffort(args: {
+  readonly client: ReturnType<typeof createSlackClient>;
+  readonly channelId: string;
+  readonly threadTs: string;
+  readonly failureMessage: string;
+}): Promise<void> {
+  const [result] = await Promise.allSettled([
+    setThreadStatus(args.client, args.channelId, args.threadTs, ""),
+  ]);
+  if (result.status === "rejected") {
+    L.warn(args.failureMessage, { error: result.reason });
+  }
+}
+
+const SLACK_CONVERSATION_CONTEXT_PHASE_ACTION_TYPES = {
+  replies:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_replies",
+  history:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
+  user_info:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
+  format:
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+} as const satisfies Record<
+  SlackConversationContextPhase,
+  ApiDispatchTimingActionType
+>;
+
+function slackUserInfoResolverCountBucket(count: number): string {
+  if (count <= 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  if (count <= 8) {
+    return "5_8";
+  }
+  if (count <= 16) {
+    return "9_16";
+  }
+  return "17_plus";
+}
+
+function slackUserInfoResolverDimensions(
+  stats: SlackUserInfoResolverStats,
+): ApiDispatchTimingDimensions {
+  return {
+    slack_user_info_resolver_requested_count_bucket:
+      slackUserInfoResolverCountBucket(stats.requestedCount),
+    slack_user_info_resolver_cache_hit_count_bucket:
+      slackUserInfoResolverCountBucket(stats.cacheHitCount),
+    slack_user_info_resolver_miss_count_bucket:
+      slackUserInfoResolverCountBucket(stats.missCount),
+    slack_user_info_resolver_in_flight_hit_count_bucket:
+      slackUserInfoResolverCountBucket(stats.inFlightHitCount),
+  };
+}
+
+function createSlackConversationContextObserver(
+  timing: ApiDispatchTimingCollector,
+): {
+  readonly observer: SlackConversationContextObserver;
+  readonly dimensions: () => ApiDispatchTimingDimensions | undefined;
+} {
+  let dimensions: SlackConversationContextTelemetryDimensions | undefined;
+  const currentDimensions = (): ApiDispatchTimingDimensions | undefined => {
+    if (!dimensions) {
+      return undefined;
+    }
+    return { ...dimensions };
+  };
+
+  return {
+    observer: {
+      async measure(phase, operation) {
+        return await measureApiDispatchTiming(
+          timing,
+          SLACK_CONVERSATION_CONTEXT_PHASE_ACTION_TYPES[phase],
+          "nested",
+          operation,
+          currentDimensions,
+        );
+      },
+      dimensions(nextDimensions) {
+        dimensions = nextDimensions;
+      },
+    },
+    dimensions: currentDimensions,
+  };
+}
+
+async function loadSlackRunParamBundle(args: {
+  readonly timing: ApiDispatchTimingCollector;
+  readonly db: Db;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentComposeId: string;
+  readonly enrichMessage: () => Promise<
+    Pick<RunAgentParams, "prompt" | "userInfoExtras">
+  >;
+  readonly resolveModelRoute: () => Promise<
+    IntegrationModelRoutePin | undefined
+  >;
+  readonly loadThreadBinding: () => Promise<SlackThreadBinding | undefined>;
+  readonly fetchConversationContext: () => Promise<{
+    readonly executionContext: string;
+  }>;
+  readonly fetchConversationContextDimensions: () =>
+    | ApiDispatchTimingDimensions
+    | undefined;
+}): Promise<SlackRunParamBundle> {
+  const enrichPromise = measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_slack_build_run_params_enrich_message",
+    "nested",
+    args.enrichMessage,
+  );
+  const modelRoutePromise = measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_slack_build_run_params_resolve_model_route",
+    "nested",
+    args.resolveModelRoute,
+  );
+  const bindingPromise = measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_slack_build_run_params_load_thread_binding",
+    "nested",
+    args.loadThreadBinding,
+  );
+  const contextPromise = measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context",
+    "nested",
+    args.fetchConversationContext,
+    args.fetchConversationContextDimensions,
+  );
+
+  const initialResultsPromise = Promise.allSettled([
+    enrichPromise,
+    modelRoutePromise,
+    bindingPromise,
+    contextPromise,
+  ]);
+  const [modelRouteResult, bindingResult] = await Promise.allSettled([
+    modelRoutePromise,
+    bindingPromise,
+  ]);
+  if (
+    modelRouteResult.status === "rejected" ||
+    bindingResult.status === "rejected"
+  ) {
+    const initialResults = await initialResultsPromise;
+    settledValue(initialResults[0]);
+    settledValue(modelRouteResult);
+    settledValue(bindingResult);
+    settledValue(initialResults[3]);
+  }
+
+  const modelRoute = settledValue(modelRouteResult);
+  const threadBinding = settledValue(bindingResult);
+  const threadContextPromise = resolveSlackRunThreadContext({
+    timing: args.timing,
+    db: args.db,
+    binding: threadBinding,
+    userId: args.userId,
+    orgId: args.orgId,
+    agentComposeId: args.agentComposeId,
+    modelRoute,
+  });
+  const threadContextResultPromise = Promise.allSettled([threadContextPromise]);
+  const [initialResults, threadContextResults] = await Promise.all([
+    initialResultsPromise,
+    threadContextResultPromise,
+  ]);
+  const [threadContextResult] = threadContextResults;
+  const { prompt, userInfoExtras } = settledValue(initialResults[0]);
+  const threadContext = settledValue(threadContextResult);
+  const { executionContext } = settledValue(initialResults[3]);
+
+  return {
+    inputs: {
+      prompt,
+      userInfoExtras,
+      modelRoute,
+      executionContext,
+    },
+    threadContext,
+  };
+}
+
+async function resolveSlackRunThreadContext(args: {
+  readonly timing: ApiDispatchTimingCollector;
+  readonly db: Db;
+  readonly binding: SlackThreadBinding | undefined;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentComposeId: string;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
+}): Promise<SlackRunThreadContext> {
+  const [sessionResult, hostResult] = await Promise.allSettled([
+    measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_session",
+      "nested",
+      async () => {
+        return await resolveCompatibleThreadSession({
+          db: args.db,
+          binding: args.binding,
+          userId: args.userId,
+          agentComposeId: args.agentComposeId,
+          modelRoute: args.modelRoute,
+        });
+      },
+    ),
+    measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_build_run_params_resolve_computer_use_host",
+      "nested",
+      async () => {
+        return await resolveComputerUseHostForSlackThread({
+          db: args.db,
+          binding: args.binding,
+          orgId: args.orgId,
+          userId: args.userId,
+        });
+      },
+    ),
+  ]);
+
+  return {
+    existingSessionId: settledValue(sessionResult),
+    computerUseHostId: settledValue(hostResult),
+  };
+}
+
+function assembleSlackRunAgentParams(args: {
+  readonly message: SlackAgentMessageArgs;
+  readonly resolved: ResolvedSlackAgentMessage;
+  readonly inputs: SlackRunParamInputBundle;
+  readonly threadContext: SlackRunThreadContext;
+}): RunAgentParams {
+  const { message, resolved, inputs, threadContext } = args;
+  const callbackContext: SlackCallbackPayload = {
+    workspaceId: message.workspaceId,
+    channelId: message.channelId,
+    threadTs: resolved.threadTs,
+    messageTs: message.messageTs,
+    connectionId: resolved.connection.id,
+    agentId: resolved.composeId,
+    existingSessionId: threadContext.existingSessionId,
+  };
+
+  return {
+    agentId: resolved.composeId,
+    agentName: resolved.agent.name,
+    orgId: resolved.installation.orgId,
+    sessionId: threadContext.existingSessionId,
+    prompt: inputs.prompt,
+    threadContext: inputs.executionContext,
+    userInfoExtras: inputs.userInfoExtras,
+    userId: resolved.connection.vm0UserId,
+    botUserId: resolved.installation.botUserId,
+    channelId: message.channelId,
+    channelType: message.channelType,
+    threadTs: resolved.threadTs,
+    callbackContext,
+    apiStartTime: message.apiStartTime,
+    modelProviderId: inputs.modelRoute?.modelProviderId ?? undefined,
+    modelProviderCredentialScope:
+      inputs.modelRoute?.modelProviderCredentialScope ?? undefined,
+    modelProviderType: inputs.modelRoute?.modelProviderType ?? undefined,
+    selectedModelOverride: inputs.modelRoute?.selectedModel ?? undefined,
+    computerUseHostId: threadContext.computerUseHostId,
+    timing: message.timing,
+  };
 }
 
 const postPreDispatchErrorReply$ = command(
@@ -1611,76 +1851,80 @@ const buildRunAgentParams$ = command(
     args: SlackAgentMessageArgs,
     resolved: ResolvedSlackAgentMessage,
   ): Promise<RunAgentParams> => {
-    const { prompt, userInfoExtras } = await enrichMessageContent({
-      messageContent: args.messageText,
-      files: args.files,
-      client: resolved.client,
-      userId: args.slackUserId,
-    });
-    const modelRoute = await set(
-      resolveIntegrationModelRouteForUser$,
-      {
-        orgId: resolved.installation.orgId,
-        userId: resolved.connection.vm0UserId,
-      },
-      args.signal,
+    const conversationContextObserver = createSlackConversationContextObserver(
+      args.timing,
     );
-    const existingSessionId = await resolveCompatibleThreadSession({
-      db: args.db,
-      channelId: args.channelId,
-      threadTs: resolved.threadTs,
-      connectionId: resolved.connection.id,
-      userId: resolved.connection.vm0UserId,
-      agentComposeId: resolved.composeId,
-      modelRoute,
-    });
-    const computerUseHostId = await resolveComputerUseHostForSlackThread({
-      db: args.db,
-      channelId: args.channelId,
-      threadTs: resolved.threadTs,
-      connectionId: resolved.connection.id,
-      orgId: resolved.installation.orgId,
-      userId: resolved.connection.vm0UserId,
-    });
-    const { executionContext } = await fetchConversationContexts(
-      resolved.client,
-      args.channelId,
-      args.threadTs,
-      args.messageTs,
-    );
-    const callbackContext: SlackCallbackPayload = {
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-      threadTs: resolved.threadTs,
-      messageTs: args.messageTs,
-      connectionId: resolved.connection.id,
-      agentId: resolved.composeId,
-      existingSessionId,
-    };
-
-    return {
-      agentId: resolved.composeId,
-      agentName: resolved.agent.name,
-      orgId: resolved.installation.orgId,
-      sessionId: existingSessionId,
-      prompt,
-      threadContext: executionContext,
-      userInfoExtras,
-      userId: resolved.connection.vm0UserId,
-      botUserId: resolved.installation.botUserId,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      threadTs: resolved.threadTs,
-      callbackContext,
-      apiStartTime: args.apiStartTime,
-      modelProviderId: modelRoute?.modelProviderId ?? undefined,
-      modelProviderCredentialScope:
-        modelRoute?.modelProviderCredentialScope ?? undefined,
-      modelProviderType: modelRoute?.modelProviderType ?? undefined,
-      selectedModelOverride: modelRoute?.selectedModel ?? undefined,
-      computerUseHostId,
+    const userInfoResolver = createSlackUserInfoResolver(resolved.client);
+    const { inputs, threadContext } = await loadSlackRunParamBundle({
       timing: args.timing,
-    };
+      db: args.db,
+      userId: resolved.connection.vm0UserId,
+      orgId: resolved.installation.orgId,
+      agentComposeId: resolved.composeId,
+      enrichMessage: async () => {
+        return await enrichMessageContent({
+          messageContent: args.messageText,
+          files: args.files,
+          client: resolved.client,
+          userId: args.slackUserId,
+          userInfoResolver,
+        });
+      },
+      resolveModelRoute: async () => {
+        return await set(
+          resolveIntegrationModelRouteForUser$,
+          {
+            orgId: resolved.installation.orgId,
+            userId: resolved.connection.vm0UserId,
+          },
+          args.signal,
+        );
+      },
+      loadThreadBinding: async () => {
+        return await loadSlackThreadBinding({
+          db: args.db,
+          channelId: args.channelId,
+          threadTs: resolved.threadTs,
+          connectionId: resolved.connection.id,
+        });
+      },
+      fetchConversationContext: async () => {
+        return await fetchConversationContexts(
+          resolved.client,
+          args.channelId,
+          args.threadTs,
+          args.messageTs,
+          {
+            observer: conversationContextObserver.observer,
+            userInfoResolver,
+          },
+        );
+      },
+      fetchConversationContextDimensions:
+        conversationContextObserver.dimensions,
+    });
+    const userInfoResolverStatsRecordedAt = now();
+    args.timing.recordElapsed(
+      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
+      "nested",
+      userInfoResolverStatsRecordedAt,
+      userInfoResolverStatsRecordedAt,
+      slackUserInfoResolverDimensions(userInfoResolver.stats()),
+    );
+
+    return await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
+      "nested",
+      () => {
+        return assembleSlackRunAgentParams({
+          message: args,
+          resolved,
+          inputs,
+          threadContext,
+        });
+      },
+    );
   },
 );
 
@@ -1718,31 +1962,37 @@ const handleSlackRunResult$ = command(
         ],
       });
     } else if (result.status === "failed") {
-      if (!result.runId) {
-        await set(postPreDispatchErrorReply$, {
-          db: message.db,
-          client: resolved.client,
-          channelId: message.channelId,
-          threadTs: resolved.threadTs,
-          errorText:
-            result.response ?? "Sorry, an error occurred. Please try again.",
-          orgId: resolved.installation.orgId,
-          vm0UserId: resolved.connection.vm0UserId,
-          composeId: resolved.composeId,
-          agentLabel: resolved.agent.displayName ?? resolved.agent.name,
-        });
+      const errorReplyResultPromise = result.runId
+        ? undefined
+        : Promise.allSettled([
+            (async () => {
+              await set(postPreDispatchErrorReply$, {
+                db: message.db,
+                client: resolved.client,
+                channelId: message.channelId,
+                threadTs: resolved.threadTs,
+                errorText:
+                  result.response ??
+                  "Sorry, an error occurred. Please try again.",
+                orgId: resolved.installation.orgId,
+                vm0UserId: resolved.connection.vm0UserId,
+                composeId: resolved.composeId,
+                agentLabel: resolved.agent.displayName ?? resolved.agent.name,
+              });
+            })(),
+          ]);
+      await clearSlackThreadStatusBestEffort({
+        client: resolved.client,
+        channelId: message.channelId,
+        threadTs: resolved.threadTs,
+        failureMessage: "Failed to clear thread status",
+      });
+      const [errorReplyResult] = errorReplyResultPromise
+        ? await errorReplyResultPromise
+        : [];
+      if (errorReplyResult?.status === "rejected") {
+        throw errorReplyResult.reason;
       }
-      await tapError(
-        setThreadStatus(
-          resolved.client,
-          message.channelId,
-          resolved.threadTs,
-          "",
-        ),
-        (error) => {
-          L.warn("Failed to clear thread status", { error });
-        },
-      );
     }
   },
 );
@@ -1768,48 +2018,76 @@ const handleSlackAgentMessage$ = command(
       return;
     }
 
-    await recordSlackMessageMemorySource({
-      db: args.db,
-      orgId: resolved.installation.orgId,
-      userId: resolved.connection.vm0UserId,
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-      channelType:
-        args.channelType === "group_dm"
-          ? "mpim"
-          : args.channelType === "dm"
-            ? "im"
-            : "channel",
-      slackUserId: args.slackUserId,
-      messageText: args.messageText,
-      messageTs: args.messageTs,
-      threadTs: args.threadTs,
-      files: args.files,
-    });
-
     await measureApiDispatchTiming(
       args.timing,
-      "api_dispatch_pre_create_zero_slack_set_thread_status",
+      "api_dispatch_pre_create_zero_slack_record_memory_source",
       "nested",
       async () => {
-        await setThreadStatus(
-          resolved.client,
-          args.channelId,
-          resolved.threadTs,
-          "is thinking...",
-        );
+        await recordSlackMessageMemorySource({
+          db: args.db,
+          orgId: resolved.installation.orgId,
+          userId: resolved.connection.vm0UserId,
+          workspaceId: args.workspaceId,
+          channelId: args.channelId,
+          channelType:
+            args.channelType === "group_dm"
+              ? "mpim"
+              : args.channelType === "dm"
+                ? "im"
+                : "channel",
+          slackUserId: args.slackUserId,
+          messageText: args.messageText,
+          messageTs: args.messageTs,
+          threadTs: args.threadTs,
+          files: args.files,
+        });
       },
     );
-    const runParams = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_slack_build_run_params",
-      "nested",
-      async () => {
-        return await set(buildRunAgentParams$, args, resolved);
-      },
-    );
-    const result = await set(runAgentForSlackOrg$, runParams, args.signal);
-    await set(handleSlackRunResult$, { message: args, resolved, result });
+
+    const [statusResult, runParamsResult] = await Promise.allSettled([
+      measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_slack_set_thread_status",
+        "nested",
+        async () => {
+          await setThreadStatus(
+            resolved.client,
+            args.channelId,
+            resolved.threadTs,
+            "is thinking...",
+          );
+        },
+      ),
+      measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_slack_build_run_params",
+        "nested",
+        async () => {
+          return await set(buildRunAgentParams$, args, resolved);
+        },
+      ),
+    ]);
+    settledValue(statusResult);
+    const [runResult] = await Promise.allSettled([
+      (async () => {
+        const runParams = settledValue(runParamsResult);
+        return await set(runAgentForSlackOrg$, runParams, args.signal);
+      })(),
+    ]);
+    if (runResult.status === "rejected") {
+      await clearSlackThreadStatusBestEffort({
+        client: resolved.client,
+        channelId: args.channelId,
+        threadTs: resolved.threadTs,
+        failureMessage: "Failed to clear pre-run thread status",
+      });
+      throw runResult.reason;
+    }
+    await set(handleSlackRunResult$, {
+      message: args,
+      resolved,
+      result: runResult.value,
+    });
   },
 );
 

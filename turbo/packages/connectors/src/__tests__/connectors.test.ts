@@ -13,6 +13,7 @@ import {
 import {
   CONNECTOR_TYPES,
   CONNECTOR_TYPE_KEYS,
+  connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
@@ -86,10 +87,12 @@ import {
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
+  getConnectorAuthProviderRegistryCapabilities,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
   revokeConnectorAuthMethodAccessToken,
   startConnectorDeviceAuthorization,
+  type ConnectorAuthProviderRegistryCapability,
 } from "../auth-providers/connector-auth";
 import type { ConnectorAuthProviderRefreshArgs } from "../auth-providers/types";
 import {
@@ -448,6 +451,56 @@ describe("connector auth method lifecycle helpers", () => {
       currentScopes: [],
       storedScopes: [],
     });
+  });
+
+  it("treats no-auth grants as scope-free and runtime available", () => {
+    expect(
+      connectorAuthMethodHasGrantKind("nintendo-eshop-catalog", "api", "none"),
+    ).toBe(true);
+    expect(
+      getConnectorAuthMethodGrantScopes("nintendo-eshop-catalog", "api"),
+    ).toStrictEqual([]);
+    expect(
+      getConnectorAuthMethodGrantMetadata("nintendo-eshop-catalog", "api"),
+    ).toStrictEqual({
+      kind: "none",
+      outputs: {},
+    });
+    expect(
+      getConnectorAuthMethodAccessMetadata("nintendo-eshop-catalog", "api"),
+    ).toStrictEqual({
+      kind: "none",
+      envBindings: {},
+      platformSecrets: [],
+    });
+    expect(
+      hasRequiredConnectorAuthMethodScopes(
+        "nintendo-eshop-catalog",
+        "api",
+        null,
+      ),
+    ).toBe(true);
+    expect(
+      getAvailableConnectorAuthMethodIds(
+        "nintendo-eshop-catalog",
+        {
+          [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
+        },
+        { apiAuthMethodPolicy: "include" },
+      ),
+    ).toStrictEqual(["api"]);
+    expect(
+      getAvailableConnectorAuthMethodIds(
+        "nintendo-eshop-catalog",
+        {},
+        { apiAuthMethodPolicy: "include" },
+      ),
+    ).toStrictEqual([]);
+    expect(
+      getRuntimeAvailableConnectorTypes(() => {
+        return undefined;
+      }),
+    ).toContain("nintendo-eshop-catalog");
   });
 
   it("computes OAuth scope diffs for historical stored scope snapshots", () => {
@@ -871,6 +924,65 @@ describe("connector selected auth method capability checks", () => {
             "external-code",
         );
       }
+    }
+  });
+
+  it("registers auth providers exactly for provider-backed auth methods", () => {
+    const capabilities = getConnectorAuthProviderRegistryCapabilities();
+    const expectedCapabilities = new Map<
+      string,
+      ConnectorAuthProviderRegistryCapability
+    >();
+
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const authMethodConfig = getConnectorAuthMethod(type, authMethod);
+        expect(authMethodConfig).toBeDefined();
+        if (authMethodConfig === undefined) {
+          continue;
+        }
+
+        const grantCapability =
+          authMethodConfig.grant.kind === "auth-code" ||
+          authMethodConfig.grant.kind === "device-auth" ||
+          authMethodConfig.grant.kind === "openid-auth" ||
+          authMethodConfig.grant.kind === "external-code"
+            ? { grant: authMethodConfig.grant.kind }
+            : {};
+        const capability = {
+          ...grantCapability,
+          ...(authMethodConfig.access.kind === "refresh-token"
+            ? { access: authMethodConfig.access.kind }
+            : {}),
+          ...(authMethodConfig.revoke.kind === "token-revoke"
+            ? { revoke: authMethodConfig.revoke.kind }
+            : {}),
+        } satisfies ConnectorAuthProviderRegistryCapability;
+
+        if (Object.keys(capability).length > 0) {
+          expectedCapabilities.set(`${type}:${authMethod}`, capability);
+        }
+      }
+    }
+
+    const actualCapabilities = new Map<
+      string,
+      ConnectorAuthProviderRegistryCapability
+    >();
+    for (const [rawType, methods] of Object.entries(capabilities)) {
+      const type = connectorTypeSchema.parse(rawType);
+      for (const [rawAuthMethod, capability] of Object.entries(methods)) {
+        const authMethod = connectorAuthMethodIdSchema.parse(rawAuthMethod);
+        expect(getConnectorAuthMethod(type, authMethod)).toBeDefined();
+        actualCapabilities.set(`${type}:${authMethod}`, capability);
+      }
+    }
+
+    expect([...actualCapabilities.keys()].sort()).toStrictEqual(
+      [...expectedCapabilities.keys()].sort(),
+    );
+    for (const [ref, capability] of expectedCapabilities) {
+      expect(actualCapabilities.get(ref)).toStrictEqual(capability);
     }
   });
 
@@ -3409,6 +3521,16 @@ describe("getConnectorEnvBindingEntries", () => {
 
   it("returns non-empty env binding entries for connector types that surface environment entries to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
+      const hasSandboxEnvBindings = getConfiguredConnectorAuthMethodIds(
+        type,
+      ).some((authMethod) => {
+        const metadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
+        return metadata !== undefined && metadata.kind !== "none";
+      });
+      if (!hasSandboxEnvBindings) {
+        expect(getConnectorEnvBindingEntries(type)).toStrictEqual([]);
+        continue;
+      }
       expect(
         getConnectorEnvBindingEntries(type).length,
         `${type} has empty env binding entries`,
@@ -3557,9 +3679,9 @@ describe("getConnectorEnvBindingEntries", () => {
       ) {
         continue;
       }
-      const hasRefreshTokenAccess = connectorAuthMethodRefHasAccessKind(
-        oauthAuthMethodRef,
-        "refresh-token",
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        oauthAuthMethodRef.type,
+        oauthAuthMethodRef.authMethod,
       );
       const grantMetadata = getConnectorAuthMethodGrantMetadata(type, "oauth");
       const runtimeMetadata = getConnectorAuthMethodRuntimeMetadata(
@@ -3595,11 +3717,7 @@ describe("getConnectorEnvBindingEntries", () => {
         `${type}: oauth secrets must include ${accessSecretName}`,
       ).toContain(accessSecretName);
 
-      if (hasRefreshTokenAccess) {
-        const accessMetadata = getConnectorAuthMethodAccessMetadata(
-          oauthAuthMethodRef.type,
-          oauthAuthMethodRef.authMethod,
-        );
+      if (accessMetadata?.kind === "refresh-token") {
         expect(
           connectorSecretTargetName(
             getConnectorGrantOutputTarget(grantMetadata, "refreshToken"),
@@ -3667,7 +3785,7 @@ describe("getConnectorEnvBindingEntries", () => {
 
       expect(oauthSecrets, `${type}: unexpected primary OAuth secrets`).toEqual(
         expect.arrayContaining(
-          hasRefreshTokenAccess
+          accessMetadata?.kind === "refresh-token"
             ? [accessSecretName, refreshSecretName]
             : [accessSecretName],
         ),

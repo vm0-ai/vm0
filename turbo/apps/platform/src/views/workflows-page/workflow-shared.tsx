@@ -206,6 +206,15 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-meet-transcript-generated") {
     return "Google Meet transcript ready";
   }
+  if (trigger.eventType === "notion-child-page-created") {
+    return "New Notion child page";
+  }
+  if (trigger.eventType === "notion-database-item-created") {
+    return "New Notion database item";
+  }
+  if (trigger.eventType === "notion-page-content-updated") {
+    return "Notion page content updated";
+  }
   return "Webhook automation";
 }
 
@@ -233,6 +242,22 @@ export function gmailTriggerSummary(
   }
   if (trigger.eventType === "google-meet-transcript-generated") {
     return "Meetings you organize";
+  }
+  if (trigger.eventType === "notion-child-page-created") {
+    const title = trigger.eventConfig.parentPage.title;
+    return title ? `Parent page ${quote(title)}` : "Configured parent page";
+  }
+  if (trigger.eventType === "notion-database-item-created") {
+    const title = trigger.eventConfig.dataSource.title;
+    return title ? `Database ${quote(title)}` : "Configured database";
+  }
+  if (trigger.eventType === "notion-page-content-updated") {
+    if (trigger.eventConfig.scope.type === "page") {
+      const title = trigger.eventConfig.scope.page.title;
+      return title ? `Page ${quote(title)}` : "Configured page";
+    }
+    const title = trigger.eventConfig.scope.dataSource.title;
+    return title ? `Database ${quote(title)}` : "Configured database";
   }
   return null;
 }

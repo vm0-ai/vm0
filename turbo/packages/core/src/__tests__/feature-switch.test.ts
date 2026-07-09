@@ -12,9 +12,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.BytePlusVoiceInputStt, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -100,7 +97,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -126,19 +122,24 @@ describe("getAllFeatureStates", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
+    expect(staffOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
-      true,
+      false,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.MobileUnreadChatThreadShortcuts],
-    ).toBe(true);
+    ).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
@@ -148,6 +149,9 @@ describe("getAllFeatureStates", () => {
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
+    expect(otherOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,
@@ -156,8 +160,10 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
@@ -170,7 +176,6 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.BytePlusVoiceInputStt]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -180,13 +185,6 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
-  });
-
-  it("should enable chat thread emoji for staff orgs", () => {
-    const states = getAllFeatureStates({
-      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-    });
-    expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {

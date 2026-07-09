@@ -43,6 +43,7 @@ import {
   IconLink,
   IconLoader2,
   IconMessageCircle,
+  IconMoodPlus,
   IconPackage,
   IconPresentation,
   IconRoute,
@@ -52,17 +53,15 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
+  IconWorld,
 } from "@tabler/icons-react";
 import {
   cn,
-  Button,
-  Skeleton,
+  getShortcutLabel,
   getShortcutParts,
-  DropdownMenu as UiDropdownMenu,
-  DropdownMenuContent as UiDropdownMenuContent,
-  DropdownMenuItem as UiDropdownMenuItem,
-  DropdownMenuSeparator as UiDropdownMenuSeparator,
-  DropdownMenuTrigger as UiDropdownMenuTrigger,
+  Button,
+  Input,
+  Skeleton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -95,6 +94,7 @@ import type {
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findWebsiteTemplateItem,
   findVideoTemplateItem,
   findWorkflowTemplateItem,
   r2ImageTransformUrl,
@@ -106,9 +106,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { emptyArtifactImg, emptyChatImg } from "./platform-assets.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -258,6 +256,14 @@ import {
   removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
+import {
+  chatThreadEmojiGroups$,
+  chatThreadEmojiQuery$,
+  filterChatThreadEmojiGroups,
+  setChatThreadEmojiQuery$,
+  type ChatThreadEmojiItem,
+} from "../../signals/chat-page/chat-thread-emoji.ts";
+import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
@@ -424,14 +430,22 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
   const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
-  const features = useLastResolved(featureSwitch$);
-  const chatThreadEmojiEnabled =
-    features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogForThreadId$,
+  );
+  const pageSignal = useGet(pageSignal$);
   const threadTitle =
     threadMetaLoadable.state === "hasData"
       ? (threadMetaLoadable.data?.title?.trim() ?? "")
       : "";
-  const displayTitle = chatThreadEmojiEnabled ? threadTitleText : threadTitle;
+
+  function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
+    event.preventDefault();
+    detach(
+      openRenameChatThreadDialog(thread.threadId, pageSignal),
+      Reason.DomCallback,
+    );
+  }
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -440,16 +454,18 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
           <Skeleton className="h-5 w-48 rounded" />
         ) : (
           <>
-            {chatThreadEmojiEnabled && (
-              <ChatThreadEmojiMenuButton
-                threadId={thread.threadId}
-                title={threadTitle}
-                emoji={threadTitleEmoji}
-              />
-            )}
-            {displayTitle && (
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                {displayTitle}
+            <ChatThreadEmojiMenuButton
+              threadId={thread.threadId}
+              title={threadTitle}
+              emoji={threadTitleEmoji}
+            />
+            {threadTitleText && (
+              <span
+                className="min-w-0 truncate text-sm font-medium text-foreground"
+                data-testid="chat-thread-header-title"
+                onDoubleClick={openRenameDialog}
+              >
+                {threadTitleText}
               </span>
             )}
           </>
@@ -545,13 +561,15 @@ function ChatThreadEmojiMenuButton({
 }) {
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
+  const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
 
   return (
     <TooltipProvider delayDuration={200}>
-      <UiDropdownMenu
+      <Popover
         open={open}
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
+            setEmojiQuery("");
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -560,78 +578,225 @@ function ChatThreadEmojiMenuButton({
       >
         <Tooltip>
           <TooltipTrigger asChild>
-            <UiDropdownMenuTrigger asChild>
+            <PopoverTrigger asChild>
               <button
                 type="button"
                 aria-label="Change icon"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                {emoji && (
-                  <span aria-hidden="true" className="text-base leading-none">
+                {emoji ? (
+                  <span
+                    aria-hidden="true"
+                    className="zero-emoji text-base leading-none"
+                  >
                     {emoji}
                   </span>
+                ) : (
+                  <IconMoodPlus size={18} stroke={1.75} aria-hidden="true" />
                 )}
               </button>
-            </UiDropdownMenuTrigger>
+            </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">Chat thread icon</TooltipContent>
         </Tooltip>
-        <UiDropdownMenuContent
+        <PopoverContent
           align="start"
-          className="w-48"
+          className="w-80 p-0"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}
         >
-          {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
-            const shortcut = `ctrl+shift+${index + 1}`;
-            return (
-              <UiDropdownMenuItem
-                key={option.emoji}
-                aria-label={`${option.label} icon Ctrl Shift ${index + 1}`}
-                className="justify-between gap-4"
-                onSelect={() => {
-                  selectEmoji(option.emoji);
-                }}
-              >
-                <span className="text-base leading-none" aria-hidden>
-                  {option.emoji}
-                </span>
-                <ChatThreadIconShortcutHint shortcut={shortcut} />
-              </UiDropdownMenuItem>
-            );
-          })}
-          <UiDropdownMenuSeparator />
-          <UiDropdownMenuItem
-            aria-label="Clear icon Ctrl Shift 0"
-            className="justify-between gap-4"
-            onSelect={() => {
-              clearEmoji();
-            }}
-          >
-            <span className="whitespace-nowrap">Clear icon</span>
-            <ChatThreadIconShortcutHint shortcut="ctrl+shift+0" />
-          </UiDropdownMenuItem>
-        </UiDropdownMenuContent>
-      </UiDropdownMenu>
+          <ChatThreadEmojiPicker
+            hasEmoji={Boolean(emoji)}
+            onSelect={selectEmoji}
+            onRemove={clearEmoji}
+          />
+        </PopoverContent>
+      </Popover>
     </TooltipProvider>
   );
 }
 
-function ChatThreadIconShortcutHint({ shortcut }: { shortcut: string }) {
+const FREQUENTLY_USED_EMOJI: ChatThreadEmojiItem[] =
+  CHAT_THREAD_EMOJI_OPTIONS.map((option) => {
+    return { emoji: option.emoji, name: option.label };
+  });
+
+function ChatThreadEmojiPicker({
+  hasEmoji,
+  onSelect,
+  onRemove,
+}: {
+  hasEmoji: boolean;
+  onSelect: (emoji: string) => void;
+  onRemove: () => void;
+}) {
+  const query = useGet(chatThreadEmojiQuery$);
+  const setQuery = useSet(setChatThreadEmojiQuery$);
+  const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
+
+  const isSearching = query.trim().length > 0;
+  const searchResults =
+    isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
+
   return (
-    <span aria-hidden="true" className="ml-4 flex shrink-0 items-center gap-1">
-      {getShortcutParts(shortcut).map((part) => {
-        return (
-          <kbd
-            key={part}
-            className='inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium text-foreground shadow-[inset_0_-1px_0_hsl(var(--border)),0_0_0_1px_hsl(var(--border))] font-["-apple-system",BlinkMacSystemFont,"Segoe_UI",system-ui,sans-serif]'
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 p-2">
+        <div className="relative flex-1">
+          <IconSearch
+            size={15}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            aria-label="Search emoji"
+            placeholder="Search emoji"
+            value={query}
+            autoFocus
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
+            className="h-8 pl-8"
+          />
+        </div>
+        {hasEmoji && (
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            onClick={onRemove}
           >
-            {part}
-          </kbd>
+            Remove
+          </button>
+        )}
+      </div>
+      <div className="max-h-72 overflow-y-auto px-2 pb-2">
+        {isSearching ? (
+          searchResults.length > 0 ? (
+            <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
+          ) : (
+            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+              No emoji found
+            </p>
+          )
+        ) : (
+          <>
+            <ChatThreadEmojiSection
+              label="Frequently used"
+              items={FREQUENTLY_USED_EMOJI}
+              onSelect={onSelect}
+              showShortcutDigits
+            />
+            {groups?.map((group) => {
+              return (
+                <ChatThreadEmojiSection
+                  key={group.name}
+                  label={group.name}
+                  items={group.emojis}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChatThreadEmojiSection({
+  label,
+  items,
+  onSelect,
+  showShortcutDigits = false,
+}: {
+  label: string;
+  items: ChatThreadEmojiItem[];
+  onSelect: (emoji: string) => void;
+  showShortcutDigits?: boolean;
+}) {
+  // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
+  // as a quiet hint next to the label rather than repeating it on each emoji.
+  // getShortcutParts keeps the modifiers OS-aware (⌃⇧ on Mac, Ctrl+Shift else).
+  const shortcutHint = showShortcutDigits
+    ? `${formatModifierPrefix(getShortcutParts("ctrl+shift"))} + number`
+    : null;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+        {shortcutHint && (
+          <span className="text-[11px] text-muted-foreground/70">
+            {shortcutHint}
+          </span>
+        )}
+      </div>
+      <ChatThreadEmojiGrid
+        items={items}
+        onSelect={onSelect}
+        showShortcutDigits={showShortcutDigits}
+      />
+    </div>
+  );
+}
+
+// Join modifier keycap labels the way each platform reads them: Mac symbols
+// run together (⌃⇧), word labels are joined with "+" (Ctrl+Shift).
+function formatModifierPrefix(modifiers: string[]): string {
+  const usesWords = /[A-Za-z]/.test(modifiers[0] ?? "");
+  return modifiers.join(usesWords ? "+" : "");
+}
+
+function ChatThreadEmojiGrid({
+  items,
+  onSelect,
+  showShortcutDigits = false,
+}: {
+  items: ChatThreadEmojiItem[];
+  onSelect: (emoji: string) => void;
+  showShortcutDigits?: boolean;
+}) {
+  // Nine columns so the nine frequently-used digit shortcuts sit on a single
+  // row; every other emoji group uses the same width to stay aligned.
+  return (
+    <div className="grid grid-cols-9 gap-0.5">
+      {items.map((item, index) => {
+        // Ctrl+Shift+1-9 set the first nine "frequently used" icons. Keep a
+        // faint digit in the corner and reveal the full combo on hover so the
+        // shortcut is discoverable without cluttering the grid.
+        const shortcutDigit =
+          showShortcutDigits && index < 9 ? index + 1 : null;
+        const shortcutLabel =
+          shortcutDigit !== null
+            ? getShortcutLabel(`ctrl+shift+${shortcutDigit}`)
+            : undefined;
+        return (
+          <button
+            key={`${item.name}-${item.emoji}`}
+            type="button"
+            aria-label={item.name}
+            title={shortcutLabel}
+            className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-accent"
+            onClick={() => {
+              onSelect(item.emoji);
+            }}
+          >
+            <span aria-hidden="true" className="zero-emoji">
+              {item.emoji}
+            </span>
+            {shortcutDigit !== null && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-0 right-0.5 text-[9px] leading-none text-muted-foreground/60"
+              >
+                {shortcutDigit}
+              </span>
+            )}
+          </button>
         );
       })}
-    </span>
+    </div>
   );
 }
 
@@ -1620,11 +1785,13 @@ function headerWorkflowTriggerRows(
       label: "Last run",
       value: formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt),
     },
-    {
+  ];
+  if (trigger.trigger.kind === "schedule") {
+    rows.push({
       label: "Next run",
       value: formatHeaderWorkflowTriggerNextRun(trigger.trigger.nextRunAt),
-    },
-  ];
+    });
+  }
   const matchSummary = gmailTriggerSummary(trigger.trigger);
   if (matchSummary) {
     rows.splice(1, 0, { label: "Match", value: matchSummary });
@@ -2836,10 +3003,29 @@ function usageByRunIdFromGroups(
     }
     const runId = firstRunIdForMessages(group.messages);
     if (runId !== undefined) {
-      usageByRunId.set(runId, group.usage);
+      setLatestUsageForRun(usageByRunId, runId, group.usage);
     }
   }
   return usageByRunId;
+}
+
+function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
+  const timestamp = Date.parse(usage.settledAt);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function setLatestUsageForRun(
+  usageByRunId: Map<string, ChatMessageUsagePayload>,
+  runId: string,
+  usage: ChatMessageUsagePayload,
+): void {
+  const existing = usageByRunId.get(runId);
+  if (
+    existing === undefined ||
+    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
+  ) {
+    usageByRunId.set(runId, usage);
+  }
 }
 
 function attachUsageToCompletedWorkGroups(
@@ -5639,17 +5825,17 @@ function InsufficientCreditsCard() {
   const setSubPage = useSet(setBillingSubPage$);
   const pageSignal = useGet(pageSignal$);
 
-  const tier =
-    billingLoadable.state === "hasData" ? billingLoadable.data.tier : null;
-  const credits =
-    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const billingResolved = billingLoadable.state === "hasData";
+  const tier = billingResolved ? billingLoadable.data.tier : null;
+  const credits = billingResolved ? billingLoadable.data.credits : null;
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const roleResolved = isAdminLoadable.state === "hasData";
   const canManageBilling = roleResolved ? isAdminLoadable.data : false;
   const requiresPro = tier === "pro-suspend" || tier === "limited-free-1";
   const hasAvailableCredits = !requiresPro && credits !== null && credits > 0;
-  const isFree = tier === "free" || tier === "limited-free-1" || tier === null;
+  const isFree = tier === "free" || tier === "limited-free-1";
   const shouldStartProCheckout = requiresPro || isFree;
+  const canShowBillingAction = billingResolved && canManageBilling;
   const redirecting =
     checkoutLoadable.state === "loading" ||
     creditCheckoutLoadable.state === "loading";
@@ -5661,8 +5847,8 @@ function InsufficientCreditsCard() {
   const { headline, helper } = insufficientCreditsCopy({
     isFree,
     requiresPro,
-    roleResolved,
-    canManageBilling,
+    roleResolved: billingResolved && roleResolved,
+    canManageBilling: billingResolved && canManageBilling,
   });
 
   const openBilling = () => {
@@ -5695,7 +5881,7 @@ function InsufficientCreditsCard() {
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-3 max-w-md">
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
-      {!canManageBilling ? null : shouldStartProCheckout ? (
+      {!canShowBillingAction ? null : shouldStartProCheckout ? (
         <button
           type="button"
           onClick={handleUpgradeClick}
@@ -6186,6 +6372,12 @@ function generationTemplateLabel(
       item?.title ?? formatSelectionIdLabel(value.selection.illustrationStyleId)
     );
   }
+  if (value.type === "website") {
+    const item = findWebsiteTemplateItem(value.selection.websiteTemplateId);
+    return (
+      item?.title ?? formatSelectionIdLabel(value.selection.websiteTemplateId)
+    );
+  }
   const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
     return candidate.templateId === value.selection.templateId;
   });
@@ -6207,6 +6399,9 @@ function generationTemplateTypeLabel(
   if (value.type === "workflow") {
     return "Workflow";
   }
+  if (value.type === "website") {
+    return "Website";
+  }
   return "Presentation";
 }
 
@@ -6220,24 +6415,33 @@ function UserMessageGenerationTemplate({
   if (!label || !typeLabel) {
     return null;
   }
-  return (
-    <div
-      aria-label={`Message template ${label}`}
-      className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
-      title={`${typeLabel} · ${label}`}
-    >
+  const className =
+    "mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground";
+  const content = (
+    <>
       {generationTemplate?.type === "video" ? (
         <IconVideo size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "illustration" ? (
         <IconPhoto size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "workflow" ? (
         <IconRoute size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "website" ? (
+        <IconWorld size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <IconPresentation size={15} stroke={1.8} className="shrink-0" />
       )}
       <span className="shrink-0">{typeLabel}</span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">{label}</span>
+    </>
+  );
+  return (
+    <div
+      aria-label={`Message template ${label}`}
+      className={className}
+      title={`${typeLabel} · ${label}`}
+    >
+      {content}
     </div>
   );
 }
@@ -6481,6 +6685,21 @@ function PagedAssistantGroup({
     })
     .filter(Boolean)
     .join("\n\n");
+  let renderedAssistantMessageCount = 0;
+  const renderAssistantMessageItem = (message: EnrichedChatMessage) => {
+    const isRenderable = isRenderableAssistantMessage(message);
+    const compactTop = isRenderable && renderedAssistantMessageCount > 0;
+    if (isRenderable) {
+      renderedAssistantMessageCount += 1;
+    }
+    return (
+      <PagedAssistantMessageItem
+        key={message.id}
+        message={message}
+        compactTop={compactTop}
+      />
+    );
+  };
 
   return (
     <div
@@ -6490,7 +6709,7 @@ function PagedAssistantGroup({
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="relative flex flex-col gap-3">
+        <div className="relative flex flex-col gap-2">
           {runGroupFolds?.map((fold) => {
             return (
               <RunGroupFoldRow key={fold.fold.key} control={fold} embedded />
@@ -6508,16 +6727,14 @@ function PagedAssistantGroup({
                 return (
                   <div key={hiddenGroup.beginMessageId} className="contents">
                     {hiddenGroup.messages.map((msg) => {
-                      return (
-                        <PagedAssistantMessageItem key={msg.id} message={msg} />
-                      );
+                      return renderAssistantMessageItem(msg);
                     })}
                   </div>
                 );
               })
             : null}
           {group.messages.map((msg) => {
-            return <PagedAssistantMessageItem key={msg.id} message={msg} />;
+            return renderAssistantMessageItem(msg);
           })}
         </div>
       </div>
@@ -6528,8 +6745,10 @@ function PagedAssistantGroup({
 
 function PagedAssistantMessageItem({
   message,
+  compactTop = false,
 }: {
   message: EnrichedChatMessage;
+  compactTop?: boolean;
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -6538,7 +6757,12 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
+      <div
+        className={cn(
+          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
+          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+        )}
+      >
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -6547,7 +6771,12 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]">
+      <div
+        className={cn(
+          "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
+          compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
+        )}
+      >
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}

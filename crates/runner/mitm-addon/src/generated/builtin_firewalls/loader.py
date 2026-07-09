@@ -797,6 +797,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import plausible_0
 
         return (plausible_0.JSON_PART,)
+    if name == "playstation":
+        from . import playstation_0
+
+        return (playstation_0.JSON_PART,)
     if name == "podchaser":
         from . import podchaser_0
 

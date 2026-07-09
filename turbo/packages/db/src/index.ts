@@ -56,8 +56,10 @@ import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session"
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
+import * as orgPlanEntitlementSchema from "./schema/org-plan-entitlement";
 import * as orgConcurrencyEntitlementSchema from "./schema/org-concurrency-entitlement";
 import * as orgConcurrencySubscriptionSchema from "./schema/org-concurrency-subscription";
+import * as orgUsageAllowanceSchema from "./schema/org-usage-allowance";
 import * as orgCacheSchema from "./schema/org-cache";
 import * as orgMembersSchema from "./schema/org-members-metadata";
 import * as orgMembersCacheSchema from "./schema/org-members-cache";
@@ -159,8 +161,10 @@ export const schema = {
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,
   ...orgSchema,
+  ...orgPlanEntitlementSchema,
   ...orgConcurrencyEntitlementSchema,
   ...orgConcurrencySubscriptionSchema,
+  ...orgUsageAllowanceSchema,
   ...orgCacheSchema,
   ...orgMembersSchema,
   ...orgMembersCacheSchema,

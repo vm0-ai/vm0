@@ -71,23 +71,11 @@ const KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS: Partial<
     missingNamesSha256:
       "29130e444cd58beaaa654c0207dbec064be945113ca97cf2d391f3614cb37cc1",
   },
-  sentry: {
-    issue: 19612,
-    missingCount: 22,
-    missingNamesSha256:
-      "ddae869f18724903f394137a9a30186c0199c174c7a569bcb6f40349c0eaf904",
-  },
   vercel: {
     issue: 19613,
     missingCount: 68,
     missingNamesSha256:
       "8ccddb8850744d7bdc07fc73a57b0cd5831cdc6a482c724a920abadd3317782e",
-  },
-  xero: {
-    issue: 19614,
-    missingCount: 35,
-    missingNamesSha256:
-      "0234b2bf557b118688656df62d5018f872195b32d3d8d04ff191cf8f0b9efca0",
   },
 };
 let runtimeEntriesPromise: Promise<
@@ -266,7 +254,9 @@ function exportFromSpecifiers(source: string): string[] {
 
 function dynamicImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
-  for (const match of source.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)) {
+  for (const match of source.matchAll(
+    /import\(\s*["']([^"']+)["'](?:\s+as\s+string)?\s*\)/g,
+  )) {
     specifiers.push(match[1]!);
   }
   return specifiers;

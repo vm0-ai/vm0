@@ -1,7 +1,10 @@
 use std::time::Duration;
 
-use sandbox::SandboxId;
-use sandbox::{ProcessOutputChunk, ProcessOutputMode};
+use async_trait::async_trait;
+use sandbox::{
+    ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxCreateObserver,
+    SandboxCreateStage, SandboxError, SandboxFactory, SandboxId, SandboxInitializationPhase,
+};
 use sandbox_mock::MockSandboxFactory;
 
 use super::super::telemetry::{
@@ -49,6 +52,7 @@ fn new_telemetry() -> JobTelemetry {
     let http = HttpClient::new(HttpClientConfig {
         api_url: "http://localhost".to_string(),
         vercel_bypass: None,
+        client_session_id: "runner-session-test".to_string(),
     })
     .unwrap();
     JobTelemetry::new(http, RunId::nil(), "tok".to_string())
@@ -78,6 +82,95 @@ fn assert_action_success(telemetry: &JobTelemetry, action: &str, success: bool) 
         .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
     assert_eq!(op.1, success, "{action} success flag");
 }
+
+fn assert_action_outcome(
+    telemetry: &JobTelemetry,
+    action: &str,
+    success: bool,
+    error: Option<&str>,
+) {
+    let ops = telemetry.pending_ops_snapshot();
+    let op = ops
+        .iter()
+        .find(|op| op.0 == action)
+        .unwrap_or_else(|| panic!("expected telemetry action {action}, got: {ops:?}"));
+    assert_eq!(op.1, success, "{action} success flag");
+    assert_eq!(op.2.as_deref(), error, "{action} error");
+}
+
+struct ObservedMockSandboxFactory {
+    inner: MockSandboxFactory,
+    failed_stage: Option<SandboxCreateStage>,
+}
+
+impl ObservedMockSandboxFactory {
+    fn new() -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: None,
+        }
+    }
+
+    fn with_failed_stage(stage: SandboxCreateStage) -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: Some(stage),
+        }
+    }
+}
+
+#[async_trait]
+impl SandboxFactory for ObservedMockSandboxFactory {
+    fn name(&self) -> &str {
+        "observed-mock"
+    }
+
+    fn config_hash(&self) -> String {
+        self.inner.config_hash()
+    }
+
+    async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        self.inner.create(config).await
+    }
+
+    async fn create_with_observer(
+        &self,
+        config: SandboxConfig,
+        observer: &mut dyn SandboxCreateObserver,
+    ) -> sandbox::Result<Box<dyn Sandbox>> {
+        if let Some(stage) = self.failed_stage {
+            observer.record_stage(stage, Duration::from_millis(1), false);
+            return Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: "observed mock create failure".to_string(),
+            });
+        }
+
+        for (index, stage) in SandboxCreateStage::ALL.iter().copied().enumerate() {
+            observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
+        }
+        self.inner.create(config).await
+    }
+
+    async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
+        self.inner.destroy(sandbox).await;
+    }
+
+    async fn shutdown(&mut self) {
+        self.inner.shutdown().await;
+    }
+}
+
+const FRESH_SANDBOX_FACTORY_STAGE_ACTIONS: &[&str] = &[
+    "runner_fresh_sandbox_factory_cow_pool_acquire",
+    "runner_fresh_sandbox_factory_workspace_dir_rename",
+    "runner_fresh_sandbox_factory_workspace_drive_prepare",
+    "runner_fresh_sandbox_factory_workspace_seed_sparse_copy",
+    "runner_fresh_sandbox_factory_workspace_fresh_format",
+    "runner_fresh_sandbox_factory_sock_dir_prepare",
+    "runner_fresh_sandbox_factory_netns_acquire",
+    "runner_fresh_sandbox_factory_nbd_cow_create",
+];
 
 const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
     "runner_claim_resume_session_validation",
@@ -222,7 +315,7 @@ async fn execute_job_reuse_records_sandbox_reuse_hit_in_telemetry() {
 async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let factory = MockSandboxFactory::new();
+    let factory = ObservedMockSandboxFactory::new();
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (_outcome, telemetry) = execute_job_with_prepared_notifier(
@@ -263,10 +356,49 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     ] {
         assert_has_action(&telemetry, action);
     }
+    for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
+        assert_action_success(&telemetry, action, true);
+    }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
+}
+
+#[tokio::test]
+async fn execute_job_records_failed_fresh_sandbox_factory_stage_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::with_failed_stage(SandboxCreateStage::NbdCowCreate);
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_nbd_cow_create",
+        false,
+        Some("sandbox_factory_create_stage_failed"),
+    );
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        false,
+        Some("sandbox_factory_create_failed"),
+    );
+    assert_action_success(&telemetry, "vm_create", false);
+    assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
 }
 
 #[tokio::test]
@@ -326,6 +458,9 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_factory_create");
+    for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
+        assert_lacks_action(&telemetry, action);
+    }
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_proxy_register");
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");

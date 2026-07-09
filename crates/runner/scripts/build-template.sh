@@ -110,13 +110,15 @@ ROOTFS_DIR=""
 CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
-GO_VERSION="1.26.4"
-CLAUDE_CODE_VERSION="2.1.201"
-CODEX_CLI_VERSION="0.142.5"
+GO_VERSION="1.26.5"
+CLAUDE_CODE_VERSION="2.1.205"
+CODEX_CLI_VERSION="0.143.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.2.2"
 AGENT_BROWSER_VERSION="0.31.1"
 PNPM_VERSION="11.10.0"
+CHROMIUM_VERSION="150.0.7871.100-1~deb12u1"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260709T060000Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -370,7 +372,11 @@ install_packages() {
 
   # Chromium from Debian Bookworm security (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
-  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  # Pin to a Debian security snapshot for reproducible Chromium packages.
+  sudo chroot "$ROOTFS_DIR" env \
+    CHROMIUM_VERSION="$CHROMIUM_VERSION" \
+    CHROMIUM_SECURITY_SNAPSHOT_URL="$CHROMIUM_SECURITY_SNAPSHOT_URL" \
+    bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
     {
       curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc
@@ -379,13 +385,13 @@ install_packages() {
       | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
     cat > /etc/apt/sources.list.d/debian-bookworm.list <<EOF
 deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main
-deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://security.debian.org/debian-security bookworm-security main
+deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-bookworm.gpg] ${CHROMIUM_SECURITY_SNAPSHOT_URL}/ bookworm-security main
 EOF
     apt-get update
     apt-get install -y -t bookworm \
-      chromium/bookworm-security \
-      chromium-common/bookworm-security \
-      chromium-sandbox/bookworm-security
+      chromium="${CHROMIUM_VERSION}" \
+      chromium-common="${CHROMIUM_VERSION}" \
+      chromium-sandbox="${CHROMIUM_VERSION}"
     rm -f /etc/apt/sources.list.d/debian-bookworm.list \
          /usr/share/keyrings/debian-bookworm.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*

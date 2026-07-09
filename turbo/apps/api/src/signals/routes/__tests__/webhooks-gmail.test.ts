@@ -5,15 +5,10 @@ import {
   zeroWorkflowTriggersContract,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import type {
-  TestChatMessagesStateActionBody,
-  TestChatMessagesStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -31,7 +26,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
+import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-messages";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -42,8 +37,6 @@ const miscApi = createMiscRoutesApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "gmail-webhook-workflow";
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
@@ -69,36 +62,6 @@ function authHeaders(actor: ApiTestUser) {
 
 function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
-}
-
-function requestChatMessagesState(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testChatMessagesStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function postChatMessagesStateAction(
-  body: TestChatMessagesStateActionBody,
-): Promise<TestChatMessagesStateActionResponse> {
-  const response = await requestChatMessagesState(
-    "/api/test/chat-messages-state/action",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `chat messages state action ${body.action} failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestChatMessagesStateActionResponse;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -412,13 +375,12 @@ async function configureWorkspaceModelProvider(
 
 async function configureVm0ManagedModelKey(): Promise<void> {
   const keySuffix = randomUUID();
-  await postChatMessagesStateAction({
-    action: "replace-vm0-api-keys",
+  await replaceBddVm0ApiKeys({
     vendor: GMAIL_WORKSPACE_MODEL_VENDOR,
     model: GMAIL_WORKSPACE_MODEL,
     keys: [
       {
-        api_key: `vm0-key-bdd-dev-seed-${keySuffix}`,
+        apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
         label: "dev-seed",
       },
     ],
@@ -429,10 +391,11 @@ async function configureTriggerThreadModel(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<void> {
-  await chatApi.updateThreadModelSelection(actor, chatThreadId, {
-    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-    selectedModel: GMAIL_WORKSPACE_MODEL,
-  });
+  await chatApi.updateThreadModelSelection(
+    actor,
+    chatThreadId,
+    GMAIL_WORKSPACE_MODEL,
+  );
 }
 
 async function grantVisibleCredits(

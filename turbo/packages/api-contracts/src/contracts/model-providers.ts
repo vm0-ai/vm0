@@ -75,11 +75,79 @@ export type ModelProviderFeatureStates = Partial<
   Record<FeatureSwitchKey, boolean>
 >;
 
+export const modelProviderCodexRuntimeConfigSchema = z.object({
+  providerId: z.string().regex(/^[A-Za-z0-9_-]+$/),
+  name: z.string().min(1),
+  baseUrl: z.url(),
+  envKey: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
+  wireApi: z.literal("responses"),
+  supportsWebsockets: z.boolean(),
+  modelCatalog: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type ModelProviderCodexRuntimeConfig = z.infer<
+  typeof modelProviderCodexRuntimeConfigSchema
+>;
+
+const MINIMAX_CODEX_BASE_URL = "https://api.minimax.io/v1";
+
 const MINIMAX_CODEX_ENV_BINDINGS = {
   OPENAI_API_KEY: "$secret",
-  OPENAI_BASE_URL: "https://api.minimax.io/v1",
   OPENAI_MODEL: "$model",
 } as const satisfies ModelProviderEnvBindings;
+
+const MINIMAX_CODEX_RUNTIME_CONFIG = {
+  providerId: "minimax",
+  name: "MiniMax",
+  baseUrl: MINIMAX_CODEX_BASE_URL,
+  envKey: "OPENAI_API_KEY",
+  wireApi: "responses",
+  supportsWebsockets: false,
+  modelCatalog: {
+    models: [
+      {
+        slug: "MiniMax-M3",
+        display_name: "MiniMax M3",
+        description: "MiniMax M3",
+        default_reasoning_level: null,
+        supported_reasoning_levels: [],
+        shell_type: "shell_command",
+        visibility: "list",
+        supported_in_api: true,
+        priority: 0,
+        additional_speed_tiers: [],
+        service_tiers: [],
+        default_service_tier: null,
+        availability_nux: null,
+        upgrade: null,
+        base_instructions: "",
+        model_messages: null,
+        include_skills_usage_instructions: false,
+        supports_reasoning_summaries: false,
+        default_reasoning_summary: "auto",
+        support_verbosity: false,
+        default_verbosity: null,
+        apply_patch_tool_type: null,
+        web_search_tool_type: "text",
+        truncation_policy: { mode: "bytes", limit: 10_000 },
+        supports_parallel_tool_calls: false,
+        supports_image_detail_original: false,
+        context_window: 1_000_000,
+        max_context_window: null,
+        auto_compact_token_limit: null,
+        comp_hash: null,
+        effective_context_window_percent: 95,
+        experimental_supported_tools: [],
+        input_modalities: ["text", "image"],
+        supports_search_tool: false,
+        use_responses_lite: false,
+        auto_review_model_override: null,
+        tool_mode: null,
+        multi_agent_version: null,
+      },
+    ],
+  },
+} as const satisfies ModelProviderCodexRuntimeConfig;
 
 const GATED_MODEL_PROVIDER_FEATURE_SWITCHES: Partial<
   Record<ModelProviderType, FeatureSwitchKey>
@@ -150,11 +218,15 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "gpt-5.5",
   "claude-opus-4-8",
   "claude-sonnet-5",
+  "claude-sonnet-4-6",
   "MiniMax-M3",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "MiniMax-M3" as const satisfies SupportedRunModel;
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+
+export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -215,11 +287,13 @@ export function getCanonicalModelDisplayName(model: string): string {
   return isSupportedRunModel(model) ? SUPPORTED_RUN_MODEL_LABELS[model] : model;
 }
 
-export function getDefaultOrgModelPolicySeed(): DefaultOrgModelPolicySeed[] {
+export function getDefaultOrgModelPolicySeed(
+  defaultModel: SupportedRunModel = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+): DefaultOrgModelPolicySeed[] {
   return DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
     return {
       model,
-      isDefault: model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      isDefault: model === defaultModel,
       defaultProviderType: "vm0",
       credentialScope: "org",
       modelProviderId: null,
@@ -273,14 +347,12 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "anthropic",
   },
   "glm-5.2": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "z-ai/glm-5.2",
+    concreteType: "zai-api-key",
+    vendor: "zai",
   },
   "glm-5.1": {
-    concreteType: "openrouter-api-key",
-    vendor: "openrouter",
-    apiModel: "z-ai/glm-5.1",
+    concreteType: "zai-api-key",
+    vendor: "zai",
   },
   "mimo-v2.5": {
     concreteType: "openrouter-api-key",
@@ -347,6 +419,9 @@ export function isLimitedFree1RestrictedRunModel(
   }
   const normalized = model.trim().toLowerCase();
   const canonicalModel = normalizeVm0ModelId(normalized);
+  if (canonicalModel === LIMITED_FREE1_DEFAULT_RUN_MODEL) {
+    return false;
+  }
   const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
 
   return (
@@ -1234,12 +1309,26 @@ export function getModelProviderEnvBindings(
   return "envBindings" in config ? config.envBindings : undefined;
 }
 
+export function getModelProviderCodexRuntimeConfig(
+  type: ModelProviderType,
+  featureStates?: ModelProviderFeatureStates,
+): ModelProviderCodexRuntimeConfig | undefined {
+  if (
+    type === "minimax-api-key" &&
+    isModelProviderFrameworkSwitchEnabled(type, featureStates)
+  ) {
+    return MINIMAX_CODEX_RUNTIME_CONFIG;
+  }
+  return undefined;
+}
+
 /**
  * Get the upstream base URL for a model provider type.
  *
- * Returns the framework-appropriate base URL override from
- * envBindings — ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL
- * for codex. Returns null when the provider relies on the SDK's default
+ * Returns the framework-appropriate upstream base URL. Codex custom-provider
+ * runtime config is authoritative when present; otherwise this falls back to
+ * envBindings — ANTHROPIC_BASE_URL for claude-code, OPENAI_BASE_URL for codex.
+ * Returns null when the provider relies on the SDK's default
  * (Anthropic-native providers, OpenAI direct).
  *
  * Used by areProvidersCompatible to detect session-continuation safety
@@ -1251,6 +1340,14 @@ export function getProviderBaseUrl(
   type: ModelProviderType,
   featureStates?: ModelProviderFeatureStates,
 ): string | null {
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
+    type,
+    featureStates,
+  );
+  if (codexRuntimeConfig) {
+    return codexRuntimeConfig.baseUrl;
+  }
+
   const envBindings = getModelProviderEnvBindings(type, featureStates);
   if (!envBindings) {
     return null;
@@ -1265,7 +1362,7 @@ export function getProviderBaseUrl(
 
 /**
  * Check if two model providers are compatible for session continuation.
- * Providers are compatible if they resolve to the same ANTHROPIC_BASE_URL.
+ * Providers are compatible if they resolve to the same upstream base URL.
  */
 export function areProvidersCompatible(
   a: ModelProviderType,

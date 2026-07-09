@@ -66,6 +66,26 @@ describe("scanStaticSite", () => {
     );
   });
 
+  it("skips references containing template interpolation", async () => {
+    const root = await tempRoot();
+    await writeFile(
+      join(root, "index.html"),
+      [
+        '<img src="${s.url}">',
+        '<source src="/media/{{item.file}}">',
+        '<link rel="stylesheet" href="<%= assetPath %>">',
+      ].join("\n"),
+    );
+
+    const result = await scanStaticSite(root);
+
+    expect(
+      result.files.map((file) => {
+        return file.path;
+      }),
+    ).toEqual(["/index.html"]);
+  });
+
   it("adds a default robots.txt when requested and missing", async () => {
     const root = await tempRoot();
     await writeFile(join(root, "index.html"), "<main>Hosted site</main>");

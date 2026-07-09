@@ -149,7 +149,7 @@ fn archive_error(
 ) -> DownloadError {
     let message = format!("{}: {error}", message.into());
     if http_body_read_failure.failed() {
-        DownloadError::transport(message, true, None)
+        DownloadError::transport(message, true)
     } else {
         DownloadError::fatal(message)
     }

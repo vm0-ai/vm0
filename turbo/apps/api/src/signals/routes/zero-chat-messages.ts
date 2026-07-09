@@ -105,7 +105,7 @@ interface NormalSendBody {
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
-  readonly modelProvider?: string;
+  readonly model?: string;
   readonly modelSelection?: {
     readonly modelProviderId: string;
     readonly selectedModel: string;
@@ -118,8 +118,7 @@ interface NormalSendBody {
   readonly attachFiles?: AttachFile[];
   readonly computerUseHostId?: string | null;
   readonly clientMessageId?: string;
-  readonly debugNoMockClaude?: boolean;
-  readonly debugNoMockCodex?: boolean;
+  readonly realAgentInPreview?: boolean;
   readonly revokesMessageId?: string;
 }
 
@@ -235,6 +234,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly websiteTemplatesEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -461,6 +461,33 @@ function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
 
 function isNormalSendBody(body: SendBody): body is NormalSendBody {
   return "prompt" in body && body.prompt !== undefined;
+}
+
+function modelFirstSelection(
+  selectedModel: string,
+): NonNullable<NormalSendBody["modelSelection"]> {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
+
+function normalizeNormalSendBody(body: NormalSendBody):
+  | { readonly ok: true; readonly data: NormalSendBody }
+  | {
+      readonly ok: false;
+      readonly response: ReturnType<typeof badRequestMessage>;
+    } {
+  if (body.model === undefined) {
+    return { ok: true, data: body };
+  }
+  return {
+    ok: true,
+    data: {
+      ...body,
+      modelSelection: modelFirstSelection(body.model),
+    },
+  };
 }
 
 function hasAgentSessionId(
@@ -1251,7 +1278,7 @@ async function validateCodexServiceTierBeforeThread(params: {
     orgId: params.orgId,
     userId: params.userId,
     modelPin,
-    requestedModelProvider: requestedModelProviderFor(params.body),
+    requestedModelProvider: undefined,
   });
   const codexServiceTierError = validateCodexServiceTier({
     body: params.body,
@@ -1259,7 +1286,10 @@ async function validateCodexServiceTierBeforeThread(params: {
     providerAdmission,
     codexFastModeEnabled: params.codexFastModeEnabled,
   });
-  return codexServiceTierError ?? providerAdmission.error ?? undefined;
+  if (codexServiceTierError) {
+    return codexServiceTierError;
+  }
+  return providerAdmission.error;
 }
 
 async function resolveNormalSendFeatureSwitches(
@@ -1273,7 +1303,48 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.CodexFastMode,
       context,
     ),
+    websiteTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.WebsiteTemplates,
+      context,
+    ),
   };
+}
+
+function validateGenerationTemplateFeatureSwitches(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  if (
+    params.body.generationTemplate?.type === "website" &&
+    !params.featureSwitches.websiteTemplatesEnabled
+  ) {
+    return badRequestMessage("Website templates are not enabled");
+  }
+  return undefined;
+}
+
+function validateGenerationTemplatePrompt(
+  body: NormalSendBody,
+): NormalSendFailure | undefined {
+  const generationTemplate = body.generationTemplate;
+  if (!generationTemplate) {
+    return undefined;
+  }
+  const validation = buildGenerationTemplatePrompt(generationTemplate);
+  if (validation.status === "invalid") {
+    return badRequestMessage(validation.message);
+  }
+  return undefined;
+}
+
+function validateGenerationTemplateForNormalSend(params: {
+  readonly body: NormalSendBody;
+  readonly featureSwitches: NormalSendFeatureSwitches;
+}): NormalSendFailure | undefined {
+  return (
+    validateGenerationTemplateFeatureSwitches(params) ??
+    validateGenerationTemplatePrompt(params.body)
+  );
 }
 
 async function updateUserModelPreference(
@@ -2223,13 +2294,12 @@ const prepareNormalSend$ = command(
     if (codexServiceTierError) {
       return codexServiceTierError;
     }
-    if (args.body.generationTemplate) {
-      const validation = buildGenerationTemplatePrompt(
-        args.body.generationTemplate,
-      );
-      if (validation.status === "invalid") {
-        return badRequestMessage(validation.message);
-      }
+    const generationTemplateError = validateGenerationTemplateForNormalSend({
+      body: args.body,
+      featureSwitches,
+    });
+    if (generationTemplateError) {
+      return generationTemplateError;
     }
 
     const initialPin = await resolveInitialThreadModelPin({
@@ -2601,12 +2671,6 @@ async function resolveTimedRunModelPin(
   );
 }
 
-function requestedModelProviderFor(body: NormalSendBody): string | undefined {
-  return body.modelProvider && body.modelProvider !== "default"
-    ? body.modelProvider
-    : undefined;
-}
-
 async function resolveTimedProviderAdmission(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
@@ -2723,8 +2787,7 @@ function buildCreateZeroRunArgs(params: {
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
-      debugNoMockClaude: args.body.debugNoMockClaude,
-      debugNoMockCodex: args.body.debugNoMockCodex,
+      ...(args.body.realAgentInPreview ? { realAgentInPreview: true } : {}),
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -2778,7 +2841,7 @@ const createNormalChatRun$ = command(
       args,
       prepared,
       modelPin,
-      requestedModelProvider: requestedModelProviderFor(args.body),
+      requestedModelProvider: undefined,
     });
     signal.throwIfAborted();
     if (providerAdmission.error) {
@@ -2995,13 +3058,17 @@ const sendChatMessageInner$ = command(
     if (!isNormalSendBody(body.data)) {
       return badRequestMessage("Prompt is required");
     }
+    const normalizedBody = normalizeNormalSendBody(body.data);
+    if (!normalizedBody.ok) {
+      return normalizedBody.response;
+    }
 
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     return await set(
       sendNormalMessage$,
       {
-        body: body.data,
+        body: normalizedBody.data,
         auth,
         userId: auth.userId,
         orgId: auth.orgId,

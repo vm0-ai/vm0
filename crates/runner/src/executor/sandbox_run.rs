@@ -5,10 +5,15 @@ use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
-use sandbox::{Sandbox, SandboxConfig, SandboxFactory, SandboxId};
+use sandbox::{
+    Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxId,
+};
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::agent_run::{AgentExecutionResult, RunControls, RunStart, run_in_sandbox};
+use super::agent_run::{
+    AgentExecutionResult, RunControls, RunStart, SessionHistoryRestorePlan, run_in_sandbox,
+};
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
 };
@@ -22,13 +27,14 @@ use super::session_id::{
 use super::telemetry::record_workspace_cache_result;
 use super::{
     ExecuteOutcome, ExecutionFailure, ExecutorConfig, JobParams, NewSandboxDispatch, RunnerError,
-    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult,
+    RunnerResult, SandboxPreparedNotifier, SandboxReuseResult, SessionHistoryMaterializer,
 };
 use crate::duration::duration_ms;
 use crate::ids::RunId;
 use crate::network_log_manager::NetworkLogSession;
 use crate::provider::NetworkPolicyRefreshRegistration;
 use crate::proxy;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, FirewallEntry};
 use crate::workspace_image_cache::{
@@ -41,6 +47,24 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 const SLOW_PROXY_REGISTER_THRESHOLD: Duration = Duration::from_secs(3);
 const RUNNER_FRESH_WORKSPACE_IMAGE_PREPARE: &str = "runner_fresh_workspace_image_prepare";
 const RUNNER_FRESH_SANDBOX_FACTORY_CREATE: &str = "runner_fresh_sandbox_factory_create";
+const RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE: &str =
+    "runner_fresh_sandbox_factory_cow_pool_acquire";
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DIR_RENAME: &str =
+    "runner_fresh_sandbox_factory_workspace_dir_rename";
+// `workspace_drive_prepare` contains the seed-copy/fresh-format child stages;
+// downstream queries should not sum the parent and child durations together.
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DRIVE_PREPARE: &str =
+    "runner_fresh_sandbox_factory_workspace_drive_prepare";
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_SEED_SPARSE_COPY: &str =
+    "runner_fresh_sandbox_factory_workspace_seed_sparse_copy";
+const RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_FRESH_FORMAT: &str =
+    "runner_fresh_sandbox_factory_workspace_fresh_format";
+const RUNNER_FRESH_SANDBOX_FACTORY_SOCK_DIR_PREPARE: &str =
+    "runner_fresh_sandbox_factory_sock_dir_prepare";
+const RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE: &str =
+    "runner_fresh_sandbox_factory_netns_acquire";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE: &str =
+    "runner_fresh_sandbox_factory_nbd_cow_create";
 const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
 const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
 const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
@@ -52,8 +76,48 @@ const WORKSPACE_IMAGE_PREPARE_LOCK_BUSY: &str = "workspace_image_prepare_lock_bu
 const WORKSPACE_IMAGE_PREPARE_INVALID_METADATA: &str = "workspace_image_prepare_invalid_metadata";
 const WORKSPACE_IMAGE_PREPARE_DISK_PRESSURE: &str = "workspace_image_prepare_disk_pressure";
 const SANDBOX_FACTORY_CREATE_FAILED: &str = "sandbox_factory_create_failed";
+const SANDBOX_FACTORY_CREATE_STAGE_FAILED: &str = "sandbox_factory_create_stage_failed";
 const SANDBOX_PROXY_REGISTER_FAILED: &str = "sandbox_proxy_register_failed";
 const SANDBOX_START_FAILED: &str = "sandbox_start_failed";
+
+struct FreshSandboxFactoryCreateObserver<'a> {
+    telemetry: &'a mut JobTelemetry,
+}
+
+impl SandboxCreateObserver for FreshSandboxFactoryCreateObserver<'_> {
+    fn record_stage(&mut self, stage: SandboxCreateStage, duration: Duration, success: bool) {
+        let error = if success {
+            None
+        } else {
+            Some(SANDBOX_FACTORY_CREATE_STAGE_FAILED)
+        };
+        self.telemetry.record(
+            fresh_sandbox_factory_stage_action(stage),
+            duration,
+            success,
+            error,
+        );
+    }
+}
+
+fn fresh_sandbox_factory_stage_action(stage: SandboxCreateStage) -> &'static str {
+    match stage {
+        SandboxCreateStage::CowPoolAcquire => RUNNER_FRESH_SANDBOX_FACTORY_COW_POOL_ACQUIRE,
+        SandboxCreateStage::WorkspaceDirRename => RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DIR_RENAME,
+        SandboxCreateStage::WorkspaceDrivePrepare => {
+            RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_DRIVE_PREPARE
+        }
+        SandboxCreateStage::WorkspaceSeedSparseCopy => {
+            RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_SEED_SPARSE_COPY
+        }
+        SandboxCreateStage::WorkspaceFreshFormat => {
+            RUNNER_FRESH_SANDBOX_FACTORY_WORKSPACE_FRESH_FORMAT
+        }
+        SandboxCreateStage::SockDirPrepare => RUNNER_FRESH_SANDBOX_FACTORY_SOCK_DIR_PREPARE,
+        SandboxCreateStage::NetnsAcquire => RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE,
+        SandboxCreateStage::NbdCowCreate => RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE,
+    }
+}
 
 #[cfg(test)]
 pub(super) async fn execute_new_sandbox(
@@ -94,7 +158,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         reuse_result,
     } = dispatch;
     let NewSandboxHooks {
-        controls,
+        mut controls,
         sandbox_prepared,
     } = hooks;
     let prepare_started = Instant::now();
@@ -104,6 +168,15 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
         config,
         &params.profile_name,
         params.workspace_disk_mb,
+        telemetry,
+    )
+    .await;
+    controls.session_history_restore_plan = resolve_fresh_session_history_restore_plan(
+        std::mem::take(&mut controls.session_history_restore_plan),
+        workspace_image.as_ref(),
+        context,
+        config,
+        controls.cancel.clone(),
         telemetry,
     )
     .await;
@@ -148,6 +221,14 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 None,
             );
             workspace_image = None;
+            controls.session_history_restore_plan =
+                discard_local_sidecar_restore_plan_for_workspace_retry(
+                    std::mem::take(&mut controls.session_history_restore_plan),
+                    context,
+                    config,
+                    controls.cancel.clone(),
+                    telemetry,
+                );
             match create_started_sandbox(
                 factory,
                 context,
@@ -283,6 +364,119 @@ pub(super) async fn prepare_workspace_image(
     Some(lease)
 }
 
+async fn resolve_fresh_session_history_restore_plan(
+    plan: SessionHistoryRestorePlan,
+    workspace_image: Option<&WorkspaceImageLease>,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+    telemetry: &mut JobTelemetry,
+) -> SessionHistoryRestorePlan {
+    let fallback = match plan {
+        SessionHistoryRestorePlan::DeferredHashBacked { fallback } => fallback,
+        other => return other,
+    };
+    let Some(workspace_image) = workspace_image else {
+        return start_fresh_session_history_materializer(
+            context, config, cancel, telemetry, fallback,
+        );
+    };
+    if !workspace_image.is_cache_hit() {
+        return start_fresh_session_history_materializer(
+            context, config, cancel, telemetry, fallback,
+        );
+    }
+    let Some(expected) = RestoredSessionIdentity::from_context(context) else {
+        telemetry.record(
+            "session_history_workspace_cache_miss",
+            Duration::ZERO,
+            true,
+            Some("identity_mismatch"),
+        );
+        return start_fresh_session_history_materializer(
+            context, config, cancel, telemetry, fallback,
+        );
+    };
+    let probe_started = Instant::now();
+    telemetry.record(
+        "session_history_workspace_cache_probe",
+        Duration::ZERO,
+        true,
+        None,
+    );
+    match workspace_image
+        .probe_session_history_sidecar(&expected)
+        .await
+    {
+        Ok(sidecar) => {
+            telemetry.record(
+                "session_history_workspace_cache_hit",
+                probe_started.elapsed(),
+                true,
+                None,
+            );
+            SessionHistoryRestorePlan::LocalSidecar { sidecar, fallback }
+        }
+        Err(reason) => {
+            telemetry.record(
+                "session_history_workspace_cache_miss",
+                probe_started.elapsed(),
+                true,
+                Some(reason.as_str()),
+            );
+            start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
+        }
+    }
+}
+
+fn discard_local_sidecar_restore_plan_for_workspace_retry(
+    plan: SessionHistoryRestorePlan,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+    telemetry: &mut JobTelemetry,
+) -> SessionHistoryRestorePlan {
+    match plan {
+        SessionHistoryRestorePlan::LocalSidecar { fallback, .. } => {
+            telemetry.record(
+                "session_history_workspace_cache_miss",
+                Duration::ZERO,
+                true,
+                Some("sandbox_retry_without_workspace_image"),
+            );
+            start_fresh_session_history_materializer(context, config, cancel, telemetry, fallback)
+        }
+        other => other,
+    }
+}
+
+fn start_fresh_session_history_materializer(
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+    telemetry: &mut JobTelemetry,
+    fallback: Option<super::SessionHistoryRestoreFallback>,
+) -> SessionHistoryRestorePlan {
+    let started = Instant::now();
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        context.resume_session.as_ref(),
+        effective_cli_framework(&context.cli_agent_type),
+        cancel,
+        Some(&config.session_history_probe),
+    );
+    telemetry.record(
+        "runner_fresh_session_history_materializer_start",
+        started.elapsed(),
+        true,
+        None,
+    );
+    SessionHistoryRestorePlan::Prestarted {
+        materializer,
+        fallback,
+    }
+}
+
 fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option<&'static str> {
     match result {
         WorkspaceCacheCheckoutResult::Hit
@@ -333,7 +527,13 @@ async fn create_started_sandbox(
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
     let t = Instant::now();
     let factory_create_started = Instant::now();
-    let mut sandbox = match factory.create(sandbox_config).await {
+    let create_result = {
+        let mut observer = FreshSandboxFactoryCreateObserver { telemetry };
+        factory
+            .create_with_observer(sandbox_config, &mut observer)
+            .await
+    };
+    let mut sandbox = match create_result {
         Ok(s) => {
             telemetry.record(
                 RUNNER_FRESH_SANDBOX_FACTORY_CREATE,
@@ -912,7 +1112,9 @@ mod tests {
                             headers: HashMap::new(),
                             base: None,
                             query: None,
+                            aws_sigv4: None,
                         },
+                        host_policy: None,
                         permissions: Some(vec![FirewallPermission {
                             name: "records.read".to_string(),
                             description: None,

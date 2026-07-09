@@ -70,7 +70,7 @@ import { eventDrivenActiveRunChatThreadIds$ } from "../../signals/chat-page/chat
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
-import { runAfterDropdownMenuClose } from "../components/dropdown-menu-modal-action.ts";
+import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
@@ -96,6 +96,7 @@ import {
   setChatThreadVirtualListElement$,
   getChatThreadVirtualListScrollMargin,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
+  scrollChatThreadVirtualListToIndex$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
@@ -363,25 +364,19 @@ function ChatThreadMenu({
               </>
             )}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              runAfterDropdownMenuClose(openRenameDialog);
-            }}
-          >
+          <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <IconPencil size={16} stroke={2} className="mr-2" />
             Rename chat
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => {
-              runAfterDropdownMenuClose(() => {
-                setPendingDeleteThreadId(threadId);
-              });
+          </DropdownMenuModalItem>
+          <DropdownMenuModalItem
+            onModalSelect={() => {
+              setPendingDeleteThreadId(threadId);
             }}
             className="text-destructive focus:text-destructive"
           >
             <IconTrash size={16} stroke={2} className="mr-2" />
             Delete chat
-          </DropdownMenuItem>
+          </DropdownMenuModalItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </TooltipProvider>
@@ -523,6 +518,7 @@ function ChatThreadItemLink({
       pathname="/chats/:threadId"
       options={{ pathParams: { threadId: session.id } }}
       aria-current={state.isCurrentPage ? "page" : undefined}
+      data-sidebar-chat-thread-id={session.id}
       onClick={(e) => {
         handleChatThreadClick(e, {
           closeSidebarOnSelect,
@@ -543,7 +539,7 @@ function ChatThreadItemLink({
           Reason.DomCallback,
         );
       }}
-      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
+      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         state.isHighlighted
           ? "bg-gray-200 text-gray-900 font-medium"
           : state.isUnread
@@ -977,6 +973,27 @@ function ChatThreadsSkeleton() {
   );
 }
 
+function markPointerFocus(viewport: HTMLElement) {
+  const token = Math.random().toString(36);
+  viewport.dataset.sidebarPointerFocusToken = token;
+  viewport.ownerDocument.defaultView?.setTimeout(() => {
+    if (viewport.dataset.sidebarPointerFocusToken !== token) {
+      return;
+    }
+
+    delete viewport.dataset.sidebarPointerFocusToken;
+  }, 350);
+}
+
+function consumePointerFocus(viewport: HTMLElement) {
+  if (!viewport.dataset.sidebarPointerFocusToken) {
+    return false;
+  }
+
+  delete viewport.dataset.sidebarPointerFocusToken;
+  return true;
+}
+
 function ChatThreadsContent() {
   // useLastLoadable keeps the previous resolved list rendered while
   // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
@@ -988,6 +1005,59 @@ function ChatThreadsContent() {
   const collapsed = useGet(sessionListCollapsed$);
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
+  const pathParams = useGet(pathParams$);
+  const currentMainThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
+  const scrollVirtualListToIndex = useSet(scrollChatThreadVirtualListToIndex$);
+  const focusThreadLink = (
+    viewport: HTMLElement,
+    threadId: string,
+  ): boolean => {
+    const link = Array.from(
+      viewport.querySelectorAll<HTMLAnchorElement>(
+        "[data-sidebar-chat-thread-id]",
+      ),
+    ).find((candidate) => {
+      return candidate.dataset.sidebarChatThreadId === threadId;
+    });
+    if (!link?.isConnected) {
+      return false;
+    }
+    link.focus({ preventScroll: true });
+    return true;
+  };
+  const focusThreadLinkOnNextFrame = (
+    viewport: HTMLElement,
+    threadId: string,
+  ) => {
+    const win = viewport.ownerDocument.defaultView;
+    const focus = () => {
+      focusThreadLink(viewport, threadId);
+    };
+    if (win?.requestAnimationFrame) {
+      win.requestAnimationFrame(focus);
+    } else {
+      queueMicrotask(focus);
+    }
+  };
+  const focusCurrentMainThreadLink = (viewport: HTMLElement) => {
+    if (
+      !currentMainThreadId ||
+      focusThreadLink(viewport, currentMainThreadId)
+    ) {
+      return;
+    }
+
+    const currentIndex = chatThreads.findIndex((thread) => {
+      return thread.id === currentMainThreadId;
+    });
+    if (currentIndex === -1) {
+      return;
+    }
+
+    scrollVirtualListToIndex(currentIndex, "top");
+    focusThreadLinkOnNextFrame(viewport, currentMainThreadId);
+  };
 
   if (collapsed) {
     return null;
@@ -1006,7 +1076,21 @@ function ChatThreadsContent() {
   return (
     <OverlayScrollArea
       className="mt-1 min-h-0 flex-1"
+      aria-label="Chat threads"
       data-testid="sidebar-scroll-area"
+      tabIndex={currentMainThreadId ? 0 : undefined}
+      onPointerDownCapture={(event) => {
+        markPointerFocus(event.currentTarget);
+      }}
+      onFocus={(event) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+        if (consumePointerFocus(event.currentTarget)) {
+          return;
+        }
+        focusCurrentMainThreadLink(event.currentTarget);
+      }}
       onScroll={(e) => {
         return setIsScrolledFn(e.currentTarget.scrollTop > 0);
       }}

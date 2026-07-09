@@ -45,14 +45,14 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "zero-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto dialog-scrollable translate-x-[-50%] translate-y-[-50%] gap-4 border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg rounded-xl",
+          "zero-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto dialog-scrollable translate-x-[-50%] translate-y-[-50%] gap-4 border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg rounded-xl outline-none",
           className,
         )}
         {...props}
       >
         {children}
         <DialogPrimitive.Close
-          className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none"
+          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
           aria-label="Close"
         >
           <IconX size={20} className="text-foreground" />

@@ -399,7 +399,7 @@ export function createBillingMediaApi(context: TestContext) {
     async downgradeBilling(
       actor: ApiTestUser,
       body: {
-        readonly targetTier: "pro-suspend" | "pro";
+        readonly targetTier: "limited-free-1" | "pro-suspend" | "pro";
         readonly returnUrl?: string;
       },
       statuses: readonly BillingMutationStatus[],

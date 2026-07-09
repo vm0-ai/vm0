@@ -29,6 +29,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         http: crate::http::HttpClient::new(HttpClientConfig {
             api_url: "http://localhost:9999".into(),
             vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
         })
         .unwrap(),
         log_paths: LogPaths::new(log_dir),
@@ -36,6 +37,7 @@ pub(in crate::executor::tests) async fn test_executor_config(dir: &Path) -> Exec
         network_log_drain: NetworkLogDrainCoordinator::noop(),
         mitm_jsonl_flush: None,
         network_policy_refresh: None,
+        session_history_probe: super::super::super::SessionHistoryProbe::default(),
         home: HomePaths::with_root(dir.to_path_buf()),
         workspace_cache: None,
     }

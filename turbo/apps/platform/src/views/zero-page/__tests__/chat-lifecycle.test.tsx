@@ -15,6 +15,7 @@ import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   VIDEO_TEMPLATE_ITEMS,
+  WEBSITE_TEMPLATE_ITEMS,
 } from "@vm0/core";
 import {
   zeroBillingCheckoutContract,
@@ -679,16 +680,6 @@ function buttonByLabel(label: string): HTMLElement {
     throw new Error(`${label} button not found`);
   }
   return button;
-}
-
-function menuItemByLabel(label: string, container: HTMLElement): HTMLElement {
-  const item = queryAllByRoleFast("menuitem", container).find((candidate) => {
-    return candidate.getAttribute("aria-label") === label;
-  });
-  if (!item) {
-    throw new Error(`${label} menu item not found`);
-  }
-  return item;
 }
 
 function linkByText(text: string): HTMLElement {
@@ -3362,7 +3353,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3529,35 +3519,6 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides the chat emoji shortcut when the feature switch is off", async () => {
-    mockResizeObserver();
-    mockKeyboardNavigationThreads();
-
-    detachedSetupPage({
-      context,
-      path: "/chats/b0000000-0000-4000-a000-000000000708",
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByText("Current keyboard thread").length,
-      ).toBeGreaterThan(0);
-    });
-
-    expect(screen.queryByLabelText("Change icon")).not.toBeInTheDocument();
-
-    const threadRegion = screen.getByLabelText("Chat thread");
-    threadRegion.focus();
-    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
-
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    });
-  });
-
   it("opens the current chat rename dialog with F2", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3565,7 +3526,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3578,7 +3538,7 @@ describe("chat lifecycle", () => {
     });
     const emojiButton = screen.getByLabelText("Change icon");
     expect(emojiButton).toHaveTextContent("");
-    expect(emojiButton.querySelector("svg")).not.toBeInTheDocument();
+    expect(emojiButton.querySelector("svg")).toBeInTheDocument();
     expect(emojiButton).toHaveClass("h-7", "w-7");
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -3603,6 +3563,26 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(composer, { key: "F2" });
 
     dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
+  });
+
+  it("opens the current chat rename dialog by double-clicking the header title", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
+    });
+
+    const headerTitle = await screen.findByTestId("chat-thread-header-title");
+    expect(headerTitle).toHaveTextContent("Current keyboard thread");
+
+    fireEvent.doubleClick(headerTitle);
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
       "Current keyboard thread",
     );
@@ -3834,54 +3814,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("adds an emoji to the focused side chat directly with Ctrl+Shift+1", async () => {
-    const renameRequest = vi.fn();
-    mockResizeObserver();
-    mockKeyboardNavigationThreads({ currentDetailTitle: null });
-    context.mocks.api(
-      chatThreadRenameContract.rename,
-      ({ body, params, respond }) => {
-        renameRequest(params.id, body.title);
-        return respond(204);
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/chats/b0000000-0000-4000-a000-000000000708?sidebar=b0000000-0000-4000-a000-000000000709",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Current thread launch note"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
-    });
-
-    const threadRegions = screen.getAllByLabelText("Chat thread");
-    expect(threadRegions).toHaveLength(2);
-    const sideThreadRegion = threadRegions[1];
-    if (!sideThreadRegion) {
-      throw new Error("Side chat thread not found");
-    }
-    sideThreadRegion.focus();
-    fireEvent.keyDown(sideThreadRegion, {
-      key: "!",
-      code: "Digit1",
-      ctrlKey: true,
-      shiftKey: true,
-    });
-
-    await waitFor(() => {
-      expect(renameRequest).toHaveBeenCalledWith(
-        "b0000000-0000-4000-a000-000000000709",
-        "✅ Next keyboard thread",
-      );
-    });
-  });
-
-  it("adds an emoji to the current chat with Shift+F2", async () => {
+  it("adds an emoji to the current chat from the Shift+F2 picker", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
@@ -3896,7 +3829,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3912,15 +3844,8 @@ describe("chat lifecycle", () => {
     composer.focus();
     fireEvent.keyDown(composer, { key: "F2", shiftKey: true });
 
-    const menu = await screen.findByRole("menu");
-    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
-    expect(within(menu).queryByText("Done")).not.toBeInTheDocument();
-    expect(within(menu).getByText("Clear icon")).toBeInTheDocument();
-    expect(within(menu).getAllByText("Ctrl").length).toBeGreaterThan(0);
-    expect(within(menu).getAllByText("Shift").length).toBeGreaterThan(0);
-    expect(within(menu).getByText("1")).toBeInTheDocument();
-    expect(within(menu).getByText("0")).toBeInTheDocument();
-    click(menuItemByLabel("Done icon Ctrl Shift 1", menu));
+    await screen.findByLabelText("Search emoji");
+    click(screen.getByLabelText("Done"));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3945,7 +3870,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3969,10 +3893,54 @@ describe("chat lifecycle", () => {
         "✅ Current keyboard thread",
       );
     });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Search emoji")).not.toBeInTheDocument();
   });
 
-  it("adds an emoji to the current chat directly from the composer with Ctrl+Shift+1", async () => {
+  it("adds an emoji to the focused side chat directly with Ctrl+Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708?sidebar=b0000000-0000-4000-a000-000000000709",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const sideThreadRegion = screen.getAllByLabelText("Chat thread")[1];
+    if (!sideThreadRegion) {
+      throw new Error("Side chat thread not found");
+    }
+    sideThreadRegion.focus();
+    fireEvent.keyDown(sideThreadRegion, {
+      key: "!",
+      code: "Digit1",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "b0000000-0000-4000-a000-000000000709",
+        "✅ Next keyboard thread",
+      );
+    });
+  });
+
+  it("adds an emoji from the composer with Ctrl+Shift+1", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({ currentDetailTitle: null });
@@ -3987,7 +3955,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4011,7 +3978,46 @@ describe("chat lifecycle", () => {
         "✅ Current keyboard thread",
       );
     });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("clears the current chat emoji directly with Ctrl+Shift+0", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥 Current keyboard thread",
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change icon")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: ")",
+      code: "Digit0",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "b0000000-0000-4000-a000-000000000708",
+        "Current keyboard thread",
+      );
+    });
   });
 
   it("keeps shifted digit input editable in the chat composer", async () => {
@@ -4030,7 +4036,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4057,7 +4062,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4085,14 +4089,16 @@ describe("chat lifecycle", () => {
     });
 
     await user.click(emojiButton);
-    await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Search emoji"),
+    ).resolves.toBeInTheDocument();
 
     fireEvent.pointerOut(emojiButton);
     fireEvent.mouseOut(emojiButton);
     click(document.body);
 
     await waitFor(() => {
-      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Search emoji")).not.toBeInTheDocument();
     });
     await waitFor(() => {
       expect(visibleChatThreadIconTooltip()).toBeUndefined();
@@ -4100,7 +4106,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("replaces the current chat emoji from the Shift+F2 picker item", async () => {
+  it("replaces the current chat emoji from the Shift+F2 picker", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
@@ -4117,7 +4123,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4133,19 +4138,8 @@ describe("chat lifecycle", () => {
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
-    const menu = await screen.findByRole("menu");
-    expect(
-      queryAllByRoleFast("menuitem", menu).some((item) => {
-        return item.getAttribute("aria-label") === "Important 📌";
-      }),
-    ).toBeFalsy();
-    const doneItem = queryAllByRoleFast("menuitem", menu).find((item) => {
-      return item.getAttribute("aria-label") === "Done icon Ctrl Shift 1";
-    });
-    if (!doneItem) {
-      throw new Error("Done icon menu item not found");
-    }
-    click(doneItem);
+    await screen.findByLabelText("Search emoji");
+    click(screen.getByLabelText("Done"));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -4155,7 +4149,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("clears the current chat emoji directly with Ctrl+Shift+0", async () => {
+  it("clears the current chat emoji from the picker Remove button", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
     mockKeyboardNavigationThreads({
@@ -4172,7 +4166,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4181,12 +4174,10 @@ describe("chat lifecycle", () => {
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
-    fireEvent.keyDown(threadRegion, {
-      key: ")",
-      code: "Digit0",
-      ctrlKey: true,
-      shiftKey: true,
-    });
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    await screen.findByLabelText("Search emoji");
+    click(buttonByText("Remove"));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -4211,7 +4202,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/b0000000-0000-4000-a000-000000000708",
-      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -4220,12 +4210,10 @@ describe("chat lifecycle", () => {
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
-    fireEvent.keyDown(threadRegion, {
-      key: ")",
-      code: "Digit0",
-      ctrlKey: true,
-      shiftKey: true,
-    });
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    await screen.findByLabelText("Search emoji");
+    click(buttonByText("Remove"));
 
     expect(renameRequest).not.toHaveBeenCalled();
   });
@@ -4580,6 +4568,9 @@ describe("chat lifecycle", () => {
         },
       }),
     );
+    // Event triggers must not show a "Next run" row — only schedule triggers do.
+    expect(within(sidebar).queryByText("Next run")).not.toBeInTheDocument();
+    expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
     mockWorkflowTriggerUpdate((triggerId, body) => {
       updateBodies.push({ triggerId, body });
     });
@@ -5161,6 +5152,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const videoTemplate = VIDEO_TEMPLATE_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
 
     mockChatLifecycle(context, {
       threadId,
@@ -5203,6 +5195,17 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           },
           createdAt: "2026-06-09T10:02:00Z",
         },
+        {
+          id: "msg-template-website",
+          role: "user",
+          content: "Create a yoga website",
+          runId: "run-template-website",
+          generationTemplate: {
+            type: "website",
+            selection: { websiteTemplateId: websiteTemplate.id },
+          },
+          createdAt: "2026-06-09T10:03:00Z",
+        },
       ],
     });
 
@@ -5221,6 +5224,16 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(
         screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
       ).toHaveTextContent("Illustration");
+      const websiteTemplateLabel = screen.getByLabelText(
+        `Message template ${websiteTemplate.title}`,
+      );
+      expect(websiteTemplateLabel).toHaveTextContent("Website");
+      expect(
+        websiteTemplateLabel.querySelector(".tabler-icon-world"),
+      ).not.toBeNull();
+      expect(
+        websiteTemplateLabel.querySelector(".tabler-icon-presentation"),
+      ).toBeNull();
     });
   });
 
@@ -7030,6 +7043,66 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     await waitFor(() => {
       expect(window.location.href).toBe(
         "https://checkout.stripe.com/credits?credits=25000",
+      );
+    });
+  });
+
+  it("shows credit top-ups when a Custom workspace runs out of credits", async () => {
+    const threadId = "failed-guidance-custom-credits";
+    mockFailedAssistantThread({ threadId, error: "insufficient_credits" });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, {
+        tier: "custom",
+        credits: 0,
+        onboardingPaymentPending: false,
+        subscriptionStatus: null,
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        scheduledChange: null,
+        hasSubscription: false,
+        autoRecharge: { enabled: false, threshold: null, amount: null },
+        creditExpiry: {
+          expiringNextCycle: 0,
+          nextExpiryDate: null,
+        },
+        creditBreakdown: [],
+        creditGrants: [],
+        concurrencyLimit: 10,
+        concurrencySubscriptions: [],
+      });
+    });
+    context.mocks.api(
+      zeroBillingCreditCheckoutContract.create,
+      ({ body, respond }) => {
+        return respond(200, {
+          url: `https://checkout.stripe.com/credits?credits=${body.credits}`,
+        });
+      },
+    );
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("You're out of credits")).toBeInTheDocument();
+      expect(
+        screen.getByText("Add credits to keep chatting with Zero."),
+      ).toBeInTheDocument();
+      expect(queryButtonByText("Upgrade to Pro")).toBeNull();
+      expect(buttonByText("$100")).toBeInTheDocument();
+      expect(buttonByText("$200")).toBeInTheDocument();
+      expect(buttonByText("$300")).toBeInTheDocument();
+    });
+
+    click(buttonByText("$100"));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "https://checkout.stripe.com/credits?credits=100000",
       );
     });
   });

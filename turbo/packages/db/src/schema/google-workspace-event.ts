@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { connectors } from "./connector";
 import { zeroWorkflowTriggers } from "./zero-workflow";
+import type { GoogleWorkspaceEventTypes } from "@vm0/db/jsonb-contracts/google-workspace-event";
 
 export type GoogleWorkspaceEventProvider = "google-meet";
 
@@ -32,7 +33,9 @@ export const googleWorkspaceEventSubscriptionStates = pgTable(
       .$type<GoogleWorkspaceEventProvider>()
       .notNull(),
     targetResource: text("target_resource").notNull(),
-    eventTypes: jsonb("event_types").$type<readonly string[]>().notNull(),
+    eventTypes: jsonb("event_types")
+      .$type<GoogleWorkspaceEventTypes>()
+      .notNull(),
     eventTypesKey: text("event_types_key").notNull(),
     subscriptionName: varchar("subscription_name", { length: 255 }).notNull(),
     pubsubTopic: text("pubsub_topic").notNull(),

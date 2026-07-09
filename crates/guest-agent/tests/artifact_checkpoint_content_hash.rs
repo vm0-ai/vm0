@@ -102,7 +102,8 @@ fn test_runtime(
         guest_runtime_dir: Some(runtime_dir),
         ..GuestConfigRaw::default()
     })?;
-    let http = HttpClient::with_api_config(api_url, "test-token", "", Duration::ZERO)?;
+    let http =
+        HttpClient::with_api_config(api_url, "test-token", "", "test-run-001", Duration::ZERO)?;
     Ok(GuestRuntime {
         config,
         paths,

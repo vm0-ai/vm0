@@ -21,4 +21,28 @@ describe("zero resource pull registry resolver", () => {
       "color-system:carnival",
     );
   });
+
+  it("resolves a built-in website template package archive", () => {
+    expect(findRegistryResourceForPull("template:black-slabs")).toEqual(
+      expect.objectContaining({
+        id: "template:black-slabs",
+        kind: "template",
+        targets: ["website"],
+        source: expect.objectContaining({
+          path: "black-slabs",
+          archive: expect.objectContaining({
+            type: "tar.gz",
+            sha256:
+              "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("canonicalizes unprefixed built-in website template ids", () => {
+    expect(findRegistryResourceForPull("black-slabs")?.id).toBe(
+      "template:black-slabs",
+    );
+  });
 });

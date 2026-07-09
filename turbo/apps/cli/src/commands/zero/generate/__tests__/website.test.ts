@@ -104,6 +104,50 @@ describe("zero generate website command", () => {
     );
   });
 
+  it("should accept the built-in R2 website template package", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "High contrast launch page",
+      "--template",
+      "black-slabs",
+      "--site-slug",
+      "black-slabs-demo",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template: template:black-slabs (Black Slabs)",
+    );
+    expect(stdout).toContain(
+      "Selected template package: zero resource pull template:black-slabs --dir ./generated/resources",
+    );
+    expect(stdout).toContain('"id": "template:black-slabs"');
+    expect(stdout).toContain('"type": "tar.gz"');
+    expect(stdout).toContain(
+      '"sha256": "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3"',
+    );
+  });
+
+  it("should accept the built-in website picker id for --template", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "High contrast launch page",
+      "--template",
+      "website-template:black-slabs",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "Selected template: template:black-slabs (Black Slabs)",
+    );
+  });
+
   it("should reject a template that does not target website", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([

@@ -187,8 +187,7 @@ impl JobProvider for LocalProvider {
             secret_connector_map: None,
             secret_connector_metadata_map: None,
             cli_agent_type: req.cli_agent_type,
-            debug_no_mock_claude: None,
-            debug_no_mock_codex: None,
+            real_agent_in_preview: None,
             api_start_time: None,
             user_timezone: req.user_timezone,
             capture_network_bodies: None,
@@ -202,6 +201,7 @@ impl JobProvider for LocalProvider {
             feature_flags: req.feature_flags,
             billable_firewalls: vec![],
             model_usage_provider: None,
+            codex_runtime_config: None,
         };
         let active_input_source = req.active_input.unwrap_or(false).then(|| {
             crate::active_input::ActiveInputSource::local_queue(self.queue.clone(), run_id)

@@ -44,6 +44,7 @@ import {
   chatMessagesContract,
   chatThreadArtifactsContract,
   type AttachFile,
+  type ChatMessageUsagePayload,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type PagedChatMessage,
@@ -58,6 +59,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../zero-page/model-default-selection.ts";
 import {
@@ -986,7 +988,7 @@ function groupMessagesForDisplay(
   for (const msg of messages) {
     if (isUsageMessage(msg)) {
       if (msg.runId !== undefined) {
-        usageByRunId.set(msg.runId, msg.usage);
+        setLatestUsageForRun(usageByRunId, msg.runId, msg.usage);
       }
       continue;
     }
@@ -1009,6 +1011,25 @@ function groupMessagesForDisplay(
     const usage = runId === undefined ? undefined : usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
+}
+
+function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
+  const timestamp = Date.parse(usage.settledAt);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function setLatestUsageForRun(
+  usageByRunId: Map<string, ChatMessageUsagePayload>,
+  runId: string,
+  usage: ChatMessageUsagePayload,
+): void {
+  const existing = usageByRunId.get(runId);
+  if (
+    existing === undefined ||
+    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
+  ) {
+    usageByRunId.set(runId, usage);
+  }
 }
 
 interface GroupedChatMessagesCacheEntry {
@@ -2462,6 +2483,7 @@ function sendMessageRequestBody(params: {
   readonly result: PreparedSendMessageResult;
   readonly modelSelection: ModelProviderSelection | null;
   readonly codexFastModeEnabled: boolean;
+  readonly realAgentInPreviewEnabled: boolean;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly options: SendMessageOptions | undefined;
 }) {
@@ -2477,6 +2499,7 @@ function sendMessageRequestBody(params: {
     clientMessageId: params.clientMessageId,
     chatThreadSortEventId: params.chatThreadSortEventId,
     ...(runOptions ? { runOptions } : {}),
+    ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate: params.generationTemplate,
     ...(params.options && "computerUseHostId" in params.options
       ? { computerUseHostId: params.options.computerUseHostId ?? null }
@@ -2547,8 +2570,11 @@ const postSendMessage$ = command(
     },
     signal: AbortSignal,
   ): Promise<string | null> => {
+    const features = get(featureSwitch$);
     const codexFastModeEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+      features[FeatureSwitchKey.CodexFastMode] ?? false;
+    const realAgentInPreviewEnabled =
+      features[FeatureSwitchKey.RealAgentInPreview] ?? false;
     const client = get(zeroClient$)(chatMessagesContract);
     const [, sendResult] = await Promise.all([
       set(args.flushDraftClear$, signal),
@@ -2562,6 +2588,7 @@ const postSendMessage$ = command(
             result: args.result,
             modelSelection: args.modelSelection,
             codexFastModeEnabled,
+            realAgentInPreviewEnabled,
             generationTemplate: args.generationTemplate,
             options: args.options,
           }),
@@ -2607,7 +2634,10 @@ function createSendMessage(deps: SendMessageDeps) {
         L.debug("sendMessage$ no agentId, abort", { threadId });
         return;
       }
-      const generationTemplate = get(draft.generationTemplate$);
+      const generationTemplate = generationTemplateForFeatureSwitches(
+        get(draft.generationTemplate$),
+        get(featureSwitch$),
+      );
       const result =
         options?.includeDraftAttachments === false
           ? prepareTextOnlyUserMessage(prompt)
@@ -2728,7 +2758,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
         return;
       }
-      const generationTemplate = get(draft.generationTemplate$);
+      const generationTemplate = generationTemplateForFeatureSwitches(
+        get(draft.generationTemplate$),
+        get(featureSwitch$),
+      );
 
       const modelSelection = await get(modelSelection$);
       signal.throwIfAborted();
@@ -2782,8 +2815,11 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
+      const features = get(featureSwitch$);
       const codexFastModeEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+        features[FeatureSwitchKey.CodexFastMode] ?? false;
+      const realAgentInPreviewEnabled =
+        features[FeatureSwitchKey.RealAgentInPreview] ?? false;
       const runOptions = runOptionsFromModelProviderSelection(
         modelSelection,
         codexFastModeEnabled,
@@ -2801,6 +2837,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             chatThreadSortEventId,
             hasTextContent: result.hasTextContent,
             ...(runOptions ? { runOptions } : {}),
+            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             generationTemplate,
             ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           },

@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.49.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.5...guest-agent-v0.49.6) (2026-07-09)
+
+## [0.49.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.4...guest-agent-v0.49.5) (2026-07-09)
+
+
+### Documentation
+
+* document guest-agent active input api ([#20779](https://github.com/vm0-ai/vm0/issues/20779)) ([f350e32](https://github.com/vm0-ai/vm0/commit/f350e321ef38cfc23359af477cbd2b133b4ea579))
+
+## [0.49.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.3...guest-agent-v0.49.4) (2026-07-09)
+
+
+### Performance Improvements
+
+* cache session history with workspace images ([#20733](https://github.com/vm0-ai/vm0/issues/20733)) ([d588e5a](https://github.com/vm0-ai/vm0/commit/d588e5a9aa6e67ca18199cd74cadfa7dd4d66418))
+
+## [0.49.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.2...guest-agent-v0.49.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* add runner exit signal diagnostics ([#20674](https://github.com/vm0-ai/vm0/issues/20674)) ([bf46c07](https://github.com/vm0-ai/vm0/commit/bf46c07f8a9954576040760dfcfb3bb81ee2d1ea))
+* remove minimax codex legacy base url ([#20707](https://github.com/vm0-ai/vm0/issues/20707)) ([a4a9e77](https://github.com/vm0-ai/vm0/commit/a4a9e77fe2d8e1065f1b57a9ead26565b054fa39))
+
+
+### Refactoring
+
+* centralize guest private runtime file handling ([#20671](https://github.com/vm0-ai/vm0/issues/20671)) ([24ca30c](https://github.com/vm0-ai/vm0/commit/24ca30c56b4c9b657a3aad8da2affac5a49e5b4b))
+
+## [0.49.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.1...guest-agent-v0.49.2) (2026-07-08)
+
+## [0.49.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.0...guest-agent-v0.49.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* configure minimax codex runtime provider ([#20588](https://github.com/vm0-ai/vm0/issues/20588)) ([a5ae66b](https://github.com/vm0-ai/vm0/commit/a5ae66be4034b2b018175593b02b57d00a90615e))
+
+## [0.49.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.48.0...guest-agent-v0.49.0) (2026-07-08)
+
+
+### Features
+
+* add desktop client request headers ([#20622](https://github.com/vm0-ai/vm0/issues/20622)) ([00a66b8](https://github.com/vm0-ai/vm0/commit/00a66b894644a59f4646c31799a918e6ceafa19a))
+
+## [0.48.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.5...guest-agent-v0.48.0) (2026-07-08)
+
+
+### Features
+
+* add platform client headers to runner requests ([#20577](https://github.com/vm0-ai/vm0/issues/20577)) ([dee5306](https://github.com/vm0-ai/vm0/commit/dee53066bbc014e302a85aa085136b408e2df833))
+
+## [0.47.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.4...guest-agent-v0.47.5) (2026-07-07)
+
+
+### Documentation
+
+* clarify codex app-server client contract ([#20541](https://github.com/vm0-ai/vm0/issues/20541)) ([4f1ff80](https://github.com/vm0-ai/vm0/commit/4f1ff80721e9effd8d8571b7ece4cb77a681c6de))
+
+## [0.47.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.3...guest-agent-v0.47.4) (2026-07-07)
+
+## [0.47.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.2...guest-agent-v0.47.3) (2026-07-07)
+
+## [0.47.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.1...guest-agent-v0.47.2) (2026-07-07)
+
+
+### Performance Improvements
+
+* reuse codex zstd session history ([#20450](https://github.com/vm0-ai/vm0/issues/20450)) ([e9b1a48](https://github.com/vm0-ai/vm0/commit/e9b1a48e0e36b8ae75bceab667fd8d6f70fd2ede))
+
+## [0.47.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.47.0...guest-agent-v0.47.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* prevent compressed session history identity fallback ([#20434](https://github.com/vm0-ai/vm0/issues/20434)) ([8eba6a0](https://github.com/vm0-ai/vm0/commit/8eba6a07a04b47653e89d6a12c307cd16521ca69))
+
 ## [0.47.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.46.8...guest-agent-v0.47.0) (2026-07-06)
 
 

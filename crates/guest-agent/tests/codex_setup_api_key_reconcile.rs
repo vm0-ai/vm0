@@ -16,8 +16,8 @@ async fn api_key_setup_writes_auth_without_invoking_codex() -> TestResult {
     let fake_codex = bin_dir.join("codex");
     let invoked_marker = tmp.path().join("codex-invoked");
     let runtime_dir = tmp.path().join("runtime");
-    let user_env_dir = runtime_dir.join("user-env");
-    let user_env_path = user_env_dir.join("env.json");
+    let user_env_dir = runtime_dir.join(guest_contracts::env::USER_ENV_PRIVATE_DIR_NAME);
+    let user_env_path = user_env_dir.join(guest_contracts::env::USER_ENV_FILENAME);
     let run_payload_dir = runtime_dir.join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
     let run_payload_path = run_payload_dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
 

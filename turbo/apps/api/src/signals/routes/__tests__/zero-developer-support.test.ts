@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import AdmZip from "adm-zip";
-import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { beforeEach, expect } from "vitest";
 import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
@@ -11,34 +10,23 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { createFixtureTracker } from "./helpers/zero-route-test";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
-const store = createStore();
-const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
-  return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-});
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
-interface DeveloperSupportFixture extends UsageInsightFixture {
-  readonly composeId: string;
-  readonly runId: string;
+interface SupportSeed {
+  readonly actor: ApiTestUser;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
 }
 
-interface RunSeedOptions {
-  readonly status?: string;
-  readonly prompt?: string;
-  readonly createdAt?: Date;
-  readonly continuedFromSessionId?: string | null;
-  readonly result?: Record<string, unknown> | null;
+interface SupportRun {
+  readonly runId: string;
+  readonly sessionId: string;
 }
 
 function currentSecond(): number {
@@ -102,42 +90,104 @@ function zipText(zip: AdmZip, name: string): string {
   return entry.getData().toString("utf8");
 }
 
-async function seedSupportRun(
-  options: RunSeedOptions = {},
-): Promise<DeveloperSupportFixture> {
-  const fixture = await trackUsage(
-    store.set(seedUsageInsightFixture$, undefined, context.signal),
-  );
-  await store.set(
-    seedOrgMembership$,
-    { orgId: fixture.orgId, userId: fixture.userId },
-    context.signal,
-  );
-  const { composeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      displayName: "Support Agent",
-    },
-    context.signal,
-  );
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      composeId,
-      status: options.status ?? "running",
-      prompt: options.prompt,
-      createdAt: options.createdAt,
-      continuedFromSessionId: options.continuedFromSessionId,
-      result: options.result,
-    },
-    context.signal,
-  );
+function mockSessionHistoryBlob(hash: string, history: string): void {
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = (command as { readonly input?: { readonly Key?: string } })
+      .input;
+    if (input?.Key === `blobs/${hash}.blob`) {
+      if (
+        (command as { readonly constructor?: { readonly name?: string } })
+          .constructor?.name === "HeadObjectCommand"
+      ) {
+        return Promise.resolve({
+          ContentLength: Buffer.byteLength(history, "utf8"),
+        });
+      }
+      return Promise.resolve({
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield Buffer.from(history, "utf8");
+          },
+        },
+      });
+    }
+    return Promise.resolve({});
+  });
+}
 
-  return { ...fixture, composeId, runId };
+async function seedSupportActor(): Promise<SupportSeed> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Support fixtures require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Support Agent",
+    visibility: "private",
+  });
+  return {
+    actor,
+    orgId: actor.orgId,
+    userId: actor.userId,
+    agentId: agent.agentId,
+  };
+}
+
+async function createSupportRun(
+  seed: SupportSeed,
+  options: { readonly prompt?: string; readonly sessionId?: string } = {},
+): Promise<SupportRun> {
+  const api = createRunsAutomationsApi(context);
+  const run = await api.createRun(seed.actor, {
+    agentId: seed.agentId,
+    ...(options.sessionId === undefined
+      ? {}
+      : { sessionId: options.sessionId }),
+    prompt: options.prompt ?? "Support precondition",
+    modelProvider: "anthropic-api-key",
+  });
+  return { runId: run.runId, sessionId: run.sessionId };
+}
+
+/**
+ * Completes the run through the sandbox checkpoint + complete webhooks so its
+ * result records the agent session (result.agentSessionId), matching runs
+ * that finished a real session.
+ */
+async function completeRunWithSession(
+  seed: SupportSeed,
+  run: SupportRun,
+): Promise<void> {
+  const api = createRunsAutomationsApi(context);
+  const webhooks = createWebhookCallbackApi(context);
+  const sandboxHeaders = {
+    authorization: `Bearer ${api.sandboxTokenForRun(seed.actor, run.runId)}`,
+  };
+  const history = `support session history ${run.runId}`;
+  const historyHash = createHash("sha256").update(history).digest("hex");
+  mockSessionHistoryBlob(historyHash, history);
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId: run.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `support-cli-${run.runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+    sandboxHeaders,
+    [200],
+  );
 }
 
 function client() {
@@ -230,10 +280,11 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("returns RUN_NOT_FOUND for a missing run", async () => {
-    const fixture = await seedSupportRun();
+    const seed = await seedSupportActor();
+    await createSupportRun(seed);
     const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
+      userId: seed.userId,
+      orgId: seed.orgId,
       runId: randomUUID(),
     });
 
@@ -249,8 +300,9 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("returns a deterministic consent code when consentCode is omitted", async () => {
-    const fixture = await seedSupportRun();
-    const token = zeroToken(fixture);
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed);
+    const token = zeroToken({ ...seed, runId: run.runId });
 
     const first = await accept(
       submitDeveloperSupport(token, {
@@ -272,29 +324,20 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("uses the same consent code across runs in the same session", async () => {
-    const sessionId = randomUUID();
-    const first = await seedSupportRun({ continuedFromSessionId: sessionId });
-    const { runId: secondRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: first.orgId,
-        userId: first.userId,
-        composeId: first.composeId,
-        status: "running",
-        continuedFromSessionId: sessionId,
-      },
-      context.signal,
-    );
+    const seed = await seedSupportActor();
+    const base = await createSupportRun(seed);
+    const first = await createSupportRun(seed, { sessionId: base.sessionId });
+    const second = await createSupportRun(seed, { sessionId: base.sessionId });
 
     const firstResponse = await accept(
-      submitDeveloperSupport(zeroToken(first), {
+      submitDeveloperSupport(zeroToken({ ...seed, runId: first.runId }), {
         title: "Bug",
         description: "Something broke",
       }),
       [200],
     );
     const secondResponse = await accept(
-      submitDeveloperSupport(zeroToken({ ...first, runId: secondRunId }), {
+      submitDeveloperSupport(zeroToken({ ...seed, runId: second.runId }), {
         title: "Bug",
         description: "Something broke",
       }),
@@ -305,22 +348,13 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("accepts a consent code from a different run in the same session", async () => {
-    const sessionId = randomUUID();
-    const first = await seedSupportRun({ continuedFromSessionId: sessionId });
-    const { runId: secondRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: first.orgId,
-        userId: first.userId,
-        composeId: first.composeId,
-        status: "running",
-        continuedFromSessionId: sessionId,
-      },
-      context.signal,
-    );
+    const seed = await seedSupportActor();
+    const base = await createSupportRun(seed);
+    const first = await createSupportRun(seed, { sessionId: base.sessionId });
+    const second = await createSupportRun(seed, { sessionId: base.sessionId });
 
     const consent = await accept(
-      submitDeveloperSupport(zeroToken(first), {
+      submitDeveloperSupport(zeroToken({ ...seed, runId: first.runId }), {
         title: "Bug",
         description: "Something broke",
       }),
@@ -328,7 +362,7 @@ describe("POST /api/zero/developer-support", () => {
     );
 
     const response = await accept(
-      submitDeveloperSupport(zeroToken({ ...first, runId: secondRunId }), {
+      submitDeveloperSupport(zeroToken({ ...seed, runId: second.runId }), {
         title: "Bug",
         description: "Something broke",
         consentCode: requireConsentCode(consent.body),
@@ -340,9 +374,10 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("returns INVALID_CONSENT_CODE for an invalid code", async () => {
-    const fixture = await seedSupportRun();
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed);
     const response = await accept(
-      submitDeveloperSupport(zeroToken(fixture), {
+      submitDeveloperSupport(zeroToken({ ...seed, runId: run.runId }), {
         title: "Bug",
         description: "Something broke",
         consentCode: "ZZZZ",
@@ -354,8 +389,9 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("submits a diagnostic bundle with a valid consent code", async () => {
-    const fixture = await seedSupportRun();
-    const token = zeroToken(fixture);
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed);
+    const token = zeroToken({ ...seed, runId: run.runId });
     const consent = await accept(
       submitDeveloperSupport(token, {
         title: "Bug",
@@ -379,8 +415,9 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("falls back to the current runId when a run has no session", async () => {
-    const fixture = await seedSupportRun({ continuedFromSessionId: null });
-    const token = zeroToken(fixture);
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed);
+    const token = zeroToken({ ...seed, runId: run.runId });
     const consent = await accept(
       submitDeveloperSupport(token, {
         title: "Bug",
@@ -406,12 +443,15 @@ describe("POST /api/zero/developer-support", () => {
       .find((apl) => {
         return apl.includes("agent-run-events") && apl.includes("runId in");
       });
-    expect(agentEventsQuery).toContain(fixture.runId);
+    expect(agentEventsQuery).toContain(run.runId);
   });
 
   it("includes the user prompt in chat-history.jsonl", async () => {
-    const fixture = await seedSupportRun({ prompt: "Inspect the deployment" });
-    const token = zeroToken(fixture);
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed, {
+      prompt: "Inspect the deployment",
+    });
+    const token = zeroToken({ ...seed, runId: run.runId });
     const consent = await accept(
       submitDeveloperSupport(token, {
         title: "Bug",
@@ -452,27 +492,14 @@ describe("POST /api/zero/developer-support", () => {
   });
 
   it("collects prompts from all runs in a multi-run session", async () => {
-    const sessionId = randomUUID();
-    const first = await seedSupportRun({
-      status: "completed",
-      prompt: "First prompt",
-      createdAt: new Date("2024-01-01T00:00:00Z"),
-      result: { agentSessionId: sessionId },
+    const seed = await seedSupportActor();
+    const first = await createSupportRun(seed, { prompt: "First prompt" });
+    await completeRunWithSession(seed, first);
+    const second = await createSupportRun(seed, {
+      prompt: "Second prompt",
+      sessionId: first.sessionId,
     });
-    const { runId: secondRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: first.orgId,
-        userId: first.userId,
-        composeId: first.composeId,
-        status: "running",
-        prompt: "Second prompt",
-        createdAt: new Date("2024-01-01T01:00:00Z"),
-        continuedFromSessionId: sessionId,
-      },
-      context.signal,
-    );
-    const token = zeroToken({ ...first, runId: secondRunId });
+    const token = zeroToken({ ...seed, runId: second.runId });
     const consent = await accept(
       submitDeveloperSupport(token, {
         title: "Session bug",
@@ -510,12 +537,13 @@ describe("POST /api/zero/developer-support", () => {
       }),
     ).toStrictEqual(["First prompt", "Second prompt"]);
     expect(promptEvents[0]?.runId).toBe(first.runId);
-    expect(promptEvents[1]?.runId).toBe(secondRunId);
+    expect(promptEvents[1]?.runId).toBe(second.runId);
   });
 
   it("succeeds when optional Axiom log queries fail", async () => {
-    const fixture = await seedSupportRun();
-    const token = zeroToken(fixture);
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed);
+    const token = zeroToken({ ...seed, runId: run.runId });
     const consent = await accept(
       submitDeveloperSupport(token, {
         title: "Bug",
@@ -581,8 +609,9 @@ describe("POST /api/zero/developer-support", () => {
         });
       }),
     );
-    const fixture = await seedSupportRun();
-    const token = zeroToken(fixture);
+    const seed = await seedSupportActor();
+    const run = await createSupportRun(seed);
+    const token = zeroToken({ ...seed, runId: run.runId });
     const consent = await accept(
       submitDeveloperSupport(token, {
         title: "Plain route test",

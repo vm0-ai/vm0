@@ -29,9 +29,12 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | File | Tests |
 |------|-------|
 | `test_addon_configuration.py` | Addon option registration and configuration updates |
-| `test_request_handler_passthrough.py` | Request pass-through and auto-allow decisions |
+| `test_request_handler_passthrough.py` | Request pass-through, auto-allow, and browser user-agent passthrough decisions |
 | `test_request_handler_authority_validation.py` | HTTPS authority validation before firewall auth |
-| `test_request_handler_firewall_dispatch.py` | Firewall dispatch and network policy decisions |
+| `test_request_handler_firewall_dispatch.py` | Core firewall dispatch, permission blocks, malformed config/policy handling, block responses, and unsafe-path blocks |
+| `test_request_handler_public_destination.py` | Request-hook public destination validation and revalidation |
+| `test_request_handler_connector_diagnostics.py` | Request-hook connector diagnostics and inactive built-in connector diagnostics |
+| `test_request_handler_auth_base_body.py` | Request-hook auth-base body admission and cleanup |
 | `test_request_handler_usage_tracking.py` | Request-hook billable usage tracking lifecycle |
 | `test_response_headers_handler.py` | Response-header hook stream setup |
 | `test_response_handler.py` | Response hook logging, cleanup, and cache invalidation |
@@ -103,7 +106,8 @@ Pre-commit hooks run `pytest` on staged Python files in the addon.
 | `test_connector_usage.py` | Connector usage reporter and stream-path detection |
 | `test_usage_idempotency.py` | Usage event idempotency key helpers |
 | `test_usage_reporting_idempotency.py` | Hook-level usage reporting idempotency |
-| `test_webhook.py` | Usage webhook delivery |
+| `test_webhook_delivery_admission.py` | Usage webhook delivery admission, capacity, pending counter, and executor fallback behavior |
+| `test_webhook_http_delivery.py` | Usage webhook HTTP delivery, retry, request, and log behavior |
 | `test_counters.py` | Usage pending counters |
 
 ## Patterns

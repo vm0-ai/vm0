@@ -22,11 +22,56 @@ type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
+type WorkflowNotionChildPageTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "notion-child-page-created" }
+>;
+type WorkflowNotionDatabaseItemTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "notion-database-item-created";
+  }
+>;
+type WorkflowNotionPageContentUpdatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "notion-page-content-updated";
+  }
+>;
 
 function isWebhookTrigger(
   trigger: ZeroWorkflowTriggerSummary,
 ): trigger is WorkflowWebhookTriggerSummary {
   return trigger.kind === "event" && trigger.eventType === "webhook-received";
+}
+
+function isNotionChildPageTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowNotionChildPageTriggerSummary {
+  return (
+    trigger.kind === "event" &&
+    trigger.eventType === "notion-child-page-created"
+  );
+}
+
+function isNotionDatabaseItemTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowNotionDatabaseItemTriggerSummary {
+  return (
+    trigger.kind === "event" &&
+    trigger.eventType === "notion-database-item-created"
+  );
+}
+
+function isNotionPageContentUpdatedTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is WorkflowNotionPageContentUpdatedTriggerSummary {
+  return (
+    trigger.kind === "event" &&
+    trigger.eventType === "notion-page-content-updated"
+  );
 }
 
 function isGoogleCalendarTrigger(
@@ -106,6 +151,40 @@ function formatWebhookTriggerEntry(
   trigger: WorkflowWebhookTriggerSummary,
 ): string {
   return `Webhook: ${trigger.webhookUrl ?? "hidden"}`;
+}
+
+function formatNotionParentPage(
+  trigger: WorkflowNotionChildPageTriggerSummary,
+): string {
+  return (
+    trigger.eventConfig.parentPage.title ?? trigger.eventConfig.parentPage.url
+  );
+}
+
+function formatNotionDatabase(
+  trigger: WorkflowNotionDatabaseItemTriggerSummary,
+): string {
+  return (
+    trigger.eventConfig.dataSource.title ?? trigger.eventConfig.dataSource.url
+  );
+}
+
+function formatNotionContentUpdatedScope(
+  trigger: WorkflowNotionPageContentUpdatedTriggerSummary,
+): string {
+  return trigger.eventConfig.scope.type === "page"
+    ? (trigger.eventConfig.scope.page.title ??
+        trigger.eventConfig.scope.page.url)
+    : (trigger.eventConfig.scope.dataSource.title ??
+        trigger.eventConfig.scope.dataSource.url);
+}
+
+function formatNotionContentUpdatedScopeUrl(
+  trigger: WorkflowNotionPageContentUpdatedTriggerSummary,
+): string {
+  return trigger.eventConfig.scope.type === "page"
+    ? trigger.eventConfig.scope.page.url
+    : trigger.eventConfig.scope.dataSource.url;
 }
 
 function formatWorkflowTriggerEntry(
@@ -192,7 +271,11 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
     case "google-meet-transcript-generated":
       return "Google Meet transcript ready";
     case "notion-child-page-created":
-      return "New Notion child page";
+      return `New Notion child page: ${formatNotionParentPage(trigger)}`;
+    case "notion-database-item-created":
+      return `New Notion database item: ${formatNotionDatabase(trigger)}`;
+    case "notion-page-content-updated":
+      return `Notion page content updated: ${formatNotionContentUpdatedScope(trigger)}`;
     case "webhook-received":
       return "Webhook";
   }
@@ -294,6 +377,31 @@ export function printWorkflowTriggerDetails(
   }
   if (isGoogleCalendarTrigger(trigger)) {
     console.log(`${"Calendar:".padEnd(14)}${trigger.eventConfig.calendarId}`);
+  }
+  if (isNotionChildPageTrigger(trigger)) {
+    console.log(
+      `${"Parent page:".padEnd(14)}${formatNotionParentPage(trigger)}`,
+    );
+    console.log(
+      `${"Parent URL:".padEnd(14)}${trigger.eventConfig.parentPage.url}`,
+    );
+  }
+  if (isNotionDatabaseItemTrigger(trigger)) {
+    console.log(`${"Database:".padEnd(14)}${formatNotionDatabase(trigger)}`);
+    console.log(
+      `${"Database URL:".padEnd(14)}${trigger.eventConfig.dataSource.url}`,
+    );
+  }
+  if (isNotionPageContentUpdatedTrigger(trigger)) {
+    const scopeLabel =
+      trigger.eventConfig.scope.type === "page" ? "Page" : "Database";
+    console.log(`${"Scope:".padEnd(14)}${scopeLabel}`);
+    console.log(
+      `${`${scopeLabel}:`.padEnd(14)}${formatNotionContentUpdatedScope(trigger)}`,
+    );
+    console.log(
+      `${`${scopeLabel} URL:`.padEnd(14)}${formatNotionContentUpdatedScopeUrl(trigger)}`,
+    );
   }
   if (isWebhookTrigger(trigger)) {
     console.log(

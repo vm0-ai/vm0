@@ -14,6 +14,7 @@ import {
   handleUnauthorizedRedirect,
   type ClerkLike,
 } from "./auth-retry.ts";
+import { addClientHeaders } from "./client-headers.ts";
 
 interface AuthedClientOptions {
   readonly baseUrl: string;
@@ -46,7 +47,13 @@ export function createAuthedContractClient<T extends AppRouter>(
         if (token) {
           headers.set("Authorization", `Bearer ${token}`);
         }
-        return trpcRestFetchApi({ ...args, headers, path });
+        addClientHeaders(headers);
+        return trpcRestFetchApi({
+          ...args,
+          fetchOptions: { ...args.fetchOptions, credentials: "include" },
+          headers,
+          path,
+        });
       };
 
       let response = await requestWithToken(initialToken);

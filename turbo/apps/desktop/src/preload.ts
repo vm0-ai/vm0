@@ -92,6 +92,28 @@ const desktopComputerUseApi: DesktopComputerUseApi = {
       directory,
     );
   },
+  importMcpPluginServers(json: string): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.importMcpPluginServers,
+      json,
+    );
+  },
+  setMcpPluginServerEnabled(
+    server: string,
+    enabled: boolean,
+  ): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.setMcpPluginServerEnabled,
+      server,
+      enabled,
+    );
+  },
+  removeMcpPluginServer(server: string): Promise<DesktopComputerUseState> {
+    return ipcRenderer.invoke(
+      COMPUTER_USE_CHANNELS.removeMcpPluginServer,
+      server,
+    );
+  },
   openAccessibilitySettings(): Promise<void> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.openAccessibilitySettings);
   },

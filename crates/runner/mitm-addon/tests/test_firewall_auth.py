@@ -5,6 +5,7 @@ import io
 import json
 import time
 import urllib.error
+import uuid
 from email.message import Message
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -235,7 +236,7 @@ class TestGetFirewallHeaders:
         assert mock_fetch.call_args.kwargs == {"force_refresh": False}
 
         assert cached_headers(cache_key)
-        assert require_cached_headers(cache_key).payload.headers == mock_headers
+        assert require_cached_headers(cache_key).headers == mock_headers
 
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = auth_cache_key(api_id="https://api.github.com")
@@ -289,7 +290,7 @@ class TestGetFirewallHeaders:
         # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
-        assert require_cached_headers(cache_key).payload.headers == fresh_headers
+        assert require_cached_headers(cache_key).headers == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
@@ -471,7 +472,7 @@ class TestGetFirewallHeaders:
         assert second["query"] == cached_query
         assert second["cache_hit"] is True
         mock_fetch.assert_called_once()
-        assert require_cached_headers(cache_key).payload.query == cached_query
+        assert require_cached_headers(cache_key).query == cached_query
 
     async def test_base_and_query_are_cached_together(self):
         """auth.base and auth.query survive the same cache entry."""
@@ -498,8 +499,8 @@ class TestGetFirewallHeaders:
         assert second["cache_hit"] is True
         mock_fetch.assert_called_once()
         cached = require_cached_headers(cache_key)
-        assert cached.payload.base == cached_base
-        assert cached.payload.query == cached_query
+        assert cached.base == cached_base
+        assert cached.query == cached_query
 
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
@@ -654,7 +655,7 @@ class TestGetFirewallHeaders:
         assert forced_result["cache_hit"] is False
         assert not force_refresh_pending(cache_key)
         assert require_last_force_refresh_monotonic_at(cache_key) >= before_forced
-        assert require_cached_headers(cache_key).payload.headers == forced_headers
+        assert require_cached_headers(cache_key).headers == forced_headers
 
     async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
         """A same-key waiter must not reuse headers from the stale-prone leader fetch."""
@@ -701,9 +702,7 @@ class TestGetFirewallHeaders:
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
         assert waiter_result["headers"] == {"Authorization": "Bearer refreshed"}
-        assert require_cached_headers(cache_key).payload.headers == {
-            "Authorization": "Bearer refreshed"
-        }
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
         assert not force_refresh_pending(cache_key)
 
     async def test_force_refresh_absent_passes_false(self, headers):
@@ -1672,8 +1671,14 @@ class TestHandleFirewallRequest:
 
 
 class TestMakeApiRequest:
-    def test_builds_platform_api_request_with_standard_headers(self):
-        with patch.object(platform_api, "VERCEL_BYPASS", ""):
+    def test_builds_platform_api_request_with_standard_headers(self, mitm_ctx):
+        with (
+            mitm_ctx(
+                client_session_id="runner-session-direct",
+                client_version="runner-version-direct",
+            ),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+        ):
             req = platform_api.make_api_request(
                 "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
                 b"{}",
@@ -1686,6 +1691,11 @@ class TestMakeApiRequest:
         assert headers["Content-type"] == "application/json"
         assert headers["Authorization"] == "Bearer tok-xyz"
         assert headers["User-agent"] == "vm0-mitm-addon/1.0"
+        normalized_headers = {name.lower(): value for name, value in headers.items()}
+        assert normalized_headers["x-client-version"] == "runner-version-direct"
+        assert normalized_headers["x-client-type"] == "MitmAddon"
+        assert normalized_headers["x-client-session-id"] == "runner-session-direct"
+        uuid.UUID(normalized_headers["x-client-request-id"])
 
     @pytest.mark.parametrize(
         "url",
@@ -1731,6 +1741,10 @@ class TestFetchFirewallHeaders:
         assert request.headers["authorization"] == "Bearer tok-xyz"
         assert request.headers["content-type"] == "application/json"
         assert request.headers["user-agent"] == "vm0-mitm-addon/1.0"
+        assert request.headers["x-client-version"] == "runner-version-test"
+        assert request.headers["x-client-type"] == "MitmAddon"
+        assert request.headers["x-client-session-id"] == "runner-session-test"
+        uuid.UUID(request.headers["x-client-request-id"])
         assert "x-vercel-protection-bypass" not in request.headers
         assert request.json_body() == {
             "encryptedSecrets": "iv:tag:data",
@@ -2226,13 +2240,14 @@ class TestFirewallAuthResponseBodyReader:
 
 
 class TestFetchFirewallHeadersResourceBoundary:
-    def test_closes_response_on_success(self):
+    def test_closes_response_on_success(self, mitm_ctx):
         """Success path must close the urlopen response — FD leak guard (#10475)."""
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
         mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
 
         with (
+            mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
             patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
@@ -2241,7 +2256,7 @@ class TestFetchFirewallHeadersResourceBoundary:
 
         mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
 
-    def test_closes_http_error_response_when_body_is_unreadable(self):
+    def test_closes_http_error_response_when_body_is_unreadable(self, mitm_ctx):
         http_error = urllib.error.HTTPError(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
             400,
@@ -2252,6 +2267,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         http_error.close = MagicMock()
 
         with (
+            mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
             patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
@@ -2262,7 +2278,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         assert exc_info.value is http_error
         http_error.close.assert_called_once()
 
-    def test_closes_http_error_response_when_body_is_too_large(self):
+    def test_closes_http_error_response_when_body_is_too_large(self, mitm_ctx):
         error_body = json.dumps(
             {
                 "error": {
@@ -2280,6 +2296,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         http_error.close = MagicMock()
 
         with (
+            mitm_ctx(),
             patch.object(
                 auth_client,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
@@ -2315,7 +2332,10 @@ class TestFetchFirewallHeadersResourceBoundary:
         ],
     )
     def test_closes_http_error_response(
-        self, error_body: bytes, expected_exception: type[Exception]
+        self,
+        mitm_ctx,
+        error_body: bytes,
+        expected_exception: type[Exception],
     ):
         """HTTPError path must close the underlying socket — FD leak guard (#10475)."""
         http_error = _http_error(
@@ -2327,6 +2347,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         http_error.close = MagicMock()
 
         with (
+            mitm_ctx(),
             patch("platform_api.urllib.request.Request"),
             patch("firewall_auth_client.urllib.request.urlopen", side_effect=http_error),
             patch.object(platform_api, "VERCEL_BYPASS", ""),

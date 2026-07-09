@@ -176,6 +176,7 @@ import { generate as generatePinecone } from "./pinecone";
 import { generate as generatePipedream } from "./pipedream";
 import { generate as generatePipedrive } from "./pipedrive";
 import { generate as generatePlain } from "./plain";
+import { generate as generatePlaystation } from "./playstation";
 import { generate as generatePlausible } from "./plausible";
 import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
@@ -452,6 +453,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   pipedream: generatePipedream,
   pipedrive: generatePipedrive,
   plain: generatePlain,
+  playstation: generatePlaystation,
   plausible: generatePlausible,
   podchaser: generatePodchaser,
   posthog: generatePosthog,

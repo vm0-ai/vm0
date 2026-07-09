@@ -11,8 +11,6 @@ import {
   COMPUTER_USE_FILESYSTEM_MCP_VERSION,
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
-  COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES,
-  COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES,
   computerUseFilesystemToolNames,
   computerUsePluginCallRequiredCapabilities,
   isComputerUsePluginCallPayload,
@@ -26,6 +24,12 @@ import type {
   ComputerUseCommandFailure,
 } from "./computer-use-accessibility";
 import type { DesktopComputerUseFilesystemPluginState } from "./computer-use-types";
+import { PluginRestartPolicy } from "./desktop-plugin-restart-policy";
+import {
+  commandFailure,
+  normalizePluginToolResult,
+  pluginErrorMessage,
+} from "./desktop-plugin-tool-result";
 import {
   readDesktopPreferenceRecord,
   writeDesktopPreferenceRecord,
@@ -34,8 +38,6 @@ import {
 const nodeRequire = createRequire(__filename);
 const PREFERENCES_KEY = "computerUsePlugins";
 const FILESYSTEM_KEY = "filesystem";
-const TEXT_MIME_TYPE = "text/plain; charset=utf-8";
-const DEFAULT_FILENAME = "filesystem-result.txt";
 
 interface FilesystemPluginPreferences {
   readonly enabled: boolean;
@@ -129,173 +131,7 @@ function filesystemServerEntry(): string {
   );
 }
 
-function commandFailure(
-  code: ComputerUseCommandFailure["error"]["code"],
-  message: string,
-): ComputerUseCommandExecutionResult {
-  return { status: "failed", error: { code, message } };
-}
-
-function bufferByteLength(value: string): number {
-  return Buffer.byteLength(value, "utf8");
-}
-
-function resultTooLarge(sizeBytes: number): ComputerUseCommandExecutionResult {
-  return commandFailure(
-    "result_too_large",
-    `Filesystem plugin result is ${sizeBytes} bytes and exceeds the ${COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES} byte limit.`,
-  );
-}
-
-function filenameForTool(tool: ComputerUseFilesystemTool): string {
-  return `${tool}.txt`;
-}
-
-function pluginContentResult(args: {
-  readonly tool: ComputerUseFilesystemTool;
-  readonly text?: string;
-  readonly dataBase64?: string;
-  readonly mimeType: string;
-  readonly fileName: string;
-  readonly sizeBytes: number;
-}): ComputerUseCommandExecutionResult {
-  if (args.sizeBytes > COMPUTER_USE_PLUGIN_RESULT_BLOB_MAX_BYTES) {
-    return resultTooLarge(args.sizeBytes);
-  }
-  return {
-    status: "succeeded",
-    result: {
-      plugin: COMPUTER_USE_FILESYSTEM_PLUGIN,
-      tool: args.tool,
-      sizeBytes: args.sizeBytes,
-      offloaded: true,
-      ...(args.text ? { summary: `Saved ${args.sizeBytes} bytes` } : {}),
-      pluginContent: {
-        dataBase64:
-          args.dataBase64 ??
-          Buffer.from(args.text ?? "", "utf8").toString("base64"),
-        mimeType: args.mimeType,
-        fileName: args.fileName,
-      },
-    },
-  };
-}
-
-function textResult(
-  tool: ComputerUseFilesystemTool,
-  text: string,
-): ComputerUseCommandExecutionResult {
-  const sizeBytes = bufferByteLength(text);
-  if (sizeBytes <= COMPUTER_USE_PLUGIN_RESULT_INLINE_TEXT_MAX_BYTES) {
-    return {
-      status: "succeeded",
-      result: {
-        plugin: COMPUTER_USE_FILESYSTEM_PLUGIN,
-        tool,
-        content: text,
-        sizeBytes,
-        truncated: false,
-      },
-    };
-  }
-  return pluginContentResult({
-    tool,
-    text,
-    mimeType: TEXT_MIME_TYPE,
-    fileName: filenameForTool(tool),
-    sizeBytes,
-  });
-}
-
-function jsonResult(
-  tool: ComputerUseFilesystemTool,
-  value: unknown,
-): ComputerUseCommandExecutionResult {
-  return textResult(tool, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function normalizeToolResult(
-  tool: ComputerUseFilesystemTool,
-  result: CallToolResult,
-): ComputerUseCommandExecutionResult {
-  if (result.isError) {
-    const message = result.content
-      .map((entry) => {
-        return entry.type === "text" ? entry.text : "";
-      })
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-    return commandFailure(
-      message.toLowerCase().includes("allowed directory") ||
-        message.toLowerCase().includes("access denied")
-        ? "path_denied"
-        : "mcp_error",
-      message || "Filesystem plugin tool failed",
-    );
-  }
-
-  const textEntries = result.content.filter((entry) => {
-    return entry.type === "text";
-  });
-  if (textEntries.length === result.content.length) {
-    return textResult(
-      tool,
-      textEntries
-        .map((entry) => {
-          return entry.text;
-        })
-        .join("\n"),
-    );
-  }
-
-  const firstBinary = result.content.find((entry) => {
-    return entry.type === "image" || entry.type === "audio";
-  });
-  if (firstBinary?.type === "image" || firstBinary?.type === "audio") {
-    const sizeBytes = Buffer.from(firstBinary.data, "base64").length;
-    return pluginContentResult({
-      tool,
-      dataBase64: firstBinary.data,
-      mimeType: firstBinary.mimeType,
-      fileName: DEFAULT_FILENAME,
-      sizeBytes,
-    });
-  }
-
-  const firstResource = result.content.find((entry) => {
-    return entry.type === "resource";
-  });
-  if (firstResource?.type === "resource") {
-    const resource = firstResource.resource;
-    const fileName = path.basename(resource.uri) || DEFAULT_FILENAME;
-    if ("text" in resource) {
-      return pluginContentResult({
-        tool,
-        text: resource.text,
-        mimeType: resource.mimeType ?? TEXT_MIME_TYPE,
-        fileName,
-        sizeBytes: bufferByteLength(resource.text),
-      });
-    }
-    const sizeBytes = Buffer.from(resource.blob, "base64").length;
-    return pluginContentResult({
-      tool,
-      dataBase64: resource.blob,
-      mimeType: resource.mimeType ?? "application/octet-stream",
-      fileName,
-      sizeBytes,
-    });
-  }
-
-  return jsonResult(tool, result.content);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function errorCodeForException(
+function filesystemFailureCode(
   message: string,
 ): ComputerUseCommandFailure["error"]["code"] {
   const normalized = message.toLowerCase();
@@ -321,6 +157,8 @@ export class DesktopFilesystemPluginManager {
   private hostRuntimeOnline = false;
   private runtime: FilesystemPluginRuntime | null = null;
   private startPromise: Promise<void> | null = null;
+  private readonly restartPolicy = new PluginRestartPolicy();
+  private restartTimer: NodeJS.Timeout | null = null;
   private status: DesktopComputerUseFilesystemPluginState["status"] =
     "disabled";
   private lastError: string | null = null;
@@ -466,10 +304,10 @@ export class DesktopFilesystemPluginManager {
         "Filesystem plugin has no allowed directories.",
       );
     }
-    if (this.status === "starting") {
+    if (this.status === "starting" || this.status === "restarting") {
       return commandFailure(
         "plugin_restarting",
-        "Filesystem plugin is starting.",
+        `Filesystem plugin is ${this.status}.`,
       );
     }
     if (this.status !== "running" || !this.runtime) {
@@ -492,7 +330,7 @@ export class DesktopFilesystemPluginManager {
         command.payload.arguments,
       );
     } catch (error) {
-      return commandFailure("invalid_arguments", errorMessage(error));
+      return commandFailure("invalid_arguments", pluginErrorMessage(error));
     }
 
     try {
@@ -506,17 +344,23 @@ export class DesktopFilesystemPluginManager {
           "Filesystem plugin returned an unsupported tool result.",
         );
       }
-      return normalizeToolResult(
-        command.payload.tool,
+      return normalizePluginToolResult(
+        {
+          plugin: COMPUTER_USE_FILESYSTEM_PLUGIN,
+          tool: command.payload.tool,
+          mapErrorCode: filesystemFailureCode,
+        },
         result as CallToolResult,
       );
     } catch (error) {
-      const message = errorMessage(error);
-      return commandFailure(errorCodeForException(message), message);
+      const message = pluginErrorMessage(error);
+      return commandFailure(filesystemFailureCode(message), message);
     }
   }
 
   stop(): void {
+    this.cancelScheduledRestart();
+    this.restartPolicy.reset();
     void this.stopRuntime();
   }
 
@@ -530,11 +374,40 @@ export class DesktopFilesystemPluginManager {
   }
 
   private reconcile(): void {
+    this.cancelScheduledRestart();
+    this.restartPolicy.reset();
     if (!this.shouldRun()) {
       void this.stopRuntime();
       return;
     }
     void this.restartRuntime();
+  }
+
+  private cancelScheduledRestart(): void {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+  }
+
+  private scheduleRestartOrFail(message: string): void {
+    if (this.restartTimer) {
+      return;
+    }
+    const delayMs = this.restartPolicy.nextDelayMs();
+    if (delayMs === null) {
+      this.status = "error";
+      this.lastError = message;
+      this.onChange();
+      return;
+    }
+    this.status = "restarting";
+    this.lastError = message;
+    this.onChange();
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      void this.restartRuntime();
+    }, delayMs);
   }
 
   private save(): void {
@@ -556,8 +429,9 @@ export class DesktopFilesystemPluginManager {
   }
 
   private async startRuntime(): Promise<void> {
+    let transport: StdioClientTransport | null = null;
     try {
-      const transport = new StdioClientTransport({
+      transport = new StdioClientTransport({
         command: process.execPath,
         args: [filesystemServerEntry(), ...this.preferences.allowedDirectories],
         env: {
@@ -574,12 +448,11 @@ export class DesktopFilesystemPluginManager {
       transport.onclose = () => {
         this.runtime = null;
         if (this.shouldRun()) {
-          this.status = "error";
-          this.lastError = "Filesystem plugin process exited.";
-        } else {
-          this.status = "disabled";
-          this.lastError = null;
+          this.scheduleRestartOrFail("Filesystem plugin process exited.");
+          return;
         }
+        this.status = "disabled";
+        this.lastError = null;
         this.onChange();
       };
       const client = new Client(
@@ -605,11 +478,25 @@ export class DesktopFilesystemPluginManager {
       this.runtime = { client, transport, tools };
       this.status = "running";
       this.lastError = null;
+      this.restartPolicy.notifyStarted();
       this.onChange();
     } catch (error) {
       this.runtime = null;
+      if (transport) {
+        transport.onclose = undefined;
+        transport.onerror = undefined;
+        try {
+          await transport.close();
+        } catch (closeError) {
+          console.warn("Unable to close filesystem plugin process", closeError);
+        }
+      }
+      if (this.shouldRun()) {
+        this.scheduleRestartOrFail(pluginErrorMessage(error));
+        return;
+      }
       this.status = "error";
-      this.lastError = errorMessage(error);
+      this.lastError = pluginErrorMessage(error);
       this.onChange();
     }
   }

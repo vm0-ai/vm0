@@ -69,7 +69,7 @@ def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_pa
         executors[0].submit(lambda: None)
 
 
-def test_fresh_usage_executor_uses_owned_executor_when_global_changes(tmp_path):
+def test_fresh_usage_executor_uses_owned_executor_when_global_changes(tmp_path, mitm_ctx):
     original = usage.webhook.usage_executor
     replacement = _RecordingExecutor()
     executors: list[ThreadPoolExecutor] = []
@@ -77,6 +77,7 @@ def test_fresh_usage_executor_uses_owned_executor_when_global_changes(tmp_path):
 
     with (
         server.run(),
+        mitm_ctx(),
         patch.object(usage, "flush_usage_events", wraps=usage.flush_usage_events) as flush,
         fresh_usage_executor_context() as executor,
     ):

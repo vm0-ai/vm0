@@ -110,11 +110,11 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
 }
 
-export async function publishChatThreadRunFinished(args: {
+export async function publishChatThreadFollowupsFinished(args: {
   readonly userId: string;
   readonly threadId: string;
 }): Promise<void> {
-  await publishUserSignal([args.userId], "chatThreadRunFinished", {
+  await publishUserSignal([args.userId], "chatThreadFollowupsFinished", {
     threadId: args.threadId,
   });
 }
