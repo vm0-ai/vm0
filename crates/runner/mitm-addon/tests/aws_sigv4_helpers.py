@@ -45,11 +45,15 @@ def aws_sigv4_authorization(
     signature: str = PLACEHOLDER_SIGNATURE,
     algorithm: str = AWS_SIGV4_ALGORITHM,
 ) -> str:
-    scope = credential_scope or aws_credential_scope(
-        access_key_id=access_key_id,
-        date=date,
-        region=region,
-        service=service,
+    scope = (
+        aws_credential_scope(
+            access_key_id=access_key_id,
+            date=date,
+            region=region,
+            service=service,
+        )
+        if credential_scope is None
+        else credential_scope
     )
     return f"{algorithm} Credential={scope}, SignedHeaders={signed_headers}, Signature={signature}"
 
@@ -68,7 +72,12 @@ def aws_sigv4_header_auth_headers(
     if amz_date is not None:
         pairs.append(("X-Amz-Date", amz_date))
     pairs.extend(extra_headers)
-    pairs.append(("Authorization", authorization or aws_sigv4_authorization()))
+    pairs.append(
+        (
+            "Authorization",
+            aws_sigv4_authorization() if authorization is None else authorization,
+        )
+    )
     return pairs
 
 
@@ -85,11 +94,15 @@ def aws_sigv4_presigned_query_path(
     signature: str | None = PLACEHOLDER_SIGNATURE,
     leading_query: str = STS_QUERY,
 ) -> str:
-    scope = credential_scope or aws_credential_scope(
-        access_key_id=access_key_id,
-        date=date,
-        region=region,
-        service=service,
+    scope = (
+        aws_credential_scope(
+            access_key_id=access_key_id,
+            date=date,
+            region=region,
+            service=service,
+        )
+        if credential_scope is None
+        else credential_scope
     )
     query = (
         f"{leading_query}"

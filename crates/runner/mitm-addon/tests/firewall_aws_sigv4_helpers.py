@@ -69,7 +69,7 @@ def aws_api_entry(
     include_session_token: bool = True,
 ) -> AwsApiEntry:
     auth_config: AwsAuthConfig = {
-        "headers": dict(auth_headers or {}),
+        "headers": dict(auth_headers) if auth_headers is not None else {},
         "awsSigv4": aws_sigv4_auth_config(include_session_token=include_session_token),
     }
     if auth_query is not None:
@@ -93,7 +93,7 @@ def aws_allow(
         dict(aws_api_entry() if api_entry is None else api_entry),
         firewall_name,
         permission,
-        params or {},
+        {} if params is None else params,
         rule,
         rel_path,
     )
@@ -143,7 +143,7 @@ def aws_auth_response(
         refreshed_secrets.append("AWS_SESSION_TOKEN")
 
     response: dict[str, object] = {
-        "headers": dict(headers or {}),
+        "headers": dict(headers) if headers is not None else {},
         "awsSigv4": aws_sigv4,
         "expiresAt": 1_800_000_000,
         "resolvedSecrets": resolved_secrets,
@@ -186,8 +186,11 @@ def make_sts_header_sigv4_flow(
                 host=host,
                 amz_date=amz_date,
                 extra_headers=extra_headers,
-                authorization=authorization
-                or aws_sigv4_authorization(signed_headers=signed_headers),
+                authorization=(
+                    aws_sigv4_authorization(signed_headers=signed_headers)
+                    if authorization is None
+                    else authorization
+                ),
             )
         ),
     )
@@ -212,7 +215,7 @@ async def handle_firewall_request_with_auth_endpoint(
     allow: matching.FirewallAllow | None = None,
     vm_info: AwsVmInfo | None = None,
 ) -> auth.FirewallAuthHandlingResult:
-    resolved_endpoint = endpoint or FakeAuthEndpoint()
+    resolved_endpoint = FakeAuthEndpoint() if endpoint is None else endpoint
     resolved_endpoint.queue_json_response(
         aws_auth_response() if auth_response is None else auth_response
     )
@@ -274,6 +277,6 @@ def cache_aws_sigv4_credentials(
 ) -> None:
     set_cached_headers(
         aws_auth_cache_key(tmp_path, api_entry),
-        headers=dict(headers or {}),
-        aws_sigv4=credentials or resolved_aws_sigv4_credentials(),
+        headers=dict(headers) if headers is not None else {},
+        aws_sigv4=(resolved_aws_sigv4_credentials() if credentials is None else credentials),
     )
