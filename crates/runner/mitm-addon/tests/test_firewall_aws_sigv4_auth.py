@@ -22,6 +22,7 @@ from tests.aws_sigv4_helpers import (
     resolved_aws_sigv4_credentials,
 )
 from tests.firewall_aws_sigv4_helpers import (
+    FAR_FUTURE_EXPIRES_AT,
     assert_sigv4_failed_closed,
     aws_allow,
     aws_api_entry,
@@ -569,7 +570,7 @@ async def test_header_sigv4_seeded_cache_matches_allow_context_identity(
         allow=allow,
         vm_info=vm_info,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
-        expires_at=1_800_000_000,
+        expires_at=FAR_FUTURE_EXPIRES_AT,
     )
 
     with mitm_ctx():

@@ -26,6 +26,7 @@ from tests.aws_sigv4_helpers import (
 from url_utils import get_original_url
 
 DEFAULT_SANDBOX_TOKEN = "sandbox-token"
+FAR_FUTURE_EXPIRES_AT = 9_999_999_999
 
 
 class AwsAuthConfigBase(TypedDict):
@@ -170,7 +171,7 @@ def aws_auth_response(
     response: dict[str, object] = {
         "headers": dict(headers) if headers is not None else {},
         "awsSigv4": aws_sigv4,
-        "expiresAt": 1_800_000_000,
+        "expiresAt": FAR_FUTURE_EXPIRES_AT,
         "resolvedSecrets": resolved_secrets,
         "refreshedConnectors": refreshed_connectors,
         "refreshedSecrets": refreshed_secrets,
