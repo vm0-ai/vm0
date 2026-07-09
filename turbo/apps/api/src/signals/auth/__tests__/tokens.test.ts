@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { STAFF_ORG_ID_FOR_TESTS } from "@vm0/core/staff-org-test-fixtures";
 
 import {
   generateZeroToken,
@@ -13,8 +14,6 @@ import {
   verifyZeroToken,
 } from "../tokens";
 import { now } from "../../external/time";
-
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -177,7 +176,7 @@ describe("auth tokens", () => {
     const staffToken = generateZeroToken(
       "user_zero",
       "run_zero",
-      STAFF_ORG_ID,
+      STAFF_ORG_ID_FOR_TESTS,
     );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(

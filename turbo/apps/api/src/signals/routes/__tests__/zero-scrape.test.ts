@@ -4,6 +4,7 @@ import { createStore } from "ccstate";
 
 import { zeroScrapeContract } from "@vm0/api-contracts/contracts/zero-scrape";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { STAFF_ORG_ID_FOR_TESTS } from "@vm0/core/staff-org-test-fixtures";
 
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -28,7 +29,6 @@ import {
 const context = testContext();
 const store = createStore();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 const scrapeRoutes: readonly RouteEntry[] = [
   ...zeroOnboardingSetupRoutes,
@@ -101,7 +101,7 @@ async function fundActor(actor: ApiTestUser): Promise<void> {
 }
 
 function scrapeEnabledActor(): ApiTestUser {
-  return createBddApi(context).user({ orgId: STAFF_ORG_ID });
+  return createBddApi(context).user({ orgId: STAFF_ORG_ID_FOR_TESTS });
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
