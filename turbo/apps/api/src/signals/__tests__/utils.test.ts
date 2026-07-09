@@ -4,7 +4,7 @@ import {
   clearAllDetached,
   detach,
   Mechanism,
-  startUntrackedBestEffort,
+  startUntrackedBestEffortCleanup,
 } from "../utils";
 
 interface PromiseResolvers<T> {
@@ -45,9 +45,9 @@ describe("clearAllDetached", () => {
     expect(completed).toStrictEqual(["outer", "inner"]);
   });
 
-  it("does not wait for untracked best-effort work", async () => {
+  it("does not wait for untracked best-effort cleanup", async () => {
     const completed: string[] = [];
-    startUntrackedBestEffort(pendingPromise());
+    startUntrackedBestEffortCleanup(pendingPromise());
     detach(
       Promise.resolve().then(() => {
         completed.push("tracked");

@@ -157,11 +157,11 @@ export async function bestEffort(
 }
 
 /**
- * Start best-effort work that must not keep tests or request cleanup waiting.
+ * Start best-effort cleanup that must not keep tests or request cleanup waiting.
  * Use only for advisory cleanup promises that can legitimately remain pending
  * forever, such as Web Stream cancellation in fetch implementations.
  */
-export function startUntrackedBestEffort(p: Promise<unknown>): void {
+export function startUntrackedBestEffortCleanup(p: Promise<unknown>): void {
   void bestEffort(p).then(
     () => {},
     () => {},

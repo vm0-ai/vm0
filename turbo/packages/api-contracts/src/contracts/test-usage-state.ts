@@ -11,16 +11,16 @@ const testUsageStateErrorSchema = z.object({
 export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seed-usage-pricing"),
-    kind: z.string().optional(),
-    provider: z.string(),
-    category: z.string(),
-    unit_price: z.number(),
-    unit_size: z.number(),
+    kind: z.string().min(1).optional(),
+    provider: z.string().min(1),
+    category: z.string().min(1),
+    unit_price: z.number().int().nonnegative(),
+    unit_size: z.number().int().positive(),
   }),
   z.object({
     action: z.literal("set-credit-balance"),
-    org_id: z.string(),
-    credits: z.number(),
+    org_id: z.string().min(1),
+    credits: z.number().int().nonnegative(),
   }),
 ]);
 

@@ -7,7 +7,11 @@ import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
-import { safeAsync, safeJsonParse, startUntrackedBestEffort } from "../utils";
+import {
+  safeAsync,
+  safeJsonParse,
+  startUntrackedBestEffortCleanup,
+} from "../utils";
 import {
   checkManagedCredits$,
   recordManagedUsage$,
@@ -235,7 +239,7 @@ function oversizedFirecrawlResponse(): ScrapeErrorResponse {
 function startBestEffortCancel(cancel: Promise<unknown>): void {
   // Stream cancellation is advisory. Some stream implementations never settle
   // the cancel promise, so do not put it in the detached-promise drain.
-  startUntrackedBestEffort(cancel);
+  startUntrackedBestEffortCleanup(cancel);
 }
 
 function contentLengthExceedsLimit(response: Response): boolean {
