@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVm0ApiKeys } from "../dev-seed";
+import { buildVm0ApiKeys, USAGE_PRICING } from "../dev-seed";
 
 function readEnvFrom(
   values: Readonly<Record<string, string | undefined>>,
@@ -243,5 +243,42 @@ describe("buildVm0ApiKeys", () => {
         }),
       ),
     ).toStrictEqual(new Set(["provider-deepseek-key"]));
+  });
+});
+
+describe("USAGE_PRICING", () => {
+  it("includes Zero Scrape Firecrawl pricing rows", () => {
+    expect(USAGE_PRICING).toStrictEqual(
+      expect.arrayContaining([
+        {
+          kind: "scrape",
+          provider: "firecrawl",
+          category: "standard.markdown",
+          unitPrice: 4,
+          unitSize: 1,
+        },
+        {
+          kind: "scrape",
+          provider: "firecrawl",
+          category: "standard.links",
+          unitPrice: 4,
+          unitSize: 1,
+        },
+        {
+          kind: "scrape",
+          provider: "firecrawl",
+          category: "enhanced.markdown",
+          unitPrice: 20,
+          unitSize: 1,
+        },
+        {
+          kind: "scrape",
+          provider: "firecrawl",
+          category: "enhanced.links",
+          unitPrice: 20,
+          unitSize: 1,
+        },
+      ]),
+    );
   });
 });

@@ -209,7 +209,7 @@ async function seedOfficialSkillVolumes(
   return DEV_SEED_SKILL_VOLUMES.length;
 }
 
-const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
+export const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Model usage in the unified usage_event ledger.
   ...usageGroup("model", "claude-sonnet-4-6", [
     ["tokens.input", usd(3), 1_000_000],
@@ -380,6 +380,16 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     // so an unknown includes key can never be billed at more than X charges
     // for the cheapest known bucket.
     ["__fallback__", usd(0.005), 1],
+  ]),
+
+  // Firecrawl single-page scrape fixed vm0 product pricing.
+  // Firecrawl Cloud credits are plan-dependent, so v1 uses conservative
+  // per-request fixed pricing to avoid underbilling the exposed modes.
+  ...usageGroup("scrape", "firecrawl", [
+    ["standard.markdown", usd(0.004), 1],
+    ["standard.links", usd(0.004), 1],
+    ["enhanced.markdown", usd(0.02), 1],
+    ["enhanced.links", usd(0.02), 1],
   ]),
 
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing

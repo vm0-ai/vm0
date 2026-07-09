@@ -1395,10 +1395,14 @@ export {
 } from "./zero-billing";
 export {
   zeroScrapeContract,
+  zeroScrapeBillingCategorySchema,
   zeroScrapeFormatSchema,
+  zeroScrapeLinksResponseSchema,
+  zeroScrapeMarkdownResponseSchema,
   zeroScrapeModeSchema,
   zeroScrapeRequestSchema,
   zeroScrapeResponseSchema,
+  type ZeroScrapeBillingCategory,
   type ZeroScrapeContract,
   type ZeroScrapeFormat,
   type ZeroScrapeMode,

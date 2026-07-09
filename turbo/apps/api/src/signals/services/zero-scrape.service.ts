@@ -1,4 +1,5 @@
 import type {
+  ZeroScrapeBillingCategory,
   ZeroScrapeRequest,
   ZeroScrapeResponse,
 } from "@vm0/api-contracts/contracts/zero-scrape";
@@ -47,10 +48,37 @@ interface FirecrawlScrapeData {
   readonly metadata?: Record<string, unknown>;
 }
 
-interface NormalizedScrape {
-  readonly result: ZeroScrapeResponse["result"];
+interface NormalizedScrapeBase {
   readonly metadata?: ZeroScrapeResponse["metadata"];
   readonly finalUrl?: string;
+}
+
+type NormalizedScrape = NormalizedScrapeBase &
+  (
+    | {
+        readonly format: "markdown";
+        readonly result: { readonly markdown: string };
+      }
+    | {
+        readonly format: "links";
+        readonly result: { readonly links: string[] };
+      }
+  );
+
+interface ZeroScrapeSuccessArgs {
+  readonly request: ZeroScrapeRequest;
+  readonly requestedUrl: URL;
+  readonly normalized: NormalizedScrape;
+  readonly creditsCharged: number;
+}
+
+interface ZeroScrapeSuccessBase {
+  readonly requestedUrl: string;
+  readonly finalUrl?: string;
+  readonly provider: "firecrawl";
+  readonly creditsCharged: number;
+  readonly billingQuantity: number;
+  readonly metadata?: ZeroScrapeResponse["metadata"];
 }
 
 function errorBody(message: string, code: string) {
@@ -85,8 +113,19 @@ function runIdForUsage(auth: AuthContext): string | undefined {
     : undefined;
 }
 
-function billingCategory(args: ZeroScrapeRequest): string {
-  return `${args.mode}.${args.format}`;
+function billingCategory(args: ZeroScrapeRequest): ZeroScrapeBillingCategory {
+  switch (args.mode) {
+    case "standard": {
+      return args.format === "markdown"
+        ? "standard.markdown"
+        : "standard.links";
+    }
+    case "enhanced": {
+      return args.format === "markdown"
+        ? "enhanced.markdown"
+        : "enhanced.links";
+    }
+  }
 }
 
 function firecrawlProxy(mode: ZeroScrapeRequest["mode"]): "basic" | "enhanced" {
@@ -298,6 +337,7 @@ function normalizeFirecrawlData(
       );
     }
     return {
+      format: "markdown",
       result: { markdown: data.markdown },
       metadata: normalizeMetadata(data.metadata),
       ...(finalUrl ? { finalUrl } : {}),
@@ -314,10 +354,88 @@ function normalizeFirecrawlData(
     );
   }
   return {
+    format: "links",
     result: { links: [...data.links] },
     metadata: normalizeMetadata(data.metadata),
     ...(finalUrl ? { finalUrl } : {}),
   };
+}
+
+function successResponseBase(
+  args: ZeroScrapeSuccessArgs,
+): ZeroScrapeSuccessBase {
+  return {
+    requestedUrl: args.requestedUrl.toString(),
+    ...(args.normalized.finalUrl ? { finalUrl: args.normalized.finalUrl } : {}),
+    provider: PROVIDER,
+    creditsCharged: args.creditsCharged,
+    billingQuantity: 1,
+    ...(args.normalized.metadata ? { metadata: args.normalized.metadata } : {}),
+  };
+}
+
+function standardSuccessBody(
+  base: ZeroScrapeSuccessBase,
+  normalized: NormalizedScrape,
+): ZeroScrapeResponse {
+  switch (normalized.format) {
+    case "markdown": {
+      return {
+        ...base,
+        format: "markdown",
+        mode: "standard",
+        billingCategory: "standard.markdown",
+        result: normalized.result,
+      };
+    }
+    case "links": {
+      return {
+        ...base,
+        format: "links",
+        mode: "standard",
+        billingCategory: "standard.links",
+        result: normalized.result,
+      };
+    }
+  }
+}
+
+function enhancedSuccessBody(
+  base: ZeroScrapeSuccessBase,
+  normalized: NormalizedScrape,
+): ZeroScrapeResponse {
+  switch (normalized.format) {
+    case "markdown": {
+      return {
+        ...base,
+        format: "markdown",
+        mode: "enhanced",
+        billingCategory: "enhanced.markdown",
+        result: normalized.result,
+      };
+    }
+    case "links": {
+      return {
+        ...base,
+        format: "links",
+        mode: "enhanced",
+        billingCategory: "enhanced.links",
+        result: normalized.result,
+      };
+    }
+  }
+}
+
+function successBody(args: ZeroScrapeSuccessArgs): ZeroScrapeResponse {
+  const base = successResponseBase(args);
+  switch (args.request.mode) {
+    case "standard": {
+      return standardSuccessBody(base, args.normalized);
+    }
+    case "enhanced": {
+      return enhancedSuccessBody(base, args.normalized);
+    }
+  }
 }
 
 async function validateFinalUrl(
@@ -438,18 +556,12 @@ export const zeroScrape$ = command(
       signal,
     );
 
-    const body: ZeroScrapeResponse = {
-      requestedUrl: target.url.toString(),
-      ...(normalized.finalUrl ? { finalUrl: normalized.finalUrl } : {}),
-      format: args.body.format,
-      mode: args.body.mode,
-      provider: PROVIDER,
+    const body = successBody({
+      request: args.body,
+      requestedUrl: target.url,
+      normalized,
       creditsCharged,
-      billingCategory: category,
-      billingQuantity: 1,
-      result: normalized.result,
-      ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
-    };
+    });
     return { status: 200 as const, body };
   },
 );

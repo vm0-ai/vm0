@@ -1,5 +1,6 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { createStore } from "ccstate";
 
 import { zeroScrapeContract } from "@vm0/api-contracts/contracts/zero-scrape";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -21,8 +22,10 @@ import {
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { seedUsagePricing$ } from "./helpers/zero-usage";
 
 const context = testContext();
+const store = createStore();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 
 const scrapeRoutes: readonly RouteEntry[] = [
@@ -104,6 +107,27 @@ function allowExampleDotCom(): void {
 
 function configureProvider(): void {
   mockEnv("ZERO_SCRAPE_FIRECRAWL_TOKEN", "test-firecrawl-token");
+}
+
+async function seedScrapePricing(): Promise<void> {
+  for (const [category, unitPrice] of [
+    ["standard.markdown", 4],
+    ["standard.links", 4],
+    ["enhanced.markdown", 20],
+    ["enhanced.links", 20],
+  ] as const) {
+    await store.set(
+      seedUsagePricing$,
+      {
+        kind: "scrape",
+        provider: "firecrawl",
+        category,
+        unitPrice,
+        unitSize: 1,
+      },
+      context.signal,
+    );
+  }
 }
 
 describe("zero scrape route", () => {
@@ -226,6 +250,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     await enableScrape(actor);
     configureProvider();
+    await seedScrapePricing();
     await setupOnboarding(actor);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -251,6 +276,67 @@ describe("zero scrape route", () => {
     expect(firecrawlRequests).toBe(0);
   });
 
+  it("scrapes markdown through standard Firecrawl proxy and records usage", async () => {
+    const actor = createBddApi(context).user();
+    let requestBody: unknown;
+    allowExampleDotCom();
+    await enableScrape(actor);
+    configureProvider();
+    await seedScrapePricing();
+    await grantCredits(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: {
+              sourceURL: "https://example.com/page",
+            },
+          },
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+    const afterCredits = await credits(actor);
+
+    expect(requestBody).toStrictEqual({
+      url: "https://example.com/page",
+      formats: ["markdown"],
+      proxy: "basic",
+      skipTlsVerification: false,
+      storeInCache: false,
+    });
+    expect(response.body).toMatchObject({
+      requestedUrl: "https://example.com/page",
+      finalUrl: "https://example.com/page",
+      format: "markdown",
+      mode: "standard",
+      provider: "firecrawl",
+      creditsCharged: 4,
+      billingCategory: "standard.markdown",
+      billingQuantity: 1,
+      result: {
+        markdown: "# Example page",
+      },
+    });
+    expect(beforeCredits - afterCredits).toBe(4);
+  });
+
   it("scrapes links through enhanced Firecrawl proxy and records usage", async () => {
     const actor = createBddApi(context).user();
     let requestBody: unknown;
@@ -258,6 +344,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     await enableScrape(actor);
     configureProvider();
+    await seedScrapePricing();
     await grantCredits(actor);
     const beforeCredits = await credits(actor);
 
@@ -325,6 +412,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     await enableScrape(actor);
     configureProvider();
+    await seedScrapePricing();
     await grantCredits(actor);
     const beforeCredits = await credits(actor);
     server.use(
@@ -362,6 +450,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     await enableScrape(actor);
     configureProvider();
+    await seedScrapePricing();
     await grantCredits(actor);
     const beforeCredits = await credits(actor);
     server.use(

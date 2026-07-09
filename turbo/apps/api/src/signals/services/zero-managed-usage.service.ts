@@ -66,8 +66,19 @@ function estimatedCredits(
   unitPrice: string,
   unitSize: string,
   quantity: number,
-): number {
-  return Math.ceil((quantity * Number(unitPrice)) / Number(unitSize));
+): bigint {
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+    throw new Error("Managed usage quantity must be a positive safe integer");
+  }
+  const price = BigInt(unitPrice);
+  const size = BigInt(unitSize);
+  if (price < 0n || size <= 0n) {
+    throw new Error(
+      "Managed usage pricing must be non-negative with a positive unit size",
+    );
+  }
+  const total = BigInt(quantity) * price;
+  return (total + size - 1n) / size;
 }
 
 export const checkManagedCredits$ = command(
@@ -118,8 +129,8 @@ export const checkManagedCredits$ = command(
       return insufficientCredits();
     }
 
-    const credits = Number(row.credits);
-    const unsettledExpired = Number(row.unsettled_expired ?? 0);
+    const credits = BigInt(row.credits);
+    const unsettledExpired = BigInt(row.unsettled_expired ?? "0");
     const quantity = args.resource.quantity ?? 1;
     return credits - unsettledExpired >=
       estimatedCredits(row.unit_price, row.unit_size, quantity)
