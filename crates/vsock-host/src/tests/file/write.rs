@@ -106,11 +106,57 @@ async fn write_files_guest_failure_releases_tracker() {
 }
 
 #[tokio::test]
+async fn write_files_error_response_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/a.txt", b"alpha".to_vec()),
+            ("/tmp/b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_files(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_guest_error(&mut guest, write.seq(), "guest write failed").await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("guest write failed"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn write_files_empty_batch_is_noop() {
     let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
 
-    host.write_files(&[]).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
+            &[],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("empty write_files should return before waiting for the writer")
+    .unwrap();
 
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("empty write_files must not send a frame; read {n} bytes"),
@@ -121,6 +167,7 @@ async fn write_files_empty_batch_is_noop() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer_guard);
 }
 
 #[tokio::test]
@@ -206,18 +253,27 @@ async fn write_files_accepts_file_count_at_batch_limit() {
 }
 
 #[tokio::test]
-async fn write_files_accepts_content_at_batch_limit() {
+async fn write_files_accepts_aggregate_content_at_batch_limit() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
 
     let write_task = {
         let host = Arc::clone(&host);
         tokio::spawn(async move {
-            let content = vec![0xABu8; WRITE_FILES_BATCH_CONTENT_LIMIT];
-            host.write_files(&[WriteFileEntry {
-                path: "/tmp/content-limit.txt",
-                content: &content,
-            }])
+            let first_len = WRITE_FILES_BATCH_CONTENT_LIMIT / 2;
+            let second_len = WRITE_FILES_BATCH_CONTENT_LIMIT - first_len;
+            let first_content = vec![0xA1u8; first_len];
+            let second_content = vec![0xB2u8; second_len];
+            host.write_files(&[
+                WriteFileEntry {
+                    path: "/tmp/content-limit-a.txt",
+                    content: &first_content,
+                },
+                WriteFileEntry {
+                    path: "/tmp/content-limit-b.txt",
+                    content: &second_content,
+                },
+            ])
             .await
         })
     };
@@ -225,12 +281,21 @@ async fn write_files_accepts_content_at_batch_limit() {
     let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
         .await
         .expect("write_files at the content limit should send a frame");
-    let [(path, content)] = write.files.as_slice() else {
-        panic!("expected one write_files entry, got {}", write.files.len());
+    let [(first_path, first_content), (second_path, second_content)] = write.files.as_slice()
+    else {
+        panic!(
+            "expected two write_files entries, got {}",
+            write.files.len()
+        );
     };
-    assert_eq!(path, "/tmp/content-limit.txt");
-    assert_eq!(content.len(), WRITE_FILES_BATCH_CONTENT_LIMIT);
-    assert!(content.iter().all(|byte| *byte == 0xAB));
+    assert_eq!(first_path, "/tmp/content-limit-a.txt");
+    assert_eq!(second_path, "/tmp/content-limit-b.txt");
+    assert_eq!(
+        first_content.len() + second_content.len(),
+        WRITE_FILES_BATCH_CONTENT_LIMIT
+    );
+    assert!(first_content.iter().all(|byte| *byte == 0xA1));
+    assert!(second_content.iter().all(|byte| *byte == 0xB2));
     assert_eq!(
         normal_operation_readiness(&host),
         NormalOperationReadiness::Busy
