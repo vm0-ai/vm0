@@ -6,7 +6,7 @@ export interface ResolvedFetchAddress {
   readonly family: 4 | 6;
 }
 
-// Loopback, private, link-local and CGNAT ranges we must never fetch from.
+// Non-public and address-translation ranges we must never fetch from.
 const BLOCKED_IPV4_RANGES: Readonly<BlockList> = (() => {
   const ranges = new BlockList();
   for (const [address, prefix] of [

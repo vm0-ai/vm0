@@ -10,6 +10,7 @@ import { env } from "../../lib/env";
 import { bestEffort, safeAsync, safeJsonParse } from "../utils";
 import {
   checkManagedCredits$,
+  MANAGED_USAGE_COMMIT_SIGNAL,
   recordManagedUsage$,
   type ManagedUsageErrorResponse,
 } from "./zero-managed-usage.service";
@@ -101,6 +102,18 @@ interface ZeroScrapeSuccessBase {
   readonly creditsCharged: number;
   readonly billingQuantity: number;
   readonly metadata?: ZeroScrapeResponse["metadata"];
+}
+
+type ZeroScrapeCommandResponse =
+  | { readonly status: 200; readonly body: ZeroScrapeResponse }
+  | ScrapeErrorResponse
+  | ManagedUsageErrorResponse;
+
+interface CompleteScrapeSuccessArgs {
+  readonly request: ZeroScrapeRequest;
+  readonly requestedUrl: URL;
+  readonly firecrawlResult: FirecrawlBodyResult;
+  readonly recordUsage: () => Promise<number>;
 }
 
 function errorBody(message: string, code: string) {
@@ -557,6 +570,44 @@ async function validateFinalUrl(
     : null;
 }
 
+async function completeScrapeSuccess(
+  args: CompleteScrapeSuccessArgs,
+): Promise<ZeroScrapeCommandResponse> {
+  if (args.firecrawlResult.kind === "error") {
+    return args.firecrawlResult.error;
+  }
+  const { body: firecrawlBody } = args.firecrawlResult;
+
+  const firecrawlFailureResponse = firecrawlFailure(firecrawlBody);
+  if (firecrawlFailureResponse) {
+    return firecrawlFailureResponse;
+  }
+
+  const firecrawlData = dataFromFirecrawlBody(firecrawlBody);
+  if (!firecrawlData) {
+    return badGateway("Firecrawl response did not include scrape data");
+  }
+
+  const normalized = normalizeFirecrawlData(args.request, firecrawlData);
+  if (isScrapeErrorResponse(normalized)) {
+    return normalized;
+  }
+
+  const finalUrlError = await validateFinalUrl(normalized.finalUrl);
+  if (finalUrlError) {
+    return finalUrlError;
+  }
+
+  const creditsCharged = await args.recordUsage();
+  const body = successBody({
+    request: args.request,
+    requestedUrl: args.requestedUrl,
+    normalized,
+    creditsCharged,
+  });
+  return { status: 200 as const, body };
+}
+
 function isScrapeErrorResponse(value: unknown): value is ScrapeErrorResponse {
   return (
     isRecord(value) &&
@@ -571,11 +622,7 @@ export const zeroScrape$ = command(
     { set },
     args: AuthedScrapeArgs,
     signal: AbortSignal,
-  ): Promise<
-    | { readonly status: 200; readonly body: ZeroScrapeResponse }
-    | ScrapeErrorResponse
-    | ManagedUsageErrorResponse
-  > => {
+  ): Promise<ZeroScrapeCommandResponse> => {
     const apiKey = env("ZERO_SCRAPE_FIRECRAWL_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
@@ -614,59 +661,32 @@ export const zeroScrape$ = command(
       target.url,
       signal,
     );
-    signal.throwIfAborted();
-    if (firecrawlResult.kind === "error") {
-      return firecrawlResult.error;
-    }
-    const { body: firecrawlBody } = firecrawlResult;
 
-    const firecrawlFailureResponse = firecrawlFailure(firecrawlBody);
-    if (firecrawlFailureResponse) {
-      return firecrawlFailureResponse;
-    }
-
-    const firecrawlData = dataFromFirecrawlBody(firecrawlBody);
-    if (!firecrawlData) {
-      return badGateway("Firecrawl response did not include scrape data");
-    }
-
-    const normalized = normalizeFirecrawlData(args.body, firecrawlData);
-    if (isScrapeErrorResponse(normalized)) {
-      return normalized;
-    }
-
-    const finalUrlError = await validateFinalUrl(normalized.finalUrl);
-    signal.throwIfAborted();
-    if (finalUrlError) {
-      return finalUrlError;
-    }
-
-    const creditsCharged = await set(
-      recordManagedUsage$,
-      {
-        actor: {
-          orgId: args.auth.orgId,
-          userId: args.auth.userId,
-          ...(runIdForUsage(args.auth)
-            ? { runId: runIdForUsage(args.auth) }
-            : {}),
-        },
-        resource: {
-          kind: USAGE_KIND,
-          provider: PROVIDER,
-          category,
-        },
-        label: "scrape",
-      },
-      signal,
-    );
-
-    const body = successBody({
+    return completeScrapeSuccess({
       request: args.body,
       requestedUrl: target.url,
-      normalized,
-      creditsCharged,
+      firecrawlResult,
+      recordUsage: () => {
+        return set(
+          recordManagedUsage$,
+          {
+            actor: {
+              orgId: args.auth.orgId,
+              userId: args.auth.userId,
+              ...(runIdForUsage(args.auth)
+                ? { runId: runIdForUsage(args.auth) }
+                : {}),
+            },
+            resource: {
+              kind: USAGE_KIND,
+              provider: PROVIDER,
+              category,
+            },
+            label: "scrape",
+          },
+          MANAGED_USAGE_COMMIT_SIGNAL,
+        );
+      },
     });
-    return { status: 200 as const, body };
   },
 );

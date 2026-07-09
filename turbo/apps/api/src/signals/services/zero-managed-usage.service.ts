@@ -38,6 +38,10 @@ interface ManagedUsageActor {
   readonly runId?: string;
 }
 
+// Usage commit work runs after a managed provider has completed paid work, so
+// client request cancellation must not skip the billing record.
+export const MANAGED_USAGE_COMMIT_SIGNAL = AbortSignal.any([]);
+
 function errorBody(message: string, code: string) {
   return { error: { message, code } };
 }
@@ -147,8 +151,11 @@ export const recordManagedUsage$ = command(
       readonly resource: ManagedUsageResource;
       readonly label: string;
     },
-    signal: AbortSignal,
+    _signal: AbortSignal,
   ): Promise<number> => {
+    // Provider work has already succeeded before this command is called, so
+    // usage recording must not be skipped when the client disconnects.
+    const signal = MANAGED_USAGE_COMMIT_SIGNAL;
     const writeDb = set(writeDb$);
     const [run] = args.actor.runId
       ? await writeDb

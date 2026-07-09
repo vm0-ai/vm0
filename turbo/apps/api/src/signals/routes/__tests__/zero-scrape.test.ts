@@ -18,9 +18,11 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { seedUsagePricing$ } from "./helpers/zero-usage";
+import {
+  seedUsagePricing$,
+  setUsageFixtureCreditBalance$,
+} from "./helpers/zero-usage";
 
 const context = testContext();
 const store = createStore();
@@ -57,8 +59,12 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
   return authHeaders(actor);
 }
 
-function client() {
-  return setupAppWithRoutes({ context, routes: scrapeRoutes });
+function client(signal?: AbortSignal) {
+  return setupAppWithRoutes({
+    context,
+    routes: scrapeRoutes,
+    ...(signal ? { signal } : {}),
+  });
 }
 
 async function setupOnboarding(actor: ApiTestUser): Promise<void> {
@@ -67,9 +73,30 @@ async function setupOnboarding(actor: ApiTestUser): Promise<void> {
   });
 }
 
-async function grantCredits(actor: ApiTestUser): Promise<void> {
-  createBddApi(context).acceptAgentStorageWrites();
-  await createRunsAutomationsApi(context).grantProEntitlement(actor);
+async function setActorCredits(
+  actor: ApiTestUser,
+  credits: number,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Zero Scrape test actor must belong to an organization");
+  }
+  await store.set(
+    setUsageFixtureCreditBalance$,
+    {
+      fixture: {
+        orgId: actor.orgId,
+        userId: actor.userId,
+        userIds: [actor.userId],
+      },
+      credits,
+    },
+    context.signal,
+  );
+}
+
+async function fundActor(actor: ApiTestUser): Promise<void> {
+  await setupOnboarding(actor);
+  await setActorCredits(actor, 1000);
 }
 
 function scrapeEnabledActor(): ApiTestUser {
@@ -270,6 +297,7 @@ describe("zero scrape route", () => {
     configureProvider();
     await seedScrapePricing();
     await setupOnboarding(actor);
+    await setActorCredits(actor, 0);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
         firecrawlRequests += 1;
@@ -300,7 +328,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
 
     server.use(
@@ -354,12 +382,58 @@ describe("zero scrape route", () => {
     expect(beforeCredits - afterCredits).toBe(4);
   });
 
+  it("records usage when the request aborts after Firecrawl succeeds", async () => {
+    const actor = scrapeEnabledActor();
+    const controller = new AbortController();
+    const abortError = new Error("client disconnected after provider success");
+    abortError.name = "AbortError";
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    context.mocks.dns.lookupOverrides.set("final.example.test", () => {
+      controller.abort(abortError);
+      return [{ address: "93.184.216.35", family: 4 }];
+    });
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: {
+              sourceURL: "https://final.example.test/page",
+            },
+          },
+        });
+      }),
+    );
+
+    const response = await accept(
+      client(controller.signal)(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+    const afterCredits = await credits(actor);
+
+    expect(response.body.finalUrl).toBe("https://final.example.test/page");
+    expect(beforeCredits - afterCredits).toBe(4);
+  });
+
   it("scrapes public IPv6 literal targets without DNS lookup", async () => {
     const actor = scrapeEnabledActor();
     let requestBody: unknown;
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
 
     server.use(
@@ -403,7 +477,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
 
     server.use(
@@ -470,7 +544,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -507,7 +581,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -542,7 +616,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -584,7 +658,7 @@ describe("zero scrape route", () => {
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
-    await grantCredits(actor);
+    await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {

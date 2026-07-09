@@ -218,11 +218,15 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ZeroScrape,
+    );
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
+        [FeatureSwitchKey.ZeroScrape]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });
