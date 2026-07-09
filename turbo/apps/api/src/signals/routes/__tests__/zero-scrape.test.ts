@@ -211,6 +211,35 @@ describe("zero scrape route", () => {
     expect(firecrawlRequests).toBe(0);
   });
 
+  it("blocks private IPv6 literal targets before calling Firecrawl", async () => {
+    const actor = createBddApi(context).user();
+    let firecrawlRequests = 0;
+    await enableScrape(actor);
+    configureProvider();
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "http://[::1]:3000/admin",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [400],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+    expect(firecrawlRequests).toBe(0);
+  });
+
   it("blocks target URLs with embedded credentials before calling Firecrawl", async () => {
     const actor = createBddApi(context).user();
     let firecrawlRequests = 0;
@@ -334,6 +363,49 @@ describe("zero scrape route", () => {
         markdown: "# Example page",
       },
     });
+    expect(beforeCredits - afterCredits).toBe(4);
+  });
+
+  it("scrapes public IPv6 literal targets without DNS lookup", async () => {
+    const actor = createBddApi(context).user();
+    let requestBody: unknown;
+    await enableScrape(actor);
+    configureProvider();
+    await seedScrapePricing();
+    await grantCredits(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, async ({ request }) => {
+        requestBody = await request.json();
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# IPv6 page",
+          },
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://[2606:4700:4700::1111]/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+    const afterCredits = await credits(actor);
+
+    expect(requestBody).toMatchObject({
+      url: "https://[2606:4700:4700::1111]/page",
+      formats: ["markdown"],
+      proxy: "basic",
+    });
+    expect(response.body.result).toStrictEqual({ markdown: "# IPv6 page" });
     expect(beforeCredits - afterCredits).toBe(4);
   });
 

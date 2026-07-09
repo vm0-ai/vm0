@@ -5,7 +5,15 @@ import * as os from "os";
 
 import chalk from "chalk";
 import { HttpResponse, http } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { server } from "../../../../mocks/server";
 import { zeroScrapeCommand } from "../index";
@@ -35,6 +43,11 @@ describe("zero scrape command", () => {
     mockConsoleLog.mockClear();
     vi.unstubAllEnvs();
     await fs.rm(path.join(TEST_HOME, ".vm0"), { recursive: true, force: true });
+  });
+
+  afterAll(async () => {
+    mockConsoleLog.mockRestore();
+    await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
   function output(): string {

@@ -10,6 +10,11 @@ interface ScrapeTargetPolicyResult {
   readonly url: URL;
 }
 
+interface ScrapeTargetIpLiteral {
+  readonly address: string;
+  readonly family: 4 | 6;
+}
+
 export type ScrapeTargetPolicyError =
   | "invalid_url"
   | "unsupported_scheme"
@@ -36,6 +41,18 @@ function hostnameIsInternal(hostname: string): boolean {
   return isIP(normalized) === 0 && !normalized.includes(".");
 }
 
+function scrapeTargetIpLiteral(hostname: string): ScrapeTargetIpLiteral | null {
+  const address =
+    hostname.startsWith("[") && hostname.endsWith("]")
+      ? hostname.slice(1, -1)
+      : hostname;
+  const family = isIP(address);
+  if (family === 0) {
+    return null;
+  }
+  return { address, family: family === 6 ? 6 : 4 };
+}
+
 export async function validateScrapeTargetUrl(
   rawUrl: string,
 ): Promise<ScrapeTargetPolicyResult | ScrapeTargetPolicyError> {
@@ -50,6 +67,13 @@ export async function validateScrapeTargetUrl(
 
   if (url.username || url.password) {
     return "embedded_credentials";
+  }
+
+  const ipLiteral = scrapeTargetIpLiteral(url.hostname);
+  if (ipLiteral) {
+    return fetchHostHasBlockedAddress([ipLiteral])
+      ? "blocked_address"
+      : { url };
   }
 
   if (hostnameIsInternal(url.hostname)) {
