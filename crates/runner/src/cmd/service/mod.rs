@@ -1123,25 +1123,23 @@ async fn stop_cleanup_with_ops(
             None
         }
     };
-    if stop_needs_escalation {
-        match state.as_ref() {
-            Some(state) if state.is_active_like() => {
-                warn!(
-                    unit = %unit.unit_name(),
-                    active_state = state.active_state(),
-                    "runner service remains active-like after stop; escalating cleanup"
-                );
-                escalate_cleanup_stop(unit, ops).await;
-            }
-            None => {
-                warn!(
-                    unit = %unit.unit_name(),
-                    "runner service state is unknown after failed stop; escalating cleanup"
-                );
-                escalate_cleanup_stop(unit, ops).await;
-            }
-            Some(_) => {}
+    match state.as_ref() {
+        Some(state) if state.is_active_like() => {
+            warn!(
+                unit = %unit.unit_name(),
+                active_state = state.active_state(),
+                "runner service remains active-like after stop; escalating cleanup"
+            );
+            escalate_cleanup_stop(unit, ops).await;
         }
+        None if stop_needs_escalation => {
+            warn!(
+                unit = %unit.unit_name(),
+                "runner service state is unknown after failed stop; escalating cleanup"
+            );
+            escalate_cleanup_stop(unit, ops).await;
+        }
+        _ => {}
     }
 
     if cleanup.disables_service()
@@ -2301,12 +2299,11 @@ profiles:
     }
 
     #[tokio::test]
-    async fn stop_cleanup_success_does_not_escalate_while_verify_waits_for_inactive() {
+    async fn stop_cleanup_escalates_when_successful_stop_leaves_state_active_like() {
         let unit = service_unit();
         let home = fake_home();
         let mut ops = FakeStopOps {
             cleanup_states: VecDeque::from([
-                cleanup_state("deactivating", true),
                 cleanup_state("deactivating", true),
                 cleanup_state("inactive", false),
             ]),
@@ -2330,10 +2327,10 @@ profiles:
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
+                "kill_all_sigkill",
+                "stop_no_block",
                 "reset_failed_bounded",
                 "cleanup_drain_restart_override_bounded",
-                "cleanup_active_state",
-                "sleep",
                 "cleanup_active_state",
             ]
         );

@@ -1839,9 +1839,9 @@ jobs:
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Stop any existing service from a previous run (e.g., re-run after test failure).
-            # stop() returns Ok when no service exists, so no need for || true.
+            # Use cleanup semantics so a stale or wedged unit cannot hang this start path.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force"
+            timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
