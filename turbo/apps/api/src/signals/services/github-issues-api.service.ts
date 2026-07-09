@@ -45,7 +45,7 @@ export interface GithubIssueDetail {
   readonly pull_request?: unknown;
 }
 
-export interface GithubRepositoryResource {
+interface GithubRepositoryResource {
   readonly id: number;
   readonly name: string;
   readonly full_name: string;
@@ -53,14 +53,14 @@ export interface GithubRepositoryResource {
   readonly default_branch?: string | null;
 }
 
-export interface GithubContributor {
+interface GithubContributor {
   readonly id?: number;
   readonly login: string;
   readonly type?: string;
   readonly contributions?: number;
 }
 
-export interface GithubIssuePage {
+interface GithubIssuePage {
   readonly items: readonly GithubIssueDetail[];
   readonly hasMore: boolean;
 }

@@ -217,7 +217,7 @@ function userMemoryConfig(
   );
 }
 
-export function githubMemoryContributorIsTrusted(args: {
+function githubMemoryContributorIsTrusted(args: {
   readonly repositoryConfig: GitHubMemoryRepositoryConfig;
   readonly githubUserId?: string | number | null;
   readonly login?: string | null;

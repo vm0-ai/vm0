@@ -191,7 +191,7 @@ const notionDatabaseResponseSchema = z
   .passthrough();
 
 type NotionWebhookEvent = z.infer<typeof notionWebhookEventSchema>;
-export type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
+type NotionPageResponse = z.infer<typeof notionPageResponseSchema>;
 type NotionDataSourceResponse = z.infer<typeof notionDataSourceResponseSchema>;
 type NotionDatabaseResponse = z.infer<typeof notionDatabaseResponseSchema>;
 type NotionPendingRow = typeof notionWorkflowPendingEvents.$inferSelect;
@@ -212,12 +212,12 @@ interface NotionConnectorSecrets {
   readonly refreshSecret: ConnectorSecretRow | null;
 }
 
-export interface NotionAccess {
+interface NotionAccess {
   readonly connectorId: string;
   readonly accessToken: string;
 }
 
-export type NotionAccessResult =
+type NotionAccessResult =
   | { readonly kind: "ok"; readonly access: NotionAccess }
   | { readonly kind: "bad_request"; readonly message: string };
 
