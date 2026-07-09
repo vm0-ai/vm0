@@ -8,6 +8,7 @@ import type { Db } from "../external/db";
 import { settle } from "../utils";
 
 const log = logger("api:push");
+const PUSH_NOTIFICATION_TIMEOUT_MS = 10_000;
 
 interface PushNotification {
   readonly title: string;
@@ -54,6 +55,7 @@ export async function sendUserPushNotifications(args: {
             },
           },
           payload,
+          { timeout: PUSH_NOTIFICATION_TIMEOUT_MS },
         ),
       );
       if (result.ok) {

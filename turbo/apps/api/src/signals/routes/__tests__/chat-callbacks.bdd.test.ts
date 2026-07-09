@@ -543,6 +543,10 @@ function pushPayload(call: readonly unknown[] | undefined): unknown {
   return JSON.parse(typeof raw === "string" ? raw : "{}");
 }
 
+function pushOptions(call: readonly unknown[] | undefined): unknown {
+  return call?.[2];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -2549,6 +2553,9 @@ describe("CHAT-02: push notification gating", () => {
       body: "Your task is complete",
       url: `/chats/${first.threadId}`,
     });
+    expect(
+      pushOptions(context.mocks.webpush.sendNotification.mock.calls[0]),
+    ).toMatchObject({ timeout: 10_000 });
     await flushWaitUntilForTest();
 
     const third = await startChatRun(actor, {
