@@ -299,6 +299,24 @@ async fn run_periodic_refresh(
     cancel: CancellationToken,
     interval: Duration,
 ) {
+    run_periodic_refresh_with_interval(
+        || refresh_once(&api, &cache_path, &lock_path),
+        &cache_path,
+        &cancel,
+        interval,
+    )
+    .await
+}
+
+async fn run_periodic_refresh_with_interval<F, Fut>(
+    mut refresh: F,
+    cache_path: &Path,
+    cancel: &CancellationToken,
+    interval: Duration,
+) where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = RunnerResult<()>>,
+{
     loop {
         tokio::select! {
             biased;
@@ -309,7 +327,12 @@ async fn run_periodic_refresh(
         if cancel.is_cancelled() {
             return;
         }
-        match refresh_once(&api, &cache_path, &lock_path).await {
+        let result = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return,
+            result = refresh() => result,
+        };
+        match result {
             Ok(()) => {}
             Err(error) => {
                 warn!(
@@ -593,6 +616,49 @@ mod tests {
             error.to_string().contains("refresh cancelled"),
             "unexpected error: {error}"
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn periodic_refresh_cancels_in_flight_attempt() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let cancel = CancellationToken::new();
+        let cache_path = PathBuf::from("builtin-firewall-catalog-cache.json");
+        let attempts_for_refresh = Arc::clone(&attempts);
+        let refresh = move || {
+            let attempts = Arc::clone(&attempts_for_refresh);
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                std::future::pending::<RunnerResult<()>>().await
+            }
+        };
+
+        let future = run_periodic_refresh_with_interval(
+            refresh,
+            &cache_path,
+            &cancel,
+            Duration::from_secs(60),
+        );
+        tokio::pin!(future);
+
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("periodic refresh should wait for the interval"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 0);
+
+        tokio::time::advance(Duration::from_secs(60)).await;
+        tokio::select! {
+            biased;
+            _ = &mut future => panic!("periodic refresh should wait for the in-flight attempt"),
+            () = tokio::task::yield_now() => {}
+        }
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), future)
+            .await
+            .expect("periodic refresh should stop after cancellation");
     }
 
     #[tokio::test]
