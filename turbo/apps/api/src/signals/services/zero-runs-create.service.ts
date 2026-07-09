@@ -158,6 +158,7 @@ interface CreateZeroRunCommandArgs {
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
+  readonly memoryRuntimeRetrievalQuery?: string;
   readonly userInfoExtras?: Pick<
     UserInfo,
     | "slackDisplayName"
@@ -687,9 +688,11 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly prompt: string;
+    readonly retrievalQuery?: string;
     readonly timing?: ZeroMemoryTimingObserver;
   },
 ): Promise<string | undefined> {
+  const searchQuery = args.retrievalQuery ?? args.prompt;
   return await measureZeroMemoryTiming(
     args.timing,
     "runtime_injection",
@@ -701,6 +704,9 @@ async function loadMemoryRuntimeAppendSystemPrompt(
         orgId: args.orgId,
         userId: args.userId,
         prompt: args.prompt,
+        ...(args.retrievalQuery !== undefined
+          ? { retrievalQuery: args.retrievalQuery }
+          : {}),
         timing: args.timing,
       });
       return result.appendSystemPrompt || undefined;
@@ -710,6 +716,8 @@ async function loadMemoryRuntimeAppendSystemPrompt(
       memory_runtime_prompt_length_bucket: zeroMemoryPromptLengthBucket(
         args.prompt,
       ),
+      memory_runtime_search_query_length_bucket:
+        zeroMemoryPromptLengthBucket(searchQuery),
     },
   );
 }
@@ -919,6 +927,9 @@ async function buildZeroCreateAgentRunArgs(args: {
       orgId: command.auth.orgId,
       userId: command.auth.userId,
       prompt: command.body.prompt,
+      ...(command.memoryRuntimeRetrievalQuery !== undefined
+        ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
+        : {}),
       timing: memoryTiming,
     });
   return {

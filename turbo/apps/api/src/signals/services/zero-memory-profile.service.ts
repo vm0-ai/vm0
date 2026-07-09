@@ -34,6 +34,8 @@ import {
 
 const log = logger("zero-memory-profile");
 const SEMANTIC_SCORE_THRESHOLD = 0.24;
+const LEXICAL_QUERY_MAX_CHARACTERS = 128;
+const LEXICAL_QUERY_MAX_TOKENS = 8;
 
 interface MemoryScope {
   readonly orgId: string;
@@ -241,6 +243,20 @@ function tokenMatchScore(values: readonly (string | null)[], query: string) {
     return haystack.includes(token);
   }).length;
   return matched / tokens.length;
+}
+
+function isLexicalQueryEligible(normalizedQuery: string): boolean {
+  if (!normalizedQuery) {
+    return false;
+  }
+  if (normalizedQuery.length > LEXICAL_QUERY_MAX_CHARACTERS) {
+    return false;
+  }
+  if (/\r|\n/.test(normalizedQuery)) {
+    return false;
+  }
+  const tokens = tokenize(normalizedQuery);
+  return tokens.length > 0 && tokens.length <= LEXICAL_QUERY_MAX_TOKENS;
 }
 
 function lexicalScore(row: LexicalCandidateRow, normalizedQuery: string) {
@@ -1035,15 +1051,22 @@ async function loadSearchResults(
   }
 
   const candidates = new Map<string, CandidateScore>();
+  const lexicalQueryEligible = isLexicalQueryEligible(normalizedQuery);
   const lexicalCandidates = await measureMemoryList(
     args.timing,
     "profile_search_lexical",
     "memory_profile_lexical_candidate_count_bucket",
     async () => {
+      if (!lexicalQueryEligible) {
+        return [];
+      }
       return await loadLexicalCandidates(db, {
         ...args,
         normalizedQuery,
       });
+    },
+    {
+      memory_profile_lexical_query_eligible: String(lexicalQueryEligible),
     },
   );
   for (const candidate of lexicalCandidates) {

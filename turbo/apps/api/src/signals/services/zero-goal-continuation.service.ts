@@ -80,6 +80,9 @@ type ModelContext =
       readonly failure: Exclude<RunGoalResult, { kind: "ok" }>;
     };
 
+const GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS = 1024;
+const GOAL_MEMORY_RETRIEVAL_QUERY_MAX_CHARS = 1400;
+
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
@@ -113,6 +116,52 @@ function failureMessage(error: RunGoalResult): string {
     return `${error.response.status} ${error.response.body.error.code}: ${error.response.body.error.message}`;
   }
   return `Unexpected successful run result: ${error.runId}`;
+}
+
+function stripGoalMemoryQueryMarkdown(text: string): string {
+  return text
+    .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^["'](.+)["']$/, "$1")
+    .trim();
+}
+
+function compactGoalMemoryQueryText(text: string): string {
+  return stripGoalMemoryQueryMarkdown(text).replace(/\s+/g, " ").trim();
+}
+
+function capGoalMemoryQueryText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return text.slice(0, maxChars).trimEnd();
+}
+
+function buildGoalMemoryRetrievalQuery(goal: {
+  readonly objective: string;
+  readonly objectiveBrief: string;
+}): string {
+  const objectiveBrief = compactGoalMemoryQueryText(goal.objectiveBrief);
+  const objectiveExcerpt = capGoalMemoryQueryText(
+    compactGoalMemoryQueryText(goal.objective),
+    GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS,
+  );
+  const parts =
+    objectiveBrief === objectiveExcerpt ||
+    objectiveExcerpt.startsWith(`${objectiveBrief} `)
+      ? [objectiveExcerpt]
+      : [objectiveBrief, objectiveExcerpt];
+  return capGoalMemoryQueryText(
+    parts
+      .filter((part) => {
+        return part.length > 0;
+      })
+      .join(" "),
+    GOAL_MEMORY_RETRIEVAL_QUERY_MAX_CHARS,
+  );
 }
 
 function buildGoalContinuationPrompt(goal: {
@@ -298,6 +347,7 @@ const runGoalNow$ = command(
     const { modelPin, effectiveModelProvider } = modelContext;
 
     const prompt = buildGoalContinuationPrompt(goal);
+    const memoryRuntimeRetrievalQuery = buildGoalMemoryRetrievalQuery(goal);
     const result = await set(
       createZeroRun$,
       {
@@ -317,6 +367,7 @@ const runGoalNow$ = command(
         },
         apiStartTime: now(),
         triggerSource: "workflow-event",
+        memoryRuntimeRetrievalQuery,
         chatThreadId: goal.threadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
         modelProviderCredentialScope:

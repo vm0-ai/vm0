@@ -8,6 +8,7 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -18,6 +19,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
+import { seedSemanticRecallMemory } from "../../../test-fixtures/relationship-memory";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
@@ -1160,7 +1162,19 @@ describe("CHAT-02: completed chat callback", () => {
   it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
@@ -1170,10 +1184,11 @@ describe("CHAT-02: completed chat callback", () => {
     const goalBrief = "Keep making autonomous progress";
     const goalObjective = `${goalBrief}
 
-Detailed goal procedure:
-- Inspect the current external state before deciding completion.
-- Persist progress outside the sandbox.
-- Complete the goal only after auditing every requirement.`;
+Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and account ACME-42 before marking done.`;
+    await seedSemanticRecallMemory(
+      { orgId: actor.orgId, userId: actor.userId },
+      "Keep making autonomous progress Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and account ACME-42 before marking done.",
+    );
     await createGoalForRun(actor, first.runId, goalObjective);
 
     chatCallbacks.mockChatOutputEvents([
@@ -1211,6 +1226,12 @@ Detailed goal procedure:
     expect(goalContext.body.prompt).toContain(goalObjective);
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       "# Active thread goal",
+    );
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      "# How to operate",
+    );
+    expect(goalContext.body.appendSystemPrompt ?? "").toContain(
+      "The user prefers JPM IJTXX Treasury allocation.",
     );
 
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);

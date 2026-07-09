@@ -21,6 +21,7 @@ interface MemoryScope {
 
 interface ZeroMemoryInjectionParams extends MemoryScope {
   readonly prompt: string;
+  readonly retrievalQuery?: string;
   readonly timing?: ZeroMemoryTimingObserver;
 }
 
@@ -204,11 +205,13 @@ export async function buildZeroMemoryRuntimeInjection(
   params: ZeroMemoryInjectionParams,
 ): Promise<MemoryInjectionPreviewResponse> {
   const prompt = params.prompt.trim();
+  const retrievalQuery =
+    params.retrievalQuery === undefined ? prompt : params.retrievalQuery.trim();
   const [profile, search] = await Promise.all([
     getZeroMemoryProfile(db, {
       orgId: params.orgId,
       userId: params.userId,
-      query: prompt,
+      query: retrievalQuery,
       staticKinds: STATIC_PROFILE_KINDS,
       dynamicKinds: DYNAMIC_PROFILE_KINDS,
       searchKinds: QUERY_MEMORY_KINDS,
@@ -221,7 +224,7 @@ export async function buildZeroMemoryRuntimeInjection(
     searchZeroMemory(db, {
       orgId: params.orgId,
       userId: params.userId,
-      q: prompt,
+      q: retrievalQuery,
       mode: "documents",
       limit: DEFAULT_QUERY_LIMIT,
     }),
