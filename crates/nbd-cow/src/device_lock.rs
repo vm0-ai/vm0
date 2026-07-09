@@ -1,8 +1,8 @@
 //! Host-global NBD device index locks.
 //!
 //! These locks coordinate `/dev/nbdN` ownership across runner processes on the
-//! same host. The kernel releases `flock` locks automatically when the owning
-//! process exits.
+//! same host. Dropping the returned claim closes the lock file descriptor and
+//! releases the corresponding kernel `flock`.
 //!
 //! Claims are represented by per-index lock files named
 //! `vm0-nbd-{index}.lock`. When this API creates a missing lock file, it uses
