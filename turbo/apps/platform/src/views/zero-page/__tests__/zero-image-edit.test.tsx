@@ -1482,4 +1482,45 @@ describe("image editing", () => {
       screen.getByTestId("artifact-sidebar-body-image-copy"),
     ).toHaveAttribute("src", SOURCE_IMAGE_URL);
   });
+
+  it("deletes the selected image with the Delete or Backspace key", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    const canvas = screen.getByTestId("artifact-sidebar-image-edit-canvas");
+
+    // Duplicate the source, then remove the copy with Backspace.
+    fireEvent.keyDown(canvas, { key: "c", metaKey: true });
+    fireEvent.keyDown(canvas, { key: "v", metaKey: true });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(canvas, { key: "Backspace" });
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("artifact-sidebar-body-image-copy"),
+      ).toBeNull();
+    });
+    expect(
+      screen.getByTestId("artifact-sidebar-body-image"),
+    ).toBeInTheDocument();
+
+    // Select the source itself, then remove it with Delete.
+    await user.click(screen.getByTestId("artifact-sidebar-body-image"));
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(canvas, { key: "Delete" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
+    });
+    expect(screen.queryByTestId("image-edit-toolbar")).toBeNull();
+  });
 });

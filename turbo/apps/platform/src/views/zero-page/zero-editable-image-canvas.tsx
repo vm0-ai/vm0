@@ -26,6 +26,7 @@ import {
   createInitialEditableImageCanvasItem,
   DEFAULT_CANVAS_HEIGHT,
   DEFAULT_CANVAS_WIDTH,
+  deleteEditableImageCanvasItem$,
   editableImageCanvasItemsByKey$,
   editableImageCanvasRegionCommentsByKey$,
   editableImageCanvasRegionSelectionActiveByKey$,
@@ -172,6 +173,7 @@ function useEditableImageCanvasState(canvasKey: string, src: string) {
     completeEditableImageCanvasRegionSelection$,
   );
   const copySelection = useSet(copyEditableImageCanvasSelection$);
+  const deleteItem = useSet(deleteEditableImageCanvasItem$);
   const moveItem = useSet(moveEditableImageCanvasItem$);
   const pasteSelection = useSet(pasteEditableImageCanvasSelection$);
   const resizeItem = useSet(resizeEditableImageCanvasItem$);
@@ -187,6 +189,7 @@ function useEditableImageCanvasState(canvasKey: string, src: string) {
     clearRegionSelection,
     completeRegionSelection,
     copySelection,
+    deleteItem,
     displayZoom: zoomByKey[canvasKey] ?? 1,
     items,
     moveItem,
@@ -475,6 +478,56 @@ function startImageItemMoveDrag({
   window.addEventListener("pointermove", handlePointerMove);
   window.addEventListener("pointerup", stopDragging);
   window.addEventListener("pointercancel", stopDragging);
+}
+
+function handleEditableImageCanvasKeyDown({
+  canvasKey,
+  canvasState,
+  event,
+  src,
+}: {
+  canvasKey: string;
+  canvasState: EditableImageCanvasState;
+  event: KeyboardEvent<HTMLDivElement>;
+  src: string;
+}): void {
+  if (isEditableTextTarget(event.target)) {
+    return;
+  }
+
+  if (
+    event.key === "Escape" &&
+    (canvasState.regionSelectionActive || canvasState.selectedRegion !== null)
+  ) {
+    event.preventDefault();
+    canvasState.clearRegionSelection(canvasKey);
+    return;
+  }
+
+  if (
+    (event.key === "Backspace" || event.key === "Delete") &&
+    canvasState.selectedItem !== null
+  ) {
+    event.preventDefault();
+    canvasState.deleteItem({
+      itemId: canvasState.selectedItem.id,
+      key: canvasKey,
+      src,
+    });
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+  const shortcutPressed = event.metaKey || event.ctrlKey;
+  if (shortcutPressed && key === "c" && canvasState.selectedItem !== null) {
+    event.preventDefault();
+    canvasState.copySelection(canvasKey, src);
+    return;
+  }
+  if (shortcutPressed && key === "v") {
+    event.preventDefault();
+    canvasState.pasteSelection(canvasKey, src);
+  }
 }
 
 function CanvasItemView({
@@ -1004,30 +1057,7 @@ export function EditableArtifactImageCanvas({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (isEditableTextTarget(event.target)) {
-      return;
-    }
-
-    if (
-      event.key === "Escape" &&
-      (canvasState.regionSelectionActive || canvasState.selectedRegion !== null)
-    ) {
-      event.preventDefault();
-      canvasState.clearRegionSelection(canvasKey);
-      return;
-    }
-
-    const key = event.key.toLowerCase();
-    const shortcutPressed = event.metaKey || event.ctrlKey;
-    if (shortcutPressed && key === "c" && canvasState.selectedItem !== null) {
-      event.preventDefault();
-      canvasState.copySelection(canvasKey, src);
-      return;
-    }
-    if (shortcutPressed && key === "v") {
-      event.preventDefault();
-      canvasState.pasteSelection(canvasKey, src);
-    }
+    handleEditableImageCanvasKeyDown({ canvasKey, canvasState, event, src });
   };
 
   return (
