@@ -207,6 +207,24 @@ export async function buildZeroMemoryRuntimeInjection(
   const prompt = params.prompt.trim();
   const trimmedRetrievalQuery = params.retrievalQuery?.trim();
   const retrievalQuery = trimmedRetrievalQuery || prompt;
+  if (retrievalQuery.length === 0) {
+    return {
+      prompt,
+      appendSystemPrompt: "",
+      profile: { static: [], dynamic: [] },
+      queryMemories: [],
+      documentEvidence: [],
+      stats: {
+        injectedCount: 0,
+        omittedCount: 0,
+        characterCount: 0,
+        tokenCount: 0,
+        profileTokenCount: 0,
+        memoryTokenCount: 0,
+        documentTokenCount: 0,
+      },
+    };
+  }
   const [profile, search] = await Promise.all([
     getZeroMemoryProfile(db, {
       orgId: params.orgId,

@@ -456,6 +456,35 @@ describe("GET /api/zero/memory/recall", () => {
     expect(response.body.stats.documentTokenCount).toBeGreaterThan(0);
   });
 
+  it("does not inject memory for whitespace-only runtime prompts", async () => {
+    const fixture = await seedRelationshipFixture({
+      relationshipMemoryEnabled: true,
+      runtimeInjectionEnabled: true,
+    });
+    await seedSemanticRecallMemory(fixture, "cash management sweep fund");
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+
+    const response = await accept(
+      memoryClient().injectionPreview({
+        headers: authHeaders(),
+        body: { prompt: "   " },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      prompt: "",
+      appendSystemPrompt: "",
+      profile: { static: [], dynamic: [] },
+      queryMemories: [],
+      stats: {
+        injectedCount: 0,
+        omittedCount: 0,
+        characterCount: 0,
+      },
+    });
+  });
+
   it("rejects injection preview when runtime injection is disabled", async () => {
     await seedRelationshipFixture({
       relationshipMemoryEnabled: true,
