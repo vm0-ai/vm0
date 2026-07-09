@@ -86,6 +86,7 @@ type ModelContext =
 
 const GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS = 1024;
 const GOAL_MEMORY_RETRIEVAL_QUERY_MAX_CHARS = 1400;
+const GOAL_MEMORY_NO_SEARCH_SEPARATOR_MIN_CHARS = 32;
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
@@ -134,7 +135,16 @@ function stripGoalMemoryQueryMarkdown(text: string): string {
 }
 
 function compactGoalMemoryQueryText(text: string): string {
-  return stripGoalMemoryQueryMarkdown(text).replace(/\s+/g, " ").trim();
+  return stripGoalMemoryQueryMarkdown(text)
+    .replace(
+      new RegExp(
+        `[^\\p{L}\\p{N}]{${GOAL_MEMORY_NO_SEARCH_SEPARATOR_MIN_CHARS},}`,
+        "gu",
+      ),
+      " ",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function capGoalMemoryQueryText(text: string, maxChars: number): string {
@@ -157,15 +167,19 @@ function buildGoalMemoryRetrievalQuery(goal: {
     compactGoalMemoryQueryText(goal.objective),
     GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS,
   );
+  const isDefaultObjectiveBrief =
+    objectiveBrief === DEFAULT_GOAL_OBJECTIVE_BRIEF;
   if (
-    objectiveExcerpt.length === 0 &&
-    objectiveBrief === DEFAULT_GOAL_OBJECTIVE_BRIEF
+    isDefaultObjectiveBrief &&
+    (objectiveExcerpt.length === 0 ||
+      objectiveExcerpt === DEFAULT_GOAL_OBJECTIVE_BRIEF)
   ) {
     return "";
   }
-  const parts =
-    objectiveBrief === objectiveExcerpt ||
-    objectiveExcerpt.startsWith(`${objectiveBrief} `)
+  const parts = isDefaultObjectiveBrief
+    ? [objectiveExcerpt]
+    : objectiveBrief === objectiveExcerpt ||
+        objectiveExcerpt.startsWith(`${objectiveBrief} `)
       ? [objectiveExcerpt]
       : [objectiveBrief, objectiveExcerpt];
   const query = capGoalMemoryQueryText(

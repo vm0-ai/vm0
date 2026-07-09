@@ -1185,7 +1185,10 @@ describe("CHAT-02: completed chat callback", () => {
       prompt: "finish before goal continuation",
     });
     const goalBrief = "Keep making autonomous progress";
+    const noisySeparator = "!".repeat(1100);
     const goalObjective = `${goalBrief}
+
+${noisySeparator}
 
 Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
     await seedSemanticRecallMemory(
@@ -1307,6 +1310,106 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     const goalContext = await waitForRunContext(actor, goalRunId);
     expect(goalContext.body.prompt).toContain("# Active thread goal");
     expect(goalContext.body.prompt).toContain(goalBrief);
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      broadMemoryText,
+    );
+    await expect
+      .poll(() => {
+        return sandboxOperationEventsForRun(goalRunId).map((event) => {
+          return event.op_type;
+        });
+      })
+      .toContain(
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      );
+    const timingEvents = sandboxOperationEventsForRun(goalRunId);
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expect(
+      timingEvents.filter((event) => {
+        return (
+          typeof event.op_type === "string" &&
+          event.op_type.startsWith(
+            "api_dispatch_pre_create_zero_memory_profile_",
+          )
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await waitForRunStatus(actor, goalRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("does not broad-load runtime memory when a goal only has the default placeholder text", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const broadMemoryText =
+      "The user keeps unrelated placeholder plans named Untitled goal.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Broad Placeholder Memory",
+      kind: "preference",
+      text: broadMemoryText,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before default-placeholder goal continuation",
+    });
+    const goalObjective = "Untitled goal";
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(
+        0,
+        "completed before default-placeholder goal continuation",
+      ),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalObjective);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalObjective);
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected default-placeholder goal continuation run id");
+    }
+    const goalRunId = goalContinuation.runId;
+    const goalContext = await waitForRunContext(actor, goalRunId);
+    expect(goalContext.body.prompt).toContain("# Active thread goal");
+    expect(goalContext.body.prompt).toContain(goalObjective);
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       broadMemoryText,
     );
