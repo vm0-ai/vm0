@@ -82,9 +82,18 @@ export interface MemoryDocumentChunkCitation {
 export interface MemoryTombstoneMetadata {
   readonly reason?: string;
   readonly prompt?: string;
+  readonly targetId?: string;
+  readonly targetTitle?: string | null;
+  readonly targetText?: string | null;
+  readonly source?: "direct" | "prompt" | "backfill";
 }
 
 export interface MemoryVersionMetadata {
   readonly operation?: "create" | "update" | "forget" | "derive";
   readonly reason?: string;
+  readonly text?: string;
+  readonly kind?: string;
+  readonly confidence?: number;
+  readonly title?: string | null;
+  readonly status?: string;
 }

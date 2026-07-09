@@ -526,6 +526,12 @@ export const memories = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    contextSpaceId: uuid("context_space_id").references(
+      () => {
+        return memoryContextSpaces.id;
+      },
+      { onDelete: "set null" },
+    ),
     entityId: uuid("entity_id").references(
       () => {
         return memoryEntities.id;
@@ -550,6 +556,10 @@ export const memories = pgTable(
         table.orgId,
         table.userId,
         table.kind,
+      ),
+      index("idx_memories_context_status").on(
+        table.contextSpaceId,
+        table.status,
       ),
       index("idx_memories_entity_status").on(table.entityId, table.status),
     ];
@@ -636,6 +646,12 @@ export const memoryProfiles = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    contextSpaceId: uuid("context_space_id").references(
+      () => {
+        return memoryContextSpaces.id;
+      },
+      { onDelete: "set null" },
+    ),
     entityId: uuid("entity_id")
       .notNull()
       .references(
@@ -657,6 +673,7 @@ export const memoryProfiles = pgTable(
         table.section,
       ),
       index("idx_memory_profiles_scope").on(table.orgId, table.userId),
+      index("idx_memory_profiles_context").on(table.contextSpaceId),
     ];
   },
 );
@@ -667,6 +684,12 @@ export const memorySearchEntries = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
+    contextSpaceId: uuid("context_space_id").references(
+      () => {
+        return memoryContextSpaces.id;
+      },
+      { onDelete: "set null" },
+    ),
     memoryId: uuid("memory_id")
       .notNull()
       .references(
@@ -713,6 +736,7 @@ export const memorySearchEntries = pgTable(
         table.status,
         table.memoryKind,
       ),
+      index("idx_memory_search_entries_context").on(table.contextSpaceId),
       index("idx_memory_search_entries_entity").on(table.entityId),
       index("idx_memory_search_entries_embedding_hnsw").using(
         "hnsw",

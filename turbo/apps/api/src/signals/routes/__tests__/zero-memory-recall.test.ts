@@ -510,3 +510,189 @@ describe("GET /api/zero/memory/search", () => {
     });
   });
 });
+
+describe("zero memory lifecycle routes", () => {
+  it("creates, versions, lists, forgets, and tombstones direct memory", async () => {
+    await seedRelationshipFixture();
+
+    const created = await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "Use concise launch summaries.",
+          kind: "key_fact",
+          confidence: 92,
+          entityDisplayName: "Direct memory tests",
+        },
+      }),
+      [200],
+    );
+
+    const memoryId = created.body.memory.id;
+    expect(created.body.memory).toMatchObject({
+      kind: "key_fact",
+      status: "active",
+      text: "Use concise launch summaries.",
+      confidence: 92,
+      entity: {
+        displayName: "Direct memory tests",
+      },
+      contextSpace: {
+        type: "user",
+      },
+    });
+
+    const listed = await accept(
+      memoryClient().memories({
+        headers: authHeaders(),
+        query: { status: "active", kind: "key_fact", limit: 10 },
+      }),
+      [200],
+    );
+    expect(
+      listed.body.memories.some((memory) => {
+        return memory.id === memoryId;
+      }),
+    ).toBeTruthy();
+
+    const updated = await accept(
+      memoryClient().updateMemory({
+        headers: authHeaders(),
+        params: { memoryId },
+        body: {
+          text: "Use exact launch-summary wording.",
+          confidence: 95,
+        },
+      }),
+      [200],
+    );
+    expect(updated.body.memory).toMatchObject({
+      id: memoryId,
+      text: "Use exact launch-summary wording.",
+      confidence: 95,
+    });
+
+    const history = await accept(
+      memoryClient().history({
+        headers: authHeaders(),
+        query: {
+          targetKind: "memory",
+          targetId: memoryId,
+          limit: 10,
+        },
+      }),
+      [200],
+    );
+    expect(
+      history.body.history.map((version) => {
+        return version.operation;
+      }),
+    ).toStrictEqual(["update", "create"]);
+
+    const forgotten = await accept(
+      memoryClient().forgetMemory({
+        headers: authHeaders(),
+        params: { memoryId },
+        body: { reason: "test cleanup" },
+      }),
+      [200],
+    );
+    expect(forgotten.body.forgotten).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetKind: "memory",
+          fingerprint: `memory:${memoryId}`,
+          targetId: memoryId,
+          targetText: "Use exact launch-summary wording.",
+        }),
+      ]),
+    );
+
+    const archived = await accept(
+      memoryClient().memories({
+        headers: authHeaders(),
+        query: { status: "archived", limit: 10 },
+      }),
+      [200],
+    );
+    expect(archived.body.memories[0]).toMatchObject({
+      id: memoryId,
+      status: "archived",
+    });
+
+    const tombstones = await accept(
+      memoryClient().forgotten({
+        headers: authHeaders(),
+        query: { targetKind: "memory", limit: 10 },
+      }),
+      [200],
+    );
+    expect(
+      tombstones.body.forgotten.some((tombstone) => {
+        return tombstone.fingerprint === `memory:${memoryId}`;
+      }),
+    ).toBeTruthy();
+  });
+
+  it("forgets matching document evidence by prompt", async () => {
+    const fixture = await seedRelationshipFixture();
+    const ids = await seedMemoryDocumentChunk({
+      fixture,
+      title: "Security review plan",
+      text: "The security review plan covers data retention controls.",
+      provider: "github",
+      externalId: "github-forget-fixture",
+    });
+
+    const forgotten = await accept(
+      memoryClient().forgetPrompt({
+        headers: authHeaders(),
+        body: {
+          prompt: "data retention controls",
+          targetKind: "documents",
+          provider: "github",
+          limit: 5,
+          reason: "document cleanup",
+        },
+      }),
+      [200],
+    );
+    expect(forgotten.body.forgotten).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetKind: "document",
+          fingerprint: "document:github:github-forget-fixture",
+          targetId: ids.documentId,
+          targetTitle: "Security review plan",
+        }),
+      ]),
+    );
+
+    const deletedDocuments = await accept(
+      memoryClient().documents({
+        headers: authHeaders(),
+        query: { status: "deleted", provider: "github", limit: 10 },
+      }),
+      [200],
+    );
+    expect(deletedDocuments.body.documents[0]).toMatchObject({
+      id: ids.documentId,
+      status: "deleted",
+      externalId: "github-forget-fixture",
+    });
+
+    const search = await accept(
+      memoryClient().search({
+        headers: authHeaders(),
+        query: {
+          q: "data retention controls",
+          mode: "documents",
+          provider: "github",
+          limit: 5,
+        },
+      }),
+      [200],
+    );
+    expect(search.body.results).toHaveLength(0);
+  });
+});

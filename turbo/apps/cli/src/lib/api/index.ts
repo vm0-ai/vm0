@@ -207,9 +207,17 @@ export {
 
 // Domain modules - Zero Memory
 export {
-  recallZeroMemory,
+  createZeroMemory,
+  forgetZeroMemory,
+  forgetZeroMemoryByPrompt,
   getZeroMemoryContext,
+  listZeroMemory,
+  listZeroMemoryDocuments,
+  listZeroMemoryForgotten,
+  listZeroMemoryHistory,
+  recallZeroMemory,
   searchZeroMemory,
+  updateZeroMemory,
 } from "./domains/zero-memory";
 
 // Domain modules - Logs

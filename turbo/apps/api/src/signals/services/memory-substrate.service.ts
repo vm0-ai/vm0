@@ -8,7 +8,10 @@ import type {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
+  memoryContextSpaces,
   memorySources,
+  type MemoryContextSpaceMetadata,
+  type MemoryContextSpaceType,
   type MemoryProvider,
   type MemorySourceMetadata,
   type MemorySourceType,
@@ -21,6 +24,13 @@ import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 interface MemoryScope {
   readonly orgId: string;
   readonly userId: string;
+}
+
+export interface MemoryContextSpaceInput {
+  readonly type: MemoryContextSpaceType;
+  readonly key: string;
+  readonly displayName: string;
+  readonly metadata?: MemoryContextSpaceMetadata;
 }
 
 interface RecordMemorySourceArgs extends MemoryScope {
@@ -36,6 +46,19 @@ interface RecordMemorySourceArgs extends MemoryScope {
 
 export function memoryContentHash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function defaultUserMemoryContextSpace(
+  args: MemoryScope,
+): MemoryContextSpaceInput {
+  return {
+    type: "user",
+    key: args.userId,
+    displayName: "User memory",
+    metadata: {
+      reason: "Default context space for user-scoped memory",
+    },
+  };
 }
 
 export async function memorySubstrateEnabled(
@@ -96,6 +119,46 @@ export async function recordMemorySource(
     });
 
   return true;
+}
+
+export async function upsertMemoryContextSpace(
+  db: Db,
+  args: MemoryScope & MemoryContextSpaceInput,
+): Promise<typeof memoryContextSpaces.$inferSelect> {
+  const currentTime = nowDate();
+  const values: typeof memoryContextSpaces.$inferInsert = {
+    orgId: args.orgId,
+    userId: args.userId,
+    type: args.type,
+    key: args.key,
+    displayName: args.displayName,
+    metadata: args.metadata ?? {},
+    createdAt: currentTime,
+    updatedAt: currentTime,
+  };
+
+  const [row] = await db
+    .insert(memoryContextSpaces)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [
+        memoryContextSpaces.orgId,
+        memoryContextSpaces.userId,
+        memoryContextSpaces.type,
+        memoryContextSpaces.key,
+      ],
+      set: {
+        displayName: values.displayName,
+        metadata: values.metadata,
+        updatedAt: currentTime,
+      },
+    })
+    .returning();
+
+  if (!row) {
+    throw new Error("Failed to upsert memory context space");
+  }
+  return row;
 }
 
 function serializeDate(value: Date | null): string | null {

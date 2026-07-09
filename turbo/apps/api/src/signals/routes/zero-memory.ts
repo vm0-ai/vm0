@@ -20,6 +20,18 @@ import {
   recallZeroMemory,
 } from "../services/zero-memory-recall.service";
 import { searchZeroMemory } from "../services/zero-memory-search.service";
+import {
+  createMemory as createLifecycleMemory,
+  forgetByPrompt,
+  forgetDocument,
+  forgetMemory,
+  listForgottenMemory,
+  listMemories,
+  listMemoryDocuments,
+  listMemoryHistory,
+  listMemoryProfiles,
+  updateMemory as updateLifecycleMemory,
+} from "../services/zero-memory-lifecycle.service";
 import { buildZeroMemoryRuntimeInjection } from "../services/zero-memory-injection.service";
 import {
   getSlackMemoryStatus,
@@ -116,6 +128,23 @@ const getMemoryInner$ = computed(async (get): Promise<unknown> => {
 
 const memoryRecallQuery$ = queryOf(zeroMemoryContract.recall);
 const memorySearchQuery$ = queryOf(zeroMemoryContract.search);
+const memoryListQuery$ = queryOf(zeroMemoryContract.memories);
+const memoryCreateBody$ = bodyResultOf(zeroMemoryContract.createMemory);
+const memoryUpdateParams$ = pathParamsOf(zeroMemoryContract.updateMemory);
+const memoryUpdateBody$ = bodyResultOf(zeroMemoryContract.updateMemory);
+const memoryForgetParams$ = pathParamsOf(zeroMemoryContract.forgetMemory);
+const memoryForgetBody$ = bodyResultOf(zeroMemoryContract.forgetMemory);
+const memoryDocumentsQuery$ = queryOf(zeroMemoryContract.documents);
+const memoryDocumentForgetParams$ = pathParamsOf(
+  zeroMemoryContract.forgetDocument,
+);
+const memoryDocumentForgetBody$ = bodyResultOf(
+  zeroMemoryContract.forgetDocument,
+);
+const memoryForgetPromptBody$ = bodyResultOf(zeroMemoryContract.forgetPrompt);
+const memoryHistoryQuery$ = queryOf(zeroMemoryContract.history);
+const memoryForgottenQuery$ = queryOf(zeroMemoryContract.forgotten);
+const memoryProfilesQuery$ = queryOf(zeroMemoryContract.profiles);
 const memoryContextQuery$ = queryOf(zeroMemoryContract.context);
 const memoryInjectionPreviewBody$ = bodyResultOf(
   zeroMemoryContract.injectionPreview,
@@ -159,6 +188,222 @@ const memorySearchInner$ = computed(async (get): Promise<unknown> => {
     q: query.q,
     mode: query.mode,
     provider: query.provider,
+    sourceType: query.sourceType,
+    contextSpaceType: query.contextSpaceType,
+    contextSpaceKey: query.contextSpaceKey,
+    memoryKind: query.memoryKind,
+    occurredAfter: query.occurredAfter,
+    occurredBefore: query.occurredBefore,
+    limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memoryListInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const query = get(memoryListQuery$);
+  const result = await listMemories(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    status: query.status,
+    kind: query.kind,
+    page: query.page,
+    limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memoryCreateInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(memoryCreateBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const memory = await createLifecycleMemory(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      ...bodyResult.data,
+    });
+    signal.throwIfAborted();
+    return { status: 200 as const, body: { memory } };
+  },
+);
+
+const memoryUpdateInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(memoryUpdateBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const params = get(memoryUpdateParams$);
+    const memory = await updateLifecycleMemory(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      memoryId: params.memoryId,
+      ...bodyResult.data,
+    });
+    signal.throwIfAborted();
+    if (!memory) {
+      return notFound("Memory not found");
+    }
+    return { status: 200 as const, body: { memory } };
+  },
+);
+
+const memoryForgetInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(memoryForgetBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const params = get(memoryForgetParams$);
+    const forgotten = await forgetMemory(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      memoryId: params.memoryId,
+      reason: bodyResult.data.reason,
+    });
+    signal.throwIfAborted();
+    if (!forgotten) {
+      return notFound("Memory not found");
+    }
+    return { status: 200 as const, body: { forgotten } };
+  },
+);
+
+const memoryDocumentsInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const query = get(memoryDocumentsQuery$);
+  const result = await listMemoryDocuments(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    status: query.status,
+    provider: query.provider,
+    page: query.page,
+    limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memoryDocumentForgetInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(memoryDocumentForgetBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const params = get(memoryDocumentForgetParams$);
+    const forgotten = await forgetDocument(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      documentId: params.documentId,
+      reason: bodyResult.data.reason,
+    });
+    signal.throwIfAborted();
+    if (!forgotten) {
+      return notFound("Memory document not found");
+    }
+    return { status: 200 as const, body: { forgotten } };
+  },
+);
+
+const memoryForgetPromptInner$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
+    const auth = get(organizationAuthContext$);
+    if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+      return memorySourceDisabled;
+    }
+
+    const bodyResult = await get(memoryForgetPromptBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const result = await forgetByPrompt(set(writeDb$), {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      ...bodyResult.data,
+    });
+    signal.throwIfAborted();
+    return { status: 200 as const, body: result };
+  },
+);
+
+const memoryHistoryInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const query = get(memoryHistoryQuery$);
+  const result = await listMemoryHistory(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    targetKind: query.targetKind,
+    targetId: query.targetId,
+    limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memoryForgottenInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const query = get(memoryForgottenQuery$);
+  const result = await listForgottenMemory(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    targetKind: query.targetKind,
+    limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memoryProfilesInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const query = get(memoryProfilesQuery$);
+  const result = await listMemoryProfiles(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
     limit: query.limit,
   });
   return { status: 200 as const, body: result };
@@ -552,6 +797,46 @@ export const zeroMemoryRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemoryContract.search,
     handler: authRoute(memoryRecallAuthOptions, memorySearchInner$),
+  },
+  {
+    route: zeroMemoryContract.memories,
+    handler: authRoute(memoryRecallAuthOptions, memoryListInner$),
+  },
+  {
+    route: zeroMemoryContract.createMemory,
+    handler: authRoute(memoryRecallAuthOptions, memoryCreateInner$),
+  },
+  {
+    route: zeroMemoryContract.updateMemory,
+    handler: authRoute(memoryRecallAuthOptions, memoryUpdateInner$),
+  },
+  {
+    route: zeroMemoryContract.forgetMemory,
+    handler: authRoute(memoryRecallAuthOptions, memoryForgetInner$),
+  },
+  {
+    route: zeroMemoryContract.documents,
+    handler: authRoute(memoryRecallAuthOptions, memoryDocumentsInner$),
+  },
+  {
+    route: zeroMemoryContract.forgetDocument,
+    handler: authRoute(memoryRecallAuthOptions, memoryDocumentForgetInner$),
+  },
+  {
+    route: zeroMemoryContract.forgetPrompt,
+    handler: authRoute(memoryRecallAuthOptions, memoryForgetPromptInner$),
+  },
+  {
+    route: zeroMemoryContract.history,
+    handler: authRoute(memoryRecallAuthOptions, memoryHistoryInner$),
+  },
+  {
+    route: zeroMemoryContract.forgotten,
+    handler: authRoute(memoryRecallAuthOptions, memoryForgottenInner$),
+  },
+  {
+    route: zeroMemoryContract.profiles,
+    handler: authRoute(memoryRecallAuthOptions, memoryProfilesInner$),
   },
   {
     route: zeroMemoryContract.context,

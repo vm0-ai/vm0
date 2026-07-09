@@ -1,12 +1,9 @@
 import {
-  memoryContextSpaces,
   memoryDocumentChunks,
   memoryDocuments,
   memoryDocumentSearchEntries,
   memorySources,
   memoryVersions,
-  type MemoryContextSpaceMetadata,
-  type MemoryContextSpaceType,
   type MemoryDocumentChunkCitation,
   type MemoryDocumentMetadata,
   type MemoryProvider,
@@ -19,32 +16,28 @@ import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
+  defaultUserMemoryContextSpace,
+  type MemoryContextSpaceInput,
   memoryContentHash,
   memorySubstrateEnabled,
+  upsertMemoryContextSpace,
 } from "./memory-substrate.service";
 import {
   embedZeroMemoryText,
   memoryEmbeddingContentHash,
 } from "./zero-memory-embedding.service";
+import { memoryDocumentHasTombstone } from "./zero-memory-lifecycle.service";
 
 const log = logger("zero-memory-document-ingestion");
 const MAX_CHUNK_CHARS = 1800;
 const CHUNK_OVERLAP_CHARS = 180;
 
-type MemoryContextSpaceRow = typeof memoryContextSpaces.$inferSelect;
 type MemoryDocumentRow = typeof memoryDocuments.$inferSelect;
 type MemorySourceRow = typeof memorySources.$inferSelect;
 
 interface MemoryScope {
   readonly orgId: string;
   readonly userId: string;
-}
-
-interface MemoryContextSpaceInput {
-  readonly type: MemoryContextSpaceType;
-  readonly key: string;
-  readonly displayName: string;
-  readonly metadata?: MemoryContextSpaceMetadata;
 }
 
 interface MemoryDocumentIngestionInput extends MemoryScope {
@@ -131,57 +124,6 @@ function chunkMemoryDocumentText(content: string): readonly string[] {
     start = Math.max(end - CHUNK_OVERLAP_CHARS, start + 1);
   }
   return chunks;
-}
-
-function defaultContextSpace(args: MemoryScope): MemoryContextSpaceInput {
-  return {
-    type: "user",
-    key: args.userId,
-    displayName: "User memory",
-    metadata: {
-      reason: "Default context space for user-scoped memory ingestion",
-    },
-  };
-}
-
-async function upsertMemoryContextSpace(
-  db: Db,
-  args: MemoryScope & MemoryContextSpaceInput,
-): Promise<MemoryContextSpaceRow> {
-  const currentTime = nowDate();
-  const values: typeof memoryContextSpaces.$inferInsert = {
-    orgId: args.orgId,
-    userId: args.userId,
-    type: args.type,
-    key: args.key,
-    displayName: args.displayName,
-    metadata: args.metadata ?? {},
-    createdAt: currentTime,
-    updatedAt: currentTime,
-  };
-
-  const [row] = await db
-    .insert(memoryContextSpaces)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [
-        memoryContextSpaces.orgId,
-        memoryContextSpaces.userId,
-        memoryContextSpaces.type,
-        memoryContextSpaces.key,
-      ],
-      set: {
-        displayName: values.displayName,
-        metadata: values.metadata,
-        updatedAt: currentTime,
-      },
-    })
-    .returning();
-
-  if (!row) {
-    throw new Error("Failed to upsert memory context space");
-  }
-  return row;
 }
 
 async function loadMemorySource(
@@ -531,10 +473,21 @@ export async function recordMemoryDocumentFromConnectorSource(
   if (!prepared) {
     return false;
   }
+  if (
+    await memoryDocumentHasTombstone(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      provider: args.provider,
+      externalId: args.externalId,
+      contentHash: prepared.contentHash,
+    })
+  ) {
+    return false;
+  }
 
   const contextSpace = await upsertMemoryContextSpace(db, {
     ...args,
-    ...(args.contextSpace ?? defaultContextSpace(args)),
+    ...(args.contextSpace ?? defaultUserMemoryContextSpace(args)),
   });
   const source = await loadMemorySource(db, args);
   const currentTime = nowDate();

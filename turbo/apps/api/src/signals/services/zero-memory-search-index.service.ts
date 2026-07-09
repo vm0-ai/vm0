@@ -21,6 +21,8 @@ interface MemoryScope {
   readonly userId: string;
 }
 
+type MemorySearchDeleteDb = Pick<Db, "delete">;
+
 function memorySearchText(row: {
   readonly text: string;
   readonly kind: string;
@@ -42,6 +44,7 @@ async function loadIndexableMemory(
       id: memories.id,
       orgId: memories.orgId,
       userId: memories.userId,
+      contextSpaceId: memories.contextSpaceId,
       entityId: memories.entityId,
       kind: memories.kind,
       status: memories.status,
@@ -64,7 +67,7 @@ async function loadIndexableMemory(
 }
 
 export async function deleteZeroMemorySearchEntryForMemory(
-  db: Db,
+  db: MemorySearchDeleteDb,
   args: MemoryScope & { readonly memoryId: string },
 ): Promise<void> {
   await db
@@ -105,6 +108,7 @@ async function syncZeroMemorySearchEntryForMemory(
     .values({
       orgId: row.orgId,
       userId: row.userId,
+      contextSpaceId: row.contextSpaceId,
       memoryId: row.id,
       entityId: row.entityId,
       entryKind: "memory_text",
@@ -127,6 +131,7 @@ async function syncZeroMemorySearchEntryForMemory(
       ],
       set: {
         entityId: row.entityId,
+        contextSpaceId: row.contextSpaceId,
         memoryKind: row.kind,
         status: row.status,
         text,

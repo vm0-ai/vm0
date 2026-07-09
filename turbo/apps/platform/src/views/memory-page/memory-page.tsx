@@ -29,8 +29,10 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { MemoryInjection } from "./memory-injection.tsx";
+import { MemoryLifecycle } from "./memory-lifecycle.tsx";
 import { MemoryRecall } from "./memory-recall.tsx";
 import { MemoryRelationships } from "./memory-relationships.tsx";
+import { MemorySearch } from "./memory-search.tsx";
 import { MemorySources } from "./memory-sources.tsx";
 
 const PREFERRED_FILE = "MEMORY.md";
@@ -186,12 +188,54 @@ function deriveMemoryViewerState(
 function isMemoryTab(value: string): value is MemoryTab {
   return (
     value === "updates" ||
+    value === "search" ||
+    value === "lifecycle" ||
     value === "injection" ||
     value === "recall" ||
     value === "relationships" ||
     value === "sources" ||
     value === "raw"
   );
+}
+
+function isRelationshipMemoryTab(value: MemoryTab): boolean {
+  return (
+    value === "search" ||
+    value === "lifecycle" ||
+    value === "recall" ||
+    value === "relationships" ||
+    value === "sources"
+  );
+}
+
+function resolveVisibleMemoryTab(args: {
+  readonly activeTab: MemoryTab;
+  readonly relationshipMemoryEnabled: boolean;
+  readonly runtimeInjectionEnabled: boolean;
+}): MemoryTab {
+  if (
+    isRelationshipMemoryTab(args.activeTab) &&
+    !args.relationshipMemoryEnabled
+  ) {
+    return "updates";
+  }
+  if (args.activeTab === "injection" && !args.runtimeInjectionEnabled) {
+    return "updates";
+  }
+  return args.activeTab;
+}
+
+function canSelectMemoryTab(
+  value: MemoryTab,
+  args: {
+    readonly relationshipMemoryEnabled: boolean;
+    readonly runtimeInjectionEnabled: boolean;
+  },
+): boolean {
+  if (value === "injection") {
+    return args.runtimeInjectionEnabled;
+  }
+  return isRelationshipMemoryTab(value) ? args.relationshipMemoryEnabled : true;
 }
 
 function MemoryDevRefreshButton({
@@ -233,36 +277,101 @@ function MemoryDevRefreshButton({
   );
 }
 
+function MemoryTabsBar({
+  relationshipMemoryEnabled,
+  runtimeInjectionEnabled,
+  visibleTab,
+}: {
+  readonly relationshipMemoryEnabled: boolean;
+  readonly runtimeInjectionEnabled: boolean;
+  readonly visibleTab: MemoryTab;
+}) {
+  const setTab = useSet(setMemoryTab$);
+
+  return (
+    <Tabs
+      value={visibleTab}
+      onValueChange={(value) => {
+        if (
+          isMemoryTab(value) &&
+          canSelectMemoryTab(value, {
+            relationshipMemoryEnabled,
+            runtimeInjectionEnabled,
+          })
+        ) {
+          setTab(value);
+        }
+      }}
+      className="min-w-0 max-w-full"
+    >
+      <TabsList className="max-w-full justify-start overflow-x-auto">
+        <TabsTrigger value="updates">Updates</TabsTrigger>
+        {runtimeInjectionEnabled ? (
+          <TabsTrigger value="injection">Injection</TabsTrigger>
+        ) : null}
+        {relationshipMemoryEnabled ? (
+          <TabsTrigger value="search">Search</TabsTrigger>
+        ) : null}
+        {relationshipMemoryEnabled ? (
+          <TabsTrigger value="lifecycle">Lifecycle</TabsTrigger>
+        ) : null}
+        {relationshipMemoryEnabled ? (
+          <TabsTrigger value="recall">Recall</TabsTrigger>
+        ) : null}
+        {relationshipMemoryEnabled ? (
+          <TabsTrigger value="relationships">Relationships</TabsTrigger>
+        ) : null}
+        {relationshipMemoryEnabled ? (
+          <TabsTrigger value="sources">Sources</TabsTrigger>
+        ) : null}
+        <TabsTrigger value="raw">Memory files</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
+
+function MemoryTabContent({ visibleTab }: { readonly visibleTab: MemoryTab }) {
+  switch (visibleTab) {
+    case "updates": {
+      return <MemoryUpdates />;
+    }
+    case "search": {
+      return <MemorySearch />;
+    }
+    case "lifecycle": {
+      return <MemoryLifecycle />;
+    }
+    case "injection": {
+      return <MemoryInjection />;
+    }
+    case "recall": {
+      return <MemoryRecall />;
+    }
+    case "relationships": {
+      return <MemoryRelationships />;
+    }
+    case "sources": {
+      return <MemorySources />;
+    }
+    case "raw": {
+      return <MemoryRawFiles />;
+    }
+  }
+}
+
 export function MemoryPage() {
   const activeTab = useGet(memoryTab$);
-  const setTab = useSet(setMemoryTab$);
   const features = useGet(featureSwitch$);
   const relationshipMemoryEnabled =
     features[FeatureSwitchKey.RelationshipMemory] ?? false;
   const runtimeInjectionEnabled =
     relationshipMemoryEnabled &&
     (features[FeatureSwitchKey.RelationshipMemoryRuntimeInjection] ?? false);
-  const visibleTab =
-    ((activeTab === "recall" ||
-      activeTab === "relationships" ||
-      activeTab === "sources") &&
-      !relationshipMemoryEnabled) ||
-    (activeTab === "injection" && !runtimeInjectionEnabled)
-      ? "updates"
-      : activeTab;
-  const canSelectMemoryTab = (value: MemoryTab): boolean => {
-    if (value === "injection") {
-      return runtimeInjectionEnabled;
-    }
-    if (
-      value === "recall" ||
-      value === "relationships" ||
-      value === "sources"
-    ) {
-      return relationshipMemoryEnabled;
-    }
-    return true;
-  };
+  const visibleTab = resolveVisibleMemoryTab({
+    activeTab,
+    relationshipMemoryEnabled,
+    runtimeInjectionEnabled,
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto [scrollbar-gutter:stable]">
@@ -283,43 +392,15 @@ export function MemoryPage() {
         <div className="relative mx-auto w-full max-w-[900px]">
           <div className="flex min-w-0 w-full max-w-[900px] flex-col gap-6">
             <div className="flex items-center justify-between gap-3">
-              <Tabs
-                value={visibleTab}
-                onValueChange={(value) => {
-                  if (isMemoryTab(value) && canSelectMemoryTab(value)) {
-                    setTab(value);
-                  }
-                }}
-                className="min-w-0 max-w-full"
-              >
-                <TabsList className="max-w-full justify-start overflow-x-auto">
-                  <TabsTrigger value="updates">Updates</TabsTrigger>
-                  {runtimeInjectionEnabled ? (
-                    <TabsTrigger value="injection">Injection</TabsTrigger>
-                  ) : null}
-                  {relationshipMemoryEnabled ? (
-                    <TabsTrigger value="recall">Recall</TabsTrigger>
-                  ) : null}
-                  {relationshipMemoryEnabled ? (
-                    <TabsTrigger value="relationships">
-                      Relationships
-                    </TabsTrigger>
-                  ) : null}
-                  {relationshipMemoryEnabled ? (
-                    <TabsTrigger value="sources">Sources</TabsTrigger>
-                  ) : null}
-                  <TabsTrigger value="raw">Memory files</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <MemoryTabsBar
+                relationshipMemoryEnabled={relationshipMemoryEnabled}
+                runtimeInjectionEnabled={runtimeInjectionEnabled}
+                visibleTab={visibleTab}
+              />
               <MemoryDevRefreshButton />
             </div>
 
-            {visibleTab === "updates" ? <MemoryUpdates /> : null}
-            {visibleTab === "injection" ? <MemoryInjection /> : null}
-            {visibleTab === "recall" ? <MemoryRecall /> : null}
-            {visibleTab === "relationships" ? <MemoryRelationships /> : null}
-            {visibleTab === "sources" ? <MemorySources /> : null}
-            {visibleTab === "raw" ? <MemoryRawFiles /> : null}
+            <MemoryTabContent visibleTab={visibleTab} />
           </div>
         </div>
       </main>
