@@ -62,9 +62,29 @@ function kindLabel(kind: MemoryRecallItemKind): string {
   }
 }
 
+function providerLabel(
+  provider: MemoryRecallItem["sources"][number]["provider"],
+): string {
+  switch (provider) {
+    case "gmail": {
+      return "Gmail";
+    }
+    case "slack": {
+      return "Slack";
+    }
+    case "github": {
+      return "GitHub";
+    }
+    case "notion": {
+      return "Notion";
+    }
+  }
+}
+
 function sourceLabel(source: MemoryRecallItem["sources"][number]): string {
-  const provider = source.provider === "slack" ? "Slack" : "Gmail";
-  return `${provider} - ${formatShortDate(source.occurredAt)}`;
+  return `${providerLabel(source.provider)} - ${formatShortDate(
+    source.occurredAt,
+  )}`;
 }
 
 function MemoryRecallToolbar({

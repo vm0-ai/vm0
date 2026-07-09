@@ -57,6 +57,7 @@ export interface GithubMemoryRepositoryDraft {
   readonly fullName: string;
   readonly defaultBranch: string | null;
   readonly selected: boolean;
+  readonly wasSelected: boolean;
   readonly includeIssues: boolean;
   readonly includePullRequests: boolean;
   readonly includeComments: boolean;
@@ -119,6 +120,7 @@ function githubRepositoryDraftFromResource(
     fullName: repository.fullName,
     defaultBranch: repository.defaultBranch,
     selected: repository.selected,
+    wasSelected: repository.selected,
     includeIssues: repository.includeIssues,
     includePullRequests: repository.includePullRequests,
     includeComments: repository.includeComments,

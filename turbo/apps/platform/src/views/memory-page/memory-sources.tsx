@@ -976,19 +976,23 @@ function githubConfigureRequestFromDrafts(
   drafts: readonly GithubMemoryRepositoryDraft[],
 ): GithubMemoryConfigureRequest {
   return {
-    repositories: drafts.map((draft) => {
-      return {
-        ...(draft.id === null ? {} : { id: draft.id }),
-        name: draft.name,
-        fullName: draft.fullName,
-        defaultBranch: draft.defaultBranch,
-        selected: draft.selected,
-        includeIssues: draft.includeIssues,
-        includePullRequests: draft.includePullRequests,
-        includeComments: draft.includeComments,
-        trustedContributors: trustedContributorsFromText(draft.trustedText),
-      };
-    }),
+    repositories: drafts
+      .filter((draft) => {
+        return draft.selected || draft.wasSelected;
+      })
+      .map((draft) => {
+        return {
+          ...(draft.id === null ? {} : { id: draft.id }),
+          name: draft.name,
+          fullName: draft.fullName,
+          defaultBranch: draft.defaultBranch,
+          selected: draft.selected,
+          includeIssues: draft.includeIssues,
+          includePullRequests: draft.includePullRequests,
+          includeComments: draft.includeComments,
+          trustedContributors: trustedContributorsFromText(draft.trustedText),
+        };
+      }),
   };
 }
 

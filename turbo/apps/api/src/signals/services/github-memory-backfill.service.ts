@@ -827,6 +827,8 @@ async function recordBackfillComments(args: {
     token: args.token,
     repo: args.repository.fullName,
     issueNumber: args.issue.number,
+    since: args.since,
+    paginate: true,
     signal: args.signal,
   });
   args.signal.throwIfAborted();

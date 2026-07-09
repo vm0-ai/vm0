@@ -170,21 +170,40 @@ function configureGithubAppBackfillMocks(args: {
     }),
     http.get(
       "https://api.github.com/repos/vm0-ai/vm0/issues/42/comments",
-      () => {
-        return HttpResponse.json([
+      ({ request }) => {
+        const url = new URL(request.url);
+        const page = url.searchParams.get("page") ?? "1";
+        if (page === "2") {
+          return HttpResponse.json([
+            {
+              id: 4244,
+              body: "Second page trusted comment for memory.",
+              created_at: "2026-07-06T12:07:00.000Z",
+              user: { id: 101, login: "lancy", type: "User" },
+            },
+          ]);
+        }
+        return HttpResponse.json(
+          [
+            {
+              id: 4242,
+              body: "Trusted comment for memory.",
+              created_at: "2026-07-06T12:05:00.000Z",
+              user: { id: 101, login: "lancy", type: "User" },
+            },
+            {
+              id: 4243,
+              body: "Untrusted comment.",
+              created_at: "2026-07-06T12:06:00.000Z",
+              user: { id: 303, login: "external", type: "User" },
+            },
+          ],
           {
-            id: 4242,
-            body: "Trusted comment for memory.",
-            created_at: "2026-07-06T12:05:00.000Z",
-            user: { id: 101, login: "lancy", type: "User" },
+            headers: {
+              Link: '<https://api.github.com/repos/vm0-ai/vm0/issues/42/comments?page=2>; rel="next"',
+            },
           },
-          {
-            id: 4243,
-            body: "Untrusted comment.",
-            created_at: "2026-07-06T12:06:00.000Z",
-            user: { id: 303, login: "external", type: "User" },
-          },
-        ]);
+        );
       },
     ),
     http.get("https://api.github.com/repos/vm0-ai/vm0/issues/42", () => {
@@ -199,6 +218,17 @@ function configureGithubAppBackfillMocks(args: {
           id: 4242,
           body: "Trusted comment for memory.",
           created_at: "2026-07-06T12:05:00.000Z",
+          user: { id: 101, login: "lancy", type: "User" },
+        });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/vm0-ai/vm0/issues/comments/4244",
+      () => {
+        return HttpResponse.json({
+          id: 4244,
+          body: "Second page trusted comment for memory.",
+          created_at: "2026-07-06T12:07:00.000Z",
           user: { id: 101, login: "lancy", type: "User" },
         });
       },
@@ -1361,7 +1391,7 @@ describe("GET /api/zero/relationships/*", () => {
       processed: 1,
       failed: 0,
       scanned: 1,
-      enqueued: 2,
+      enqueued: 3,
     });
 
     const sources = await accept(
@@ -1371,7 +1401,7 @@ describe("GET /api/zero/relationships/*", () => {
       }),
       [200],
     );
-    expect(sources.body.sources).toHaveLength(2);
+    expect(sources.body.sources).toHaveLength(3);
     expect(sources.body.sources).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1389,6 +1419,17 @@ describe("GET /api/zero/relationships/*", () => {
           sourceType: "github_issue_comment",
           title: "Backfill memory issue",
           metadata: expect.objectContaining({
+            githubRepository: "vm0-ai/vm0",
+            githubActorLogin: "lancy",
+            githubSubjectNumber: 42,
+          }),
+        }),
+        expect.objectContaining({
+          provider: "github",
+          sourceType: "github_issue_comment",
+          title: "Backfill memory issue",
+          metadata: expect.objectContaining({
+            githubIssueCommentId: "4244",
             githubRepository: "vm0-ai/vm0",
             githubActorLogin: "lancy",
             githubSubjectNumber: 42,

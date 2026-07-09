@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
+  type GithubMemoryConfigureRequest,
   type GithubMemoryRepositoriesResponse,
   type GithubMemoryStatusResponse,
   type MemoryDetailResponse,
@@ -196,32 +197,48 @@ function githubMemoryRepositories(
   } = {},
 ): GithubMemoryRepositoriesResponse {
   const page = args.page ?? 1;
-  const repository =
-    page === 2
-      ? {
-          id: 456,
-          name: "analytics",
-          fullName: "vm0-ai/analytics",
-          private: true,
-          defaultBranch: "main",
-          selected: false,
-          includeIssues: true,
-          includePullRequests: true,
-          includeComments: true,
-          trustedContributors: [],
-        }
-      : {
-          id: 123,
-          name: "vm0",
-          fullName: "vm0-ai/vm0",
-          private: true,
-          defaultBranch: "main",
-          selected: true,
-          includeIssues: true,
-          includePullRequests: true,
-          includeComments: true,
-          trustedContributors: [{ githubUserId: "101", login: "lancy" }],
-        };
+  const repository = (() => {
+    if (page === 2) {
+      return {
+        id: 456,
+        name: "analytics",
+        fullName: "vm0-ai/analytics",
+        private: true,
+        defaultBranch: "main",
+        selected: false,
+        includeIssues: true,
+        includePullRequests: true,
+        includeComments: true,
+        trustedContributors: [],
+      };
+    }
+    if (page === 3) {
+      return {
+        id: 789,
+        name: "docs",
+        fullName: "vm0-ai/docs",
+        private: true,
+        defaultBranch: "main",
+        selected: false,
+        includeIssues: true,
+        includePullRequests: true,
+        includeComments: true,
+        trustedContributors: [],
+      };
+    }
+    return {
+      id: 123,
+      name: "vm0",
+      fullName: "vm0-ai/vm0",
+      private: true,
+      defaultBranch: "main",
+      selected: true,
+      includeIssues: true,
+      includePullRequests: true,
+      includeComments: true,
+      trustedContributors: [{ githubUserId: "101", login: "lancy" }],
+    };
+  })();
   return {
     provider: "github",
     connected: true,
@@ -532,6 +549,42 @@ function relationshipSearchPage(query: {
             },
           ],
         },
+        {
+          id: "00000000-0000-4000-8000-000000000106",
+          kind: "key_fact",
+          text: "The repo migration discussion lives in GitHub.",
+          confidence: 84,
+          lastSeenAt: "2026-07-01T12:00:00.000Z",
+          sources: [
+            {
+              id: "00000000-0000-4000-8000-000000000107",
+              provider: "github",
+              externalId: "github-source-1:key_fact:migration",
+              threadId: "42",
+              messageId: null,
+              quote: "Migration scope is tracked in the pull request.",
+              occurredAt: "2026-07-01T12:00:00.000Z",
+            },
+          ],
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000108",
+          kind: "preference",
+          text: "Use the Notion rollout checklist for launch memory.",
+          confidence: 86,
+          lastSeenAt: "2026-06-30T12:00:00.000Z",
+          sources: [
+            {
+              id: "00000000-0000-4000-8000-000000000109",
+              provider: "notion",
+              externalId: "notion-source-1:preference:rollout",
+              threadId: "notion-page-1",
+              messageId: null,
+              quote: "Rollout checklist is the source of truth.",
+              occurredAt: "2026-06-30T12:00:00.000Z",
+            },
+          ],
+        },
       ],
       recentInteractions: [
         {
@@ -689,12 +742,44 @@ function memoryRecallResponse(query: string): MemoryRecallResponse {
         sources: [
           {
             id: "00000000-0000-4000-8000-000000000104",
-            provider: "gmail",
-            externalId: "gmail-message-1:open_loop:security",
-            threadId: "thread-1",
-            messageId: "gmail-message-1",
-            quote: "Can you send the retention answer?",
+            provider: "github",
+            externalId: "github-source-1:open_loop:security",
+            threadId: "42",
+            messageId: null,
+            quote: "Security answer is tracked in the pull request.",
             occurredAt: "2026-07-02T12:00:00.000Z",
+          },
+        ],
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000110",
+        kind: "preference",
+        text: "Use the Notion rollout checklist for launch memory.",
+        confidence: 86,
+        lastSeenAt: "2026-06-30T12:00:00.000Z",
+        relationship: {
+          id: "00000000-0000-4000-8000-000000000101",
+          entity: {
+            id: "00000000-0000-4000-8000-000000000102",
+            type: "person",
+            displayName: "Alice Lee",
+            primaryEmail: "alice@acme.com",
+            domain: "acme.com",
+          },
+          relationshipType: "Customer champion",
+          status: "active",
+          summary: "Alice is waiting for the security review answer.",
+          lastInteractionAt: "2026-07-02T12:00:00.000Z",
+        },
+        sources: [
+          {
+            id: "00000000-0000-4000-8000-000000000111",
+            provider: "notion",
+            externalId: "notion-source-1:preference:rollout",
+            threadId: "notion-page-1",
+            messageId: null,
+            quote: "Rollout checklist is the source of truth.",
+            occurredAt: "2026-06-30T12:00:00.000Z",
           },
         ],
       },
@@ -929,6 +1014,21 @@ describe("memory page", () => {
     expect(
       screen.getByText("Send the security data-retention answer."),
     ).toBeInTheDocument();
+    expect(screen.getByText("GitHub")).toBeInTheDocument();
+    expect(screen.getByText("Notion")).toBeInTheDocument();
+    expect(
+      screen.getByText("The repo migration discussion lives in GitHub."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "GitHub - Jul 1 - Migration scope is tracked in the pull request.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Notion - Jun 30 - Rollout checklist is the source of truth.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("This org only")).toBeInTheDocument();
 
     click(getButtonContaining("Organizations"));
@@ -1013,10 +1113,15 @@ describe("memory page", () => {
         screen.getByText("Send the security data-retention answer."),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText(/Alice Lee/)).toBeInTheDocument();
-    expect(screen.getByText("Evidence refs")).toBeInTheDocument();
+    expect(screen.getAllByText(/Alice Lee/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Evidence refs").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("gmail-message-1:open_loop:security"),
+      screen.getByText("github-source-1:open_loop:security"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/GitHub - Jul 2/u)).toBeInTheDocument();
+    expect(screen.getByText(/Notion - Jun 30/u)).toBeInTheDocument();
+    expect(
+      screen.getByText("notion-source-1:preference:rollout"),
     ).toBeInTheDocument();
     expect(recallQueries).toStrictEqual(["security review"]);
   });
@@ -1203,7 +1308,7 @@ describe("memory page", () => {
           200,
           githubMemoryRepositories({
             page: query.page,
-            hasMore: query.page === 1,
+            hasMore: query.page < 3,
           }),
         );
       },
@@ -1255,21 +1360,34 @@ describe("memory page", () => {
     await waitFor(() => {
       expect(screen.getByText("vm0-ai/analytics")).toBeInTheDocument();
     });
-    expect(repositoryPages).toStrictEqual([1, 2]);
+    click(getButtonContaining("Load more repositories"));
 
-    click(screen.getByText("vm0-ai/analytics"));
+    await waitFor(() => {
+      expect(screen.getByText("vm0-ai/docs")).toBeInTheDocument();
+    });
+    expect(repositoryPages).toStrictEqual([1, 2, 3]);
+
+    click(screen.getByText("vm0-ai/docs"));
     click(getButtonWithText("Save configuration"));
 
     await waitFor(() => {
       expect(configured).toMatchObject({
         repositories: expect.arrayContaining([
           expect.objectContaining({
-            fullName: "vm0-ai/analytics",
+            fullName: "vm0-ai/docs",
             selected: true,
           }),
         ]),
       });
     });
+    const repositories = (configured as GithubMemoryConfigureRequest)
+      .repositories;
+    expect(repositories).toHaveLength(2);
+    expect(
+      repositories.some((repository) => {
+        return repository.fullName === "vm0-ai/analytics";
+      }),
+    ).toBeFalsy();
   });
 
   it("moves through relationship pages from the relationships tab", async () => {
