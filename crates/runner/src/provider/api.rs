@@ -19,7 +19,7 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::builtin_firewall_catalog::{
-    BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshHandle,
+    BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshController,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
@@ -121,7 +121,7 @@ pub struct ApiProvider {
     /// Background Ably control-plane task.
     ably_supervisor: AblySupervisor,
     network_policy_refresh: NetworkPolicyRefreshHandle,
-    builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle,
+    builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -133,7 +133,7 @@ pub struct BuiltinFirewallCatalogCachePaths {
 
 impl ApiProvider {
     /// Create a new API-backed provider and start the Ably supervisor.
-    pub async fn new(
+    pub fn new(
         http: HttpClient,
         token: String,
         group: String,
@@ -144,13 +144,12 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
-        let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshHandle::start(
+        let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshController::new(
             api.clone(),
             builtin_firewall_catalog_cache_paths.cache_path,
             builtin_firewall_catalog_cache_paths.lock_path,
             cancel.clone(),
-        )
-        .await;
+        );
         let poll_wakeups = Arc::new(PollWakeups::new(false));
         let direct_candidates = DirectCandidateInbox::new(
             DIRECT_CANDIDATE_INBOX_CAPACITY,
@@ -248,6 +247,12 @@ impl ApiProvider {
 
 #[async_trait::async_trait]
 impl JobProvider for ApiProvider {
+    async fn prepare_startup_readiness(&self) -> RunnerResult<()> {
+        self.builtin_firewall_catalog_refresh
+            .prepare_startup_readiness()
+            .await
+    }
+
     async fn discover(&self) -> Option<JobCandidate> {
         loop {
             let due = match self.wait_for_discovery_wakeup().await? {
@@ -1251,7 +1256,7 @@ mod tests {
         );
         Arc::new(ApiProvider {
             network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
-            builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle::disabled(),
+            builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],

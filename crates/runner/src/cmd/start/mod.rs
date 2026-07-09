@@ -210,18 +210,19 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
     }
 }
 
-async fn shutdown_startup_resources_after_factory_failure(
+async fn shutdown_startup_resources_after_startup_failure(
     provider: &dyn JobProvider,
     mitm: &mut proxy::MitmProxy,
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
     memory_prefetch: &mut prefetch::MemoryPrefetchTasks,
     status: &StatusTracker,
+    context: &'static str,
 ) {
     memory_prefetch.cancel();
     provider.shutdown().await;
     if let Err(e) = mitm.kill_now().await {
-        warn!(error = %e, "failed to kill proxy after factory startup failed");
+        warn!(error = %e, context, "failed to kill proxy after startup failed");
     }
     kmsg_handle.stop().await;
     dns_handle.stop().await;
@@ -628,8 +629,7 @@ async fn run_start_with_home(
             },
             cancel.clone(),
             Arc::clone(&cancel_tokens),
-        )
-        .await;
+        );
         let network_policy_refresh = provider.network_policy_refresh_handle();
         (provider, group_name, Some(network_policy_refresh))
     };
@@ -1169,6 +1169,23 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     shared.status.write_initial().await;
 
+    if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
+        shutdown_startup_resources_after_startup_failure(
+            provider_state.provider.as_ref(),
+            &mut mitm,
+            kmsg_handle,
+            dns_handle,
+            &mut memory_prefetch,
+            shared.status.as_ref(),
+            "provider_startup_readiness_failure",
+        )
+        .await;
+        if let Some(handler_task) = signal_handler_task.take() {
+            abort_signal_handler_task(handler_task, "provider_startup_readiness_failure").await;
+        }
+        return Err(e);
+    }
+
     let mut factories = match start_factories(
         &runner.profiles,
         &firecracker,
@@ -1180,13 +1197,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     {
         Ok(factories) => factories,
         Err(e) => {
-            shutdown_startup_resources_after_factory_failure(
+            shutdown_startup_resources_after_startup_failure(
                 provider_state.provider.as_ref(),
                 &mut mitm,
                 kmsg_handle,
                 dns_handle,
                 &mut memory_prefetch,
                 shared.status.as_ref(),
+                "factory_startup_failure",
             )
             .await;
             if let Some(handler_task) = signal_handler_task.take() {

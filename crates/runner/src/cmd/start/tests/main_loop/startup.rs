@@ -1,7 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
-    assert_run_exits_within, mock_run_config_with_runtime, shutdown, test_profiles,
-    wait_status_mode,
+    assert_run_exits_within, mock_run_config, mock_run_config_with_runtime, shutdown,
+    test_profiles, wait_status_mode,
 };
 use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
 use crate::types::{HeartbeatState, SandboxReuseResult};
@@ -304,6 +304,60 @@ async fn startup_does_not_publish_running_before_factories_are_ready() {
         .expect("runner should still be waiting for factory release");
     wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn startup_readiness_blocks_running_and_discovery() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    env.handle.block_startup_readiness();
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    assert!(
+        env.handle
+            .wait_startup_readiness_entered(Duration::from_secs(2))
+            .await,
+        "startup readiness should be entered",
+    );
+    assert_eq!(
+        status_mode_if_exists(&status_path).await.as_deref(),
+        Some("starting"),
+        "runner should publish starting while provider readiness is blocked",
+    );
+    assert_eq!(env.handle.startup_readiness_calls(), 1);
+    assert_eq!(
+        env.handle.discover_started_count(),
+        0,
+        "provider discovery must not start before startup readiness completes",
+    );
+
+    env.handle.release_startup_readiness();
+    wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn startup_readiness_failure_stops_status_and_cleans_startup_resources() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    env.handle
+        .fail_startup_readiness("provider readiness failed");
+    let status_path = env._temp_dir.path().join("status.json");
+
+    let error = run(config)
+        .await
+        .expect_err("provider startup readiness should fail");
+
+    assert!(
+        error.to_string().contains("provider readiness failed"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(env.handle.startup_readiness_calls(), 1);
+    assert_eq!(
+        env.handle.discover_started_count(),
+        0,
+        "provider discovery must not start after startup readiness failure",
+    );
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
 #[tokio::test]

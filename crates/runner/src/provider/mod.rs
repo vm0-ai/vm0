@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::active_input::ActiveInputSource;
+use crate::error::RunnerResult;
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
@@ -454,6 +455,15 @@ pub trait JobProvider: Send + Sync {
     /// main loop uses this only for bounded catch-up after a normal discovery.
     async fn try_discover_ready(&self) -> Option<JobCandidate> {
         None
+    }
+
+    /// Run provider-owned startup work that must finish before this runner can
+    /// admit jobs.
+    ///
+    /// The start loop calls this after publishing observable `starting` status
+    /// and before transitioning to `running`.
+    async fn prepare_startup_readiness(&self) -> RunnerResult<()> {
+        Ok(())
     }
 
     /// Claim a discovered job. Returns `None` if the job was already claimed
