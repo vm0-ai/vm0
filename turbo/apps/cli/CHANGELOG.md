@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.232.5](https://github.com/vm0-ai/vm0/compare/cli-v9.232.4...cli-v9.232.5) (2026-07-09)
+
+
+### Bug Fixes
+
+* refresh website template r2 archives ([#20809](https://github.com/vm0-ai/vm0/issues/20809)) ([8202876](https://github.com/vm0-ai/vm0/commit/820287677c250892fade8b9f298f910675e5ec26))
+* send chat model choices as model ids ([#20639](https://github.com/vm0-ai/vm0/issues/20639)) ([71b30a2](https://github.com/vm0-ai/vm0/commit/71b30a283202188aa4d92659bcf24d63a01d5e26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.175.0
+    * @vm0/connectors bumped to 1.151.0
+    * @vm0/core bumped to 8.419.0
+
 ## [9.232.4](https://github.com/vm0-ai/vm0/compare/cli-v9.232.3...cli-v9.232.4) (2026-07-09)
 
 

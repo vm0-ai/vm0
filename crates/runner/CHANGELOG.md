@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.142.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.1...runner-rs-v0.142.0) (2026-07-09)
+
+
+### Features
+
+* **runner:** add service unit-state command ([#20816](https://github.com/vm0-ai/vm0/issues/20816)) ([224fd38](https://github.com/vm0-ai/vm0/commit/224fd387ac0b55913a3247e0cb727ab940d1af74))
+
+
+### Performance Improvements
+
+* **runner:** reduce direct candidate claim delay ([#20826](https://github.com/vm0-ai/vm0/issues/20826)) ([1991b80](https://github.com/vm0-ai/vm0/commit/1991b80d3ee9f0d6a7ce8f7ae156e5defac912ba))
+
 ## [0.141.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.0...runner-rs-v0.141.1) (2026-07-09)
 
 
