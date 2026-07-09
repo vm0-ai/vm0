@@ -461,7 +461,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   it("returns 502 when Telegram returns a non-JSON 5xx", async () => {
     const fixture = await seedSendableContext({});
-    trackFixture(fixture);
 
     server.use(
       http.post(
