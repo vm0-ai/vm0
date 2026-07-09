@@ -66,7 +66,7 @@ inputs:
     required: false
     default: "false"
   disable-crons:
-    description: "Remove Vercel Cron definitions from a prebuilt production deployment before upload. Use for staged production deployments that must not run cron before promotion."
+    description: "Remove Vercel Cron definitions from a staged prebuilt production deployment before upload. Requires skip-domain=true."
     required: false
     default: "false"
 
@@ -123,8 +123,8 @@ runs:
         fi
 
         if [ "$INPUT_DISABLE_CRONS" == "true" ]; then
-          if [ "$INPUT_PREBUILT" != "true" ] || [ "$INPUT_ENVIRONMENT" != "production" ]; then
-            echo "::error::disable-crons=true requires prebuilt=true and environment=production (got prebuilt=$INPUT_PREBUILT, environment=$INPUT_ENVIRONMENT)"
+          if [ "$INPUT_PREBUILT" != "true" ] || [ "$INPUT_ENVIRONMENT" != "production" ] || [ "$INPUT_SKIP_DOMAIN" != "true" ]; then
+            echo "::error::disable-crons=true requires prebuilt=true, environment=production, and skip-domain=true (got prebuilt=$INPUT_PREBUILT, environment=$INPUT_ENVIRONMENT, skip-domain=$INPUT_SKIP_DOMAIN)"
             exit 1
           fi
         fi
