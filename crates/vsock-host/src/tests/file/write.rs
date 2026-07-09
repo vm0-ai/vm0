@@ -134,6 +134,35 @@ async fn write_files_error_response_releases_tracker() {
 }
 
 #[tokio::test]
+async fn write_files_unexpected_response_keeps_tracker_fail_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/a.txt", b"alpha".to_vec()),
+            ("/tmp/b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_files(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let resp = vsock_proto::encode(MSG_EXEC_START, write.seq(), &[]).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn write_files_empty_batch_is_noop() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
