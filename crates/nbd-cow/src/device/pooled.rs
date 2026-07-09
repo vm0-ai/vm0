@@ -95,8 +95,9 @@ impl pool::DevicePoolHandle {
     /// device.
     ///
     /// On success, the returned [`PooledNbdCowDevice`] owns a pool lease for a
-    /// host-global `/dev/nbdN` device. Callers must finish the lifecycle with an
-    /// explicit finalizer such as [`PooledNbdCowDevice::destroy_with_retries`],
+    /// `/dev/nbdN` device claimed through the cooperative pool. Callers must
+    /// finish the lifecycle with an explicit finalizer such as
+    /// [`PooledNbdCowDevice::destroy_with_retries`],
     /// [`PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
     /// [`PooledNbdCowDevice::abandon`].
     ///

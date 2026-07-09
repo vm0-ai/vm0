@@ -8,6 +8,7 @@ import type {
 import {
   COMPUTER_USE_FILESYSTEM_PLUGIN,
   COMPUTER_USE_PLUGIN_CALL_KIND,
+  computerUseMcpServerCapability,
   computerUsePluginCapability,
   computerUsePluginToolCapability,
 } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
@@ -549,6 +550,53 @@ describe("FILE-03 desktop computer-use runtime", () => {
         status: "online",
       }),
     ]);
+  });
+
+  it("scopes host discovery to the bound host for zero run tokens", async () => {
+    const actor = bdd.user();
+    await api.startComputerUseHost(actor, {
+      hostName: "Other Desktop",
+      supportedCapabilities: [
+        "plugin.call",
+        computerUseMcpServerCapability("other"),
+      ],
+    });
+    const host = await api.startComputerUseHost(actor, {
+      hostName: "Apple Notes Desktop",
+      supportedCapabilities: [
+        "plugin.call",
+        computerUseMcpServerCapability("apple-notes"),
+      ],
+    });
+    mockClerkMembership(context, actor, "org:admin");
+
+    const bound = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      capabilities: ["computer-use:write"],
+      computerUseHostId: host.hostId,
+    });
+    const listed = await api.listComputerUseHosts({ bearer: bound.token });
+    expect(listed.hosts).toHaveLength(1);
+    expect(listed.hosts[0]).toMatchObject({
+      id: host.hostId,
+      hostName: "Apple Notes Desktop",
+      supportedCapabilities: [
+        "plugin.call",
+        computerUseMcpServerCapability("apple-notes"),
+      ],
+    });
+
+    const unbound = zeroComputerUseToken({
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      capabilities: ["computer-use:write"],
+    });
+    const rejected = await api.requestListComputerUseHosts(
+      { bearer: unbound.token },
+      [403],
+    );
+    expectApiError(rejected.body);
   });
 
   it("publishes computer-use host list changes", async () => {

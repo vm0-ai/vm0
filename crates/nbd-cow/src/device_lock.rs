@@ -1,8 +1,34 @@
-//! Host-global NBD device index locks.
+//! Cooperative NBD device index locks.
 //!
-//! These locks coordinate `/dev/nbdN` ownership across runner processes on the
-//! same host. The kernel releases `flock` locks automatically when the owning
-//! process exits.
+//! These locks coordinate `/dev/nbdN` ownership across runner processes that
+//! resolve their lock files through the same host-visible lock directory.
+//! Dropping the returned claim closes the lock file descriptor and releases the
+//! corresponding kernel `flock`.
+//!
+//! Claims are represented by per-index lock files named
+//! `vm0-nbd-{index}.lock`. When this API creates a missing lock file, it uses
+//! private mode bits. The default directory is [`default_lock_dir`],
+//! currently `/var/lock`; callers using [`try_acquire_device_claim_in`] may
+//! provide another operator-approved lock-file directory. The directory must
+//! already exist, but this API does not require the directory itself to be owned
+//! by the current effective uid or private to the process.
+//! Cooperating processes must use the same resolved lock directory for their
+//! claims to coordinate with each other.
+//!
+//! The security-sensitive object is the final per-index lock file. Existing
+//! lock files must be regular files openable for read and write by the current
+//! process, must be owned by the current effective uid, must not have multiple
+//! hard links, and must not have group/other-writable mode bits. Unsafe or
+//! invalid final lock-file paths are reported as I/O errors instead of ordinary
+//! lock contention.
+//!
+//! The per-index lock file path must remain stable while claims may be held:
+//! kernel `flock` locks the opened inode, so deleting or replacing the path can
+//! create a separate lock domain for later callers.
+//!
+//! A claim only represents cooperative ownership of the lock file. It does not
+//! validate that `/dev/nbdN` exists or is currently free; callers that need a
+//! usable device must check device state while holding the claim.
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -18,7 +44,7 @@ const MAX_STALE_INODE_RETRIES: usize = 16;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 
-/// Owned host-global claim for one NBD device index.
+/// Owned cooperative claim for one NBD device index.
 ///
 /// Dropping this value releases the corresponding per-index `flock`.
 #[derive(Debug)]
@@ -55,14 +81,40 @@ fn device_lock_path_in(index: u32, lock_dir: &Path) -> PathBuf {
     lock_dir.join(format!("{LOCK_FILE_PREFIX}-{index}.lock"))
 }
 
-/// Try to acquire a host-global claim for an NBD device index.
+/// Try to acquire a cooperative claim for an NBD device index.
 ///
-/// Returns `Ok(None)` when another process holds the per-index lock.
+/// This uses [`default_lock_dir`] for the lock file directory. Returns
+/// `Ok(Some(_))` when the caller owns the claim until the returned
+/// [`NbdDeviceClaim`] is dropped.
+///
+/// Returns `Ok(None)` only when the flock is already held on the current
+/// per-index lock inode. Unsafe or invalid lock-file state is reported as an
+/// [`std::io::Error`] rather than as `Ok(None)`.
 pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>> {
     try_acquire_device_claim_in(index, &default_lock_dir())
 }
 
-/// Try to acquire a host-global claim in a custom lock directory.
+/// Try to acquire a cooperative claim in a custom lock directory.
+///
+/// `lock_dir` must already exist. The per-index lock path is
+/// `lock_dir/vm0-nbd-{index}.lock`. Missing per-index lock files are created
+/// with private mode bits and then validated before locking.
+/// Processes using different lock directories do not coordinate with each
+/// other. Relative lock directories are resolved by each caller's current
+/// working directory, so cooperating processes should use paths that resolve to
+/// the same directory inode.
+///
+/// Existing final lock files must be regular files openable for read and write
+/// by the current process, must be owned by the current effective uid, must not
+/// have multiple hard links, and must not have group/other-writable mode bits.
+/// Unsafe final lock-file paths, including a symlink at the per-index lock path
+/// and non-regular files, are reported as [`std::io::Error`]. Existing lock
+/// files with otherwise acceptable legacy mode bits may be tightened to `0600`.
+///
+/// Returns `Ok(Some(_))` when the caller owns the claim until the returned
+/// [`NbdDeviceClaim`] is dropped. Returns `Ok(None)` only when the flock is
+/// already held on the current per-index lock inode; unsafe lock-file state and
+/// repeated path replacement during acquisition are reported as I/O errors.
 pub fn try_acquire_device_claim_in(
     index: u32,
     lock_dir: &Path,
