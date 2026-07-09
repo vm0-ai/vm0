@@ -169,6 +169,9 @@ pub(super) async fn finalize_sandbox_for_completion(
             storage_fingerprints: storage_fingerprints.clone(),
         })
     });
+    let workspace_promotion_session_id = workspace_promotion
+        .as_ref()
+        .map(|promotion| promotion.cli_agent_session_id().to_owned());
 
     let mut session_affinity_changed = false;
     let budget = if let Some(cli_agent_session_id) = parkable_cli_agent_session_id {
@@ -421,9 +424,11 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable session — stop + destroy.
+        let workspace_cache_snapshot_session_id =
+            resolved_cli_agent_session_id.or(workspace_promotion_session_id.as_deref());
         let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
             &held_session_snapshot,
-            resolved_cli_agent_session_id,
+            workspace_cache_snapshot_session_id,
             &completed_at,
             promote_workspace_image_from_active_sandbox(
                 sandbox.as_ref(),
@@ -1265,6 +1270,7 @@ mod tests {
         context.exit_code = 1;
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
+        let held_session_snapshot = context.held_session_snapshot.clone();
 
         let _completion_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("lease-session-promotion"))),
@@ -1285,6 +1291,11 @@ mod tests {
         let cache_states = cache.held_session_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].session_id, session_id);
+        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let snapshot_states =
+            held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
+        assert_eq!(snapshot_states.len(), 1);
+        assert_eq!(snapshot_states[0].session_id, session_id);
     }
 
     #[tokio::test]
