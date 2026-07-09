@@ -17,17 +17,16 @@ export function compactGoalObjectiveBriefText(text: string): string {
 }
 
 export function capGoalObjectiveBriefText(text: string): string {
-  if (text.length <= OBJECTIVE_BRIEF_MAX_CHARS) {
-    return text;
-  }
   const maxTextChars = OBJECTIVE_BRIEF_MAX_CHARS - 3;
   let endIndex = 0;
   let charCount = 0;
   for (const char of text) {
-    if (charCount === maxTextChars) {
+    if (charCount === OBJECTIVE_BRIEF_MAX_CHARS) {
       return `${text.slice(0, endIndex).trimEnd()}...`;
     }
-    endIndex += char.length;
+    if (charCount < maxTextChars) {
+      endIndex += char.length;
+    }
     charCount += 1;
   }
   return text;

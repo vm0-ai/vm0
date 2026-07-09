@@ -305,6 +305,19 @@ describe("zero goals", () => {
     );
   });
 
+  it("keeps Unicode objective briefs at the codepoint limit untruncated", async () => {
+    const fixture = await seedGoalApiFixture();
+    const rareLetter = "\u{10400}";
+    const objective = rareLetter.repeat(140);
+    const created = await createGoal(fixture, objective);
+
+    expect(created.body).toStrictEqual({
+      objective,
+      objectiveBrief: objective,
+      status: "active",
+    });
+  });
+
   it("keeps markdown-only goal objective briefs non-empty", async () => {
     const fixture = await seedGoalApiFixture();
     const chat = createChatFilesBddApi(context);
