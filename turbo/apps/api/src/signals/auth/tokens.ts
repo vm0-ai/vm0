@@ -24,10 +24,26 @@ const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 
 const CONDITIONAL_CAPABILITIES = [
-  ["banking:read", FeatureSwitchKey.Banking],
-  ["relationship:read", FeatureSwitchKey.RelationshipMemory],
-  ["scrape:read", FeatureSwitchKey.ZeroScrape],
-] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
+  {
+    capability: "banking:read",
+    featureSwitch: FeatureSwitchKey.Banking,
+    allowOverrides: true,
+  },
+  {
+    capability: "relationship:read",
+    featureSwitch: FeatureSwitchKey.RelationshipMemory,
+    allowOverrides: true,
+  },
+  {
+    capability: "scrape:read",
+    featureSwitch: FeatureSwitchKey.ZeroScrape,
+    allowOverrides: false,
+  },
+] as const satisfies readonly {
+  readonly capability: ZeroCapability;
+  readonly featureSwitch: FeatureSwitchKey;
+  readonly allowOverrides: boolean;
+}[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
   "agent-run:write",
@@ -286,12 +302,15 @@ export function generateZeroToken(
       continue;
     }
     const conditionalCapability = CONDITIONAL_CAPABILITIES.find((entry) => {
-      return entry[0] === capability;
+      return entry.capability === capability;
     });
-    const flag = conditionalCapability?.[1];
     if (
-      flag === undefined ||
-      isFeatureEnabled(flag, { userId, orgId, overrides })
+      conditionalCapability === undefined ||
+      isFeatureEnabled(conditionalCapability.featureSwitch, {
+        userId,
+        orgId,
+        ...(conditionalCapability.allowOverrides ? { overrides } : {}),
+      })
     ) {
       capabilities.push(capability);
     }

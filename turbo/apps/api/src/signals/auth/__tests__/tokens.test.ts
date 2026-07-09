@@ -14,6 +14,8 @@ import {
 } from "../tokens";
 import { now } from "../../external/time";
 
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
@@ -164,19 +166,27 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates scrape capability behind the zero scrape feature switch", () => {
+  it("gates scrape capability behind staff zero scrape access", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const enabledToken = generateZeroToken(
+    const overrideToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
       { [FeatureSwitchKey.ZeroScrape]: true },
     );
+    const staffToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      STAFF_ORG_ID,
+    );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
       "scrape:read",
     );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+    expect(verifyZeroToken(overrideToken)?.capabilities).not.toContain(
+      "scrape:read",
+    );
+    expect(verifyZeroToken(staffToken)?.capabilities).toContain(
       "scrape:read",
     );
   });

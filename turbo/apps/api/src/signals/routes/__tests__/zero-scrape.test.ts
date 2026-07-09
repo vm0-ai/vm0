@@ -4,7 +4,6 @@ import { createStore } from "ccstate";
 
 import { zeroScrapeContract } from "@vm0/api-contracts/contracts/zero-scrape";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -20,13 +19,13 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedUsagePricing$ } from "./helpers/zero-usage";
 
 const context = testContext();
 const store = createStore();
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 const scrapeRoutes: readonly RouteEntry[] = [
   ...zeroOnboardingSetupRoutes,
@@ -73,20 +72,8 @@ async function grantCredits(actor: ApiTestUser): Promise<void> {
   await createRunsAutomationsApi(context).grantProEntitlement(actor);
 }
 
-async function enableScrape(actor: ApiTestUser): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Zero Scrape test actor must belong to an organization");
-  }
-
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
-    },
-    { [FeatureSwitchKey.ZeroScrape]: true },
-  );
+function scrapeEnabledActor(): ApiTestUser {
+  return createBddApi(context).user({ orgId: STAFF_ORG_ID });
 }
 
 async function credits(actor: ApiTestUser): Promise<number> {
@@ -161,9 +148,8 @@ describe("zero scrape route", () => {
   });
 
   it("rejects scrape requests when the provider is not configured", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     allowExampleDotCom();
-    await enableScrape(actor);
     mockEnv("ZERO_SCRAPE_FIRECRAWL_TOKEN", undefined);
 
     const response = await accept(
@@ -183,9 +169,8 @@ describe("zero scrape route", () => {
   });
 
   it("blocks private targets before calling Firecrawl", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     let firecrawlRequests = 0;
-    await enableScrape(actor);
     configureProvider();
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -211,10 +196,9 @@ describe("zero scrape route", () => {
     expect(firecrawlRequests).toBe(0);
   });
 
-  it("blocks private IPv6 literal targets before calling Firecrawl", async () => {
-    const actor = createBddApi(context).user();
+  it("blocks non-public IPv6 literal targets before calling Firecrawl", async () => {
+    const actor = scrapeEnabledActor();
     let firecrawlRequests = 0;
-    await enableScrape(actor);
     configureProvider();
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -223,28 +207,34 @@ describe("zero scrape route", () => {
       }),
     );
 
-    const response = await accept(
-      client()(zeroScrapeContract).scrape({
-        headers: authenticate(actor),
-        body: {
-          url: "http://[::1]:3000/admin",
-          format: "markdown",
-          mode: "standard",
-        },
-      }),
-      [400],
-    );
+    for (const url of [
+      "http://[::1]:3000/admin",
+      "http://[::]/admin",
+      "http://[::ffff:192.168.1.1]/admin",
+      "http://[64:ff9b::c0a8:101]/admin",
+    ]) {
+      const response = await accept(
+        client()(zeroScrapeContract).scrape({
+          headers: authenticate(actor),
+          body: {
+            url,
+            format: "markdown",
+            mode: "standard",
+          },
+        }),
+        [400],
+      );
 
-    expectApiError(response.body);
-    expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+      expectApiError(response.body);
+      expect(response.body.error.code).toBe("INVALID_SCRAPE_TARGET");
+    }
     expect(firecrawlRequests).toBe(0);
   });
 
   it("blocks target URLs with embedded credentials before calling Firecrawl", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     let firecrawlRequests = 0;
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
@@ -274,10 +264,9 @@ describe("zero scrape route", () => {
   });
 
   it("returns insufficient credits before calling Firecrawl", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     let firecrawlRequests = 0;
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await setupOnboarding(actor);
@@ -306,10 +295,9 @@ describe("zero scrape route", () => {
   });
 
   it("scrapes markdown through standard Firecrawl proxy and records usage", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     let requestBody: unknown;
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);
@@ -367,9 +355,8 @@ describe("zero scrape route", () => {
   });
 
   it("scrapes public IPv6 literal targets without DNS lookup", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     let requestBody: unknown;
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);
@@ -410,11 +397,10 @@ describe("zero scrape route", () => {
   });
 
   it("scrapes links through enhanced Firecrawl proxy and records usage", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     let requestBody: unknown;
     let authorization: string | null = null;
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);
@@ -480,9 +466,8 @@ describe("zero scrape route", () => {
   });
 
   it("rejects unsafe final URLs without recording usage", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);
@@ -518,9 +503,8 @@ describe("zero scrape route", () => {
   });
 
   it("returns Firecrawl success false errors without recording usage", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);
@@ -554,9 +538,8 @@ describe("zero scrape route", () => {
   });
 
   it("does not treat provider JSON as an internal scrape error", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);
@@ -597,9 +580,8 @@ describe("zero scrape route", () => {
   });
 
   it("rejects oversized Firecrawl responses without recording usage", async () => {
-    const actor = createBddApi(context).user();
+    const actor = scrapeEnabledActor();
     allowExampleDotCom();
-    await enableScrape(actor);
     configureProvider();
     await seedScrapePricing();
     await grantCredits(actor);

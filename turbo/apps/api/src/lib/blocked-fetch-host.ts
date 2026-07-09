@@ -7,7 +7,7 @@ export interface ResolvedFetchAddress {
 }
 
 // Loopback, private, link-local and CGNAT ranges we must never fetch from.
-const BLOCKED_IP_RANGES: Readonly<BlockList> = (() => {
+const BLOCKED_IPV4_RANGES: Readonly<BlockList> = (() => {
   const ranges = new BlockList();
   for (const [address, prefix] of [
     ["0.0.0.0", 8],
@@ -21,14 +21,31 @@ const BLOCKED_IP_RANGES: Readonly<BlockList> = (() => {
   ] as const) {
     ranges.addSubnet(address, prefix, "ipv4");
   }
+  return ranges;
+})();
+
+const BLOCKED_IPV6_RANGES: Readonly<BlockList> = (() => {
+  const ranges = new BlockList();
   ranges.addAddress("::1", "ipv6");
+  ranges.addAddress("::", "ipv6");
+  ranges.addSubnet("::ffff:0:0", 96, "ipv6");
+  ranges.addSubnet("64:ff9b::", 96, "ipv6");
+  ranges.addSubnet("64:ff9b:1::", 48, "ipv6");
+  ranges.addSubnet("100::", 64, "ipv6");
+  ranges.addSubnet("2001::", 23, "ipv6");
+  ranges.addSubnet("2001:db8::", 32, "ipv6");
+  ranges.addSubnet("2002::", 16, "ipv6");
   ranges.addSubnet("fc00::", 7, "ipv6");
   ranges.addSubnet("fe80::", 10, "ipv6");
+  ranges.addSubnet("ff00::", 8, "ipv6");
   return ranges;
 })();
 
 function fetchAddressIsBlocked({ address, family }: ResolvedFetchAddress) {
-  return BLOCKED_IP_RANGES.check(address, family === 6 ? "ipv6" : "ipv4");
+  if (family === 4) {
+    return BLOCKED_IPV4_RANGES.check(address, "ipv4");
+  }
+  return BLOCKED_IPV6_RANGES.check(address, "ipv6");
 }
 
 export async function resolveFetchHostAddresses(

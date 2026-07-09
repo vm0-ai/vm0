@@ -7,7 +7,6 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { zeroScrape$ } from "../services/zero-scrape.service";
 
 const scrapeBody$ = bodyResultOf(zeroScrapeContract.scrape);
@@ -22,15 +21,11 @@ const zeroScrapeDisabled = Object.freeze({
   }),
 });
 
-const zeroScrapeEnabled$ = command(async ({ get }) => {
+const zeroScrapeEnabled$ = command(({ get }) => {
   const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
   return isFeatureEnabled(FeatureSwitchKey.ZeroScrape, {
     orgId: auth.orgId,
     userId: auth.userId,
-    overrides,
   });
 });
 
