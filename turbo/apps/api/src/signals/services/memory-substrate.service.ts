@@ -126,6 +126,9 @@ function compactMemorySourceMetadata(
     ...(metadata.githubActorLogin
       ? { githubActorLogin: metadata.githubActorLogin }
       : {}),
+    ...(metadata.githubIssueCommentId
+      ? { githubIssueCommentId: metadata.githubIssueCommentId }
+      : {}),
     ...(metadata.notionWorkspaceName !== undefined
       ? { notionWorkspaceName: metadata.notionWorkspaceName }
       : {}),
