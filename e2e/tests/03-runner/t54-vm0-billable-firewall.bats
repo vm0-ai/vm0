@@ -68,7 +68,7 @@ teardown_file() {
 @test "t54-0: BYOK provider — firewall not billable" {
     run $VM0_CLI run "$RUN_AGENT_NAME" \
         --model-provider-type "anthropic-api-key" \
-        --debug-no-mock-claude \
+        --real-agent-in-preview \
         "Reply with exactly: DONE"
 
     echo "$output"
