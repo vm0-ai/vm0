@@ -144,6 +144,10 @@ function capGoalMemoryQueryText(text: string, maxChars: number): string {
   return text.slice(0, maxChars).trimEnd();
 }
 
+function hasGoalMemorySearchTerm(text: string): boolean {
+  return /[\p{L}\p{N}]/u.test(text);
+}
+
 function buildGoalMemoryRetrievalQuery(goal: {
   readonly objective: string;
   readonly objectiveBrief: string;
@@ -164,7 +168,7 @@ function buildGoalMemoryRetrievalQuery(goal: {
     objectiveExcerpt.startsWith(`${objectiveBrief} `)
       ? [objectiveExcerpt]
       : [objectiveBrief, objectiveExcerpt];
-  return capGoalMemoryQueryText(
+  const query = capGoalMemoryQueryText(
     parts
       .filter((part) => {
         return part.length > 0;
@@ -172,6 +176,7 @@ function buildGoalMemoryRetrievalQuery(goal: {
       .join(" "),
     GOAL_MEMORY_RETRIEVAL_QUERY_MAX_CHARS,
   );
+  return hasGoalMemorySearchTerm(query) ? query : "";
 }
 
 function buildGoalContinuationPrompt(goal: {
