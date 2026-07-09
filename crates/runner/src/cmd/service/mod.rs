@@ -984,17 +984,16 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
 
 fn readiness_base_dir_from_live_instances(
     unit: &RunnerServiceUnit,
-    home: &HomePaths,
     instances: &[LiveRunnerInstance],
-) -> RunnerResult<PathBuf> {
+) -> RunnerResult<Option<PathBuf>> {
     let matches = instances
         .iter()
         .filter(|instance| instance.runner_name == unit.suffix() && instance.subcommand == "start")
         .collect::<Vec<_>>();
 
     match matches.as_slice() {
-        [instance] => Ok(instance.base_dir.clone()),
-        [] => Ok(home.runners_dir().join(unit.suffix())),
+        [instance] => Ok(Some(instance.base_dir.clone())),
+        [] => Ok(None),
         _ => Err(RunnerError::Internal(format!(
             "{} has multiple live runner instance records for readiness",
             unit.unit_name()
@@ -1002,9 +1001,12 @@ fn readiness_base_dir_from_live_instances(
     }
 }
 
-async fn readiness_base_dir(unit: &RunnerServiceUnit, home: &HomePaths) -> RunnerResult<PathBuf> {
+async fn readiness_base_dir(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+) -> RunnerResult<Option<PathBuf>> {
     let instances = live_runner_instances::try_list(home).await?;
-    readiness_base_dir_from_live_instances(unit, home, &instances)
+    readiness_base_dir_from_live_instances(unit, &instances)
 }
 
 async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
@@ -1028,47 +1030,52 @@ async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
             )));
         }
 
-        let base_dir = readiness_base_dir(&unit, &home).await?;
-        match status_file::read_as::<StatusForReadiness>(&base_dir).await {
-            Ok(Some(status)) => match status.mode.as_str() {
-                "running" => {
-                    println!("{}", status.max_concurrent);
-                    return Ok(());
+        match readiness_base_dir(&unit, &home).await? {
+            Some(base_dir) => match status_file::read_as::<StatusForReadiness>(&base_dir).await {
+                Ok(Some(status)) => match status.mode.as_str() {
+                    "running" => {
+                        println!("{}", status.max_concurrent);
+                        return Ok(());
+                    }
+                    "starting" => {
+                        last_observation = "mode=starting".to_string();
+                    }
+                    "draining" | "stopping" | "stopped" => {
+                        return Err(RunnerError::Internal(format!(
+                            "{} reported mode={} while waiting for running",
+                            unit.unit_name(),
+                            status.mode
+                        )));
+                    }
+                    mode => {
+                        return Err(RunnerError::Internal(format!(
+                            "{} reported unknown mode {:?} while waiting for running",
+                            unit.unit_name(),
+                            mode
+                        )));
+                    }
+                },
+                Ok(None) => {
+                    last_observation =
+                        format!("{} missing", status_file::path(&base_dir).display());
                 }
-                "starting" => {
-                    last_observation = "mode=starting".to_string();
-                }
-                "draining" | "stopping" | "stopped" => {
+                Err(StatusFileReadError::Read { path, error }) => {
                     return Err(RunnerError::Internal(format!(
-                        "{} reported mode={} while waiting for running",
-                        unit.unit_name(),
-                        status.mode
+                        "read {} while waiting for {} to run: {error}",
+                        path.display(),
+                        unit.unit_name()
                     )));
                 }
-                mode => {
+                Err(StatusFileReadError::ParseJson { path, error }) => {
                     return Err(RunnerError::Internal(format!(
-                        "{} reported unknown mode {:?} while waiting for running",
-                        unit.unit_name(),
-                        mode
+                        "parse {} while waiting for {} to run: {error}",
+                        path.display(),
+                        unit.unit_name()
                     )));
                 }
             },
-            Ok(None) => {
-                last_observation = format!("{} missing", status_file::path(&base_dir).display());
-            }
-            Err(StatusFileReadError::Read { path, error }) => {
-                return Err(RunnerError::Internal(format!(
-                    "read {} while waiting for {} to run: {error}",
-                    path.display(),
-                    unit.unit_name()
-                )));
-            }
-            Err(StatusFileReadError::ParseJson { path, error }) => {
-                return Err(RunnerError::Internal(format!(
-                    "parse {} while waiting for {} to run: {error}",
-                    path.display(),
-                    unit.unit_name()
-                )));
+            None => {
+                last_observation = "live runner instance record missing".to_string();
             }
         }
 
@@ -1530,37 +1537,34 @@ profiles:
     }
 
     #[test]
-    fn readiness_base_dir_falls_back_to_service_suffix_without_live_record() {
-        let home = HomePaths::with_root(PathBuf::from("/vm0-runner"));
+    fn readiness_base_dir_waits_without_live_record() {
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
 
-        let base_dir = readiness_base_dir_from_live_instances(&unit, &home, &[]).unwrap();
+        let base_dir = readiness_base_dir_from_live_instances(&unit, &[]).unwrap();
 
-        assert_eq!(base_dir, PathBuf::from("/vm0-runner/runners/pr-123-1"));
+        assert_eq!(base_dir, None);
     }
 
     #[test]
     fn readiness_base_dir_uses_live_record_for_nonstandard_runner_dirname() {
-        let home = HomePaths::with_root(PathBuf::from("/vm0-runner"));
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
         let instances = vec![live_runner_instance("pr-123-1", actual_base_dir.clone())];
 
-        let base_dir = readiness_base_dir_from_live_instances(&unit, &home, &instances).unwrap();
+        let base_dir = readiness_base_dir_from_live_instances(&unit, &instances).unwrap();
 
-        assert_eq!(base_dir, actual_base_dir);
+        assert_eq!(base_dir, Some(actual_base_dir));
     }
 
     #[test]
     fn readiness_base_dir_rejects_duplicate_live_records() {
-        let home = HomePaths::with_root(PathBuf::from("/vm0-runner"));
         let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
         let instances = vec![
             live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/pr-123")),
             live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/other")),
         ];
 
-        let error = readiness_base_dir_from_live_instances(&unit, &home, &instances).unwrap_err();
+        let error = readiness_base_dir_from_live_instances(&unit, &instances).unwrap_err();
 
         assert!(
             error.to_string().contains("multiple live runner instance"),
