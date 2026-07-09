@@ -270,7 +270,7 @@ impl CleanupUnitActiveState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(super) enum NormalizedUnitState {
+enum NormalizedUnitState {
     ActiveLike,
     Inactive,
     Failed,
