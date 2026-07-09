@@ -1,5 +1,5 @@
 import { optionalEnv } from "../../lib/env";
-import { createNativeAbortSignalWithTimeout } from "../utils";
+import { createNativeAbortSignalWithTimeout, safeJsonParse } from "../utils";
 
 const DEFAULT_TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 const TELEGRAM_API_TIMEOUT_MS = 15_000;
@@ -105,13 +105,17 @@ function createTelegramRequestAbort(signal?: AbortSignal): {
   });
 }
 
-async function readTelegramResponseJson(
+async function readTelegramResponseData(
   response: Response,
   signal: AbortSignal,
 ): Promise<unknown> {
   const text = await response.text();
   signal.throwIfAborted();
-  return JSON.parse(text) as unknown;
+  const data = safeJsonParse(text);
+  if (data === undefined && response.ok) {
+    throw new Error("Telegram API returned invalid JSON");
+  }
+  return data;
 }
 
 function telegramErrorDescription(data: unknown): string | undefined {
@@ -156,7 +160,7 @@ async function fetchTelegramApiJson(args: {
         );
     return {
       response,
-      data: await readTelegramResponseJson(response, abort.signal),
+      data: await readTelegramResponseData(response, abort.signal),
     };
   })().finally(abort.cleanup);
 }

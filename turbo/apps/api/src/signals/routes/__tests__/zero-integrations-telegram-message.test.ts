@@ -458,4 +458,41 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     expect(response.body.error.code).toBe("TELEGRAM_ERROR");
     expect(response.body.error.message).toContain("Service Unavailable");
   });
+
+  it("returns 502 when Telegram returns a non-JSON 5xx", async () => {
+    const fixture = await seedSendableContext({});
+    trackFixture(fixture);
+
+    server.use(
+      http.post(
+        "https://api.telegram.org/bottest-bot-token/sendMessage",
+        () => {
+          return HttpResponse.text("Bad Gateway", { status: 502 });
+        },
+      ),
+    );
+
+    const client = setupApp({ context })(integrationsTelegramMessageContract);
+    const response = await accept(
+      client.sendMessage({
+        body: {
+          botId: fixture.telegramBotId,
+          chatId: "-1001234567890",
+          text: "hello",
+        },
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            runId: fixture.runId,
+          })}`,
+        },
+      }),
+      [502],
+    );
+    expect(response.body.error).toStrictEqual({
+      code: "TELEGRAM_ERROR",
+      message: "Telegram API error: HTTP 502",
+    });
+  });
 });
