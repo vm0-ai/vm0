@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { expireAtomGrants } from "../../../test-fixtures/billing-grants";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
@@ -23,12 +24,6 @@ import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  expireAtomGrantState,
-  readOrgCleanupRows,
-  readWebhookBillingState,
-  seedOrgMemberCache,
-} from "./helpers/webhooks-state";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
@@ -1871,9 +1866,20 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       ]),
     );
 
-    const expiredAt = new Date(now() - 1000);
-    await expireAtomGrantState(context, orgId, expiredAt);
+    // The Stripe webhook rejects atom grants that are already expired, so an
+    // expired grant window is not product-reachable; past-date it through the
+    // narrow billing fixture before running the reconcile cron.
+    await expireAtomGrants(orgId, new Date(now() - 1000));
 
+    // The reconcile sweep is global: stale payment-failed orgs left behind by
+    // other test runs are retrieved from Stripe too. Report them as canceled
+    // so the sweep settles them without touching this org's atom grant path.
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      status: "canceled",
+      cancel_at: null,
+      cancel_at_period_end: false,
+      items: { data: [] },
+    });
     await runs.reconcileBillingCron(true);
 
     const downgraded = await billing.readBillingStatus(actor);
@@ -2526,7 +2532,6 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const runs = createRunsAutomationsApi(context);
     const billing = createBillingMediaApi(context);
     const actor = bdd.user();
-    const orgId = orgOf(actor);
     const granted = await runs.grantProEntitlement(actor);
 
     const suffix = randomUUID().slice(0, 8);
@@ -2579,13 +2584,25 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(upgraded.hasSubscription).toBeTruthy();
     expect(upgraded.scheduledChange).toBeNull();
 
-    const billingState = await readWebhookBillingState(context, { orgId });
-    expect(billingState.stripeSubscriptionId).toBe(teamSubscriptionId);
+    // The org is now bound to the new team subscription: deleting that
+    // subscription suspends the org, which is only possible if the binding
+    // switched to the team subscription id.
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.deleted",
+        object: { id: teamSubscriptionId, metadata: {} },
+      }),
+      [200],
+    );
+    const suspended = await billing.readBillingStatus(actor);
+    expect(suspended.tier).toBe("pro-suspend");
+    expect(suspended.hasSubscription).toBeFalsy();
   });
 
   it("grants concurrency slots from invoice line quantity and drains the queue", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
     bdd.acceptAgentStorageWrites();
@@ -2656,27 +2673,15 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
 
-    let billingState = await readWebhookBillingState(context, {
-      orgId,
-      stripeSubscriptionId: subscriptionId,
-    });
-    expect(billingState.concurrencyEntitlements).toStrictEqual([
+    let billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([
       {
-        stripeInvoiceLineId: lineId,
-        stripeSubscriptionId: subscriptionId,
-        slots: 2,
-        startsAt: isoOf(periodStart),
-        expiresAt: isoOf(periodEnd),
+        id: subscriptionId,
+        quantity: 2,
+        currentPeriodEnd: isoOf(periodEnd),
+        cancelAtPeriodEnd: false,
       },
     ]);
-    const [subscription] = billingState.concurrencySubscriptions;
-    expect(subscription).toStrictEqual({
-      stripeSubscriptionId: subscriptionId,
-      slots: 2,
-      subscriptionStatus: "active",
-      currentPeriodEnd: isoOf(periodEnd),
-      cancelAtPeriodEnd: false,
-    });
 
     const after = await runs.readRunQueue(actor);
     expect(after.body.concurrency.limit).toBe(4);
@@ -2693,15 +2698,17 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(afterAdmitted.body.concurrency.active).toBe(4);
     expect(afterAdmitted.body.queue).toHaveLength(0);
 
+    // Replaying the same invoice event must not grant additional slots.
     await api.postStripeEvent(
       stripeEvent({ type: "invoice.paid", object: invoice }),
       [200],
     );
-    billingState = await readWebhookBillingState(context, {
-      orgId,
-      stripeSubscriptionId: subscriptionId,
-    });
-    expect(billingState.concurrencyEntitlements).toHaveLength(1);
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([
+      expect.objectContaining({ id: subscriptionId, quantity: 2 }),
+    ]);
+    const afterReplay = await runs.readRunQueue(actor);
+    expect(afterReplay.body.concurrency.limit).toBe(4);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2723,13 +2730,12 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    billingState = await readWebhookBillingState(context, {
-      orgId,
-      stripeSubscriptionId: subscriptionId,
-    });
-    expect(billingState.concurrencySubscriptions[0]).toMatchObject({
-      subscriptionStatus: "past_due",
-      slots: 2,
+    // A past_due subscription keeps its slots during the payment grace
+    // window: the subscription stays visible and the limit is unchanged.
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions[0]).toMatchObject({
+      id: subscriptionId,
+      quantity: 2,
       currentPeriodEnd: isoOf(periodEnd),
     });
     const afterPastDue = await runs.readRunQueue(actor);
@@ -2747,12 +2753,9 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    billingState = await readWebhookBillingState(context, {
-      orgId,
-      stripeSubscriptionId: subscriptionId,
-    });
-    expect(billingState.concurrencySubscriptions[0]).toMatchObject({
-      subscriptionStatus: "active",
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions[0]).toMatchObject({
+      id: subscriptionId,
       cancelAtPeriodEnd: true,
     });
 
@@ -2768,12 +2771,9 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    billingState = await readWebhookBillingState(context, {
-      orgId,
-      stripeSubscriptionId: subscriptionId,
-    });
-    expect(billingState.concurrencySubscriptions[0]).toMatchObject({
-      subscriptionStatus: "active",
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions[0]).toMatchObject({
+      id: subscriptionId,
       cancelAtPeriodEnd: false,
     });
 
@@ -2786,13 +2786,10 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    billingState = await readWebhookBillingState(context, {
-      orgId,
-      stripeSubscriptionId: subscriptionId,
-    });
-    expect(billingState.concurrencySubscriptions[0]?.subscriptionStatus).toBe(
-      "canceled",
-    );
+    // A deleted subscription no longer contributes slots and disappears from
+    // the billing status read.
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([]);
     const afterDeleted = await runs.readRunQueue(actor);
     expect(afterDeleted.body.concurrency.limit).toBe(2);
   });
@@ -3751,7 +3748,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
-    const orgId = orgOf(actor);
     const suffix = randomUUID().slice(0, 8);
     const extraSubscriptionId = `sub_bdd_extra_${suffix}`;
     const nonRenewingSubscriptionId = `sub_bdd_nonrenewing_${suffix}`;
@@ -3824,12 +3820,16 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         extraSubscriptionId,
       );
     });
+    // Once the empty org is deleted, its billing metadata is gone: the
+    // billing status read falls back to the unprovisioned defaults instead
+    // of the previously granted pro subscription.
+    const billing = createBillingMediaApi(context);
     await expect
       .poll(async () => {
-        const rows = await readOrgCleanupRows(context, orgId);
-        return [rows.cache.length, rows.metadata.length, rows.members.length];
+        const status = await billing.readBillingStatus(actor);
+        return [status.tier, status.subscriptionStatus, status.hasSubscription];
       })
-      .toStrictEqual([0, 0, 0]);
+      .toStrictEqual(["pro-suspend", null, false]);
   });
 
   it("preserves org data when a deleted user leaves an uncached Clerk member", async () => {
@@ -3841,7 +3841,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     runs.acceptTelemetryIngest();
 
     const doomed = bdd.user();
-    const granted = await runs.grantProEntitlement(doomed);
+    await runs.grantProEntitlement(doomed);
     const orgId = orgOf(doomed);
     const peer = bdd.user({ orgId, orgRole: "org:member" });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
@@ -3862,28 +3862,26 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const response = await api.requestClerkWebhook("{}", {}, [200]);
     expect(response.body).toBe("OK");
 
-    await expect
-      .poll(async () => {
-        const rows = await readOrgCleanupRows(context, orgId);
-        return [rows.metadata.length, rows.members.length];
-      })
-      .toStrictEqual([1, 0]);
-    expect(
-      context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).toHaveBeenCalledWith({
-      organizationId: orgId,
-      limit: 100,
-      offset: 0,
+    await flushWaitUntilForTest();
+    await waitForExpectation(() => {
+      expect(
+        context.mocks.clerk.organizations.getOrganizationMembershipList,
+      ).toHaveBeenCalledWith({
+        organizationId: orgId,
+        limit: 100,
+        offset: 0,
+      });
     });
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-    expect((await readOrgCleanupRows(context, orgId)).metadata).toStrictEqual([
-      {
-        stripeCustomerId: granted.customerId,
-        stripeSubscriptionId: granted.subscriptionId,
-      },
-    ]);
+    // The org survives because the remaining Clerk member keeps it non-empty:
+    // its billing entitlement is still readable by the surviving member.
+    const billing = createBillingMediaApi(context);
+    const preserved = await billing.readBillingStatus(peer);
+    expect(preserved.tier).toBe("pro");
+    expect(preserved.hasSubscription).toBeTruthy();
+    expect(preserved.subscriptionStatus).toBe("active");
   });
 
   it("does not update a Stripe subscription already canceled upstream", async () => {
@@ -3896,7 +3894,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
-    const orgId = orgOf(actor);
     context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
       data: [
         {
@@ -3926,12 +3923,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
       expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
     });
+    // The empty org is still deleted: billing status falls back to the
+    // unprovisioned defaults once the org metadata is cleaned up.
+    const billing = createBillingMediaApi(context);
     await expect
       .poll(async () => {
-        const rows = await readOrgCleanupRows(context, orgId);
-        return [rows.cache.length, rows.metadata.length, rows.members.length];
+        const status = await billing.readBillingStatus(actor);
+        return [status.tier, status.subscriptionStatus, status.hasSubscription];
       })
-      .toStrictEqual([0, 0, 0]);
+      .toStrictEqual(["pro-suspend", null, false]);
   });
 
   it("cleans up user state after a verified user.deleted event", async () => {
@@ -3946,15 +3946,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     acceptGithubGrantRevocations();
 
     const doomed = bdd.user();
-    const granted = await runs.grantProEntitlement(doomed);
+    await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
-    await seedOrgMemberCache(context, {
-      orgId: orgOf(peer),
-      userId: peer.userId,
-      role: "member",
-      cachedAt: nowDate(),
-    });
     const sharedAgent = await bdd.createAgent(peer, {
       displayName: "BDD Shared Grant Agent",
       visibility: "public",
@@ -4065,14 +4059,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-    const rows = await readOrgCleanupRows(context, orgOf(doomed));
-    expect(rows.metadata).toStrictEqual([
-      {
-        stripeCustomerId: granted.customerId,
-        stripeSubscriptionId: granted.subscriptionId,
-      },
-    ]);
-    expect(rows.members).toStrictEqual([{ userId: peer.userId }]);
+    // The org outlives the user teardown: the surviving member still sees the
+    // granted pro subscription through the billing status read.
+    const billing = createBillingMediaApi(context);
+    const preserved = await billing.readBillingStatus(peer);
+    expect(preserved.tier).toBe("pro");
+    expect(preserved.hasSubscription).toBeTruthy();
   });
 
   it("suspends user-owned runs and automations after a verified user.banned event", async () => {

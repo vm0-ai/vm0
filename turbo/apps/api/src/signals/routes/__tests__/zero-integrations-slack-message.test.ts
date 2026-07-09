@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 
 import { integrationsSlackMessageContract } from "@vm0/api-contracts/contracts/integrations";
@@ -9,20 +9,18 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
-  deleteSlackIntegrationFixture$,
   seedSlackOrgConnection$,
   seedSlackOrgInstallation$,
-  type SlackIntegrationFixture,
 } from "./helpers/zero-integrations-slack";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createComposesBddApi } from "./helpers/api-bdd-composes";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
 const store = createStore();
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const composes = createComposesBddApi(context);
 
 function zeroToken(args: {
   readonly userId: string;
@@ -59,9 +57,6 @@ function sandboxToken(args: {
 }
 
 describe("POST /api/zero/integrations/slack/message", () => {
-  const slackFixtures: SlackIntegrationFixture[] = [];
-  const insightFixtures: UsageInsightFixture[] = [];
-
   beforeEach(() => {
     context.mocks.slack.chat.postMessage.mockResolvedValue({
       ok: true,
@@ -72,25 +67,6 @@ describe("POST /api/zero/integrations/slack/message", () => {
       ok: true,
       channel: { id: "D-mock-dm" },
     });
-  });
-
-  afterEach(async () => {
-    while (slackFixtures.length > 0) {
-      const fixture = slackFixtures.pop();
-      if (fixture) {
-        await store.set(
-          deleteSlackIntegrationFixture$,
-          fixture,
-          context.signal,
-        );
-      }
-    }
-    while (insightFixtures.length > 0) {
-      const fixture = insightFixtures.pop();
-      if (fixture) {
-        await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-      }
-    }
   });
 
   async function seedBaseContext(): Promise<{
@@ -104,7 +80,6 @@ describe("POST /api/zero/integrations/slack/message", () => {
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    insightFixtures.push({ orgId, userId });
     return { orgId, userId };
   }
 
@@ -119,8 +94,61 @@ describe("POST /api/zero/integrations/slack/message", () => {
       { orgId: base.orgId },
       context.signal,
     );
-    slackFixtures.push(fixture);
     return { ...base, slackWorkspaceId: fixture.slackWorkspaceId };
+  }
+
+  /**
+   * Creates a real run for an agent named "My Assistant" through the product
+   * agent + run APIs, so the message footer can resolve the agent label from
+   * the run. Run admission needs org credits (Stripe webhook grant); the
+   * compose declares an inline ANTHROPIC_API_KEY so no org model provider is
+   * configured and the run records no selected model (matching runs whose
+   * provider carries no model selection).
+   */
+  async function seedAgentRun(base: {
+    readonly orgId: string;
+    readonly userId: string;
+  }): Promise<{ readonly runId: string }> {
+    const actor: ApiTestUser = {
+      userId: base.userId,
+      orgId: base.orgId,
+      orgRole: "org:admin",
+      email: `${base.userId}@example.test`,
+    };
+    bdd.acceptAgentStorageWrites();
+    await api.grantProEntitlement(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "My Assistant",
+      visibility: "private",
+    });
+    const composeRead = await composes.requestReadComposeById(
+      actor,
+      agent.agentId,
+      [200],
+    );
+    await api.createCompose(actor, {
+      version: "1.0",
+      agents: {
+        [composeRead.body.name]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const run = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "send slack message",
+    });
+    // Product run creation authenticates through the Clerk session mocks;
+    // restore the membership-list mock the zero-token auth path relies on.
+    await store.set(
+      seedOrgMembership$,
+      { orgId: base.orgId, userId: base.userId, role: "admin" },
+      context.signal,
+    );
+    return { runId: run.runId };
   }
 
   it("returns 401 when no auth token is provided", async () => {
@@ -327,16 +355,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
   it("appends 'Sent via' footer when agent is resolvable from run", async () => {
     const { orgId, userId } = await seedWithInstallation();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId, userId, displayName: "My Assistant" },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      { orgId, userId, composeId },
-      context.signal,
-    );
+    const { runId } = await seedAgentRun({ orgId, userId });
     const token = zeroToken({ userId, orgId, runId });
 
     const client = setupApp({ context })(integrationsSlackMessageContract);
@@ -371,16 +390,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
   it("appends user attribution footer when run is user-triggered (not scheduled)", async () => {
     const { orgId, userId, slackWorkspaceId } = await seedWithInstallation();
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId, userId, displayName: "My Assistant" },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      { orgId, userId, composeId },
-      context.signal,
-    );
+    const { runId } = await seedAgentRun({ orgId, userId });
 
     const { slackUserId } = await store.set(
       seedSlackOrgConnection$,

@@ -19,7 +19,7 @@ import { Resend } from "resend";
 import { delay } from "signal-timers";
 import { Webhook } from "svix";
 
-import { env } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
@@ -41,6 +41,20 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 1000;
 const MAX_OUTBOX_BATCH_SIZE = 120;
 const OUTBOX_DRAIN_DELAY_MS = 500;
+
+// Inter-send pacing for Resend rate limits. Overridable so environments
+// without a real provider (tests drain a shared outbox backlog) can disable
+// the pacing instead of widening timeouts around it.
+function outboxDrainDelayMs(): number {
+  const configured = optionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS");
+  if (configured === undefined) {
+    return OUTBOX_DRAIN_DELAY_MS;
+  }
+  const parsed = Number.parseInt(configured, 10);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : OUTBOX_DRAIN_DELAY_MS;
+}
 const OUTBOX_TTL_MS = 15 * 60 * 1000;
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const PRESIGNED_URL_EXPIRY = 3600;
@@ -728,7 +742,10 @@ export const drainEmailOutboxBatch$ = command(
 
       processed++;
       if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
-        await delay(OUTBOX_DRAIN_DELAY_MS, { signal: context.signal });
+        const delayMs = outboxDrainDelayMs();
+        if (delayMs > 0) {
+          await delay(delayMs, { signal: context.signal });
+        }
       }
     }
 

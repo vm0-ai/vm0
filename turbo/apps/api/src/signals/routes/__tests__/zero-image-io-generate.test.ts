@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import { v5 as uuidv5 } from "uuid";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -14,29 +13,19 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
+import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
 import {
-  deleteGenerationFixture,
-  deleteGenerationPricingRows,
-  readGenerationJobs,
-  readGenerationOrgCredits,
-  readGenerationUploadedFiles,
-  readGenerationUsageEvents,
-  restoreGenerationPricingRows,
-  seedGenerationFixture,
-  seedGenerationRunBuiltInAdmissions,
-  type GenerationFixture,
-  type GenerationPricingRow,
-  upsertGenerationPricingRows,
-  ensureGenerationPricingRow,
-} from "./helpers/zero-generation-state";
+  deleteUsagePricingRows,
+  ensureUsagePricingRow,
+  upsertUsagePricingRows,
+  type UsagePricingRow,
+} from "../../../test-fixtures/usage-pricing";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-} from "./helpers/zero-usage-insight";
+import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -49,8 +38,6 @@ const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
 const IMAGE_IO_MODEL = "gpt-image-1";
-const BUILT_IN_GENERATION_USAGE_NAMESPACE =
-  "7ed0d80f-a1be-4a53-b182-0195e2e8b7f4";
 const FAL_GPT_IMAGE_1_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
 const FAL_GPT_IMAGE_15_URL = "https://queue.fal.run/fal-ai/gpt-image-1.5";
@@ -117,23 +104,31 @@ function imagePricingKey(
   return `${model}:${category}`;
 }
 
-function builtInGenerationUsageIdempotencyKey(parts: {
-  readonly generationId: string;
-  readonly scope: string;
-  readonly category: string;
-}): string {
-  return uuidv5(
-    `${parts.generationId}:${parts.scope}:${parts.category}`,
-    BUILT_IN_GENERATION_USAGE_NAMESPACE,
-  );
+// Recovers the generation ID for a synchronously failed submission from its
+// realtime failure publish (`built-in-generation:{id}`), the product-visible
+// signal a client would use.
+function readPublishedGenerationId(
+  publishCalls: readonly (readonly unknown[])[],
+): string {
+  for (const call of publishCalls) {
+    const eventName = call[0];
+    if (
+      typeof eventName === "string" &&
+      eventName.startsWith("built-in-generation:")
+    ) {
+      return eventName.slice("built-in-generation:".length);
+    }
+  }
+  throw new Error("Expected a built-in-generation publish");
 }
 
-interface ImageFixture extends GenerationFixture {
-  readonly insertedPricingCategories: readonly ImagePricingCategory[];
+interface ImageFixture {
+  readonly orgId: string;
+  readonly userId: string;
 }
 
-type PricingSnapshot = GenerationPricingRow;
-type DeletedPricingSnapshot = readonly GenerationPricingRow[];
+type PricingSnapshot = UsagePricingRow;
+type DeletedPricingSnapshot = readonly UsagePricingRow[];
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -146,6 +141,8 @@ function createImageIoTestApp() {
       ...zeroBuiltInGenerationRoutes,
       ...zeroImageIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
+      ...zeroBillingStatusRoutes,
+      ...zeroUsageRecordRoutes,
     ],
   });
 }
@@ -167,8 +164,25 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-async function orgCredits(orgId: string): Promise<number | undefined> {
-  return (await readGenerationOrgCredits(context.signal, orgId)) ?? undefined;
+// Reads the org credit balance through the product billing surface so charge
+// assertions stay on externally observable state.
+async function orgCredits(fixture: ImageFixture): Promise<number> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const app = createImageIoTestApp();
+  const response = await app.request("/api/zero/billing/status", {
+    headers: authHeaders(),
+  });
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("credits" in body) ||
+    typeof body.credits !== "number"
+  ) {
+    throw new Error("Expected billing status credits");
+  }
+  return body.credits;
 }
 
 function falQueueHandle(requestId: string): Record<string, string> {
@@ -272,7 +286,6 @@ function expectedCredits(
 
 async function ensureImagePricing(): Promise<{
   readonly pricing: ReadonlyMap<string, PricingSnapshot>;
-  readonly insertedCategories: readonly ImagePricingCategory[];
 }> {
   const defaults: Readonly<Record<ImagePricingCategory, PricingSnapshot>> = {
     "output_image.low.standard": {
@@ -320,23 +333,16 @@ async function ensureImagePricing(): Promise<{
   };
 
   const pricing = new Map<string, PricingSnapshot>();
-  const insertedCategories: ImagePricingCategory[] = [];
   for (const category of IMAGE_PRICING_CATEGORIES) {
-    const result = await ensureGenerationPricingRow(
-      context.signal,
-      defaults[category],
-    );
+    const result = await ensureUsagePricingRow(defaults[category]);
     pricing.set(imagePricingKey(IMAGE_IO_MODEL, category), result.pricing);
-    if (result.inserted) {
-      insertedCategories.push(category);
-    }
   }
 
-  return { pricing, insertedCategories };
+  return { pricing };
 }
 
 async function upsertFalImagePricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/qwen-image",
@@ -348,7 +354,7 @@ async function upsertFalImagePricing(): Promise<void> {
 }
 
 async function upsertFluxImagePricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/flux-pro/v1.1",
@@ -360,7 +366,7 @@ async function upsertFluxImagePricing(): Promise<void> {
 }
 
 async function upsertNanoBanana2ImagePricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/nano-banana-2",
@@ -372,7 +378,7 @@ async function upsertNanoBanana2ImagePricing(): Promise<void> {
 }
 
 async function upsertBirefnetImagePricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/birefnet/v2",
@@ -384,7 +390,7 @@ async function upsertBirefnetImagePricing(): Promise<void> {
 }
 
 async function upsertClarityUpscalerImagePricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "fal-ai/clarity-upscaler",
@@ -396,7 +402,7 @@ async function upsertClarityUpscalerImagePricing(): Promise<void> {
 }
 
 async function upsertFalMiniImagePricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "gpt-image-1-mini",
@@ -443,7 +449,7 @@ async function upsertFalMiniImagePricing(): Promise<void> {
 }
 
 async function upsertFalGptImage15Pricing(): Promise<void> {
-  await upsertGenerationPricingRows(context.signal, [
+  await upsertUsagePricingRows([
     {
       kind: "image",
       provider: "gpt-image-1.5",
@@ -489,70 +495,51 @@ async function upsertFalGptImage15Pricing(): Promise<void> {
   ]);
 }
 
-function isImagePricingCategory(value: string): value is ImagePricingCategory {
-  return IMAGE_PRICING_CATEGORIES.some((category) => {
-    return category === value;
-  });
-}
-
 async function deleteImagePricingRows(
   provider: string,
 ): Promise<DeletedPricingSnapshot> {
-  const rows = await deleteGenerationPricingRows(context.signal, {
+  return await deleteUsagePricingRows({
     kind: "image",
     provider,
     categories: [...IMAGE_PRICING_CATEGORIES],
-  });
-  return rows.filter((row) => {
-    return isImagePricingCategory(row.category);
   });
 }
 
 async function restoreImagePricingRows(
   snapshot: DeletedPricingSnapshot,
 ): Promise<void> {
-  await restoreGenerationPricingRows(context.signal, snapshot);
+  await upsertUsagePricingRows(snapshot);
 }
 
+// Isolation comes from random org/user IDs; no teardown is needed.
 async function seedImageFixture(options: {
   readonly credits?: number;
   readonly withPricing?: boolean;
 }): Promise<ImageFixture> {
-  const fixture = await seedGenerationFixture(context.signal, {
-    credits: options.credits,
-    tier: "free",
-  });
+  const fixture = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
 
+  await upsertOrgMetadataFixture({
+    orgId: fixture.orgId,
+    tier: "free",
+    credits: options.credits ?? 10_000,
+  });
   await store.set(
     seedOrgMembership$,
     { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
     context.signal,
   );
 
-  const pricing = options.withPricing
-    ? await ensureImagePricing()
-    : { insertedCategories: [] };
-
-  return {
-    ...fixture,
-    insertedPricingCategories: pricing.insertedCategories,
-  };
-}
-
-async function deleteImageFixture(fixture: ImageFixture): Promise<void> {
-  await deleteGenerationFixture(context.signal, fixture);
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  if (fixture.insertedPricingCategories.length > 0) {
-    await deleteGenerationPricingRows(context.signal, {
-      kind: "image",
-      provider: IMAGE_IO_MODEL,
-      categories: fixture.insertedPricingCategories,
-    });
+  if (options.withPricing) {
+    await ensureImagePricing();
   }
+
+  return fixture;
 }
 
 describe("POST /api/zero/image-io/generate", () => {
-  const track = createFixtureTracker<ImageFixture>(deleteImageFixture);
   const trackPricing = createFixtureTracker<DeletedPricingSnapshot>(
     restoreImagePricingRows,
   );
@@ -617,7 +604,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("rejects empty prompts before provider generation", async () => {
-    const fixture = await track(seedImageFixture({ withPricing: true }));
+    const fixture = await seedImageFixture({ withPricing: true });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledFal = false;
     server.use(
@@ -642,7 +629,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("rejects transparent background requests before provider generation", async () => {
-    const fixture = await track(seedImageFixture({}));
+    const fixture = await seedImageFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledFal = false;
     server.use(
@@ -675,7 +662,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("returns 402 when the org has no spendable credits", async () => {
-    const fixture = await track(seedImageFixture({ credits: 0 }));
+    const fixture = await seedImageFixture({ credits: 0 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const app = createImageIoTestApp();
@@ -695,7 +682,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("returns 503 when image pricing is not configured", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     await trackPricing(deleteImagePricingRows(MISSING_PRICING_IMAGE_MODEL));
     let calledFal = false;
@@ -727,7 +714,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("limits run-scoped zero token image generations after three active built-ins", async () => {
-    const fixture = await track(seedImageFixture({ withPricing: true }));
+    const fixture = await seedImageFixture({ withPricing: true });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -743,32 +730,13 @@ describe("POST /api/zero/image-io/generate", () => {
       },
       context.signal,
     );
-    await seedGenerationRunBuiltInAdmissions(context.signal, {
-      runId,
-      entries: [
-        {
-          kind: "image",
-          status: "active",
-          expiresAt: new Date(now() + 60_000),
-        },
-        {
-          kind: "video",
-          status: "active",
-          expiresAt: new Date(now() + 60_000),
-        },
-        {
-          kind: "presentation",
-          status: "active",
-          expiresAt: new Date(now() + 60_000),
-        },
-      ],
-    });
-
-    let calledFal = false;
+    // Occupy all three in-flight slots through the product flow: submit
+    // generations that stay pending because the provider webhook never fires.
+    let falCalls = 0;
     server.use(
       http.post(FAL_GPT_IMAGE_1_URL, () => {
-        calledFal = true;
-        return HttpResponse.json({});
+        falCalls += 1;
+        return HttpResponse.json(falQueueHandle(`pending-image-${falCalls}`));
       }),
     );
 
@@ -778,6 +746,16 @@ describe("POST /api/zero/image-io/generate", () => {
       runId,
     });
     const app = createImageIoTestApp();
+    for (let submission = 0; submission < 3; submission++) {
+      const submitted = await app.request("/api/zero/image-io/generate", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prompt: `a pending run image ${submission}` }),
+      });
+      expect(submitted.status).toBe(202);
+    }
+    expect(falCalls).toBe(3);
+
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -792,11 +770,11 @@ describe("POST /api/zero/image-io/generate", () => {
         code: "BUILT_IN_RUN_CONCURRENCY_LIMIT",
       },
     });
-    expect(calledFal).toBeFalsy();
+    expect(falCalls).toBe(3);
   });
 
   it("generates image files for run-scoped zero tokens", async () => {
-    const fixture = await track(seedImageFixture({ withPricing: true }));
+    const fixture = await seedImageFixture({ withPricing: true });
     const { pricing } = await ensureImagePricing();
     const { composeId } = await store.set(
       seedCompose$,
@@ -957,68 +935,41 @@ describe("POST /api/zero/image-io/generate", () => {
     }
     expect(putBody).toStrictEqual(IMAGE_BYTES);
 
-    const uploadRows = await readGenerationUploadedFiles(context.signal, {
-      externalId: fileId,
-    });
-    expect(uploadRows).toHaveLength(1);
-    expect(uploadRows[0]).toMatchObject({
-      runId,
-      source: "web",
-      externalId: fileId,
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      filename,
-      contentType: "image/webp",
-      sizeBytes: IMAGE_BYTES.byteLength,
-      url,
-    });
-    expect(uploadRows[0]?.metadata).toMatchObject({
-      generatedBy: "zero-official-image",
-      model: IMAGE_IO_MODEL,
-      imageSize: "1024x1024",
-      quality: "auto",
-      background: "opaque",
-      outputFormat: "webp",
-      moderation: "auto",
-      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
-    });
+    // The charge is asserted through product surfaces: the settled usage shows
+    // up in the user's usage record with image/provider attribution, and the
+    // org balance drops by exactly the credits charged (a single settlement).
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - creditsCharged);
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: IMAGE_IO_MODEL,
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const usageResponse = await app.request("/api/zero/usage/record", {
+      headers: authHeaders(),
     });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows).toStrictEqual(
-      expect.arrayContaining([
+    expect(usageResponse.status).toBe(200);
+    await expect(usageResponse.json()).resolves.toMatchObject({
+      totalCredits: creditsCharged,
+      rows: [
         expect.objectContaining({
-          runId,
-          idempotencyKey: builtInGenerationUsageIdempotencyKey({
-            generationId,
-            scope: "image",
-            category: "output_image.medium.standard",
-          }),
-          category: "output_image.medium.standard",
-          quantity: 1,
-          status: "processed",
-          billingError: null,
+          source: "chat",
+          credits: creditsCharged,
+          breakdown: [
+            {
+              kind: "image",
+              credits: creditsCharged,
+              providers: [
+                { provider: IMAGE_IO_MODEL, credits: creditsCharged },
+              ],
+            },
+          ],
         }),
-      ]),
-    );
-    const totalCredits = usageRows.reduce((total, row) => {
-      return total + (row.creditsCharged ?? 0);
-    }, 0);
-    expect(totalCredits).toBe(creditsCharged);
-    await expect(orgCredits(fixture.orgId)).resolves.toBe(
-      10_000 - creditsCharged,
-    );
+      ],
+    });
   });
 
   it("does not complete a job after the status route times it out", async () => {
-    const fixture = await track(
-      seedImageFixture({ credits: 1000, withPricing: true }),
-    );
+    const fixture = await seedImageFixture({
+      credits: 1000,
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const falStarted = createDeferredPromise<void>(context.signal);
@@ -1108,17 +1059,12 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: IMAGE_IO_MODEL,
-    });
-    expect(usageRows).toHaveLength(0);
+    // No usage settles for a timed-out job: the org balance is unchanged.
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 
   it("generates fal image files and settles megapixel usage asynchronously", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertFalImagePricing();
     const { composeId } = await store.set(
       seedCompose$,
@@ -1240,31 +1186,13 @@ describe("POST /api/zero/image-io/generate", () => {
     );
     expect(putInput.ContentType).toBe("image/jpeg");
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: "fal-ai/qwen-image",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      runId,
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "image",
-        category: "output_megapixel",
-      }),
-      category: "output_megapixel",
-      quantity: 2,
-      status: "processed",
-      billingError: null,
-      creditsCharged: 48,
-    });
-    await expect(orgCredits(fixture.orgId)).resolves.toBe(952);
+    // The megapixel category/quantity are asserted in the result body above;
+    // the single settled charge is observable as the exact balance drop.
+    await expect(orgCredits(fixture)).resolves.toBe(952);
   });
 
   it("generates image-to-image through fal with 20 percent markup pricing", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertFluxImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1353,29 +1281,13 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(observedBody).not.toHaveProperty("image_prompt_strength");
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: "fal-ai/flux-pro/v1.1",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "image",
-        category: "output_megapixel",
-      }),
-      category: "output_megapixel",
-      quantity: 2,
-      status: "processed",
-      billingError: null,
-      creditsCharged: 96,
-    });
+    // The marked-up charge (2 megapixels at 48/megapixel) is asserted through
+    // the result body above and the exact org balance drop.
+    await expect(orgCredits(fixture)).resolves.toBe(1000 - 96);
   });
 
   it("generates Nano Banana 2 images through fal with 20 percent markup pricing", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertNanoBanana2ImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1463,29 +1375,15 @@ describe("POST /api/zero/image-io/generate", () => {
       safety_tolerance: "5",
     });
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: "fal-ai/nano-banana-2",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "image",
-        category: "output_image",
-      }),
-      category: "output_image",
-      quantity: 1,
-      status: "processed",
-      billingError: null,
-      creditsCharged: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
-    });
+    // The per-image marked-up charge is asserted through the result body
+    // above and the exact org balance drop.
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 - FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+    );
   });
 
   it("edits images with Nano Banana 2 through fal", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertNanoBanana2ImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1571,7 +1469,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("removes backgrounds with birefnet through fal without a prompt", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertBirefnetImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1648,7 +1546,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("upscales images with clarity-upscaler through fal without a prompt", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertClarityUpscalerImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1726,7 +1624,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("rejects promptless models without a source image", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertBirefnetImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledFal = false;
@@ -1755,7 +1653,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("generates GPT Image 1.5 through fal without returned usage", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertFalGptImage15Pricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1841,29 +1739,13 @@ describe("POST /api/zero/image-io/generate", () => {
       openai_api_key: "test-openai-key",
     });
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: "gpt-image-1.5",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "image",
-        category: "output_image.low.standard",
-      }),
-      category: "output_image.low.standard",
-      quantity: 1,
-      status: "processed",
-      billingError: null,
-      creditsCharged: 11,
-    });
+    // The low/standard-tier charge is asserted through the result body above
+    // and the exact org balance drop.
+    await expect(orgCredits(fixture)).resolves.toBe(1000 - 11);
   });
 
   it("generates GPT Image 1 mini through fal without BYOK usage", async () => {
-    const fixture = await track(seedImageFixture({ credits: 1000 }));
+    const fixture = await seedImageFixture({ credits: 1000 });
     await upsertFalMiniImagePricing();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1949,31 +1831,16 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(observedBody).not.toHaveProperty("openai_api_key");
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "image",
-      provider: "gpt-image-1-mini",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "image",
-        category: "output_image.medium.large",
-      }),
-      category: "output_image.medium.large",
-      quantity: 1,
-      status: "processed",
-      billingError: null,
-      creditsCharged: 18,
-    });
+    // The medium/large-tier charge is asserted through the result body above
+    // and the exact org balance drop.
+    await expect(orgCredits(fixture)).resolves.toBe(1000 - 18);
   });
 
   it("records a failed job when fal image generation fails", async () => {
-    const fixture = await track(
-      seedImageFixture({ credits: 1000, withPricing: true }),
-    );
+    const fixture = await seedImageFixture({
+      credits: 1000,
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(FAL_GPT_IMAGE_1_URL, () => {
@@ -1998,12 +1865,26 @@ describe("POST /api/zero/image-io/generate", () => {
         code: "FAL_IMAGE_REQUEST_FAILED",
       },
     });
-    const jobRows = await readGenerationJobs(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-    });
-    expect(jobRows).toHaveLength(1);
-    expect(jobRows[0]).toMatchObject({
+    // The failed job is observed through its realtime failure event and the
+    // product status route rather than by reading job rows.
+    const generationId = readPublishedGenerationId(
+      context.mocks.ably.publish.mock.calls,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "image",
+        status: "failed",
+      }),
+    );
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
       type: "image",
       status: "failed",
       error: {
@@ -2011,19 +1892,8 @@ describe("POST /api/zero/image-io/generate", () => {
         code: "FAL_IMAGE_REQUEST_FAILED",
       },
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `built-in-generation:${jobRows[0]?.id}`,
-      expect.objectContaining({
-        generationId: jobRows[0]?.id,
-        type: "image",
-        status: "failed",
-      }),
-    );
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-    });
-    expect(usageRows).toHaveLength(0);
-    await expect(orgCredits(fixture.orgId)).resolves.toBe(1000);
+    // No usage settles for a failed submission: the org balance is unchanged.
+    await expect(orgCredits(fixture)).resolves.toBe(1000);
   });
 });

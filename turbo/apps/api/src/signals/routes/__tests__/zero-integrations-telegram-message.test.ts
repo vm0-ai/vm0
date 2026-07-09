@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
 import { http, HttpResponse } from "msw";
 
@@ -11,17 +11,20 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
-  deleteTelegramFixture$,
   seedTelegramInstallation$,
   seedTelegramUserLink$,
-  type TelegramFixture,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { seedRun$ } from "./helpers/zero-usage-insight";
+import { createBddApi } from "./helpers/api-bdd";
+import { createComposesBddApi } from "./helpers/api-bdd-composes";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const composes = createComposesBddApi(context);
 
 function uniqueBotId(): string {
   // 9-digit numeric matches parseTelegramBotId's /^\d+$/ check.
@@ -55,19 +58,33 @@ async function linkTelegramUser(values: {
   await store.set(seedTelegramUserLink$, values, context.signal);
 }
 
-interface TelegramMessageFixture extends TelegramFixture {
+interface TelegramMessageFixture {
+  readonly orgId: string;
   readonly composeId: string;
   readonly telegramBotId: string;
   readonly userId: string;
   readonly runId: string;
 }
 
+/**
+ * Seeds an org with a Telegram installation and a real run created through
+ * the product agent + run APIs (agent label and selected model on the footer
+ * both resolve from the run). Run admission needs org credits, granted via
+ * the Stripe webhook product path. Without `withOrgModelProvider` the agent
+ * compose declares an inline ANTHROPIC_API_KEY so the run records no
+ * selected model; with it, the org model provider path records the
+ * provider's selected model (claude-sonnet-4-6) on the run.
+ */
 async function seedSendableContext(args: {
   readonly agentName?: string;
-  readonly selectedModel?: string;
+  readonly withOrgModelProvider?: boolean;
 }): Promise<TelegramMessageFixture> {
-  const orgId = `org_${randomUUID().slice(0, 8)}`;
-  const userId = `user_${randomUUID().slice(0, 8)}`;
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Telegram message fixtures require an org-scoped actor");
+  }
+  const orgId = actor.orgId;
+  const userId = actor.userId;
 
   // Seed the org/member cache so the auth pipeline's role lookup hits the
   // cache instead of trying to call out to Clerk.
@@ -77,8 +94,15 @@ async function seedSendableContext(args: {
     context.signal,
   );
 
+  bdd.acceptAgentStorageWrites();
+  await api.grantProEntitlement(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: args.agentName,
+    visibility: "private",
+  });
+
   const telegramBotId = uniqueBotId();
-  const installation = await store.set(
+  await store.set(
     seedTelegramInstallation$,
     {
       orgId,
@@ -89,46 +113,52 @@ async function seedSendableContext(args: {
     context.signal,
   );
 
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId,
-      userId,
-      composeId: installation.composeId,
-      selectedModel: args.selectedModel,
-    },
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  let runRequest: {
+    readonly agentId: string;
+    readonly prompt: string;
+    readonly modelProvider?: string;
+  } = { agentId: agent.agentId, prompt: "send telegram message" };
+  if (args.withOrgModelProvider) {
+    await api.ensureOrgModelProvider(actor);
+    runRequest = { ...runRequest, modelProvider: "anthropic-api-key" };
+  } else {
+    const composeRead = await composes.requestReadComposeById(
+      actor,
+      agent.agentId,
+      [200],
+    );
+    await api.createCompose(actor, {
+      version: "1.0",
+      agents: {
+        [composeRead.body.name]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+  }
+  const run = await api.createRun(actor, runRequest);
+
+  // Product run creation authenticates through the Clerk session mocks;
+  // restore the membership-list mock the zero-token auth path relies on.
+  await store.set(
+    seedOrgMembership$,
+    { orgId, userId, role: "admin" },
     context.signal,
   );
 
   return {
     orgId,
-    composeIds: [installation.composeId],
-    composeId: installation.composeId,
-    telegramBotIds: [telegramBotId],
+    composeId: agent.agentId,
     telegramBotId,
-    userIds: [userId],
     userId,
-    runId,
+    runId: run.runId,
   };
 }
 
 describe("POST /api/zero/integrations/telegram/message", () => {
-  const fixtures: TelegramFixture[] = [];
-
-  function trackFixture(fixture: TelegramMessageFixture): void {
-    fixtures.push(fixture);
-  }
-
-  // afterEach guarantees cleanup even when an assertion fails mid-test.
-  afterEach(async () => {
-    while (fixtures.length > 0) {
-      const fixture = fixtures.pop();
-      if (fixture) {
-        await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-  });
-
   it("returns 401 when no auth token is provided", async () => {
     const client = setupApp({ context })(integrationsTelegramMessageContract);
     const response = await accept(
@@ -198,9 +228,8 @@ describe("POST /api/zero/integrations/telegram/message", () => {
   it("sends a Telegram message and appends the audit footer", async () => {
     const fixture = await seedSendableContext({
       agentName: "my-assistant",
-      selectedModel: "claude-opus-4-7",
+      withOrgModelProvider: true,
     });
-    trackFixture(fixture);
     await linkTelegramUser({
       installationId: fixture.telegramBotId,
       vm0UserId: fixture.userId,
@@ -263,13 +292,12 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const sentText = String(telegramBody?.text);
     expect(sentText).toContain("Hello <b>world</b>");
     expect(sentText).toContain(
-      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Opus 4.7</i>',
+      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Sonnet 4.6</i>',
     );
   });
 
   it("falls back to Telegram display name in the footer when username is absent", async () => {
     const fixture = await seedSendableContext({});
-    trackFixture(fixture);
     await linkTelegramUser({
       installationId: fixture.telegramBotId,
       vm0UserId: fixture.userId,
@@ -353,7 +381,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   it("returns 400 when Telegram rejects sendMessage with a 4xx", async () => {
     const fixture = await seedSendableContext({});
-    trackFixture(fixture);
 
     server.use(
       http.post(
@@ -394,7 +421,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   it("returns 502 when Telegram returns a 5xx (api defensive mapping)", async () => {
     const fixture = await seedSendableContext({});
-    trackFixture(fixture);
 
     server.use(
       http.post(

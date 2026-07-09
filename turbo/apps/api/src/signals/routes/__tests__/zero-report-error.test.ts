@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import AdmZip from "adm-zip";
-import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { beforeEach, expect } from "vitest";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
@@ -10,38 +9,26 @@ import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-repor
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
-  return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-});
 
-interface ReportRunFixture extends UsageInsightFixture {
-  readonly composeId: string;
-  readonly runId: string;
+interface ReportSeed {
+  readonly actor: ApiTestUser;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
 }
 
-interface RunSeedOptions {
-  readonly status?: string;
-  readonly prompt?: string;
-  readonly createdAt?: Date;
-  readonly continuedFromSessionId?: string | null;
-  readonly result?: Record<string, unknown> | null;
+interface ReportRun {
+  readonly runId: string;
+  readonly sessionId: string;
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -107,37 +94,131 @@ function activityLogJson(zip: AdmZip): Record<string, unknown> {
   >;
 }
 
-async function seedReportRun(
-  options: RunSeedOptions = {},
-): Promise<ReportRunFixture> {
-  const fixture = await track(
-    store.set(seedUsageInsightFixture$, undefined, context.signal),
-  );
-  const { composeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      displayName: "Report Agent",
-    },
-    context.signal,
-  );
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      composeId,
-      status: options.status ?? "failed",
-      prompt: options.prompt,
-      createdAt: options.createdAt,
-      continuedFromSessionId: options.continuedFromSessionId,
-      result: options.result,
-    },
-    context.signal,
-  );
+function mockSessionHistoryBlob(hash: string, history: string): void {
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = (command as { readonly input?: { readonly Key?: string } })
+      .input;
+    if (input?.Key === `blobs/${hash}.blob`) {
+      if (
+        (command as { readonly constructor?: { readonly name?: string } })
+          .constructor?.name === "HeadObjectCommand"
+      ) {
+        return Promise.resolve({
+          ContentLength: Buffer.byteLength(history, "utf8"),
+        });
+      }
+      return Promise.resolve({
+        Body: {
+          async *[Symbol.asyncIterator]() {
+            yield Buffer.from(history, "utf8");
+          },
+        },
+      });
+    }
+    return Promise.resolve({});
+  });
+}
 
-  return { ...fixture, composeId, runId };
+async function seedReportActor(): Promise<ReportSeed> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Report fixtures require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Report Agent",
+    visibility: "private",
+  });
+  return {
+    actor,
+    orgId: actor.orgId,
+    userId: actor.userId,
+    agentId: agent.agentId,
+  };
+}
+
+async function createReportRun(
+  seed: ReportSeed,
+  options: { readonly prompt?: string; readonly sessionId?: string } = {},
+): Promise<ReportRun> {
+  const api = createRunsAutomationsApi(context);
+  const run = await api.createRun(seed.actor, {
+    agentId: seed.agentId,
+    ...(options.sessionId === undefined
+      ? {}
+      : { sessionId: options.sessionId }),
+    prompt: options.prompt ?? "Report precondition",
+    modelProvider: "anthropic-api-key",
+  });
+  return { runId: run.runId, sessionId: run.sessionId };
+}
+
+async function failRun(seed: ReportSeed, runId: string): Promise<void> {
+  const api = createRunsAutomationsApi(context);
+  const webhooks = createWebhookCallbackApi(context);
+  await webhooks.requestAgentComplete(
+    { runId, exitCode: 1, error: "report precondition failure" },
+    {
+      authorization: `Bearer ${api.sandboxTokenForRun(seed.actor, runId)}`,
+    },
+    [200],
+  );
+}
+
+/**
+ * Completes the run through the sandbox checkpoint + complete webhooks so its
+ * result records the agent session (result.agentSessionId), matching runs
+ * that finished a real session.
+ */
+async function completeRunWithSession(
+  seed: ReportSeed,
+  run: ReportRun,
+): Promise<void> {
+  const api = createRunsAutomationsApi(context);
+  const webhooks = createWebhookCallbackApi(context);
+  const sandboxHeaders = {
+    authorization: `Bearer ${api.sandboxTokenForRun(seed.actor, run.runId)}`,
+  };
+  const history = `report session history ${run.runId}`;
+  const historyHash = createHash("sha256").update(history).digest("hex");
+  mockSessionHistoryBlob(historyHash, history);
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId: run.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `report-cli-${run.runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+    sandboxHeaders,
+    [200],
+  );
+}
+
+interface ReportRunFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string;
+}
+
+async function seedFailedReportRun(
+  options: { readonly prompt?: string } = {},
+): Promise<ReportRunFixture> {
+  const seed = await seedReportActor();
+  const run = await createReportRun(seed, { prompt: options.prompt });
+  await failRun(seed, run.runId);
+  return { orgId: seed.orgId, userId: seed.userId, runId: run.runId };
 }
 
 function client() {
@@ -178,7 +259,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("submits an error report for a failed run", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -195,7 +276,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("writes title-only description when description is omitted", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -211,7 +292,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("returns 400 for a non-existent run", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -227,7 +308,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("returns 400 when runId is not a valid UUID", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -243,7 +324,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("returns 400 when title is empty", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -258,12 +339,14 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("returns 400 for a non-failed run", async () => {
-    const fixture = await seedReportRun({ status: "completed" });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const seed = await seedReportActor();
+    const run = await createReportRun(seed);
+    await completeRunWithSession(seed, run);
+    mocks.clerk.session(seed.userId, seed.orgId);
 
     const response = await accept(
       submitReport({
-        runId: fixture.runId,
+        runId: run.runId,
         title: "Bug",
         description: "Desc",
       }),
@@ -274,8 +357,8 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("returns 403 for a run in a different org", async () => {
-    const ownedFixture = await seedReportRun();
-    const otherFixture = await seedReportRun();
+    const ownedFixture = await seedFailedReportRun();
+    const otherFixture = await seedFailedReportRun();
     mocks.clerk.session(ownedFixture.userId, ownedFixture.orgId);
 
     const response = await accept(
@@ -291,7 +374,9 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("uploads a ZIP with expected diagnostic entries and description content", async () => {
-    const fixture = await seedReportRun({ prompt: "Deploy the service" });
+    const fixture = await seedFailedReportRun({
+      prompt: "Deploy the service",
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     await accept(
@@ -343,7 +428,9 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("includes run metadata in manifest and user prompt in chat history", async () => {
-    const fixture = await seedReportRun({ prompt: "Deploy the service" });
+    const fixture = await seedFailedReportRun({
+      prompt: "Deploy the service",
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     await accept(
@@ -390,7 +477,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("excludes optional system and network logs when Axiom returns no data", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     await accept(submitReport({ runId: fixture.runId, title: "Bug" }), [200]);
@@ -401,7 +488,9 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("includes agent, system, and network logs when Axiom returns data", async () => {
-    const fixture = await seedReportRun({ prompt: "Inspect outbound request" });
+    const fixture = await seedFailedReportRun({
+      prompt: "Inspect outbound request",
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const networkEntry = {
@@ -532,7 +621,9 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("includes run context when a same-org non-owner submits the report", async () => {
-    const fixture = await seedReportRun({ prompt: "Inspect deployment" });
+    const fixture = await seedFailedReportRun({
+      prompt: "Inspect deployment",
+    });
     mocks.clerk.session(randomUUID(), fixture.orgId);
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
@@ -594,30 +685,18 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("collects prompts from all runs in a multi-run session", async () => {
-    const sessionId = randomUUID();
-    const first = await seedReportRun({
-      status: "completed",
-      prompt: "First prompt",
-      createdAt: new Date("2024-01-01T00:00:00Z"),
-      result: { agentSessionId: sessionId },
+    const seed = await seedReportActor();
+    const first = await createReportRun(seed, { prompt: "First prompt" });
+    await completeRunWithSession(seed, first);
+    const second = await createReportRun(seed, {
+      prompt: "Second prompt",
+      sessionId: first.sessionId,
     });
-    const { runId: failedRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: first.orgId,
-        userId: first.userId,
-        composeId: first.composeId,
-        status: "failed",
-        prompt: "Second prompt",
-        createdAt: new Date("2024-01-01T01:00:00Z"),
-        continuedFromSessionId: sessionId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(first.userId, first.orgId);
+    await failRun(seed, second.runId);
+    mocks.clerk.session(seed.userId, seed.orgId);
 
     await accept(
-      submitReport({ runId: failedRunId, title: "Session failed" }),
+      submitReport({ runId: second.runId, title: "Session failed" }),
       [200],
     );
 
@@ -648,11 +727,11 @@ describe("POST /api/zero/report-error", () => {
         return apl.includes("agent-run-events") && apl.includes("runId in");
       });
     expect(agentEventsQuery).toContain(first.runId);
-    expect(agentEventsQuery).toContain(failedRunId);
+    expect(agentEventsQuery).toContain(second.runId);
   });
 
   it("succeeds when optional Axiom log queries fail", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.axiom.query.mockRejectedValue(new Error("Axiom down"));
 
@@ -672,27 +751,15 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("keeps the bundle successful when one run activity log fails", async () => {
-    const sessionId = randomUUID();
-    const first = await seedReportRun({
-      status: "completed",
-      prompt: "First prompt",
-      createdAt: new Date("2024-01-01T00:00:00Z"),
-      result: { agentSessionId: sessionId },
+    const seed = await seedReportActor();
+    const first = await createReportRun(seed, { prompt: "First prompt" });
+    await completeRunWithSession(seed, first);
+    const second = await createReportRun(seed, {
+      prompt: "Second prompt",
+      sessionId: first.sessionId,
     });
-    const { runId: failedRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: first.orgId,
-        userId: first.userId,
-        composeId: first.composeId,
-        status: "failed",
-        prompt: "Second prompt",
-        createdAt: new Date("2024-01-01T01:00:00Z"),
-        continuedFromSessionId: sessionId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(first.userId, first.orgId);
+    await failRun(seed, second.runId);
+    mocks.clerk.session(seed.userId, seed.orgId);
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = String(args[0]);
@@ -706,7 +773,7 @@ describe("POST /api/zero/report-error", () => {
     });
 
     const response = await accept(
-      submitReport({ runId: failedRunId, title: "Resilience test" }),
+      submitReport({ runId: second.runId, title: "Resilience test" }),
       [200],
     );
 
@@ -733,7 +800,7 @@ describe("POST /api/zero/report-error", () => {
   });
 
   it("returns sanitized 500 when ZIP upload fails", async () => {
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockRejectedValueOnce(new Error("S3 upload failed"));
 
@@ -794,7 +861,7 @@ describe("POST /api/zero/report-error", () => {
       }),
     );
 
-    const fixture = await seedReportRun();
+    const fixture = await seedFailedReportRun();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(

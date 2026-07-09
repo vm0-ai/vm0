@@ -104,17 +104,6 @@ export async function seedBankingState(
   return { connectionId: response.connection_id };
 }
 
-export async function deleteBankingState(
-  context: TestContext,
-  input: { readonly orgId: string; readonly userId: string },
-): Promise<void> {
-  await postAction(context, {
-    action: "delete-fixture",
-    org_id: input.orgId,
-    user_id: input.userId,
-  });
-}
-
 export async function readBankingAuditEventsState(
   context: TestContext,
   input: { readonly orgId: string; readonly userId: string },

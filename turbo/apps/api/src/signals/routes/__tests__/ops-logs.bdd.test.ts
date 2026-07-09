@@ -2,7 +2,6 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 
 import AdmZip from "adm-zip";
-import { createStore } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
@@ -12,20 +11,17 @@ import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
+import { seedUserExportConversation } from "../../../test-fixtures/user-export-conversation";
 import {
   createBddApi,
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import {
-  cleanupUserExportState,
-  createOpsLogsApi,
-  seedUserExportChatMessages,
-} from "./helpers/api-bdd-ops-logs";
+import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { seedMemoryStorage$ } from "./helpers/zero-memory";
+import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
@@ -46,24 +42,12 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
-// Register before testContext(): Vitest runs afterEach hooks in stack order, so
-// this cleanup runs after testContext drains detached user-export work.
-const trackUserExportActor = createFixtureTracker<ApiTestUser>(
-  cleanupUserExportState,
-);
 
 interface DeferredS3Put {
   readonly resolve: () => void;
 }
 
-async function createUserExportActor(
-  bdd: ReturnType<typeof createBddApi>,
-): Promise<ApiTestUser> {
-  return await trackUserExportActor(Promise.resolve(bdd.user()));
-}
-
 const context = testContext();
-const store = createStore();
 const trackDeferredS3Put = createFixtureTracker<DeferredS3Put>((pendingPut) => {
   pendingPut.resolve();
   return Promise.resolve();
@@ -848,7 +832,7 @@ describe("OPS-01: user data export", () => {
   it("exports user data end to end with active, cooldown, refresh, and latest-job visibility", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 5);
     const downloadUrl = "https://r2.example.com/bdd-export.zip?sig=test";
 
@@ -981,7 +965,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 5);
     const downloadUrl =
       "https://r2.example.com/bdd-export-content.zip?sig=test";
@@ -1023,13 +1007,11 @@ describe("OPS-01: user data export", () => {
     }
     const workflowId = workflow.body.id;
     const threadId = randomUUID();
-    await seedUserExportChatMessages({
+    await seedUserExportConversation({
       userId: actor.userId,
       agentId: agent.agentId,
       threadId,
     });
-    const memoryVersionId = `bdd-memory-${randomUUID()}`;
-    const memoryS3Key = `${actor.orgId}/artifact/memory/${memoryVersionId}`;
     const memoryFiles = [
       { path: "MEMORY.md", content: "# Exported memory" },
       {
@@ -1037,22 +1019,11 @@ describe("OPS-01: user data export", () => {
         content: "Memory supporting note",
       },
     ];
-    putMemoryArchive(misc, memoryS3Key, memoryFiles);
-    await store.set(
-      seedMemoryStorage$,
-      {
-        orgId: actor.orgId,
-        userId: actor.userId,
-        s3Key: memoryS3Key,
-        headVersionId: memoryVersionId,
-        fileCount: memoryFiles.length,
-        size: memoryFiles.reduce((sum, file) => {
-          return sum + Buffer.byteLength(file.content, "utf8");
-        }, 0),
-        updatedAt: new Date(exportStartAt),
-      },
-      context.signal,
-    );
+    // Create the memory artifact head version through the product storage
+    // upload flow, then place the mocked archive at the S3 key the product
+    // assigned to it.
+    const memory = await commitMemoryVersion(context, actor, memoryFiles);
+    putMemoryArchive(misc, memory.s3Key, memoryFiles);
 
     mockNow(exportStartAt);
     context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
@@ -1139,7 +1110,7 @@ describe("OPS-01: user data export", () => {
     const misc = createMiscRoutesApi(context);
     const runs = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 6);
     const downloadUrl =
       "https://r2.example.com/bdd-export-history.zip?sig=test";
@@ -1240,7 +1211,7 @@ describe("OPS-01: user data export", () => {
     const misc = createMiscRoutesApi(context);
     const runs = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 6, 30);
     const downloadUrl =
       "https://r2.example.com/bdd-export-zstd-history.zip?sig=test";
@@ -1341,7 +1312,7 @@ describe("OPS-01: user data export", () => {
     const misc = createMiscRoutesApi(context);
     const runs = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 7);
 
     runs.acceptStorageDownloads();
@@ -1423,7 +1394,7 @@ describe("OPS-01: user data export", () => {
     const misc = createMiscRoutesApi(context);
     const runs = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 7, 30);
 
     runs.acceptStorageDownloads();
@@ -1505,7 +1476,7 @@ describe("OPS-01: user data export", () => {
     const misc = createMiscRoutesApi(context);
     const runs = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 8);
 
     runs.acceptStorageDownloads();
@@ -1584,7 +1555,7 @@ describe("OPS-01: user data export", () => {
   it("surfaces failed exports and allows an immediate retry", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
     const failedStartAt = Date.UTC(2026, 4, 20, 9);
 
     mockNow(failedStartAt);
@@ -1630,7 +1601,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const actor = await createUserExportActor(bdd);
+    const actor = bdd.user();
 
     await misc.requestEmailUnsubscribe(unsubscribeToken(actor.userId), [200]);
 

@@ -285,12 +285,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatThreadEmoji]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut.",
-    enabled: true,
-  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:

@@ -1,216 +1,42 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-import { Webhook } from "svix";
-import { describe, expect, it, beforeEach } from "vitest";
-import { http, HttpResponse } from "msw";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { HttpResponse, http } from "msw";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
-import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
+import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../external/time";
-import { testEmailStateRoutes } from "../test-email-state";
-import { zeroEmailCallbackRoutes } from "../zero-email-callbacks";
-import { zeroEmailInboundRoutes } from "../zero-email-inbound";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { sessionHistoryBlobBodyForKey } from "./helpers/api-bdd-session-history";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const resendMocks = context.mocks.resend;
-const routeMocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const runs = createRunsAutomationsApi(context);
+const webhooks = createWebhookCallbackApi(context);
 
-const CALLBACK_SECRET = "test-callback-secret";
 const INBOUND_SECRET = "whsec_test";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
-const INBOUND_PATH = "/api/zero/email/inbound";
-const EMAIL_STATE_PATH = "/api/test/email-state/action";
-const emailRoutes = [
-  ...zeroEmailCallbackRoutes,
-  ...zeroEmailInboundRoutes,
-  ...testEmailStateRoutes,
-] as const;
 
-interface EmailFixture {
+type CapturedDelivery = ReturnType<
+  typeof webhooks.captureInternalCallbackDeliveries
+>[number];
+
+interface EmailOrgFixture {
+  readonly actor: ApiTestUser;
   readonly orgId: string;
-  readonly orgSlug: string;
   readonly userId: string;
   readonly userEmail: string;
+  readonly orgSlug: string;
   readonly agentId: string;
-  readonly agentName: string;
-  readonly versionId: string;
-}
-
-interface EmailThreadState {
-  readonly id: string;
-  readonly replyToken: string;
-  readonly agentSessionId?: string;
-  readonly lastEmailMessageId?: string | null;
-}
-
-interface EmailRunState {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly prompt: string;
-  readonly triggerSource?: string | null;
-  readonly callbacks: readonly {
-    readonly url: string | null;
-    readonly payload: Record<string, unknown> | null;
-  }[];
-}
-
-interface EmailOutboxState {
-  readonly toAddresses: string | readonly string[];
-  readonly subject: string;
-  readonly template: Record<string, unknown>;
-}
-
-async function emailStateAction(
-  body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const response = await requestEmailApp(EMAIL_STATE_PATH, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  expect(response.status).toBe(200);
-  return (await response.json()) as Record<string, unknown>;
-}
-
-function actionFixture(result: Record<string, unknown>): EmailFixture {
-  const fixture = result.fixture;
-  expect(fixture).toBeDefined();
-  return fixture as EmailFixture;
-}
-
-function actionThread(result: Record<string, unknown>): EmailThreadState {
-  const thread = result.thread;
-  expect(thread).toBeDefined();
-  return thread as EmailThreadState;
-}
-
-function actionRuns(result: Record<string, unknown>): readonly EmailRunState[] {
-  expect(Array.isArray(result.runs)).toBeTruthy();
-  return result.runs as readonly EmailRunState[];
-}
-
-const track = createFixtureTracker<EmailFixture>(async (fixture) => {
-  await deleteFeatureSwitchesForUser(context, fixture);
-  await emailStateAction({ action: "delete-fixture", fixture });
-});
-
-async function fixture(): Promise<EmailFixture> {
-  const created = await track(
-    emailStateAction({ action: "seed-fixture" }).then(actionFixture),
-  );
-  routeMocks.clerk.session(created.userId, created.orgId);
-  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
-    data: [{ organization: { id: created.orgId }, role: "org:member" }],
-  });
-  context.mocks.s3.send.mockResolvedValue({});
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  return created;
-}
-
-async function seedAgentSession(fx: EmailFixture): Promise<string> {
-  const result = await emailStateAction({
-    action: "seed-agent-session",
-    fixture: fx,
-  });
-  expect(typeof result.agentSessionId).toBe("string");
-  return result.agentSessionId as string;
-}
-
-async function seedThread(args: {
-  readonly fixture: EmailFixture;
-  readonly agentSessionId: string;
-  readonly lastEmailMessageId?: string | null;
-}): Promise<EmailThreadState> {
-  return actionThread(
-    await emailStateAction({
-      action: "seed-thread",
-      fixture: args.fixture,
-      agent_session_id: args.agentSessionId,
-      last_email_message_id: args.lastEmailMessageId,
-    }),
-  );
-}
-
-interface CallbackPostOptions {
-  readonly secret?: string;
-  readonly timestamp?: number;
-}
-
-function signedCallbackHeaders(
-  rawBody: string,
-  options: CallbackPostOptions = {},
-) {
-  const timestamp = options.timestamp ?? Math.floor(now() / 1000);
-  return {
-    "Content-Type": "application/json",
-    "X-VM0-Signature": computeHmacSignature(
-      rawBody,
-      options.secret ?? CALLBACK_SECRET,
-      timestamp,
-    ),
-    "X-VM0-Timestamp": String(timestamp),
-  };
-}
-
-async function postCallback(
-  path: string,
-  body: Record<string, unknown>,
-  options?: CallbackPostOptions | string,
-): Promise<Response> {
-  const rawBody = JSON.stringify(body);
-  const headerOptions =
-    typeof options === "string" ? { secret: options } : options;
-  return await requestEmailApp(path, {
-    method: "POST",
-    headers: signedCallbackHeaders(rawBody, headerOptions),
-    body: rawBody,
-  });
-}
-
-async function requestEmailApp(
-  path: string,
-  init: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: emailRoutes,
-  });
-  return await app.request(path, init);
-}
-
-function svixHeaders(rawBody: string): Record<string, string> {
-  const id = `msg_${randomUUID()}`;
-  const timestamp = nowDate();
-  return {
-    "Content-Type": "application/json",
-    "svix-id": id,
-    "svix-timestamp": String(Math.floor(timestamp.getTime() / 1000)),
-    "svix-signature": new Webhook(INBOUND_SECRET).sign(id, timestamp, rawBody),
-  };
-}
-
-async function postInbound(event: WebhookEvent): Promise<Response> {
-  const rawBody = JSON.stringify(event);
-  return await requestEmailApp(INBOUND_PATH, {
-    method: "POST",
-    headers: svixHeaders(rawBody),
-    body: rawBody,
-  });
+  readonly runnerGroup: string;
 }
 
 interface WebhookEvent {
@@ -221,6 +47,98 @@ interface WebhookEvent {
     readonly from?: string;
     readonly subject?: string;
   };
+}
+
+function clerkUserListEntry(userId: string, email: string) {
+  const emailId = `email_${userId}`;
+  return {
+    id: userId,
+    emailAddresses: [{ id: emailId, emailAddress: email }],
+    primaryEmailAddressId: emailId,
+    firstName: "BDD",
+    lastName: "User",
+    imageUrl: null,
+  };
+}
+
+/**
+ * Provisions an org whose default agent, entitlement, and model policy are
+ * created through the production onboarding, Stripe webhook, and model
+ * provider routes. The inbound email flow resolves the org slug and sender
+ * email through Clerk (populating caches lazily), so only the Clerk SDK
+ * boundary is mocked.
+ */
+async function emailOrg(): Promise<EmailOrgFixture> {
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor");
+  }
+  const orgId = actor.orgId;
+  const orgSlug = `email-${randomUUID().slice(0, 8)}`;
+  const runnerGroup = runs.configureRunnerGroup();
+  // Object-storage fake: session-history blobs download with deterministic
+  // content (so continuation runs resume end to end); everything else acks.
+  context.mocks.s3.send.mockImplementation((command: unknown) => {
+    const input = (command as { readonly input?: { readonly Key?: unknown } })
+      .input;
+    const key = typeof input?.Key === "string" ? input.Key : "";
+    if (key.startsWith("blobs/") && key.endsWith(".blob")) {
+      const body = sessionHistoryBlobBodyForKey(context, key);
+      return Promise.resolve({
+        Body: {
+          async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+            if (body) {
+              yield body;
+            }
+          },
+        },
+      });
+    }
+    return Promise.resolve({});
+  });
+  context.mocks.s3.getSignedUrl.mockResolvedValue(
+    "https://r2.example.com/upload?sig=test",
+  );
+  runs.acceptTelemetryIngest();
+
+  const setup = await bdd.setupOnboarding(actor, {
+    displayName: "BDD Email Agent",
+  });
+  const agentId = setup.body.agentId;
+  await runs.grantProEntitlement(actor);
+  await runs.ensureOrgModelProvider(actor);
+
+  context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
+    id: orgId,
+    slug: orgSlug,
+    name: "BDD Email Org",
+    createdBy: actor.userId,
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [{ organization: { id: orgId }, role: "org:member" }],
+  });
+
+  return {
+    actor,
+    orgId,
+    userId: actor.userId,
+    userEmail: actor.email,
+    orgSlug,
+    agentId,
+    runnerGroup,
+  };
+}
+
+function orgAddress(fx: EmailOrgFixture): string {
+  return `${fx.orgSlug}@mail.example.com`;
+}
+
+async function postInbound(event: WebhookEvent) {
+  return await webhooks.requestResendInboundWebhook(
+    event,
+    webhooks.signedResendWebhookHeaders(event),
+    [200],
+  );
 }
 
 function mockReceivedEmail(args: {
@@ -314,6 +232,7 @@ function mockRunOutput(text: string): void {
 }
 
 interface SentEmail {
+  readonly from?: string;
   readonly to?: string | readonly string[];
   readonly cc?: string | readonly string[];
   readonly subject?: string;
@@ -328,59 +247,232 @@ function lastSentEmail(): SentEmail {
   return call![0] as SentEmail;
 }
 
-async function seedReplyCallback(args: {
-  readonly fixture: EmailFixture;
-  readonly status?: "completed" | "failed" | "running";
-  readonly result?: Record<string, unknown> | null;
-  readonly prompt?: string;
-  readonly lastEmailMessageId?: string | null;
-}): Promise<{
-  readonly callbackId: string;
+function sendCallsTo(recipient: string): number {
+  return resendMocks.send.mock.calls.filter((call) => {
+    const [payload] = call;
+    if (typeof payload !== "object" || payload === null || !("to" in payload)) {
+      return false;
+    }
+    const to = payload.to;
+    if (typeof to === "string") {
+      return to === recipient;
+    }
+    return Array.isArray(to) && to.includes(recipient);
+  }).length;
+}
+
+interface ClaimedEmailJob {
   readonly runId: string;
-  readonly thread: EmailThreadState;
-}> {
-  const result = await emailStateAction({
-    action: "seed-reply-callback",
-    fixture: args.fixture,
-    status: args.status ?? "completed",
-    result: args.result,
-    prompt: args.prompt,
-    last_email_message_id: args.lastEmailMessageId,
-  });
-  expect(typeof result.callbackId).toBe("string");
-  expect(typeof result.runId).toBe("string");
+  readonly prompt: string;
+  readonly sandboxToken: string;
+  readonly cliAgentSessionId: string | null;
+}
+
+async function claimEmailJob(runnerGroup: string): Promise<ClaimedEmailJob> {
+  const poll = await runs.pollRunner(runnerGroup);
+  const job = poll.body.job;
+  if (!job) {
+    throw new Error("Expected a dispatched email run job");
+  }
+  const claim = await runs.claimRunnerJob(job.runId);
   return {
-    callbackId: result.callbackId as string,
-    runId: result.runId as string,
-    thread: actionThread(result),
+    runId: job.runId,
+    prompt: job.prompt,
+    sandboxToken: claim.sandboxToken,
+    cliAgentSessionId: job.cliAgentSessionId ?? null,
   };
 }
 
-async function seedTriggerCallback(args: {
-  readonly fixture: EmailFixture;
-  readonly status?: "completed" | "failed" | "running";
-  readonly result?: Record<string, unknown> | null;
-  readonly prompt?: string;
-}): Promise<{
-  readonly callbackId: string;
-  readonly runId: string;
-  readonly replyToken: string;
-}> {
-  const result = await emailStateAction({
-    action: "seed-trigger-callback",
-    fixture: args.fixture,
-    status: args.status ?? "completed",
-    result: args.result,
-    prompt: args.prompt,
+async function expectNoEmailJob(runnerGroup: string): Promise<void> {
+  const poll = await runs.pollRunner(runnerGroup);
+  expect(poll.body.job).toBeNull();
+}
+
+async function completeEmailRunOk(job: ClaimedEmailJob): Promise<void> {
+  const historyHash = createHash("sha256")
+    .update(`bdd session history ${job.runId}`)
+    .digest("hex");
+  await webhooks.requestAgentCheckpoint(
+    {
+      runId: job.runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `bdd-email-cli-${job.runId}`,
+      cliAgentSessionHistoryHash: historyHash,
+    },
+    { authorization: `Bearer ${job.sandboxToken}` },
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    { runId: job.runId, exitCode: 0, lastEventSequence: 3 },
+    { authorization: `Bearer ${job.sandboxToken}` },
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
+async function failEmailRun(
+  job: ClaimedEmailJob,
+  error: string,
+): Promise<void> {
+  await webhooks.requestAgentComplete(
+    { runId: job.runId, exitCode: 1, error },
+    { authorization: `Bearer ${job.sandboxToken}` },
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
+interface TriggerChainOptions {
+  readonly subject?: string;
+  readonly text?: string;
+  readonly html?: string;
+  readonly to?: readonly string[];
+  readonly cc?: readonly string[];
+  readonly headers?: Record<string, string>;
+  readonly fail?: string;
+}
+
+interface CallbackChain {
+  readonly job: ClaimedEmailJob;
+  readonly delivery: CapturedDelivery;
+}
+
+/**
+ * Full production trigger chain: inbound org-address email creates the run,
+ * the runner claims and finishes it, and the terminal callback dispatch is
+ * captured as a legitimately signed HTTP delivery ready for replay.
+ */
+async function runTriggerChain(
+  fx: EmailOrgFixture,
+  options: TriggerChainOptions = {},
+): Promise<CallbackChain> {
+  const subject = options.subject ?? "Email subject";
+  mockReceivedEmail({
+    from: fx.userEmail,
+    to: options.to ?? [orgAddress(fx)],
+    cc: options.cc,
+    subject,
+    text: options.text ?? "Email body",
+    html: options.html,
+    headers: options.headers,
   });
-  expect(typeof result.callbackId).toBe("string");
-  expect(typeof result.runId).toBe("string");
-  expect(typeof result.replyToken).toBe("string");
-  return {
-    callbackId: result.callbackId as string,
-    runId: result.runId as string,
-    replyToken: result.replyToken as string,
-  };
+  mockNoAttachments();
+  const deliveries = webhooks.captureInternalCallbackDeliveries(TRIGGER_PATH);
+
+  await postInbound({
+    type: "email.received",
+    data: {
+      email_id: `email_${randomUUID().slice(0, 8)}`,
+      from: fx.userEmail,
+      to: [orgAddress(fx)],
+      subject,
+    },
+  });
+  await flushWaitUntilForTest();
+
+  const job = await claimEmailJob(fx.runnerGroup);
+  if (options.fail === undefined) {
+    await completeEmailRunOk(job);
+  } else {
+    await failEmailRun(job, options.fail);
+  }
+
+  expect(deliveries).toHaveLength(1);
+  return { job, delivery: deliveries[0]! };
+}
+
+async function replayCallback(
+  path: string,
+  delivery: CapturedDelivery,
+): Promise<Response> {
+  return await webhooks.replayInternalCallback(path, delivery);
+}
+
+/**
+ * Establishes a live email thread the way production does: the trigger
+ * callback replay sends the first agent email whose reply-to address carries
+ * the thread token.
+ */
+async function establishThread(
+  fx: EmailOrgFixture,
+  options: TriggerChainOptions & { readonly output?: string } = {},
+): Promise<{
+  readonly replyToken: string;
+  readonly firstEmail: SentEmail;
+  readonly triggerRunId: string;
+}> {
+  const chain = await runTriggerChain(fx, options);
+  mockRunOutput(options.output ?? "first trigger output");
+  const response = await replayCallback(TRIGGER_PATH, chain.delivery);
+  expect(response.status).toBe(200);
+  const firstEmail = lastSentEmail();
+  const token = firstEmail.replyTo?.match(/^reply\+(.+)@mail\.example\.com$/);
+  if (!token?.[1]) {
+    throw new Error("Expected the trigger email to carry a reply token");
+  }
+  return { replyToken: token[1], firstEmail, triggerRunId: chain.job.runId };
+}
+
+function replyAddress(replyToken: string): string {
+  return `reply+${replyToken}@mail.example.com`;
+}
+
+interface ReplyChainOptions {
+  readonly subject?: string;
+  readonly text?: string;
+  readonly to?: readonly string[];
+  readonly cc?: readonly string[];
+  readonly headers?: Record<string, string>;
+  readonly fail?: string;
+}
+
+async function runReplyChain(
+  fx: EmailOrgFixture,
+  replyToken: string,
+  options: ReplyChainOptions = {},
+): Promise<CallbackChain> {
+  const subject = options.subject ?? "Re: Email subject";
+  mockReceivedEmail({
+    from: fx.userEmail,
+    to: options.to ?? [replyAddress(replyToken)],
+    cc: options.cc,
+    subject,
+    text: options.text ?? "Continue this thread",
+    headers: options.headers,
+  });
+  mockNoAttachments();
+  const deliveries = webhooks.captureInternalCallbackDeliveries(REPLY_PATH);
+
+  await postInbound({
+    type: "email.received",
+    data: {
+      email_id: `email_${randomUUID().slice(0, 8)}`,
+      from: fx.userEmail,
+      to: [replyAddress(replyToken)],
+      subject,
+    },
+  });
+  await flushWaitUntilForTest();
+
+  const job = await claimEmailJob(fx.runnerGroup);
+  if (options.fail === undefined) {
+    await completeEmailRunOk(job);
+  } else {
+    await failEmailRun(job, options.fail);
+  }
+
+  expect(deliveries).toHaveLength(1);
+  return { job, delivery: deliveries[0]! };
+}
+
+interface DeliveryEnvelope {
+  readonly status?: string;
+  readonly runId?: string;
+  readonly payload?: Record<string, unknown>;
+}
+
+function deliveryEnvelope(delivery: CapturedDelivery): DeliveryEnvelope {
+  return JSON.parse(delivery.body) as DeliveryEnvelope;
 }
 
 beforeEach(() => {
@@ -398,66 +490,82 @@ beforeEach(() => {
 });
 
 describe("POST /api/zero/email/callbacks/reply", () => {
-  it("rejects invalid callback signatures", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
-    });
+  it("rejects tampered signatures and expired timestamps on both callback paths", async () => {
+    const fx = await emailOrg();
+    const { delivery } = await runTriggerChain(fx, { subject: "Sig checks" });
 
-    const response = await postCallback(
-      REPLY_PATH,
-      {
-        callbackId,
-        runId,
-        status: "completed",
-        payload: {
-          emailThreadSessionId: thread.id,
-          inboundEmailId: "email_inbound",
-        },
+    // The dispatcher's signature is bound to the callback secret, so a
+    // tampered signature is rejected on the trigger path...
+    const tamperedTrigger = await replayCallback(TRIGGER_PATH, {
+      ...delivery,
+      headers: {
+        ...delivery.headers,
+        "x-vm0-signature": webhooks.tamperedSignature(delivery),
       },
-      "wrong-secret",
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
+    });
+    expect(tamperedTrigger.status).toBe(401);
+    await expect(tamperedTrigger.json()).resolves.toStrictEqual({
       error: "Invalid signature",
     });
+
+    // ...and on the reply path, which shares the signature verification.
+    const tamperedReply = await replayCallback(REPLY_PATH, {
+      ...delivery,
+      headers: {
+        ...delivery.headers,
+        "x-vm0-signature": webhooks.tamperedSignature(delivery),
+      },
+    });
+    expect(tamperedReply.status).toBe(401);
+    await expect(tamperedReply.json()).resolves.toStrictEqual({
+      error: "Invalid signature",
+    });
+
+    // A correctly signed delivery replayed long after dispatch is rejected
+    // by the timestamp window.
+    mockNow(now() + 1_000_000);
+    const expired = await replayCallback(TRIGGER_PATH, delivery);
+    expect(expired.status).toBe(401);
+    await expect(expired.json()).resolves.toStrictEqual({
+      error: "Timestamp expired",
+    });
+    clearMockNow();
+
+    // The untouched delivery still verifies.
+    mockRunOutput("verified output");
+    const accepted = await replayCallback(TRIGGER_PATH, delivery);
+    expect(accepted.status).toBe(200);
   });
 
-  it("sends a reply email and updates thread state after completion", async () => {
-    const fx = await fixture();
-    const nextSessionId = await seedAgentSession(fx);
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
-      result: { agentSessionId: nextSessionId },
-      prompt: "summarize email",
-      lastEmailMessageId: "<previous@example.com>",
+  it("sends a reply email with inbound threading headers after completion", async () => {
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx, { subject: "Report" });
+
+    const { job, delivery } = await runReplyChain(fx, replyToken, {
+      subject: "Re: Report",
+      text: "summarize email",
+      to: [replyAddress(replyToken), "teammate@example.com"],
+      cc: ["cc@example.com"],
+      headers: {
+        "Authentication-Results": "mx.example; dmarc=pass",
+        "Message-ID": "<inbound@example.com>",
+        References: "<root@example.com>",
+      },
     });
     mockRunOutput("final email answer");
 
-    const response = await postCallback(REPLY_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        emailThreadSessionId: thread.id,
-        inboundEmailId: "email_inbound",
-        inboundMessageId: "<inbound@example.com>",
-        inboundReferences: "<root@example.com>",
-        replyRecipientTo: ["sender@example.com", "teammate@example.com"],
-        replyRecipientCc: ["cc@example.com"],
-      },
-    });
-
+    const response = await replayCallback(REPLY_PATH, delivery);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ success: true });
-    expect(resendMocks.send).toHaveBeenCalledWith(
+    expect(resendMocks.send).toHaveBeenLastCalledWith(
       expect.objectContaining({
         from: `Zero <${fx.orgSlug}@mail.example.com>`,
-        to: ["sender@example.com", "teammate@example.com"],
+        to: [fx.userEmail, "teammate@example.com"],
         cc: ["cc@example.com"],
-        replyTo: `reply+${thread.replyToken}@mail.example.com`,
-        subject: `Re: VM0 - Automation run for "${fx.agentName}" completed`,
+        replyTo: replyAddress(replyToken),
+        subject: expect.stringMatching(
+          /^Re: VM0 - Automation run for ".+" completed$/,
+        ),
         headers: expect.objectContaining({
           "In-Reply-To": "<inbound@example.com>",
           References: "<root@example.com> <inbound@example.com>",
@@ -466,139 +574,94 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     );
     const email = lastSentEmail();
     expect(email.html).toContain("final email answer");
-    expect(email.html).not.toContain(`/activities/${runId}`);
-
-    const updatedThread = actionThread(
-      await emailStateAction({ action: "get-thread", id: thread.id }),
-    );
-    expect(updatedThread).toMatchObject({
-      agentSessionId: nextSessionId,
-      lastEmailMessageId: "<sent@example.com>",
-    });
+    expect(email.html).not.toContain(`/activities/${job.runId}`);
   });
 
   it("includes the audit log link when the AuditLink switch is enabled", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
-    });
-    await updateFeatureSwitchesForUser(context, fx, {
-      [FeatureSwitchKey.ZeroDebug]: true,
-    });
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
+    const { job, delivery } = await runReplyChain(fx, replyToken);
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: fx.userId, orgId: fx.orgId },
+      { [FeatureSwitchKey.ZeroDebug]: true },
+    );
     mockRunOutput("audited email answer");
 
-    const response = await postCallback(REPLY_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        emailThreadSessionId: thread.id,
-        inboundEmailId: "email_audit",
-      },
-    });
-
+    const response = await replayCallback(REPLY_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
-    expect(email.html).toContain(`/activities/${runId}`);
+    expect(email.html).toContain(`/activities/${job.runId}`);
   });
 
   it("falls back to the last sent email message id when inbound threading headers are missing", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
-      lastEmailMessageId: "<bot-prev@example.com>",
+    const fx = await emailOrg();
+    // The trigger email's Resend message id becomes the thread's last
+    // message id through the production send path.
+    const { replyToken } = await establishThread(fx);
+    const { delivery } = await runReplyChain(fx, replyToken, {
+      headers: { "Authentication-Results": "mx.example; dmarc=pass" },
     });
     mockRunOutput("fallback threading answer");
 
-    const response = await postCallback(REPLY_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        emailThreadSessionId: thread.id,
-        inboundEmailId: "email_fallback",
-      },
-    });
-
+    const response = await replayCallback(REPLY_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
-    expect(email.headers?.["In-Reply-To"]).toBe("<bot-prev@example.com>");
-    expect(email.headers?.References).toBe("<bot-prev@example.com>");
+    expect(email.headers?.["In-Reply-To"]).toBe("<sent@example.com>");
+    expect(email.headers?.References).toBe("<sent@example.com>");
   });
 
   it("uses the last sent message id in references when only the inbound message id is present", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
-      lastEmailMessageId: "<bot-prev@example.com>",
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
+    const { delivery } = await runReplyChain(fx, replyToken, {
+      headers: {
+        "Authentication-Results": "mx.example; dmarc=pass",
+        "Message-ID": "<inbound@example.com>",
+      },
     });
     mockRunOutput("partial threading answer");
 
-    const response = await postCallback(REPLY_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        emailThreadSessionId: thread.id,
-        inboundEmailId: "email_partial",
-        inboundMessageId: "<inbound@example.com>",
-      },
-    });
-
+    const response = await replayCallback(REPLY_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
     expect(email.headers?.["In-Reply-To"]).toBe("<inbound@example.com>");
     expect(email.headers?.References).toBe(
-      "<bot-prev@example.com> <inbound@example.com>",
+      "<sent@example.com> <inbound@example.com>",
     );
   });
 
   it("omits threading headers when neither inbound nor session message ids exist", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
+    const fx = await emailOrg();
+    // Resend does not report a message id for the trigger email, so the
+    // thread is saved without a last message id.
+    resendMocks.get.mockResolvedValue({ data: {} });
+    const { replyToken } = await establishThread(fx);
+    const { delivery } = await runReplyChain(fx, replyToken, {
+      headers: { "Authentication-Results": "mx.example; dmarc=pass" },
     });
     mockRunOutput("no threading answer");
 
-    const response = await postCallback(REPLY_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        emailThreadSessionId: thread.id,
-        inboundEmailId: "email_without_threading",
-      },
-    });
-
+    const response = await replayCallback(REPLY_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
     expect(email.headers?.["In-Reply-To"]).toBeUndefined();
     expect(email.headers?.References).toBeUndefined();
   });
 
-  it("falls back to the thread owner email and sends the failure message on failed runs", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, thread } = await seedReplyCallback({
-      fixture: fx,
-      status: "failed",
+  it("sends the failure message when the reply run fails", async () => {
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
+    const { delivery } = await runReplyChain(fx, replyToken, {
+      fail: "Agent crashed",
     });
 
-    const response = await postCallback(REPLY_PATH, {
-      callbackId,
-      runId,
-      status: "failed",
-      error: "Agent crashed",
-      payload: {
-        emailThreadSessionId: thread.id,
-        inboundEmailId: "email_failed",
-      },
-    });
-
+    const response = await replayCallback(REPLY_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
-    expect(email.to).toBe(fx.userEmail);
-    expect(email.subject).toBe(
-      `Re: VM0 - Automation run for "${fx.agentName}" completed`,
+    expect(email.to).toStrictEqual([fx.userEmail]);
+    expect(email.subject).toMatch(
+      /^Re: VM0 - Automation run for ".+" completed$/,
     );
     expect(email.html).toContain("Agent crashed");
   });
@@ -608,114 +671,61 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
   it("skips before callback verification when Resend is not configured", async () => {
     mockEnv("RESEND_API_KEY", undefined);
 
-    const response = await requestEmailApp(TRIGGER_PATH, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ runId: randomUUID(), status: "completed" }),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({
-      success: true,
-      skipped: true,
-    });
-  });
-
-  it("rejects invalid callback signatures", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-    });
-
-    const response = await postCallback(
-      TRIGGER_PATH,
+    const response = await webhooks.requestEmailTriggerCallback(
       {
-        callbackId,
-        runId,
+        runId: randomUUID(),
         status: "completed",
         payload: {
-          senderEmail: fx.userEmail,
-          agentId: fx.agentId,
-          userId: fx.userId,
-          inboundEmailId: "email_invalid_signature",
-          replyToken,
+          senderEmail: "sender@example.com",
+          agentId: randomUUID(),
+          userId: `user_${randomUUID()}`,
+          inboundEmailId: "email_unconfigured",
+          replyToken: "token",
         },
       },
-      "wrong-secret",
+      [200],
     );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Invalid signature",
-    });
-  });
-
-  it("rejects expired callback timestamps", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-    });
-
-    const response = await postCallback(
-      TRIGGER_PATH,
-      {
-        callbackId,
-        runId,
-        status: "completed",
-        payload: {
-          senderEmail: fx.userEmail,
-          agentId: fx.agentId,
-          userId: fx.userId,
-          inboundEmailId: "email_expired_signature",
-          replyToken,
-        },
-      },
-      { timestamp: Math.floor(now() / 1000) - 1000 },
-    );
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Timestamp expired",
-    });
+    expect(response.body).toStrictEqual({ success: true, skipped: true });
   });
 
   it("sends a response email and creates the thread session", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      result: { agentSessionId },
-      prompt: "trigger prompt",
+    const fx = await emailOrg();
+    const { job, delivery } = await runTriggerChain(fx, {
+      subject: "Need help",
+      text: "Please help",
+      to: [orgAddress(fx)],
+      cc: ["cc@example.com"],
+      headers: {
+        "Authentication-Results": "mx.example; dmarc=pass",
+        "Message-ID": "<inbound@example.com>",
+        References: "<root@example.com>",
+      },
     });
-    mockRunOutput("trigger response");
-
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
+    expect(deliveryEnvelope(delivery)).toMatchObject({
       status: "completed",
+      runId: job.runId,
       payload: {
         senderEmail: fx.userEmail,
         agentId: fx.agentId,
         userId: fx.userId,
-        inboundEmailId: "email_inbound",
-        replyToken,
-        inboundMessageId: "<inbound@example.com>",
-        inboundReferences: "<root@example.com>",
-        subject: "Need help",
         runtimeOrgId: fx.orgId,
-        replyRecipientTo: ["sender@example.com"],
+        subject: "Need help",
+        inboundMessageId: "<inbound@example.com>",
+        replyRecipientTo: [fx.userEmail],
         replyRecipientCc: ["cc@example.com"],
       },
     });
+    mockRunOutput("trigger response");
 
+    const response = await replayCallback(TRIGGER_PATH, delivery);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ success: true });
-    expect(resendMocks.send).toHaveBeenCalledWith(
+    expect(resendMocks.send).toHaveBeenLastCalledWith(
       expect.objectContaining({
         from: `Zero <${fx.orgSlug}@mail.example.com>`,
-        to: ["sender@example.com"],
+        to: [fx.userEmail],
         cc: ["cc@example.com"],
-        replyTo: `reply+${replyToken}@mail.example.com`,
+        replyTo: expect.stringMatching(/^reply\+.+@mail\.example\.com$/),
         subject: "Re: Need help",
         headers: expect.objectContaining({
           "In-Reply-To": "<inbound@example.com>",
@@ -725,341 +735,189 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     );
     const email = lastSentEmail();
     expect(email.html).toContain("trigger response");
-    expect(email.html).not.toContain(`/activities/${runId}`);
-
-    const thread = actionThread(
-      await emailStateAction({
-        action: "get-thread",
-        reply_token: replyToken,
-      }),
-    );
-    expect(thread).toMatchObject({
-      userId: fx.userId,
-      agentId: fx.agentId,
-      agentSessionId,
-      lastEmailMessageId: "<sent@example.com>",
-      orgId: fx.orgId,
-    });
+    expect(email.html).not.toContain(`/activities/${job.runId}`);
   });
 
   it("includes the audit log link when the AuditLink switch is enabled", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      result: { agentSessionId },
-    });
-    await updateFeatureSwitchesForUser(context, fx, {
-      [FeatureSwitchKey.ZeroDebug]: true,
-    });
+    const fx = await emailOrg();
+    const { job, delivery } = await runTriggerChain(fx);
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: fx.userId, orgId: fx.orgId },
+      { [FeatureSwitchKey.ZeroDebug]: true },
+    );
     mockRunOutput("audited trigger response");
 
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        senderEmail: fx.userEmail,
-        agentId: fx.agentId,
-        userId: fx.userId,
-        inboundEmailId: "email_trigger_audit",
-        replyToken,
-        runtimeOrgId: fx.orgId,
-      },
-    });
-
+    const response = await replayCallback(TRIGGER_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
-    expect(email.html).toContain(`/activities/${runId}`);
+    expect(email.html).toContain(`/activities/${job.runId}`);
   });
 
   it("strips an existing Re prefix from the trigger subject", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      result: { agentSessionId },
+    const fx = await emailOrg();
+    const { delivery } = await runTriggerChain(fx, {
+      subject: "Re: Original Topic",
     });
     mockRunOutput("subject normalized response");
 
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        senderEmail: fx.userEmail,
-        agentId: fx.agentId,
-        userId: fx.userId,
-        inboundEmailId: "email_subject_re",
-        replyToken,
-        subject: "Re: Original Topic",
-        runtimeOrgId: fx.orgId,
-      },
-    });
-
+    const response = await replayCallback(TRIGGER_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
     expect(email.subject).toBe("Re: Original Topic");
   });
 
-  it("falls back to senderEmail when reply recipients are absent", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      result: { agentSessionId },
-    });
-    mockRunOutput("fallback recipient response");
-
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        senderEmail: "sender@example.com",
-        agentId: fx.agentId,
-        userId: fx.userId,
-        inboundEmailId: "email_sender_fallback",
-        replyToken,
-        runtimeOrgId: fx.orgId,
-      },
+  it("sends the failure message without reply continuity for failed trigger runs", async () => {
+    const fx = await emailOrg();
+    const { delivery } = await runTriggerChain(fx, {
+      subject: "Doomed task",
+      fail: "Agent crashed",
     });
 
+    const response = await replayCallback(TRIGGER_PATH, delivery);
     expect(response.status).toBe(200);
     const email = lastSentEmail();
-    expect(email.to).toBe("sender@example.com");
-    expect(email.cc).toBeUndefined();
-  });
-
-  it("sends the failure message for failed trigger runs", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      status: "failed",
-    });
-
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
-      status: "failed",
-      error: "Agent crashed",
-      payload: {
-        senderEmail: "sender@example.com",
-        agentId: fx.agentId,
-        userId: fx.userId,
-        inboundEmailId: "email_trigger_failed",
-        replyToken,
-        runtimeOrgId: fx.orgId,
-      },
-    });
-
-    expect(response.status).toBe(200);
-    const email = lastSentEmail();
-    expect(email.to).toBe("sender@example.com");
+    expect(email.to).toStrictEqual([fx.userEmail]);
+    expect(email.subject).toBe("Re: Doomed task");
     expect(email.html).toContain("Agent crashed");
-  });
-
-  it("no-ops progress callbacks without sending email", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      status: "running",
-    });
-
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
-      status: "progress",
-      payload: {
-        senderEmail: fx.userEmail,
-        agentId: fx.agentId,
-        userId: fx.userId,
-        inboundEmailId: "email_trigger_progress",
-        replyToken,
-      },
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ success: true });
-    expect(resendMocks.send).not.toHaveBeenCalled();
-  });
-
-  it("omits reply continuity when the run result has no agent session id", async () => {
-    const fx = await fixture();
-    const { callbackId, runId, replyToken } = await seedTriggerCallback({
-      fixture: fx,
-      result: null,
-    });
-    mockRunOutput("no continuity response");
-
-    const response = await postCallback(TRIGGER_PATH, {
-      callbackId,
-      runId,
-      status: "completed",
-      payload: {
-        senderEmail: fx.userEmail,
-        agentId: fx.agentId,
-        userId: fx.userId,
-        inboundEmailId: "email_no_continuity",
-        replyToken,
-        runtimeOrgId: fx.orgId,
-      },
-    });
-
-    expect(response.status).toBe(200);
-    const email = lastSentEmail();
+    // A failed run has no agent session to continue, so the failure email
+    // does not offer a reply address.
     expect(email.replyTo).toBeUndefined();
-    const { thread } = await emailStateAction({
-      action: "get-thread",
-      reply_token: replyToken,
-    });
-    expect(thread).toBeNull();
   });
 });
 
 describe("POST /api/zero/email/inbound", () => {
   it("rejects missing Svix headers", async () => {
-    const response = await requestEmailApp(INBOUND_PATH, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "email.received" }),
-    });
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
+    const response = await webhooks.requestResendInboundWebhook(
+      { type: "email.received" },
+      {},
+      [401],
+    );
+    expect(response.body).toStrictEqual({
       error: "Missing signature headers",
     });
   });
 
-  it("records bounced and complained recipients", async () => {
-    const fx = await fixture();
-    const bounced = `bounce-${fx.orgSlug}@example.com`;
-    const complained = fx.userEmail;
-
-    const bounceResponse = await postInbound({
-      type: "email.bounced",
-      data: { email_id: "email_bounce", to: [bounced] },
-    });
-    const complaintResponse = await postInbound({
-      type: "email.complained",
-      data: { email_id: "email_complaint", to: [complained] },
-    });
-
-    expect(bounceResponse.status).toBe(200);
-    expect(complaintResponse.status).toBe(200);
-    const { suppressions } = await emailStateAction({
-      action: "get-suppressions",
-      emails: [bounced, complained],
-    });
-    expect(Array.isArray(suppressions)).toBeTruthy();
-    expect(
-      (suppressions as { emailAddress: string; reason: string }[]).map(
-        (row) => {
-          return { emailAddress: row.emailAddress, reason: row.reason };
-        },
-      ),
-    ).toStrictEqual(
-      expect.arrayContaining([
-        { emailAddress: bounced, reason: "bounced" },
-        { emailAddress: complained, reason: "complained" },
-      ]),
+  it("rejects invalid Svix signatures", async () => {
+    const event = { type: "email.received" };
+    const response = await webhooks.requestResendInboundWebhook(
+      event,
+      {
+        ...webhooks.signedResendWebhookHeaders(event),
+        "svix-signature": "v1,bad-signature",
+      },
+      [401],
     );
-    const { user } = await emailStateAction({
-      action: "get-user",
-      user_id: fx.userId,
+    expect(response.body).toStrictEqual({ error: "Invalid signature" });
+  });
+
+  it("suppresses bounced and complained recipients from future error replies", async () => {
+    const bounced = `bounced-${randomUUID().slice(0, 10)}@example.test`;
+    const complained = `complained-${randomUUID().slice(0, 10)}@example.test`;
+    const control = `control-${randomUUID().slice(0, 10)}@example.test`;
+    // None of the recipients has a vm0 account.
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+
+    await postInbound({
+      type: "email.bounced",
+      data: { email_id: `email_${randomUUID().slice(0, 8)}`, to: [bounced] },
     });
-    expect(
-      (user as { emailUnsubscribed?: boolean } | null)?.emailUnsubscribed,
-    ).toBeTruthy();
+    await postInbound({
+      type: "email.complained",
+      data: { email_id: `email_${randomUUID().slice(0, 8)}`, to: [complained] },
+    });
+
+    // Senders without a vm0 account receive an error reply; a suppressed
+    // recipient must not.
+    context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
+    for (const sender of [control, bounced, complained]) {
+      await postInbound({
+        type: "email.received",
+        data: {
+          email_id: `email_${randomUUID().slice(0, 8)}`,
+          from: sender,
+          to: ["bdd-unknown-org@mail.example.com"],
+          subject: "Suppression probe",
+        },
+      });
+      await flushWaitUntilForTest();
+    }
+
+    expect(sendCallsTo(control)).toBe(1);
+    expect(sendCallsTo(bounced)).toBe(0);
+    expect(sendCallsTo(complained)).toBe(0);
   });
 
   it("dispatches a Zero run for a new org-address email", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`${fx.orgSlug}@mail.example.com`],
+      to: [orgAddress(fx)],
       subject: "Run a report",
       text: "Please run it",
     });
     mockNoAttachments();
+    const deliveries = webhooks.captureInternalCallbackDeliveries(TRIGGER_PATH);
 
     const response = await postInbound({
       type: "email.received",
       data: {
         email_id: "email_trigger",
         from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Run a report",
       },
     });
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ received: true });
+    expect(response.body).toStrictEqual({ received: true });
     await flushWaitUntilForTest();
 
-    const runs = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.prompt).toContain("Run a report");
-    expect(runs[0]?.triggerSource).toBe("email");
-    const callback = runs[0]?.callbacks[0];
-    expect(callback?.url).toBe(
-      "http://localhost:3000/api/zero/email/callbacks/trigger",
-    );
-    expect(callback?.payload).toMatchObject({
-      senderEmail: fx.userEmail,
-      agentId: fx.agentId,
-      userId: fx.userId,
-      inboundEmailId: "email_trigger",
-      runtimeOrgId: fx.orgId,
-      replyRecipientTo: [fx.userEmail],
+    const job = await claimEmailJob(fx.runnerGroup);
+    expect(job.prompt).toContain("Run a report");
+    expect(job.prompt).toContain("Please run it");
+
+    // Completing the run dispatches the trigger callback to the production
+    // callback URL with the inbound context.
+    await completeEmailRunOk(job);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveryEnvelope(deliveries[0]!)).toMatchObject({
+      runId: job.runId,
+      payload: {
+        senderEmail: fx.userEmail,
+        agentId: fx.agentId,
+        userId: fx.userId,
+        inboundEmailId: "email_trigger",
+        runtimeOrgId: fx.orgId,
+        replyRecipientTo: [fx.userEmail],
+      },
     });
   });
 
   it("dispatches a continuation run for a reply-address email", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const thread = await seedThread({ fixture: fx, agentSessionId });
-    mockReceivedEmail({
-      from: fx.userEmail,
-      to: [`reply+${thread.replyToken}@mail.example.com`],
+    const fx = await emailOrg();
+    const { replyToken, triggerRunId } = await establishThread(fx, {
+      subject: "Continue",
+    });
+
+    const { job, delivery } = await runReplyChain(fx, replyToken, {
       subject: "Re: Continue",
       text: "Continue this thread",
     });
-    mockNoAttachments();
 
-    const response = await postInbound({
-      type: "email.received",
-      data: {
-        email_id: "email_reply",
-        from: fx.userEmail,
-        to: [`reply+${thread.replyToken}@mail.example.com`],
-        subject: "Re: Continue",
+    // The continuation run resumes the same CLI agent session that the
+    // trigger run checkpointed.
+    expect(job.cliAgentSessionId).toBe(`bdd-email-cli-${triggerRunId}`);
+    expect(deliveryEnvelope(delivery)).toMatchObject({
+      runId: job.runId,
+      payload: {
+        replyRecipientTo: [fx.userEmail],
       },
-    });
-    expect(response.status).toBe(200);
-    await flushWaitUntilForTest();
-
-    const runs = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.sessionId).toBe(agentSessionId);
-    const callback = runs[0]?.callbacks[0];
-    expect(callback?.url).toBe(
-      "http://localhost:3000/api/zero/email/callbacks/reply",
-    );
-    expect(callback?.payload).toMatchObject({
-      emailThreadSessionId: thread.id,
-      inboundEmailId: "email_reply",
-      replyRecipientTo: [fx.userEmail],
     });
   });
 
   it("sends an error reply when the reply token is invalid", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_invalid_reply",
@@ -1068,57 +926,12 @@ describe("POST /api/zero/email/inbound", () => {
         subject: "Re: Continue",
       },
     });
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const { outbox } = await emailStateAction({
-      action: "get-outbox",
-      from_address: "Zero <vm0@mail.example.com>",
-    });
-    expect(Array.isArray(outbox)).toBeTruthy();
-    const outboxItems = outbox as EmailOutboxState[];
-    const outboxItem = outboxItems.find((item) => {
-      const toAddresses = Array.isArray(item.toAddresses)
-        ? item.toAddresses
-        : [item.toAddresses];
-      return (
-        item.subject === "Re: Continue" && toAddresses.includes(fx.userEmail)
-      );
-    });
-    if (!outboxItem) {
-      throw new Error(
-        `Expected invalid reply outbox email for ${fx.userEmail}`,
-      );
-    }
-    expect(outboxItem).toMatchObject({
-      toAddresses: fx.userEmail,
-      subject: "Re: Continue",
-    });
-    expect(outboxItem?.template).toMatchObject({
-      template: "inbound-error",
-      props: {
-        errorMessage: expect.stringContaining(
-          "conversation thread has expired",
-        ),
-      },
-    });
-  });
-
-  it("rejects invalid Svix signatures", async () => {
-    const rawBody = JSON.stringify({ type: "email.received" });
-    const response = await requestEmailApp(INBOUND_PATH, {
-      method: "POST",
-      headers: {
-        ...svixHeaders(rawBody),
-        "svix-signature": "v1,bad-signature",
-      },
-      body: rawBody,
-    });
-
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toStrictEqual({
-      error: "Invalid signature",
-    });
+    const email = lastSentEmail();
+    expect(email.to).toBe(fx.userEmail);
+    expect(email.subject).toBe("Re: Continue");
+    expect(email.html).toContain("conversation thread has expired");
   });
 
   it("acknowledges non-received events without background work", async () => {
@@ -1127,42 +940,36 @@ describe("POST /api/zero/email/inbound", () => {
       data: { email_id: "email_sent" },
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toStrictEqual({ received: true });
+    expect(response.body).toStrictEqual({ received: true });
     await flushWaitUntilForTest();
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     expect(resendMocks.send).not.toHaveBeenCalled();
   });
 
   it("sends an error reply when a continuation reply has empty content", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const thread = await seedThread({ fixture: fx, agentSessionId });
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`reply+${thread.replyToken}@mail.example.com`],
+      to: [replyAddress(replyToken)],
       subject: "Re: Empty",
       text: "   ",
       html: "",
     });
     mockNoAttachments();
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_empty_reply",
         from: fx.userEmail,
-        to: [`reply+${thread.replyToken}@mail.example.com`],
+        to: [replyAddress(replyToken)],
         subject: "Re: Empty",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const runs = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(runs).toHaveLength(0);
+
+    await expectNoEmailJob(fx.runnerGroup);
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.subject).toBe("Re: Empty");
@@ -1170,30 +977,27 @@ describe("POST /api/zero/email/inbound", () => {
   });
 
   it("sends an error reply when a reply sender is not the thread owner", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const thread = await seedThread({ fixture: fx, agentSessionId });
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
     const senderEmail = `other-${fx.orgSlug}@example.com`;
     const otherUserId = `user_${randomUUID()}`;
-    await emailStateAction({
-      action: "seed-user-cache",
-      user_id: otherUserId,
-      email: senderEmail,
-      name: "Other User",
+    context.mocks.clerk.users.getUserList.mockResolvedValueOnce({
+      data: [clerkUserListEntry(otherUserId, senderEmail)],
     });
+    resendMocks.receivingGet.mockClear();
+    resendMocks.send.mockClear();
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_wrong_owner",
         from: senderEmail,
-        to: [`reply+${thread.replyToken}@mail.example.com`],
+        to: [replyAddress(replyToken)],
         subject: "Re: Wrong owner",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
+
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     const email = lastSentEmail();
     expect(email.to).toBe(senderEmail);
@@ -1201,12 +1005,11 @@ describe("POST /api/zero/email/inbound", () => {
   });
 
   it("sends an error reply when reply sender authentication fails", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const thread = await seedThread({ fixture: fx, agentSessionId });
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`reply+${thread.replyToken}@mail.example.com`],
+      to: [replyAddress(replyToken)],
       subject: "Re: Spoofed",
       text: "Reply body",
       headers: {
@@ -1214,49 +1017,45 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_reply_dmarc_fail",
         from: fx.userEmail,
-        to: [`reply+${thread.replyToken}@mail.example.com`],
+        to: [replyAddress(replyToken)],
         subject: "Re: Spoofed",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
+
+    await expectNoEmailJob(fx.runnerGroup);
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.html).toContain("DMARC verification failed");
   });
 
   it("sends an error reply when a trigger sender is not a workspace member", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     const senderEmail = `nonmember-${fx.orgSlug}@example.com`;
     const senderUserId = `user_${randomUUID()}`;
-    await emailStateAction({
-      action: "seed-user-cache",
-      user_id: senderUserId,
-      email: senderEmail,
-      name: "Non Member",
+    context.mocks.clerk.users.getUserList.mockResolvedValueOnce({
+      data: [clerkUserListEntry(senderUserId, senderEmail)],
     });
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValueOnce(
       { data: [] },
     );
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_not_member",
         from: senderEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Forbidden",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
+
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     const email = lastSentEmail();
     expect(email.to).toBe(senderEmail);
@@ -1265,35 +1064,47 @@ describe("POST /api/zero/email/inbound", () => {
   });
 
   it("sends an error reply when the workspace has no default agent", async () => {
-    const fx = await fixture();
-    await emailStateAction({
-      action: "delete-org-metadata",
-      fixture: fx,
+    // A user whose org never completed onboarding has no default agent.
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const orgSlug = `email-${randomUUID().slice(0, 8)}`;
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [clerkUserListEntry(actor.userId, actor.email)],
+    });
+    context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
+      id: actor.orgId,
+      slug: orgSlug,
+      name: "BDD Bare Org",
+      createdBy: actor.userId,
+    });
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [{ organization: { id: actor.orgId }, role: "org:member" }],
     });
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_no_default_agent",
-        from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        from: actor.email,
+        to: [`${orgSlug}@mail.example.com`],
         subject: "No default",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
+
     expect(resendMocks.receivingGet).not.toHaveBeenCalled();
     const email = lastSentEmail();
-    expect(email.to).toBe(fx.userEmail);
+    expect(email.to).toBe(actor.email);
     expect(email.html).toContain("does not have a default agent");
   });
 
   it("rejects trigger emails that fail DMARC before creating a run", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`${fx.orgSlug}@mail.example.com`],
+      to: [orgAddress(fx)],
       subject: "Spoofed",
       text: "spoofed body",
       headers: {
@@ -1301,61 +1112,54 @@ describe("POST /api/zero/email/inbound", () => {
       },
     });
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_trigger_dmarc_fail",
         from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Spoofed",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const runs = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(runs).toHaveLength(0);
+
+    await expectNoEmailJob(fx.runnerGroup);
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.html).toContain("DMARC verification failed");
   });
 
   it("extracts trigger prompt content from HTML when text is empty", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`${fx.orgSlug}@mail.example.com`],
+      to: [orgAddress(fx)],
       subject: "Newsletter",
       text: "",
       html: "<p>Rich content from newsletter</p>",
     });
     mockNoAttachments();
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_html_trigger",
         from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Newsletter",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const [run] = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(run?.prompt).toContain("Newsletter\n\nRich content from newsletter");
+
+    const job = await claimEmailJob(fx.runnerGroup);
+    expect(job.prompt).toContain("Newsletter\n\nRich content from newsletter");
   });
 
   it("adds mixed attachment results to trigger prompts", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`${fx.orgSlug}@mail.example.com`],
+      to: [orgAddress(fx)],
       subject: "Files",
       text: "Several attachments",
     });
@@ -1395,27 +1199,24 @@ describe("POST /api/zero/email/inbound", () => {
       status: 404,
     });
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_trigger_attachments",
         from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Files",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const [run] = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(run?.prompt).toContain("[attachment]: report.pdf");
-    expect(run?.prompt).toContain("https://r2.example.com/upload?sig=test");
-    expect(run?.prompt).toContain("video.mp4");
-    expect(run?.prompt).toContain("skipped: exceeds size limit");
-    expect(run?.prompt).toContain("missing.docx");
-    expect(run?.prompt).toContain("skipped: download failed");
+
+    const job = await claimEmailJob(fx.runnerGroup);
+    expect(job.prompt).toContain("[attachment]: report.pdf");
+    expect(job.prompt).toContain("https://r2.example.com/upload?sig=test");
+    expect(job.prompt).toContain("video.mp4");
+    expect(job.prompt).toContain("skipped: exceeds size limit");
+    expect(job.prompt).toContain("missing.docx");
+    expect(job.prompt).toContain("skipped: download failed");
     expect(context.mocks.s3.send).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
@@ -1429,11 +1230,11 @@ describe("POST /api/zero/email/inbound", () => {
   });
 
   it("replaces inline image data URIs and processes inline attachments", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     const inlineBase64 = "A".repeat(1000);
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`${fx.orgSlug}@mail.example.com`],
+      to: [orgAddress(fx)],
       subject: "Photo",
       text: "",
       html: `<p>Look at this</p><img src="data:image/jpeg;base64,${inlineBase64}" alt="photo.jpg">`,
@@ -1454,34 +1255,30 @@ describe("POST /api/zero/email/inbound", () => {
       contentType: "image/jpeg",
     });
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_inline_image",
         from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Photo",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const [run] = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(run?.prompt).toContain("Look at this");
-    expect(run?.prompt).toContain("[inline image: photo.jpg]");
-    expect(run?.prompt).not.toContain("data:image/jpeg;base64");
-    expect(run?.prompt).toContain("[attachment]: photo.jpg");
+
+    const job = await claimEmailJob(fx.runnerGroup);
+    expect(job.prompt).toContain("Look at this");
+    expect(job.prompt).toContain("[inline image: photo.jpg]");
+    expect(job.prompt).not.toContain("data:image/jpeg;base64");
+    expect(job.prompt).toContain("[attachment]: photo.jpg");
   });
 
   it("adds attachment results to reply continuation prompts", async () => {
-    const fx = await fixture();
-    const agentSessionId = await seedAgentSession(fx);
-    const thread = await seedThread({ fixture: fx, agentSessionId });
+    const fx = await emailOrg();
+    const { replyToken } = await establishThread(fx);
     mockReceivedEmail({
       from: fx.userEmail,
-      to: [`reply+${thread.replyToken}@mail.example.com`],
+      to: [replyAddress(replyToken)],
       subject: "Re: File",
       text: "Here is the file",
     });
@@ -1501,39 +1298,35 @@ describe("POST /api/zero/email/inbound", () => {
       contentType: "text/csv",
     });
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_reply_attachment",
         from: fx.userEmail,
-        to: [`reply+${thread.replyToken}@mail.example.com`],
+        to: [replyAddress(replyToken)],
         subject: "Re: File",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const [run] = actionRuns(
-      await emailStateAction({ action: "get-run-state", fixture: fx }),
-    );
-    expect(run?.sessionId).toBe(agentSessionId);
-    expect(run?.prompt).toContain("Here is the file");
-    expect(run?.prompt).toContain("[attachment]: data.csv");
-    expect(run?.prompt).toContain("https://r2.example.com/upload?sig=test");
+
+    const job = await claimEmailJob(fx.runnerGroup);
+    expect(job.prompt).toContain("Here is the file");
+    expect(job.prompt).toContain("[attachment]: data.csv");
+    expect(job.prompt).toContain("https://r2.example.com/upload?sig=test");
   });
 
   it("rejects old trigger address formats before fetching email contents", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
 
     for (const address of [
-      `${fx.orgSlug}+${fx.agentName}@mail.example.com`,
-      `${fx.orgSlug}/${fx.agentName}@mail.example.com`,
+      `${fx.orgSlug}+agent@mail.example.com`,
+      `${fx.orgSlug}/agent@mail.example.com`,
       "+invalid@mail.example.com",
     ]) {
       resendMocks.send.mockClear();
       resendMocks.receivingGet.mockClear();
 
-      const response = await postInbound({
+      await postInbound({
         type: "email.received",
         data: {
           email_id: `email_bad_address_${randomUUID()}`,
@@ -1542,9 +1335,8 @@ describe("POST /api/zero/email/inbound", () => {
           subject: "Bad Address",
         },
       });
-
-      expect(response.status).toBe(200);
       await flushWaitUntilForTest();
+
       expect(resendMocks.receivingGet).not.toHaveBeenCalled();
       const email = lastSentEmail();
       expect(email.to).toBe(fx.userEmail);
@@ -1553,23 +1345,22 @@ describe("POST /api/zero/email/inbound", () => {
   });
 
   it("sends an error reply when inbound processing throws unexpectedly", async () => {
-    const fx = await fixture();
+    const fx = await emailOrg();
     resendMocks.receivingGet.mockRejectedValueOnce(
       new Error("Resend API unavailable"),
     );
 
-    const response = await postInbound({
+    await postInbound({
       type: "email.received",
       data: {
         email_id: "email_unexpected_failure",
         from: fx.userEmail,
-        to: [`${fx.orgSlug}@mail.example.com`],
+        to: [orgAddress(fx)],
         subject: "Crash",
       },
     });
-
-    expect(response.status).toBe(200);
     await flushWaitUntilForTest();
+
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
     expect(email.subject).toBe("Re: Crash");

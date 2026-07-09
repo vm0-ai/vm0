@@ -49,7 +49,6 @@ export enum FeatureSwitchKey {
   ComposerUploadPopover = "composerUploadPopover",
 
   ZapierConnector = "zapierConnector",
-  ChatThreadEmoji = "chatThreadEmoji",
   MemoryViewer = "memoryViewer",
   RelationshipMemory = "relationshipMemory",
   RelationshipMemoryRuntimeInjection = "relationshipMemoryRuntimeInjection",

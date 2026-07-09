@@ -1,35 +1,20 @@
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { createStore } from "ccstate";
+import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import {
-  deleteWorkflowsForFixture$,
-  getWorkflowTriggerRunState$,
-  getWorkflowTriggerState$,
-  seedAgentForInstructions$,
-  seedWorkflowActiveRun$,
-  seedWorkflowsFixture$,
-  setWorkflowTriggerRunState$,
-  type WorkflowsFixture,
-} from "./helpers/zero-workflows";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const wf = createWorkflowsBddApi(context);
 
 const WORKFLOW_NAME = "webhook-trigger-workflow";
 
@@ -60,61 +45,33 @@ function sandboxOperationEventsForRun(
   });
 }
 
+interface WorkflowsFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
 async function setupFixture(): Promise<{
   readonly fixture: WorkflowsFixture;
+  readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly workflowId: string;
 }> {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  const fixture = await store.set(
-    seedWorkflowsFixture$,
-    undefined,
-    context.signal,
-  );
-  context.mocks.s3.send.mockResolvedValue({});
-  const seededAgent = await store.set(
-    seedAgentForInstructions$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "webhook-trigger-agent",
-      workflowNames: [WORKFLOW_NAME],
-      composeContent: {
-        version: "1",
-        agents: {
-          "webhook-trigger-agent": {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "test-key" },
-          },
-        },
-      },
-    },
-    context.signal,
-  );
-  const workflowId = seededAgent.workflowIdsByName[WORKFLOW_NAME];
-  if (!workflowId) {
-    throw new Error("Expected the agent to own the seeded workflow");
+  const { actor } = await wf.setupWorkflowOrg();
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
   }
+  const agent = await wf.createAgent(actor, {
+    displayName: "Webhook Trigger Agent",
+  });
+  const workflowId = await wf.createWorkflow(actor, {
+    agentId: agent.agentId,
+    name: WORKFLOW_NAME,
+  });
+  const fixture = { orgId: actor.orgId, userId: actor.userId };
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, agentId: seededAgent.agentId, workflowId };
-}
-
-async function markTriggerWithActiveRun(args: {
-  readonly fixture: WorkflowsFixture;
-  readonly agentId: string;
-  readonly triggerId: string;
-}): Promise<string> {
-  const runId = await store.set(
-    seedWorkflowActiveRun$,
-    { fixture: args.fixture, agentId: args.agentId },
-    context.signal,
-  );
-  await store.set(
-    setWorkflowTriggerRunState$,
-    { triggerId: args.triggerId, lastRunId: runId },
-    context.signal,
-  );
-  return runId;
+  context.mocks.s3.send.mockResolvedValue({});
+  return { fixture, actor, agentId: agent.agentId, workflowId };
 }
 
 async function enableWebhookWorkflowTriggers(
@@ -155,14 +112,8 @@ async function postWorkflowWebhook(args: {
 }
 
 describe("POST /api/webhooks/workflow-triggers/:token", () => {
-  const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    await deleteFeatureSwitchesForUser(context, fixture);
-    await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-
   it("dispatches signed webhook deliveries and de-duplicates retries", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
     await enableWebhookWorkflowTriggers(fixture);
     const runsApi = createRunsAutomationsApi(context);
     const runnerGroup = runsApi.configureRunnerGroup();
@@ -216,14 +167,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       throw new Error("Expected webhook dispatch response to include runId");
     }
 
-    const runsAfterFirst = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(runsAfterFirst).toStrictEqual([
-      { id: first.body.runId, triggerSource: "workflow-event" },
-    ]);
     await runsApi.heartbeatRunner(runnerGroup);
     const workflowClaim = await runsApi.claimRunnerJob(first.body.runId);
     const workflowPrompt = workflowClaim.appendSystemPrompt ?? "";
@@ -280,17 +223,13 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       success: true,
       duplicate: true,
     });
-    const runsAfterDuplicate = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(runsAfterDuplicate).toHaveLength(1);
+    // The duplicate retry does not enqueue a second runner job.
+    const idleAfterDuplicate = await runsApi.pollRunner(runnerGroup);
+    expect(idleAfterDuplicate.body.job).toBeNull();
   });
 
   it("rejects invalid signatures", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
     await enableWebhookWorkflowTriggers(fixture);
 
     const created = await accept(
@@ -332,7 +271,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
 
   it("continues dispatching existing webhook triggers when webhook creation is disabled", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
     await enableWebhookWorkflowTriggers(fixture);
 
     const created = await accept(
@@ -375,8 +313,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
   });
 
   it("starts an event run when the trigger's previous run is still active", async () => {
-    const { fixture, agentId, workflowId } = await setupFixture();
-    await track(Promise.resolve(fixture));
+    const { fixture, workflowId } = await setupFixture();
     await enableWebhookWorkflowTriggers(fixture);
 
     const created = await accept(
@@ -400,39 +337,41 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     if (!token) {
       throw new Error("Expected webhook URL token");
     }
-    const activeRunId = await markTriggerWithActiveRun({
-      fixture,
-      agentId,
-      triggerId: created.body.id,
-    });
 
-    const response = await postWorkflowWebhook({
+    // The first delivery starts a run that stays active (nothing claims or
+    // completes it).
+    const first = await postWorkflowWebhook({
       token,
       rawBody: JSON.stringify({ event: "active-run" }),
       secret: created.body.webhookSecret,
     });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
       success: true,
       duplicate: false,
       runId: expect.any(String),
     });
+    const firstRunId = isRecord(first.body) ? first.body.runId : null;
 
-    const runs = await store.set(
-      getWorkflowTriggerRunState$,
-      { triggerId: created.body.id },
-      context.signal,
-    );
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.triggerSource).toBe("workflow-event");
+    // A second, distinct delivery still starts a new event run even though
+    // the previous run is active.
+    const second = await postWorkflowWebhook({
+      token,
+      rawBody: JSON.stringify({ event: "active-run-second" }),
+      secret: created.body.webhookSecret,
+    });
 
-    const trigger = await store.set(
-      getWorkflowTriggerState$,
-      { triggerId: created.body.id },
-      context.signal,
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({
+      success: true,
+      duplicate: false,
+      runId: expect.any(String),
+    });
+    expect(isRecord(second.body) ? second.body.runId : null).not.toBe(
+      firstRunId,
     );
-    expect(trigger?.lastRunId).toBe(activeRunId);
-    expect(trigger?.lastRunAt).toStrictEqual(expect.any(String));
+
+    const trigger = await wf.readTrigger(created.body.id);
+    expect(typeof trigger.lastRunAt).toBe("string");
   });
 });

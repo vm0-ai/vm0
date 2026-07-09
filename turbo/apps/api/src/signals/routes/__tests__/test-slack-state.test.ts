@@ -17,7 +17,6 @@ import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
-import { testSlackMockRoutes } from "../test-slack-mock";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { testTelegramStateRoutes } from "../test-telegram-state";
@@ -27,7 +26,6 @@ const context = testContext();
 
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
 const SLACK_DISPATCH_PROBE_ROUTE = "/api/test/slack-dispatch-probe";
-const SLACK_MOCK_ROUTE = "/api/test/slack-mock";
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
 const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
 const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
@@ -67,7 +65,6 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
     routes: [
       ...testSlackStateRoutes,
       ...testSlackDispatchProbeRoutes,
-      ...testSlackMockRoutes,
       ...testTelegramStateRoutes,
       ...testTelegramDispatchProbeRoutes,
     ],
@@ -334,24 +331,6 @@ async function dispatchTelegramMessage(args: {
   await expect(readJson(response)).resolves.toStrictEqual({ ok: true });
 }
 
-async function recordSlackMockCall(args: {
-  readonly method: "chat.postEphemeral" | "chat.postMessage";
-  readonly teamId: string;
-  readonly channelId: string;
-  readonly text: string;
-}): Promise<void> {
-  const response = await requestApp(`${SLACK_MOCK_ROUTE}/${args.method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      team_id: args.teamId,
-      channel: args.channelId,
-      text: args.text,
-    }),
-  });
-  expect(response.status).toBe(200);
-}
-
 describe("GET /api/test/slack-state", () => {
   it("returns 404 outside allowed test environments", async () => {
     mockEnv("ENV", "production");
@@ -408,18 +387,14 @@ describe("GET /api/test/slack-state", () => {
     expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 
-  it("resolves the preview Slack mock URL", async () => {
+  it("does not synthesize a Slack mock URL without an explicit API override", async () => {
     mockEnv("ENV", "development");
-    mockOptionalEnv("E2E_SLACK_MOCK_ENABLED", "true");
-    mockOptionalEnv("VERCEL_URL", "preview.vm0.test");
 
     const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_UNKNOWN`);
     const body = await readJson<TestSlackStateResponse>(response);
 
     expect(response.status).toBe(200);
-    expect(body.resolved_slack_api_url).toBe(
-      "https://preview.vm0.test/api/test/slack-mock/",
-    );
+    expect(body.resolved_slack_api_url).toBeNull();
   });
 
   it("returns Slack installation diagnostics, recent runs, default agent metadata, and mock calls", async () => {
@@ -434,19 +409,6 @@ describe("GET /api/test/slack-state", () => {
       fixture,
       text: "hello from slack diagnostics",
     });
-    await recordSlackMockCall({
-      method: "chat.postMessage",
-      teamId: fixture.teamId,
-      channelId: "C_NEWER",
-      text: "newer",
-    });
-    await recordSlackMockCall({
-      method: "chat.postEphemeral",
-      teamId: fixture.teamId,
-      channelId: "C_OLDER",
-      text: "older",
-    });
-
     const body = await readSlackState(fixture.teamId);
 
     expect(body.installation).toMatchObject({
@@ -496,22 +458,7 @@ describe("GET /api/test/slack-state", () => {
     expect(body.default_compose_version).toMatchObject({
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
-    expect(body.mock_calls).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          method: "chat.postMessage",
-          teamId: fixture.teamId,
-          channelId: "C_NEWER",
-          bodyJson: expect.objectContaining({ text: "newer" }),
-        }),
-        expect.objectContaining({
-          method: "chat.postEphemeral",
-          teamId: fixture.teamId,
-          channelId: "C_OLDER",
-          bodyJson: expect.objectContaining({ text: "older" }),
-        }),
-      ]),
-    );
+    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 });
 
@@ -693,7 +640,7 @@ describe("DELETE /api/test/slack-state", () => {
     });
   });
 
-  it("clears workspace Slack state without deleting mock calls or non-Slack runs", async () => {
+  it("clears workspace Slack state without deleting non-Slack runs", async () => {
     mockEnv("ENV", "development");
     const userId = uniqueId("user");
     const orgId = uniqueId("org");
@@ -708,12 +655,6 @@ describe("DELETE /api/test/slack-state", () => {
     await dispatchSlackMessage({
       fixture: slack,
       text: "slack diagnostic run",
-    });
-    await recordSlackMockCall({
-      method: "chat.postMessage",
-      teamId: slack.teamId,
-      channelId: "C_DELETE",
-      text: "still visible",
     });
     const telegram = await seedTelegramFixture({ userId, orgId, email });
     await dispatchTelegramMessage({
@@ -734,16 +675,7 @@ describe("DELETE /api/test/slack-state", () => {
     expect(deletedSlack.installation).toBeNull();
     expect(deletedSlack.connections).toStrictEqual([]);
     expect(deletedSlack.recent_runs).toStrictEqual([]);
-    expect(deletedSlack.mock_calls).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          method: "chat.postMessage",
-          teamId: slack.teamId,
-          channelId: "C_DELETE",
-          bodyJson: expect.objectContaining({ text: "still visible" }),
-        }),
-      ]),
-    );
+    expect(Array.isArray(deletedSlack.mock_calls)).toBeTruthy();
 
     const telegramState = await readTelegramState(telegram.botId);
     expect(telegramState.recent_runs).toStrictEqual(

@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -16,6 +17,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { seedLegacyChatThread } from "../../../test-fixtures/chat-threads";
+import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
+import { upsertUsagePricingRows } from "../../../test-fixtures/usage-pricing";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createBddApi,
@@ -23,6 +28,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import {
   createChatFilesBddApi,
@@ -37,18 +43,6 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  emitRunUsageMessage$,
-  insertUsageEvent$,
-  seedUsagePricing$,
-  setUsageOrgTier$,
-} from "./helpers/zero-usage";
-import {
-  seedZeroChatThreadGoal$,
-  seedZeroChatThreadRun$,
-  seedZeroChatThread$,
-  updateZeroChatThreadRunStatus$,
-} from "./helpers/zero-chat-threads";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -66,7 +60,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
  */
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
@@ -333,26 +326,92 @@ async function sendNoCreditMessage(
   return sent.body.threadId;
 }
 
-async function seedCompletedRunFinish(
+/**
+ * Runs a full chat run (send, runner claim, checkpoint + complete) so the
+ * thread gains its run-finished marker through the production callback path.
+ */
+async function completeChatRunInThread(
   actor: ApiTestUser,
+  runnerGroup: string,
   args: {
     readonly agentId: string;
-    readonly threadId: string;
+    readonly threadId?: string;
+    readonly prompt: string;
   },
-): Promise<void> {
+): Promise<{ readonly runId: string; readonly threadId: string }> {
+  const run = await sendChatRun(actor, {
+    agentId: args.agentId,
+    ...(args.threadId === undefined ? {} : { threadId: args.threadId }),
+    prompt: args.prompt,
+  });
+  const { sandboxHeaders } = await claimChatRun(runnerGroup, run.runId);
+  chatCallbacks.mockChatOutputEvents([]);
+  await completeChatRunOk(run.runId, sandboxHeaders);
+  await waitForThreadMessages(actor, run.threadId, (messages) => {
+    return assistantMessages(messages).some((message) => {
+      return (
+        message.runId === run.runId && message.runLifecycleEvent === "completed"
+      );
+    });
+  });
+  return run;
+}
+
+const GOAL_CAPABILITIES = [
+  "goal:read",
+  "goal:agent-result:write",
+  "goal:user-control:write",
+] as const satisfies readonly ZeroCapability[];
+
+function goalsClient() {
+  return setupApp({ context })(zeroGoalsContract);
+}
+
+/** Run-scoped zero bearer with goal capabilities, as issued to sandboxes. */
+function zeroGoalHeaders(
+  actor: ApiTestUser,
+  runId: string,
+): { readonly authorization: string } {
   if (!actor.orgId) {
-    throw new Error("Expected actor to belong to an org");
+    throw new Error("Expected an org-scoped actor for goal auth");
   }
-  await store.set(
-    seedZeroChatThreadRun$,
-    {
+  const seconds = Math.floor(now() / 1000);
+  return {
+    authorization: `Bearer ${signSandboxJwtForTests({
+      scope: "zero",
       userId: actor.userId,
       orgId: actor.orgId,
-      agentId: args.agentId,
-      threadId: args.threadId,
-      status: "completed",
-    },
-    context.signal,
+      runId,
+      capabilities: [...GOAL_CAPABILITIES],
+      iat: seconds,
+      exp: seconds + 600,
+    })}`,
+  };
+}
+
+async function createThreadGoal(
+  actor: ApiTestUser,
+  runId: string,
+  objective: string,
+): Promise<void> {
+  await accept(
+    goalsClient().create({
+      headers: zeroGoalHeaders(actor, runId),
+      body: { objective },
+    }),
+    [201],
+  );
+}
+
+async function completeThreadGoal(
+  actor: ApiTestUser,
+  runId: string,
+): Promise<void> {
+  await accept(
+    goalsClient().complete({
+      headers: zeroGoalHeaders(actor, runId),
+    }),
+    [200],
   );
 }
 
@@ -765,24 +824,19 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       throw new Error("Expected snapshot batch actors to belong to orgs");
     }
 
-    const firstThread = await store.set(
-      seedZeroChatThread$,
-      {
-        userId: firstActor.userId,
-        orgId: firstActor.orgId,
-        title: "First bounded snapshot thread",
-      },
-      context.signal,
-    );
-    const secondThread = await store.set(
-      seedZeroChatThread$,
-      {
-        userId: secondActor.userId,
-        orgId: secondActor.orgId,
-        title: "Second bounded snapshot thread",
-      },
-      context.signal,
-    );
+    // Threads without chat-thread events (legacy rows predating event
+    // sourcing) are the scopes this compaction pass must backfill; every
+    // product create writes a created event, so they are seeded directly.
+    const firstThread = await seedLegacyChatThread({
+      userId: firstActor.userId,
+      orgId: firstActor.orgId,
+      title: "First bounded snapshot thread",
+    });
+    const secondThread = await seedLegacyChatThread({
+      userId: secondActor.userId,
+      orgId: secondActor.orgId,
+      title: "Second bounded snapshot thread",
+    });
 
     await expect(chat.getThreadSnapshot(firstActor)).resolves.toStrictEqual({
       chatThreads: [],
@@ -881,11 +935,15 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     if (!actor.orgId) {
       throw new Error("Expected actor org");
     }
-    await store.set(
-      setUsageOrgTier$,
-      { orgId: actor.orgId, tier: "limited-free-1" },
-      context.signal,
-    );
+    // "limited-free-1" is only assigned by the Clerk org-creation bootstrap;
+    // no product API can move an entitled org onto it, so downgrade the tier
+    // through the org-metadata fixture while keeping the pro-granted balance.
+    const billingStatus = await api.readBillingStatus(actor);
+    await upsertOrgMetadataFixture({
+      orgId: actor.orgId,
+      tier: "limited-free-1",
+      credits: billingStatus.credits,
+    });
 
     const thread = await chat.createThread(actor, {
       agentId,
@@ -1103,14 +1161,17 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
 describe("CHAT-01 chat thread read state", () => {
   it("lists unread agent ids behind the agent unread feature switch", async () => {
-    const owner = bdd.user();
-    bdd.acceptAgentStorageWrites();
-    const agentA = await bdd.createAgent(owner, {
-      displayName: "Unread agent A",
-    });
-    const agentB = await bdd.createAgent(owner, {
-      displayName: "Unread agent B",
-    });
+    const {
+      actor: owner,
+      agentId: agentA,
+      runnerGroup,
+    } = await entitledChatActor("Unread agent A");
+    const agentB = (
+      await bdd.createAgent(owner, {
+        displayName: "Unread agent B",
+        visibility: "private",
+      })
+    ).agentId;
 
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: false,
@@ -1124,344 +1185,208 @@ describe("CHAT-01 chat thread read state", () => {
     });
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
-    const activeUnreadThread = await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
+    // An active (claimed) run keeps its thread out of the unread aggregate
+    // until it completes and leaves a run-finished marker.
+    const activeRun = await sendChatRun(owner, {
+      agentId: agentA,
       prompt: "unread aggregate with active run",
     });
-    if (!owner.orgId) {
-      throw new Error("Expected owner to belong to an org");
-    }
-    const activeRunId = await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agentA.agentId,
-        threadId: activeUnreadThread,
-        status: "running",
-      },
-      context.signal,
-    );
+    const activeClaim = await claimChatRun(runnerGroup, activeRun.runId);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
-    await store.set(
-      updateZeroChatThreadRunStatus$,
-      { runId: activeRunId, status: "completed" },
-      context.signal,
-    );
-    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
-      agentA.agentId,
-    ]);
-    await chat.markThreadRead(owner, activeUnreadThread);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(activeRun.runId, activeClaim.sandboxHeaders);
+    await waitForThreadMessages(owner, activeRun.threadId, (messages) => {
+      return assistantMessages(messages).some((message) => {
+        return (
+          message.runId === activeRun.runId &&
+          message.runLifecycleEvent === "completed"
+        );
+      });
+    });
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentA]);
+    await chat.markThreadRead(owner, activeRun.threadId);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
-    const activeGoalThread = await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
+    // An active goal suppresses the unread flag; a complete goal does not.
+    const activeGoalRun = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentA,
       prompt: "unread aggregate with active goal",
     });
-    const completeGoalThread = await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
+    const completeGoalRun = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentB,
       prompt: "unread aggregate with complete goal",
     });
-    await store.set(
-      seedZeroChatThreadGoal$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agentA.agentId,
-        threadId: activeGoalThread,
-        status: "active",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadGoal$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agentB.agentId,
-        threadId: completeGoalThread,
-        status: "complete",
-      },
-      context.signal,
-    );
-    await seedCompletedRunFinish(owner, {
-      agentId: agentA.agentId,
-      threadId: activeGoalThread,
-    });
-    await seedCompletedRunFinish(owner, {
-      agentId: agentB.agentId,
-      threadId: completeGoalThread,
-    });
-    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
-      agentB.agentId,
-    ]);
-    await chat.markThreadRead(owner, completeGoalThread);
+    await createThreadGoal(owner, activeGoalRun.runId, "bdd unread goal");
+    await createThreadGoal(owner, completeGoalRun.runId, "bdd unread goal");
+    await completeThreadGoal(owner, completeGoalRun.runId);
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
+    await chat.markThreadRead(owner, completeGoalRun.threadId);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
-    const threadA = await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
+    const runA = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentA,
       prompt: "unread aggregate A",
     });
-    await seedCompletedRunFinish(owner, {
-      agentId: agentA.agentId,
-      threadId: threadA,
-    });
-    const threadB = await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
+    const runB = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentB,
       prompt: "unread aggregate B",
-    });
-    await seedCompletedRunFinish(owner, {
-      agentId: agentB.agentId,
-      threadId: threadB,
     });
 
     const unreadAgents = await chat.listUnreadAgents(owner);
-    expect(new Set(unreadAgents)).toStrictEqual(
-      new Set([agentA.agentId, agentB.agentId]),
-    );
+    expect(new Set(unreadAgents)).toStrictEqual(new Set([agentA, agentB]));
 
-    await chat.markThreadRead(owner, threadA);
-    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
-      agentB.agentId,
-    ]);
+    await chat.markThreadRead(owner, runA.threadId);
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
 
-    await chat.markThreadRead(owner, threadB);
+    await chat.markThreadRead(owner, runB.threadId);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
-  }, 60_000);
+  }, 120_000);
 
   it("lists active chat thread ids for the current user and org", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const owner = bdd.user({ orgId });
-    const peer = bdd.user({ orgId });
+    const {
+      actor: owner,
+      agentId: ownerAgent,
+      runnerGroup,
+    } = await entitledChatActor("Active ids owner agent");
+    const peer = bdd.user({ orgId: owner.orgId });
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });
-    bdd.acceptAgentStorageWrites();
 
-    const ownerAgent = await bdd.createAgent(owner, {
-      displayName: "Active ids owner agent",
-    });
     const peerAgent = await bdd.createAgent(peer, {
       displayName: "Active ids peer agent",
+      visibility: "private",
     });
     const otherOrgAgent = await bdd.createAgent(sameUserOtherOrg, {
       displayName: "Active ids other org agent",
+      visibility: "private",
     });
+    await api.grantProEntitlement(sameUserOtherOrg);
+    await api.ensureOrgModelProvider(sameUserOtherOrg);
 
-    const runningThread = await sendNoCreditMessage(owner, {
-      agentId: ownerAgent.agentId,
-      prompt: "active running thread",
-    });
-    const queuedThread = await sendNoCreditMessage(owner, {
-      agentId: ownerAgent.agentId,
-      prompt: "active queued thread",
-    });
-    const completedThread = await sendNoCreditMessage(owner, {
-      agentId: ownerAgent.agentId,
+    // A completed run's thread must not appear in the active list. Run it
+    // first so the pro-tier concurrency slots stay free for the runs below.
+    await completeChatRunInThread(owner, runnerGroup, {
+      agentId: ownerAgent,
       prompt: "terminal completed thread",
     });
-    const peerThread = await sendNoCreditMessage(peer, {
+
+    // Peer-user and cross-org active runs must not leak into the owner list.
+    await sendChatRun(peer, {
       agentId: peerAgent.agentId,
-      prompt: "peer running thread",
+      prompt: "peer active thread",
     });
-    const otherOrgThread = await sendNoCreditMessage(sameUserOtherOrg, {
+    await sendChatRun(sameUserOtherOrg, {
       agentId: otherOrgAgent.agentId,
-      prompt: "other org running thread",
+      prompt: "other org active thread",
     });
 
-    if (!owner.orgId || !peer.orgId || !sameUserOtherOrg.orgId) {
-      throw new Error("Expected test users to belong to orgs");
-    }
-
-    const runningRunId = await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: ownerAgent.agentId,
-        threadId: runningThread,
-        status: "running",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: ownerAgent.agentId,
-        threadId: queuedThread,
-        status: "queued",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: ownerAgent.agentId,
-        threadId: completedThread,
-        status: "completed",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: peer.userId,
-        orgId: peer.orgId,
-        agentId: peerAgent.agentId,
-        threadId: peerThread,
-        status: "running",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: sameUserOtherOrg.userId,
-        orgId: sameUserOtherOrg.orgId,
-        agentId: otherOrgAgent.agentId,
-        threadId: otherOrgThread,
-        status: "running",
-      },
-      context.signal,
-    );
+    // Owner: one claimed (running) run and one send over the org concurrency
+    // cap, which admits as a queued run.
+    const runningRun = await sendChatRun(owner, {
+      agentId: ownerAgent,
+      prompt: "active running thread",
+    });
+    const runningClaim = await claimChatRun(runnerGroup, runningRun.runId);
+    const queuedRun = await sendChatRun(owner, {
+      agentId: ownerAgent,
+      prompt: "active queued thread",
+    });
 
     expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
-      new Set([runningThread, queuedThread]),
+      new Set([runningRun.threadId, queuedRun.threadId]),
     );
 
-    await store.set(
-      updateZeroChatThreadRunStatus$,
-      { runId: runningRunId, status: "completed" },
-      context.signal,
-    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
+    await waitForRunStatus(owner, runningRun.runId, "completed");
 
     expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
-      new Set([queuedThread]),
+      new Set([queuedRun.threadId]),
     );
-  }, 60_000);
+  }, 120_000);
 
   it("excludes unread chat threads that have active runs or goals", async () => {
-    const owner = bdd.user();
-    bdd.acceptAgentStorageWrites();
-    const agent = await bdd.createAgent(owner, {
-      displayName: "Unread active state agent",
-    });
+    const {
+      actor: owner,
+      agentId,
+      runnerGroup,
+    } = await entitledChatActor("Unread active state agent");
 
-    const runningThread = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
+    // A claimed (running) run keeps its thread out of the unread list.
+    const runningRun = await sendChatRun(owner, {
+      agentId,
       prompt: "unread thread with active run",
     });
-    const completedThread = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
+    const runningClaim = await claimChatRun(runnerGroup, runningRun.runId);
+
+    const completedRun = await completeChatRunInThread(owner, runnerGroup, {
+      agentId,
       prompt: "unread thread with completed run",
     });
-    const activeGoalThread = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
+    const activeGoalRun = await completeChatRunInThread(owner, runnerGroup, {
+      agentId,
       prompt: "unread thread with active goal",
     });
-    const completeGoalThread = await sendNoCreditMessage(owner, {
-      agentId: agent.agentId,
+    const completeGoalRun = await completeChatRunInThread(owner, runnerGroup, {
+      agentId,
       prompt: "unread thread with complete goal",
     });
-    if (!owner.orgId) {
-      throw new Error("Expected owner to belong to an org");
-    }
-    const runningRunId = await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agent.agentId,
-        threadId: runningThread,
-        status: "running",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadRun$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agent.agentId,
-        threadId: completedThread,
-        status: "completed",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadGoal$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agent.agentId,
-        threadId: activeGoalThread,
-        status: "active",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedZeroChatThreadGoal$,
-      {
-        userId: owner.userId,
-        orgId: owner.orgId,
-        agentId: agent.agentId,
-        threadId: completeGoalThread,
-        status: "complete",
-      },
-      context.signal,
-    );
-    await seedCompletedRunFinish(owner, {
-      agentId: agent.agentId,
-      threadId: activeGoalThread,
-    });
-    await seedCompletedRunFinish(owner, {
-      agentId: agent.agentId,
-      threadId: completeGoalThread,
-    });
+    await createThreadGoal(owner, activeGoalRun.runId, "bdd unread goal");
+    await createThreadGoal(owner, completeGoalRun.runId, "bdd unread goal");
+    await completeThreadGoal(owner, completeGoalRun.runId);
 
     expect(
       new Set(
-        (await chat.listThreadUnreads(owner, agent.agentId)).map((unread) => {
+        (await chat.listThreadUnreads(owner, agentId)).map((unread) => {
           return unread.threadId;
         }),
       ),
-    ).toStrictEqual(new Set([completedThread, completeGoalThread]));
+    ).toStrictEqual(new Set([completedRun.threadId, completeGoalRun.threadId]));
 
-    await store.set(
-      updateZeroChatThreadRunStatus$,
-      { runId: runningRunId, status: "completed" },
-      context.signal,
-    );
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
+    await waitForThreadMessages(owner, runningRun.threadId, (messages) => {
+      return assistantMessages(messages).some((message) => {
+        return (
+          message.runId === runningRun.runId &&
+          message.runLifecycleEvent === "completed"
+        );
+      });
+    });
     expect(
       new Set(
-        (await chat.listThreadUnreads(owner, agent.agentId)).map((unread) => {
+        (await chat.listThreadUnreads(owner, agentId)).map((unread) => {
           return unread.threadId;
         }),
       ),
     ).toStrictEqual(
-      new Set([runningThread, completedThread, completeGoalThread]),
+      new Set([
+        runningRun.threadId,
+        completedRun.threadId,
+        completeGoalRun.threadId,
+      ]),
     );
-  }, 60_000);
+  }, 120_000);
 
   it("marks all unread chat threads for one agent behind the agent unread feature switch", async () => {
-    const owner = bdd.user();
-    bdd.acceptAgentStorageWrites();
-    const agentA = await bdd.createAgent(owner, {
-      displayName: "Mark-read agent A",
-    });
-    const agentB = await bdd.createAgent(owner, {
-      displayName: "Mark-read agent B",
-    });
+    const {
+      actor: owner,
+      agentId: agentA,
+      runnerGroup,
+    } = await entitledChatActor("Mark-read agent A");
+    const agentB = (
+      await bdd.createAgent(owner, {
+        displayName: "Mark-read agent B",
+        visibility: "private",
+      })
+    ).agentId;
 
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: false,
     });
     const disabled = await chat.requestMarkAgentThreadsRead(
       owner,
-      agentA.agentId,
+      agentA,
       [403],
     );
     expectApiError(disabled.body);
@@ -1471,64 +1396,53 @@ describe("CHAT-01 chat thread read state", () => {
       [FeatureSwitchKey.AgentUnreadIndicators]: true,
     });
 
-    const firstThreadA = await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
+    const firstRunA = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentA,
       prompt: "mark all read A one",
     });
-    await seedCompletedRunFinish(owner, {
-      agentId: agentA.agentId,
-      threadId: firstThreadA,
-    });
-    const secondThreadA = await sendNoCreditMessage(owner, {
-      agentId: agentA.agentId,
+    const secondRunA = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentA,
       prompt: "mark all read A two",
     });
-    await seedCompletedRunFinish(owner, {
-      agentId: agentA.agentId,
-      threadId: secondThreadA,
-    });
-    const threadB = await sendNoCreditMessage(owner, {
-      agentId: agentB.agentId,
+    const runB = await completeChatRunInThread(owner, runnerGroup, {
+      agentId: agentB,
       prompt: "mark all read B",
-    });
-    await seedCompletedRunFinish(owner, {
-      agentId: agentB.agentId,
-      threadId: threadB,
     });
 
     expect(
       new Set(
-        (await chat.listThreadUnreads(owner, agentA.agentId)).map((unread) => {
+        (await chat.listThreadUnreads(owner, agentA)).map((unread) => {
           return unread.threadId;
         }),
       ),
-    ).toStrictEqual(new Set([firstThreadA, secondThreadA]));
+    ).toStrictEqual(new Set([firstRunA.threadId, secondRunA.threadId]));
     expect(new Set(await chat.listUnreadAgents(owner))).toStrictEqual(
-      new Set([agentA.agentId, agentB.agentId]),
+      new Set([agentA, agentB]),
     );
 
     context.mocks.ably.publish.mockClear();
-    await chat.markAgentThreadsRead(owner, agentA.agentId);
+    await chat.markAgentThreadsRead(owner, agentA);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "chatThreadReadCursorUpdated",
       {
-        agentId: agentA.agentId,
-        threadIds: expect.arrayContaining([firstThreadA, secondThreadA]),
+        agentId: agentA,
+        threadIds: expect.arrayContaining([
+          firstRunA.threadId,
+          secondRunA.threadId,
+        ]),
       },
     );
 
-    await expect(
-      chat.listThreadUnreads(owner, agentA.agentId),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      chat.listThreadUnreads(owner, agentB.agentId),
-    ).resolves.toStrictEqual(
-      expect.arrayContaining([expect.objectContaining({ threadId: threadB })]),
+    await expect(chat.listThreadUnreads(owner, agentA)).resolves.toStrictEqual(
+      [],
     );
-    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
-      agentB.agentId,
-    ]);
-  }, 60_000);
+    await expect(chat.listThreadUnreads(owner, agentB)).resolves.toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ threadId: runB.threadId }),
+      ]),
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([agentB]);
+  }, 120_000);
 
   it("pages thread messages with since and before cursors", async () => {
     const owner = bdd.user();
@@ -1621,11 +1535,9 @@ describe("CHAT-03 run usage messages", () => {
     const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
     const missingProvider = `${provider}-free`;
     const category = "api_request";
-    await store.set(
-      seedUsagePricing$,
-      { provider, category, unitPrice: 7, unitSize: 2 },
-      context.signal,
-    );
+    await upsertUsagePricingRows([
+      { kind: "connector", provider, category, unitPrice: 7, unitSize: 2 },
+    ]);
 
     const { runId, threadId } = await sendChatRun(actor, {
       agentId,
@@ -1682,27 +1594,32 @@ describe("CHAT-03 run usage messages", () => {
     });
 
     const initialUsageMessageCount = usageMessages.length;
+    const billing = createBillingMediaApi(context);
 
     onTestFinished(() => {
       clearMockNow();
     });
-    mockNow(new Date("2030-01-01T00:00:00.000Z"));
-    await store.set(
-      insertUsageEvent$,
+    // Sandbox tokens are validated against the mockable clock, so record the
+    // late usage through the webhook first and only advance time for the
+    // settlement cron that charges it and re-emits the usage message.
+    await webhooks.requestAgentUsageEvent(
       {
         runId,
-        orgId: actor.orgId!,
-        userId: actor.userId,
-        category,
-        provider: missingProvider,
-        status: "processed",
-        creditsCharged: 0,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: missingProvider,
+            category,
+            quantity: 1,
+          },
+        ],
       },
-      context.signal,
+      sandboxHeaders,
+      [200],
     );
-    await expect(
-      store.set(emitRunUsageMessage$, runId, context.signal),
-    ).resolves.toBeTruthy();
+    mockNow(new Date("2030-01-01T00:00:00.000Z"));
+    await billing.processUsageEvents();
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toHaveLength(initialUsageMessageCount + 1);
     expect(usageMessages.at(-1)?.usage).toMatchObject({
@@ -1710,43 +1627,42 @@ describe("CHAT-03 run usage messages", () => {
       settledAt: "2030-01-01T00:00:00.000Z",
     });
 
-    mockNow(new Date("2030-01-01T00:00:01.000Z"));
-    await store.set(
-      insertUsageEvent$,
+    clearMockNow();
+    await webhooks.requestAgentUsageEvent(
       {
         runId,
-        orgId: actor.orgId!,
-        userId: actor.userId,
-        category,
-        provider,
-        status: "processed",
-        creditsCharged: 11,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider,
+            category,
+            quantity: 3,
+          },
+        ],
       },
-      context.signal,
+      sandboxHeaders,
+      [200],
     );
-    await expect(
-      store.set(emitRunUsageMessage$, runId, context.signal),
-    ).resolves.toBeTruthy();
+    mockNow(new Date("2030-01-01T00:00:01.000Z"));
+    await billing.processUsageEvents();
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
     expect(usageMessages.at(-1)?.usage).toMatchObject({
       totalCredits: 29,
       settledAt: "2030-01-01T00:00:01.000Z",
     });
-    await expect(
-      store.set(emitRunUsageMessage$, runId, context.signal),
-    ).resolves.toBeFalsy();
+    // With no pending usage left the settlement cron has nothing to charge,
+    // so re-running it must not append another usage message.
+    await billing.processUsageEvents();
     usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
   }, 60_000);
 
-  it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {
+  it("emits zero-credit usage messages and skips runs without usage", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
       "Zero usage message agent",
     );
-    if (!actor.orgId) {
-      throw new Error("Expected the chat actor to belong to an organization");
-    }
 
     const zeroRun = await sendChatRun(actor, {
       agentId,
@@ -1791,48 +1707,22 @@ describe("CHAT-03 run usage messages", () => {
       ],
     });
 
-    const pendingRun = await sendChatRun(actor, {
+    // A run that never recorded usage settles nothing, so completion must not
+    // append a usage message. (The former pending-suppression variant is not
+    // product-reachable: both production emitters settle the org's pending
+    // usage immediately before emitting.)
+    const quietRun = await sendChatRun(actor, {
       agentId,
-      prompt: "hold usage message while pending",
+      prompt: "complete without recording usage",
     });
-    const { sandboxHeaders: pendingSandboxHeaders } = await claimChatRun(
+    const { sandboxHeaders: quietSandboxHeaders } = await claimChatRun(
       runnerGroup,
-      pendingRun.runId,
+      quietRun.runId,
     );
-    await completeChatRunOk(pendingRun.runId, pendingSandboxHeaders);
+    await completeChatRunOk(quietRun.runId, quietSandboxHeaders);
     await flushWaitUntilForTest();
-    await store.set(
-      insertUsageEvent$,
-      {
-        runId: pendingRun.runId,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        category: "api_request",
-        provider: `processed-${randomUUID().slice(0, 8)}`,
-        status: "processed",
-        creditsCharged: 12,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        runId: pendingRun.runId,
-        orgId: actor.orgId,
-        userId: actor.userId,
-        category: "api_request",
-        provider: `pending-${randomUUID().slice(0, 8)}`,
-        status: "pending",
-        creditsCharged: null,
-      },
-      context.signal,
-    );
-
     await expect(
-      store.set(emitRunUsageMessage$, pendingRun.runId, context.signal),
-    ).resolves.toBeFalsy();
-    await expect(
-      usageMessagesForRun(actor, pendingRun.threadId, pendingRun.runId),
+      usageMessagesForRun(actor, quietRun.threadId, quietRun.runId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 });

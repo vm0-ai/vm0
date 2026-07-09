@@ -17,10 +17,6 @@ import {
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type {
-  TestChatMessagesStateActionBody,
-  TestChatMessagesStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -30,7 +26,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -49,7 +44,12 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
+import {
+  deleteBddVm0ApiKeys,
+  overwriteOrgModelProviderSecret,
+  replaceBddVm0ApiKeys,
+  seedChatThreadMessages,
+} from "../../../test-fixtures/chat-messages";
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -586,52 +586,6 @@ function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
 }
 
-function requestChatMessagesState(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testChatMessagesStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function postChatMessagesStateAction(
-  body: TestChatMessagesStateActionBody,
-): Promise<TestChatMessagesStateActionResponse> {
-  const response = await requestChatMessagesState(
-    "/api/test/chat-messages-state/action",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `chat messages state action ${body.action} failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestChatMessagesStateActionResponse;
-}
-
-type SeedThreadMessage = Extract<
-  TestChatMessagesStateActionBody,
-  { action: "seed-thread-messages" }
->["messages"][number];
-
-async function seedThreadMessages(
-  threadId: string,
-  messages: readonly SeedThreadMessage[],
-): Promise<void> {
-  await postChatMessagesStateAction({
-    action: "seed-thread-messages",
-    thread_id: threadId,
-    messages: [...messages],
-  });
-}
-
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
@@ -655,7 +609,7 @@ describe("CHAT-02: chat thread message pagination", () => {
       clientThreadId: otherThreadId,
     });
 
-    const createdAt = "2026-06-09T10:00:00.000Z";
+    const createdAt = new Date("2026-06-09T10:00:00.000Z");
     const ids = [
       randomUUID(),
       randomUUID(),
@@ -663,49 +617,49 @@ describe("CHAT-02: chat thread message pagination", () => {
       randomUUID(),
     ].sort() as [string, string, string, string];
 
-    await seedThreadMessages(threadId, [
+    await seedChatThreadMessages(threadId, [
       {
         id: ids[0],
         role: "user",
         content: "first tied message",
-        created_at: createdAt,
-        sequence_number: null,
+        createdAt,
+        sequenceNumber: null,
       },
       {
         id: ids[1],
         role: "assistant",
         content: "second tied message",
-        created_at: createdAt,
-        sequence_number: null,
+        createdAt,
+        sequenceNumber: null,
       },
       {
         id: ids[2],
         role: "assistant",
         content: "third tied message",
-        created_at: createdAt,
-        sequence_number: null,
+        createdAt,
+        sequenceNumber: null,
       },
       {
         id: ids[3],
         role: "assistant",
         content: null,
-        created_at: createdAt,
-        sequence_number: null,
-        run_lifecycle_event: "completed",
-        recommended_followups: [
+        createdAt,
+        sequenceNumber: null,
+        runLifecycleEvent: "completed",
+        recommendedFollowups: [
           { prompt: "Turn this into a checklist", kind: "talk" },
         ],
       },
     ]);
 
     const otherMessageId = randomUUID();
-    await seedThreadMessages(otherThreadId, [
+    await seedChatThreadMessages(otherThreadId, [
       {
         id: otherMessageId,
         role: "user",
         content: "other thread cursor",
-        created_at: "2026-06-09T09:59:59.000Z",
-        sequence_number: null,
+        createdAt: new Date("2026-06-09T09:59:59.000Z"),
+        sequenceNumber: null,
       },
     ]);
 
@@ -772,15 +726,15 @@ describe("CHAT-02: chat thread message pagination", () => {
     });
 
     const markerId = randomUUID();
-    await seedThreadMessages(threadId, [
+    await seedChatThreadMessages(threadId, [
       {
         id: markerId,
         role: "assistant",
         content: null,
-        created_at: "2026-06-09T10:00:00.000Z",
-        sequence_number: null,
-        run_lifecycle_event: "completed",
-        recommended_followups: [
+        createdAt: new Date("2026-06-09T10:00:00.000Z"),
+        sequenceNumber: null,
+        runLifecycleEvent: "completed",
+        recommendedFollowups: [
           { prompt: "[", kind: "talk" },
           { prompt: "{", kind: "talk" },
           { prompt: '"prompt": "Investigate this",', kind: "talk" },
@@ -851,27 +805,12 @@ async function upsertOrgModelProvider(
   };
 }
 
-async function overwriteOrgModelProviderSecret(
-  orgId: string,
-  name: string,
-  value: string,
-): Promise<void> {
-  await postChatMessagesStateAction({
-    action: "overwrite-org-model-provider-secret",
-    org_id: orgId,
-    name,
-    value,
-  });
-}
-
 async function readThreadComputerUseHostId(
+  actor: ApiTestUser,
   threadId: string,
 ): Promise<string | null> {
-  const response = await postChatMessagesStateAction({
-    action: "read-thread-computer-use-host-id",
-    thread_id: threadId,
-  });
-  return response.computer_use_host_id ?? null;
+  const thread = await chat.readThread(actor, threadId);
+  return thread.computerUseHostId ?? null;
 }
 
 /**
@@ -2126,13 +2065,12 @@ describe("CHAT-02: explicit provider pins", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
 
-    await postChatMessagesStateAction({
-      action: "replace-vm0-api-keys",
+    await replaceBddVm0ApiKeys({
       vendor: "moonshot",
       model: "kimi-k2.7-code",
       keys: [
         {
-          api_key: `vm0-key-bdd-dev-seed-${keySuffix}`,
+          apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
           label: "dev-seed",
         },
       ],
@@ -2145,8 +2083,7 @@ describe("CHAT-02: explicit provider pins", () => {
       }
     };
     const deleteVm0KimiKeys = async () => {
-      await postChatMessagesStateAction({
-        action: "delete-vm0-api-keys",
+      await deleteBddVm0ApiKeys({
         vendor: "moonshot",
         model: "kimi-k2.7-code",
       });
@@ -2193,16 +2130,16 @@ describe("CHAT-02: explicit provider pins", () => {
     const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
 
-    await postChatMessagesStateAction({
-      action: "replace-openrouter-vm0-api-keys",
+    await replaceBddVm0ApiKeys({
+      vendor: "openrouter",
       model: "z-ai/glm-5.2",
       keys: [
         {
-          api_key: fakeKey,
+          apiKey: fakeKey,
           label: `bdd-fake-${keySuffix}`,
         },
         {
-          api_key: devSeedKey,
+          apiKey: devSeedKey,
           label: "dev-seed",
         },
       ],
@@ -2254,8 +2191,8 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await postChatMessagesStateAction({
-      action: "delete-openrouter-vm0-api-keys",
+    await deleteBddVm0ApiKeys({
+      vendor: "openrouter",
       model: "z-ai/glm-5.2",
     });
   }, 90_000);
@@ -2271,7 +2208,11 @@ describe("CHAT-02: explicit provider pins", () => {
       type: "openrouter-api-key",
       secret: "test-openrouter-key",
     });
-    await overwriteOrgModelProviderSecret(orgId, "OPENROUTER_API_KEY", "   ");
+    await overwriteOrgModelProviderSecret({
+      orgId,
+      name: "OPENROUTER_API_KEY",
+      value: "   ",
+    });
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -3483,7 +3424,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     await cu.stopComputerUseHost(stopped.hostToken);
     await expect(
-      readThreadComputerUseHostId(stoppedPinned.body.threadId),
+      readThreadComputerUseHostId(actor, stoppedPinned.body.threadId),
     ).resolves.toBeNull();
     const revokedHost = await chat.requestSendMessage(
       actor,
@@ -3515,7 +3456,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     await cu.stopComputerUseHost(installed.hostToken);
     await expect(
-      readThreadComputerUseHostId(installedPinned.body.threadId),
+      readThreadComputerUseHostId(actor, installedPinned.body.threadId),
     ).resolves.toBe(installed.hostId);
     const stoppedInstalledHost = await chat.requestSendMessage(
       actor,
@@ -3554,7 +3495,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     expect(pinned.body.runId).toBeNull();
     await cu.deleteComputerUseHost(actor, sticky.hostId);
     await expect(
-      readThreadComputerUseHostId(pinned.body.threadId),
+      readThreadComputerUseHostId(actor, pinned.body.threadId),
     ).resolves.toBeNull();
     const clearedSend = await chat.requestSendMessage(
       actor,

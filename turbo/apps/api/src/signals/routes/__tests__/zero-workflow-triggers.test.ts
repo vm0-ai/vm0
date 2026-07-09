@@ -12,18 +12,25 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import type { ApiTestUser } from "./helpers/api-bdd";
 import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+  createConnectorBddApi,
+  mockGmailConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
 import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+  createWorkflowsBddApi,
+  mockGoogleCalendarConnectorOAuth,
+  mockNotionConnectorOAuth,
+} from "./helpers/api-bdd-workflows";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
-const WORKFLOW_TRIGGER_STATE_PATH = "/api/test/workflow-trigger-state/action";
+const wf = createWorkflowsBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
+const gh = createGithubBddApi(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -75,48 +82,15 @@ interface WorkflowsFixture {
   readonly userId: string;
 }
 
+interface TriggerScenario {
+  readonly fixture: WorkflowsFixture;
+  readonly actor: ApiTestUser;
+  readonly agentId: string;
+  readonly workflowId: string;
+}
+
 function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
-}
-
-async function workflowTriggerStateAction(
-  body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const response = await createApp({ signal: context.signal }).request(
-    WORKFLOW_TRIGGER_STATE_PATH,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  expect(response.status).toBe(200);
-  return (await response.json()) as Record<string, unknown>;
-}
-
-async function seedAgentWithWorkflow(
-  fixture: WorkflowsFixture,
-  options: {
-    readonly agentName?: string;
-    readonly workflowName?: string;
-    readonly visibility?: "public" | "private";
-    readonly userId?: string;
-  } = {},
-): Promise<{ agentId: string; workflowId: string }> {
-  const result = await workflowTriggerStateAction({
-    action: "seed-agent-workflow",
-    org_id: fixture.orgId,
-    user_id: options.userId ?? fixture.userId,
-    agent_name: options.agentName ?? "trigger-agent",
-    workflow_name: options.workflowName ?? WORKFLOW_NAME,
-    visibility: options.visibility,
-  });
-  expect(typeof result.agent_id).toBe("string");
-  expect(typeof result.workflow_id).toBe("string");
-  return {
-    agentId: result.agent_id as string,
-    workflowId: result.workflow_id as string,
-  };
 }
 
 async function enableWebhookWorkflowTriggers(
@@ -135,80 +109,18 @@ async function enableNotionWorkflowTriggers(
   });
 }
 
-async function seedGithubInstallation(args: {
-  readonly fixture: WorkflowsFixture;
-  readonly composeId: string;
-  readonly installationId?: string;
-}): Promise<string> {
-  const result = await workflowTriggerStateAction({
-    action: "seed-github-installation",
-    org_id: args.fixture.orgId,
-    compose_id: args.composeId,
-    installation_id: args.installationId,
-  });
-  expect(typeof result.installation_id).toBe("string");
-  return result.installation_id as string;
+interface WatchCallRecorder {
+  calls: number;
 }
 
-async function seedGithubUserLink(args: {
-  readonly installationId: string;
-  readonly userId: string;
-  readonly githubUserId?: string;
-}): Promise<void> {
-  await workflowTriggerStateAction({
-    action: "seed-github-user-link",
-    installation_id: args.installationId,
-    user_id: args.userId,
-    github_user_id: args.githubUserId,
-  });
-}
-
-async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {
-  const result = await workflowTriggerStateAction({
-    action: "seed-connector",
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    connector_type: "gmail",
-    external_email: GMAIL_EMAIL,
-    access_token: "gmail-access-token",
-  });
-  expect(typeof result.connector_id).toBe("string");
-  return result.connector_id as string;
-}
-
-async function seedGoogleCalendarConnector(
-  fixture: WorkflowsFixture,
-): Promise<string> {
-  const result = await workflowTriggerStateAction({
-    action: "seed-connector",
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    connector_type: "google-calendar",
-    external_email: GOOGLE_CALENDAR_EMAIL,
-    access_token: "calendar-access-token",
-  });
-  expect(typeof result.connector_id).toBe("string");
-  return result.connector_id as string;
-}
-
-async function seedNotionConnector(fixture: WorkflowsFixture): Promise<string> {
-  const result = await workflowTriggerStateAction({
-    action: "seed-connector",
-    org_id: fixture.orgId,
-    user_id: fixture.userId,
-    connector_type: "notion",
-    access_token: "notion-access-token",
-  });
-  expect(typeof result.connector_id).toBe("string");
-  return result.connector_id as string;
-}
-
-function configureGmailWatchMock(historyId = "100"): void {
+function configureGmailWatchMock(historyId = "100"): WatchCallRecorder {
+  const recorder: WatchCallRecorder = { calls: 0 };
   mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
   server.use(
     http.post(
       "https://gmail.googleapis.com/gmail/v1/users/me/watch",
       async ({ request }) => {
+        recorder.calls += 1;
         expect(request.headers.get("authorization")).toBe(
           "Bearer gmail-access-token",
         );
@@ -222,18 +134,26 @@ function configureGmailWatchMock(historyId = "100"): void {
       },
     ),
   );
+  return recorder;
+}
+
+interface CalendarWatchRecorder {
+  watchCalls: number;
+  baselineCalls: number;
 }
 
 function configureGoogleCalendarWatchMock(args?: {
   readonly calendarId?: string;
   readonly baselineItems?: readonly Record<string, unknown>[];
-}): void {
+}): CalendarWatchRecorder {
+  const recorder: CalendarWatchRecorder = { watchCalls: 0, baselineCalls: 0 };
   const calendarId = args?.calendarId ?? "primary";
   mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.post(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
       async ({ request, params }) => {
+        recorder.watchCalls += 1;
         expect(params.calendarId).toBe(calendarId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer calendar-access-token",
@@ -263,6 +183,7 @@ function configureGoogleCalendarWatchMock(args?: {
     http.get(
       "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
       ({ request, params }) => {
+        recorder.baselineCalls += 1;
         expect(params.calendarId).toBe(calendarId);
         expect(request.headers.get("authorization")).toBe(
           "Bearer calendar-access-token",
@@ -278,6 +199,7 @@ function configureGoogleCalendarWatchMock(args?: {
       },
     ),
   );
+  return recorder;
 }
 
 function configureGmailLabelsMock(
@@ -378,41 +300,106 @@ function configureNotionDatabaseMock(args?: {
 }
 
 describe("zero workflow triggers", () => {
-  const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    await deleteFeatureSwitchesForUser(context, fixture);
-    await workflowTriggerStateAction({
-      action: "delete-scenario",
-      org_id: fixture.orgId,
+  async function setupFixture(): Promise<TriggerScenario> {
+    const { actor } = await wf.setupWorkflowOrg();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped workflow actor");
+    }
+    const agent = await wf.createAgent(actor, {
+      displayName: "Trigger Agent",
     });
-  });
-
-  async function setupFixture(): Promise<{
-    fixture: WorkflowsFixture;
-    agentId: string;
-    workflowId: string;
-  }> {
-    const seeded = await workflowTriggerStateAction({
-      action: "seed-scenario",
-      workflow_name: WORKFLOW_NAME,
-      agent_name: "trigger-agent",
+    const workflowId = await wf.createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: WORKFLOW_NAME,
     });
-    const rawFixture = seeded.fixture as {
-      readonly org_id: string;
-      readonly user_id: string;
-      readonly agent_id: string;
-      readonly workflow_id: string;
-    };
-    const fixture = await track(
-      Promise.resolve({
-        orgId: rawFixture.org_id,
-        userId: rawFixture.user_id,
-      }),
-    );
-    const agentId = rawFixture.agent_id;
-    const workflowId = rawFixture.workflow_id;
+    const fixture = { orgId: actor.orgId, userId: actor.userId };
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
-    return { fixture, agentId, workflowId };
+    return { fixture, actor, agentId: agent.agentId, workflowId };
+  }
+
+  /**
+   * Creates a second agent + workflow through the public routes, optionally
+   * owned by another org member, then restores the scenario owner's session.
+   */
+  async function createAgentWithWorkflow(
+    scenario: TriggerScenario,
+    options: {
+      readonly agentDisplayName?: string;
+      readonly workflowName?: string;
+      readonly visibility?: "public" | "private";
+      readonly userId?: string;
+    } = {},
+  ): Promise<{ agentId: string; workflowId: string }> {
+    const owner = options.userId
+      ? wf.user({
+          userId: options.userId,
+          orgId: scenario.fixture.orgId,
+          orgRole: "org:member",
+        })
+      : scenario.actor;
+    const agent = await wf.createAgent(owner, {
+      displayName: options.agentDisplayName ?? "Second Trigger Agent",
+      visibility: options.visibility,
+    });
+    const workflowId = await wf.createWorkflow(owner, {
+      agentId: agent.agentId,
+      name: options.workflowName ?? WORKFLOW_NAME,
+      visibility: options.visibility,
+    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    return { agentId: agent.agentId, workflowId };
+  }
+
+  async function connectGmail(scenario: TriggerScenario): Promise<string> {
+    mockGmailConnectorOAuth({ email: GMAIL_EMAIL });
+    await wf.connectConnector(scenario.actor, "gmail");
+    const connector = await connectorsApi.readConnectorByType(
+      scenario.actor,
+      "gmail",
+    );
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    return connector.id;
+  }
+
+  async function connectGoogleCalendar(
+    scenario: TriggerScenario,
+  ): Promise<string> {
+    mockGoogleCalendarConnectorOAuth({ email: GOOGLE_CALENDAR_EMAIL });
+    await wf.connectConnector(scenario.actor, "google-calendar");
+    const connector = await connectorsApi.readConnectorByType(
+      scenario.actor,
+      "google-calendar",
+    );
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    return connector.id;
+  }
+
+  async function connectNotion(scenario: TriggerScenario): Promise<string> {
+    mockNotionConnectorOAuth();
+    await wf.connectConnector(scenario.actor, "notion");
+    const connector = await connectorsApi.readConnectorByType(
+      scenario.actor,
+      "notion",
+    );
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
+    return connector.id;
   }
 
   it("creates a cron trigger and eagerly binds a chat thread", async () => {
@@ -548,16 +535,22 @@ describe("zero workflow triggers", () => {
       [201],
     );
 
+    // Both triggers share the workflow-user thread, and both are listed on
+    // the workflow.
     expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
-
-    const workflowState = await workflowTriggerStateAction({
-      action: "get-workflow-state",
-      workflow_id: workflowId,
-    });
-    expect(workflowState.binding).toStrictEqual({
-      chatThreadId: first.body.chatThreadId,
-    });
-    expect(workflowState.triggers).toHaveLength(2);
+    const listed = await accept(
+      triggersClient().list({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(listed.body).toHaveLength(2);
+    expect(
+      listed.body.map((trigger) => {
+        return trigger.chatThreadId;
+      }),
+    ).toStrictEqual([first.body.chatThreadId, first.body.chatThreadId]);
   });
 
   it("creates and updates one-time schedules from local atTime and timezone", async () => {
@@ -607,16 +600,26 @@ describe("zero workflow triggers", () => {
       timezone: "Asia/Shanghai",
     });
     expect(updated.body.nextRunAt).toBe("2026-06-22T08:05:00.000Z");
+
+    // Disable so the past-dated one-time trigger never becomes a stale due
+    // candidate for later cron sweeps in the shared database.
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
   });
 
   it("rejects creation on a workflow the caller cannot see", async () => {
-    const { fixture } = await setupFixture();
+    const scenario = await setupFixture();
     // A private workflow under another user's private agent is invisible to
     // this member, so trigger creation is rejected as not-found.
     const otherUserId = `user_${randomUUID()}`;
-    const hidden = await seedAgentWithWorkflow(fixture, {
+    const hidden = await createAgentWithWorkflow(scenario, {
       userId: otherUserId,
-      agentName: "private-agent",
+      agentDisplayName: "Private Agent",
       workflowName: "hidden-workflow",
       visibility: "private",
     });
@@ -706,10 +709,11 @@ describe("zero workflow triggers", () => {
   });
 
   it("lists owned workflow triggers across visible workflows", async () => {
-    const { fixture, agentId, workflowId } = await setupFixture();
+    const scenario = await setupFixture();
+    const { agentId, workflowId } = scenario;
     const { agentId: secondAgentId, workflowId: secondWorkflowId } =
-      await seedAgentWithWorkflow(fixture, {
-        agentName: "second-trigger-agent",
+      await createAgentWithWorkflow(scenario, {
+        agentDisplayName: "Second Trigger Agent",
       });
 
     const first = await accept(
@@ -1037,14 +1041,14 @@ describe("zero workflow triggers", () => {
   });
 
   it("requires a standard notion.so page URL for Notion child page triggers", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowTriggers(fixture);
-    await seedNotionConnector(fixture);
+    const scenario = await setupFixture();
+    await enableNotionWorkflowTriggers(scenario.fixture);
+    await connectNotion(scenario);
 
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "notion-child-page-created",
@@ -1064,14 +1068,14 @@ describe("zero workflow triggers", () => {
   });
 
   it("requires a standard notion.so database URL for Notion database item triggers", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowTriggers(fixture);
-    await seedNotionConnector(fixture);
+    const scenario = await setupFixture();
+    await enableNotionWorkflowTriggers(scenario.fixture);
+    await connectNotion(scenario);
 
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "notion-database-item-created",
@@ -1091,15 +1095,15 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Notion child page triggers by validating and storing the parent page", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    const connectorId = await seedNotionConnector(fixture);
-    await enableNotionWorkflowTriggers(fixture);
+    const scenario = await setupFixture();
+    const connectorId = await connectNotion(scenario);
+    await enableNotionWorkflowTriggers(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "notion-child-page-created",
@@ -1136,15 +1140,15 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Notion database item triggers by validating and storing the data source", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    const connectorId = await seedNotionConnector(fixture);
-    await enableNotionWorkflowTriggers(fixture);
+    const scenario = await setupFixture();
+    const connectorId = await connectNotion(scenario);
+    await enableNotionWorkflowTriggers(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "notion-database-item-created",
@@ -1181,15 +1185,15 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Notion page content updated triggers for a page scope", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    const connectorId = await seedNotionConnector(fixture);
-    await enableNotionWorkflowTriggers(fixture);
+    const scenario = await setupFixture();
+    const connectorId = await connectNotion(scenario);
+    await enableNotionWorkflowTriggers(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "notion-page-content-updated",
@@ -1229,15 +1233,15 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Notion page content updated triggers for a database scope", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    const connectorId = await seedNotionConnector(fixture);
-    await enableNotionWorkflowTriggers(fixture);
+    const scenario = await setupFixture();
+    const connectorId = await connectNotion(scenario);
+    await enableNotionWorkflowTriggers(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "notion-page-content-updated",
@@ -1305,14 +1309,14 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Gmail event triggers with a watch and agent connector grant", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    const connectorId = await seedGmailConnector(fixture);
-    configureGmailWatchMock();
+    const scenario = await setupFixture();
+    await connectGmail(scenario);
+    const watchRecorder = configureGmailWatchMock();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "gmail-new-message",
@@ -1340,20 +1344,10 @@ describe("zero workflow triggers", () => {
       nextRunAt: null,
     });
     expect(created.body.chatThreadId).toBeTruthy();
-    const watchState = await workflowTriggerStateAction({
-      action: "get-gmail-watch",
-      connector_id: connectorId,
-    });
-    const watches = watchState.watches as readonly Record<string, unknown>[];
-    expect(watches).toHaveLength(1);
-    expect(watches[0]).toMatchObject({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      emailAddress: GMAIL_EMAIL,
-      topicName: GMAIL_TOPIC_NAME,
-      lastHistoryId: "100",
-      needsRewatch: false,
-    });
+    // The Gmail watch was registered against the provider exactly once with
+    // the connector's token and the configured Pub/Sub topic (asserted in the
+    // provider mock).
+    expect(watchRecorder.calls).toBe(1);
 
     const updated = await accept(
       triggersClient().update({
@@ -1382,9 +1376,9 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Google Calendar event-created triggers with a watch and baseline", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    const connectorId = await seedGoogleCalendarConnector(fixture);
-    configureGoogleCalendarWatchMock({
+    const scenario = await setupFixture();
+    await connectGoogleCalendar(scenario);
+    const watchRecorder = configureGoogleCalendarWatchMock({
       baselineItems: [
         {
           id: "existing-event",
@@ -1402,7 +1396,7 @@ describe("zero workflow triggers", () => {
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "google-calendar-event-created",
@@ -1426,44 +1420,24 @@ describe("zero workflow triggers", () => {
     });
     expect(created.body.chatThreadId).toBeTruthy();
 
-    const watchState = await workflowTriggerStateAction({
-      action: "get-google-calendar-watch",
-      connector_id: connectorId,
-    });
-    const watches = watchState.watches as readonly Record<string, unknown>[];
-    expect(watches).toHaveLength(1);
-    expect(watches[0]).toMatchObject({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      calendarId: "primary",
-      resourceId: "calendar-resource-1",
-      syncToken: "calendar-sync-baseline",
-      needsRewatch: false,
-    });
-
-    const snapshots = watchState.snapshots as readonly Record<
-      string,
-      unknown
-    >[];
-    expect(snapshots).toStrictEqual([
-      {
-        watchStateId: watches[0]!.id,
-        calendarEventId: "existing-event",
-        summary: "Already on calendar",
-      },
-    ]);
+    // The provider watch was registered once and the baseline event snapshot
+    // sync ran once (the mock asserts calendar id, token, and sync params).
+    // Baseline semantics — pre-existing events never dispatch runs — are
+    // covered by webhooks-google-calendar.test.ts.
+    expect(watchRecorder.watchCalls).toBe(1);
+    expect(watchRecorder.baselineCalls).toBe(1);
   });
 
   it("creates and updates Gmail label applied triggers by label name", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await seedGmailConnector(fixture);
+    const scenario = await setupFixture();
+    await connectGmail(scenario);
     configureGmailLabelsMock([{ id: "Label_support", name: "Support" }]);
     configureGmailWatchMock();
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "gmail-label-applied",
@@ -1524,21 +1498,23 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates and updates GitHub label applied triggers", async () => {
-    const { fixture, agentId, workflowId } = await setupFixture();
-    const installationId = await seedGithubInstallation({
-      fixture,
-      composeId: agentId,
+    const scenario = await setupFixture();
+    await gh.installGithubApp(scenario.actor, scenario.agentId, {
+      oauthCode: {
+        code: `wf-triggers-${randomUUID().slice(0, 8)}`,
+        githubUserId: "101",
+      },
     });
-    await seedGithubUserLink({
-      installationId,
-      userId: fixture.userId,
-      githubUserId: "101",
-    });
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "github-label-applied",
@@ -1612,16 +1588,20 @@ describe("zero workflow triggers", () => {
   });
 
   it("rejects GitHub label applied triggers with actor me when GitHub user is not connected", async () => {
-    const { fixture, agentId, workflowId } = await setupFixture();
-    await seedGithubInstallation({
-      fixture,
-      composeId: agentId,
-    });
+    const scenario = await setupFixture();
+    // Install without an OAuth code: the org gets an installation but the
+    // member has no linked GitHub user.
+    await gh.installGithubApp(scenario.actor, scenario.agentId);
+    mocks.clerk.session(
+      scenario.fixture.userId,
+      scenario.fixture.orgId,
+      "org:member",
+    );
 
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
-        params: { workflowId },
+        params: { workflowId: scenario.workflowId },
         body: {
           kind: "event",
           eventType: "github-label-applied",
@@ -1726,6 +1706,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("schedules updated loop triggers from the last run interval", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
     const { workflowId } = await setupFixture();
     const created = await accept(
@@ -1739,12 +1720,15 @@ describe("zero workflow triggers", () => {
       [201],
     );
 
-    await workflowTriggerStateAction({
-      action: "set-trigger-run-state",
-      trigger_id: created.body.id,
-      last_run_at: "2026-06-28T06:05:00.000Z",
-      next_run_at: null,
-    });
+    // A real manual run through the public run route stamps lastRunAt.
+    mockNow(Date.parse("2026-06-28T06:05:00.000Z"));
+    await accept(
+      triggersClient().run({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
 
     mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
     const updated = await accept(
@@ -1759,6 +1743,15 @@ describe("zero workflow triggers", () => {
     );
 
     expect(updated.body.nextRunAt).toBe("2026-06-28T07:05:00.000Z");
+
+    // Keep the past-dated loop trigger out of later global cron sweeps.
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
   });
 
   it("clears next run on disable and recomputes it on enable", async () => {
@@ -1800,6 +1793,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("keeps enabled loop triggers scheduled from the last run interval", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
     const { workflowId } = await setupFixture();
     const created = await accept(
@@ -1813,12 +1807,23 @@ describe("zero workflow triggers", () => {
       [201],
     );
 
-    await workflowTriggerStateAction({
-      action: "set-trigger-run-state",
-      trigger_id: created.body.id,
-      last_run_at: "2026-06-28T06:05:00.000Z",
-      next_run_at: null,
-    });
+    // Stamp lastRunAt through a real manual run, then disable so enable has
+    // to recompute the next run from the last run interval.
+    mockNow(Date.parse("2026-06-28T06:05:00.000Z"));
+    await accept(
+      triggersClient().run({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
 
     mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
     const enabled = await accept(
@@ -1831,6 +1836,14 @@ describe("zero workflow triggers", () => {
 
     expect(enabled.body.enabled).toBeTruthy();
     expect(enabled.body.nextRunAt).toBe("2026-06-28T06:35:00.000Z");
+
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
   });
 
   it("treats a deleted workflow's trigger as not found on enable", async () => {
@@ -1937,14 +1950,11 @@ describe("zero workflow triggers", () => {
       null,
     );
 
-    const threadState = await workflowTriggerStateAction({
-      action: "get-chat-thread",
-      thread_id: threadId,
-    });
-    expect(threadState.thread).toStrictEqual({
-      id: threadId,
-      selectedModel: "claude-sonnet-4-6",
-    });
+    // The bound chat thread survives the trigger deletion and still carries
+    // the org default model selection.
+    await expect(wf.readThreadSelectedModel(String(threadId))).resolves.toBe(
+      "claude-sonnet-4-6",
+    );
   });
 
   it("runs a trigger immediately in its bound chat thread", async () => {
@@ -1978,17 +1988,6 @@ describe("zero workflow triggers", () => {
     );
 
     expect(run.body.chatThreadId).toBe(threadId);
-    const runState = await workflowTriggerStateAction({
-      action: "get-run-state",
-      trigger_id: created.body.id,
-      run_id: run.body.runId,
-    });
-    const zeroRun = (runState.runs as readonly Record<string, unknown>[])[0];
-    expect(zeroRun).toMatchObject({
-      id: run.body.runId,
-      workflowTriggerId: created.body.id,
-      triggerSource: "workflow-schedule",
-    });
     const timingEvents = sandboxOperationEventsForRun(run.body.runId);
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
@@ -2028,29 +2027,17 @@ describe("zero workflow triggers", () => {
     );
     expect(JSON.stringify(timingEvents)).not.toContain(WORKFLOW_NAME);
 
-    const triggerState = await workflowTriggerStateAction({
-      action: "get-trigger",
-      trigger_id: created.body.id,
-    });
-    const trigger = triggerState.trigger as Record<string, unknown> | null;
-    expect(trigger?.lastRunId).toBe(run.body.runId);
-    expect(typeof trigger?.lastRunAt).toBe("string");
-    expect(trigger?.nextRunAt).toBe(created.body.nextRunAt);
+    const trigger = await wf.readTrigger(created.body.id);
+    expect(typeof trigger.lastRunAt).toBe("string");
+    expect(trigger.nextRunAt).toBe(created.body.nextRunAt);
 
-    const threadState = await workflowTriggerStateAction({
-      action: "get-chat-thread",
-      thread_id: threadId,
+    // The run landed in the bound thread as the workflow slash-command user
+    // message, linked to the created run id.
+    const messages = await wf.readThreadMessages(threadId);
+    const workflowMessage = messages.find((message) => {
+      return message.role === "user" && message.content === `/${WORKFLOW_NAME}`;
     });
-    const messages = threadState.messages as readonly Record<string, unknown>[];
-    expect(messages).toContainEqual({
-      role: "user",
-      content: `/${WORKFLOW_NAME}`,
-    });
-
-    const callbacks = runState.callbacks as readonly Record<string, unknown>[];
-    const callbackKinds = callbacks.map((callback) => {
-      return callback.internalKind;
-    });
-    expect(callbackKinds).toStrictEqual(["chat"]);
+    expect(workflowMessage).toBeDefined();
+    expect(workflowMessage?.runId).toBe(run.body.runId);
   });
 });

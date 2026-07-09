@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import { beforeEach } from "vitest";
 
@@ -12,27 +11,15 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { createBddApi } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
-import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
-import {
-  deleteBankingState,
   readBankingAuditEventsState,
   seedBankingState,
 } from "./helpers/zero-banking-state";
 
 const context = testContext();
-const store = createStore();
 
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const FINICITY_AUTH_URL = `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`;
@@ -47,7 +34,9 @@ type BankingOperationScope =
   | "balances.read"
   | "transactions.read";
 
-interface BankingFixture extends UsageInsightFixture {
+interface BankingFixture {
+  readonly orgId: string;
+  readonly userId: string;
   readonly runId: string;
   readonly agentId: string;
   readonly connectionId: string;
@@ -57,7 +46,7 @@ interface BankingFixture extends UsageInsightFixture {
 }
 
 interface SeedBankingFixtureArgs {
-  readonly triggerSource?: string;
+  readonly triggerSource?: "automation";
   readonly operationScopes?: readonly BankingOperationScope[];
   readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
@@ -92,32 +81,38 @@ function randomProviderId(prefix: string): string {
 async function seedBankingFixture(
   args: SeedBankingFixtureArgs = {},
 ): Promise<BankingFixture> {
-  const fixture = await store.set(
-    seedUsageInsightFixture$,
-    undefined,
-    context.signal,
-  );
-  await store.set(
-    seedOrgMembership$,
-    { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
-    context.signal,
-  );
-  const compose = await store.set(
-    seedCompose$,
-    { orgId: fixture.orgId, userId: fixture.userId },
-    context.signal,
-  );
-  const run = await store.set(
-    seedRun$,
-    {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      composeId: compose.composeId,
-      status: "running",
-      triggerSource: args.triggerSource,
-    },
-    context.signal,
-  );
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Banking fixtures require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Banking Agent",
+    visibility: "private",
+  });
+
+  const run =
+    args.triggerSource === "automation"
+      ? await api.createDirectRun(actor, {
+          agentComposeId: agent.agentId,
+          prompt: "banking automation precondition",
+          modelProviderType: "anthropic-api-key",
+          triggerSource: "automation",
+          vars: { ZERO_AGENT_ID: agent.agentId },
+          secrets: { ZERO_TOKEN: "bdd-banking-zero-token" },
+        })
+      : await api.createRun(actor, {
+          agentId: agent.agentId,
+          prompt: "banking precondition",
+          modelProvider: "anthropic-api-key",
+        });
 
   const providerCustomerId = randomProviderId("customer");
   const enabledAccountId = randomProviderId("acct-enabled");
@@ -126,8 +121,8 @@ async function seedBankingFixture(
     await updateFeatureSwitchesForUser(
       context,
       {
-        userId: fixture.userId,
-        orgId: fixture.orgId,
+        userId: actor.userId,
+        orgId: actor.orgId,
       },
       {
         [FeatureSwitchKey.Banking]: true,
@@ -143,9 +138,9 @@ async function seedBankingFixture(
     ]),
   ];
   const connection = await seedBankingState(context, {
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    agentId: compose.agentId,
+    orgId: actor.orgId,
+    userId: actor.userId,
+    agentId: agent.agentId,
     providerCustomerId,
     enabledAccountId,
     disabledAccountId,
@@ -159,20 +154,15 @@ async function seedBankingFixture(
   });
 
   return {
-    ...fixture,
+    orgId: actor.orgId,
+    userId: actor.userId,
     runId: run.runId,
-    agentId: compose.agentId,
+    agentId: agent.agentId,
     connectionId: connection.connectionId,
     providerCustomerId,
     enabledAccountId,
     disabledAccountId,
   };
-}
-
-async function deleteBankingFixture(fixture: BankingFixture): Promise<void> {
-  await deleteBankingState(context, fixture);
-  await deleteFeatureSwitchesForUser(context, fixture);
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 }
 
 async function bankingAuditEvents(fixture: BankingFixture) {
@@ -192,8 +182,6 @@ function finicityAuthHandler() {
 }
 
 describe("POST /api/zero/banking/*", () => {
-  const track = createFixtureTracker(deleteBankingFixture);
-
   beforeEach(() => {
     mockEnv("FINICITY_APP_KEY", "test-app-key");
     mockEnv("FINICITY_APP_SECRET", "test-secret");
@@ -201,9 +189,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("rejects banking requests when the banking feature switch is disabled", async () => {
-    const fixture = await track(
-      seedBankingFixture({ featureSwitchEnabled: false }),
-    );
+    const fixture = await seedBankingFixture({ featureSwitchEnabled: false });
     let authRequestCount = 0;
     server.use(
       http.post(FINICITY_AUTH_URL, () => {
@@ -231,7 +217,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("lists only accounts enabled for the current agent", async () => {
-    const fixture = await track(seedBankingFixture());
+    const fixture = await seedBankingFixture();
     let accountsRequestHeaders: Headers | undefined;
     server.use(
       finicityAuthHandler(),
@@ -304,7 +290,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("denies balances for accounts not enabled for the agent", async () => {
-    const fixture = await track(seedBankingFixture());
+    const fixture = await seedBankingFixture();
     let accountsRequestCount = 0;
     server.use(
       finicityAuthHandler(),
@@ -339,7 +325,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("reads balances through Finicity with only sanitized fields returned", async () => {
-    const fixture = await track(seedBankingFixture());
+    const fixture = await seedBankingFixture();
     server.use(
       finicityAuthHandler(),
       http.get(
@@ -396,7 +382,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("rejects zero tokens without banking capability before provider access", async () => {
-    const fixture = await track(seedBankingFixture());
+    const fixture = await seedBankingFixture();
     let authRequestCount = 0;
     server.use(
       http.post(FINICITY_AUTH_URL, () => {
@@ -426,9 +412,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("denies automation-triggered runs unless the banking grant allows them", async () => {
-    const fixture = await track(
-      seedBankingFixture({ triggerSource: "automation" }),
-    );
+    const fixture = await seedBankingFixture({ triggerSource: "automation" });
     let authRequestCount = 0;
     server.use(
       http.post(FINICITY_AUTH_URL, () => {
@@ -460,9 +444,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("denies revoked banking connections before provider access", async () => {
-    const fixture = await track(
-      seedBankingFixture({ connectionStatus: "revoked" }),
-    );
+    const fixture = await seedBankingFixture({ connectionStatus: "revoked" });
     let authRequestCount = 0;
     server.use(
       http.post(FINICITY_AUTH_URL, () => {
@@ -494,7 +476,7 @@ describe("POST /api/zero/banking/*", () => {
   });
 
   it("reads transactions through Finicity with only sanitized fields returned", async () => {
-    const fixture = await track(seedBankingFixture());
+    const fixture = await seedBankingFixture();
     let requestedUrl: URL | undefined;
     server.use(
       finicityAuthHandler(),
