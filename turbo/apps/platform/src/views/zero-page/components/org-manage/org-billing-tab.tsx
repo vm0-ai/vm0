@@ -153,11 +153,18 @@ function tierRank(t: BillingTier): number {
   if (t === "pro") {
     return 1;
   }
-  return 2;
+  if (t === "team") {
+    return 2;
+  }
+  return 3;
 }
 
 function isPaidTier(tier: BillingTier): boolean {
   return tier === "pro" || tier === "team";
+}
+
+function isCustomTier(tier: BillingTier): boolean {
+  return tier === "custom";
 }
 
 function isNoActivePlanTier(tier: BillingTier): boolean {
@@ -198,7 +205,7 @@ function billingScheduledChange(
   if (status.cancelAtPeriodEnd) {
     return {
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: status.currentPeriodEnd,
     };
   }
@@ -208,6 +215,9 @@ function billingScheduledChange(
 function planButtonLabel(plan: BillingPlan, currentTier: BillingTier): string {
   if (plan.tier === currentTier) {
     return "Current plan";
+  }
+  if (isCustomTier(currentTier)) {
+    return "Unavailable";
   }
   if (
     plan.tier === "free" &&
@@ -511,6 +521,9 @@ function PricingPage({
   const setLockedTarget = useSet(setLockedTarget$);
 
   const handlePlanAction = (planTier: BillingTier, e: React.MouseEvent) => {
+    if (isCustomTier(currentTier)) {
+      return;
+    }
     if (planTier === currentTier) {
       return;
     }
@@ -573,7 +586,9 @@ function PricingPage({
         <div>
           <h3 className="text-sm font-medium text-foreground">Compare plans</h3>
           <p className="text-[13px] text-muted-foreground">
-            Upgrade or downgrade anytime.
+            {isCustomTier(currentTier)
+              ? "Custom workspaces cannot switch to Pro or Team checkout."
+              : "Upgrade or downgrade anytime."}
           </p>
         </div>
       </div>
@@ -605,6 +620,9 @@ function formatTierLabel(tier: BillingTier): string {
   if (tier === "pro-suspend") {
     return "No plan";
   }
+  if (tier === "custom") {
+    return "Custom";
+  }
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
@@ -625,7 +643,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
 
   const isTeam = currentTier === "team";
   const isLockedTarget = lockedTarget !== null;
-  const downgradeTarget = isTeam ? selectedTarget : "pro-suspend";
+  const downgradeTarget = isTeam ? selectedTarget : "limited-free-1";
   const targetLabel = formatTierLabel(downgradeTarget);
 
   const handleConfirm = () => {
@@ -695,9 +713,10 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             <button
               type="button"
               onClick={() => {
-                return setSelectedTarget("pro-suspend");
+                return setSelectedTarget("limited-free-1");
               }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                selectedTarget === "limited-free-1" ||
                 selectedTarget === "pro-suspend"
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-border hover:border-muted-foreground/30"
@@ -735,7 +754,8 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           >
             {loading
               ? "Downgrading..."
-              : downgradeTarget === "pro-suspend"
+              : downgradeTarget === "limited-free-1" ||
+                  downgradeTarget === "pro-suspend"
                 ? "Cancel subscription"
                 : `Downgrade to ${targetLabel}`}
           </Button>
@@ -828,10 +848,12 @@ function PlanActionButtons({
   onDowngrade: () => void;
   onRestore: () => void;
 }) {
+  const customLocked = isCustomTier(currentTier);
   const showUpgrade =
-    (isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid;
-  const showDowngrade = isPaid && !hasScheduledChange;
-  const showRestore = isPaid && hasScheduledChange;
+    !customLocked &&
+    ((isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid);
+  const showDowngrade = !customLocked && isPaid && !hasScheduledChange;
+  const showRestore = !customLocked && isPaid && hasScheduledChange;
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -879,6 +901,27 @@ function shouldShowBuyCreditsSection(
     currentTier !== "limited-free-1" &&
     currentTier !== "pro-suspend"
   );
+}
+
+function currentPlanNameLabel(currentTier: BillingTier): string {
+  if (isNoActivePlanTier(currentTier)) {
+    return "No active plan";
+  }
+  return `${formatTierLabel(currentTier)} plan`;
+}
+
+function currentPlanStatusLabel(
+  currentTier: BillingTier,
+  periodLabel: string | null,
+): string {
+  if (isCustomTier(currentTier)) {
+    return "Custom access with 10 concurrent runs";
+  }
+  return periodLabel ?? "No active subscription";
+}
+
+function shouldShowConcurrencyBilling(currentTier: BillingTier): boolean {
+  return currentTier === "team" || isCustomTier(currentTier);
 }
 
 function billingPeriodLabel(args: {
@@ -1189,7 +1232,7 @@ function ConcurrencyBillingSection({
               No concurrency subscriptions
             </p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Buy additional concurrent runs for this Team workspace.
+              Buy additional concurrent runs for this workspace.
             </p>
           </div>
         ) : (
@@ -1268,14 +1311,16 @@ export function OrgBillingTab() {
   const handleRestore = () => {
     openRestore();
   };
-  const currentPlanLabel = isNoActivePlanTier(currentTier)
-    ? "No active plan"
-    : `${formatTierLabel(currentTier)} plan`;
+  const currentPlanLabel = currentPlanNameLabel(currentTier);
+  const currentPlanDescription = currentPlanStatusLabel(
+    currentTier,
+    periodLabel,
+  );
   const showBuyCredits = shouldShowBuyCreditsSection(
     status !== null,
     currentTier,
   );
-  const showConcurrency = currentTier === "team";
+  const showConcurrency = shouldShowConcurrencyBilling(currentTier);
   const openBillingPortal = () => {
     return detach(portal(pageSignal), Reason.DomCallback);
   };
@@ -1338,7 +1383,7 @@ export function OrgBillingTab() {
                     {currentPlanLabel}
                   </p>
                   <p className="text-[13px] text-muted-foreground mt-0.5">
-                    {periodLabel ?? "No active subscription"}
+                    {currentPlanDescription}
                   </p>
                 </div>
                 <PlanActionButtons

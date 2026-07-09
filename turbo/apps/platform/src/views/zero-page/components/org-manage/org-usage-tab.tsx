@@ -565,8 +565,10 @@ function OverviewSection({
         </section>
       )}
 
-      {/* Members — only for paid plans */}
-      {(currentTier === "pro" || currentTier === "team") && (
+      {/* Members — only for workspaces with shared usage access */}
+      {(currentTier === "pro" ||
+        currentTier === "team" ||
+        currentTier === "custom") && (
         <section className="flex flex-col gap-3">
           <h3 className="text-sm font-medium text-foreground">Members</h3>
 

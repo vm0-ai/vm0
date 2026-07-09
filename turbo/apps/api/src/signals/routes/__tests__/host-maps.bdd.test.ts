@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
@@ -208,8 +209,15 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(crossOrg.body.error.message).toBe("Hosted site not found");
 
     const third = await api.prepareHostedSite(actor, body);
-    // Onboarding without an entitlement moves the org to pro-suspend.
     await bdd.setupOnboarding(actor, { displayName: "BDD Host Suspended" });
+    if (!actor.orgId) {
+      throw new Error("Expected suspended host actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
     const suspendedComplete = await api.requestCompleteHostedSite(
       actor,
       third.deploymentId,

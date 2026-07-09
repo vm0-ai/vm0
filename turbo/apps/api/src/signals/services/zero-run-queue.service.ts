@@ -44,6 +44,7 @@ const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
     "pro-suspend": 0,
     pro: 2,
     team: 10,
+    custom: 10,
   });
 
 async function effectiveOrgConcurrencyLimit(

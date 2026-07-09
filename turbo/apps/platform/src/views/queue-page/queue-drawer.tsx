@@ -290,7 +290,7 @@ function ConcurrencyPurchaseCard({
         </h3>
         <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconCrown size={12} stroke={1.8} className="text-amber-500" />
-          Team
+          Add-on
         </span>
       </div>
 
@@ -298,7 +298,7 @@ function ConcurrencyPurchaseCard({
         {slotCountLabel(quantity)} monthly subscription
       </p>
       <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-4">
-        Add dedicated concurrent runs to this Team workspace, billed monthly.
+        Add dedicated concurrent runs to this workspace, billed monthly.
       </p>
 
       <ConcurrencyQuantityControl
@@ -315,7 +315,7 @@ function ConcurrencyPurchaseCard({
         <li className="flex items-center gap-2">
           <CheckCircleIcon />
           <span className="text-[13px] font-light text-muted-foreground">
-            Adds to your current Team limit
+            Adds to your current limit
           </span>
         </li>
         <li className="flex items-center gap-2">
@@ -369,7 +369,11 @@ function QueueDrawerContent() {
 
   const { concurrency } = data;
   const tierLabel =
-    concurrency.tier.charAt(0).toUpperCase() + concurrency.tier.slice(1);
+    concurrency.tier === "limited-free-1"
+      ? "Limited free"
+      : concurrency.tier === "pro-suspend"
+        ? "No plan"
+        : concurrency.tier.charAt(0).toUpperCase() + concurrency.tier.slice(1);
   const upgrade =
     concurrency.tier in UPGRADE_PATHS
       ? UPGRADE_PATHS[concurrency.tier as keyof typeof UPGRADE_PATHS]
@@ -378,7 +382,8 @@ function QueueDrawerContent() {
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const visibleUpgrade = canManageBilling ? upgrade : undefined;
   const showConcurrencyPurchase =
-    canManageBilling && concurrency.tier === "team";
+    canManageBilling &&
+    (concurrency.tier === "team" || concurrency.tier === "custom");
 
   const tierColor = "text-[#D27939]";
 

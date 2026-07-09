@@ -9,6 +9,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { createBddApi } from "./helpers/api-bdd";
@@ -2314,7 +2315,20 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await bdd.setupOnboarding(actor, {
       displayName: "BDD Slack Failing Default",
     });
+    if (!actor.orgId) {
+      throw new Error("Expected Slack failing default actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro",
+      credits: 20_000,
+    });
     await integrations.configureSlackRunModelPolicies(actor);
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
     const agentB = await bdd.createAgent(actor, {
       displayName: "BDD Slack Failing Override",
     });

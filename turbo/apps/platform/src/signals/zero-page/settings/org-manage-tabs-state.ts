@@ -286,8 +286,12 @@ export const setRevokeInvitationDialogTarget$ = command(
 // org-billing-tab: DowngradeConfirmDialog selectedTarget
 // ---------------------------------------------------------------------------
 
-const internalSelectedTarget$ = state<"pro-suspend" | "pro">("pro-suspend");
-const internalLockedTarget$ = state<"pro-suspend" | "pro" | null>(null);
+type BillingCancellationTargetTier = "limited-free-1" | "pro-suspend";
+type BillingDowngradeTargetTier = BillingCancellationTargetTier | "pro";
+
+const internalSelectedTarget$ =
+  state<BillingDowngradeTargetTier>("limited-free-1");
+const internalLockedTarget$ = state<BillingDowngradeTargetTier | null>(null);
 
 export const selectedTarget$ = computed((get) => {
   return get(internalSelectedTarget$);
@@ -298,13 +302,13 @@ export const lockedTarget$ = computed((get) => {
 });
 
 export const setSelectedTarget$ = command(
-  ({ set }, value: "pro-suspend" | "pro") => {
+  ({ set }, value: BillingDowngradeTargetTier) => {
     set(internalSelectedTarget$, value);
   },
 );
 
 export const setLockedTarget$ = command(
-  ({ set }, value: "pro-suspend" | "pro" | null) => {
+  ({ set }, value: BillingDowngradeTargetTier | null) => {
     set(internalLockedTarget$, value);
     if (value) {
       set(internalSelectedTarget$, value);
