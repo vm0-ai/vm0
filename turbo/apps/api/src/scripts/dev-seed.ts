@@ -209,7 +209,7 @@ async function seedOfficialSkillVolumes(
   return DEV_SEED_SKILL_VOLUMES.length;
 }
 
-export const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
+const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   // Model usage in the unified usage_event ledger.
   ...usageGroup("model", "claude-sonnet-4-6", [
     ["tokens.input", usd(3), 1_000_000],
