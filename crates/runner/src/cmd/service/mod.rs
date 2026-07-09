@@ -1954,7 +1954,7 @@ profiles:
             &'a mut self,
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ()> {
-            self.events.push("reset_failed");
+            self.events.push("reset_failed_bounded");
             Box::pin(std::future::ready(if self.reset_failed_error {
                 Err(fake_error("reset failed"))
             } else {
@@ -1987,7 +1987,7 @@ profiles:
             &'a mut self,
             _unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, ()> {
-            self.events.push("cleanup_drain_restart_override");
+            self.events.push("cleanup_drain_restart_override_bounded");
             Box::pin(std::future::ready(if self.cleanup_drain_error {
                 Err(fake_error("cleanup drain failed"))
             } else {
@@ -2075,8 +2075,8 @@ profiles:
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
-                "reset_failed",
-                "cleanup_drain_restart_override",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
             ]
         );
@@ -2106,8 +2106,8 @@ profiles:
                 "stop_bounded",
                 "cleanup_active_state",
                 "disable",
-                "reset_failed",
-                "cleanup_drain_restart_override",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
             ]
         );
@@ -2145,8 +2145,8 @@ profiles:
                 "cleanup_active_state",
                 "kill_all_sigkill",
                 "stop_no_block",
-                "reset_failed",
-                "cleanup_drain_restart_override",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
             ]
         );
@@ -2182,10 +2182,51 @@ profiles:
                 "acquire_cleanup_lock",
                 "stop_bounded",
                 "cleanup_active_state",
-                "reset_failed",
-                "cleanup_drain_restart_override",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
                 "sleep",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_does_not_escalate_when_failed_stop_left_unit_inactive() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::Failed(
+                std::process::ExitStatus::from_raw(0x100),
+            ))]),
+            cleanup_states: VecDeque::from([
+                cleanup_state("inactive", false),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
             ]
         );

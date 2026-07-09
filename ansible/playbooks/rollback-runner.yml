@@ -442,15 +442,8 @@
         - name: Verify target runner health
           command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
       rescue:
-        - name: Stop failed target runner service
-          block:
-            - name: Stop failed target runner service with runner cleanup
-              command: "{{ bin_dir }}/runner service stop --name {{ runner_name }} --force --cleanup failed-start"
-          rescue:
-            - name: Fall back to raw systemd cleanup for failed target runner service
-              include_tasks: ../tasks/force-stop-runner-service.yml
-              vars:
-                force_stop_runner_name: "{{ runner_name }}"
+        - name: Stop failed target runner service with runner cleanup
+          command: "{{ bin_dir }}/runner service stop --name {{ runner_name }} --force --cleanup failed-start"
 
         - name: Fail rollback after target runner readiness failure
           fail:
