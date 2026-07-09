@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.586.0](https://github.com/vm0-ai/vm0/compare/app-v0.585.0...app-v0.586.0) (2026-07-09)
+
+
+### Features
+
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+
+
+### Bug Fixes
+
+* show unread agents in pinned sidebar ([#20847](https://github.com/vm0-ai/vm0/issues/20847)) ([ff45e46](https://github.com/vm0-ai/vm0/commit/ff45e464436092fb33e657f05ef4fc934d3732e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.177.0
+    * @vm0/core bumped to 8.421.0
+
 ## [0.585.0](https://github.com/vm0-ai/vm0/compare/app-v0.584.0...app-v0.585.0) (2026-07-09)
 
 

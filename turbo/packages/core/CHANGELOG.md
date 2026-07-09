@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.421.0](https://github.com/vm0-ai/vm0/compare/core-v8.420.0...core-v8.421.0) (2026-07-09)
+
+
+### Features
+
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.177.0
+
 ## [8.420.0](https://github.com/vm0-ai/vm0/compare/core-v8.419.0...core-v8.420.0) (2026-07-09)
 
 
