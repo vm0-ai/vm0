@@ -1,6 +1,9 @@
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { chatThreadModelSelectionContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadModelSelectionContract,
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -24,6 +27,13 @@ import type { RouteEntry } from "../route-entry";
 const modelSelectionBody$ = bodyResultOf(
   chatThreadModelSelectionContract.update,
 );
+
+function modelFirstSelection(selectedModel: string) {
+  return {
+    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+    selectedModel,
+  };
+}
 
 function isCodexFastServiceTierModel(
   model: string | null | undefined,
@@ -86,12 +96,14 @@ const updateModelSelectionInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const pin = body.data.modelSelection
+    const modelSelection =
+      body.data.model === null ? null : modelFirstSelection(body.data.model);
+    const pin = modelSelection
       ? await resolveModelSelectionPin({
           db: writeDb,
           orgId: auth.orgId,
           userId: auth.userId,
-          modelSelection: body.data.modelSelection,
+          modelSelection,
         })
       : {
           modelProviderId: null,

@@ -19,18 +19,28 @@ import { createArtifactItemCacheStores } from "../external/idb-artifact-item-sto
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 
-// Matches the server-side bulk cap (zeroArtifacts$). The cache never holds
-// more than the server returns, so reading up to this bound covers the set.
-const ARTIFACTS_CACHE_READ_LIMIT = 10_000;
+// Page size for the keyset-paginated fetch. The frontend follows `nextCursor`
+// until the whole set is loaded, so this only bounds per-request payload size,
+// not the total number of artifacts fetched.
+const ARTIFACTS_PAGE_SIZE = 2000;
+// Backstop against an unbounded fetch loop (e.g. a server that never returns a
+// null cursor). Sits far above any realistic per-org artifact count.
+const ARTIFACTS_MAX_PAGES = 100;
+// Read the whole locally-cached set back for the cache-first paint.
+const ARTIFACTS_CACHE_READ_LIMIT = ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
+
+// Number of cards the grid reveals per window step. The rendered window grows by
+// this amount on each "load more", keeping the DOM bounded for large sets.
+const ARTIFACT_WINDOW_STEP = 60;
 
 const internalArtifactsSearch$ = state("");
 const internalArtifactsAgentId$ = state<string | null>(null);
 const internalArtifactsCategory$ = state<ArtifactCategory | null>(null);
 const internalArtifactsReload$ = state(0);
+const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 
 interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
-  readonly truncated: boolean;
 }
 
 function artifactItemCacheStores(userId: string, orgId: string) {
@@ -51,19 +61,34 @@ export const selectedArtifactsCategory$ = computed((get) => {
   return get(internalArtifactsCategory$);
 });
 
+// How many artifacts the grid currently reveals. Grown by the view's "load
+// more" control and reset to the first window whenever a filter changes.
+export const artifactsWindow$ = computed((get) => {
+  return get(internalArtifactsWindow$);
+});
+
+export const growArtifactsWindow$ = command(({ set }) => {
+  set(internalArtifactsWindow$, (count) => {
+    return count + ARTIFACT_WINDOW_STEP;
+  });
+});
+
 export const setArtifactsSearch$ = command(({ set }, search: string) => {
   set(internalArtifactsSearch$, search);
+  set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
 });
 
 export const setSelectedArtifactsAgentId$ = command(
   ({ set }, agentId: string | null) => {
     set(internalArtifactsAgentId$, agentId);
+    set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
   },
 );
 
 export const setSelectedArtifactsCategory$ = command(
   ({ set }, artifactCategory: ArtifactCategory | null) => {
     set(internalArtifactsCategory$, artifactCategory);
+    set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
   },
 );
 
@@ -71,6 +96,7 @@ export const resetArtifactsFilters$ = command(({ set }) => {
   set(internalArtifactsSearch$, "");
   set(internalArtifactsAgentId$, null);
   set(internalArtifactsCategory$, null);
+  set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
 });
 
 export const reloadArtifacts$ = command(({ set }) => {
@@ -79,10 +105,11 @@ export const reloadArtifacts$ = command(({ set }) => {
   });
 });
 
-// Remote source: bulk-fetch every artifact for the org, write the full set
-// through to the IndexedDB cache, and return it. Errors propagate to the
-// loadable so the view can fall back to the cache. Reacts only to the reload
-// counter, never to the filters, so filtering never triggers a re-fetch.
+// Remote source: keyset-paginate through every artifact for the org (following
+// `nextCursor` until the set is exhausted), replace the IndexedDB cache with the
+// full set, and return it. Errors propagate to the loadable so the view can fall
+// back to the cache. Reacts only to the reload counter, never to the filters, so
+// filtering never triggers a re-fetch.
 export const remoteArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
@@ -90,14 +117,27 @@ export const remoteArtifacts$ = computed(
     const userId = clerk.user?.id;
     const orgId = clerk.organization?.id;
     if (!userId || !orgId) {
-      return { artifacts: [], truncated: false };
+      return { artifacts: [] };
     }
     const client = get(zeroClient$)(artifactsContract);
-    const result = await accept(client.list(), [200], { toast: false });
+    const artifacts: ArtifactItem[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < ARTIFACTS_MAX_PAGES; page += 1) {
+      const result = await accept(
+        client.list({ query: { limit: ARTIFACTS_PAGE_SIZE, cursor } }),
+        [200],
+        { toast: false },
+      );
+      artifacts.push(...result.body.artifacts);
+      if (!result.body.nextCursor) {
+        break;
+      }
+      cursor = result.body.nextCursor;
+    }
     await artifactItemCacheStores(userId, orgId).writeStore.replaceItems(
-      result.body.artifacts,
+      artifacts,
     );
-    return result.body;
+    return { artifacts };
   },
 );
 
@@ -109,13 +149,13 @@ export const cachedArtifacts$ = computed(
     const userId = clerk.user?.id;
     const orgId = clerk.organization?.id;
     if (!userId || !orgId) {
-      return { artifacts: [], truncated: false };
+      return { artifacts: [] };
     }
     const artifacts = await artifactItemCacheStores(
       userId,
       orgId,
     ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });
-    return { artifacts, truncated: false };
+    return { artifacts };
   },
 );
 

@@ -2,7 +2,7 @@
   "name": "@vm0/cli",
   "version": "9.232.4",
   "private": true,
-  "description": "Zero command-line interface",
+  "description": "Zero command-line interface for vm0",
   "repository": {
     "type": "git",
     "url": "https://github.com/vm0-ai/vm0",

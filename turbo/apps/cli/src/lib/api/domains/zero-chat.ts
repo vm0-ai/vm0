@@ -5,7 +5,6 @@ import {
   chatThreadRenameContract,
   chatSearchContract,
   type ChatThreadMetadata,
-  type ModelSelectionRequest,
   type ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -66,18 +65,18 @@ export async function getZeroChatThread(options: {
 
 export async function updateZeroChatThreadModelSelection(options: {
   threadId: string;
-  modelSelection: ModelSelectionRequest | null;
+  model: string | null;
 }): Promise<{ threadId: string; selectedModel: string | null }> {
   const config = await getClientConfig();
   const client = initClient(chatThreadModelSelectionContract, config);
   const result = await client.update({
     params: { id: options.threadId },
-    body: { modelSelection: options.modelSelection },
+    body: { model: options.model },
   });
   if (result.status === 204) {
     return {
       threadId: options.threadId,
-      selectedModel: options.modelSelection?.selectedModel ?? null,
+      selectedModel: options.model,
     };
   }
   handleError(result, "Failed to update chat thread model");
