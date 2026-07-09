@@ -294,7 +294,10 @@ async function resolveBillableFirewallCacheExpiry(params: {
   if (!availability) {
     return insufficientCredits();
   }
-  if (availability.tier === "pro-suspend") {
+  if (
+    availability.tier === "pro-suspend" ||
+    availability.tier === "limited-free-1"
+  ) {
     return insufficientCredits();
   }
   const allowance =

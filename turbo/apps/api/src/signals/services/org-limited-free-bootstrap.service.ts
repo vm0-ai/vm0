@@ -121,7 +121,7 @@ async function ensureBootstrapComposeRow(
 }
 
 function isPaidTier(tier: string): boolean {
-  return tier === "pro" || tier === "team";
+  return tier === "pro" || tier === "team" || tier === "custom";
 }
 
 async function reserveBootstrapCompose(

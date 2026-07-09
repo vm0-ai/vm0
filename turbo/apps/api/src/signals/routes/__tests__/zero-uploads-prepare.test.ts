@@ -7,6 +7,7 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
@@ -151,6 +152,14 @@ describe("POST /api/zero/uploads/prepare", () => {
     const actor = bdd.user();
     await bdd.setupOnboarding(actor, {
       displayName: "Suspended upload prepare agent",
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected suspended upload prepare actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
     });
     mocks.clerk.session(actor.userId, actor.orgId);
 

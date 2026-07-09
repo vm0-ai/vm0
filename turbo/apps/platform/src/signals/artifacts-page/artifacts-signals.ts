@@ -14,14 +14,15 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
-import { createIdbArtifactItemStores } from "../external/idb-artifact-item-store.ts";
+import { openChatIdb } from "../external/chat-idb-store.ts";
+import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 
 // Page size for the keyset-paginated fetch. The frontend follows `nextCursor`
 // until the whole set is loaded, so this only bounds per-request payload size,
 // not the total number of artifacts fetched.
-const ARTIFACTS_PAGE_SIZE = 2_000;
+const ARTIFACTS_PAGE_SIZE = 2000;
 // Backstop against an unbounded fetch loop (e.g. a server that never returns a
 // null cursor). Sits far above any realistic per-org artifact count.
 const ARTIFACTS_MAX_PAGES = 100;
@@ -40,6 +41,12 @@ const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 
 interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
+}
+
+function artifactItemCacheStores(userId: string, orgId: string) {
+  return createArtifactItemCacheStores(() => {
+    return openChatIdb(userId, orgId);
+  });
 }
 
 export const artifactsSearch$ = computed((get) => {
@@ -127,7 +134,7 @@ export const remoteArtifacts$ = computed(
       }
       cursor = result.body.nextCursor;
     }
-    await createIdbArtifactItemStores(userId, orgId).writeStore.replaceItems(
+    await artifactItemCacheStores(userId, orgId).writeStore.replaceItems(
       artifacts,
     );
     return { artifacts };
@@ -144,7 +151,7 @@ export const cachedArtifacts$ = computed(
     if (!userId || !orgId) {
       return { artifacts: [] };
     }
-    const artifacts = await createIdbArtifactItemStores(
+    const artifacts = await artifactItemCacheStores(
       userId,
       orgId,
     ).readStore.readRecent({ limit: ARTIFACTS_CACHE_READ_LIMIT });

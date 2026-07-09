@@ -1761,7 +1761,9 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-api]
     outputs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
-    timeout-minutes: 4
+    # Normal starts should finish quickly; failures need enough room for the
+    # bounded partial-start cleanup watchdog to run before GitHub kills the job.
+    timeout-minutes: 8
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
@@ -1790,6 +1792,8 @@ jobs:
           RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
+          set -euo pipefail
+
           read_host_capacity() {
             local HOST=$1
             local RUNNER_NAME=$2
@@ -1799,6 +1803,8 @@ jobs:
           }
 
           start_on_host() {
+            set -euo pipefail
+
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
@@ -1837,9 +1843,9 @@ jobs:
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Stop any existing service from a previous run (e.g., re-run after test failure).
-            # stop() returns Ok when no service exists, so no need for || true.
+            # Use cleanup semantics so a stale or wedged unit cannot hang this start path.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME} --force"
+            timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
 
@@ -1941,12 +1947,13 @@ jobs:
             for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
               HOST_INDEX=$((HOST_INDEX + 1))
               local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
-              local UNIT="vm0-runner-${RUNNER_NAME}.service"
               local REMOTE="${METAL_USER}@${HOST}"
               echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
               (
+                # The runner cleanup command has per-action deadlines; keep the
+                # outer SSH watchdog longer than the combined worst-case budget.
                 # shellcheck disable=SC2029
-                timeout 45s ssh "$REMOTE" "UNIT='${UNIT}'; timeout 20s sudo systemctl stop \"\$UNIT\" 2>/dev/null || true; STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|refreshing|deactivating) sudo systemctl kill --kill-whom=all --signal=SIGKILL \"\$UNIT\" 2>/dev/null || true; sudo systemctl stop --no-block \"\$UNIT\" 2>/dev/null || true ;; esac; sudo systemctl reset-failed \"\$UNIT\" 2>/dev/null || true; for _ in \$(seq 1 10); do STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|refreshing|deactivating) sleep 1 ;; *) exit 0 ;; esac; done; echo \"::warning::Runner service \$UNIT still \$STATE after cleanup\" >&2" >/dev/null || true
+                timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start" >/dev/null || true
               ) &
               STOP_PIDS+=($!)
             done

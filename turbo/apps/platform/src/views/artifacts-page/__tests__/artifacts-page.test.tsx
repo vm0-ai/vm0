@@ -789,7 +789,13 @@ describe("artifacts page", () => {
     await screen.findByText("windowed-00.html");
     expect(screen.queryByText("windowed-64.html")).not.toBeInTheDocument();
 
-    click(screen.getByRole("button", { name: "Load more" }));
+    const loadMoreButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Load more";
+    });
+    if (!loadMoreButton) {
+      throw new Error("Load more button not found");
+    }
+    click(loadMoreButton);
 
     await screen.findByText("windowed-64.html");
   });

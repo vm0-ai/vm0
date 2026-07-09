@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.582.0](https://github.com/vm0-ai/vm0/compare/app-v0.581.2...app-v0.582.0) (2026-07-09)
+
+
+### Features
+
+* add custom billing tier ([#20690](https://github.com/vm0-ai/vm0/issues/20690)) ([2f3fdc2](https://github.com/vm0-ai/vm0/commit/2f3fdc2e7834ff86215fd7ea87227f702b47598c))
+* **api:** keyset-paginate the artifacts list endpoint ([#20800](https://github.com/vm0-ai/vm0/issues/20800)) ([2bb327c](https://github.com/vm0-ai/vm0/commit/2bb327c5dccd13fc14877684079df5fcd1b211ff))
+
+
+### Bug Fixes
+
+* reconcile usage allowance subscriptions ([#20684](https://github.com/vm0-ai/vm0/issues/20684)) ([3849bcd](https://github.com/vm0-ai/vm0/commit/3849bcd1baf67bcb455bc5eea27dd57f4df0183d))
+* use Notion icon in workflow automations ([#20791](https://github.com/vm0-ai/vm0/issues/20791)) ([01ff8ba](https://github.com/vm0-ai/vm0/commit/01ff8ba122c8793610b97a06bb07b52500b9896f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.174.0
+    * @vm0/core bumped to 8.418.2
+
 ## [0.581.2](https://github.com/vm0-ai/vm0/compare/app-v0.581.1...app-v0.581.2) (2026-07-09)
 
 

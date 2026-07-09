@@ -42,7 +42,9 @@ const creditGrantSchema = z.object({
 
 const scheduledBillingChangeSchema = z.object({
   type: z.enum(["cancel", "downgrade"]),
-  targetTier: z.enum(["pro-suspend", "pro", "team"]).nullable(),
+  targetTier: z
+    .enum(["limited-free-1", "pro-suspend", "pro", "team"])
+    .nullable(),
   effectiveDate: z.string().nullable(),
 });
 
@@ -466,7 +468,7 @@ export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 // ---------------------------------------------------------------------------
 
 const downgradeRequestSchema = z.object({
-  targetTier: z.enum(["pro-suspend", "pro"]),
+  targetTier: z.enum(["limited-free-1", "pro-suspend", "pro"]),
   returnUrl: z.string().url().optional(),
 });
 

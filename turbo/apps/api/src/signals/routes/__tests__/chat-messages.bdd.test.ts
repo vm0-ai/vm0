@@ -30,6 +30,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -1414,6 +1415,14 @@ describe("CHAT-02: admission without spendable credits", () => {
     const { providerId } = await upsertOrgModelProvider(actor, {
       type: "vm0",
     });
+    if (!actor.orgId) {
+      throw new Error("Expected pro-suspend chat actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
 
     const clientMessageId = randomUUID();
     const sendBody: ChatRunSendBody = {
@@ -1942,8 +1951,8 @@ describe("CHAT-02: explicit provider pins", () => {
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
 
     await replaceBddVm0ApiKeys({
-      vendor: "openrouter",
-      model: "z-ai/glm-5.2",
+      vendor: "zai",
+      model: "glm-5.2",
       keys: [
         {
           apiKey: fakeKey,
@@ -1975,13 +1984,12 @@ describe("CHAT-02: explicit provider pins", () => {
     );
     const environment = claimEnvironment(claim);
     expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder(
-        "openrouter-api-key",
-        "OPENROUTER_API_KEY",
-      ),
+      modelProviderSecretPlaceholder("zai-api-key", "ZAI_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
-    expect(environment.ANTHROPIC_MODEL).toBe("z-ai/glm-5.2");
+    expect(environment.ANTHROPIC_BASE_URL).toBe(
+      "https://api.z.ai/api/anthropic",
+    );
+    expect(environment.ANTHROPIC_MODEL).toBe("glm-5.2");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -1991,7 +1999,7 @@ describe("CHAT-02: explicit provider pins", () => {
       {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: {
-          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+          Authorization: `Bearer ${secretTemplate("ZAI_API_KEY")}`,
         },
       },
       [200],
@@ -2003,8 +2011,8 @@ describe("CHAT-02: explicit provider pins", () => {
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await deleteBddVm0ApiKeys({
-      vendor: "openrouter",
-      model: "z-ai/glm-5.2",
+      vendor: "zai",
+      model: "glm-5.2",
     });
   }, 90_000);
 });

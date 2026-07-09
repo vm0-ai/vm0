@@ -8,6 +8,7 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
@@ -109,7 +110,7 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
 
-    expect(response.body.tier).toBe("pro-suspend");
+    expect(response.body.tier).toBe("limited-free-1");
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
@@ -192,6 +193,31 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.cancelAtPeriodEnd).toBeFalsy();
     expect(response.body.scheduledChange).toBeNull();
     expect(response.body.hasSubscription).toBeTruthy();
+  });
+
+  it("returns custom tier status without subscription plan credits", async () => {
+    const fixture = await track(
+      store.set(seedBillingStatusOrg$, { credits: 0 }, context.signal),
+    );
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "custom",
+      credits: 0,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.tier).toBe("custom");
+    expect(response.body.hasSubscription).toBeFalsy();
+    expect(response.body.currentPeriodEnd).toBeNull();
+    expect(response.body.concurrencyLimit).toBe(10);
+    expect(response.body.creditBreakdown).toStrictEqual([]);
   });
 
   it("returns finite concurrency limit when the concurrency cap is disabled", async () => {
@@ -531,7 +557,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.cancelAtPeriodEnd).toBeTruthy();
     expect(response.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: periodEnd.toISOString(),
     });
   });

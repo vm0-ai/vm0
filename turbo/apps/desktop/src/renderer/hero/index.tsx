@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   IconAlertCircle,
   IconBuilding,
+  IconCode,
   IconDots,
   IconFolderPlus,
   IconLogout,
@@ -52,6 +53,18 @@ const FILESYSTEM_PLUGIN_STATUS_LABELS = {
 } as const satisfies Record<FilesystemPluginState["status"], string>;
 
 const MCP_SERVER_STATUS_LABELS = FILESYSTEM_PLUGIN_STATUS_LABELS;
+
+const MCP_SERVERS_SAMPLE_CONFIG = `{
+  "mcpServers": {
+    "apple-notes": {
+      "command": "npx",
+      "args": ["-y", "mcp-apple-notes"]
+    },
+    "figma": {
+      "url": "http://127.0.0.1:3845/mcp"
+    }
+  }
+}`;
 
 const ARRIVAL_ANIMATION_MS = 1_100;
 
@@ -447,28 +460,35 @@ function McpPluginsPanel({
         ) : (
           plugin.servers.map((server) => {
             return (
-              <div key={server.name}>
-                <CheckboxRow
-                  title={server.name}
-                  subtitle={`${server.transport === "http" ? "Streamable HTTP" : "stdio"}${
-                    server.status === "running"
-                      ? ` · ${server.tools.length} tools`
-                      : ""
-                  }`}
-                  meta={MCP_SERVER_STATUS_LABELS[server.status]}
-                  checked={server.enabled}
-                  disabled={busy}
-                  onChange={(enabled) => {
-                    void setServerEnabled({ server: server.name, enabled });
-                  }}
-                />
-                {server.lastError && (
-                  <div className="inline-alert inline-alert-error">
-                    <IconAlertCircle size={16} />
-                    <span>{server.lastError}</span>
-                  </div>
-                )}
-                <div className="panel-actions">
+              <div className="mcp-server-entry" key={server.name}>
+                <div className="mcp-server-row">
+                  <label className="mcp-server-toggle">
+                    <input
+                      type="checkbox"
+                      checked={server.enabled}
+                      disabled={busy}
+                      onChange={(event) => {
+                        void setServerEnabled({
+                          server: server.name,
+                          enabled: event.currentTarget.checked,
+                        });
+                      }}
+                    />
+                    <span className="checkbox-row-copy">
+                      <span className="row-title">{server.name}</span>
+                      <span className="row-meta">
+                        {server.transport === "http"
+                          ? "Streamable HTTP"
+                          : "stdio"}
+                        {server.status === "running"
+                          ? ` · ${server.tools.length} tools`
+                          : ""}
+                      </span>
+                    </span>
+                    <span className="checkbox-row-meta">
+                      {MCP_SERVER_STATUS_LABELS[server.status]}
+                    </span>
+                  </label>
                   <button
                     type="button"
                     className="icon-only-button"
@@ -482,6 +502,12 @@ function McpPluginsPanel({
                     <IconTrash size={15} />
                   </button>
                 </div>
+                {server.lastError && (
+                  <div className="inline-alert inline-alert-error">
+                    <IconAlertCircle size={16} />
+                    <span>{server.lastError}</span>
+                  </div>
+                )}
               </div>
             );
           })
@@ -489,9 +515,9 @@ function McpPluginsPanel({
       </div>
       <textarea
         className="mcp-config-input"
-        placeholder='Paste an "mcpServers" JSON config to add servers'
+        placeholder={MCP_SERVERS_SAMPLE_CONFIG}
         value={configJson}
-        rows={5}
+        rows={8}
         spellCheck={false}
         disabled={busy}
         onChange={(event) => {
@@ -505,6 +531,16 @@ function McpPluginsPanel({
         </div>
       )}
       <div className="panel-actions">
+        <IconButton
+          icon={<IconCode size={15} />}
+          onClick={() => {
+            setImportError(null);
+            setConfigJson(MCP_SERVERS_SAMPLE_CONFIG);
+          }}
+          disabled={busy}
+        >
+          Use sample
+        </IconButton>
         <IconButton
           icon={<IconPlug size={15} />}
           onClick={() => {

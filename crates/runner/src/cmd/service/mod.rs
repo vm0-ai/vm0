@@ -15,6 +15,7 @@ mod diagnostic;
 mod drain_override;
 mod gate;
 mod signal;
+mod stop;
 mod systemctl;
 mod target;
 mod unit_config;
@@ -47,7 +48,7 @@ enum ServiceCommand {
     /// Start runner as a transient systemd service (CI, does not survive reboot)
     Start(ServiceRunArgs),
     /// Stop the runner service
-    Stop(ServiceStopArgs),
+    Stop(stop::StopArgs),
     /// Install runner as a persistent systemd service (production, survives reboot)
     Install(ServiceRunArgs),
     /// Uninstall the runner service (stop + disable + remove unit)
@@ -79,16 +80,6 @@ struct ServiceRunArgs {
     /// Use local file queue provider instead of API
     #[arg(long)]
     local: bool,
-}
-
-#[derive(Args)]
-struct ServiceStopArgs {
-    /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
-    #[arg(long)]
-    name: String,
-    /// Skip active-jobs pre-check and force stop (active jobs will be killed).
-    #[arg(long)]
-    force: bool,
 }
 
 #[derive(Args)]
@@ -152,7 +143,7 @@ struct ServiceLogsArgs {
 pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
     match args.command {
         ServiceCommand::Start(a) => start(a).await,
-        ServiceCommand::Stop(a) => stop(a).await,
+        ServiceCommand::Stop(a) => stop::run(a).await,
         ServiceCommand::Install(a) => install(a).await,
         ServiceCommand::Uninstall(a) => uninstall(a).await,
         ServiceCommand::Drain(a) => drain(a).await,
@@ -728,47 +719,6 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     .await?;
 
     info!(unit = %unit.unit_name(), "transient service started");
-    Ok(())
-}
-
-/// `service stop` — stop the named unit.
-///
-/// Also clears residual transient unit state so that a subsequent
-/// `service start` with the same name succeeds.
-///
-/// Refuses to stop a runner with active jobs unless `--force` is passed.
-/// See [`check_active_jobs_gate`] for the policy.
-async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
-    let unit = RunnerServiceUnit::from_suffix(&args.name)?;
-    let home = HomePaths::new()?;
-    let _service_lock = acquire_service_lock(&unit, &home).await?;
-
-    check_active_jobs_gate(&unit, args.force, "stop").await?;
-    let svc = unit.service_name();
-
-    if is_unit_active(&unit).await? {
-        // Active unit: stop must succeed — failure means the runner process
-        // (and its Firecracker VMs) would keep running.
-        run_systemctl(&["stop", svc]).await?;
-        info!(unit = %unit.unit_name(), "stopped");
-    } else {
-        // Unit may be loaded but inactive (residual transient unit).
-        // Try stop to trigger systemd GC.  Ignore errors — the unit may
-        // not exist at all (first run on this host).
-        let _ = run_systemctl(&["stop", svc]).await;
-        info!(unit = %unit.unit_name(), "no active service found");
-    }
-
-    // Clear "failed" latch so systemd fully unloads the transient unit.
-    // (stop alone does not clear the failed state.)
-    let _ = run_systemctl(&["reset-failed", svc]).await;
-    if let Err(e) = reload_systemd_if_drain_restart_override_removed(&unit).await {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override after stop");
-        eprintln!(
-            "WARNING: stop could not remove the drain restart override for {}: {e}.",
-            unit.service_name()
-        );
-    }
     Ok(())
 }
 
