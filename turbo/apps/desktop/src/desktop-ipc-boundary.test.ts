@@ -115,6 +115,18 @@ describe("Desktop IPC boundary", () => {
         channel: COMPUTER_USE_CHANNELS.removeFilesystemPluginAllowedDirectory,
         args: ["/tmp"],
       },
+      {
+        channel: COMPUTER_USE_CHANNELS.importMcpPluginServers,
+        args: ['{"mcpServers":{}}'],
+      },
+      {
+        channel: COMPUTER_USE_CHANNELS.setMcpPluginServerEnabled,
+        args: ["notes", true],
+      },
+      {
+        channel: COMPUTER_USE_CHANNELS.removeMcpPluginServer,
+        args: ["notes"],
+      },
       { channel: COMPUTER_USE_CHANNELS.openAccessibilitySettings, args: [] },
       { channel: COMPUTER_USE_CHANNELS.openScreenRecordingSettings, args: [] },
       { channel: COMPUTER_USE_CHANNELS.openAutomationSettings, args: [] },
@@ -137,6 +149,9 @@ describe("Desktop IPC boundary", () => {
     expect(api.setFilesystemPluginEnabled).not.toHaveBeenCalled();
     expect(api.addFilesystemPluginAllowedDirectory).not.toHaveBeenCalled();
     expect(api.removeFilesystemPluginAllowedDirectory).not.toHaveBeenCalled();
+    expect(api.importMcpPluginServers).not.toHaveBeenCalled();
+    expect(api.setMcpPluginServerEnabled).not.toHaveBeenCalled();
+    expect(api.removeMcpPluginServer).not.toHaveBeenCalled();
     expect(electronMock.shell.openExternal).not.toHaveBeenCalled();
   });
 
@@ -349,6 +364,15 @@ function createComputerUseApi(): {
   readonly removeFilesystemPluginAllowedDirectory: ReturnType<
     typeof vi.fn<(directory: string) => DesktopComputerUseState>
   >;
+  readonly importMcpPluginServers: ReturnType<
+    typeof vi.fn<(json: string) => DesktopComputerUseState>
+  >;
+  readonly setMcpPluginServerEnabled: ReturnType<
+    typeof vi.fn<(server: string, enabled: boolean) => DesktopComputerUseState>
+  >;
+  readonly removeMcpPluginServer: ReturnType<
+    typeof vi.fn<(server: string) => DesktopComputerUseState>
+  >;
 } {
   const state = createComputerUseState();
   return {
@@ -363,6 +387,9 @@ function createComputerUseApi(): {
     setFilesystemPluginEnabled: vi.fn(() => state),
     addFilesystemPluginAllowedDirectory: vi.fn(async () => state),
     removeFilesystemPluginAllowedDirectory: vi.fn(() => state),
+    importMcpPluginServers: vi.fn(() => state),
+    setMcpPluginServerEnabled: vi.fn(() => state),
+    removeMcpPluginServer: vi.fn(() => state),
   };
 }
 

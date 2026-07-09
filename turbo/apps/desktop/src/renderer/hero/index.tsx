@@ -7,6 +7,7 @@ import {
   IconLogout,
   IconPlayerPlay,
   IconPlayerStop,
+  IconPlug,
   IconTrash,
 } from "@tabler/icons-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -17,9 +18,12 @@ import {
 } from "../../computer-use-types";
 import {
   addFilesystemPluginAllowedDirectory$,
+  importMcpPluginServers$,
   openDesktopOrgSelection$,
   removeFilesystemPluginAllowedDirectory$,
+  removeMcpPluginServer$,
   setFilesystemPluginEnabled$,
+  setMcpPluginServerEnabled$,
   signOutDesktop$,
   startComputerUse$,
   stopComputerUse$,
@@ -46,6 +50,8 @@ const FILESYSTEM_PLUGIN_STATUS_LABELS = {
   restarting: "Restarting",
   error: "Error",
 } as const satisfies Record<FilesystemPluginState["status"], string>;
+
+const MCP_SERVER_STATUS_LABELS = FILESYSTEM_PLUGIN_STATUS_LABELS;
 
 const ARRIVAL_ANIMATION_MS = 1_100;
 
@@ -398,6 +404,121 @@ function FilesystemPluginPanel({
   );
 }
 
+function McpPluginsPanel({
+  state,
+}: {
+  readonly state: DesktopComputerUseState;
+}) {
+  const plugin = state.plugins?.mcp;
+  const [configJson, setConfigJson] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importLoadable, importServers] = useLoadableSet(
+    importMcpPluginServers$,
+  );
+  const [setEnabledLoadable, setServerEnabled] = useLoadableSet(
+    setMcpPluginServerEnabled$,
+  );
+  const [removeLoadable, removeServer] = useLoadableSet(removeMcpPluginServer$);
+
+  if (!plugin?.featureEnabled) {
+    return null;
+  }
+
+  const busy =
+    importLoadable.state === "loading" ||
+    setEnabledLoadable.state === "loading" ||
+    removeLoadable.state === "loading";
+
+  const submitImport = async () => {
+    setImportError(null);
+    try {
+      await importServers(configJson);
+      setConfigJson("");
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  return (
+    <Panel title="MCP servers" icon={<IconPlug size={18} />}>
+      <div className="filesystem-directory-list">
+        {plugin.servers.length === 0 ? (
+          <div className="compact-empty">No MCP servers configured.</div>
+        ) : (
+          plugin.servers.map((server) => {
+            return (
+              <div key={server.name}>
+                <CheckboxRow
+                  title={server.name}
+                  subtitle={`${server.transport === "http" ? "Streamable HTTP" : "stdio"}${
+                    server.status === "running"
+                      ? ` · ${server.tools.length} tools`
+                      : ""
+                  }`}
+                  meta={MCP_SERVER_STATUS_LABELS[server.status]}
+                  checked={server.enabled}
+                  disabled={busy}
+                  onChange={(enabled) => {
+                    void setServerEnabled({ server: server.name, enabled });
+                  }}
+                />
+                {server.lastError && (
+                  <div className="inline-alert inline-alert-error">
+                    <IconAlertCircle size={16} />
+                    <span>{server.lastError}</span>
+                  </div>
+                )}
+                <div className="panel-actions">
+                  <button
+                    type="button"
+                    className="icon-only-button"
+                    aria-label={`Remove ${server.name}`}
+                    title="Remove server"
+                    disabled={busy}
+                    onClick={() => {
+                      void removeServer(server.name);
+                    }}
+                  >
+                    <IconTrash size={15} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <textarea
+        className="mcp-config-input"
+        placeholder='Paste an "mcpServers" JSON config to add servers'
+        value={configJson}
+        rows={5}
+        spellCheck={false}
+        disabled={busy}
+        onChange={(event) => {
+          setConfigJson(event.target.value);
+        }}
+      />
+      {importError && (
+        <div className="inline-alert inline-alert-error">
+          <IconAlertCircle size={16} />
+          <span>{importError}</span>
+        </div>
+      )}
+      <div className="panel-actions">
+        <IconButton
+          icon={<IconPlug size={15} />}
+          onClick={() => {
+            void submitImport();
+          }}
+          disabled={busy || !configJson.trim()}
+        >
+          Import servers
+        </IconButton>
+      </div>
+    </Panel>
+  );
+}
+
 export function ReadyExperience({
   authState,
   developerToolsEnabled,
@@ -437,6 +558,7 @@ export function ReadyExperience({
       {developerToolsEnabled && (
         <>
           <FilesystemPluginPanel state={state} />
+          <McpPluginsPanel state={state} />
           <RuntimePanel state={state} />
           <CommandLogPanel state={state} />
         </>

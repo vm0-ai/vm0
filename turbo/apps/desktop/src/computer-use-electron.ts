@@ -33,6 +33,12 @@ interface ComputerUseNativeApi {
   readonly removeFilesystemPluginAllowedDirectory: (
     directory: string,
   ) => DesktopComputerUseState;
+  readonly importMcpPluginServers: (json: string) => DesktopComputerUseState;
+  readonly setMcpPluginServerEnabled: (
+    server: string,
+    enabled: boolean,
+  ) => DesktopComputerUseState;
+  readonly removeMcpPluginServer: (server: string) => DesktopComputerUseState;
 }
 
 function isComputerUseStartOptions(
@@ -143,6 +149,39 @@ export function installComputerUseIpc(
         throw new Error("Filesystem plugin enabled state must be a boolean");
       }
       return api.setFilesystemPluginEnabled(enabled);
+    },
+  );
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.importMcpPluginServers,
+    (event, json: unknown) => {
+      assertComputerUsePage(event);
+      if (typeof json !== "string" || !json.trim()) {
+        throw new Error("MCP server configuration must be a JSON string");
+      }
+      return api.importMcpPluginServers(json);
+    },
+  );
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.setMcpPluginServerEnabled,
+    (event, server: unknown, enabled: unknown) => {
+      assertComputerUsePage(event);
+      if (typeof server !== "string" || !server.trim()) {
+        throw new Error("MCP server name must be a string");
+      }
+      if (typeof enabled !== "boolean") {
+        throw new Error("MCP server enabled state must be a boolean");
+      }
+      return api.setMcpPluginServerEnabled(server, enabled);
+    },
+  );
+  ipcMain.handle(
+    COMPUTER_USE_CHANNELS.removeMcpPluginServer,
+    (event, server: unknown) => {
+      assertComputerUsePage(event);
+      if (typeof server !== "string" || !server.trim()) {
+        throw new Error("MCP server name must be a string");
+      }
+      return api.removeMcpPluginServer(server);
     },
   );
   ipcMain.handle(
