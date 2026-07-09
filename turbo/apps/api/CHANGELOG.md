@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.256.0](https://github.com/vm0-ai/vm0/compare/api-v1.255.0...api-v1.256.0) (2026-07-09)
+
+
+### Features
+
+* inject connector document rag into zero memory runtime ([#20854](https://github.com/vm0-ai/vm0/issues/20854)) ([d457c9b](https://github.com/vm0-ai/vm0/commit/d457c9b8daaf33dde0c32b46e81baeb66b56f673))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.179.0
+    * @vm0/core bumped to 8.421.2
+    * @vm0/db bumped to 1.108.0
+
 ## [1.255.0](https://github.com/vm0-ai/vm0/compare/api-v1.254.0...api-v1.255.0) (2026-07-09)
 
 
