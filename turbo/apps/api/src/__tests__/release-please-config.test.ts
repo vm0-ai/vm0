@@ -93,6 +93,7 @@ describe("release-please API deployment graph", () => {
     );
     expect(apiBuildJob).toContain("Build API Production Output");
     expect(apiBuildJob).toContain("Upload API Production Build Output");
+    expect(apiBuildJob).toContain("retention-days: 3");
     expect(apiBuildJob).not.toContain("./.github/actions/vercel-deploy");
     expect(apiBuildJob).not.toContain("skip-domain");
     expect(apiBuildJob).not.toContain("api_deploy_required");
