@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.250.3](https://github.com/vm0-ai/vm0/compare/api-v1.250.2...api-v1.250.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* inject only prompt-relevant memory context ([#20786](https://github.com/vm0-ai/vm0/issues/20786)) ([fd74f33](https://github.com/vm0-ai/vm0/commit/fd74f333f810dc7802cdfef0b337eb559c6c480c))
+
+
+### Performance Improvements
+
+* add zero memory runtime timing attribution ([#20787](https://github.com/vm0-ai/vm0/issues/20787)) ([ca0d5ea](https://github.com/vm0-ai/vm0/commit/ca0d5ea17ec463fba491144ea1972c4ddd937c11))
+
 ## [1.250.2](https://github.com/vm0-ai/vm0/compare/api-v1.250.1...api-v1.250.2) (2026-07-09)
 
 

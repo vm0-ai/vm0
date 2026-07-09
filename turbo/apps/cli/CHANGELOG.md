@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.232.3](https://github.com/vm0-ai/vm0/compare/cli-v9.232.2...cli-v9.232.3) (2026-07-09)
+
+
+### Bug Fixes
+
+* **cli:** pin npm publisher version ([#20788](https://github.com/vm0-ai/vm0/issues/20788)) ([e4d0813](https://github.com/vm0-ai/vm0/commit/e4d081397961fe0eea1d4623cd9f7db6be721040))
+
 ## [9.232.2](https://github.com/vm0-ai/vm0/compare/cli-v9.232.1...cli-v9.232.2) (2026-07-09)
 
 
