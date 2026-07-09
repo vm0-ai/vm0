@@ -5,11 +5,12 @@
 //! process exits.
 //!
 //! Claims are represented by per-index lock files named
-//! `vm0-nbd-{index}.lock`. The default directory is [`default_lock_dir`],
+//! `vm0-nbd-{index}.lock`. When this API creates a missing lock file, it uses
+//! private file permissions. The default directory is [`default_lock_dir`],
 //! currently `/var/lock`; callers using [`try_acquire_device_claim_in`] may
 //! provide another operator-approved lock-file directory. The directory must
-//! already exist, but this API does not require the directory itself to be
-//! owned by the current effective uid or private to the process.
+//! already exist, but this API does not require the directory itself to be owned
+//! by the current effective uid or private to the process.
 //!
 //! The security-sensitive object is the final per-index lock file. Existing
 //! lock files must be regular files openable for read and write by the current
@@ -85,7 +86,8 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 /// Try to acquire a host-global claim in a custom lock directory.
 ///
 /// `lock_dir` must already exist. The per-index lock path is
-/// `lock_dir/vm0-nbd-{index}.lock`.
+/// `lock_dir/vm0-nbd-{index}.lock`. Missing per-index lock files are created
+/// with private permissions and then validated before locking.
 ///
 /// Existing final lock files must be regular files openable for read and write
 /// by the current process, must be owned by the current effective uid, must not
