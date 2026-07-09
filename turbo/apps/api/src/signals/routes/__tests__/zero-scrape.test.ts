@@ -517,6 +517,64 @@ describe("zero scrape route", () => {
     expect(beforeCredits - afterCredits).toBe(4);
   });
 
+  it("records both concurrent same-org scrape requests", async () => {
+    const actor = scrapeEnabledActor();
+    let firecrawlRequests = 0;
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, async ({ request }) => {
+        firecrawlRequests += 1;
+        const body = (await request.json()) as { readonly url?: string };
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: `# ${body.url ?? "unknown"}`,
+            metadata: {
+              sourceURL: body.url ?? "https://example.com/page",
+            },
+          },
+        });
+      }),
+    );
+
+    const scrapeClient = client();
+    const [first, second] = await Promise.all([
+      accept(
+        scrapeClient(zeroScrapeContract).scrape({
+          headers: authenticate(actor),
+          body: {
+            url: "https://example.com/one",
+            format: "markdown",
+            mode: "standard",
+          },
+        }),
+        [200],
+      ),
+      accept(
+        scrapeClient(zeroScrapeContract).scrape({
+          headers: authenticate(actor),
+          body: {
+            url: "https://example.com/two",
+            format: "markdown",
+            mode: "standard",
+          },
+        }),
+        [200],
+      ),
+    ]);
+    const afterCredits = await credits(actor);
+
+    expect(first.body.creditsCharged).toBe(4);
+    expect(second.body.creditsCharged).toBe(4);
+    expect(firecrawlRequests).toBe(2);
+    expect(beforeCredits - afterCredits).toBe(8);
+  });
+
   it("scrapes public IPv6 literal targets without DNS lookup", async () => {
     const actor = scrapeEnabledActor();
     let requestBody: unknown;
