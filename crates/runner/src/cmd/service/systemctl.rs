@@ -1204,6 +1204,39 @@ mod tests {
     }
 
     #[test]
+    fn service_unit_state_accepts_not_found_inactive_like_states() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let status = ExitStatus::from_raw(0x100);
+        for active_state in ["inactive", "failed", "maintenance"] {
+            let stdout = format!(
+                "LoadState=not-found\nActiveState={active_state}\nSubState=dead\nResult=success\n"
+            );
+            let values = parse_systemctl_show_properties(
+                "vm0-runner-test.service",
+                &properties,
+                stdout.as_bytes(),
+            )
+            .unwrap();
+            let state = service_unit_state_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"Unit not found\n",
+            )
+            .unwrap();
+
+            assert_eq!(state.normalized_state, NormalizedUnitState::NotFound);
+            assert!(
+                !state.is_active_like(),
+                "{active_state} should not be active-like"
+            );
+        }
+    }
+
+    #[test]
     fn service_unit_state_rejects_not_found_active_like_state() {
         use std::os::unix::process::ExitStatusExt;
 
