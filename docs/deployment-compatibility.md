@@ -41,14 +41,14 @@ active, or introduce a versioned/new endpoint and migrate the frontend first.
 
 The backend is the compatibility boundary for both frontend and runner traffic.
 In the production release workflow, app and runner promotion wait for API
-promotion when the same release also changes the API. That ordering reduces the
-chance of a new frontend or runner talking to an old backend, but it does not
-remove cross-version windows: old browser pages can still call the new backend,
-old runners keep draining against the new backend, and traffic promotion is not
-an atomic process visible to every client at the same instant.
+production activation when the same release also changes the API. That ordering
+reduces the chance of a new frontend or runner talking to an old backend, but it
+does not remove cross-version windows: old browser pages can still call the new
+backend, old runners keep draining against the new backend, and traffic
+promotion is not an atomic process visible to every client at the same instant.
 
 Production database migrations are part of the API release lifecycle and run
-before the new API deployment is promoted. Old backend code can therefore
+before the new API deployment serves traffic. Old backend code can therefore
 briefly run against the migrated schema. Migrations must be backward-compatible
 with the currently deployed backend until that backend is no longer serving
 traffic.
@@ -56,9 +56,9 @@ traffic.
 This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
-before migrations run. API traffic promotion must wait until the required
-migrations have completed; app and runner promotion also wait for API promotion
-when the same release changes the API.
+before migrations run. API production activation must wait until the required
+migrations have completed; app and runner promotion also wait for API production
+activation when the same release changes the API.
 
 Backend changes must be safe with:
 

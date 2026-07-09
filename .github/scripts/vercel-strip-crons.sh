@@ -9,5 +9,10 @@ if [[ ! -f "$config_file" ]]; then
 fi
 
 tmp_file="$(mktemp "${config_file}.XXXXXX")"
+cleanup() {
+  rm -f "$tmp_file"
+}
+trap cleanup EXIT
+
 jq 'del(.crons)' "$config_file" > "$tmp_file"
 mv "$tmp_file" "$config_file"

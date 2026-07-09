@@ -781,8 +781,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
       contents: read
       id-token: write
@@ -879,6 +877,7 @@ jobs:
           rm -rf .vercel/output
           cp -R turbo/apps/api/.vercel/output .vercel/output
           test -f .vercel/output/config.json
+          jq -e '(.crons // []) | length > 0' .vercel/output/config.json > /dev/null
 
       - name: Archive API Production Build Output
         run: tar -C .vercel -czf /tmp/api-production-build-output.tgz output
@@ -1107,8 +1106,9 @@ jobs:
   # or validation fails, this job fails, which in turn blocks jobs that keep a
   # `needs: builds-complete` edge.
   #
-  # API promotion and schema publishing depend directly on build-api-production,
-  # so the shared barrier does not wait on the runtime API schema artifact.
+  # API production deployment and schema publishing depend directly on
+  # build-api-production, so the shared barrier does not wait on the runtime API
+  # schema artifact.
   builds-complete:
     needs:
       - release-please
@@ -1257,6 +1257,7 @@ jobs:
           mkdir -p .vercel
           tar -C .vercel -xzf /tmp/api-production-build-output/api-production-build-output.tgz
           test -f .vercel/output/config.json
+          jq -e '(.crons // []) | length > 0' .vercel/output/config.json > /dev/null
 
       - name: Deploy API Production Deployment
         id: deploy-api-production
@@ -1510,7 +1511,7 @@ jobs:
                   text: "*App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Promote app staged deployment to production (traffic switch). If the same
-  # release run also promotes API, wait for API traffic to be live first.
+  # release run also deploys API, wait for API traffic to be live first.
   promote-app-production:
     needs:
       [
