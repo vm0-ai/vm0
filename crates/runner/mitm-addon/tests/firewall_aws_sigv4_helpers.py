@@ -34,21 +34,31 @@ class AwsAuthConfigBase(TypedDict):
 
 
 class AwsAuthConfig(AwsAuthConfigBase, total=False):
+    base: str
     query: dict[str, str]
 
 
-class AwsApiEntry(TypedDict):
+class AwsApiEntryBase(TypedDict):
     base: str
     auth: AwsAuthConfig
 
 
-class AwsVmInfo(TypedDict):
+class AwsApiEntry(AwsApiEntryBase, total=False):
+    id: str
+
+
+class AwsVmInfoBase(TypedDict):
     runId: str
     sandboxToken: str
     encryptedSecrets: str
     networkLogPath: str
     billableFirewalls: list[object]
     vars: dict[str, str]
+
+
+class AwsVmInfo(AwsVmInfoBase, total=False):
+    secretConnectorMap: dict[str, str]
+    secretConnectorMetadataMap: dict[str, object]
 
 
 def aws_sigv4_auth_config(*, include_session_token: bool = True) -> dict[str, str]:
@@ -63,7 +73,9 @@ def aws_sigv4_auth_config(*, include_session_token: bool = True) -> dict[str, st
 
 def aws_api_entry(
     *,
+    api_id: str | None = None,
     base: str = f"https://{STS_HOST}",
+    auth_base: str | None = None,
     auth_headers: dict[str, str] | None = None,
     auth_query: dict[str, str] | None = None,
     include_session_token: bool = True,
@@ -72,12 +84,17 @@ def aws_api_entry(
         "headers": dict(auth_headers) if auth_headers is not None else {},
         "awsSigv4": aws_sigv4_auth_config(include_session_token=include_session_token),
     }
+    if auth_base is not None:
+        auth_config["base"] = auth_base
     if auth_query is not None:
         auth_config["query"] = dict(auth_query)
-    return {
+    api_entry: AwsApiEntry = {
         "base": base,
         "auth": auth_config,
     }
+    if api_id is not None:
+        api_entry["id"] = api_id
+    return api_entry
 
 
 def aws_allow(
@@ -106,15 +123,23 @@ def aws_vm_info(
     sandbox_token: str | None = None,
     encrypted_secrets: str = "iv:tag:data",
     region: str = DEFAULT_AWS_REGION,
+    billable_firewalls: list[object] | None = None,
+    secret_connector_map: dict[str, str] | None = None,
+    secret_connector_metadata_map: dict[str, object] | None = None,
 ) -> AwsVmInfo:
-    return {
+    vm_info: AwsVmInfo = {
         "runId": run_id,
         "sandboxToken": DEFAULT_SANDBOX_TOKEN if sandbox_token is None else sandbox_token,
         "encryptedSecrets": encrypted_secrets,
         "networkLogPath": str(tmp_path / "network.jsonl"),
-        "billableFirewalls": [],
+        "billableFirewalls": [] if billable_firewalls is None else billable_firewalls,
         "vars": {"AWS_REGION": region},
     }
+    if secret_connector_map is not None:
+        vm_info["secretConnectorMap"] = dict(secret_connector_map)
+    if secret_connector_metadata_map is not None:
+        vm_info["secretConnectorMetadataMap"] = dict(secret_connector_metadata_map)
+    return vm_info
 
 
 def aws_auth_response(
@@ -250,25 +275,33 @@ def assert_sigv4_failed_closed(
 
 def aws_auth_cache_key(
     tmp_path: Path,
-    api_entry: AwsApiEntry | None = None,
+    allow: matching.FirewallAllow | None = None,
     vm_info: AwsVmInfo | None = None,
 ):
-    resolved_api_entry = aws_api_entry() if api_entry is None else api_entry
+    resolved_allow = aws_allow() if allow is None else allow
+    resolved_api_entry = resolved_allow.api_entry
     resolved_vm_info = aws_vm_info(tmp_path) if vm_info is None else vm_info
     auth_config = resolved_api_entry["auth"]
     auth_request = auth_client.FirewallAuthRequest(
         encrypted_secrets=resolved_vm_info["encryptedSecrets"],
         auth_headers=auth_config["headers"],
         sandbox_token=resolved_vm_info["sandboxToken"],
+        auth_base=auth_config.get("base"),
         auth_query=auth_config.get("query"),
         auth_aws_sigv4=auth_config["awsSigv4"],
+        secret_connector_map=resolved_vm_info.get("secretConnectorMap"),
+        secret_connector_metadata_map=resolved_vm_info.get("secretConnectorMetadataMap"),
         vars_map=resolved_vm_info["vars"],
+        firewall_billable=auth.is_billable_firewall(
+            resolved_allow.name,
+            dict(resolved_vm_info),
+        ),
     )
     return auth_cache_key(
         run_id=resolved_vm_info["runId"],
-        api_id=resolved_api_entry["base"],
+        api_id=resolved_api_entry.get("id", resolved_api_entry["base"]),
         auth_identity=auth._build_firewall_auth_identity(
-            firewall_name="aws",
+            firewall_name=resolved_allow.name,
             firewall_base=resolved_api_entry["base"],
             auth_request=auth_request,
         ),
@@ -278,15 +311,17 @@ def aws_auth_cache_key(
 def cache_aws_sigv4_credentials(
     tmp_path: Path,
     *,
-    api_entry: AwsApiEntry | None = None,
+    allow: matching.FirewallAllow | None = None,
     vm_info: AwsVmInfo | None = None,
     credentials: AwsSigV4Credentials | None = None,
     headers: dict[str, str] | None = None,
     query: dict[str, str] | None = None,
+    expires_at: object = None,
 ) -> None:
     set_cached_headers(
-        aws_auth_cache_key(tmp_path, api_entry=api_entry, vm_info=vm_info),
+        aws_auth_cache_key(tmp_path, allow=allow, vm_info=vm_info),
         headers=dict(headers) if headers is not None else {},
+        expires_at=expires_at,
         query=dict(query) if query is not None else None,
         aws_sigv4=(resolved_aws_sigv4_credentials() if credentials is None else credentials),
     )

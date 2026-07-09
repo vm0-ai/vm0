@@ -527,11 +527,12 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
     mitm_ctx,
 ):
     api_entry = aws_api_entry(auth_query={"trace": "${{ secrets.TRACE_ID }}"})
+    allow = aws_allow(api_entry)
     flow = make_sts_header_sigv4_flow(real_flow, headers)
     prepare_firewall_request(flow)
     cache_aws_sigv4_credentials(
         tmp_path,
-        api_entry=api_entry,
+        allow=allow,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
         query={"trace": "resolved-trace"},
     )
@@ -539,7 +540,7 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
     with mitm_ctx():
         result = await auth.handle_firewall_request(
             flow,
-            aws_allow(api_entry),
+            allow,
             dict(aws_vm_info(tmp_path)),
         )
 
@@ -547,6 +548,38 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
     assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is True
     assert flow.response is None
     assert flow.request.query["trace"] == "resolved-trace"
+    assert flow.request.headers["Authorization"].startswith(
+        "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"
+    )
+
+
+async def test_header_sigv4_seeded_cache_matches_allow_context_identity(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    api_entry = aws_api_entry(api_id="aws-sts-api")
+    allow = aws_allow(api_entry, firewall_name="custom-aws")
+    vm_info = aws_vm_info(tmp_path, billable_firewalls=["custom-aws"])
+    flow = make_sts_header_sigv4_flow(real_flow, headers)
+    prepare_firewall_request(flow, run_id=vm_info["runId"])
+    cache_aws_sigv4_credentials(
+        tmp_path,
+        allow=allow,
+        vm_info=vm_info,
+        credentials=resolved_aws_sigv4_credentials(session_token=None),
+        expires_at=1_800_000_000,
+    )
+
+    with mitm_ctx():
+        result = await auth.handle_firewall_request(flow, allow, dict(vm_info))
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert flow.metadata[metadata_keys.FIREWALL_API_ID] == "aws-sts-api"
+    assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is True
+    assert flow.response is None
     assert flow.request.headers["Authorization"].startswith(
         "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"
     )
