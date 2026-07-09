@@ -1,9 +1,11 @@
 """AWS SigV4 firewall-auth integration helpers for mitm-addon tests."""
 
 import copy
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TypedDict
+
+from mitmproxy import http
 
 import auth
 import firewall_auth_client as auth_client
@@ -29,6 +31,8 @@ from url_utils import get_original_url
 
 DEFAULT_SANDBOX_TOKEN = "sandbox-token"
 FAR_FUTURE_EXPIRES_AT = 9_999_999_999
+_RealFlowFactory = Callable[..., http.HTTPFlow]
+_HeaderFactory = Callable[..., http.Headers]
 
 
 class AwsAuthConfigBase(TypedDict):
@@ -64,7 +68,7 @@ class AwsVmInfo(AwsVmInfoBase, total=False):
     secretConnectorMetadataMap: dict[str, object]
 
 
-def aws_sigv4_auth_config(*, include_session_token: bool = True) -> dict[str, str]:
+def _aws_sigv4_auth_config(*, include_session_token: bool = True) -> dict[str, str]:
     config = {
         "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
         "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
@@ -85,7 +89,7 @@ def aws_api_entry(
 ) -> AwsApiEntry:
     auth_config: AwsAuthConfig = {
         "headers": dict(auth_headers) if auth_headers is not None else {},
-        "awsSigv4": aws_sigv4_auth_config(include_session_token=include_session_token),
+        "awsSigv4": _aws_sigv4_auth_config(include_session_token=include_session_token),
     }
     if auth_base is not None:
         auth_config["base"] = auth_base
@@ -197,8 +201,8 @@ def prepare_firewall_request(
 
 
 def make_sts_header_sigv4_flow(
-    real_flow,
-    headers,
+    real_flow: _RealFlowFactory,
+    headers: _HeaderFactory,
     *,
     host: str = STS_HOST,
     path: str = "/",
@@ -208,7 +212,7 @@ def make_sts_header_sigv4_flow(
     signed_headers: str = "host;x-amz-date",
     amz_date: str | None = DEFAULT_SIGV4_TIMESTAMP,
     extra_headers: tuple[tuple[str, str], ...] = (),
-):
+) -> http.HTTPFlow:
     return real_flow(
         with_response=False,
         host=host,
@@ -230,7 +234,9 @@ def make_sts_header_sigv4_flow(
     )
 
 
-def make_sts_query_sigv4_flow(real_flow, *, path: str | None = None):
+def make_sts_query_sigv4_flow(
+    real_flow: _RealFlowFactory, *, path: str | None = None
+) -> http.HTTPFlow:
     return real_flow(
         with_response=False,
         host=STS_HOST,
@@ -277,7 +283,7 @@ def assert_sigv4_failed_closed(
     assert message_fragment in response["message"]
 
 
-def aws_auth_cache_key(
+def _aws_auth_cache_key(
     tmp_path: Path,
     allow: matching.FirewallAllow | None = None,
     vm_info: AwsVmInfo | None = None,
@@ -323,7 +329,7 @@ def cache_aws_sigv4_credentials(
     expires_at: object = None,
 ) -> None:
     set_cached_headers(
-        aws_auth_cache_key(tmp_path, allow=allow, vm_info=vm_info),
+        _aws_auth_cache_key(tmp_path, allow=allow, vm_info=vm_info),
         headers=dict(headers) if headers is not None else {},
         expires_at=expires_at,
         query=dict(query) if query is not None else None,
