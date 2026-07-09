@@ -628,6 +628,30 @@ describe("createApp", () => {
 
       expect(response.status).toBe(200);
     });
+
+    it("exempts external webhook paths from the guard without the bypass secret", async () => {
+      mockEnv("ENV", "preview");
+      mockEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+      const app = createApp({ signal: context.signal });
+
+      // A non-webhook path is still rejected by the guard before route matching.
+      const guarded = await app.request("/api/legacy/fallthrough", {
+        method: "GET",
+      });
+      expect(guarded.status).toBe(403);
+
+      // Stripe (and every other) webhook is exempt, so the request reaches
+      // routing instead of the guard. GET does not match the POST-only handler,
+      // yielding a normal 404 rather than a bypass rejection — proof the
+      // server-to-server webhook would have reached its handler.
+      const webhook = await app.request("/api/webhooks/stripe", {
+        method: "GET",
+      });
+      expect(webhook.status).toBe(404);
+      await expect(webhook.json()).resolves.toStrictEqual({
+        error: "Not found",
+      });
+    });
   });
 
   describe("cors", () => {

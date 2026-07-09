@@ -163,7 +163,7 @@ fn build_mock_run_config_with_runtime(
     let (provider, handle) = make_provider(cancel.clone());
     let provider_ref = Arc::clone(&provider);
 
-    let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+    let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Starting);
     let parking_gate = ParkingGate::new_open();
     let lifecycle = LifecycleController::new(mode_tx, parking_gate.clone());
     let start_observer = StartLoopTestObserver::default();

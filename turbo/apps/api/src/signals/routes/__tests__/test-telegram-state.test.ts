@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { http, HttpResponse } from "msw";
+import { onTestFinished } from "vitest";
 import type { TestSlackStateResponse } from "@vm0/api-contracts/contracts/test-slack-state";
 import type {
   TestTelegramStateResponse,
@@ -15,6 +16,7 @@ import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { testTelegramStateRoutes } from "../test-telegram-state";
+import { createDeferredPromise, settle } from "../../utils";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -36,6 +38,17 @@ interface TelegramFixture {
 interface SlackFixture {
   readonly teamId: string;
   readonly slackUserId: string;
+}
+
+interface SlackUserInfoMockResponse {
+  readonly ok: true;
+  readonly user: {
+    readonly profile: {
+      readonly display_name: string;
+      readonly email: string;
+    };
+    readonly tz: string;
+  };
 }
 
 interface RecentRun {
@@ -109,6 +122,13 @@ function sandboxOperationActionTypes(
   );
 }
 
+function slackUserInfoCallCount(userId: string): number {
+  return context.mocks.slack.users.info.mock.calls.filter((call) => {
+    const request = call[0];
+    return isRecord(request) && request.user === userId;
+  }).length;
+}
+
 function mockClerkTestUser(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -143,6 +163,21 @@ function mockTelegramTyping(): void {
   );
 }
 
+function slackUserInfoResponse(
+  displayName = "Slack User",
+): SlackUserInfoMockResponse {
+  return {
+    ok: true,
+    user: {
+      profile: {
+        display_name: displayName,
+        email: "slack@example.com",
+      },
+      tz: "UTC",
+    },
+  };
+}
+
 function configureSlackDispatchMocks(): void {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
@@ -169,16 +204,7 @@ function configureSlackDispatchMocks(): void {
     ok: true,
     messages: [],
   });
-  context.mocks.slack.users.info.mockResolvedValue({
-    ok: true,
-    user: {
-      profile: {
-        display_name: "Slack User",
-        email: "slack@example.com",
-      },
-      tz: "UTC",
-    },
-  });
+  context.mocks.slack.users.info.mockResolvedValue(slackUserInfoResponse());
 }
 
 function postTelegramState(body: Record<string, unknown>): Promise<Response> {
@@ -322,11 +348,10 @@ async function dispatchTelegramMessage(args: {
   ).resolves.toStrictEqual({ ok: true });
 }
 
-async function dispatchSlackMessage(args: {
+async function postSlackDispatchProbe(args: {
   readonly fixture: SlackFixture;
   readonly text: string;
 }): Promise<void> {
-  configureSlackDispatchMocks();
   const response = await requestApp(SLACK_DISPATCH_PROBE_ROUTE, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -345,6 +370,13 @@ async function dispatchSlackMessage(args: {
   ).resolves.toStrictEqual({ ok: true });
 }
 
+async function dispatchSlackMessage(args: {
+  readonly fixture: SlackFixture;
+  readonly text: string;
+}): Promise<void> {
+  configureSlackDispatchMocks();
+  await postSlackDispatchProbe(args);
+}
 describe("GET /api/test/telegram-state", () => {
   it("returns 404 when the test endpoint is not allowed", async () => {
     mockEnv("ENV", "production");
@@ -731,6 +763,7 @@ describe("POST /api/test/telegram-state", () => {
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
       "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {
@@ -772,6 +805,143 @@ describe("POST /api/test/telegram-state", () => {
     ]) {
       expect(serializedTimingEvents).not.toContain(forbiddenValue);
     }
+  });
+
+  it("coalesces overlapping Slack user info lookups during run creation", async () => {
+    mockEnv("ENV", "development");
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const email = `${randomUUID()}@example.test`;
+    const slack = await seedSlackFixture({ userId, orgId, email });
+    const prompt = "slack user info coalescing";
+    const contextMentionedUserId = "U_CONTEXT_MENTIONED";
+    configureSlackDispatchMocks();
+    const historyResponse = createDeferredPromise<{
+      readonly ok: true;
+      readonly messages: readonly Record<string, unknown>[];
+    }>(context.signal);
+    const currentUserInfoResponse =
+      createDeferredPromise<SlackUserInfoMockResponse>(context.signal);
+    const releasePendingMocks = (): void => {
+      if (!historyResponse.settled()) {
+        historyResponse.resolve({ ok: true, messages: [] });
+      }
+      if (!currentUserInfoResponse.settled()) {
+        currentUserInfoResponse.resolve(slackUserInfoResponse());
+      }
+    };
+    context.mocks.slack.conversations.history.mockReturnValue(
+      historyResponse.promise,
+    );
+    context.mocks.slack.users.info.mockImplementation(
+      async (request: unknown) => {
+        const requestedUserId =
+          isRecord(request) && typeof request.user === "string"
+            ? request.user
+            : "";
+        if (requestedUserId === slack.slackUserId) {
+          return await currentUserInfoResponse.promise;
+        }
+        return slackUserInfoResponse(`Slack User ${requestedUserId}`);
+      },
+    );
+
+    const responsePromise = (async () => {
+      await postSlackDispatchProbe({ fixture: slack, text: prompt });
+    })();
+    onTestFinished(async () => {
+      releasePendingMocks();
+      await settle(responsePromise);
+    });
+
+    await expect
+      .poll(() => {
+        return slackUserInfoCallCount(slack.slackUserId);
+      })
+      .toBe(1);
+    await expect
+      .poll(() => {
+        return context.mocks.slack.conversations.history.mock.calls.length;
+      })
+      .toBe(1);
+    historyResponse.resolve({
+      ok: true,
+      messages: [
+        {
+          user: slack.slackUserId,
+          text: `previous context from the same Slack user and <@${contextMentionedUserId}>`,
+          ts: "1709999999.000000",
+        },
+      ],
+    });
+    await expect
+      .poll(() => {
+        return slackUserInfoCallCount(contextMentionedUserId);
+      })
+      .toBe(1);
+    expect(slackUserInfoCallCount(slack.slackUserId)).toBe(1);
+
+    currentUserInfoResponse.resolve(slackUserInfoResponse());
+    await responsePromise;
+
+    expect(slackUserInfoCallCount(slack.slackUserId)).toBe(1);
+    const slackState = await readSlackState(slack.teamId);
+    const run = recentRuns(slackState.recent_runs).find((candidate) => {
+      return candidate.promptPreview === prompt;
+    });
+    if (!run) {
+      throw new Error("Expected Slack dispatch probe to create a run");
+    }
+    const timingEvents = sandboxOperationEventsForRun(run.id);
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type:
+            "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
+          slack_user_info_resolver_requested_count_bucket: "2_4",
+          slack_user_info_resolver_cache_hit_count_bucket: "0",
+          slack_user_info_resolver_miss_count_bucket: "2_4",
+          slack_user_info_resolver_in_flight_hit_count_bucket: "1",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(timingEvents)).not.toContain(contextMentionedUserId);
+  });
+
+  it("keeps creating Slack runs when Slack user info lookup rejects", async () => {
+    mockEnv("ENV", "development");
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const email = `${randomUUID()}@example.test`;
+    const slack = await seedSlackFixture({ userId, orgId, email });
+    const prompt = "slack user info failure should not fail run creation";
+    configureSlackDispatchMocks();
+    context.mocks.slack.conversations.history.mockResolvedValue({
+      ok: true,
+      messages: [
+        {
+          user: slack.slackUserId,
+          text: "context from the same Slack user",
+          ts: "1709999999.000000",
+        },
+      ],
+    });
+    context.mocks.slack.users.info.mockRejectedValue(
+      new Error("Slack users.info failed"),
+    );
+
+    await postSlackDispatchProbe({ fixture: slack, text: prompt });
+
+    expect(slackUserInfoCallCount(slack.slackUserId)).toBeGreaterThan(0);
+    const slackState = await readSlackState(slack.teamId);
+    expect(recentRuns(slackState.recent_runs)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "slack",
+          promptPreview: prompt,
+        }),
+      ]),
+    );
   });
 });
 

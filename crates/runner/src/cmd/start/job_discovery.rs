@@ -364,6 +364,10 @@ async fn claim_with_local_admission(
     let mode = *ctx.mode_rx.borrow();
     match mode {
         RunnerMode::Running => {}
+        RunnerMode::Starting => {
+            admission.rollback(ctx.cancel_tokens).await;
+            return None;
+        }
         RunnerMode::Draining => {
             admission.rollback(ctx.cancel_tokens).await;
             return None;
