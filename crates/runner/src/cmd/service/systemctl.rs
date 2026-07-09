@@ -520,13 +520,8 @@ fn systemctl_property<'a>(
 }
 
 fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> RunnerResult<bool> {
-    match active_state {
-        "active" | "activating" | "reloading" | "refreshing" => Ok(true),
-        "inactive" | "failed" | "deactivating" | "maintenance" => Ok(false),
-        _ => Err(RunnerError::Internal(format!(
-            "unknown ActiveState for {svc}: {active_state} (LoadState={load_state})"
-        ))),
-    }
+    let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
+    Ok(normalized_state == NormalizedUnitState::ActiveLike && active_state != "deactivating")
 }
 
 fn normalize_unit_state(
