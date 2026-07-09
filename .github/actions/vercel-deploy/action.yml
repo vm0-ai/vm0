@@ -65,6 +65,10 @@ inputs:
     description: "Produce a Staged production deployment that is prod-eligible but not yet serving traffic (requires prebuilt=true and environment=production). Promote later via vercel-promote."
     required: false
     default: "false"
+  disable-crons:
+    description: "Remove Vercel Cron definitions from a prebuilt production deployment before upload. Use for staged production deployments that must not run cron before promotion."
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -96,6 +100,7 @@ runs:
         INPUT_PREBUILT: ${{ inputs.prebuilt }}
         INPUT_PREBUILT_BUILD_COMMAND: ${{ inputs.prebuilt-build-command }}
         INPUT_SKIP_DOMAIN: ${{ inputs.skip-domain }}
+        INPUT_DISABLE_CRONS: ${{ inputs.disable-crons }}
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
         INPUT_VERCEL_TOKEN: ${{ inputs.vercel-token }}
         INPUT_META_BRANCH: ${{ inputs.meta-branch }}
@@ -113,6 +118,13 @@ runs:
         if [ "$INPUT_SKIP_DOMAIN" == "true" ]; then
           if [ "$INPUT_PREBUILT" != "true" ] || [ "$INPUT_ENVIRONMENT" != "production" ]; then
             echo "::error::skip-domain=true requires prebuilt=true and environment=production (got prebuilt=$INPUT_PREBUILT, environment=$INPUT_ENVIRONMENT)"
+            exit 1
+          fi
+        fi
+
+        if [ "$INPUT_DISABLE_CRONS" == "true" ]; then
+          if [ "$INPUT_PREBUILT" != "true" ] || [ "$INPUT_ENVIRONMENT" != "production" ]; then
+            echo "::error::disable-crons=true requires prebuilt=true and environment=production (got prebuilt=$INPUT_PREBUILT, environment=$INPUT_ENVIRONMENT)"
             exit 1
           fi
         fi
@@ -155,6 +167,11 @@ runs:
           if [ ! -f .vercel/output/config.json ]; then
             echo "::error::prebuilt deployment requires .vercel/output/config.json"
             exit 1
+          fi
+
+          if [ "$INPUT_DISABLE_CRONS" == "true" ]; then
+            echo "Removing Vercel Cron definitions from prebuilt output..."
+            bash "${GITHUB_ACTION_PATH}/../../scripts/vercel-strip-crons.sh" .vercel/output/config.json
           fi
 
           # Deploy prebuilt artifacts (no remote build)
