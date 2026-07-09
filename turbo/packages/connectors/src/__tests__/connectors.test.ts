@@ -453,56 +453,6 @@ describe("connector auth method lifecycle helpers", () => {
     });
   });
 
-  it("treats no-auth grants as scope-free and runtime available", () => {
-    expect(
-      connectorAuthMethodHasGrantKind("nintendo-eshop-catalog", "api", "none"),
-    ).toBe(true);
-    expect(
-      getConnectorAuthMethodGrantScopes("nintendo-eshop-catalog", "api"),
-    ).toStrictEqual([]);
-    expect(
-      getConnectorAuthMethodGrantMetadata("nintendo-eshop-catalog", "api"),
-    ).toStrictEqual({
-      kind: "none",
-      outputs: {},
-    });
-    expect(
-      getConnectorAuthMethodAccessMetadata("nintendo-eshop-catalog", "api"),
-    ).toStrictEqual({
-      kind: "none",
-      envBindings: {},
-      platformSecrets: [],
-    });
-    expect(
-      hasRequiredConnectorAuthMethodScopes(
-        "nintendo-eshop-catalog",
-        "api",
-        null,
-      ),
-    ).toBe(true);
-    expect(
-      getAvailableConnectorAuthMethodIds(
-        "nintendo-eshop-catalog",
-        {
-          [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
-        },
-        { apiAuthMethodPolicy: "include" },
-      ),
-    ).toStrictEqual(["api"]);
-    expect(
-      getAvailableConnectorAuthMethodIds(
-        "nintendo-eshop-catalog",
-        {},
-        { apiAuthMethodPolicy: "include" },
-      ),
-    ).toStrictEqual([]);
-    expect(
-      getRuntimeAvailableConnectorTypes(() => {
-        return undefined;
-      }),
-    ).toContain("nintendo-eshop-catalog");
-  });
-
   it("computes OAuth scope diffs for historical stored scope snapshots", () => {
     expect(
       getConnectorAuthMethodScopeDiff("github", "oauth", ["repo"]),

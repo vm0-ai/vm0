@@ -3134,6 +3134,35 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
     "apis": [
       {
         "authHeaderNames": [
+          "Authorization",
+          "User-Agent"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://api.accounts.nintendo.com",
+        "envNames": [
+          "NINTENDO_STORE_TOKEN"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization",
+          "User-Agent",
+          "gentry-locale"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://app-api.znej.nintendo.com",
+        "envNames": [
+          "NINTENDO_STORE_TOKEN",
+          "NINTENDO_STORE_LOCALE"
+        ]
+      }
+    ],
+    "name": "nintendo-store"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
           "Authorization"
         ],
         "authQueryParamNames": [],

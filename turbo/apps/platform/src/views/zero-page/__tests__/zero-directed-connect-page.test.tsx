@@ -358,8 +358,8 @@ describe("directed connector connect page", () => {
   it("connects a no-auth connector directly before authorizing the agent", async () => {
     mockPublicConnectorStatus(
       publicNoAuthConnectorStatus({
-        connectorRef: "nintendo-eshop-catalog",
-        label: "Nintendo eShop Catalog",
+        connectorRef: "stripe",
+        label: "Public Stripe",
       }),
     );
     let connectCalls = 0;
@@ -367,11 +367,11 @@ describe("directed connector connect page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("nintendo-eshop-catalog");
+        expect(params.type).toBe("stripe");
         expect(body).toStrictEqual({ authMethod: "api" });
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "nintendo-eshop-catalog",
+          type: "stripe",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -392,7 +392,7 @@ describe("directed connector connect page", () => {
         updateCalls += 1;
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["nintendo-eshop-catalog"],
+          enabledTypes: ["stripe"],
           operation: "add",
         });
         return respond(200, { enabledTypes: body.enabledTypes });
@@ -401,12 +401,12 @@ describe("directed connector connect page", () => {
 
     detachedSetupPage({
       context,
-      path: `/connectors/nintendo-eshop-catalog/connect?agentId=${AGENT_ID}`,
+      path: `/connectors/stripe/connect?agentId=${AGENT_ID}`,
     });
 
     await waitFor(() => {
       expect(
-        screen.getByText("Zero needs Nintendo eShop Catalog to proceed"),
+        screen.getByText("Zero needs Public Stripe to proceed"),
       ).toBeInTheDocument();
     });
     click(getButtonByText("Connect"));
@@ -414,12 +414,10 @@ describe("directed connector connect page", () => {
     await waitFor(() => {
       expect(connectCalls).toBe(1);
       expect(updateCalls).toBe(1);
-      expect(
-        screen.getByText("Nintendo eShop Catalog connected"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Public Stripe connected")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("dialog", { name: "Nintendo eShop Catalog" }),
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
     ).not.toBeInTheDocument();
   });
 
