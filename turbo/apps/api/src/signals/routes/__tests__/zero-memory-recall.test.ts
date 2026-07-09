@@ -550,7 +550,7 @@ describe("GET /api/zero/memory/search", () => {
       displayName: "Security review",
       kind: "key_fact",
       text,
-      query: "launch checklist security review",
+      query: "launch checklist",
     });
     await seedMemoryDocumentChunk({
       fixture,
@@ -563,7 +563,7 @@ describe("GET /api/zero/memory/search", () => {
     const response = await accept(
       memoryClient().search({
         headers: authHeaders(),
-        query: { q: "launch checklist security review", mode: "hybrid" },
+        query: { q: "launch checklist", mode: "hybrid" },
       }),
       [200],
     );
