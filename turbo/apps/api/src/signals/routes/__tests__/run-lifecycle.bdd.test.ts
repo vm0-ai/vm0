@@ -1260,6 +1260,48 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
+  it("reports empty runtime memory search queries after trimming run prompts", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime empty query test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "   ",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("emits disabled memory runtime attribution without profile spans", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();

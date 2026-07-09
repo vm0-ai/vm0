@@ -694,7 +694,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
 ): Promise<string | undefined> {
   const searchQuery =
     args.retrievalQuery === undefined
-      ? args.prompt
+      ? args.prompt.trim()
       : args.retrievalQuery.trim();
   return await measureZeroMemoryTiming(
     args.timing,
