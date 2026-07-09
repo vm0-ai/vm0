@@ -19,6 +19,7 @@ import {
   getZeroMemoryContext,
   recallZeroMemory,
 } from "../services/zero-memory-recall.service";
+import { searchZeroMemory } from "../services/zero-memory-search.service";
 import { buildZeroMemoryRuntimeInjection } from "../services/zero-memory-injection.service";
 import {
   getSlackMemoryStatus,
@@ -114,6 +115,7 @@ const getMemoryInner$ = computed(async (get): Promise<unknown> => {
 });
 
 const memoryRecallQuery$ = queryOf(zeroMemoryContract.recall);
+const memorySearchQuery$ = queryOf(zeroMemoryContract.search);
 const memoryContextQuery$ = queryOf(zeroMemoryContract.context);
 const memoryInjectionPreviewBody$ = bodyResultOf(
   zeroMemoryContract.injectionPreview,
@@ -139,6 +141,24 @@ const memoryRecallInner$ = computed(async (get): Promise<unknown> => {
     userId: auth.userId,
     q: query.q,
     kind: query.kind,
+    limit: query.limit,
+  });
+  return { status: 200 as const, body: result };
+});
+
+const memorySearchInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
+  if (!(await isMemorySourceEnabled(get(db$), auth.orgId, auth.userId))) {
+    return memorySourceDisabled;
+  }
+
+  const query = get(memorySearchQuery$);
+  const result = await searchZeroMemory(get(db$), {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    q: query.q,
+    mode: query.mode,
+    provider: query.provider,
     limit: query.limit,
   });
   return { status: 200 as const, body: result };
@@ -528,6 +548,10 @@ export const zeroMemoryRoutes: readonly RouteEntry[] = [
   {
     route: zeroMemoryContract.recall,
     handler: authRoute(memoryRecallAuthOptions, memoryRecallInner$),
+  },
+  {
+    route: zeroMemoryContract.search,
+    handler: authRoute(memoryRecallAuthOptions, memorySearchInner$),
   },
   {
     route: zeroMemoryContract.context,

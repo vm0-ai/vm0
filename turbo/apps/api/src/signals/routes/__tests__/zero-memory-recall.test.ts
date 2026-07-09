@@ -15,6 +15,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   seedGraphExpansionMemories,
+  seedMemoryDocumentChunk,
   seedSemanticRecallMemory,
 } from "../../../test-fixtures/relationship-memory";
 import {
@@ -440,5 +441,72 @@ describe("GET /api/zero/memory/recall", () => {
     expect(response.body.error.message).toBe(
       "Relationship memory runtime injection is not enabled for this organization.",
     );
+  });
+});
+
+describe("GET /api/zero/memory/search", () => {
+  it("rejects search when relationship memory is disabled", async () => {
+    await seedRelationshipFixture(false);
+
+    const response = await accept(
+      memoryClient().search({
+        headers: authHeaders(),
+        query: { q: "relationship", mode: "hybrid" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Relationship memory is not enabled for this organization.",
+    );
+  });
+
+  it("searches document chunks with citations", async () => {
+    const fixture = await seedRelationshipFixture();
+    const ids = await seedMemoryDocumentChunk({
+      fixture,
+      title: "Security review plan",
+      text: "The security review plan covers data retention controls.",
+      provider: "github",
+      externalId: "github-document-fixture",
+    });
+
+    const response = await accept(
+      memoryClient().search({
+        headers: authHeaders(),
+        query: {
+          q: "data retention controls",
+          mode: "documents",
+          provider: "github",
+          limit: 5,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      query: "data retention controls",
+      mode: "documents",
+    });
+    expect(response.body.results).toHaveLength(1);
+    expect(response.body.results[0]).toMatchObject({
+      kind: "document_chunk",
+      documentId: ids.documentId,
+      chunkId: ids.chunkId,
+      title: "Security review plan",
+      provider: "github",
+      sourceType: "github_issue",
+      externalId: "github-document-fixture",
+      contextSpace: {
+        id: ids.contextSpaceId,
+        type: "repo",
+        displayName: "vm0-ai/vm0",
+      },
+      citation: {
+        provider: "github",
+        externalId: "github-document-fixture",
+        locator: "#1",
+      },
+    });
   });
 });

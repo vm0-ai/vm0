@@ -3981,8 +3981,15 @@
     {
       "idx": 568,
       "version": "7",
-      "when": 1783610352970,
-      "tag": "0568_backfill_gpt_5_6_model_policies",
+      "when": 1783616589371,
+      "tag": "0568_salty_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 569,
+      "version": "7",
+      "when": 1783620539639,
+      "tag": "0569_backfill_gpt_5_6_model_policies",
       "breakpoints": true
     }
   ]

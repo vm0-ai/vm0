@@ -2,6 +2,8 @@ import chalk from "chalk";
 import type {
   MemoryContextResponse,
   MemoryRecallItem,
+  MemorySearchResponse,
+  MemorySearchResult,
 } from "@vm0/api-contracts/contracts/zero-memory";
 
 function formatDate(value: string | null): string {
@@ -70,4 +72,59 @@ export function printMemoryContext(response: MemoryContextResponse): void {
   }
 
   console.log(response.context);
+}
+
+function compactText(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= 180) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 177)}...`;
+}
+
+function formatScore(score: number): string {
+  return score.toFixed(2);
+}
+
+function printMemorySearchResult(result: MemorySearchResult): void {
+  if (result.kind === "memory") {
+    const memory = result.memory;
+    const entity = memory.relationship.entity.displayName;
+    console.log(`- ${memory.text}`);
+    console.log(
+      chalk.dim(
+        `  memory · ${formatKind(memory.kind)} · ${entity} · score ${formatScore(result.score)} · ${sourceSummary(memory)}`,
+      ),
+    );
+    return;
+  }
+
+  const title = result.title ?? result.externalId;
+  const citationUrl = result.citation.url ? ` · ${result.citation.url}` : "";
+  console.log(`- ${title}`);
+  console.log(chalk.dim(`  document · ${compactText(result.text)}`));
+  console.log(
+    chalk.dim(
+      `  ${result.provider}:${result.externalId} · ${result.contextSpace.displayName} · score ${formatScore(result.score)}${citationUrl}`,
+    ),
+  );
+}
+
+export function printMemorySearch(response: MemorySearchResponse): void {
+  if (response.results.length === 0) {
+    console.log("No memory or document results found");
+    console.log(
+      chalk.dim('  Try: zero memory search "security review" --mode hybrid'),
+    );
+    return;
+  }
+
+  console.log(
+    chalk.green(
+      `✓ Found ${response.results.length} ${response.mode} memory results`,
+    ),
+  );
+  for (const result of response.results) {
+    printMemorySearchResult(result);
+  }
 }

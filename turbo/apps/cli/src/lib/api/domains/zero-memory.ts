@@ -4,6 +4,9 @@ import {
   type MemoryContextResponse,
   type MemoryRecallItemKind,
   type MemoryRecallResponse,
+  type MemorySearchMode,
+  type MemorySearchResponse,
+  type MemorySourceProvider,
 } from "@vm0/api-contracts/contracts/zero-memory";
 
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -44,4 +47,26 @@ export async function getZeroMemoryContext(options: {
     return result.body;
   }
   handleError(result, "Failed to load memory context");
+}
+
+export async function searchZeroMemory(options: {
+  readonly q: string;
+  readonly mode?: MemorySearchMode;
+  readonly provider?: MemorySourceProvider;
+  readonly limit?: number;
+}): Promise<MemorySearchResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroMemoryContract, config);
+  const result = await client.search({
+    query: {
+      q: options.q,
+      mode: options.mode,
+      provider: options.provider,
+      limit: options.limit,
+    },
+  });
+  if (result.status === 200) {
+    return result.body;
+  }
+  handleError(result, "Failed to search memory");
 }
