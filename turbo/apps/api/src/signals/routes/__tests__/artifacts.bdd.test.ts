@@ -2,9 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { db } from "../../../lib/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -192,8 +194,24 @@ async function createHostedArtifact(args: {
   };
 }
 
+async function markHostedArtifactEligibleForPreviewCron(artifact: {
+  readonly runId: string;
+  readonly url: string;
+}): Promise<void> {
+  const { rows } = await db().execute<{ id: string }>(sql`
+    UPDATE run_uploaded_files
+    SET preview_image_url = NULL, updated_at = now() - interval '3 minutes'
+    WHERE run_id = ${artifact.runId} AND external_id = ${artifact.url}
+    RETURNING id
+  `);
+
+  expect(rows).toHaveLength(1);
+}
+
 describe("GET /api/cron/artifact-preview", () => {
   it("rejects invalid cron secrets and no-ops when browser rendering is unconfigured", async () => {
+    mockEnv("CRON_SECRET", CRON_SECRET);
+
     const rejected = await accept(
       cronClient().generate({ headers: cronHeaders("wrong-secret") }),
       [401],
@@ -207,6 +225,75 @@ describe("GET /api/cron/artifact-preview", () => {
     );
     expect(generated.body).toStrictEqual({ generated: 0 });
   });
+
+  it("generates stale hosted artifact previews through the cron fallback", async () => {
+    const owner = await artifactActor("Artifacts API cron preview agent");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected cron preview test actor to have an org");
+    }
+    mockEnv("CRON_SECRET", CRON_SECRET);
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
+    const screenshotRequests = mockCloudflareScreenshot();
+
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `cron-preview-${randomUUID().slice(0, 8)}`,
+    });
+    await flushWaitUntilForTest();
+    expect(screenshotRequests).toHaveLength(0);
+
+    await markHostedArtifactEligibleForPreviewCron(artifact);
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: owner.actor.userId,
+        orgId: owner.actor.orgId,
+        orgRole: owner.actor.orgRole,
+      },
+      {
+        [FeatureSwitchKey.ArtifactPreviewImage]: true,
+      },
+    );
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+
+    const generated = await accept(
+      cronClient().generate({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(generated.body).toStrictEqual({ generated: 1 });
+
+    const response = await chat.listArtifacts(owner.actor);
+    const previewedArtifact = response.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    expect(previewedArtifact?.previewImageUrl).toContain(
+      `/preview-${artifact.deploymentId}.webp`,
+    );
+    expect(screenshotRequests).toHaveLength(1);
+    expect(screenshotRequests[0]).toMatchObject({
+      authorization: "Bearer preview-token",
+      body: {
+        url: artifact.url,
+        viewport: {
+          width: 1280,
+          height: 800,
+          deviceScaleFactor: 0.5,
+        },
+        screenshotOptions: { type: "webp", quality: 80 },
+      },
+    });
+    expect(
+      owner.objectStore.puts.some((put) => {
+        return (
+          put.bucket === "test-user-artifacts" &&
+          put.key.endsWith(`/preview-${artifact.deploymentId}.webp`) &&
+          put.contentType === "image/webp"
+        );
+      }),
+    ).toBeTruthy();
+  }, 120_000);
 });
 
 describe("GET /api/zero/artifacts", () => {
@@ -355,6 +442,47 @@ describe("GET /api/zero/artifacts", () => {
     );
     expect(screenshotRequests).toHaveLength(2);
     expect(screenshotRequests[1]?.body).toMatchObject({ url: artifact.url });
+  }, 120_000);
+
+  it("does not render previews when the feature switch is disabled with browser rendering configured", async () => {
+    const owner = await artifactActor("Artifacts API preview disabled agent");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected preview disabled test actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: owner.actor.userId,
+        orgId: owner.actor.orgId,
+        orgRole: owner.actor.orgRole,
+      },
+      {
+        [FeatureSwitchKey.ArtifactPreviewImage]: false,
+      },
+    );
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    const screenshotRequests = mockCloudflareScreenshot();
+
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `preview-disabled-${randomUUID().slice(0, 8)}`,
+    });
+    await flushWaitUntilForTest();
+
+    const response = await chat.listArtifacts(owner.actor);
+    const disabledArtifact = response.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    expect(disabledArtifact).toBeDefined();
+    expect(disabledArtifact).not.toHaveProperty("previewImageUrl");
+    expect(screenshotRequests).toHaveLength(0);
+    expect(
+      owner.objectStore.puts.some((put) => {
+        return put.key.endsWith(`/preview-${artifact.deploymentId}.webp`);
+      }),
+    ).toBeFalsy();
   }, 120_000);
 
   it("returns every generated artifact for the org in one bulk response", async () => {
