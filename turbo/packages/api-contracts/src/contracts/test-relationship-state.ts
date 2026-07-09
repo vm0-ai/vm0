@@ -40,6 +40,16 @@ export const testRelationshipStateActionBodySchema = z.discriminatedUnion(
       fixture: testRelationshipStateFixtureSchema,
     }),
     z.object({
+      action: z.literal("seed-semantic-recall-memory"),
+      fixture: testRelationshipStateFixtureSchema,
+      query: z.string().min(1),
+    }),
+    z.object({
+      action: z.literal("seed-graph-expansion-memories"),
+      fixture: testRelationshipStateFixtureSchema,
+      query: z.string().min(1),
+    }),
+    z.object({
       action: z.literal("create-alias-race-trigger"),
       fixture: testRelationshipStateFixtureSchema,
       display_name: z.string().min(1),

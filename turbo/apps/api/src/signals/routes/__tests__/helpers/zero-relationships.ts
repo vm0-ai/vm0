@@ -125,6 +125,34 @@ export const seedRuntimeInjectionWindowMemoryRows$ = command(
   },
 );
 
+export const seedSemanticRecallMemory$ = command(
+  async (
+    _,
+    args: { readonly fixture: RelationshipFixture; readonly query: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-semantic-recall-memory",
+      fixture: fixtureToWire(args.fixture),
+      query: args.query,
+    });
+  },
+);
+
+export const seedGraphExpansionMemories$ = command(
+  async (
+    _,
+    args: { readonly fixture: RelationshipFixture; readonly query: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-graph-expansion-memories",
+      fixture: fixtureToWire(args.fixture),
+      query: args.query,
+    });
+  },
+);
+
 export const createRelationshipAliasRaceTrigger$ = command(
   async (
     _,

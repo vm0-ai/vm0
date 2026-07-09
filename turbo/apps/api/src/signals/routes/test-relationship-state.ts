@@ -7,9 +7,11 @@ import {
 import {
   type MemoryKind,
   memories,
+  memoryEdges,
   memoryEntities,
   memoryEntityAliases,
   memoryProfiles,
+  memorySearchEntries,
   memorySources,
 } from "@vm0/db/schema/memory-substrate";
 import { and, eq, sql } from "drizzle-orm";
@@ -22,6 +24,10 @@ import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
+import {
+  createDeterministicMemoryEmbeddingForTest,
+  memoryEmbeddingContentHash,
+} from "../services/zero-memory-embedding.service";
 
 const actionBody$ = bodyResultOf(testRelationshipStateContract.action);
 const FIXTURE_START_TIME = Date.parse("2026-07-05T12:00:00.000Z");
@@ -401,6 +407,196 @@ interface RuntimeInjectionSeedRow {
   readonly lastSeenAt: string;
 }
 
+function searchEntryText(args: {
+  readonly text: string;
+  readonly kind: MemoryKind;
+  readonly displayName: string;
+}): string {
+  return [
+    args.text.trim(),
+    `Kind: ${args.kind}`,
+    `Entity: ${args.displayName}`,
+  ].join("\n");
+}
+
+async function insertSearchEntryForMemory(args: {
+  readonly db: Db;
+  readonly fixture: TestRelationshipStateFixture;
+  readonly entityId: string;
+  readonly memoryId: string;
+  readonly kind: MemoryKind;
+  readonly memoryText: string;
+  readonly displayName: string;
+  readonly query: string;
+  readonly confidence: number;
+  readonly lastSeenAt: Date;
+}) {
+  const entryText = searchEntryText({
+    text: args.memoryText,
+    kind: args.kind,
+    displayName: args.displayName,
+  });
+  const embeddingModel = "test-deterministic-embedding";
+  await args.db.insert(memorySearchEntries).values({
+    orgId: args.fixture.org_id,
+    userId: args.fixture.user_id,
+    memoryId: args.memoryId,
+    entityId: args.entityId,
+    entryKind: "memory_text",
+    memoryKind: args.kind,
+    status: "active",
+    text: entryText,
+    embedding: createDeterministicMemoryEmbeddingForTest(args.query),
+    embeddingModel,
+    contentHash: memoryEmbeddingContentHash({
+      model: embeddingModel,
+      text: entryText,
+    }),
+    confidence: args.confidence,
+    lastSeenAt: args.lastSeenAt,
+  });
+}
+
+async function insertSemanticRecallMemoryForAction(
+  db: Db,
+  body: RelationshipAction<"seed-semantic-recall-memory">,
+  signal: AbortSignal,
+) {
+  const displayName = "Portfolio Settings";
+  const [entity] = await db
+    .insert(memoryEntities)
+    .values({
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      type: "organization",
+      displayName,
+    })
+    .returning({ id: memoryEntities.id });
+  signal.throwIfAborted();
+  if (!entity) {
+    throw new Error("Expected semantic recall fixture entity");
+  }
+
+  const lastSeenAt = new Date("2026-07-05T12:00:00.000Z");
+  const text = "The user prefers JPM IJTXX Treasury allocation.";
+  const [memory] = await db
+    .insert(memories)
+    .values({
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      entityId: entity.id,
+      kind: "preference",
+      status: "active" as const,
+      text,
+      confidence: 95,
+      lastSeenAt,
+    })
+    .returning({ id: memories.id });
+  signal.throwIfAborted();
+  if (!memory) {
+    throw new Error("Expected semantic recall fixture memory");
+  }
+
+  await insertSearchEntryForMemory({
+    db,
+    fixture: body.fixture,
+    entityId: entity.id,
+    memoryId: memory.id,
+    kind: "preference",
+    memoryText: text,
+    displayName,
+    query: body.query,
+    confidence: 95,
+    lastSeenAt,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function insertGraphExpansionMemoriesForAction(
+  db: Db,
+  body: RelationshipAction<"seed-graph-expansion-memories">,
+  signal: AbortSignal,
+) {
+  const displayName = "Lucent Migration";
+  const [entity] = await db
+    .insert(memoryEntities)
+    .values({
+      orgId: body.fixture.org_id,
+      userId: body.fixture.user_id,
+      type: "organization",
+      displayName,
+    })
+    .returning({ id: memoryEntities.id });
+  signal.throwIfAborted();
+  if (!entity) {
+    throw new Error("Expected graph expansion fixture entity");
+  }
+
+  const seedLastSeenAt = new Date("2026-07-07T12:00:00.000Z");
+  const relatedLastSeenAt = new Date("2026-07-06T12:00:00.000Z");
+  const seedText =
+    "The infrastructure rewrite uses Lucent as its internal migration name.";
+  const relatedText = "Ask Lancy for the Lucent migration rollout owner.";
+  const inserted = await db
+    .insert(memories)
+    .values([
+      {
+        orgId: body.fixture.org_id,
+        userId: body.fixture.user_id,
+        entityId: entity.id,
+        kind: "key_fact" as const,
+        status: "active" as const,
+        text: seedText,
+        confidence: 91,
+        lastSeenAt: seedLastSeenAt,
+      },
+      {
+        orgId: body.fixture.org_id,
+        userId: body.fixture.user_id,
+        entityId: entity.id,
+        kind: "open_loop" as const,
+        status: "active" as const,
+        text: relatedText,
+        confidence: 89,
+        lastSeenAt: relatedLastSeenAt,
+      },
+    ])
+    .returning({ id: memories.id, text: memories.text, kind: memories.kind });
+  signal.throwIfAborted();
+  const seed = inserted.find((memory) => {
+    return memory.text === seedText;
+  });
+  const related = inserted.find((memory) => {
+    return memory.text === relatedText;
+  });
+  if (!seed || !related) {
+    throw new Error("Expected graph expansion fixture memories");
+  }
+
+  await db.insert(memoryEdges).values({
+    orgId: body.fixture.org_id,
+    userId: body.fixture.user_id,
+    fromMemoryId: seed.id,
+    toMemoryId: related.id,
+    edgeType: "extends",
+  });
+  await insertSearchEntryForMemory({
+    db,
+    fixture: body.fixture,
+    entityId: entity.id,
+    memoryId: seed.id,
+    kind: seed.kind,
+    memoryText: seedText,
+    displayName,
+    query: body.query,
+    confidence: 91,
+    lastSeenAt: seedLastSeenAt,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function insertRuntimeInjectionMemories(
   db: Db,
   fixture: TestRelationshipStateFixture,
@@ -578,6 +774,12 @@ const mutateRelationshipState$ = command(
           body,
           signal,
         );
+      }
+      case "seed-semantic-recall-memory": {
+        return await insertSemanticRecallMemoryForAction(db, body, signal);
+      }
+      case "seed-graph-expansion-memories": {
+        return await insertGraphExpansionMemoriesForAction(db, body, signal);
       }
       case "create-alias-race-trigger": {
         return await createAliasRaceTriggerForAction(db, body, signal);
