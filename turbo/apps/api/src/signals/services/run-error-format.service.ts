@@ -22,6 +22,7 @@ import { getMemberRoleAndUpdateCache$ } from "./auth.service";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 const CHAT_RUN_REPORTABLE_ERROR_MESSAGE = "An unexpected error occurred.";
+const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 const PRO_REQUIRED_MARKER = "pro_required";
 
 interface RunErrorProviderContext {
@@ -72,6 +73,14 @@ function buildClaudeCodeCredentialRecoveryUrl(params: {
 
 function isProRequiredRunError(message: string): boolean {
   return message.toLowerCase().includes(PRO_REQUIRED_MARKER);
+}
+
+function isInsufficientCreditsRunError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("insufficient_credits") ||
+    normalized.includes("insufficient credits")
+  );
 }
 
 function formatLatestSessionProviderType(
@@ -167,6 +176,9 @@ function formatRunErrorLikeWebMessage(
     const errorMessage = params.errorMessage.trim() || "Run failed";
     if (isProRequiredRunError(errorMessage)) {
       return PRO_REQUIRED_MARKER;
+    }
+    if (isInsufficientCreditsRunError(errorMessage)) {
+      return INSUFFICIENT_CREDITS_MARKER;
     }
 
     const providerContext =
