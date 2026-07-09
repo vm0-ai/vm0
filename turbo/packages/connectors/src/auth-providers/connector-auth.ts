@@ -8,6 +8,7 @@ import {
   type ConnectorExternalCodeGrantAuthMethodId,
   type ConnectorOpenIdAuthGrantAuthMethodId,
   type ConnectorDeviceAuthStartOptions,
+  type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
   type ExternalCodeGrantConnectorType,
   type OpenIdAuthGrantConnectorType,
@@ -165,6 +166,46 @@ type ConnectorExternalCodeGrantProvider<
   Method extends ConnectorExternalCodeGrantAuthMethodId<Type> =
     ConnectorExternalCodeGrantAuthMethodId<Type>,
 > = ExternalCodeConnectorAuthProvider<Type, Method>["grant"];
+
+type ConnectorAuthMethodIdsWithoutProviderGrant<Type extends ConnectorType> =
+  Exclude<
+    ConnectorAuthMethodId,
+    | ConnectorAuthMethodIdsByGrantKind<
+        Type & AuthCodeGrantConnectorType,
+        "auth-code"
+      >
+    | ConnectorAuthMethodIdsByGrantKind<
+        Type & DeviceAuthGrantConnectorType,
+        "device-auth"
+      >
+    | ConnectorAuthMethodIdsByGrantKind<
+        Type & OpenIdAuthGrantConnectorType,
+        "openid-auth"
+      >
+    | ConnectorAuthMethodIdsByGrantKind<
+        Type & ExternalCodeGrantConnectorType,
+        "external-code"
+      >
+  >;
+
+type ConnectorAuthMethodIdsWithoutRefreshTokenAccess<
+  Type extends ConnectorType,
+> = Exclude<
+  ConnectorAuthMethodId,
+  ConnectorAuthMethodIdsByAccessKind<
+    Type & RefreshTokenAccessConnectorType,
+    "refresh-token"
+  >
+>;
+
+type ConnectorAuthMethodIdsWithoutTokenRevoke<Type extends ConnectorType> =
+  Exclude<
+    ConnectorAuthMethodId,
+    ConnectorAuthMethodIdsByRevokeKind<
+      Type & TokenRevokeConnectorType,
+      "token-revoke"
+    >
+  >;
 
 type RuntimeAuthCodeGrantProvider = {
   readonly kind: "auth-code";
@@ -324,7 +365,9 @@ function getRuntimeAuthProviderEntry(
 
 function authCodeProviderEntry<
   Type extends AuthCodeGrantConnectorType,
-  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type> &
+    ConnectorAuthMethodIdsWithoutRefreshTokenAccess<Type> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
@@ -338,7 +381,8 @@ function authCodeProviderEntry<
 function authCodeRefreshProviderEntry<
   Type extends AuthCodeGrantConnectorType & RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<Type> &
-    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token"> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
@@ -355,6 +399,7 @@ function authCodeRefreshProviderEntry<
 function authCodeTokenRevokeProviderEntry<
   Type extends AuthCodeGrantConnectorType & TokenRevokeConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<Type> &
+    ConnectorAuthMethodIdsWithoutRefreshTokenAccess<Type> &
     ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke">,
 >(
   type: Type,
@@ -393,7 +438,9 @@ function authCodeRefreshTokenRevokeProviderEntry<
 
 function deviceAuthProviderEntry<
   Type extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<Type>,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<Type> &
+    ConnectorAuthMethodIdsWithoutRefreshTokenAccess<Type> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
@@ -406,7 +453,9 @@ function deviceAuthProviderEntry<
 
 function openIdAuthProviderEntry<
   Type extends OpenIdAuthGrantConnectorType,
-  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type>,
+  Method extends ConnectorOpenIdAuthGrantAuthMethodId<Type> &
+    ConnectorAuthMethodIdsWithoutRefreshTokenAccess<Type> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
@@ -420,7 +469,8 @@ function openIdAuthProviderEntry<
 function deviceAuthRefreshProviderEntry<
   Type extends DeviceAuthGrantConnectorType & RefreshTokenAccessConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<Type> &
-    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token"> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
@@ -437,7 +487,8 @@ function deviceAuthRefreshProviderEntry<
 function externalCodeRefreshProviderEntry<
   Type extends ExternalCodeGrantConnectorType & RefreshTokenAccessConnectorType,
   Method extends ConnectorExternalCodeGrantAuthMethodId<Type> &
-    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token"> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
@@ -453,7 +504,9 @@ function externalCodeRefreshProviderEntry<
 
 function refreshProviderEntry<
   Type extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token"> &
+    ConnectorAuthMethodIdsWithoutProviderGrant<Type> &
+    ConnectorAuthMethodIdsWithoutTokenRevoke<Type>,
 >(
   type: Type,
   authMethod: Method,
