@@ -75,16 +75,20 @@ export function safeSync<T>(
   }
 }
 
-export async function safeAsync<T>(
+export function safeAsync<T>(
   fn: () => Promise<T>,
 ): Promise<{ readonly ok: T } | { readonly error: unknown }> {
-  // eslint-disable-next-line no-restricted-syntax -- centralized guarded async
-  try {
-    return { ok: await fn() };
-  } catch (error) {
-    throwIfAbort(error);
-    return { error };
-  }
+  return Promise.resolve()
+    .then(fn)
+    .then(
+      (ok) => {
+        return { ok };
+      },
+      (error: unknown) => {
+        throwIfAbort(error);
+        return { error };
+      },
+    );
 }
 
 function safeThrownValueMessage(value: unknown): string {
