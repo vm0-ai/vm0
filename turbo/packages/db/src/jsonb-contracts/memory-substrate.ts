@@ -66,6 +66,13 @@ export interface MemoryDocumentMetadata {
   readonly pageUrl?: string | null;
   readonly workspaceId?: string | null;
   readonly workspaceName?: string | null;
+  readonly mailboxEmail?: string;
+  readonly threadId?: string | null;
+  readonly messageId?: string | null;
+  readonly direction?: "sent" | "received" | "mixed" | "unknown";
+  readonly channelId?: string;
+  readonly channelType?: string;
+  readonly senderId?: string;
   readonly reason?: string;
 }
 

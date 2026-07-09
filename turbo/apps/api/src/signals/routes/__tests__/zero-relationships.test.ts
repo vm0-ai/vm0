@@ -946,6 +946,24 @@ describe("GET /api/zero/relationships/*", () => {
       scanned: 1,
       enqueued: 1,
     });
+    const gmailDocuments = await accept(
+      memoryClient().documents({
+        headers: authHeaders(),
+        query: { provider: "gmail", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(gmailDocuments.body.documents).toHaveLength(1);
+    expect(gmailDocuments.body.documents[0]).toMatchObject({
+      provider: "gmail",
+      sourceType: "gmail_message",
+      title: "Partnership follow-up",
+      chunkCount: 1,
+      contextSpace: {
+        type: "user",
+        displayName: "Partnership follow-up",
+      },
+    });
     expect(queries.at(-1)).not.toContain("in:inbox");
     expect(queries.at(-1)).not.toContain("-in:sent");
 
@@ -1306,6 +1324,25 @@ describe("GET /api/zero/relationships/*", () => {
       },
     });
     expect(sources.body.sources[0]?.contentHash).toMatch(/^[a-f0-9]{64}$/);
+
+    const slackDocuments = await accept(
+      memoryClient().documents({
+        headers: authHeaders(),
+        query: { provider: "slack", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(slackDocuments.body.documents).toHaveLength(1);
+    expect(slackDocuments.body.documents[0]).toMatchObject({
+      provider: "slack",
+      sourceType: "slack_message",
+      title: "Slack channel conversation",
+      chunkCount: 1,
+      contextSpace: {
+        type: "project",
+        displayName: "Slack channel conversation",
+      },
+    });
 
     const sourceId = sources.body.sources[0]?.id;
     expect(sourceId).toBeDefined();

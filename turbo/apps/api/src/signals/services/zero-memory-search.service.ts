@@ -27,6 +27,8 @@ import { recallZeroMemory } from "./zero-memory-recall.service";
 
 const log = logger("zero-memory-search");
 const SEMANTIC_SCORE_THRESHOLD = 0.2;
+const RECIPROCAL_RANK_FUSION_K = 60;
+const MAX_CHUNKS_PER_DOCUMENT = 2;
 
 interface MemoryScope {
   readonly orgId: string;
@@ -50,6 +52,8 @@ interface DocumentCandidate {
   readonly chunkId: string;
   readonly semanticScore: number;
   readonly lexicalScore: number;
+  readonly semanticRank: number | null;
+  readonly lexicalRank: number | null;
 }
 
 type DocumentSearchResult = Extract<
@@ -111,16 +115,20 @@ function freshnessScore(value: Date | null): number {
   return 1 / (1 + ageDays / 180);
 }
 
+function reciprocalRank(rank: number | null): number {
+  return rank === null ? 0 : 1 / (RECIPROCAL_RANK_FUSION_K + rank);
+}
+
 function documentScore(args: {
-  readonly semanticScore: number;
-  readonly lexicalScore: number;
+  readonly semanticRank: number | null;
+  readonly lexicalRank: number | null;
   readonly occurredAt: Date | null;
 }): number {
-  return clamp01(
-    args.semanticScore * 0.55 +
-      args.lexicalScore * 0.35 +
-      freshnessScore(args.occurredAt) * 0.1,
-  );
+  const maximumRankScore = 1 / (RECIPROCAL_RANK_FUSION_K + 1);
+  const fusedScore =
+    (reciprocalRank(args.semanticRank) + reciprocalRank(args.lexicalRank)) /
+    maximumRankScore;
+  return clamp01(fusedScore * 0.96 + freshnessScore(args.occurredAt) * 0.04);
 }
 
 function mergeDocumentCandidate(
@@ -136,6 +144,18 @@ function mergeDocumentCandidate(
     chunkId: next.chunkId,
     semanticScore: Math.max(existing.semanticScore, next.semanticScore),
     lexicalScore: Math.max(existing.lexicalScore, next.lexicalScore),
+    semanticRank:
+      existing.semanticRank === null
+        ? next.semanticRank
+        : next.semanticRank === null
+          ? existing.semanticRank
+          : Math.min(existing.semanticRank, next.semanticRank),
+    lexicalRank:
+      existing.lexicalRank === null
+        ? next.lexicalRank
+        : next.lexicalRank === null
+          ? existing.lexicalRank
+          : Math.min(existing.lexicalRank, next.lexicalRank),
   });
 }
 
@@ -204,16 +224,28 @@ async function loadLexicalDocumentCandidates(
     .orderBy(desc(memoryDocuments.occurredAt))
     .limit(Math.max(args.limit * 8, 40));
 
+  const rankedRows = rows
+    .map((row) => {
+      return {
+        chunkId: row.chunkId,
+        lexicalScore: Math.max(
+          row.text.toLowerCase().includes(args.normalizedQuery) ? 1 : 0,
+          row.title?.toLowerCase().includes(args.normalizedQuery) ? 0.92 : 0,
+          tokenMatchScore([row.text, row.title, row.externalId], args.q),
+        ),
+      };
+    })
+    .sort((a, b) => {
+      return b.lexicalScore - a.lexicalScore;
+    });
   const candidates = new Map<string, DocumentCandidate>();
-  for (const row of rows) {
+  for (const [index, row] of rankedRows.entries()) {
     mergeDocumentCandidate(candidates, {
       chunkId: row.chunkId,
       semanticScore: 0,
-      lexicalScore: Math.max(
-        row.text.toLowerCase().includes(args.normalizedQuery) ? 1 : 0,
-        row.title?.toLowerCase().includes(args.normalizedQuery) ? 0.92 : 0,
-        tokenMatchScore([row.text, row.title, row.externalId], args.q),
-      ),
+      lexicalScore: row.lexicalScore,
+      semanticRank: null,
+      lexicalRank: index + 1,
     });
   }
   return [...candidates.values()];
@@ -272,11 +304,13 @@ async function loadSemanticDocumentCandidates(
     .limit(Math.max(args.limit * 10, 80));
 
   return rows
-    .map((row) => {
+    .map((row, index) => {
       return {
         chunkId: row.chunkId,
         semanticScore: clamp01(row.semanticScore),
         lexicalScore: 0,
+        semanticRank: index + 1,
+        lexicalRank: null,
       };
     })
     .filter((candidate) => {
@@ -350,8 +384,8 @@ async function hydrateDocumentResults(
       title: row.title,
       text: row.text,
       score: documentScore({
-        semanticScore: candidate.semanticScore,
-        lexicalScore: candidate.lexicalScore,
+        semanticRank: candidate.semanticRank,
+        lexicalRank: candidate.lexicalRank,
         occurredAt: row.occurredAt,
       }),
       provider: row.provider,
@@ -402,12 +436,52 @@ async function searchMemoryDocuments(
 }
 
 function memoryResultScore(memory: MemoryRecallItem, index: number): number {
+  const rankScore = reciprocalRank(index + 1) / reciprocalRank(1);
   return clamp01(
-    0.82 +
-      (memory.confidence / 100) * 0.12 +
+    rankScore * 0.9 +
+      (memory.confidence / 100) * 0.07 +
       freshnessScore(new Date(memory.lastSeenAt)) * 0.04 -
-      index * 0.01,
+      0.01,
   );
+}
+
+function normalizedResultText(result: MemorySearchResult): string {
+  const text = result.kind === "memory" ? result.memory.text : result.text;
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function dedupeSearchResults(
+  results: readonly MemorySearchResult[],
+  limit: number,
+): readonly MemorySearchResult[] {
+  const documentCounts = new Map<string, number>();
+  const seenTexts = new Set<string>();
+  const deduped: MemorySearchResult[] = [];
+
+  for (const result of results) {
+    const normalizedText = normalizedResultText(result);
+    if (normalizedText && seenTexts.has(normalizedText)) {
+      continue;
+    }
+    if (result.kind === "document_chunk") {
+      const documentCount = documentCounts.get(result.documentId) ?? 0;
+      if (documentCount >= MAX_CHUNKS_PER_DOCUMENT) {
+        continue;
+      }
+      documentCounts.set(result.documentId, documentCount + 1);
+    }
+    if (normalizedText) {
+      seenTexts.add(normalizedText);
+    }
+    deduped.push(result);
+    if (deduped.length >= limit) {
+      break;
+    }
+  }
+  return deduped;
 }
 
 async function searchMemories(
@@ -445,18 +519,22 @@ export async function searchZeroMemory(
 ): Promise<MemorySearchResponse> {
   const includeMemories = args.mode === "hybrid" || args.mode === "memories";
   const includeDocuments = args.mode === "hybrid" || args.mode === "documents";
+  const candidateLimit = Math.max(args.limit * 4, 20);
   const [memoryResults, documentResults] = await Promise.all([
-    includeMemories ? searchMemories(db, args) : Promise.resolve([]),
-    includeDocuments ? searchMemoryDocuments(db, args) : Promise.resolve([]),
+    includeMemories
+      ? searchMemories(db, { ...args, limit: candidateLimit })
+      : Promise.resolve([]),
+    includeDocuments
+      ? searchMemoryDocuments(db, { ...args, limit: candidateLimit })
+      : Promise.resolve([]),
   ]);
-  const results = [...memoryResults, ...documentResults]
-    .sort((a, b) => {
-      return b.score - a.score;
-    })
-    .slice(0, args.limit);
+  const rankedResults = [...memoryResults, ...documentResults].sort((a, b) => {
+    return b.score - a.score;
+  });
+  const results = dedupeSearchResults(rankedResults, args.limit);
   return {
     query: args.q,
     mode: args.mode,
-    results,
+    results: [...results],
   };
 }

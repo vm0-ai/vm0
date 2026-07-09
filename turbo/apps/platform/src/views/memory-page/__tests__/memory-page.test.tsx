@@ -813,10 +813,15 @@ function memoryInjectionPreviewResponse(
         sources: [],
       },
     ],
+    documentEvidence: [],
     stats: {
       injectedCount: 1,
       omittedCount: 0,
       characterCount: 292,
+      tokenCount: 64,
+      profileTokenCount: 0,
+      memoryTokenCount: 64,
+      documentTokenCount: 0,
     },
   };
 }
