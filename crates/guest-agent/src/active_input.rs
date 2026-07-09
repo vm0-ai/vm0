@@ -588,8 +588,7 @@ impl ActiveInputController {
     /// A `true` return means the caller can treat active input as idle for this
     /// result. For enabled runs, this also signals the writer to close when the
     /// runtime is still open. A `false` return means there is still pending
-    /// input to observe, a delivered input was only just accounted for, or the
-    /// runtime was already closing or closed.
+    /// input to observe or clear, or the runtime was already closing or closed.
     ///
     /// This is a result-time idle check, not an unconditional terminal close.
     pub fn close_for_result_if_idle(&self) -> bool {
@@ -732,7 +731,7 @@ impl ActiveInputWriter {
         self.controller.is_enabled()
     }
 
-    /// Marks the current writer-owned frame as delivered.
+    /// Marks a writer-owned frame as delivered.
     ///
     /// This delegates to [`ActiveInputController::mark_written`] and should be
     /// called after the writer sink has successfully delivered the frame.
@@ -744,7 +743,7 @@ impl ActiveInputWriter {
         self.controller.mark_written_without_replay(uuid);
     }
 
-    /// Marks the current frame as actively being delivered by this writer.
+    /// Marks a writer-owned frame as actively being delivered by this writer.
     ///
     /// This delegates to [`ActiveInputController::mark_writing`] and should be
     /// paired with [`ActiveInputWriter::mark_written`] after delivery succeeds.
