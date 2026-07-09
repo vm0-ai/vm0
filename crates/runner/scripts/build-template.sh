@@ -118,7 +118,7 @@ XURL_VERSION="1.2.2"
 AGENT_BROWSER_VERSION="0.31.1"
 PNPM_VERSION="11.10.0"
 CHROMIUM_VERSION="150.0.7871.100-1~deb12u1"
-CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260709T001500Z"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260709T060000Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
