@@ -104,16 +104,21 @@ def aws_sigv4_presigned_query_path(
         if credential_scope is None
         else credential_scope
     )
-    query = (
-        f"{leading_query}"
-        f"&X-Amz-Algorithm={AWS_SIGV4_ALGORITHM}"
-        f"&X-Amz-Credential={quote_sigv4_value(scope)}"
-        f"&X-Amz-Date={timestamp}"
-        f"&X-Amz-Expires={expires}"
-        f"&X-Amz-SignedHeaders={quote_sigv4_value(signed_headers)}"
+    query_parts: list[str] = []
+    if leading_query:
+        query_parts.append(leading_query)
+    query_parts.extend(
+        [
+            f"X-Amz-Algorithm={AWS_SIGV4_ALGORITHM}",
+            f"X-Amz-Credential={quote_sigv4_value(scope)}",
+            f"X-Amz-Date={timestamp}",
+            f"X-Amz-Expires={expires}",
+            f"X-Amz-SignedHeaders={quote_sigv4_value(signed_headers)}",
+        ]
     )
     if signature is not None:
-        query = f"{query}&X-Amz-Signature={signature}"
+        query_parts.append(f"X-Amz-Signature={signature}")
+    query = "&".join(query_parts)
     return f"/?{query}"
 
 
