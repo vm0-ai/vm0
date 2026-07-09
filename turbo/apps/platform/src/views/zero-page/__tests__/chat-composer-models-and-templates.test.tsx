@@ -4320,7 +4320,11 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
-      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`)
+          .tagName,
+      ).toBe("IMG");
       expect(screen.queryByText(websiteTemplate.description)).toBeNull();
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
@@ -4361,7 +4365,11 @@ describe("chat composer templates", () => {
       expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
-      ).toHaveAttribute("src", websiteTemplate.previewUrl);
+      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      expect(
+        screen.getByTitle(`${websiteTemplate.title} website template preview`)
+          .tagName,
+      ).toBe("IMG");
     });
 
     click(
