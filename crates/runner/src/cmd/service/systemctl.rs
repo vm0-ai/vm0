@@ -11,6 +11,7 @@ use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
 
 const BOUNDED_COMMAND_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+const SERVICE_UNIT_STATE_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
@@ -323,7 +324,8 @@ pub(super) async fn read_service_unit_state(
 ) -> RunnerResult<ServiceUnitState> {
     let svc = unit.service_name();
     let properties = ["LoadState", "ActiveState", "SubState", "Result"];
-    let output = run_systemctl_show(svc, &properties).await?;
+    let output =
+        run_systemctl_show_bounded(svc, &properties, SERVICE_UNIT_STATE_QUERY_TIMEOUT).await?;
     service_unit_state_from_output(svc, &properties, &output)
 }
 
