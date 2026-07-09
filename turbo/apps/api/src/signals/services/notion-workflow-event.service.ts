@@ -1531,6 +1531,29 @@ async function refreshPendingNotionCreatedPageEvents(args: {
   return refreshed.length;
 }
 
+async function hasActiveNotionCreatedPageEvent(args: {
+  readonly db: Db;
+  readonly pageId: string;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const [active] = await args.db
+    .select({ id: notionWorkflowPendingEvents.id })
+    .from(notionWorkflowPendingEvents)
+    .where(
+      and(
+        eq(notionWorkflowPendingEvents.pageId, args.pageId),
+        inArray(notionWorkflowPendingEvents.status, ["pending", "running"]),
+        inArray(notionWorkflowPendingEvents.eventFamily, [
+          "new_child_page",
+          "new_database_item",
+        ]),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  return active !== undefined;
+}
+
 async function dispatchNotionEvent(args: {
   readonly db: Db;
   readonly event: NotionWebhookEvent;
@@ -1594,6 +1617,16 @@ async function dispatchNotionEvent(args: {
     signal: args.signal,
   });
   if (args.event.type !== "page.content_updated") {
+    return { pending: 0, refreshed: refreshedCreated, duplicates: 0 };
+  }
+  if (
+    refreshedCreated > 0 ||
+    (await hasActiveNotionCreatedPageEvent({
+      db: args.db,
+      pageId,
+      signal: args.signal,
+    }))
+  ) {
     return { pending: 0, refreshed: refreshedCreated, duplicates: 0 };
   }
   const contentUpdated = await enqueueOrRefreshNotionPageContentUpdatedEvents({

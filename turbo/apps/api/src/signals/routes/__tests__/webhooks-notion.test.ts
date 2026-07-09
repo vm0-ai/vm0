@@ -1003,7 +1003,7 @@ describe("POST /api/webhooks/notion", () => {
     });
   });
 
-  it("enqueues content updated events independently from pending create events", async () => {
+  it("suppresses content updated events while child page creation is pending", async () => {
     const scenario = await setupFixture();
     const { fixture, workflowId, entities } = scenario;
     await enableNotionWorkflowTriggers(fixture);
@@ -1066,8 +1066,7 @@ describe("POST /api/webhooks/notion", () => {
       },
     });
 
-    // The content update enqueues a fresh pending event for the content
-    // trigger while refreshing the child-page trigger's pending event.
+    // The content update only refreshes the child-page trigger's pending event.
     const contentEvent = notionPageEvent({
       entities,
       type: "page.content_updated",
@@ -1082,7 +1081,96 @@ describe("POST /api/webhooks/notion", () => {
       body: {
         success: true,
         kind: "event",
+        pending: 0,
+        refreshed: 1,
+        duplicates: 0,
+      },
+    });
+  });
+
+  it("suppresses content updated events while database item creation is pending", async () => {
+    const scenario = await setupFixture();
+    const { fixture, workflowId, entities } = scenario;
+    await enableNotionWorkflowTriggers(fixture);
+    await connectNotion(scenario);
+    configureNotionDatabaseMock(entities);
+
+    const databaseTrigger = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-database-item-created",
+          eventConfig: {
+            provider: "notion",
+            event: "database_item_created",
+            databaseUrl: entities.databaseUrl,
+          },
+        },
+      }),
+      [201],
+    );
+    const contentTrigger = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "notion-page-content-updated",
+          eventConfig: {
+            provider: "notion",
+            event: "page_content_updated",
+            databaseUrl: entities.databaseUrl,
+          },
+        },
+      }),
+      [201],
+    );
+    expect(databaseTrigger.body.id).not.toBe(contentTrigger.body.id);
+
+    await verifyNotionWebhook();
+
+    const createdEvent = notionPageEvent({
+      entities,
+      type: "page.created",
+      timestamp: "2026-07-06T12:00:00.000Z",
+      parent: {
+        id: entities.databaseId,
+        data_source_id: entities.dataSourceId,
+      },
+    });
+    const created = await postNotionWebhook({
+      rawBody: createdEvent.rawBody,
+      signature: notionSignature(createdEvent.rawBody),
+    });
+    expect(created).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        kind: "event",
         pending: 1,
+        refreshed: 0,
+        duplicates: 0,
+      },
+    });
+
+    const contentEvent = notionPageEvent({
+      entities,
+      type: "page.content_updated",
+      timestamp: "2026-07-06T12:05:00.000Z",
+      parent: { id: entities.dataSourceId, type: "data_source" },
+    });
+    const content = await postNotionWebhook({
+      rawBody: contentEvent.rawBody,
+      signature: notionSignature(contentEvent.rawBody),
+    });
+    expect(content).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        kind: "event",
+        pending: 0,
         refreshed: 1,
         duplicates: 0,
       },
