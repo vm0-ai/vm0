@@ -1124,6 +1124,7 @@ class TestRegistryBuiltinCache:
             context = registry.get_vm_context("10.200.0.1", str(path))
             assert context is not None
             assert len(registry._registry_state.builtin_firewall_core_cache) == 1
+            assert builtin_firewall_cache._cache_state.catalog is not None
 
             path.write_text("{ broken")
             unavailable = registry.load_registry_state(str(path))
@@ -1131,6 +1132,36 @@ class TestRegistryBuiltinCache:
         assert isinstance(unavailable, registry.RegistryUnavailable)
         assert unavailable.reason == "parse_failed"
         assert registry._registry_state.builtin_firewall_core_cache == {}
+        assert builtin_firewall_cache._cache_state.catalog is None
+
+    def test_builtin_catalog_cache_is_cleared_when_registry_drops_builtin_entries(
+        self, tmp_path, mitm_ctx
+    ):
+        path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"cache-a": _cache_firewall("cache-a", "https://api-a.example.com")},
+        )
+        write_multi_vm_registry(path, {"10.200.0.1": builtin_vm("run-cache-a", "cache-a")})
+        os.utime(path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+
+        with mitm_ctx(
+            registry_path=str(path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            assert context is not None
+            assert builtin_firewall_cache._cache_state.catalog is not None
+
+            write_multi_vm_registry(path, {"10.200.0.1": inline_vm("run-inline")})
+            os.utime(path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
+            inline_context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert inline_context is not None
+        assert builtin_firewall_cache._cache_state.catalog is None
 
     def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
         path = tmp_path / "registry.json"

@@ -68,6 +68,11 @@ _cache_state = _CatalogCacheState()
 
 def reset_cache_for_tests() -> None:
     """Reset builtin firewall catalog cache state between tests."""
+    clear_cache()
+
+
+def clear_cache() -> None:
+    """Drop the in-process builtin firewall catalog cache."""
     _cache_state.reset()
 
 

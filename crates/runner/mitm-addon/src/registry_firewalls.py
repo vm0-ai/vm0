@@ -58,7 +58,12 @@ class _ResolvedBuiltinFirewallEntry:
 
 def reset_cache_for_tests() -> None:
     """Reset builtin firewall resolver cache state between tests."""
-    builtin_firewall_cache.reset_cache_for_tests()
+    clear_catalog_cache()
+
+
+def clear_catalog_cache() -> None:
+    """Drop the cached builtin firewall catalog snapshot."""
+    builtin_firewall_cache.clear_cache()
 
 
 def catalog_file_key(

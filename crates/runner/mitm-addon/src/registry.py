@@ -393,6 +393,7 @@ def _mark_unavailable(
         evict_all_cache_keys()
     state.snapshot = _empty_snapshot()
     state.builtin_firewall_core_cache.clear()
+    registry_firewalls.clear_catalog_cache()
     state.unavailable = RegistryUnavailable(reason, message)
     return state.unavailable
 
@@ -486,6 +487,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         if uses_builtin_catalog_dependency
         else _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
     )
+    if not uses_builtin_catalog_dependency:
+        registry_firewalls.clear_catalog_cache()
     loaded_key = (
         path_key,
         st.st_dev,
