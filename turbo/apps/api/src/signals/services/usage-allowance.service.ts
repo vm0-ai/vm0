@@ -4,28 +4,64 @@ import {
   usageAllowanceAllocations,
 } from "@vm0/db/schema/org-usage-allowance";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
+import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
 import type { Db } from "../external/db";
+import { getStripeClient } from "../external/stripe-client";
 
 type UsageAllowanceStore = Pick<Db, "execute" | "insert" | "select" | "update">;
 
 type UsageAllowanceWindowKind = "short" | "weekly";
 
+const L = logger("UsageAllowance");
 const ACTIVE_ALLOWANCE_STATUSES = [
   "active",
   "manual_active",
   "trialing",
+  "past_due",
+  "unpaid",
 ] as const;
+const TERMINAL_ALLOWANCE_STATUSES = ["canceled", "incomplete_expired"] as const;
+const PAYMENT_FAILED_ALLOWANCE_STATUSES = ["past_due", "unpaid"] as const;
+const PAYMENT_FAILURE_ALLOWANCE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+interface UsageAllowanceSubscriptionInput {
+  readonly id: string;
+  readonly status: string;
+  readonly cancel_at?: number | null;
+  readonly items: {
+    readonly data: readonly {
+      readonly current_period_end?: number | null;
+    }[];
+  };
+}
 
 interface UsageAllowanceEntitlement {
   readonly id: string;
   readonly orgId: string;
+  readonly status: string;
   readonly shortWindowSeconds: number;
   readonly shortWindowUnits: number;
   readonly weeklyWindowSeconds: number;
   readonly weeklyWindowUnits: number;
+  readonly effectiveAt: Date;
+  readonly expiresAt: Date | null;
+  readonly stripeSubscriptionId: string | null;
 }
 
 interface UsageAllowanceWindow {
@@ -84,6 +120,136 @@ function availabilityFromWindows(
   };
 }
 
+function subscriptionPeriodEnd(
+  subscription: UsageAllowanceSubscriptionInput,
+): Date | null {
+  const periodEndUnix = subscription.items.data[0]?.current_period_end;
+  return typeof periodEndUnix === "number"
+    ? new Date(periodEndUnix * 1000)
+    : null;
+}
+
+function subscriptionCancelAt(
+  subscription: UsageAllowanceSubscriptionInput,
+): Date | null {
+  return typeof subscription.cancel_at === "number"
+    ? new Date(subscription.cancel_at * 1000)
+    : null;
+}
+
+function subscriptionScheduledEnd(
+  subscription: UsageAllowanceSubscriptionInput,
+): Date | null {
+  const periodEnd = subscriptionPeriodEnd(subscription);
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!periodEnd) {
+    return null;
+  }
+  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
+}
+
+function subscriptionCanBackUsageAllowance(
+  subscription: UsageAllowanceSubscriptionInput,
+): boolean {
+  return ACTIVE_ALLOWANCE_STATUSES.includes(
+    subscription.status as (typeof ACTIVE_ALLOWANCE_STATUSES)[number],
+  );
+}
+
+function subscriptionIsTerminalAllowance(
+  subscription: UsageAllowanceSubscriptionInput,
+): boolean {
+  return TERMINAL_ALLOWANCE_STATUSES.includes(
+    subscription.status as (typeof TERMINAL_ALLOWANCE_STATUSES)[number],
+  );
+}
+
+function allowanceIsPaymentFailed(status: string): boolean {
+  return PAYMENT_FAILED_ALLOWANCE_STATUSES.includes(
+    status as (typeof PAYMENT_FAILED_ALLOWANCE_STATUSES)[number],
+  );
+}
+
+function activeAllowanceCutoff(status: string, now: Date): Date {
+  return allowanceIsPaymentFailed(status)
+    ? new Date(now.getTime() - PAYMENT_FAILURE_ALLOWANCE_GRACE_MS)
+    : now;
+}
+
+async function refreshUsageAllowanceEntitlementFromStripe(
+  tx: UsageAllowanceStore,
+  entitlement: UsageAllowanceEntitlement,
+  now: Date,
+): Promise<UsageAllowanceEntitlement | null> {
+  if (!entitlement.stripeSubscriptionId) {
+    return null;
+  }
+
+  L.warn(
+    "usage allowance entitlement expired locally, refreshing from Stripe",
+    {
+      orgId: entitlement.orgId,
+      entitlementId: entitlement.id,
+      stripeSubscriptionId: entitlement.stripeSubscriptionId,
+      expiresAt: entitlement.expiresAt,
+    },
+  );
+
+  const subscription = (await getStripeClient().subscriptions.retrieve(
+    entitlement.stripeSubscriptionId,
+  )) as UsageAllowanceSubscriptionInput;
+  const periodEnd = subscriptionScheduledEnd(subscription);
+
+  if (subscriptionIsTerminalAllowance(subscription)) {
+    await tx
+      .update(orgUsageAllowanceEntitlements)
+      .set({
+        status: "canceled",
+        expiresAt: now,
+        updatedAt: now,
+      })
+      .where(eq(orgUsageAllowanceEntitlements.id, entitlement.id));
+    return null;
+  }
+
+  if (!subscriptionCanBackUsageAllowance(subscription)) {
+    L.warn("usage allowance subscription has unexpected Stripe status", {
+      orgId: entitlement.orgId,
+      entitlementId: entitlement.id,
+      stripeSubscriptionId: entitlement.stripeSubscriptionId,
+      status: subscription.status,
+    });
+    return null;
+  }
+
+  const cutoff = activeAllowanceCutoff(subscription.status, now);
+  if (!periodEnd || periodEnd <= cutoff) {
+    L.warn("usage allowance subscription has no future paid-through period", {
+      orgId: entitlement.orgId,
+      entitlementId: entitlement.id,
+      stripeSubscriptionId: entitlement.stripeSubscriptionId,
+      status: subscription.status,
+      periodEnd,
+    });
+    return null;
+  }
+
+  await tx
+    .update(orgUsageAllowanceEntitlements)
+    .set({
+      status: subscription.status,
+      expiresAt: periodEnd,
+      updatedAt: now,
+    })
+    .where(eq(orgUsageAllowanceEntitlements.id, entitlement.id));
+
+  return {
+    ...entitlement,
+    status: subscription.status,
+    expiresAt: periodEnd,
+  };
+}
+
 async function lockUsageAllowanceOrg(
   tx: UsageAllowanceStore,
   orgId: string,
@@ -97,14 +263,19 @@ async function loadActiveUsageAllowanceEntitlement(
   tx: UsageAllowanceStore,
   orgId: string,
 ): Promise<UsageAllowanceEntitlement | null> {
+  const currentTime = nowDate();
   const [row] = await tx
     .select({
       id: orgUsageAllowanceEntitlements.id,
       orgId: orgUsageAllowanceEntitlements.orgId,
+      status: orgUsageAllowanceEntitlements.status,
       shortWindowSeconds: orgUsageAllowanceEntitlements.shortWindowSeconds,
       shortWindowUnits: orgUsageAllowanceEntitlements.shortWindowUnits,
       weeklyWindowSeconds: orgUsageAllowanceEntitlements.weeklyWindowSeconds,
       weeklyWindowUnits: orgUsageAllowanceEntitlements.weeklyWindowUnits,
+      effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
+      expiresAt: orgUsageAllowanceEntitlements.expiresAt,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
     })
     .from(orgUsageAllowanceEntitlements)
     .where(
@@ -113,13 +284,26 @@ async function loadActiveUsageAllowanceEntitlement(
         inArray(orgUsageAllowanceEntitlements.status, [
           ...ACTIVE_ALLOWANCE_STATUSES,
         ]),
+        lte(orgUsageAllowanceEntitlements.effectiveAt, currentTime),
+        or(
+          isNull(orgUsageAllowanceEntitlements.expiresAt),
+          gt(orgUsageAllowanceEntitlements.expiresAt, currentTime),
+          isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
+        ),
       ),
     )
     .limit(1);
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+  const cutoff = activeAllowanceCutoff(row.status, currentTime);
+  if (!row.expiresAt || row.expiresAt > cutoff) {
+    return row;
+  }
+  return await refreshUsageAllowanceEntitlementFromStripe(tx, row, currentTime);
 }
 
-async function loadRunCreatedAt(
+async function loadVm0RunCreatedAt(
   tx: UsageAllowanceStore,
   args: {
     readonly orgId: string;
@@ -129,12 +313,70 @@ async function loadRunCreatedAt(
   const [row] = await tx
     .select({ createdAt: agentRuns.createdAt })
     .from(agentRuns)
-    .where(and(eq(agentRuns.orgId, args.orgId), eq(agentRuns.id, args.runId)))
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.orgId, args.orgId),
+        eq(agentRuns.id, args.runId),
+        eq(zeroRuns.modelProvider, "vm0"),
+      ),
+    )
     .limit(1);
   return row?.createdAt ?? null;
 }
 
 async function lockActiveWindowAt(
+  tx: UsageAllowanceStore,
+  args: {
+    readonly orgId: string;
+    readonly kind: UsageAllowanceWindowKind;
+    readonly at: Date;
+  },
+): Promise<UsageAllowanceWindow | null> {
+  const currentTime = nowDate();
+  const [window] = await tx
+    .select({
+      id: orgUsageAllowanceWindows.id,
+      kind: orgUsageAllowanceWindows.kind,
+      unitLimit: orgUsageAllowanceWindows.unitLimit,
+      consumedUnits: orgUsageAllowanceWindows.consumedUnits,
+    })
+    .from(orgUsageAllowanceWindows)
+    .innerJoin(
+      orgUsageAllowanceEntitlements,
+      eq(
+        orgUsageAllowanceEntitlements.id,
+        orgUsageAllowanceWindows.entitlementId,
+      ),
+    )
+    .where(
+      and(
+        eq(orgUsageAllowanceWindows.orgId, args.orgId),
+        eq(orgUsageAllowanceEntitlements.orgId, args.orgId),
+        inArray(orgUsageAllowanceEntitlements.status, [
+          ...ACTIVE_ALLOWANCE_STATUSES,
+        ]),
+        lte(orgUsageAllowanceEntitlements.effectiveAt, currentTime),
+        or(
+          isNull(orgUsageAllowanceEntitlements.expiresAt),
+          gt(orgUsageAllowanceEntitlements.expiresAt, currentTime),
+        ),
+        gte(
+          orgUsageAllowanceWindows.startsAt,
+          orgUsageAllowanceEntitlements.effectiveAt,
+        ),
+        eq(orgUsageAllowanceWindows.kind, args.kind),
+        lte(orgUsageAllowanceWindows.startsAt, args.at),
+        gt(orgUsageAllowanceWindows.expiresAt, args.at),
+      ),
+    )
+    .orderBy(desc(orgUsageAllowanceWindows.startsAt))
+    .limit(1)
+    .for("update");
+  return window ?? null;
+}
+
+async function lockIssuedWindowAt(
   tx: UsageAllowanceStore,
   args: {
     readonly orgId: string;
@@ -261,17 +503,17 @@ async function loadExistingWindowsForRun(
     readonly runId: string;
   },
 ): Promise<UsageAllowanceWindows | null> {
-  const runCreatedAt = await loadRunCreatedAt(tx, args);
+  const runCreatedAt = await loadVm0RunCreatedAt(tx, args);
   if (!runCreatedAt) {
     return null;
   }
 
-  const shortWindow = await lockActiveWindowAt(tx, {
+  const shortWindow = await lockIssuedWindowAt(tx, {
     orgId: args.orgId,
     kind: "short",
     at: runCreatedAt,
   });
-  const weeklyWindow = await lockActiveWindowAt(tx, {
+  const weeklyWindow = await lockIssuedWindowAt(tx, {
     orgId: args.orgId,
     kind: "weekly",
     at: runCreatedAt,

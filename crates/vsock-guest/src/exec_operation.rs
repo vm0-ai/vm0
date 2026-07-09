@@ -759,7 +759,7 @@ pub(crate) fn send_error_response(seq: u32, message: &str, writer: &GuestWriter)
 }
 
 fn run_exec_operation_worker<S>(
-    request: ExecOperationWorkerRequest,
+    mut request: ExecOperationWorkerRequest,
     writer: GuestWriter,
     connection_cancel: Arc<AtomicBool>,
     exec_cancel: Arc<AtomicBool>,
@@ -784,6 +784,8 @@ fn run_exec_operation_worker<S>(
         completion.start_failed(&diagnostic);
         return;
     }
+    let stdin_bytes = request.stdin_bytes.take();
+    let pipe_stdin = stdin_bytes.is_some();
 
     let env_refs = env_refs(&request.env);
     let mut env_with_control;
@@ -799,7 +801,7 @@ fn run_exec_operation_worker<S>(
         &request.command,
         effective_env,
         request.sudo,
-        request.stdin_bytes.is_some(),
+        pipe_stdin,
     ) {
         Ok(spawned) => spawned,
         Err(e) => {
@@ -845,12 +847,12 @@ fn run_exec_operation_worker<S>(
             return;
         }
     };
-    if let Some(stdin_bytes) = request.stdin_bytes.as_ref() {
+    if let Some(stdin_bytes) = stdin_bytes {
         let Some(stdin) = setup.take_stdin() else {
             setup.abort_wait_failed(&exec_cancel, &completion, "missing stdin pipe");
             return;
         };
-        match spawn_exec_operation_stdin(stdin, stdin_bytes.clone(), spawner.clone()) {
+        match spawn_exec_operation_stdin(stdin, stdin_bytes, spawner.clone()) {
             Ok(writer) => setup.set_stdin_writer(writer),
             Err(e) => {
                 setup.abort_wait_failed(

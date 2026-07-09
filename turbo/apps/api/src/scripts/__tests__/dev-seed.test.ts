@@ -40,6 +40,16 @@ function buildOpenRouterKeys(
   });
 }
 
+function buildZaiKeys(
+  values: Readonly<Record<string, string | undefined>>,
+): ReturnType<typeof buildVm0ApiKeys> {
+  return buildVm0ApiKeys(readEnvFrom(values), () => {
+    // Suppress expected skip logs for vendors that are not configured in tests.
+  }).filter((key) => {
+    return key.vendor === "zai";
+  });
+}
+
 describe("buildVm0ApiKeys", () => {
   it("falls back to ANTHROPIC_API_KEY for Anthropic dev seed rows", () => {
     const anthropicKeys = buildAnthropicKeys({
@@ -111,18 +121,6 @@ describe("buildVm0ApiKeys", () => {
         expect.objectContaining({
           apiKey: "dev-openrouter-key",
           label: "dev-seed",
-          model: "z-ai/glm-5.2",
-          vendor: "openrouter",
-        }),
-        expect.objectContaining({
-          apiKey: "dev-openrouter-key",
-          label: "dev-seed",
-          model: "z-ai/glm-5.1",
-          vendor: "openrouter",
-        }),
-        expect.objectContaining({
-          apiKey: "dev-openrouter-key",
-          label: "dev-seed",
           model: "xiaomi/mimo-v2.5",
           vendor: "openrouter",
         }),
@@ -141,6 +139,37 @@ describe("buildVm0ApiKeys", () => {
         }),
       ),
     ).toStrictEqual(new Set(["dev-openrouter-key"]));
+  });
+
+  it("builds Z.AI dev seed rows with native GLM model ids", () => {
+    const zaiKeys = buildZaiKeys({
+      DEV_MODEL_ZAI_KEY: "dev-zai-key",
+    });
+
+    expect(zaiKeys.length).toBeGreaterThan(0);
+    expect(zaiKeys).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          apiKey: "dev-zai-key",
+          label: "dev-seed",
+          model: "glm-5.2",
+          vendor: "zai",
+        }),
+        expect.objectContaining({
+          apiKey: "dev-zai-key",
+          label: "dev-seed",
+          model: "glm-5.1",
+          vendor: "zai",
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        zaiKeys.map((key) => {
+          return key.apiKey;
+        }),
+      ),
+    ).toStrictEqual(new Set(["dev-zai-key"]));
   });
 
   it("falls back to DEEPSEEK_API_KEY for DeepSeek dev seed rows", () => {

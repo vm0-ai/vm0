@@ -4,6 +4,10 @@ import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import {
+  orgUsageAllowanceEntitlements,
+  orgUsageAllowanceWindows,
+} from "@vm0/db/schema/org-usage-allowance";
 import { command } from "ccstate";
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
@@ -45,6 +49,7 @@ const L = logger("WebhookStripe");
 type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
 type ClerkClient = ReturnType<typeof clerk$.read>;
 type ClerkClientProvider = () => ClerkClient;
 
@@ -175,6 +180,23 @@ interface AtomGrantInvoiceDetails {
   readonly credits: number;
 }
 
+interface UsageAllowanceInvoiceDetails {
+  readonly orgId: string;
+  readonly shortWindowSeconds: number;
+  readonly shortWindowUnits: number;
+  readonly weeklyWindowSeconds: number;
+  readonly weeklyWindowUnits: number;
+  readonly effectiveAt: Date;
+  readonly expiresAt: Date | null;
+  readonly customerId: string | null;
+  readonly subscriptionId: string | null;
+}
+
+interface UsageAllowanceMetadataSource {
+  readonly metadata: Record<string, string>;
+  readonly source: "invoice" | "product";
+}
+
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
@@ -235,6 +257,17 @@ async function subscriptionScheduledEnd(
       ? subscriptionPeriodEnd(subscription)
       : null)
   );
+}
+
+function usageAllowanceSubscriptionEnd(
+  subscription: SubscriptionInput,
+): Date | null {
+  const periodEnd = subscriptionPeriodEnd(subscription);
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!periodEnd) {
+    return null;
+  }
+  return cancelAt && cancelAt < periodEnd ? cancelAt : periodEnd;
 }
 
 function customerIdFromSubscription(
@@ -320,6 +353,7 @@ const CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY = "creditsExpiresAt";
 const ATOM_GRANT_EXPIRES_AT_METADATA_KEY = "atomGrantExpiresAt";
 const ATOM_GRANT_PURPOSE = "atom_grant";
 const ATOM_GRANT_SUBSCRIPTION_STATUS = "atom_grant";
+const USAGE_ALLOWANCE_PURPOSE = "usage_allowance";
 
 function isAtomDayGrantSource(source: string | undefined): boolean {
   return source === "atom_entitlement" || source === "atom_redeem_code";
@@ -438,7 +472,27 @@ function invoiceAtomGrantLine(invoice: InvoiceInput): InvoiceLineInput | null {
   );
 }
 
+function invoiceMergedMetadata(invoice: InvoiceInput): Record<string, string> {
+  return {
+    ...invoice.parent?.subscription_details?.metadata,
+    ...invoice.metadata,
+  };
+}
+
+function isUsageAllowanceMetadata(
+  metadata: Readonly<Record<string, string>> | null | undefined,
+): boolean {
+  return (
+    metadata?.purpose === USAGE_ALLOWANCE_PURPOSE ||
+    metadata?.type === USAGE_ALLOWANCE_PURPOSE
+  );
+}
+
 function isAtomGrantInvoice(invoice: InvoiceInput): boolean {
+  if (isUsageAllowanceMetadata(invoiceMergedMetadata(invoice))) {
+    return false;
+  }
+
   return (
     invoice.metadata?.purpose === ATOM_GRANT_PURPOSE ||
     invoice.metadata?.type === ATOM_GRANT_PURPOSE ||
@@ -555,6 +609,243 @@ function atomGrantWouldReplaceWithSameOrLowerTier(args: {
     currentTier: args.lockedOrg.tier,
     targetTier: args.targetTier,
   });
+}
+
+function positiveMetadataInteger(
+  metadata: Readonly<Record<string, string>>,
+  key: string,
+): number | null {
+  const value = Number(metadata[key]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function invoicePeriodStart(invoice: InvoiceInput): Date | null {
+  const start = invoice.lines.data.find((line) => {
+    return typeof line.period.start === "number";
+  })?.period.start;
+  return typeof start === "number" ? new Date(start * 1000) : null;
+}
+
+function invoicePeriodEnd(invoice: InvoiceInput): Date | null {
+  const end = invoice.lines.data.find((line) => {
+    return typeof line.period.end === "number";
+  })?.period.end;
+  return typeof end === "number" ? new Date(end * 1000) : null;
+}
+
+function invoiceLineWithPrice(invoice: InvoiceInput): InvoiceLineInput | null {
+  return (
+    invoice.lines.data.find((line) => {
+      return invoiceLinePriceId(line) !== null;
+    }) ?? null
+  );
+}
+
+async function usageAllowanceProductMetadata(
+  invoice: InvoiceInput,
+): Promise<Record<string, string> | null> {
+  const line = invoiceLineWithPrice(invoice);
+  const priceId = line ? invoiceLinePriceId(line) : null;
+  if (!priceId) {
+    return null;
+  }
+
+  const price = await getStripeClient().prices.retrieve(priceId, {
+    expand: ["product"],
+  });
+  const product = price.product;
+  if (typeof product === "string" || "deleted" in product) {
+    return null;
+  }
+  return product.metadata ?? null;
+}
+
+async function usageAllowanceMetadataSource(
+  invoice: InvoiceInput,
+): Promise<UsageAllowanceMetadataSource | null> {
+  const invoiceMetadata = invoiceMergedMetadata(invoice);
+  if (isUsageAllowanceMetadata(invoiceMetadata)) {
+    const hasWindowMetadata =
+      positiveMetadataInteger(invoiceMetadata, "shortWindowSeconds") !== null &&
+      positiveMetadataInteger(invoiceMetadata, "shortWindowUnits") !== null &&
+      positiveMetadataInteger(invoiceMetadata, "weeklyWindowSeconds") !==
+        null &&
+      positiveMetadataInteger(invoiceMetadata, "weeklyWindowUnits") !== null;
+    if (hasWindowMetadata) {
+      return { metadata: invoiceMetadata, source: "invoice" };
+    }
+  }
+
+  const productMetadata = await usageAllowanceProductMetadata(invoice);
+  if (productMetadata && isUsageAllowanceMetadata(productMetadata)) {
+    return { metadata: productMetadata, source: "product" };
+  }
+
+  return isUsageAllowanceMetadata(invoiceMetadata)
+    ? { metadata: invoiceMetadata, source: "invoice" }
+    : null;
+}
+
+async function usageAllowanceInvoiceDetails(
+  invoice: InvoiceInput,
+): Promise<UsageAllowanceInvoiceDetails | null> {
+  const metadataSource = await usageAllowanceMetadataSource(invoice);
+  if (!metadataSource) {
+    return null;
+  }
+  const { metadata, source } = metadataSource;
+
+  const orgId = metadata.orgId;
+  const shortWindowSeconds = positiveMetadataInteger(
+    metadata,
+    "shortWindowSeconds",
+  );
+  const shortWindowUnits = positiveMetadataInteger(
+    metadata,
+    "shortWindowUnits",
+  );
+  const weeklyWindowSeconds = positiveMetadataInteger(
+    metadata,
+    "weeklyWindowSeconds",
+  );
+  const weeklyWindowUnits = positiveMetadataInteger(
+    metadata,
+    "weeklyWindowUnits",
+  );
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  const effectiveAt = invoicePeriodStart(invoice) ?? nowDate();
+  const expiresAt = invoicePeriodEnd(invoice);
+
+  if (
+    !orgId ||
+    !shortWindowSeconds ||
+    !shortWindowUnits ||
+    !weeklyWindowSeconds ||
+    !weeklyWindowUnits
+  ) {
+    L.warn("usage allowance invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      source,
+      metadata,
+    });
+    return null;
+  }
+
+  if (!subscriptionId || !expiresAt) {
+    L.warn("usage allowance invoice is not a subscription period invoice", {
+      invoiceId: invoice.id,
+      orgId,
+      hasSubscriptionId: Boolean(subscriptionId),
+      hasPeriodEnd: Boolean(expiresAt),
+    });
+    return null;
+  }
+
+  if (expiresAt.getTime() <= effectiveAt.getTime()) {
+    L.warn("usage allowance invoice has invalid entitlement time range", {
+      invoiceId: invoice.id,
+      orgId,
+      effectiveAt: effectiveAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+    return null;
+  }
+
+  return {
+    orgId,
+    shortWindowSeconds,
+    shortWindowUnits,
+    weeklyWindowSeconds,
+    weeklyWindowUnits,
+    effectiveAt,
+    expiresAt,
+    customerId: customerIdFromInvoice(invoice),
+    subscriptionId,
+  };
+}
+
+async function handleUsageAllowanceInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+): Promise<PaidWebhookOutcome> {
+  if (!isUsageAllowanceMetadata(invoiceMergedMetadata(invoice))) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const details = await usageAllowanceInvoiceDetails(invoice);
+  if (!details) {
+    return { handled: true, drainOrgId: null };
+  }
+
+  const existingRows = await db
+    .select({
+      effectiveAt: orgUsageAllowanceEntitlements.effectiveAt,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, details.orgId))
+    .limit(1);
+  const existing = existingRows[0];
+  if (
+    existing?.stripeSubscriptionId &&
+    existing.stripeSubscriptionId !== details.subscriptionId &&
+    existing.effectiveAt.getTime() >= details.effectiveAt.getTime()
+  ) {
+    L.warn("stale usage allowance invoice ignored", {
+      invoiceId: invoice.id,
+      orgId: details.orgId,
+      currentSubscriptionId: existing.stripeSubscriptionId,
+      invoiceSubscriptionId: details.subscriptionId,
+      currentEffectiveAt: existing.effectiveAt.toISOString(),
+      invoiceEffectiveAt: details.effectiveAt.toISOString(),
+    });
+    return { handled: true, drainOrgId: null };
+  }
+
+  const updatedAt = nowDate();
+  await db
+    .insert(orgUsageAllowanceEntitlements)
+    .values({
+      orgId: details.orgId,
+      source: "atom_usage_allowance",
+      status: "active",
+      shortWindowSeconds: details.shortWindowSeconds,
+      shortWindowUnits: details.shortWindowUnits,
+      weeklyWindowSeconds: details.weeklyWindowSeconds,
+      weeklyWindowUnits: details.weeklyWindowUnits,
+      effectiveAt: details.effectiveAt,
+      expiresAt: details.expiresAt,
+      stripeCustomerId: details.customerId,
+      stripeSubscriptionId: details.subscriptionId,
+      stripeInvoiceId: invoice.id,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: orgUsageAllowanceEntitlements.orgId,
+      set: {
+        source: "atom_usage_allowance",
+        status: "active",
+        shortWindowSeconds: details.shortWindowSeconds,
+        shortWindowUnits: details.shortWindowUnits,
+        weeklyWindowSeconds: details.weeklyWindowSeconds,
+        weeklyWindowUnits: details.weeklyWindowUnits,
+        effectiveAt: details.effectiveAt,
+        expiresAt: details.expiresAt,
+        stripeCustomerId: details.customerId,
+        stripeSubscriptionId: details.subscriptionId,
+        stripeInvoiceId: invoice.id,
+        updatedAt,
+      },
+    });
+
+  L.debug("usage allowance invoice processed", {
+    invoiceId: invoice.id,
+    orgId: details.orgId,
+    subscriptionId: details.subscriptionId,
+    expiresAt: details.expiresAt?.toISOString() ?? null,
+  });
+  return { handled: true, drainOrgId: details.orgId };
 }
 
 function stripePreviewMetadataForEvent(
@@ -2428,6 +2719,14 @@ async function handleInvoicePaid(
     return creditPurchaseResult.drainOrgId;
   }
 
+  const usageAllowanceResult = await handleUsageAllowanceInvoicePaid(
+    db,
+    invoice,
+  );
+  if (usageAllowanceResult.handled) {
+    return usageAllowanceResult.drainOrgId;
+  }
+
   const atomGrantResult = await handleAtomGrantInvoicePaid(db, invoice);
   if (atomGrantResult.handled) {
     return atomGrantResult.drainOrgId;
@@ -2533,11 +2832,234 @@ async function handleConcurrencySubscriptionUpdated(
   });
 }
 
+interface UsageAllowanceSubscriptionUpdateTarget {
+  readonly orgIds: readonly string[];
+  readonly by: "subscription" | "org";
+}
+
+interface UsageAllowanceSubscriptionCreditsUpdate {
+  readonly shortWindowUnits: number;
+  readonly weeklyWindowUnits: number;
+}
+
+async function usageAllowanceSubscriptionUpdateTarget(
+  db: Pick<UsageAllowanceSubscriptionUpdateStore, "select">,
+  subscription: Pick<SubscriptionInput, "id" | "metadata">,
+): Promise<UsageAllowanceSubscriptionUpdateTarget | null> {
+  const subscriptionRows = await db
+    .select({ orgId: orgUsageAllowanceEntitlements.orgId })
+    .from(orgUsageAllowanceEntitlements)
+    .where(
+      eq(orgUsageAllowanceEntitlements.stripeSubscriptionId, subscription.id),
+    );
+  if (subscriptionRows.length > 0) {
+    return {
+      by: "subscription",
+      orgIds: subscriptionRows.map((row) => {
+        return row.orgId;
+      }),
+    };
+  }
+
+  const metadataOrgId = subscription.metadata?.orgId;
+  if (!metadataOrgId || !isUsageAllowanceMetadata(subscription.metadata)) {
+    return null;
+  }
+
+  const orgRows = await db
+    .select({
+      orgId: orgUsageAllowanceEntitlements.orgId,
+      stripeSubscriptionId: orgUsageAllowanceEntitlements.stripeSubscriptionId,
+    })
+    .from(orgUsageAllowanceEntitlements)
+    .where(eq(orgUsageAllowanceEntitlements.orgId, metadataOrgId))
+    .limit(1);
+  const orgRow = orgRows[0];
+  if (!orgRow || orgRow.stripeSubscriptionId) {
+    return null;
+  }
+
+  return { by: "org", orgIds: [orgRow.orgId] };
+}
+
+function usageAllowanceSubscriptionCreditsUpdate(
+  subscription: Pick<SubscriptionInput, "metadata">,
+): UsageAllowanceSubscriptionCreditsUpdate | null {
+  const metadata = subscription.metadata;
+  if (!metadata || !isUsageAllowanceMetadata(metadata)) {
+    return null;
+  }
+
+  const shortWindowUnits = positiveMetadataInteger(
+    metadata,
+    "shortWindowUnits",
+  );
+  const weeklyWindowUnits = positiveMetadataInteger(
+    metadata,
+    "weeklyWindowUnits",
+  );
+  if (!shortWindowUnits || !weeklyWindowUnits) {
+    return null;
+  }
+
+  return { shortWindowUnits, weeklyWindowUnits };
+}
+
+async function updateActiveUsageAllowanceWindowLimits(
+  db: Pick<UsageAllowanceSubscriptionUpdateStore, "update">,
+  args: {
+    readonly orgIds: readonly string[];
+    readonly credits: UsageAllowanceSubscriptionCreditsUpdate;
+    readonly at: Date;
+    readonly updatedAt: Date;
+  },
+): Promise<void> {
+  await Promise.all(
+    args.orgIds.flatMap((orgId) => {
+      return [
+        db
+          .update(orgUsageAllowanceWindows)
+          .set({
+            unitLimit: args.credits.shortWindowUnits,
+            updatedAt: args.updatedAt,
+          })
+          .where(
+            and(
+              eq(orgUsageAllowanceWindows.orgId, orgId),
+              eq(orgUsageAllowanceWindows.kind, "short"),
+              lte(orgUsageAllowanceWindows.startsAt, args.at),
+              gt(orgUsageAllowanceWindows.expiresAt, args.at),
+            ),
+          ),
+        db
+          .update(orgUsageAllowanceWindows)
+          .set({
+            unitLimit: args.credits.weeklyWindowUnits,
+            updatedAt: args.updatedAt,
+          })
+          .where(
+            and(
+              eq(orgUsageAllowanceWindows.orgId, orgId),
+              eq(orgUsageAllowanceWindows.kind, "weekly"),
+              lte(orgUsageAllowanceWindows.startsAt, args.at),
+              gt(orgUsageAllowanceWindows.expiresAt, args.at),
+            ),
+          ),
+      ];
+    }),
+  );
+}
+
+async function expireActiveUsageAllowanceWindows(
+  db: Pick<UsageAllowanceSubscriptionUpdateStore, "update">,
+  args: {
+    readonly orgIds: readonly string[];
+    readonly at: Date;
+    readonly updatedAt: Date;
+  },
+): Promise<void> {
+  await Promise.all(
+    args.orgIds.map((orgId) => {
+      return db
+        .update(orgUsageAllowanceWindows)
+        .set({
+          expiresAt: sql<Date>`GREATEST(${args.at}, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
+          updatedAt: args.updatedAt,
+        })
+        .where(
+          and(
+            eq(orgUsageAllowanceWindows.orgId, orgId),
+            lte(orgUsageAllowanceWindows.startsAt, args.at),
+            gt(orgUsageAllowanceWindows.expiresAt, args.at),
+          ),
+        );
+    }),
+  );
+}
+
+async function handleUsageAllowanceSubscriptionUpdated(
+  db: Db,
+  subscription: SubscriptionInput,
+): Promise<readonly string[]> {
+  return await db.transaction(async (tx) => {
+    const target = await usageAllowanceSubscriptionUpdateTarget(
+      tx,
+      subscription,
+    );
+    if (!target) {
+      return [];
+    }
+
+    const periodEnd = usageAllowanceSubscriptionEnd(subscription);
+    const terminalStatus =
+      subscription.status === "canceled" ||
+      subscription.status === "incomplete_expired";
+    const updatedAt = nowDate();
+    const credits = usageAllowanceSubscriptionCreditsUpdate(subscription);
+    const rows = await tx
+      .update(orgUsageAllowanceEntitlements)
+      .set({
+        status: terminalStatus ? "canceled" : subscription.status,
+        ...(terminalStatus
+          ? { expiresAt: updatedAt }
+          : periodEnd
+            ? { expiresAt: periodEnd }
+            : {}),
+        ...(credits
+          ? {
+              shortWindowUnits: credits.shortWindowUnits,
+              weeklyWindowUnits: credits.weeklyWindowUnits,
+            }
+          : {}),
+        stripeSubscriptionId: subscription.id,
+        updatedAt,
+      })
+      .where(
+        target.by === "subscription"
+          ? eq(
+              orgUsageAllowanceEntitlements.stripeSubscriptionId,
+              subscription.id,
+            )
+          : eq(orgUsageAllowanceEntitlements.orgId, target.orgIds[0] ?? ""),
+      )
+      .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+
+    const orgIds = rows.map((row) => {
+      return row.orgId;
+    });
+
+    if (terminalStatus) {
+      await expireActiveUsageAllowanceWindows(tx, {
+        orgIds,
+        at: updatedAt,
+        updatedAt,
+      });
+    } else if (credits) {
+      await updateActiveUsageAllowanceWindowLimits(tx, {
+        orgIds,
+        credits,
+        at: updatedAt,
+        updatedAt,
+      });
+    }
+
+    return orgIds;
+  });
+}
+
 async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
   previousAttributes: SubscriptionPreviousAttributes | undefined,
 ): Promise<readonly string[]> {
+  const allowanceOrgIds = await handleUsageAllowanceSubscriptionUpdated(
+    db,
+    subscription,
+  );
+  if (allowanceOrgIds.length > 0) {
+    return allowanceOrgIds;
+  }
+
   const concurrencyOrgIds = await handleConcurrencySubscriptionUpdated(
     db,
     subscription,
@@ -2682,6 +3204,34 @@ async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<readonly string[]> {
+  const allowanceRows = await db.transaction(async (tx) => {
+    const canceledAt = nowDate();
+    const rows = await tx
+      .update(orgUsageAllowanceEntitlements)
+      .set({
+        status: "canceled",
+        expiresAt: canceledAt,
+        updatedAt: canceledAt,
+      })
+      .where(
+        eq(orgUsageAllowanceEntitlements.stripeSubscriptionId, subscription.id),
+      )
+      .returning({ orgId: orgUsageAllowanceEntitlements.orgId });
+    await expireActiveUsageAllowanceWindows(tx, {
+      orgIds: rows.map((row) => {
+        return row.orgId;
+      }),
+      at: canceledAt,
+      updatedAt: canceledAt,
+    });
+    return rows;
+  });
+  if (allowanceRows.length > 0) {
+    return allowanceRows.map((row) => {
+      return row.orgId;
+    });
+  }
+
   const concurrencyRows = await db
     .update(orgConcurrencySubscriptions)
     .set({
