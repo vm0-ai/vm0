@@ -2572,4 +2572,53 @@ describe("CHAT-02: push notification gating", () => {
     });
     expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(1);
   }, 60_000);
+
+  it("bounds push fan-out without serializing every subscription", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    chatCallbacks.enableVapid();
+
+    for (let index = 0; index < 6; index += 1) {
+      await chatCallbacks.registerPushSubscription(actor);
+    }
+
+    const pushGate = deferredGate();
+    let activePushes = 0;
+    let maxActivePushes = 0;
+    context.mocks.webpush.sendNotification.mockImplementation(async () => {
+      activePushes += 1;
+      maxActivePushes = Math.max(maxActivePushes, activePushes);
+      await pushGate.wait().finally(() => {
+        activePushes -= 1;
+      });
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "bounded push fan-out",
+    });
+    const headers = await claimChatRun(runnerGroup, run.runId);
+    await completeChatRunOk(run.runId, headers);
+
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(5);
+    expect(activePushes).toBe(5);
+    expect(maxActivePushes).toBe(5);
+
+    pushGate.release();
+    await flushWaitUntilForTest();
+
+    expect(context.mocks.webpush.sendNotification).toHaveBeenCalledTimes(6);
+    expect(maxActivePushes).toBe(5);
+    expect(
+      pushPayload(context.mocks.webpush.sendNotification.mock.calls[5]),
+    ).toMatchObject({
+      title: "bounded push fan-out",
+      body: "Your task is complete",
+      url: `/chats/${run.threadId}`,
+    });
+  }, 60_000);
 });

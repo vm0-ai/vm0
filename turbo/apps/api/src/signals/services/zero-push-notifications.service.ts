@@ -9,11 +9,75 @@ import { settle } from "../utils";
 
 const log = logger("api:push");
 const PUSH_NOTIFICATION_TIMEOUT_MS = 10_000;
+const PUSH_NOTIFICATION_CONCURRENCY = 5;
 
 interface PushNotification {
   readonly title: string;
   readonly body: string;
   readonly url: string;
+}
+
+async function forEachWithConcurrency<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      for (;;) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const item = items[index];
+        if (item === undefined) {
+          return;
+        }
+        await fn(item);
+      }
+    }),
+  );
+}
+
+async function sendPushToSubscription(args: {
+  readonly db: Db;
+  readonly subscription: typeof pushSubscriptions.$inferSelect;
+  readonly payload: string;
+}): Promise<void> {
+  const result = await settle(
+    webpush.sendNotification(
+      {
+        endpoint: args.subscription.endpoint,
+        keys: {
+          p256dh: args.subscription.p256dh,
+          auth: args.subscription.auth,
+        },
+      },
+      args.payload,
+      { timeout: PUSH_NOTIFICATION_TIMEOUT_MS },
+    ),
+  );
+  if (result.ok) {
+    return;
+  }
+
+  const statusCode =
+    result.error instanceof WebPushError ? result.error.statusCode : undefined;
+  if (statusCode === 410 || statusCode === 404) {
+    await args.db
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.id, args.subscription.id));
+    log.debug("Removed stale push subscription", {
+      endpoint: args.subscription.endpoint,
+    });
+    return;
+  }
+
+  log.warn("Failed to send push notification", {
+    endpoint: args.subscription.endpoint,
+    error: result.error,
+  });
 }
 
 /**
@@ -43,41 +107,15 @@ export async function sendUserPushNotifications(args: {
   }
 
   const payload = JSON.stringify(args.notification);
-  for (const subscription of subscriptions) {
-    const result = await settle(
-      webpush.sendNotification(
-        {
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: subscription.p256dh,
-            auth: subscription.auth,
-          },
-        },
+  await forEachWithConcurrency(
+    subscriptions,
+    PUSH_NOTIFICATION_CONCURRENCY,
+    async (subscription) => {
+      await sendPushToSubscription({
+        db: args.db,
+        subscription,
         payload,
-        { timeout: PUSH_NOTIFICATION_TIMEOUT_MS },
-      ),
-    );
-    if (result.ok) {
-      continue;
-    }
-
-    const statusCode =
-      result.error instanceof WebPushError
-        ? result.error.statusCode
-        : undefined;
-    if (statusCode === 410 || statusCode === 404) {
-      await args.db
-        .delete(pushSubscriptions)
-        .where(eq(pushSubscriptions.id, subscription.id));
-      log.debug("Removed stale push subscription", {
-        endpoint: subscription.endpoint,
       });
-      continue;
-    }
-
-    log.warn("Failed to send push notification", {
-      endpoint: subscription.endpoint,
-      error: result.error,
-    });
-  }
+    },
+  );
 }
