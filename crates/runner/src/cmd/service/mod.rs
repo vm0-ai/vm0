@@ -1168,20 +1168,44 @@ async fn verify_cleanup_inactive(
     ops: &mut impl ServiceStopOps,
 ) -> RunnerResult<()> {
     let deadline = TokioInstant::now() + STOP_CLEANUP_VERIFY_TIMEOUT;
+    let mut last_active_state: Option<String> = None;
+    let mut last_read_error: Option<String> = None;
 
     loop {
-        let state = ops.cleanup_active_state(unit).await?;
-        if !state.is_active_like() {
-            info!(unit = %unit.unit_name(), "runner service cleanup verified inactive");
-            return Ok(());
+        match ops.cleanup_active_state(unit).await {
+            Ok(state) => {
+                if !state.is_active_like() {
+                    info!(unit = %unit.unit_name(), "runner service cleanup verified inactive");
+                    return Ok(());
+                }
+                last_active_state = Some(state.active_state().to_string());
+            }
+            Err(e) => {
+                warn!(unit = %unit.unit_name(), error = %e, "failed to read service state during cleanup verification");
+                last_read_error = Some(e.to_string());
+            }
         }
 
         let now = TokioInstant::now();
         if now >= deadline {
+            if let Some(active_state) = last_active_state {
+                return Err(RunnerError::Internal(format!(
+                    "failed to stop {}; ActiveState={} after {}s cleanup verification",
+                    unit.service_name(),
+                    active_state,
+                    STOP_CLEANUP_VERIFY_TIMEOUT.as_secs()
+                )));
+            }
+            if let Some(error) = last_read_error {
+                return Err(RunnerError::Internal(format!(
+                    "failed to verify {} is inactive after {}s cleanup verification: {error}",
+                    unit.service_name(),
+                    STOP_CLEANUP_VERIFY_TIMEOUT.as_secs()
+                )));
+            }
             return Err(RunnerError::Internal(format!(
-                "failed to stop {}; ActiveState={} after {}s cleanup verification",
+                "failed to verify {} is inactive after {}s cleanup verification",
                 unit.service_name(),
-                state.active_state(),
                 STOP_CLEANUP_VERIFY_TIMEOUT.as_secs()
             )));
         }
@@ -2258,6 +2282,45 @@ profiles:
             cleanup_states: VecDeque::from([
                 cleanup_state("deactivating", true),
                 cleanup_state("deactivating", true),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+                "sleep",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_verify_retries_transient_state_read_error() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            cleanup_states: VecDeque::from([
+                cleanup_state("inactive", false),
+                Err(fake_error("systemd show unavailable")),
                 cleanup_state("inactive", false),
             ]),
             ..FakeStopOps::default()
