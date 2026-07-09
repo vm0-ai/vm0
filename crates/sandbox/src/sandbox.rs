@@ -155,9 +155,8 @@ pub trait Sandbox: Send + Sync + Any {
     //
     // Operations that start new guest work require the sandbox to be running
     // (post-`start`, pre-`stop`/`kill`) and, if it was previously parked,
-    // unparked. They race the guest IPC call against a crash notifier so a
-    // dying backend process surfaces as a specific error rather than an opaque
-    // IPC timeout.
+    // unparked. They use the trait-level backend-crash classification
+    // contract documented above.
     //
     // `wait_process` is the exception: it consumes a `GuestProcessHandle` returned by
     // `start_process` and observes that handle's already-started backend exit
