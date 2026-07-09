@@ -200,6 +200,62 @@ describe("buildRunGroupFolding", () => {
     });
   });
 
+  it("keeps the latest usage payload when a run has stale usage", () => {
+    const groups: GroupedChatMessageGroup[] = [
+      group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a1", runId: "r1", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 10,
+          settledAt: "2026-06-24T00:00:01.000Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+      group("user", [userMessage({ id: "u2", runId: "r2", runGroupId: "g1" })]),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a2", runId: "r2", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 20,
+          settledAt: "2026-06-24T00:00:02.000Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a2-stale", runId: "r2", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 0,
+          settledAt: "2026-06-24T00:00:01.500Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+      group("user", [userMessage({ id: "u3", runId: "r3", runGroupId: "g1" })]),
+      group(
+        "assistant",
+        [assistantMessage({ id: "a3", runId: "r3", runGroupId: "g1" })],
+        usagePayload({
+          totalCredits: 30,
+          settledAt: "2026-06-24T00:00:03.000Z",
+          kind: "connector",
+          provider: "github",
+        }),
+      ),
+    ];
+
+    const folding = buildRunGroupFolding(groups);
+
+    expect(folding).not.toBeNull();
+    const latestAssistantGroup = folding!.visibleGroups.find((item) => {
+      return item.beginMessageId === "a3";
+    });
+    expect(latestAssistantGroup?.usage?.totalCredits).toBe(60);
+  });
+
   it("does not fold runs separated by a normal message", () => {
     const groups: GroupedChatMessageGroup[] = [
       group("user", [userMessage({ id: "u1", runId: "r1", runGroupId: "g1" })]),

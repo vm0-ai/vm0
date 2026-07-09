@@ -102,6 +102,10 @@ function usageKindExpr(kind: string): string {
     END`;
 }
 
+function usageCreditsExpr(usageAlias: string, allowanceAlias: string): string {
+  return `COALESCE(${usageAlias}.credits_charged, 0) + COALESCE(${allowanceAlias}.units_applied, 0)`;
+}
+
 // Per-source usage for one user in one org. `record` is the shared CTE so the
 // row query and the count query stay in sync. Threaded sources collapse to one
 // row per source/thread. Deleted threaded rows, whose thread FK has been set to
@@ -124,9 +128,10 @@ function recordWith(
       SELECT
         ue.run_id,
         ue.user_id,
-        COALESCE(ue.credits_charged, 0)::bigint AS credits,
+        ${usageCreditsExpr("ue", "uaa")}::bigint AS credits,
         ${tokenExpr()}::bigint AS tokens
       FROM usage_event ue
+      LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
       WHERE ue.org_id = ${orgIdLit}
         ${userPredicate}
         AND ue.status = 'processed'
@@ -310,8 +315,9 @@ async function queryUsageRecordBreakdown(
           ue.user_id,
           ${kindSql} AS kind,
           COALESCE(NULLIF(ue.provider, ''), 'unknown') AS provider,
-          COALESCE(ue.credits_charged, 0)::bigint AS credits
+          ${usageCreditsExpr("ue", "uaa")}::bigint AS credits
         FROM usage_event ue
+        LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
         INNER JOIN zero_runs zr ON zr.id = ue.run_id
         WHERE ue.org_id = ${orgIdLit}
           ${userPredicate}

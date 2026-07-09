@@ -17,18 +17,12 @@ from tests.request_handler_helpers import (
     _write_github_firewall_registry,
     _write_registry,
 )
+from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
-
-
-def _mark_upstream_tls_verified(flow, *, sni: str) -> None:
-    flow.server_conn.sni = sni
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
 
 
 def _write_test_oauth_registry(tmp_path):
@@ -658,7 +652,10 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = ("140.82.112.5", 443)
-    _mark_upstream_tls_verified(flow, sni="attacker.example.com")
+    flow.server_conn.sni = "attacker.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -692,7 +689,9 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_upstrea
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.server_conn.peername = ("140.82.112.5", 443)
-    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    flow.server_conn.sni = "api.github.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
     flow.server_conn.error = "certificate verify failed"
 
     with (
@@ -766,10 +765,12 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_after_retarg
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
-    flow.server_conn.address = ("api.github.com", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.peername = ("140.82.112.5", 443)
-    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("api.github.com", 443),
+        peername=("140.82.112.5", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -811,11 +812,13 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_with_verifie
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
-    flow.server_conn.address = ("api.github.com", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.peername = None
-    flow.client_conn.sockname = ("140.82.112.5", 443)
-    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("api.github.com", 443),
+        peername=None,
+        client_sockname=("140.82.112.5", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -898,11 +901,13 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_loopbac
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
-    flow.server_conn.address = ("api.github.com", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.peername = None
-    flow.client_conn.sockname = ("127.0.0.1", 443)
-    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("api.github.com", 443),
+        peername=None,
+        client_sockname=("127.0.0.1", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -1133,9 +1138,12 @@ async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge
             ("Host", "api.vm0.ai"),
         ),
     )
-    flow.server_conn.peername = ("203.0.113.10", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
@@ -1170,9 +1178,12 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
-    flow.server_conn.peername = ("203.0.113.10", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
@@ -1459,8 +1470,12 @@ async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypa
             ("x-vm0-test-endpoint-bypass", "wrong-secret"),
         ),
     )
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("203.0.113.10", 443),
+        peername=None,
+    )
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (

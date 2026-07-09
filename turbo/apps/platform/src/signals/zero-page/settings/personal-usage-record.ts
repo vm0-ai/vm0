@@ -24,6 +24,7 @@ export const setCreditBalanceTab$ = command(
 
 const PAGE_STEP = 20;
 
+const usageRecordReload$ = state(0);
 const myUsagePageSize$ = state(PAGE_STEP);
 const myUsageRangeState$ = state<UsageRecordRange>("today");
 const teamUsageRangeState$ = state<UsageRecordRange>("billingPeriod");
@@ -53,11 +54,18 @@ export const loadMoreUsageRecord$ = command(
   },
 );
 
+export const reloadUsageRecords$ = command(({ set }) => {
+  set(usageRecordReload$, (value) => {
+    return value + 1;
+  });
+});
+
 function currentTimeZone(): string {
   return new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
 export const myUsageRecordAsync$ = computed(async (get) => {
+  get(usageRecordReload$);
   const pageSize = get(myUsagePageSize$);
   const range = get(myUsageRangeState$);
   const createClient = get(zeroClient$);
@@ -78,6 +86,7 @@ export const myUsageRecordAsync$ = computed(async (get) => {
 });
 
 export const teamMemberUsageAsync$ = computed(async (get) => {
+  get(usageRecordReload$);
   const range = get(teamUsageRangeState$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUsageMembersContract);

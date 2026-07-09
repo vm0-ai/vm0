@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.581.2](https://github.com/vm0-ai/vm0/compare/app-v0.581.1...app-v0.581.2) (2026-07-09)
+
+
+### Bug Fixes
+
+* inject only prompt-relevant memory context ([#20786](https://github.com/vm0-ai/vm0/issues/20786)) ([fd74f33](https://github.com/vm0-ai/vm0/commit/fd74f333f810dc7802cdfef0b337eb559c6c480c))
+
+
+### Performance Improvements
+
+* add zero memory runtime timing attribution ([#20787](https://github.com/vm0-ai/vm0/issues/20787)) ([ca0d5ea](https://github.com/vm0-ai/vm0/commit/ca0d5ea17ec463fba491144ea1972c4ddd937c11))
+
+## [0.581.1](https://github.com/vm0-ai/vm0/compare/app-v0.581.0...app-v0.581.1) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.1
+    * @vm0/connectors bumped to 1.150.2
+    * @vm0/core bumped to 8.418.1
+
 ## [0.581.0](https://github.com/vm0-ai/vm0/compare/app-v0.580.0...app-v0.581.0) (2026-07-09)
 
 

@@ -31,6 +31,11 @@ export const orgUsageAllowanceEntitlements = pgTable(
     weeklyWindowUnits: bigint("weekly_window_units", {
       mode: "number",
     }).notNull(),
+    effectiveAt: timestamp("effective_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at"),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripeInvoiceId: text("stripe_invoice_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -38,6 +43,9 @@ export const orgUsageAllowanceEntitlements = pgTable(
     return [
       uniqueIndex("uq_org_usage_allowance_entitlements_org").on(table.orgId),
       index("idx_org_usage_allowance_entitlements_status").on(table.status),
+      index("idx_org_usage_allowance_entitlements_stripe_subscription").on(
+        table.stripeSubscriptionId,
+      ),
       check(
         "chk_org_usage_allowance_short_window_seconds",
         sql`${table.shortWindowSeconds} > 0`,
@@ -53,6 +61,10 @@ export const orgUsageAllowanceEntitlements = pgTable(
       check(
         "chk_org_usage_allowance_weekly_window_units",
         sql`${table.weeklyWindowUnits} > 0`,
+      ),
+      check(
+        "chk_org_usage_allowance_entitlement_time",
+        sql`${table.expiresAt} IS NULL OR ${table.expiresAt} > ${table.effectiveAt}`,
       ),
     ];
   },

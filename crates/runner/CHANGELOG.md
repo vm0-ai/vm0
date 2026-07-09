@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.140.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.1...runner-rs-v0.140.2) (2026-07-09)
+
+
+### Refactoring
+
+* split runner executor diagnostics ([#20783](https://github.com/vm0-ai/vm0/issues/20783)) ([0d02016](https://github.com/vm0-ai/vm0/commit/0d02016d478208bb35dea0a8602614ab85c18b02))
+
 ## [0.140.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.0...runner-rs-v0.140.1) (2026-07-09)
 
 

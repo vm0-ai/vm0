@@ -1,0 +1,207 @@
+use guest_contracts::diagnostics::{
+    CliObservedExitDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic,
+};
+use sandbox::ExecTermination;
+use tracing::{info, warn};
+
+use super::super::session_restore::SessionRestoreDiagnostics;
+use super::super::{EXIT_SIGKILL, EXIT_SIGNAL_KILL, SandboxReuseResult};
+use super::environment::{AgentEnvDiagnostics, AgentEnvKeyDiagnostics};
+use super::stdout_stream::AgentStdoutStreamDiagnostics;
+use crate::ids::RunId;
+
+pub(in crate::executor) fn should_collect_agent_abnormal_exit_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    stderr: &str,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && process_failed(exit)
+        && exit.diagnostic.is_empty()
+        && stderr.is_empty()
+        && failure_diagnostic.is_none()
+        && guest_error.is_none()
+}
+
+pub(in crate::executor) fn should_collect_unattributed_sigkill_resource_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+) -> bool {
+    let ExecTermination::Exited { exit_code } = exit.termination else {
+        return false;
+    };
+
+    !wait_cancelled
+        && exit_code != 0
+        && exit.diagnostic.is_empty()
+        && failure_diagnostic
+            .is_some_and(|diagnostic| unattributed_sigkill_cli_failure(diagnostic, exit_code))
+}
+
+fn unattributed_sigkill_cli_failure(diagnostic: &FailureDiagnostic, exit_code: i32) -> bool {
+    diagnostic.failure_class == FailureClass::CliNonzero
+        && diagnostic.cli_exit_code == Some(exit_code)
+        && diagnostic.cli_termination.is_none()
+        && diagnostic.failure_detail_source == Some(FailureDetailSource::FallbackExitCode)
+        && diagnostic
+            .cli_observed_exit
+            .as_ref()
+            .is_some_and(|observed_exit| {
+                observed_sigkill_matches_exit_code(observed_exit, exit_code)
+            })
+}
+
+fn observed_sigkill_matches_exit_code(
+    observed_exit: &CliObservedExitDiagnostic,
+    exit_code: i32,
+) -> bool {
+    observed_exit.is_sigkill()
+        && observed_exit.exit_code.is_none()
+        && observed_exit.signal_number == Some(EXIT_SIGNAL_KILL)
+        && observed_exit.mapped_exit_code == EXIT_SIGKILL
+        && exit_code == EXIT_SIGKILL
+}
+
+pub(in crate::executor) fn should_log_agent_bootstrap_abnormal_exit_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && process_exited_nonzero(exit)
+        && failure_diagnostic.is_none()
+        && guest_error.is_none()
+}
+
+fn process_failed(exit: &sandbox::ProcessExit) -> bool {
+    !matches!(exit.termination, ExecTermination::Exited { exit_code: 0 })
+}
+
+fn process_exited_nonzero(exit: &sandbox::ProcessExit) -> bool {
+    matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code != 0)
+}
+
+fn process_exit_code(exit: &sandbox::ProcessExit) -> Option<i32> {
+    match exit.termination {
+        ExecTermination::Exited { exit_code } => Some(exit_code),
+        ExecTermination::TimedOut
+        | ExecTermination::Cancelled
+        | ExecTermination::StartFailed
+        | ExecTermination::WaitFailed => None,
+    }
+}
+
+pub(in crate::executor) fn log_agent_process_exit_summary(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+    stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+) {
+    info!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        termination = ?exit.termination,
+        exit_code = ?process_exit_code(exit),
+        stdout_len = exit.stdout.len(),
+        stderr_len = exit.stderr.len(),
+        stdout_truncated = exit.stdout_truncated,
+        stderr_truncated = exit.stderr_truncated,
+        stdout_stream_bytes = stdout_stream_diagnostics.bytes_written,
+        diagnostic_present = !exit.diagnostic.is_empty(),
+        stream_overflowed = exit.stream_overflowed,
+        env_count = env_diagnostics.env_count,
+        env_bytes = env_diagnostics.env_bytes,
+        largest_env_value_lengths = %env_diagnostics.largest_entries_csv(),
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        "agent process exit summary"
+    );
+}
+
+pub(in crate::executor) fn log_agent_abnormal_exit_env_diagnostics(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+    env_key_diagnostics: &AgentEnvKeyDiagnostics,
+) {
+    warn!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        termination = ?exit.termination,
+        exit_code = ?process_exit_code(exit),
+        env_count = env_diagnostics.env_count,
+        env_bytes = env_diagnostics.env_bytes,
+        runner_owned_env_count = env_diagnostics.runner_owned_count,
+        external_env_count = env_diagnostics.external_count,
+        largest_env_value_lengths = %env_diagnostics.largest_entries_csv(),
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        env_keys = %env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = env_key_diagnostics.omitted_key_count,
+        "agent abnormal exit env diagnostics"
+    );
+}
+
+pub(in crate::executor) struct AgentBootstrapAbnormalExitLogContext<'a> {
+    pub(in crate::executor) run_id: RunId,
+    pub(in crate::executor) sandbox_id: &'a str,
+    pub(in crate::executor) reuse_result: SandboxReuseResult,
+    pub(in crate::executor) exit: &'a sandbox::ProcessExit,
+    pub(in crate::executor) env_diagnostics: &'a AgentEnvDiagnostics,
+    pub(in crate::executor) env_key_diagnostics: &'a AgentEnvKeyDiagnostics,
+    pub(in crate::executor) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+    pub(in crate::executor) session_restore_diagnostics: Option<&'a SessionRestoreDiagnostics>,
+}
+
+pub(in crate::executor) fn log_agent_bootstrap_abnormal_exit_diagnostics(
+    context: AgentBootstrapAbnormalExitLogContext<'_>,
+) {
+    let resume_session_framework = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.framework)
+        .unwrap_or("none");
+    let resume_session_id = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.session_id.as_str())
+        .unwrap_or("");
+    let resume_session_bytes_in = context
+        .session_restore_diagnostics
+        .map(|diagnostics| diagnostics.bytes_in);
+
+    warn!(
+        run_id = %context.run_id,
+        sandbox_id = %context.sandbox_id,
+        sandbox_reuse_result = context.reuse_result.as_wire(),
+        termination = ?context.exit.termination,
+        exit_code = ?process_exit_code(context.exit),
+        stdout_len = context.exit.stdout.len(),
+        stderr_len = context.exit.stderr.len(),
+        stdout_truncated = context.exit.stdout_truncated,
+        stderr_truncated = context.exit.stderr_truncated,
+        stdout_stream_bytes = context.stdout_stream_diagnostics.bytes_written,
+        captured_stderr_present = !context.exit.stderr.is_empty(),
+        captured_stderr_truncated = context.exit.stderr_truncated,
+        diagnostic_present = !context.exit.diagnostic.is_empty(),
+        stream_overflowed = context.exit.stream_overflowed,
+        env_count = context.env_diagnostics.env_count,
+        env_bytes = context.env_diagnostics.env_bytes,
+        runner_owned_env_count = context.env_diagnostics.runner_owned_count,
+        external_env_count = context.env_diagnostics.external_count,
+        largest_env_value_lengths = %context.env_diagnostics.largest_entries_csv(),
+        suspicious_env_keys = %context.env_diagnostics.suspicious_keys_csv(),
+        env_keys = %context.env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = context.env_key_diagnostics.omitted_key_count,
+        resume_session_framework = %resume_session_framework,
+        resume_session_id = %resume_session_id,
+        resume_session_bytes_in = ?resume_session_bytes_in,
+        "agent bootstrap abnormal exit diagnostics"
+    );
+}

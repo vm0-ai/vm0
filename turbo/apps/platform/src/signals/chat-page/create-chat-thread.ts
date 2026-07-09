@@ -44,6 +44,7 @@ import {
   chatMessagesContract,
   chatThreadArtifactsContract,
   type AttachFile,
+  type ChatMessageUsagePayload,
   type GenerationTemplateRequest,
   type ChatThreadArtifactRun,
   type PagedChatMessage,
@@ -987,7 +988,7 @@ function groupMessagesForDisplay(
   for (const msg of messages) {
     if (isUsageMessage(msg)) {
       if (msg.runId !== undefined) {
-        usageByRunId.set(msg.runId, msg.usage);
+        setLatestUsageForRun(usageByRunId, msg.runId, msg.usage);
       }
       continue;
     }
@@ -1010,6 +1011,25 @@ function groupMessagesForDisplay(
     const usage = runId === undefined ? undefined : usageByRunId.get(runId);
     return usage === undefined ? group : { ...group, usage };
   });
+}
+
+function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
+  const timestamp = Date.parse(usage.settledAt);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function setLatestUsageForRun(
+  usageByRunId: Map<string, ChatMessageUsagePayload>,
+  runId: string,
+  usage: ChatMessageUsagePayload,
+): void {
+  const existing = usageByRunId.get(runId);
+  if (
+    existing === undefined ||
+    usageSettledAtMs(usage) >= usageSettledAtMs(existing)
+  ) {
+    usageByRunId.set(runId, usage);
+  }
 }
 
 interface GroupedChatMessagesCacheEntry {

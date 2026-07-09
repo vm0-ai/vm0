@@ -43,6 +43,12 @@ import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { buildZeroMemoryRuntimeInjection } from "./zero-memory-injection.service";
+import {
+  measureZeroMemoryTiming,
+  type ZeroMemoryTimingObserver,
+  type ZeroMemoryTimingStage,
+  zeroMemoryPromptLengthBucket,
+} from "./zero-memory-timing.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
@@ -512,6 +518,44 @@ function zeroRunTimingDimensions(args: {
   };
 }
 
+const ZERO_MEMORY_TIMING_ACTION_TYPES = {
+  runtime_injection:
+    "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+  profile_static: "api_dispatch_pre_create_zero_memory_profile_static",
+  profile_dynamic: "api_dispatch_pre_create_zero_memory_profile_dynamic",
+  profile_search: "api_dispatch_pre_create_zero_memory_profile_search",
+  profile_search_lexical:
+    "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+  profile_search_semantic_embedding:
+    "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+  profile_search_semantic_query:
+    "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+  profile_search_graph_expansion:
+    "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion",
+  profile_search_seed_rank:
+    "api_dispatch_pre_create_zero_memory_profile_search_seed_rank",
+  profile_search_final_rank:
+    "api_dispatch_pre_create_zero_memory_profile_search_final_rank",
+  profile_hydrate: "api_dispatch_pre_create_zero_memory_profile_hydrate",
+  profile_load_sources:
+    "api_dispatch_pre_create_zero_memory_profile_load_sources",
+} as const satisfies Record<ZeroMemoryTimingStage, ApiDispatchTimingActionType>;
+
+function zeroMemoryTimingObserver(
+  timing: ApiDispatchTimingCollector,
+): ZeroMemoryTimingObserver {
+  return {
+    async measure(stage, operation, dimensions) {
+      return await timing.measure(
+        ZERO_MEMORY_TIMING_ACTION_TYPES[stage],
+        "nested",
+        operation,
+        dimensions,
+      );
+    },
+  };
+}
+
 function zeroRunOrigin(args: {
   readonly command: CreateZeroRunCommandArgs;
 }): ZeroRunOrigin {
@@ -643,17 +687,31 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly prompt: string;
+    readonly timing?: ZeroMemoryTimingObserver;
   },
 ): Promise<string | undefined> {
-  if (!args.enabled) {
-    return undefined;
-  }
-  const result = await buildZeroMemoryRuntimeInjection(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    prompt: args.prompt,
-  });
-  return result.appendSystemPrompt || undefined;
+  return await measureZeroMemoryTiming(
+    args.timing,
+    "runtime_injection",
+    async () => {
+      if (!args.enabled) {
+        return undefined;
+      }
+      const result = await buildZeroMemoryRuntimeInjection(db, {
+        orgId: args.orgId,
+        userId: args.userId,
+        prompt: args.prompt,
+        timing: args.timing,
+      });
+      return result.appendSystemPrompt || undefined;
+    },
+    {
+      memory_runtime_injection_enabled: String(args.enabled),
+      memory_runtime_prompt_length_bucket: zeroMemoryPromptLengthBucket(
+        args.prompt,
+      ),
+    },
+  );
 }
 
 async function triggerAgentIdForAuth(
@@ -854,12 +912,14 @@ async function buildZeroCreateAgentRunArgs(args: {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
+  const memoryTiming = zeroMemoryTimingObserver(args.timing);
   const memoryRuntimeAppendSystemPrompt =
     await loadMemoryRuntimeAppendSystemPrompt(args.db, {
       enabled: args.relationshipMemoryRuntimeInjectionEnabled,
       orgId: command.auth.orgId,
       userId: command.auth.userId,
       prompt: command.body.prompt,
+      timing: memoryTiming,
     });
   return {
     userId: command.auth.userId,
@@ -931,12 +991,14 @@ async function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<CreateAgentRunArgs> {
   const command = args.command;
+  const memoryTiming = zeroMemoryTimingObserver(args.timing);
   const memoryRuntimeAppendSystemPrompt =
     await loadMemoryRuntimeAppendSystemPrompt(args.db, {
       enabled: args.relationshipMemoryRuntimeInjectionEnabled,
       orgId: command.orgId,
       userId: command.userId,
       prompt: command.prompt,
+      timing: memoryTiming,
     });
   return {
     userId: command.userId,
