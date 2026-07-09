@@ -13,6 +13,7 @@ import {
 import {
   CONNECTOR_TYPES,
   CONNECTOR_TYPE_KEYS,
+  connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
@@ -86,10 +87,12 @@ import {
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
+  getConnectorAuthProviderRegistryCapabilities,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
   revokeConnectorAuthMethodAccessToken,
   startConnectorDeviceAuthorization,
+  type ConnectorAuthProviderRegistryCapability,
 } from "../auth-providers/connector-auth";
 import type { ConnectorAuthProviderRefreshArgs } from "../auth-providers/types";
 import {
@@ -921,6 +924,65 @@ describe("connector selected auth method capability checks", () => {
             "external-code",
         );
       }
+    }
+  });
+
+  it("registers auth providers exactly for provider-backed auth methods", () => {
+    const capabilities = getConnectorAuthProviderRegistryCapabilities();
+    const expectedCapabilities = new Map<
+      string,
+      ConnectorAuthProviderRegistryCapability
+    >();
+
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const authMethodConfig = getConnectorAuthMethod(type, authMethod);
+        expect(authMethodConfig).toBeDefined();
+        if (authMethodConfig === undefined) {
+          continue;
+        }
+
+        const grantCapability =
+          authMethodConfig.grant.kind === "auth-code" ||
+          authMethodConfig.grant.kind === "device-auth" ||
+          authMethodConfig.grant.kind === "openid-auth" ||
+          authMethodConfig.grant.kind === "external-code"
+            ? { grant: authMethodConfig.grant.kind }
+            : {};
+        const capability = {
+          ...grantCapability,
+          ...(authMethodConfig.access.kind === "refresh-token"
+            ? { access: authMethodConfig.access.kind }
+            : {}),
+          ...(authMethodConfig.revoke.kind === "token-revoke"
+            ? { revoke: authMethodConfig.revoke.kind }
+            : {}),
+        } satisfies ConnectorAuthProviderRegistryCapability;
+
+        if (Object.keys(capability).length > 0) {
+          expectedCapabilities.set(`${type}:${authMethod}`, capability);
+        }
+      }
+    }
+
+    const actualCapabilities = new Map<
+      string,
+      ConnectorAuthProviderRegistryCapability
+    >();
+    for (const [rawType, methods] of Object.entries(capabilities)) {
+      const type = connectorTypeSchema.parse(rawType);
+      for (const [rawAuthMethod, capability] of Object.entries(methods)) {
+        const authMethod = connectorAuthMethodIdSchema.parse(rawAuthMethod);
+        expect(getConnectorAuthMethod(type, authMethod)).toBeDefined();
+        actualCapabilities.set(`${type}:${authMethod}`, capability);
+      }
+    }
+
+    expect([...actualCapabilities.keys()].sort()).toStrictEqual(
+      [...expectedCapabilities.keys()].sort(),
+    );
+    for (const [ref, capability] of expectedCapabilities) {
+      expect(actualCapabilities.get(ref)).toStrictEqual(capability);
     }
   });
 
