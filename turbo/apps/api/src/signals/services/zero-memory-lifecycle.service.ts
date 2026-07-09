@@ -56,6 +56,11 @@ type MemoryContextSpaceResponse = NonNullable<
   MemoryLifecycleMemory["contextSpace"]
 >;
 type MemoryTombstoneResponse = MemoryForgetResponse["forgotten"][number];
+type MemoryLifecycleReadDb = Pick<Db, "select">;
+type MemoryLifecycleWriteDb = Pick<
+  Db,
+  "delete" | "insert" | "select" | "update"
+>;
 
 const DIRECT_MEMORY_ENTITY_DISPLAY_NAME = "Direct memories";
 
@@ -138,7 +143,7 @@ async function ensureDirectMemoryEntity(
 }
 
 async function nextVersion(
-  db: ReadonlyDb,
+  db: MemoryLifecycleReadDb,
   args: {
     readonly targetKind: MemoryVersionTargetKind;
     readonly targetId: string;
@@ -159,7 +164,7 @@ async function nextVersion(
 }
 
 async function recordMemoryVersion(
-  db: Db,
+  db: Pick<MemoryLifecycleWriteDb, "insert" | "select">,
   args: MemoryScope & {
     readonly contextSpaceId: string | null;
     readonly targetKind: MemoryVersionTargetKind;
@@ -260,7 +265,7 @@ async function loadMemory(
 }
 
 async function loadMemoryRow(
-  db: ReadonlyDb,
+  db: MemoryLifecycleReadDb,
   args: MemoryScope & { readonly memoryId: string },
 ): Promise<MemoryRow | null> {
   const [row] = await db
@@ -278,7 +283,7 @@ async function loadMemoryRow(
 }
 
 async function loadDocumentRow(
-  db: ReadonlyDb,
+  db: MemoryLifecycleReadDb,
   args: MemoryScope & { readonly documentId: string },
 ): Promise<MemoryDocumentRow | null> {
   const [row] = await db
@@ -296,7 +301,7 @@ async function loadDocumentRow(
 }
 
 async function insertTombstone(
-  db: Db,
+  db: Pick<MemoryLifecycleWriteDb, "insert">,
   args: MemoryScope & {
     readonly contextSpaceId: string | null;
     readonly targetKind: MemoryTombstoneTargetKind;
@@ -374,7 +379,7 @@ export async function memoryDocumentHasTombstone(
 }
 
 async function listInsertedTombstones(
-  db: ReadonlyDb,
+  db: MemoryLifecycleReadDb,
   args: MemoryScope & { readonly fingerprints: readonly string[] },
 ): Promise<readonly MemoryTombstoneResponse[]> {
   if (args.fingerprints.length === 0) {
@@ -548,43 +553,45 @@ export async function forgetMemory(
     readonly prompt?: string;
   },
 ): Promise<readonly MemoryTombstoneResponse[] | null> {
-  const memory = await loadMemoryRow(db, args);
-  if (!memory) {
-    return null;
-  }
-  await db
-    .update(memories)
-    .set({ status: "archived", updatedAt: nowDate() })
-    .where(eq(memories.id, memory.id));
-  await deleteZeroMemorySearchEntryForMemory(db, args);
-  const fingerprints = [
-    `memory:${memory.id}`,
-    memoryTextFingerprint(memory.text),
-  ];
-  for (const fingerprint of fingerprints) {
-    await insertTombstone(db, {
+  return await db.transaction(async (tx) => {
+    const memory = await loadMemoryRow(tx, args);
+    if (!memory) {
+      return null;
+    }
+    await tx
+      .update(memories)
+      .set({ status: "archived", updatedAt: nowDate() })
+      .where(eq(memories.id, memory.id));
+    await deleteZeroMemorySearchEntryForMemory(tx, args);
+    const fingerprints = [
+      `memory:${memory.id}`,
+      memoryTextFingerprint(memory.text),
+    ];
+    for (const fingerprint of fingerprints) {
+      await insertTombstone(tx, {
+        ...args,
+        contextSpaceId: memory.contextSpaceId,
+        targetKind: "memory",
+        fingerprint,
+        targetId: memory.id,
+        targetText: memory.text,
+      });
+    }
+    await recordMemoryVersion(tx, {
       ...args,
       contextSpaceId: memory.contextSpaceId,
       targetKind: "memory",
-      fingerprint,
       targetId: memory.id,
-      targetText: memory.text,
+      contentHash: memoryContentHash(memory.text),
+      operation: "forget",
+      reason: args.reason ?? "Memory forgotten",
+      text: memory.text,
+      kind: memory.kind,
+      confidence: memory.confidence,
+      status: "archived",
     });
-  }
-  await recordMemoryVersion(db, {
-    ...args,
-    contextSpaceId: memory.contextSpaceId,
-    targetKind: "memory",
-    targetId: memory.id,
-    contentHash: memoryContentHash(memory.text),
-    operation: "forget",
-    reason: args.reason ?? "Memory forgotten",
-    text: memory.text,
-    kind: memory.kind,
-    confidence: memory.confidence,
-    status: "archived",
+    return await listInsertedTombstones(tx, { ...args, fingerprints });
   });
-  return await listInsertedTombstones(db, { ...args, fingerprints });
 }
 
 export async function forgetDocument(
@@ -595,48 +602,50 @@ export async function forgetDocument(
     readonly prompt?: string;
   },
 ): Promise<readonly MemoryTombstoneResponse[] | null> {
-  const document = await loadDocumentRow(db, args);
-  if (!document) {
-    return null;
-  }
-  await db
-    .update(memoryDocuments)
-    .set({ status: "deleted", updatedAt: nowDate() })
-    .where(eq(memoryDocuments.id, document.id));
-  await db
-    .update(memoryDocumentChunks)
-    .set({ status: "deleted", updatedAt: nowDate() })
-    .where(eq(memoryDocumentChunks.documentId, document.id));
-  await db
-    .update(memoryDocumentSearchEntries)
-    .set({ status: "deleted", updatedAt: nowDate() })
-    .where(eq(memoryDocumentSearchEntries.documentId, document.id));
-  const fingerprints = [
-    memoryDocumentIdentityFingerprint(document),
-    memoryDocumentContentFingerprint(document.contentHash),
-  ];
-  for (const fingerprint of fingerprints) {
-    await insertTombstone(db, {
+  return await db.transaction(async (tx) => {
+    const document = await loadDocumentRow(tx, args);
+    if (!document) {
+      return null;
+    }
+    await tx
+      .update(memoryDocuments)
+      .set({ status: "deleted", updatedAt: nowDate() })
+      .where(eq(memoryDocuments.id, document.id));
+    await tx
+      .update(memoryDocumentChunks)
+      .set({ status: "deleted", updatedAt: nowDate() })
+      .where(eq(memoryDocumentChunks.documentId, document.id));
+    await tx
+      .update(memoryDocumentSearchEntries)
+      .set({ status: "deleted", updatedAt: nowDate() })
+      .where(eq(memoryDocumentSearchEntries.documentId, document.id));
+    const fingerprints = [
+      memoryDocumentIdentityFingerprint(document),
+      memoryDocumentContentFingerprint(document.contentHash),
+    ];
+    for (const fingerprint of fingerprints) {
+      await insertTombstone(tx, {
+        ...args,
+        contextSpaceId: document.contextSpaceId,
+        targetKind: "document",
+        fingerprint,
+        targetId: document.id,
+        targetTitle: document.title,
+      });
+    }
+    await recordMemoryVersion(tx, {
       ...args,
       contextSpaceId: document.contextSpaceId,
       targetKind: "document",
-      fingerprint,
       targetId: document.id,
-      targetTitle: document.title,
+      contentHash: document.contentHash,
+      operation: "forget",
+      reason: args.reason ?? "Document forgotten",
+      title: document.title,
+      status: "deleted",
     });
-  }
-  await recordMemoryVersion(db, {
-    ...args,
-    contextSpaceId: document.contextSpaceId,
-    targetKind: "document",
-    targetId: document.id,
-    contentHash: document.contentHash,
-    operation: "forget",
-    reason: args.reason ?? "Document forgotten",
-    title: document.title,
-    status: "deleted",
+    return await listInsertedTombstones(tx, { ...args, fingerprints });
   });
-  return await listInsertedTombstones(db, { ...args, fingerprints });
 }
 
 export async function forgetByPrompt(

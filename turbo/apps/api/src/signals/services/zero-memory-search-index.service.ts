@@ -21,6 +21,8 @@ interface MemoryScope {
   readonly userId: string;
 }
 
+type MemorySearchDeleteDb = Pick<Db, "delete">;
+
 function memorySearchText(row: {
   readonly text: string;
   readonly kind: string;
@@ -65,7 +67,7 @@ async function loadIndexableMemory(
 }
 
 export async function deleteZeroMemorySearchEntryForMemory(
-  db: Db,
+  db: MemorySearchDeleteDb,
   args: MemoryScope & { readonly memoryId: string },
 ): Promise<void> {
   await db
