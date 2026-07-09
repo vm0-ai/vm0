@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.140.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.5...runner-rs-v0.140.0) (2026-07-09)
+
+
+### Features
+
+* gate runner readiness on starting mode ([#20720](https://github.com/vm0-ai/vm0/issues/20720)) ([2d07aec](https://github.com/vm0-ai/vm0/commit/2d07aec8042eeabeff3b316b246b29fbbdba3c99))
+
+
+### Performance Improvements
+
+* cache session history with workspace images ([#20733](https://github.com/vm0-ai/vm0/issues/20733)) ([d588e5a](https://github.com/vm0-ai/vm0/commit/d588e5a9aa6e67ca18199cd74cadfa7dd4d66418))
+
 ## [0.139.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.4...runner-rs-v0.139.5) (2026-07-08)
 
 

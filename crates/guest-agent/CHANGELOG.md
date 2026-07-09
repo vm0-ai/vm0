@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.3...guest-agent-v0.49.4) (2026-07-09)
+
+
+### Performance Improvements
+
+* cache session history with workspace images ([#20733](https://github.com/vm0-ai/vm0/issues/20733)) ([d588e5a](https://github.com/vm0-ai/vm0/commit/d588e5a9aa6e67ca18199cd74cadfa7dd4d66418))
+
 ## [0.49.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.2...guest-agent-v0.49.3) (2026-07-08)
 
 
