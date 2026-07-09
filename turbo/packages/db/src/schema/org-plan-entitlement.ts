@@ -30,9 +30,7 @@ export const orgPlanEntitlements = pgTable(
     baseConcurrencyLimit: integer("base_concurrency_limit")
       .notNull()
       .default(0),
-    canBuyConcurrency: boolean("can_buy_concurrency")
-      .notNull()
-      .default(false),
+    canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
     autoRechargeAllowed: boolean("auto_recharge_allowed")
       .notNull()
       .default(false),
@@ -44,9 +42,7 @@ export const orgPlanEntitlements = pgTable(
       .notNull()
       .default(false),
     audioLifetimeLimit: integer("audio_lifetime_limit"),
-    audioDailyRateLimit: integer("audio_daily_rate_limit")
-      .notNull()
-      .default(0),
+    audioDailyRateLimit: integer("audio_daily_rate_limit").notNull().default(0),
     audioDailyDurationSeconds: integer("audio_daily_duration_seconds")
       .notNull()
       .default(0),
