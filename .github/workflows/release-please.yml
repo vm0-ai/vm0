@@ -835,7 +835,7 @@ jobs:
 
       - name: Fetch production Doppler OAuth config
         id: doppler-oauth
-        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
         with:
           auth-method: oidc
           doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
@@ -1229,7 +1229,7 @@ jobs:
 
       - name: Fetch production Doppler OAuth config
         id: doppler-oauth
-        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
         with:
           auth-method: oidc
           doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
