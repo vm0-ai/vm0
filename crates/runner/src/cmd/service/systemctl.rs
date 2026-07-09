@@ -534,11 +534,10 @@ fn normalize_unit_state(
     load_state: &str,
     active_state: &str,
 ) -> RunnerResult<NormalizedUnitState> {
-    if classify_unit_lifecycle_active_like(svc, load_state, active_state)? {
-        return Ok(NormalizedUnitState::ActiveLike);
-    }
-
     match active_state {
+        "active" | "activating" | "reloading" | "refreshing" | "deactivating" => {
+            Ok(NormalizedUnitState::ActiveLike)
+        }
         "inactive" | "failed" | "maintenance" if load_state == "not-found" => {
             Ok(NormalizedUnitState::NotFound)
         }
@@ -547,20 +546,6 @@ fn normalize_unit_state(
         "maintenance" => Ok(NormalizedUnitState::Maintenance),
         _ => Err(RunnerError::Internal(format!(
             "unknown ActiveState for {svc}: {active_state} (LoadState={load_state})"
-        ))),
-    }
-}
-
-fn classify_unit_lifecycle_active_like(
-    svc: &str,
-    load_state: &str,
-    active_state: &str,
-) -> RunnerResult<bool> {
-    match active_state {
-        "active" | "activating" | "reloading" | "refreshing" | "deactivating" => Ok(true),
-        "inactive" | "failed" | "maintenance" => Ok(false),
-        _ => Err(RunnerError::Internal(format!(
-            "unknown ActiveState for active-like classification of {svc}: {active_state} (LoadState={load_state})"
         ))),
     }
 }
@@ -589,7 +574,8 @@ fn cleanup_unit_active_state_from_systemctl_show(
 ) -> RunnerResult<CleanupUnitActiveState> {
     let load_state = required_systemctl_property(svc, values, "LoadState")?;
     let active_state = required_systemctl_property(svc, values, "ActiveState")?;
-    let active_like = classify_unit_lifecycle_active_like(svc, load_state, active_state)?;
+    let active_like =
+        normalize_unit_state(svc, load_state, active_state)? == NormalizedUnitState::ActiveLike;
     let missing_unit = load_state == "not-found" && !active_like;
     ensure_systemctl_show_status(svc, properties, status, stderr, missing_unit)?;
     Ok(CleanupUnitActiveState {
@@ -975,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_unit_lifecycle_active_like_keeps_deactivating_active_like() {
+    fn normalize_unit_state_keeps_lifecycle_active_like_states() {
         for active_state in [
             "active",
             "activating",
@@ -983,29 +969,25 @@ mod tests {
             "refreshing",
             "deactivating",
         ] {
-            assert!(
-                classify_unit_lifecycle_active_like(
-                    "vm0-runner-test.service",
-                    "loaded",
-                    active_state,
-                )
-                .unwrap(),
-                "{active_state} should be lifecycle active-like"
+            assert_eq!(
+                normalize_unit_state("vm0-runner-test.service", "loaded", active_state).unwrap(),
+                NormalizedUnitState::ActiveLike,
+                "{active_state} should normalize to active-like"
             );
         }
     }
 
     #[test]
-    fn classify_unit_lifecycle_active_like_accepts_inactive_states() {
-        for active_state in ["inactive", "failed", "maintenance"] {
-            assert!(
-                !classify_unit_lifecycle_active_like(
-                    "vm0-runner-test.service",
-                    "loaded",
-                    active_state,
-                )
-                .unwrap(),
-                "{active_state} should be lifecycle inactive-like"
+    fn normalize_unit_state_preserves_loaded_inactive_states() {
+        for (active_state, normalized_state) in [
+            ("inactive", NormalizedUnitState::Inactive),
+            ("failed", NormalizedUnitState::Failed),
+            ("maintenance", NormalizedUnitState::Maintenance),
+        ] {
+            assert_eq!(
+                normalize_unit_state("vm0-runner-test.service", "loaded", active_state).unwrap(),
+                normalized_state,
+                "{active_state} should preserve its loaded normalized state"
             );
         }
     }
