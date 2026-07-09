@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.251.0](https://github.com/vm0-ai/vm0/compare/api-v1.250.3...api-v1.251.0) (2026-07-09)
+
+
+### Features
+
+* add custom billing tier ([#20690](https://github.com/vm0-ai/vm0/issues/20690)) ([2f3fdc2](https://github.com/vm0-ai/vm0/commit/2f3fdc2e7834ff86215fd7ea87227f702b47598c))
+* **api:** keyset-paginate the artifacts list endpoint ([#20800](https://github.com/vm0-ai/vm0/issues/20800)) ([2bb327c](https://github.com/vm0-ai/vm0/commit/2bb327c5dccd13fc14877684079df5fcd1b211ff))
+
+
+### Bug Fixes
+
+* reconcile usage allowance subscriptions ([#20684](https://github.com/vm0-ai/vm0/issues/20684)) ([3849bcd](https://github.com/vm0-ai/vm0/commit/3849bcd1baf67bcb455bc5eea27dd57f4df0183d))
+* route builtin glm models via zai ([#20795](https://github.com/vm0-ai/vm0/issues/20795)) ([34e9dd6](https://github.com/vm0-ai/vm0/commit/34e9dd608b70ffa82a302539c4bea6e440ff2991))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.174.0
+    * @vm0/core bumped to 8.418.2
+    * @vm0/db bumped to 1.102.0
+
 ## [1.250.3](https://github.com/vm0-ai/vm0/compare/api-v1.250.2...api-v1.250.3) (2026-07-09)
 
 

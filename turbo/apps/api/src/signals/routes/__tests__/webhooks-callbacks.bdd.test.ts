@@ -12,6 +12,7 @@ import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
+import { expireAtomGrantFixture } from "../../../test-fixtures/org-metadata";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
 import {
   createBddApi,
@@ -1768,6 +1769,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
   it("grants and renews Atom invoice-backed Team entitlements", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
+    const runs = createRunsAutomationsApi(context);
     const actor = bdd.user();
     const orgId = orgOf(actor);
     const grantExpiresAtUnix = epochSeconds(7);
@@ -1878,6 +1880,17 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         }),
       ]),
     );
+
+    const expiredAt = new Date(now() - 1000);
+    await expireAtomGrantFixture({ orgId, expiredAt });
+
+    await runs.reconcileBillingCron(true);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.tier).toBe("limited-free-1");
+    expect(downgraded.credits).toBe(0);
+    expect(downgraded.hasSubscription).toBeFalsy();
+    expect(downgraded.creditGrants).toHaveLength(0);
   });
 
   it("upserts usage allowance entitlements from Atom subscription invoices", async () => {
@@ -2103,6 +2116,222 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         source: "subscription_renewal",
       }),
     ]);
+  });
+
+  it("cancels replaced Stripe subscriptions after Atom Team and Custom grants", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const grantExpiresAtUnix = epochSeconds(30);
+
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [
+        {
+          id: granted.subscriptionId,
+          status: "active",
+          metadata: { orgId },
+          items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+      id: granted.subscriptionId,
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_team_${suffix}`,
+          customer: granted.customerId,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "team",
+            duration: "30d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_team_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      granted.subscriptionId,
+      { invoice_now: false, prorate: false },
+    );
+    expect((await billing.readBillingStatus(actor)).tier).toBe("team");
+
+    context.mocks.stripe.subscriptions.cancel.mockClear();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [
+        {
+          id: "sub_bdd_team_replaced",
+          status: "active",
+          metadata: { orgId },
+          items: { data: [{ price: { id: "price_bdd_team" } }] },
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({
+      id: "sub_bdd_team_replaced",
+    });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_custom_${suffix}`,
+          customer: granted.customerId,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "custom",
+            duration: "30d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_custom_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      "sub_bdd_team_replaced",
+      { invoice_now: false, prorate: false },
+    );
+    expect((await billing.readBillingStatus(actor)).tier).toBe("custom");
+  });
+
+  it("rejects lower Atom grants after a Custom grant without canceling subscriptions", async () => {
+    const bdd = createBddApi(context);
+    const billing = createBillingMediaApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const grantExpiresAtUnix = epochSeconds(30);
+    api.configureStripeBillingEnv();
+    await bdd.setupOnboarding(actor, { displayName: "BDD Custom Grant" });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_custom_initial_${suffix}`,
+          customer: `cus_bdd_atom_custom_${suffix}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "custom",
+            duration: "30d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_custom_initial_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    context.mocks.stripe.subscriptions.cancel.mockClear();
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_team_after_custom_${suffix}`,
+          customer: `cus_bdd_atom_custom_${suffix}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "team",
+            duration: "30d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_team_after_custom_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+    expect((await billing.readBillingStatus(actor)).tier).toBe("custom");
+
+    const expiredAt = new Date(now() - 1000);
+    await expireAtomGrantFixture({ orgId, expiredAt });
+    await runs.reconcileBillingCron(true);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.tier).toBe("limited-free-1");
+    expect(downgraded.hasSubscription).toBeFalsy();
   });
 
   it("expires Atom redeem-code day-grant subscription credits at the grant end", async () => {
@@ -2693,7 +2922,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       effectiveDate: isoOf(phaseEnd),
     });
 
-    // Deleting the team subscription suspends the organization.
+    // Deleting the team subscription moves the organization back to limited free.
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.deleted",
@@ -2702,7 +2931,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     const suspended = await billing.readBillingStatus(actor);
-    expect(suspended.tier).toBe("pro-suspend");
+    expect(suspended.tier).toBe("limited-free-1");
     expect(suspended.subscriptionStatus).toBe("canceled");
     expect(suspended.hasSubscription).toBeFalsy();
     expect(suspended.scheduledChange).toBeNull();
@@ -2782,7 +3011,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
     const suspended = await billing.readBillingStatus(actor);
-    expect(suspended.tier).toBe("pro-suspend");
+    expect(suspended.tier).toBe("limited-free-1");
     expect(suspended.hasSubscription).toBeFalsy();
   });
 
@@ -3021,7 +3250,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const bound = await billing.readBillingStatus(actor);
     expect(bound.hasSubscription).toBeTruthy();
     expect(bound.subscriptionStatus).toBe("active");
-    expect(bound.tier).toBe("pro-suspend");
+    expect(bound.tier).toBe("limited-free-1");
     expect(bound.currentPeriodEnd).toBeNull();
 
     // An incomplete dashboard subscription is recorded without a paid tier.
@@ -3041,7 +3270,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     );
     const incomplete = await billing.readBillingStatus(actor);
     expect(incomplete.subscriptionStatus).toBe("incomplete");
-    expect(incomplete.tier).toBe("pro-suspend");
+    expect(incomplete.tier).toBe("limited-free-1");
 
     // A subscription checkout completion binds its subscription.
     const checkoutSubscriptionId = `sub_bdd_checkout_${suffix}`;
@@ -3399,7 +3628,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(scheduled.cancelAtPeriodEnd).toBeTruthy();
     expect(scheduled.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: isoOf(periodEnd),
     });
 
@@ -3555,7 +3784,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             purpose: "billing_downgrade",
             orgId,
             subscriptionId: granted.subscriptionId,
-            targetTier: "pro-suspend",
+            targetTier: "limited-free-1",
           },
         },
       }),
@@ -3610,7 +3839,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(scheduleManaged.currentPeriodEnd).toBe(isoOf(finalEnd));
     expect(scheduleManaged.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: isoOf(finalEnd),
     });
 

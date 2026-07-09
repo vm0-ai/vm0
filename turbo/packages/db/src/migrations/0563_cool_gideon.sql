@@ -1,0 +1,1 @@
+ALTER TABLE "org_metadata" ALTER COLUMN "tier" SET DEFAULT 'limited-free-1';

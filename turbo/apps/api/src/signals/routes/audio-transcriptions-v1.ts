@@ -34,6 +34,7 @@ const DAILY_RATE_LIMITS: Readonly<Record<OrgTier, number>> = {
   "pro-suspend": 0,
   pro: 300,
   team: 500,
+  custom: 500,
 };
 const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
   free: 10 * 60,
@@ -41,6 +42,7 @@ const DAILY_DURATION_LIMITS: Readonly<Record<OrgTier, number>> = {
   "pro-suspend": 0,
   pro: 200 * 60,
   team: 500 * 60,
+  custom: 500 * 60,
 };
 
 const L = logger("AudioTranscriptionsV1");

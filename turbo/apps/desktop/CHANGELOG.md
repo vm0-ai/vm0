@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.26.1...desktop-v0.27.0) (2026-07-09)
+
+
+### Features
+
+* resolve login shell path for desktop stdio mcp servers ([#20802](https://github.com/vm0-ai/vm0/issues/20802)) ([147a5cf](https://github.com/vm0-ai/vm0/commit/147a5cf3749d1c8dfaa1205e959d0b45dcd1bd8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.174.0
+
 ## [0.26.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.26.0...desktop-v0.26.1) (2026-07-09)
 
 

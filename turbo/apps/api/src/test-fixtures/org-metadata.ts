@@ -12,9 +12,10 @@
  * This module is the narrow test-boundary exception: it only upserts an
  * org's tier and credit balance.
  */
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { createStore } from "ccstate";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../signals/external/db";
 
@@ -35,4 +36,22 @@ export async function upsertOrgMetadataFixture(values: {
         updatedAt: sql`now()`,
       },
     });
+}
+
+export async function expireAtomGrantFixture(values: {
+  readonly orgId: string;
+  readonly expiredAt: Date;
+}): Promise<void> {
+  const db = createStore().set(writeDb$);
+  await db
+    .update(orgMetadata)
+    .set({
+      currentPeriodEnd: values.expiredAt,
+      updatedAt: values.expiredAt,
+    })
+    .where(eq(orgMetadata.orgId, values.orgId));
+  await db
+    .update(creditExpiresRecord)
+    .set({ expiresAt: values.expiredAt })
+    .where(eq(creditExpiresRecord.orgId, values.orgId));
 }
