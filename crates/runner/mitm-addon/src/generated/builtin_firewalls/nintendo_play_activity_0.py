@@ -11,12 +11,44 @@ JSON_PART = r"""{
           "Authorization": "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}"
         }
       },
+      "base": "https://api.accounts.nintendo.com",
+      "permissions": [
+        {
+          "name": "nintendo-account-profile-read",
+          "rules": [
+            "GET /2.0.0/users/me"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}"
+        }
+      },
       "base": "https://app-api.znej.nintendo.com",
       "permissions": [
         {
           "name": "nintendo-store-play-activity-read",
           "rules": [
             "GET /api/v2.0/users/me/play_histories"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}"
+        }
+      },
+      "base": "https://news-api.entry.nintendo.co.jp",
+      "permissions": [
+        {
+          "name": "nintendo-entry-play-activity-read",
+          "rules": [
+            "GET /api/v1.1/users/me/play_histories"
           ]
         }
       ]

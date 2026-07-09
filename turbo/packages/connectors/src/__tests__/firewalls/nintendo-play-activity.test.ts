@@ -34,7 +34,7 @@ describe("Nintendo Play Activity firewall", () => {
 
   it("registers Nintendo Play Activity APIs with the runtime token binding", () => {
     expect(firewall.name).toBe("nintendo-play-activity");
-    expect(firewall.apis).toHaveLength(2);
+    expect(firewall.apis).toHaveLength(4);
     expect(
       firewall.apis.map((api) => {
         return api.auth;
@@ -53,12 +53,24 @@ describe("Nintendo Play Activity firewall", () => {
     ]);
   });
 
-  it("maps both Nintendo play activity endpoints to read permissions", () => {
+  it("maps Nintendo account and play activity endpoints to read permissions", () => {
+    expectNintendoPlayActivityMatches({
+      apiBase: "https://api.accounts.nintendo.com",
+      method: "GET",
+      path: "/2.0.0/users/me",
+      permissionNames: ["nintendo-account-profile-read"],
+    });
     expectNintendoPlayActivityMatches({
       apiBase: "https://app-api.znej.nintendo.com",
       method: "GET",
       path: "/api/v2.0/users/me/play_histories",
       permissionNames: ["nintendo-store-play-activity-read"],
+    });
+    expectNintendoPlayActivityMatches({
+      apiBase: "https://news-api.entry.nintendo.co.jp",
+      method: "GET",
+      path: "/api/v1.1/users/me/play_histories",
+      permissionNames: ["nintendo-entry-play-activity-read"],
     });
     expectNintendoPlayActivityMatches({
       apiBase: "https://mypage-api.entry.nintendo.co.jp",
@@ -72,12 +84,20 @@ describe("Nintendo Play Activity firewall", () => {
     const policy = await loadDefaultFirewallPolicies("nintendo-play-activity");
 
     expect(policy.policies["my-nintendo-play-activity-read"]).toBe("allow");
+    expect(policy.policies["nintendo-account-profile-read"]).toBe("allow");
+    expect(policy.policies["nintendo-entry-play-activity-read"]).toBe("allow");
     expect(policy.policies["nintendo-store-play-activity-read"]).toBe("allow");
     expect(policy.unknownPolicy).toBe("deny");
     expectNintendoPlayActivityMatches({
       apiBase: "https://app-api.znej.nintendo.com",
       method: "GET",
       path: "/api/v2.0/users/me/profile",
+      permissionNames: [],
+    });
+    expectNintendoPlayActivityMatches({
+      apiBase: "https://api.accounts.nintendo.com",
+      method: "POST",
+      path: "/2.0.0/users/me",
       permissionNames: [],
     });
   });
