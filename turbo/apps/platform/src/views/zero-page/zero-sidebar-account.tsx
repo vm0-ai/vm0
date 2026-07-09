@@ -54,7 +54,10 @@ import {
 } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import {
+  billingStatusAsync$,
+  reloadBillingStatus$,
+} from "../../signals/zero-page/billing.ts";
 import {
   accountMenuCodexResetDialog$,
   personalActionPromise$,
@@ -602,6 +605,7 @@ export function AccountDropdown({
     consumePendingAccountMenuSettingsSection$,
   );
   const reloadSubscriptions = useSet(reloadAccountMenuSubscriptionUsageRows$);
+  const reloadBilling = useSet(reloadBillingStatus$);
   const resetCodexSubscriptionUsage = useSet(
     resetPersonalCodexSubscriptionUsage$,
   );
@@ -710,10 +714,17 @@ export function AccountDropdown({
   };
 
   const handleMenuOpenChange = (open: boolean) => {
-    if (open) {
-      setPendingSettingsSection(settingsOwnerId, null);
+    if (!open) {
+      return;
     }
-    if (!open || hidePreferences || !subscriptionsEnabled) {
+    setPendingSettingsSection(settingsOwnerId, null);
+    if (hidePreferences) {
+      return;
+    }
+    // Refresh the org credit balance every time the menu opens so the
+    // displayed remaining credit reflects the latest usage.
+    reloadBilling();
+    if (!subscriptionsEnabled) {
       return;
     }
 
