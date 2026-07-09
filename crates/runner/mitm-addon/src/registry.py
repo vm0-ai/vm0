@@ -392,7 +392,8 @@ def _mark_unavailable(
 ) -> RegistryUnavailable:
     if state.unavailable is None and state.snapshot.loaded_key is not None:
         evict_all_cache_keys()
-        state.builtin_firewall_core_cache.clear()
+    state.snapshot = _empty_snapshot()
+    state.builtin_firewall_core_cache.clear()
     state.unavailable = RegistryUnavailable(reason, message)
     return state.unavailable
 
