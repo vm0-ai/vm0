@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.419.0](https://github.com/vm0-ai/vm0/compare/core-v8.418.2...core-v8.419.0) (2026-07-09)
+
+
+### Features
+
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+
+
+### Bug Fixes
+
+* refresh website template r2 archives ([#20809](https://github.com/vm0-ai/vm0/issues/20809)) ([8202876](https://github.com/vm0-ai/vm0/commit/820287677c250892fade8b9f298f910675e5ec26))
+* send chat model choices as model ids ([#20639](https://github.com/vm0-ai/vm0/issues/20639)) ([71b30a2](https://github.com/vm0-ai/vm0/commit/71b30a283202188aa4d92659bcf24d63a01d5e26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.175.0
+    * @vm0/connectors bumped to 1.151.0
+
 ## [8.418.2](https://github.com/vm0-ai/vm0/compare/core-v8.418.1...core-v8.418.2) (2026-07-09)
 
 
