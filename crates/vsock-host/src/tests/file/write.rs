@@ -300,6 +300,61 @@ async fn write_files_rejects_content_above_batch_limit_before_sending_frame() {
 }
 
 #[tokio::test]
+async fn write_files_rejects_aggregate_content_above_batch_limit_before_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let first_len = (WRITE_FILES_BATCH_CONTENT_LIMIT / 2) + 1;
+    let second_len = WRITE_FILES_BATCH_CONTENT_LIMIT - first_len + 1;
+    let first_content = vec![0xA1u8; first_len];
+    let second_content = vec![0xB2u8; second_len];
+
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
+            &[
+                WriteFileEntry {
+                    path: "/tmp/too-large-batch-a.txt",
+                    content: &first_content,
+                },
+                WriteFileEntry {
+                    path: "/tmp/too-large-batch-b.txt",
+                    content: &second_content,
+                },
+            ],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("aggregate-content-invalid write_files should return before waiting for the writer")
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => {
+            panic!("aggregate-content-invalid write_files must not send a frame; read {n} bytes")
+        }
+        Err(err) => {
+            panic!("unexpected read error after aggregate-content-invalid write_files: {err}")
+        }
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    drop(writer_guard);
+}
+
+#[tokio::test]
 async fn write_files_rejects_invalid_path_before_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
