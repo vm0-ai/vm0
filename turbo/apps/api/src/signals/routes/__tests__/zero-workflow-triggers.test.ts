@@ -1957,7 +1957,7 @@ describe("zero workflow triggers", () => {
     );
   });
 
-  it("runs a trigger immediately in its bound chat thread", async () => {
+  it("runs a one-time trigger immediately in its bound chat thread", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { workflowId } = await setupFixture();
     const created = await accept(
@@ -1966,9 +1966,9 @@ describe("zero workflow triggers", () => {
         params: { workflowId },
         body: {
           schedule: {
-            type: "cron",
-            cronExpression: "0 9 * * *",
-            timezone: "UTC",
+            type: "once",
+            atTime: futureIso(86_400_000),
+            timezone: "Asia/Shanghai",
           },
         },
       }),
@@ -2039,5 +2039,8 @@ describe("zero workflow triggers", () => {
     });
     expect(workflowMessage).toBeDefined();
     expect(workflowMessage?.runId).toBe(run.body.runId);
+    expect(workflowMessage?.workflowSnapshot?.triggerBrief).toMatch(
+      /^Once at \d{1,2}:\d{2} [AP]M, [A-Z][a-z]{2} \d{1,2}, \d{4} \(Asia\/Shanghai\)$/u,
+    );
   });
 });
