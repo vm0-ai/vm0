@@ -229,7 +229,13 @@ fn cgroup_path_from_line(line: &str) -> Option<(CgroupPathPriority, &str)> {
         return None;
     }
 
-    let priority = if (hierarchy_id == "0" && controllers.is_empty())
+    let is_v2 = hierarchy_id == "0" && controllers.is_empty();
+    let is_v1 = hierarchy_id != "0" && !hierarchy_id.is_empty() && !controllers.is_empty();
+    if !is_v2 && !is_v1 {
+        return None;
+    }
+
+    let priority = if is_v2
         || controllers
             .split(',')
             .any(|controller| controller == "name=systemd")
@@ -374,6 +380,18 @@ mod tests {
         );
         assert_eq!(
             parse_service_unit_from_cgroup("0::/system.slice/.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("::/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("1::/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("0:cpu:/system.slice/vm0-runner-invalid.service\n"),
             None
         );
     }
