@@ -1582,11 +1582,22 @@ function sameStringRecord(
 ): boolean {
   const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
   for (const key of keys) {
-    if ((left[key] ?? null) !== (right[key] ?? null)) {
+    if (stringRecordValue(left, key) !== stringRecordValue(right, key)) {
       return false;
     }
   }
   return true;
+}
+
+function stringRecordValue(
+  record: Readonly<Record<string, string | null>>,
+  key: string,
+): string | null {
+  if (!Object.hasOwn(record, key)) {
+    return null;
+  }
+  const value = record[key];
+  return value === undefined ? null : value;
 }
 
 function refreshSourceStateFromRow(args: {
@@ -1752,7 +1763,14 @@ function sameRefreshTokenState(
 }
 
 function sameTokenExpiresAt(left: Date | null, right: Date | null): boolean {
-  return (left?.getTime() ?? null) === (right?.getTime() ?? null);
+  return timestampMillisOrNull(left) === timestampMillisOrNull(right);
+}
+
+function timestampMillisOrNull(value: Date | null): number | null {
+  if (value === null) {
+    return null;
+  }
+  return value.getTime();
 }
 
 async function loadModelProviderRefreshStateRow(
