@@ -204,7 +204,7 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/artifacts
   mockApi(artifactsContract.list, ({ respond }) => {
-    return respond(200, { artifacts: [], truncated: false });
+    return respond(200, { artifacts: [], truncated: false, nextCursor: null });
   }),
 
   // GET /api/zero/chat-threads/:id (thread detail)

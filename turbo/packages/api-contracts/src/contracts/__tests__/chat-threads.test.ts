@@ -195,9 +195,19 @@ describe("chat thread generation template contract", () => {
 });
 
 describe("artifacts contract", () => {
-  it("exposes an org-level bulk generated artifacts route", () => {
+  it("exposes an org-level generated artifacts route", () => {
     expect(artifactsContract.list.method).toBe("GET");
     expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
+  });
+
+  it("accepts keyset pagination query params", () => {
+    const parsed = artifactsContract.list.query.safeParse({
+      limit: "50",
+      cursor: "opaque-token",
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.limit).toBe(50);
   });
 
   it("accepts a minimal generated artifact item", () => {
@@ -256,12 +266,22 @@ describe("artifacts contract", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("accepts a bulk list response", () => {
+  it("accepts a keyset-paginated list response", () => {
+    const parsed = artifactsListResponseSchema.safeParse({
+      artifacts: [],
+      truncated: false,
+      nextCursor: null,
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("requires nextCursor on the list response", () => {
     const parsed = artifactsListResponseSchema.safeParse({
       artifacts: [],
       truncated: false,
     });
 
-    expect(parsed.success).toBe(true);
+    expect(parsed.success).toBe(false);
   });
 });

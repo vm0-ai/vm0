@@ -71,9 +71,28 @@ const artifactItemSchema = z.object({
   googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
+/**
+ * Keyset pagination for the artifacts list. Both fields are optional so
+ * un-paginated callers (older frontend bundles) still get a valid first page.
+ * `cursor` is an opaque token returned as `nextCursor` from a previous page.
+ */
+const artifactsListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(10_000).optional(),
+  cursor: z.string().optional(),
+});
+
 const artifactsListResponseSchema = z.object({
   artifacts: z.array(artifactItemSchema),
+  /**
+   * True when more artifacts exist beyond this page. Retained for backward
+   * compatibility with older frontend bundles that read it; new clients follow
+   * `nextCursor` instead.
+   */
   truncated: z.boolean(),
+  /**
+   * Opaque cursor for the next page, or null when this is the last page.
+   */
+  nextCursor: z.string().nullable(),
 });
 
 const htmlArtifactEditSnapshotQuerySchema = z.object({
@@ -1188,13 +1207,14 @@ export const artifactsContract = c.router({
     method: "GET",
     path: "/api/zero/artifacts",
     headers: authHeadersSchema,
+    query: artifactsListQuerySchema,
     responses: {
       200: artifactsListResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
     summary:
-      "List all generated artifacts for the caller's current organization (bulk, capped)",
+      "List generated artifacts for the caller's current organization (keyset-paginated)",
   },
 });
 

@@ -1041,10 +1041,14 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
-    async listArtifacts(actor: ApiTestUser): Promise<ArtifactsListResponse> {
+    async listArtifacts(
+      actor: ApiTestUser,
+      query: { readonly limit?: number; readonly cursor?: string } = {},
+    ): Promise<ArtifactsListResponse> {
       const response = await accept(
         artifactsClient().list({
           headers: authenticate(context, actor),
+          query,
         }),
         [200],
       );
