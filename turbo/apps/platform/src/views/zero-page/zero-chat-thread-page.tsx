@@ -263,6 +263,7 @@ import {
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
+import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
@@ -429,10 +430,22 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
   const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogForThreadId$,
+  );
+  const pageSignal = useGet(pageSignal$);
   const threadTitle =
     threadMetaLoadable.state === "hasData"
       ? (threadMetaLoadable.data?.title?.trim() ?? "")
       : "";
+
+  function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
+    event.preventDefault();
+    detach(
+      openRenameChatThreadDialog(thread.threadId, pageSignal),
+      Reason.DomCallback,
+    );
+  }
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -447,7 +460,11 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
               emoji={threadTitleEmoji}
             />
             {threadTitleText && (
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">
+              <span
+                className="min-w-0 truncate text-sm font-medium text-foreground"
+                data-testid="chat-thread-header-title"
+                onDoubleClick={openRenameDialog}
+              >
                 {threadTitleText}
               </span>
             )}
