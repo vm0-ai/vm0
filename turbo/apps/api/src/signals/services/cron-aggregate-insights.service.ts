@@ -8,6 +8,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -956,11 +957,15 @@ async function queryUsageEventCreditRows(
           "agent_name",
         ),
       credits:
-        sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
+        sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`.as(
           "credits",
         ),
     })
     .from(usageEvent)
+    .leftJoin(
+      usageAllowanceAllocations,
+      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
+    )
     .leftJoin(agentRuns, eq(usageEvent.runId, agentRuns.id))
     .leftJoin(
       agentComposeVersions,

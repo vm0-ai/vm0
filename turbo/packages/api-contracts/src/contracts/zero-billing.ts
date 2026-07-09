@@ -53,6 +53,20 @@ const concurrencySubscriptionSchema = z.object({
   cancelAtPeriodEnd: z.boolean(),
 });
 
+const usageAllowanceWindowSchema = z.object({
+  kind: z.enum(["short", "weekly"]),
+  windowSeconds: z.number().int().positive(),
+  unitLimit: z.number(),
+  consumedUnits: z.number(),
+  remainingUnits: z.number(),
+  startsAt: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+});
+
+const usageAllowanceSchema = z.object({
+  windows: z.array(usageAllowanceWindowSchema),
+});
+
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
@@ -68,6 +82,7 @@ const billingStatusResponseSchema = z.object({
   creditGrants: z.array(creditGrantSchema),
   concurrencyLimit: z.number().int().nonnegative(),
   concurrencySubscriptions: z.array(concurrencySubscriptionSchema),
+  usageAllowance: usageAllowanceSchema.nullable().optional(),
 });
 
 const checkoutResponseSchema = z.object({

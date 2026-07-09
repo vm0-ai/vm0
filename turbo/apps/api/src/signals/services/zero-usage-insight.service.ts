@@ -300,6 +300,10 @@ function usageRowTokenExpr(): string {
   return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${tokenCategoryList}) THEN ue.quantity ELSE 0 END`;
 }
 
+function usageCreditsExpr(usageAlias: string, allowanceAlias: string): string {
+  return `COALESCE(${usageAlias}.credits_charged, 0) + COALESCE(${allowanceAlias}.units_applied, 0)`;
+}
+
 function usageRowsCte(p: UsageInsightSqlParams): string {
   return `
     usage_rows AS (
@@ -308,9 +312,10 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
         ue.run_id,
         ue.user_id,
         ue.org_id,
-        COALESCE(ue.credits_charged, 0)::bigint AS credits_charged,
+        ${usageCreditsExpr("ue", "uaa")}::bigint AS credits_charged,
         ${usageRowTokenExpr()}::bigint AS tokens
       FROM usage_event ue
+      LEFT JOIN usage_allowance_allocations uaa ON uaa.usage_event_id = ue.id
       WHERE ue.user_id = ${p.userIdLit}
         AND ue.org_id = ${p.orgIdLit}
         AND ue.status = 'processed'

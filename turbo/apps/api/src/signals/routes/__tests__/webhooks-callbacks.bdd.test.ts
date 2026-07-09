@@ -12,6 +12,7 @@ import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
+import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
 import {
   createBddApi,
   expectApiError,
@@ -53,6 +54,20 @@ function expectExpiresAboutThirtyDaysFromNow(value: unknown): void {
   const expiresInMs = Date.parse(value) - now();
   expect(expiresInMs).toBeGreaterThan(THIRTY_DAYS_MS - 60_000);
   expect(expiresInMs).toBeLessThanOrEqual(THIRTY_DAYS_MS + 5000);
+}
+
+function expectIsoTimestampBetween(
+  value: string | null | undefined,
+  before: Date,
+  after: Date,
+): void {
+  expect(typeof value).toBe("string");
+  if (typeof value !== "string") {
+    throw new Error("Expected an ISO timestamp");
+  }
+  const timestamp = Date.parse(value);
+  expect(timestamp).toBeGreaterThanOrEqual(before.getTime());
+  expect(timestamp).toBeLessThanOrEqual(after.getTime() + 1000);
 }
 
 async function waitForExpectation(
@@ -1862,6 +1877,202 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           source: "subscription_renewal",
         }),
       ]),
+    );
+  });
+
+  it("upserts usage allowance entitlements from Atom subscription invoices", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const effectiveAtUnix = epochSeconds(0);
+    const expiresAtUnix = epochSeconds(14);
+    api.configureStripeBillingEnv();
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_usage_allowance_${suffix}`,
+          customer: `cus_bdd_allowance_${suffix}`,
+          metadata: {
+            type: "usage_allowance",
+            purpose: "usage_allowance",
+            source: "atom_usage_allowance",
+            orgId,
+            shortWindowSeconds: "3600",
+            shortWindowUnits: "5000",
+            weeklyWindowSeconds: "604800",
+            weeklyWindowUnits: "50000",
+          },
+          parent: {
+            subscription_details: {
+              subscription: `sub_bdd_allowance_${suffix}`,
+              metadata: {},
+            },
+          },
+          lines: {
+            data: [
+              {
+                id: `il_bdd_usage_allowance_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: effectiveAtUnix,
+                  end: expiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const entitlement = await readUsageAllowanceEntitlementFixture(orgId);
+    expect(entitlement).toMatchObject({
+      orgId,
+      status: "active",
+      shortWindowSeconds: 3600,
+      shortWindowUnits: 5000,
+      weeklyWindowSeconds: 604_800,
+      weeklyWindowUnits: 50_000,
+      effectiveAt: isoOf(effectiveAtUnix),
+      expiresAt: isoOf(expiresAtUnix),
+      stripeCustomerId: `cus_bdd_allowance_${suffix}`,
+      stripeSubscriptionId: `sub_bdd_allowance_${suffix}`,
+      stripeInvoiceId: `in_bdd_usage_allowance_${suffix}`,
+    });
+
+    const subscriptionPeriodEndUnix = epochSeconds(21);
+    const cancelAtUnix = epochSeconds(60);
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: `sub_bdd_allowance_${suffix}`,
+          status: "active",
+          cancel_at: cancelAtUnix,
+          cancel_at_period_end: false,
+          metadata: {
+            type: "usage_allowance",
+            purpose: "usage_allowance",
+            orgId,
+            shortWindowUnits: "9000",
+            weeklyWindowUnits: "90000",
+          },
+          items: {
+            data: [{ current_period_end: subscriptionPeriodEndUnix }],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const canceledAtPeriod = await readUsageAllowanceEntitlementFixture(orgId);
+    expect(canceledAtPeriod).toMatchObject({
+      orgId,
+      status: "active",
+      shortWindowUnits: 9000,
+      weeklyWindowUnits: 90_000,
+      expiresAt: isoOf(subscriptionPeriodEndUnix),
+      stripeSubscriptionId: `sub_bdd_allowance_${suffix}`,
+    });
+
+    const beforeCancel = nowDate();
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: `sub_bdd_allowance_${suffix}`,
+          status: "canceled",
+          items: {
+            data: [{ current_period_end: epochSeconds(30) }],
+          },
+        },
+      }),
+      [200],
+    );
+    const afterCancel = nowDate();
+
+    const canceled = await readUsageAllowanceEntitlementFixture(orgId);
+    expect(canceled).toMatchObject({
+      orgId,
+      status: "canceled",
+      stripeSubscriptionId: `sub_bdd_allowance_${suffix}`,
+    });
+    expectIsoTimestampBetween(canceled?.expiresAt, beforeCancel, afterCancel);
+  });
+
+  it("cancels usage allowance entitlements when their Stripe subscription is deleted", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const subscriptionId = `sub_bdd_allowance_delete_${suffix}`;
+    api.configureStripeBillingEnv();
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_usage_allowance_delete_${suffix}`,
+          customer: `cus_bdd_allowance_delete_${suffix}`,
+          metadata: {
+            type: "usage_allowance",
+            purpose: "usage_allowance",
+            orgId,
+            shortWindowSeconds: "3600",
+            shortWindowUnits: "5000",
+            weeklyWindowSeconds: "604800",
+            weeklyWindowUnits: "50000",
+          },
+          parent: {
+            subscription_details: {
+              subscription: subscriptionId,
+              metadata: {},
+            },
+          },
+          lines: {
+            data: [
+              {
+                id: `il_bdd_usage_allowance_delete_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: epochSeconds(30),
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const beforeDelete = nowDate();
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.deleted",
+        object: { id: subscriptionId },
+      }),
+      [200],
+    );
+    const afterDelete = nowDate();
+
+    const entitlement = await readUsageAllowanceEntitlementFixture(orgId);
+    expect(entitlement).toMatchObject({
+      orgId,
+      status: "canceled",
+      stripeSubscriptionId: subscriptionId,
+    });
+    expectIsoTimestampBetween(
+      entitlement?.expiresAt,
+      beforeDelete,
+      afterDelete,
     );
   });
 
