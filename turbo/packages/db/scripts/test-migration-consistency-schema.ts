@@ -142,6 +142,61 @@ async function restoreMigrations(): Promise<void> {
   await fs.rm(BACKUP_DIR, { recursive: true, force: true });
 }
 
+async function addPgVectorExtensionPreludeToGeneratedMigrations(): Promise<void> {
+  const sqlFiles = (await fs.readdir(MIGRATIONS_DIR))
+    .filter((file) => {
+      return file.endsWith(".sql");
+    })
+    .sort();
+
+  const sqlByFile = await Promise.all(
+    sqlFiles.map(async (file) => {
+      return {
+        file,
+        sql: await fs.readFile(path.join(MIGRATIONS_DIR, file), "utf-8"),
+      };
+    }),
+  );
+
+  const usesPgVector = sqlByFile.some(({ sql }) => {
+    return (
+      /\bvector\s*\(/i.test(sql) ||
+      /\bvector_cosine_ops\b/i.test(sql) ||
+      /\bUSING\s+hnsw\b/i.test(sql)
+    );
+  });
+  if (!usesPgVector) {
+    return;
+  }
+
+  const hasPgVectorExtension = sqlByFile.some(({ sql }) => {
+    return /CREATE\s+EXTENSION\s+(IF\s+NOT\s+EXISTS\s+)?"?vector"?/i.test(sql);
+  });
+  if (hasPgVectorExtension) {
+    return;
+  }
+
+  const firstPgVectorMigration = sqlByFile.find(({ sql }) => {
+    return (
+      /\bvector\s*\(/i.test(sql) ||
+      /\bvector_cosine_ops\b/i.test(sql) ||
+      /\bUSING\s+hnsw\b/i.test(sql)
+    );
+  });
+  if (!firstPgVectorMigration) {
+    return;
+  }
+
+  const migrationPath = path.join(MIGRATIONS_DIR, firstPgVectorMigration.file);
+  await fs.writeFile(
+    migrationPath,
+    `CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint\n${firstPgVectorMigration.sql}`,
+  );
+  console.log(
+    `   Added pgvector extension prelude to generated migration ${firstPgVectorMigration.file}`,
+  );
+}
+
 async function generateFreshMigrations(): Promise<void> {
   console.log("🔨 Generating fresh migrations from schema...");
 
@@ -151,6 +206,7 @@ async function generateFreshMigrations(): Promise<void> {
 
   // Generate new migrations (non-interactive)
   execCommand("pnpm drizzle-kit generate", { cwd: PACKAGE_DIR });
+  await addPgVectorExtensionPreludeToGeneratedMigrations();
 }
 
 async function validateSnapshotFiles(): Promise<void> {
