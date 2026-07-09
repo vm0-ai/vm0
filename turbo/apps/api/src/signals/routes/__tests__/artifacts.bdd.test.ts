@@ -258,4 +258,38 @@ describe("GET /api/zero/artifacts", () => {
       ]),
     );
   }, 120_000);
+
+  it("walks the full set via keyset pagination with a small page size", async () => {
+    const owner = await artifactActor("Artifacts API paging agent");
+
+    const created: string[] = [];
+    for (const label of ["one", "two", "three"]) {
+      const artifact = await createHostedArtifact({
+        actor: owner.actor,
+        agentId: owner.agentId,
+        runnerGroup: owner.runnerGroup,
+        site: `page-${label}-${randomUUID().slice(0, 8)}`,
+      });
+      created.push(artifact.fileId);
+    }
+
+    const collected: string[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const page = await chat.listArtifacts(owner.actor, { limit: 1, cursor });
+      expect(page.artifacts.length).toBeLessThanOrEqual(1);
+      for (const artifact of page.artifacts) {
+        collected.push(artifact.fileId);
+      }
+      cursor = page.nextCursor ?? undefined;
+      pages += 1;
+      expect(pages).toBeLessThanOrEqual(10);
+    } while (cursor);
+
+    // Every artifact surfaced exactly once across pages — no cursor-drift dups,
+    // no skips — proving keyset walks the deduped winner set correctly.
+    expect(collected).toHaveLength(created.length);
+    expect(new Set(collected)).toStrictEqual(new Set(created));
+  }, 120_000);
 });

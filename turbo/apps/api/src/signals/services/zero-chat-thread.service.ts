@@ -986,16 +986,39 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
   };
 }
 
-const ARTIFACTS_BULK_LIMIT = 10_000;
+// Default page size when a caller passes no `limit`. Kept at the historical
+// bulk cap so un-paginated callers (older frontend bundles) see the exact same
+// first page as before.
+const ARTIFACTS_DEFAULT_LIMIT = 10_000;
+const ARTIFACTS_MAX_LIMIT = 10_000;
+
+const artifactCursorSchema = z.object({
+  createdAt: z.string(),
+  rowId: z.string(),
+});
+type ArtifactCursor = z.infer<typeof artifactCursorSchema>;
+
+function encodeArtifactCursor(cursor: ArtifactCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeArtifactCursor(raw: string): ArtifactCursor {
+  return artifactCursorSchema.parse(
+    JSON.parse(Buffer.from(raw, "base64url").toString("utf8")),
+  );
+}
 
 interface ZeroArtifactsArgs {
   readonly userId: string;
   readonly orgId: string;
+  readonly limit?: number;
+  readonly cursor?: string;
 }
 
 interface ZeroArtifactsResult {
   readonly artifacts: readonly ArtifactItem[];
   readonly truncated: boolean;
+  readonly nextCursor: string | null;
 }
 
 export const zeroArtifacts$ = command(
@@ -1005,6 +1028,18 @@ export const zeroArtifacts$ = command(
     signal: AbortSignal,
   ): Promise<ZeroArtifactsResult> => {
     const db = set(writeDb$);
+    const limit = Math.min(
+      args.limit ?? ARTIFACTS_DEFAULT_LIMIT,
+      ARTIFACTS_MAX_LIMIT,
+    );
+    const cursor = args.cursor ? decodeArtifactCursor(args.cursor) : null;
+    // Keyset must be applied AFTER the DISTINCT ON (url) dedup (on the deduped
+    // representatives), matching the final ORDER BY created_at DESC, row_id
+    // DESC. Pushing it into scoped_artifacts (pre-dedup) would let an older row
+    // of an already-emitted url slip past the cursor and re-surface as a dup.
+    const keysetClause = cursor
+      ? sql`WHERE (created_at, row_id) < (${cursor.createdAt}::timestamptz, ${cursor.rowId}::uuid)`
+      : sql``;
     const conditions: SQL[] = [
       sql`${agentRuns.orgId} = ${args.orgId}`,
       sql`${chatThreads.userId} = ${args.userId}`,
@@ -1069,19 +1104,28 @@ export const zeroArtifacts$ = command(
       )
       SELECT *
       FROM deduped_artifacts
+      ${keysetClause}
       ORDER BY created_at DESC, row_id DESC
-      LIMIT ${ARTIFACTS_BULK_LIMIT + 1}
+      LIMIT ${limit + 1}
     `);
     signal.throwIfAborted();
 
-    const truncated = rows.rows.length > ARTIFACTS_BULK_LIMIT;
-    const pageRows = truncated
-      ? rows.rows.slice(0, ARTIFACTS_BULK_LIMIT)
-      : rows.rows;
+    // Over-fetch one row to detect whether a further page exists.
+    const hasMore = rows.rows.length > limit;
+    const pageRows = hasMore ? rows.rows.slice(0, limit) : rows.rows;
+    const lastRow = pageRows.at(-1);
+    const nextCursor =
+      hasMore && lastRow
+        ? encodeArtifactCursor({
+            createdAt: artifactRowCreatedAt(lastRow).toISOString(),
+            rowId: lastRow.row_id,
+          })
+        : null;
 
     return {
       artifacts: pageRows.map(toArtifactItem),
-      truncated,
+      truncated: hasMore,
+      nextCursor,
     };
   },
 );
