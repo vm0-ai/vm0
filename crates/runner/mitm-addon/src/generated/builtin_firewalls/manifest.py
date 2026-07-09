@@ -183,6 +183,7 @@ FIREWALL_MODULES = {
     "n8n": ("n8n_0",),
     "neon": ("neon_0",),
     "netdata": ("netdata_0",),
+    "nintendo-play-activity": ("nintendo_play_activity_0",),
     "notion": ("notion_0",),
     "novita": ("novita_0",),
     "nyne": ("nyne_0",),

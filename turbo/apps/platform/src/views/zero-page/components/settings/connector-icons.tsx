@@ -194,6 +194,7 @@ const CONNECTOR_ICON_COLORFUL = {
   neon: true,
   netdata: true,
   "nintendo-eshop-catalog": true,
+  "nintendo-play-activity": true,
   nyne: true,
   openweather: true,
   "outlook-calendar": true,

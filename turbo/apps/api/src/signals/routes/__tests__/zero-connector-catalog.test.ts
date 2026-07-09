@@ -537,6 +537,59 @@ describe("GET /api/zero/connector-catalog", () => {
     });
   });
 
+  it("hides Nintendo Play Activity until its connector switch is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const hidden = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      hidden.body.connectors.some((connector) => {
+        return connector.connectorRef === "nintendo-play-activity";
+      }),
+    ).toBeFalsy();
+
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.NintendoPlayActivityConnector]: true,
+    });
+    const visible = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(visible.body);
+    const nintendoPlayActivity = visible.body.connectors.find((connector) => {
+      return connector.connectorRef === "nintendo-play-activity";
+    });
+    expect(nintendoPlayActivity).toMatchObject({
+      connectorRef: "nintendo-play-activity",
+      label: "Nintendo Play Activity",
+      connected: false,
+      connectionStatus: "not-connected",
+      permissionSummary: {
+        hasPermissions: true,
+        permissionCount: 2,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: true,
+      },
+    });
+    expect(nintendoPlayActivity?.authMethods).toStrictEqual([
+      {
+        id: "api",
+        label: "Nintendo sign-in",
+        description:
+          "Sign in with Nintendo, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
+        grantKind: "external-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ]);
+  });
+
   it("returns connected manual grant status from public API-created state", async () => {
     const actor = bdd.user();
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
