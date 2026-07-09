@@ -6,7 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/composes";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  isUserOverridableFeatureSwitch,
+} from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -24,26 +27,10 @@ const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
 
 const CONDITIONAL_CAPABILITIES = [
-  {
-    capability: "banking:read",
-    featureSwitch: FeatureSwitchKey.Banking,
-    allowOverrides: true,
-  },
-  {
-    capability: "relationship:read",
-    featureSwitch: FeatureSwitchKey.RelationshipMemory,
-    allowOverrides: true,
-  },
-  {
-    capability: "scrape:read",
-    featureSwitch: FeatureSwitchKey.ZeroScrape,
-    allowOverrides: false,
-  },
-] as const satisfies readonly {
-  readonly capability: ZeroCapability;
-  readonly featureSwitch: FeatureSwitchKey;
-  readonly allowOverrides: boolean;
-}[];
+  ["banking:read", FeatureSwitchKey.Banking],
+  ["relationship:read", FeatureSwitchKey.RelationshipMemory],
+  ["scrape:read", FeatureSwitchKey.ZeroScrape],
+] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
   "agent-run:write",
@@ -117,6 +104,37 @@ function deriveJwtKey(): Buffer {
   const masterKey = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
   return Buffer.from(
     hkdfSync("sha256", masterKey, "", "jwt-sandbox-signing", 32),
+  );
+}
+
+function featureSwitchForCapability(
+  capabilitySwitches: readonly (readonly [ZeroCapability, FeatureSwitchKey])[],
+  capability: ZeroCapability,
+): FeatureSwitchKey | undefined {
+  return capabilitySwitches.find(([entryCapability]) => {
+    return entryCapability === capability;
+  })?.[1];
+}
+
+function isZeroCapabilityEnabled(
+  capability: ZeroCapability,
+  userId: string,
+  orgId: string,
+  overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+): boolean {
+  const featureSwitch = featureSwitchForCapability(
+    CONDITIONAL_CAPABILITIES,
+    capability,
+  );
+  if (featureSwitch === undefined) {
+    return true;
+  }
+
+  return isFeatureEnabled(
+    featureSwitch,
+    isUserOverridableFeatureSwitch(featureSwitch)
+      ? { userId, orgId, overrides }
+      : { userId, orgId },
   );
 }
 
@@ -301,17 +319,7 @@ export function generateZeroToken(
     ) {
       continue;
     }
-    const conditionalCapability = CONDITIONAL_CAPABILITIES.find((entry) => {
-      return entry.capability === capability;
-    });
-    if (
-      conditionalCapability === undefined ||
-      isFeatureEnabled(conditionalCapability.featureSwitch, {
-        userId,
-        orgId,
-        ...(conditionalCapability.allowOverrides ? { overrides } : {}),
-      })
-    ) {
+    if (isZeroCapabilityEnabled(capability, userId, orgId, overrides)) {
       capabilities.push(capability);
     }
   }
