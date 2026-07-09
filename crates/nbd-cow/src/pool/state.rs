@@ -429,7 +429,7 @@ impl DevicePool {
 
     /// Collect all indices currently tracked by the pool (cooldown + in-flight)
     /// to exclude from demand scans. Concurrent scans are still safe because the
-    /// shared per-index lock serializes claims across tasks and processes.
+    /// shared per-index lock serializes cooperating tasks and processes.
     pub(super) fn tracked_indices(&self) -> HashSet<u32> {
         self.cooldown
             .iter()

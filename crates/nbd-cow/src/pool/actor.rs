@@ -16,8 +16,9 @@ use super::state::{DevicePool, DevicePoolConfig};
 /// the pool state machine and serializes transitions for `/dev/nbdN` claims,
 /// pending scans, cooldown slots, and checked-out [`DeviceLease`] returns.
 ///
-/// The handle coordinates this process-local pool state, while cross-process
-/// safety still comes from shared per-index lock files and sysfs checks.
+/// The handle coordinates this process-local pool state, while cooperative
+/// cross-process safety still comes from shared per-index lock files and sysfs
+/// checks.
 /// Dropping a handle is not normal device cleanup. Checked-out leases also carry
 /// return senders, so dropping every handle only stops the actor after
 /// outstanding leases release those senders. Successful pooled devices must
