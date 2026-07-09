@@ -298,16 +298,19 @@ describe("zero goals", () => {
     );
   });
 
-  it("normalizes legacy goal marker JSON without objective briefs", async () => {
+  it("normalizes legacy goal marker JSON with invalid objective briefs", async () => {
     const fixture = await seedGoalApiFixture();
     const chat = createChatFilesBddApi(context);
     await createGoal(fixture, "ship goals");
 
+    // This bad persisted shape cannot be produced through the public API, but
+    // older or manually repaired jsonb rows can still be read by the messages
+    // endpoint.
     const updated = await db().execute(sql`
       UPDATE chat_messages
       SET
-        goal_event = '{"type":"state","status":"active"}'::jsonb,
-        goal_snapshot = '{}'::jsonb
+        goal_event = '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
+        goal_snapshot = '{"objectiveBrief":{"bad":true}}'::jsonb
       WHERE chat_thread_id = ${fixture.threadId}
         AND goal_event IS NOT NULL
     `);
