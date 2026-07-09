@@ -4204,6 +4204,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
     );
     expect(hostClaim.environment?.GITLAB_HOST).toBe("gitlab.example.com");
+    expect(hostClaim.vars).toMatchObject({
+      GITLAB_HOST: "gitlab.example.com",
+    });
 
     await api.requestCancelRun(actor, withoutHost.runId, [200]);
     await api.requestCancelRun(actor, withHost.runId, [200]);
