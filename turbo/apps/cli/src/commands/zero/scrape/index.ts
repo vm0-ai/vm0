@@ -1,32 +1,38 @@
 import { Command, InvalidArgumentError, Option } from "commander";
 import chalk from "chalk";
+import {
+  zeroScrapeFormatSchema,
+  zeroScrapeModeSchema,
+  type ZeroScrapeFormat,
+  type ZeroScrapeMode,
+} from "@vm0/api-contracts/contracts/zero-scrape";
+
 import { callZeroScrape, type ZeroScrapeResponse } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
-const SCRAPE_FORMATS = ["markdown", "links"] as const;
-const SCRAPE_MODES = ["standard", "enhanced"] as const;
-
-type ScrapeFormat = (typeof SCRAPE_FORMATS)[number];
-type ScrapeMode = (typeof SCRAPE_MODES)[number];
+const SCRAPE_FORMATS = zeroScrapeFormatSchema.options;
+const SCRAPE_MODES = zeroScrapeModeSchema.options;
 
 interface ScrapeOptions {
-  readonly format: ScrapeFormat;
-  readonly mode: ScrapeMode;
+  readonly format: ZeroScrapeFormat;
+  readonly mode: ZeroScrapeMode;
   readonly json?: boolean;
 }
 
-function parseFormat(value: string): ScrapeFormat {
-  if (SCRAPE_FORMATS.includes(value as ScrapeFormat)) {
-    return value as ScrapeFormat;
+function parseFormat(value: string): ZeroScrapeFormat {
+  const result = zeroScrapeFormatSchema.safeParse(value);
+  if (result.success) {
+    return result.data;
   }
   throw new InvalidArgumentError(
     `format must be one of: ${SCRAPE_FORMATS.join(", ")}`,
   );
 }
 
-function parseMode(value: string): ScrapeMode {
-  if (SCRAPE_MODES.includes(value as ScrapeMode)) {
-    return value as ScrapeMode;
+function parseMode(value: string): ZeroScrapeMode {
+  const result = zeroScrapeModeSchema.safeParse(value);
+  if (result.success) {
+    return result.data;
   }
   throw new InvalidArgumentError(
     `mode must be one of: ${SCRAPE_MODES.join(", ")}`,
