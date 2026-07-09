@@ -115,7 +115,7 @@ class RequestClassification:
       `public_destination_denial`.
     - `api_allow`, `browser_allow`, and `allow`: `vm_info`.
     - `stale_tls_admission`: `stale_tls_reason`; `vm_info` is present only
-      when the stale admission is detected after VM lookup.
+      when the stale admission is detected after a VM entry is found.
     - `no_client_ip` and `pass_through`: no additional payload.
     """
 
@@ -194,12 +194,13 @@ def classify_request(
     trusted authority validation, platform API allow, browser passthrough,
     firewall match, publicDestination runtime validation, and default allow.
 
-    Once a valid registered VM is found, classification stores VM/run metadata
-    on the flow. Once trusted authority validation succeeds, it stores the
-    original URL, trusted authority host, and network log target. Browser
-    passthrough detection also records its metadata marker. Header-phase callers
-    that use this as a probe must snapshot and restore those metadata fields if
-    they do not carry the classification forward.
+    After registry and TLS admission checks accept a registered VM,
+    classification stores VM/run metadata on the flow. Once trusted authority
+    validation succeeds, it stores the original URL, trusted authority host, and
+    network log target. Browser passthrough detection also records its metadata
+    marker. Header-phase callers that use this as a probe must snapshot and
+    restore those metadata fields if they do not carry the classification
+    forward.
 
     `defer_unresolved_public_destination` is for header-phase classification
     before the runtime endpoint may be fully known. A deferred `firewall_allow`
