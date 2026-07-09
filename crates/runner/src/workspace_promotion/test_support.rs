@@ -3,6 +3,7 @@ use sandbox::SandboxId;
 
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
@@ -12,6 +13,7 @@ use crate::workspace_image_cache::{
 
 pub(crate) const TEST_COMPLETED_AT: &str = "2026-06-03T00:00:00.000Z";
 const TEST_WORKSPACE_IMAGE: &[u8] = b"workspace image";
+pub(crate) const TEST_WORKSPACE_IMAGE_SIZE_BYTES: u64 = TEST_WORKSPACE_IMAGE.len() as u64;
 
 pub(crate) struct WorkspacePromotionFixture {
     pub(crate) _dir: tempfile::TempDir,
@@ -23,6 +25,13 @@ pub(crate) struct WorkspacePromotionFixture {
 
 impl WorkspacePromotionFixture {
     pub(crate) async fn new(session_id: &str) -> Self {
+        Self::new_with_restored_session_identity(session_id, None).await
+    }
+
+    pub(crate) async fn new_with_restored_session_identity(
+        session_id: &str,
+        restored_session_identity: Option<&RestoredSessionIdentity>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -37,7 +46,7 @@ impl WorkspacePromotionFixture {
                     profile_name: "vm0/default",
                     cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: TEST_WORKSPACE_IMAGE.len() as u64,
+                    image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
                 },
                 workspace_drive_required: true,
             })
@@ -56,6 +65,7 @@ impl WorkspacePromotionFixture {
                 run_id,
                 sandbox_id,
                 cli_agent_session_id_override: Some(session_id),
+                restored_session_identity,
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: TEST_COMPLETED_AT.into(),
                 storage_fingerprints: StorageFingerprints::default(),
@@ -96,7 +106,7 @@ impl WorkspacePromotionFixture {
                     profile_name: "vm0/default",
                     cli_agent_session_id: Some(&session_id),
                     working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: TEST_WORKSPACE_IMAGE.len() as u64,
+                    image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
                 },
                 workspace_drive_required: true,
             })
@@ -107,6 +117,7 @@ impl WorkspacePromotionFixture {
                 run_id,
                 sandbox_id,
                 cli_agent_session_id_override: Some(&session_id),
+                restored_session_identity: None,
                 terminal_status: WorkspaceCacheTerminalStatus::Success,
                 completed_at: "2026-06-04T00:00:00.000Z".into(),
                 storage_fingerprints: StorageFingerprints::default(),
@@ -134,7 +145,7 @@ impl WorkspacePromotionFixture {
                     profile_name: "vm0/default",
                     cli_agent_session_id: Some(session_id),
                     working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: TEST_WORKSPACE_IMAGE.len() as u64,
+                    image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
                 },
                 workspace_drive_required: true,
             })

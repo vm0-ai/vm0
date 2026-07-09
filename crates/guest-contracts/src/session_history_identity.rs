@@ -34,6 +34,9 @@ pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH: i32 = 8;
 /// Guest helper exit code for local history exceeding the guest verification budget.
 pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE: i32 = 9;
 
+/// Maximum native sidecar bytes runner can copy from guest to host.
+pub const SESSION_HISTORY_SIDECAR_MAX_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Framework that owns a final session-history file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -50,6 +53,26 @@ pub enum FinalSessionHistoryFramework {
 pub enum FinalSessionHistoryRefKind {
     /// Hash-backed blob storage.
     Blob,
+}
+
+/// Native on-disk representation used for cached session-history sidecars.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionHistorySidecarRepresentation {
+    /// Uncompressed session-history bytes.
+    Raw,
+    /// Codex zstd session-history bytes.
+    CodexZstd,
+}
+
+/// Metadata printed by the guest sidecar export helper.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionHistorySidecarExportMetadata {
+    /// Representation written to the exported sidecar file.
+    pub representation: SessionHistorySidecarRepresentation,
+    /// Exact byte length of the exported sidecar file.
+    pub encoded_size: u64,
 }
 
 /// Run-private final session-history identity metadata.

@@ -1,19 +1,29 @@
-use super::test_support::WorkspacePromotionFixture;
+use super::test_support::{TEST_WORKSPACE_IMAGE_SIZE_BYTES, WorkspacePromotionFixture};
 use super::*;
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use async_trait::async_trait;
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    SessionHistorySidecarExportMetadata, SessionHistorySidecarRepresentation,
+};
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
     Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
 };
 use sandbox_mock::{ExecMatcher, MockSandboxFactory, MockSandboxOverrides};
+use sha2::{Digest, Sha256};
 use tracing_subscriber::prelude::*;
 use tracing_test_support::{CapturedEvent, CapturedEvents};
 
-use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
+use crate::ids::RunId;
+use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::workspace_image_cache::{
+    WorkspaceCacheCheckoutResult, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
+};
 
 async fn mock_sandbox_with_overrides(
     sandbox_id: SandboxId,
@@ -137,6 +147,92 @@ async fn parked_workspace_promotion_unparks_unmounts_and_promotes_cache_entry() 
     let states = fixture.cache.held_session_states().await;
     assert_eq!(states.len(), 1);
     assert_eq!(states[0].session_id, fixture.session_id);
+}
+
+#[tokio::test]
+async fn active_workspace_promotion_exports_session_history_sidecar() {
+    let session_id = "sess-active-sidecar-promote";
+    let history = br#"{"type":"message","content":"cached"}"#;
+    let metadata = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        hex::encode(Sha256::digest(session_id.as_bytes())),
+        FinalSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+        format!("/home/user/.claude/projects/-home-user-workspace/{session_id}.jsonl"),
+    )
+    .unwrap();
+    let restored_identity = RestoredSessionIdentity::from_final_metadata(
+        metadata,
+        "/home/user/.vm0/guest-agent/runs/run-1/final-session-history-identity.json",
+        "/home/user/.vm0/guest-agent/runs/run-1",
+    )
+    .unwrap();
+    let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+        session_id,
+        Some(&restored_identity),
+    )
+    .await;
+    assert!(fixture.promotion.restored_session_identity().is_some());
+    let sandbox = sandbox_mock::MockSandbox::new(fixture.sandbox_id.to_string());
+    let export_metadata = SessionHistorySidecarExportMetadata {
+        representation: SessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+    };
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        0,
+        serde_json::to_vec(&export_metadata).unwrap(),
+        Vec::new(),
+    )));
+    sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+    let (promoted, events) = capture_promotion_events(promote_workspace_image_from_active_sandbox(
+        &sandbox,
+        Some(fixture.promotion),
+        "test",
+    ))
+    .await;
+
+    assert!(promoted);
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 3);
+    assert!(exec_calls[0].cmd.contains("export-session-history-sidecar"));
+    assert!(exec_calls[1].cmd.contains("rm -f --"));
+    assert!(exec_calls[1].cmd.contains("/session-history-sidecar"));
+    assert!(exec_calls[2].sudo);
+    let copy_calls = sandbox.copy_file_calls();
+    assert_eq!(copy_calls.len(), 1);
+    assert!(copy_calls[0].path.ends_with("/session-history-sidecar"));
+    let sidecar_entry_dir = copy_calls[0].host_path.parent().unwrap();
+    let sidecar_metadata_path = sidecar_entry_dir.join("session-history.metadata.json");
+    if !sidecar_metadata_path.is_file() {
+        let entries = std::fs::read_dir(sidecar_entry_dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        panic!("missing sidecar metadata; entries={entries:?}; events={events:#?}");
+    }
+
+    let lease = fixture
+        .cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: TEST_WORKSPACE_IMAGE_SIZE_BYTES,
+            },
+            workspace_drive_required: true,
+        })
+        .await;
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Hit);
+    let sidecar = lease
+        .probe_session_history_sidecar(&restored_identity)
+        .await
+        .unwrap();
+    assert_eq!(tokio::fs::read(sidecar.path).await.unwrap(), history);
 }
 
 #[tokio::test]

@@ -105,9 +105,54 @@ pub(crate) struct WorkspaceImagePromotionRequest<'a> {
     pub(crate) run_id: RunId,
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) cli_agent_session_id_override: Option<&'a str>,
+    pub(crate) restored_session_identity:
+        Option<&'a crate::restored_session_identity::RestoredSessionIdentity>,
     pub(crate) terminal_status: WorkspaceCacheTerminalStatus,
     pub(crate) completed_at: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
+}
+
+pub(crate) type WorkspaceSessionHistorySidecarRepresentation =
+    guest_contracts::session_history_identity::SessionHistorySidecarRepresentation;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WorkspaceSessionHistorySidecar {
+    pub(crate) path: PathBuf,
+    pub(crate) representation: WorkspaceSessionHistorySidecarRepresentation,
+    pub(crate) encoded_size: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WorkspaceSessionHistorySidecarPromotionSource {
+    pub(crate) tmp_path: PathBuf,
+    pub(crate) representation: WorkspaceSessionHistorySidecarRepresentation,
+    pub(crate) encoded_size: u64,
+    pub(crate) restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum WorkspaceSessionHistorySidecarMiss {
+    NoCacheHit,
+    Missing,
+    InvalidMetadata,
+    IdentityMismatch,
+    UnsupportedFormat,
+    BodyMissing,
+    FileIdentityMismatch,
+}
+
+impl WorkspaceSessionHistorySidecarMiss {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoCacheHit => "no_cache_hit",
+            Self::Missing => "missing",
+            Self::InvalidMetadata => "invalid_metadata",
+            Self::IdentityMismatch => "identity_mismatch",
+            Self::UnsupportedFormat => "unsupported_format",
+            Self::BodyMissing => "body_missing",
+            Self::FileIdentityMismatch => "file_identity_mismatch",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
