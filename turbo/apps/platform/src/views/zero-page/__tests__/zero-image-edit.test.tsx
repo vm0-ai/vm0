@@ -8,8 +8,13 @@ import {
   chatThreadMessagesContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
+import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
@@ -248,6 +253,78 @@ function mockPendingImageEditGeneration(
       createdAt: "2026-03-10T00:00:00Z",
       startedAt: null,
       completedAt: null,
+    });
+  });
+}
+
+function xConnectorStatusItem(args?: {
+  connected?: boolean;
+  connectionStatus?:
+    | "not-connected"
+    | "connected"
+    | "scope-mismatch"
+    | "reconnect-required";
+  externalUsername?: string | null;
+}): PublicConnectorCatalogStatusItem {
+  const connected = args?.connected ?? false;
+  const connectionStatus = args?.connectionStatus ?? "not-connected";
+  return {
+    connectorRef: "x",
+    label: "X",
+    description: "Connect your X account",
+    category: "marketing-content-growth",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "oauth",
+        label: "OAuth",
+        description: null,
+        grantKind: "auth-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ],
+    permissionSummary: {
+      hasPermissions: true,
+      permissionCount: 2,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: connected
+      ? {
+          authMethod: "oauth",
+          externalUsername: args?.externalUsername ?? "zero_user",
+          externalEmail: null,
+          reconnectReason: null,
+        }
+      : null,
+    connected,
+    connectionStatus,
+    scopeMismatch: connectionStatus === "scope-mismatch",
+    authMethodSupportsRefresh: true,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: "oauth",
+    connectNotice: null,
+  };
+}
+
+function mockXConnectorStatus(
+  args?: Parameters<typeof xConnectorStatusItem>[0],
+): void {
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [xConnectorStatusItem(args)] });
+  });
+}
+
+function mockShareImageToX(
+  onPost?: (body: { caption?: string; imageUrl: string }) => void,
+): void {
+  context.mocks.api(zeroImageShareXContract.post, ({ body, respond }) => {
+    onPost?.(body);
+    return respond(200, {
+      tweetId: "1234567890",
+      tweetUrl: "https://x.com/i/web/status/1234567890",
     });
   });
 }
@@ -1244,6 +1321,68 @@ describe("image editing", () => {
       screen.getByTestId("artifact-sidebar-image-edit-canvas"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
+  });
+
+  it("opens the X connect flow from the image edit share menu", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockXConnectorStatus({ connected: false });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-share"));
+    await user.click(screen.getByTestId("image-edit-share-x"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-share-x-dialog"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Connect X" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Open X composer" }),
+    ).toBeEnabled();
+    expect(screen.getByTestId("image-edit-share-x-preview")).toHaveAttribute(
+      "src",
+      SOURCE_IMAGE_URL,
+    );
+  });
+
+  it("posts an edited image to X when X is connected", async () => {
+    const user = userEvent.setup({ delay: null });
+    let postedBody: { caption?: string; imageUrl: string } | null = null;
+    mockXConnectorStatus({
+      connected: true,
+      connectionStatus: "connected",
+      externalUsername: "zero_user",
+    });
+    mockShareImageToX((body) => {
+      postedBody = body;
+    });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-share"));
+    await user.click(screen.getByTestId("image-edit-share-x"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Posting as @zero_user")).toBeInTheDocument();
+    });
+    await user.type(
+      screen.getByTestId("image-edit-share-x-caption"),
+      "Edited with Zero",
+    );
+    await user.click(screen.getByRole("button", { name: "Post to X" }));
+
+    await waitFor(() => {
+      expect(postedBody).toStrictEqual({
+        caption: "Edited with Zero",
+        imageUrl: SOURCE_IMAGE_URL,
+      });
+    });
   });
 
   it("adds linked and multiple uploaded local images to the edit canvas", async () => {

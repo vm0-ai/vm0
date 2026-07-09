@@ -1,4 +1,9 @@
-import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import {
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   IconArrowLeft,
   IconArrowsDiagonal,
@@ -37,6 +42,7 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Button,
   cn,
@@ -105,6 +111,11 @@ import {
   type ImageEditOperation,
   uploadEditableImageCanvasImage$,
 } from "../../signals/zero-page/zero-image-edit.ts";
+import {
+  connectXForImageShare$,
+  postImageShareToX$,
+  xImageShareConnectorStatus$,
+} from "../../signals/zero-page/zero-image-share-x.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -2295,50 +2306,256 @@ function ArtifactImageStyleTransferPopover({
 function ArtifactImageEditShareMenu({
   disabled,
   grouped = false,
+  item,
+  onDownload,
 }: {
   disabled: boolean;
   grouped?: boolean;
+  item: EditableImageCanvasItem;
+  onDownload: (item: EditableImageCanvasItem) => void;
 }) {
+  const [xDialogOpen, setXDialogOpen] = useState(false);
+
   return (
-    <DropdownMenu>
-      <ArtifactActionTooltip label="Share" side="top">
-        <span className="inline-flex">
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                grouped
-                  ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
-                  : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground",
-              )}
-              aria-label="Share image"
-              disabled={disabled}
-              data-testid="image-edit-share"
-            >
-              <IconShare size={18} stroke={1.8} />
-            </Button>
-          </DropdownMenuTrigger>
-        </span>
-      </ArtifactActionTooltip>
-      <DropdownMenuContent align="center" className="w-44">
-        <DropdownMenuItem disabled data-testid="image-edit-share-x">
-          <IconBrandX size={14} stroke={1.6} />
-          Share to X
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled data-testid="image-edit-share-instagram">
-          <IconBrandInstagram size={14} stroke={1.6} />
-          Share to Instagram
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled data-testid="image-edit-share-slack">
-          <IconBrandSlack size={14} stroke={1.6} />
-          Share to Slack
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>Coming soon</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <ArtifactActionTooltip label="Share" side="top">
+          <span className="inline-flex">
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  grouped
+                    ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+                    : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground",
+                )}
+                aria-label="Share image"
+                disabled={disabled}
+                data-testid="image-edit-share"
+              >
+                <IconShare size={18} stroke={1.8} />
+              </Button>
+            </DropdownMenuTrigger>
+          </span>
+        </ArtifactActionTooltip>
+        <DropdownMenuContent align="center" className="w-44">
+          <DropdownMenuItem
+            data-testid="image-edit-share-x"
+            onSelect={() => {
+              setXDialogOpen(true);
+            }}
+          >
+            <IconBrandX size={14} stroke={1.6} />
+            Share to X
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled data-testid="image-edit-share-instagram">
+            <IconBrandInstagram size={14} stroke={1.6} />
+            Share to Instagram
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled data-testid="image-edit-share-slack">
+            <IconBrandSlack size={14} stroke={1.6} />
+            Share to Slack
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled>Coming soon</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {xDialogOpen ? (
+        <ArtifactImageShareToXDialog
+          item={item}
+          onDownload={onDownload}
+          open={xDialogOpen}
+          onOpenChange={setXDialogOpen}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function xShareIntentUrl(caption: string): string {
+  const params = new URLSearchParams({
+    text: caption.trim() || "Made with Zero",
+  });
+  return `https://x.com/intent/tweet?${params.toString()}`;
+}
+
+function ArtifactImageShareToXDialog({
+  item,
+  onDownload,
+  open,
+  onOpenChange,
+}: {
+  item: EditableImageCanvasItem;
+  onDownload: (item: EditableImageCanvasItem) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [caption, setCaption] = useState("");
+  const pageSignal = useGet(pageSignal$);
+  const xConnectorLoadable = useLoadable(xImageShareConnectorStatus$);
+  const xConnector =
+    xConnectorLoadable.state === "hasData" ? xConnectorLoadable.data : null;
+  const [postLoadable, postImageShareToX] = useLoadableSet(postImageShareToX$);
+  const [connectLoadable, connectXForImageShare] = useLoadableSet(
+    connectXForImageShare$,
+  );
+  const posting = postLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const busy = posting || connecting;
+  const connectionStatus = xConnector?.connectionStatus ?? "not-connected";
+  const xConnected = xConnector?.connected && connectionStatus === "connected";
+  const xUsername = xConnector?.connection?.externalUsername ?? null;
+  const connectLabel =
+    connectionStatus === "not-connected" ? "Connect X" : "Reconnect X";
+
+  const openComposer = () => {
+    window.open(xShareIntentUrl(caption), "_blank", "noopener,noreferrer");
+  };
+
+  const submitPost = async () => {
+    if (!xConnected || posting) {
+      return;
+    }
+    try {
+      const result = await postImageShareToX(
+        {
+          caption: caption.trim() || undefined,
+          imageUrl: item.src,
+        },
+        pageSignal,
+      );
+      toast.success("Posted to X", {
+        action: {
+          label: "View post",
+          onClick: () => {
+            window.open(result.tweetUrl, "_blank", "noopener,noreferrer");
+          },
+        },
+      });
+      onOpenChange(false);
+    } catch {
+      // accept() already shows the API error toast. Keep the draft open.
+    }
+  };
+
+  const connectX = async () => {
+    if (connecting) {
+      return;
+    }
+    try {
+      await connectXForImageShare(pageSignal);
+    } catch {
+      toast.error("Couldn't connect X, try again");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="zero-app sm:max-w-md"
+        data-testid="image-edit-share-x-dialog"
+      >
+        <DialogHeader>
+          <DialogTitle>Share to X</DialogTitle>
+          <DialogDescription>
+            {xConnected
+              ? "Add a caption before posting this image."
+              : "Connect X to post this edited image from Zero."}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            detach(submitPost(), Reason.DomCallback, "shareImageToX");
+          }}
+        >
+          <div className="overflow-hidden rounded-lg border border-border/70 bg-gray-50">
+            <img
+              src={item.src}
+              alt=""
+              className="max-h-56 w-full object-contain"
+              data-testid="image-edit-share-x-preview"
+            />
+          </div>
+          {xConnected ? (
+            <div className="flex flex-col gap-3">
+              <div className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span>
+                  {xUsername ? `Posting as @${xUsername}` : "Posting to X"}
+                </span>
+              </div>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-foreground">
+                  Caption
+                </span>
+                <textarea
+                  className="min-h-24 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-sm leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
+                  placeholder="Made with Zero"
+                  maxLength={280}
+                  value={caption}
+                  data-testid="image-edit-share-x-caption"
+                  onChange={(event) => {
+                    setCaption(event.currentTarget.value);
+                  }}
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border/70 bg-gray-50 px-3 py-2 text-sm text-muted-foreground">
+              {connectionStatus === "scope-mismatch"
+                ? "Reconnect X so Zero can post images."
+                : connectionStatus === "reconnect-required"
+                  ? "Reconnect X before posting images."
+                  : "Connect X once, then post this image from the same window."}
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  onDownload(item);
+                }}
+              >
+                Download image
+              </Button>
+              {!xConnected ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={openComposer}
+                >
+                  <IconExternalLink size={14} stroke={1.6} />
+                  Open X composer
+                </Button>
+              ) : null}
+            </div>
+            {xConnected ? (
+              <Button type="submit" disabled={busy}>
+                {posting ? (
+                  <IconLoader2 size={14} className="animate-spin" />
+                ) : null}
+                Post to X
+              </Button>
+            ) : (
+              <Button type="button" disabled={busy} onClick={connectX}>
+                {connecting ? (
+                  <IconLoader2 size={14} className="animate-spin" />
+                ) : null}
+                {connectLabel}
+              </Button>
+            )}
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2428,7 +2645,12 @@ function ArtifactImageEditSelectionToolbar({
         role="group"
         aria-label="Image share and download actions"
       >
-        <ArtifactImageEditShareMenu disabled={false} grouped />
+        <ArtifactImageEditShareMenu
+          disabled={false}
+          grouped
+          item={item}
+          onDownload={onDownload}
+        />
         <span className="h-5 w-px bg-border/70" aria-hidden />
         <ArtifactImageEditToolbarButton
           grouped
