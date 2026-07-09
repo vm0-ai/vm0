@@ -681,12 +681,14 @@ describe("GET/PUT /api/zero/model-policies", () => {
       };
     });
 
-    const response = await client.update({
-      headers: authHeaders(),
-      body: { policies: updates },
-    });
+    const response = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
 
-    expect(response.status).toBe(200);
     const sol = response.body.policies.find((policy) => {
       return policy.model === "gpt-5.6-sol";
     });
