@@ -31,6 +31,14 @@ from tests.auth_state_helpers import (
     set_cached_headers,
     set_last_force_refresh_monotonic_at,
 )
+from tests.aws_sigv4_helpers import (
+    DEFAULT_SIGV4_TIMESTAMP,
+    REAL_AWS_SESSION_TOKEN,
+    STS_FORM_BODY,
+    STS_HOST,
+    aws_sigv4_authorization,
+    resolved_aws_sigv4_credentials,
+)
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from url_utils import get_original_url
@@ -984,22 +992,19 @@ class TestHandleFirewallRequest:
     async def test_standard_auth_filters_unsafe_headers_before_aws_sigv4_signing(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
-        placeholder_authorization = (
-            "AWS4-HMAC-SHA256 "
-            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
-            "SignedHeaders=content-type;host;x-amz-date, "
-            "Signature=placeholder"
+        placeholder_authorization = aws_sigv4_authorization(
+            signed_headers="content-type;host;x-amz-date"
         )
         flow = real_flow(
             with_response=False,
-            host="sts.amazonaws.com",
+            host=STS_HOST,
             path="/",
             method="POST",
-            request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
+            request_body=STS_FORM_BODY,
             request_headers=headers(
-                ("Host", "sts.amazonaws.com"),
+                ("Host", STS_HOST),
                 ("Content-Type", "application/x-www-form-urlencoded"),
-                ("X-Amz-Date", "20260101T000000Z"),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
                 ("Authorization", placeholder_authorization),
             ),
         )
@@ -1024,11 +1029,7 @@ class TestHandleFirewallRequest:
                 "X-Amz-Meta-Test": "trusted-meta",
             },
         )
-        token_meta["aws_sigv4"] = AwsSigV4Credentials(
-            "AKIDEXAMPLE",
-            "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-            "real-session-token",
-        )
+        token_meta["aws_sigv4"] = resolved_aws_sigv4_credentials()
 
         with (
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -1037,9 +1038,9 @@ class TestHandleFirewallRequest:
             result = await auth.handle_firewall_request(flow, allow, vm_info)
 
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
-        assert flow.request.headers["host"] == "sts.amazonaws.com"
+        assert flow.request.headers["host"] == STS_HOST
         assert flow.request.headers["x-amz-meta-test"] == "trusted-meta"
-        assert flow.request.headers["x-amz-security-token"] == "real-session-token"
+        assert flow.request.headers["x-amz-security-token"] == REAL_AWS_SESSION_TOKEN
         assert (
             "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"
             in flow.request.headers["authorization"]

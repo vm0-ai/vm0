@@ -8,9 +8,16 @@ from urllib.parse import parse_qs, urlparse
 import auth
 import auth_base_forwarder as forwarder
 import flow_metadata_keys as metadata_keys
-from aws_sigv4 import AwsSigV4Credentials
 from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.aws_sigv4_helpers import (
+    DEFAULT_SIGV4_TIMESTAMP,
+    REAL_AWS_SESSION_TOKEN,
+    STS_FORM_BODY,
+    aws_sigv4_authorization,
+    aws_sigv4_presigned_query_path,
+    resolved_aws_sigv4_credentials,
+)
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 
@@ -405,22 +412,19 @@ class TestAuthBaseUrlRewriteForwarding:
         tmp_path,
     ):
         """auth.base forwarding signs the rewritten upstream URL, not the placeholder."""
-        placeholder_authorization = (
-            "AWS4-HMAC-SHA256 "
-            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
-            "SignedHeaders=content-type;host;x-amz-date, "
-            "Signature=placeholder"
+        placeholder_authorization = aws_sigv4_authorization(
+            signed_headers="content-type;host;x-amz-date"
         )
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             resolved_base="https://STS.AMAZONAWS.COM:443/",
             method="POST",
-            request_body=b"Action=GetCallerIdentity&Version=2011-06-15",
+            request_body=STS_FORM_BODY,
             request_headers=headers(
                 ("Host", "firewall-placeholder.vm3.ai"),
                 ("Content-Type", "application/x-www-form-urlencoded"),
-                ("X-Amz-Date", "20260101T000000Z"),
+                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
                 ("Authorization", placeholder_authorization),
                 ("Cookie", "session=agent"),
                 ("X-Api-Key", "agent-api-key"),
@@ -434,11 +438,7 @@ class TestAuthBaseUrlRewriteForwarding:
                 },
             },
             token_overrides={
-                "aws_sigv4": AwsSigV4Credentials(
-                    "AKIDEXAMPLE",
-                    "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-                    "real-session-token",
-                ),
+                "aws_sigv4": resolved_aws_sigv4_credentials(),
             },
         )
         with (
@@ -460,7 +460,7 @@ class TestAuthBaseUrlRewriteForwarding:
             in authorization
         )
         assert upstream.socket.request_header_values("X-Amz-Security-Token") == [
-            "real-session-token"
+            REAL_AWS_SESSION_TOKEN
         ]
         assert upstream.socket.request_header_values("Cookie") == []
         assert upstream.socket.request_header_values("X-Api-Key") == []
@@ -478,21 +478,10 @@ class TestAuthBaseUrlRewriteForwarding:
         tmp_path,
     ):
         """auth.base query SigV4 ignores unrelated client Authorization headers."""
-        placeholder_credential = ("PLACEHOLDER/20260101/us-east-1/sts/aws4_request").replace(
-            "/", "%2F"
-        )
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
-            path=(
-                "/?Action=GetCallerIdentity&Version=2011-06-15"
-                "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
-                f"&X-Amz-Credential={placeholder_credential}"
-                "&X-Amz-Date=20260101T000000Z"
-                "&X-Amz-Expires=60"
-                "&X-Amz-SignedHeaders=host"
-                "&X-Amz-Signature=placeholder"
-            ),
+            path=aws_sigv4_presigned_query_path(),
             resolved_base="https://STS.AMAZONAWS.COM:443/",
             method="GET",
             request_headers=headers(
@@ -509,11 +498,7 @@ class TestAuthBaseUrlRewriteForwarding:
                 },
             },
             token_overrides={
-                "aws_sigv4": AwsSigV4Credentials(
-                    "AKIDEXAMPLE",
-                    "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-                    "real-session-token",
-                ),
+                "aws_sigv4": resolved_aws_sigv4_credentials(),
             },
         )
         with (
@@ -529,7 +514,7 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.getaddrinfo_calls == [("sts.amazonaws.com", 443)]
         assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
         assert query["X-Amz-Credential"] == ["AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"]
-        assert query["X-Amz-Security-Token"] == ["real-session-token"]
+        assert query["X-Amz-Security-Token"] == [REAL_AWS_SESSION_TOKEN]
         assert query["X-Amz-Signature"] != ["placeholder"]
         assert upstream.socket.request_header_values("Authorization") == []
         assert upstream.socket.request_header_values("Cookie") == []
