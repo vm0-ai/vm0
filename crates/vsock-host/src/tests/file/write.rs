@@ -20,9 +20,7 @@ use super::support::{
 };
 use crate::{
     FrameWriteObserver, WriteFileEntry,
-    file::test_support::{
-        WRITE_FILE_CHUNK_LIMIT, WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT,
-    },
+    file::test_support::{WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT},
     operation_tracker::NormalOperationReadiness,
 };
 
@@ -1086,7 +1084,7 @@ async fn write_files_rejects_protocol_message_too_large_before_waiting_for_write
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
     let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
-    let content = vec![0u8; WRITE_FILE_CHUNK_LIMIT];
+    let content = vec![0u8; WRITE_FILES_BATCH_CONTENT_LIMIT];
     let mut files = Vec::new();
     files.push(WriteFileEntry {
         path: &path,
