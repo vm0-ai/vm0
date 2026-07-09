@@ -8,6 +8,8 @@ use tokio::io::AsyncReadExt;
 use super::diagnostic::status_field_preview;
 use super::target::RunnerServiceUnit;
 
+const BOUNDED_COMMAND_KILL_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+
 pub(super) fn journalctl_logs_status(svc: &str, status: ExitStatus) -> RunnerResult<()> {
     if status.success() {
         return Ok(());
@@ -79,13 +81,7 @@ async fn run_command_bounded(
         Ok(Ok(status)) => Ok(BoundedSystemctlOutcome::Failed(status)),
         Ok(Err(e)) => Err(RunnerError::Internal(format!("wait {program}: {e}"))),
         Err(_) => {
-            let _ = child.start_kill();
-            let wait_error = child.wait().await.err();
-            if let Some(e) = wait_error {
-                return Err(RunnerError::Internal(format!(
-                    "wait timed-out {program}: {e}"
-                )));
-            }
+            kill_and_reap_child(program, &mut child).await?;
             Ok(BoundedSystemctlOutcome::TimedOut)
         }
     }
@@ -105,15 +101,21 @@ async fn run_command_output_bounded(
         .map_err(|e| RunnerError::Internal(format!("spawn {program}: {e}")))?;
 
     let Some(stdout) = child.stdout.take() else {
-        let _ = child.start_kill();
-        let _ = child.wait().await;
+        if let Err(e) = kill_and_reap_child(program, &mut child).await {
+            return Err(RunnerError::Internal(format!(
+                "{program} stdout pipe unavailable and failed to stop child: {e}"
+            )));
+        }
         return Err(RunnerError::Internal(format!(
             "{program} stdout pipe unavailable"
         )));
     };
     let Some(stderr) = child.stderr.take() else {
-        let _ = child.start_kill();
-        let _ = child.wait().await;
+        if let Err(e) = kill_and_reap_child(program, &mut child).await {
+            return Err(RunnerError::Internal(format!(
+                "{program} stderr pipe unavailable and failed to stop child: {e}"
+            )));
+        }
         return Err(RunnerError::Internal(format!(
             "{program} stderr pipe unavailable"
         )));
@@ -124,15 +126,25 @@ async fn run_command_output_bounded(
     let status = match tokio::time::timeout(duration, child.wait()).await {
         Ok(Ok(status)) => status,
         Ok(Err(e)) => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
+            if let Err(kill_error) = kill_and_reap_child(program, &mut child).await {
+                stdout_task.abort();
+                stderr_task.abort();
+                let _ = stdout_task.await;
+                let _ = stderr_task.await;
+                return Err(kill_error);
+            }
             let _ = stdout_task.await;
             let _ = stderr_task.await;
             return Err(RunnerError::Internal(format!("wait {program}: {e}")));
         }
         Err(_) => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
+            if let Err(e) = kill_and_reap_child(program, &mut child).await {
+                stdout_task.abort();
+                stderr_task.abort();
+                let _ = stdout_task.await;
+                let _ = stderr_task.await;
+                return Err(e);
+            }
             let _ = stdout_task.await;
             let _ = stderr_task.await;
             return Err(RunnerError::Internal(format!(
@@ -164,6 +176,23 @@ where
     let mut output = Vec::new();
     reader.read_to_end(&mut output).await?;
     Ok(output)
+}
+
+async fn kill_and_reap_child(program: &str, child: &mut tokio::process::Child) -> RunnerResult<()> {
+    let kill_error = child.start_kill().err();
+    match tokio::time::timeout(BOUNDED_COMMAND_KILL_WAIT_TIMEOUT, child.wait()).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(RunnerError::Internal(format!("wait killed {program}: {e}"))),
+        Err(_) => {
+            let kill_detail = kill_error
+                .map(|e| format!("; kill failed first: {e}"))
+                .unwrap_or_default();
+            Err(RunnerError::Internal(format!(
+                "killed {program} did not exit within {}ms{kill_detail}",
+                BOUNDED_COMMAND_KILL_WAIT_TIMEOUT.as_millis()
+            )))
+        }
+    }
 }
 
 /// Check whether a systemd unit is active (running or activating).
