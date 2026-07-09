@@ -303,16 +303,19 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("model", "gpt-5.6-sol", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.cache_creation", usd(6.25), 1_000_000],
     ["tokens.output", usd(30), 1_000_000],
   ]),
   ...usageGroup("model", "gpt-5.6-terra", [
     ["tokens.input", usd(2.5), 1_000_000],
     ["tokens.cache_read", usd(0.25), 1_000_000],
+    ["tokens.cache_creation", usd(3.125), 1_000_000],
     ["tokens.output", usd(15), 1_000_000],
   ]),
   ...usageGroup("model", "gpt-5.6-luna", [
     ["tokens.input", usd(1), 1_000_000],
     ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.cache_creation", usd(1.25), 1_000_000],
     ["tokens.output", usd(6), 1_000_000],
   ]),
   ...usageGroup("model", "gpt-5.5", [
