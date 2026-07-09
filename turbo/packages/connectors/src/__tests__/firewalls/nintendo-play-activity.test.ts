@@ -36,18 +36,38 @@ describe("Nintendo Play Activity firewall", () => {
     expect(firewall.name).toBe("nintendo-play-activity");
     expect(firewall.apis).toHaveLength(4);
     expect(
-      firewall.apis.map((api) => {
-        return api.auth;
-      }),
-    ).toStrictEqual(
-      firewall.apis.map(() => {
-        return {
-          headers: {
-            Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
-          },
-        };
-      }),
-    );
+      Object.fromEntries(
+        firewall.apis.map((api) => {
+          return [api.base, api.auth];
+        }),
+      ),
+    ).toStrictEqual({
+      "https://api.accounts.nintendo.com": {
+        headers: {
+          Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
+          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
+        },
+      },
+      "https://app-api.znej.nintendo.com": {
+        headers: {
+          Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
+          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
+          "gentry-locale": "${{ vars.NINTENDO_PLAY_ACTIVITY_LOCALE }}",
+        },
+      },
+      "https://mypage-api.entry.nintendo.co.jp": {
+        headers: {
+          Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
+          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
+        },
+      },
+      "https://news-api.entry.nintendo.co.jp": {
+        headers: {
+          Authorization: "Bearer ${{ secrets.NINTENDO_PLAY_ACTIVITY_TOKEN }}",
+          "User-Agent": "com.nintendo.znej/1.13.0 (Android/7.1.2)",
+        },
+      },
+    });
     expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
       "NINTENDO_PLAY_ACTIVITY_TOKEN",
     ]);

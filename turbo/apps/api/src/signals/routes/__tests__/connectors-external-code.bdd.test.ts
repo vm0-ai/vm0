@@ -51,6 +51,8 @@ const NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/session_token";
 const NINTENDO_PLAY_ACTIVITY_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/token";
+const NINTENDO_PLAY_ACTIVITY_PROFILE_URL =
+  "https://api.accounts.nintendo.com/2.0.0/users/me";
 const NINTENDO_PLAY_ACTIVITY_REDIRECT_URI = "npf5c38e31cd085304b://auth";
 const NINTENDO_PLAY_ACTIVITY_CLIENT_ID = "5c38e31cd085304b";
 
@@ -110,6 +112,12 @@ function mockNintendoPlayActivityExternalCodeProvider(): {
         }),
         token_type: "Bearer",
         scope: "openid user user.mii user.email user.links[].id",
+      });
+    }),
+    http.get(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, () => {
+      return HttpResponse.json({
+        country: "HK",
+        language: "zh-TW",
       });
     }),
   );
@@ -475,6 +483,14 @@ describe("CONN-02: external-code session lifecycle", () => {
         authMethod: "api",
         namespace: "secrets",
         name: "NINTENDO_PLAY_ACTIVITY_TOKEN",
+      }),
+    );
+    expect(listed.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "nintendo-play-activity",
+        authMethod: "api",
+        namespace: "vars",
+        name: "NINTENDO_PLAY_ACTIVITY_LOCALE",
       }),
     );
     const secretList = await authOrgApi.listSecrets(actor);

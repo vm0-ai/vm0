@@ -9,6 +9,7 @@ import {
   createNintendoPlayActivityProviderState,
   exchangeNintendoPlayActivitySessionToken,
   exchangeNintendoPlayActivitySessionTokenCode,
+  fetchNintendoPlayActivityLocale,
   nintendoPlayActivityAccountId,
   nintendoPlayActivityUserInfo,
   parseNintendoPlayActivitySessionTokenCode,
@@ -64,12 +65,17 @@ function createNintendoPlayActivityExternalCodeGrantProvider(): ExternalCodeConn
         sessionToken: session.sessionToken,
         signal: args.signal,
       });
+      const locale = await fetchNintendoPlayActivityLocale({
+        accessToken: token.accessToken,
+        signal: args.signal,
+      });
       return {
         outputs: {
           sessionToken: session.sessionToken,
           accessToken: token.accessToken,
           idToken: token.idToken,
           accountId: nintendoPlayActivityAccountId(token.idToken),
+          locale: locale.locale,
         },
         expiresIn: token.expiresIn,
         scopes:
@@ -94,10 +100,15 @@ function createNintendoPlayActivityRefreshTokenAccessProvider(): RefreshTokenAcc
         sessionToken: args.inputs.sessionToken,
         signal: args.signal,
       });
+      const locale = await fetchNintendoPlayActivityLocale({
+        accessToken: token.accessToken,
+        signal: args.signal,
+      });
       return {
         outputs: {
           accessToken: token.accessToken,
           idToken: token.idToken,
+          locale: locale.locale,
         },
         expiresIn: token.expiresIn,
       };

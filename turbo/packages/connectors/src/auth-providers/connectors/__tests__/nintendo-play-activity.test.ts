@@ -14,6 +14,7 @@ import { isOAuthProviderHttpError } from "../../oauth/error";
 import { server } from "../../__tests__/test-server";
 import {
   NINTENDO_PLAY_ACTIVITY_AUTHORIZATION_URL,
+  NINTENDO_PLAY_ACTIVITY_PROFILE_URL,
   NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL,
   NINTENDO_PLAY_ACTIVITY_TOKEN_URL,
   NINTENDO_PLAY_ACTIVITY_USER_AGENT,
@@ -78,6 +79,7 @@ function mockNintendoPlayActivityTokenExchange(args?: {
   readonly idToken?: string;
 }) {
   const captured: {
+    profileRequestHeaders?: Headers;
     sessionRequestHeaders?: Headers;
     sessionRequestBody?: URLSearchParams;
     tokenRequestHeaders?: Headers;
@@ -106,6 +108,13 @@ function mockNintendoPlayActivityTokenExchange(args?: {
           }),
         scope: "openid user user.mii user.email user.links[].id",
         token_type: "Bearer",
+      });
+    }),
+    http.get(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, ({ request }) => {
+      captured.profileRequestHeaders = request.headers;
+      return HttpResponse.json({
+        country: "HK",
+        language: "zh-TW",
       });
     }),
   );
@@ -171,6 +180,7 @@ describe("Nintendo Play Activity external-code provider", () => {
           name: "Nintendo Player",
         }),
         accountId: "nintendo-account-123",
+        locale: "zh-TW-HK",
       },
       expiresIn: 3600,
       scopes: ["openid", "user", "user.mii", "user.email", "user.links[].id"],
@@ -208,6 +218,12 @@ describe("Nintendo Play Activity external-code provider", () => {
       session_token: "nintendo-session-token",
       grant_type: NINTENDO_SESSION_TOKEN_GRANT_TYPE,
     });
+    expect(captured.profileRequestHeaders?.get("authorization")).toBe(
+      "Bearer nintendo-access-token",
+    );
+    expect(captured.profileRequestHeaders?.get("user-agent")).toBe(
+      NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+    );
   });
 
   it("accepts a raw Nintendo session token code", async () => {
@@ -297,6 +313,7 @@ describe("Nintendo Play Activity external-code provider", () => {
   });
 
   it("refreshes the Nintendo Play Activity access token from the session token", async () => {
+    let profileRequestHeaders: Headers | undefined;
     let tokenRequestBody: unknown;
     const refreshedIdToken = jwtPayload({ sub: "nintendo-account-123" });
     server.use(
@@ -307,6 +324,13 @@ describe("Nintendo Play Activity external-code provider", () => {
           expires_in: 1800,
           id_token: refreshedIdToken,
           token_type: "Bearer",
+        });
+      }),
+      http.get(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, ({ request }) => {
+        profileRequestHeaders = request.headers;
+        return HttpResponse.json({
+          country: "US",
+          language: "en",
         });
       }),
     );
@@ -325,6 +349,7 @@ describe("Nintendo Play Activity external-code provider", () => {
       outputs: {
         accessToken: "refreshed-nintendo-access-token",
         idToken: refreshedIdToken,
+        locale: "en-US",
       },
       expiresIn: 1800,
     });
@@ -333,5 +358,8 @@ describe("Nintendo Play Activity external-code provider", () => {
       session_token: "stored-nintendo-session-token",
       grant_type: NINTENDO_SESSION_TOKEN_GRANT_TYPE,
     });
+    expect(profileRequestHeaders?.get("authorization")).toBe(
+      "Bearer refreshed-nintendo-access-token",
+    );
   });
 });

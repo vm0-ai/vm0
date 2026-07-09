@@ -13,6 +13,8 @@ export const NINTENDO_PLAY_ACTIVITY_SESSION_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/session_token";
 export const NINTENDO_PLAY_ACTIVITY_TOKEN_URL =
   "https://accounts.nintendo.com/connect/1.0.0/api/token";
+export const NINTENDO_PLAY_ACTIVITY_PROFILE_URL =
+  "https://api.accounts.nintendo.com/2.0.0/users/me";
 export const NINTENDO_PLAY_ACTIVITY_REDIRECT_URI = "npf5c38e31cd085304b://auth";
 export const NINTENDO_PLAY_ACTIVITY_USER_AGENT =
   "com.nintendo.znej/1.13.0 (Android/7.1.2)";
@@ -44,6 +46,12 @@ interface NintendoPlayActivityIdentity {
   readonly email: string | null;
 }
 
+export interface NintendoPlayActivityLocale {
+  readonly country: string;
+  readonly language: string;
+  readonly locale: string;
+}
+
 const nintendoPlayActivitySessionTokenSchema = z
   .object({
     session_token: z.string().min(1),
@@ -66,6 +74,13 @@ const nintendoPlayActivityIdTokenClaimsSchema = z
     email: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     preferred_username: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+const nintendoPlayActivityProfileSchema = z
+  .object({
+    country: z.string().min(1),
+    language: z.string().min(1),
   })
   .passthrough();
 
@@ -266,6 +281,31 @@ export async function exchangeNintendoPlayActivitySessionToken(args: {
     idToken: raw.id_token,
     scopes: normalizeScopes(raw.scope),
     tokenType: raw.token_type ?? "Bearer",
+  };
+}
+
+export async function fetchNintendoPlayActivityLocale(args: {
+  readonly accessToken: string;
+  readonly signal: AbortSignal;
+}): Promise<NintendoPlayActivityLocale> {
+  const response = await fetch(NINTENDO_PLAY_ACTIVITY_PROFILE_URL, {
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "User-Agent": NINTENDO_PLAY_ACTIVITY_USER_AGENT,
+      Accept: "application/json",
+    },
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    await throwOAuthError("Nintendo Play Activity", "profile", response);
+  }
+
+  const raw = nintendoPlayActivityProfileSchema.parse(await response.json());
+  return {
+    country: raw.country,
+    language: raw.language,
+    locale: `${raw.language}-${raw.country}`,
   };
 }
 

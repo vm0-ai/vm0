@@ -25,7 +25,10 @@ export const nintendoPlayActivity = {
             "NINTENDO_PLAY_ACTIVITY_ACCESS_TOKEN",
             "NINTENDO_PLAY_ACTIVITY_ID_TOKEN",
           ],
-          variables: ["NINTENDO_PLAY_ACTIVITY_ACCOUNT_ID"],
+          variables: [
+            "NINTENDO_PLAY_ACTIVITY_ACCOUNT_ID",
+            "NINTENDO_PLAY_ACTIVITY_LOCALE",
+          ],
         },
         grant: {
           kind: "external-code",
@@ -41,6 +44,7 @@ export const nintendoPlayActivity = {
             accessToken: "$secrets.NINTENDO_PLAY_ACTIVITY_ACCESS_TOKEN",
             idToken: "$secrets.NINTENDO_PLAY_ACTIVITY_ID_TOKEN",
             accountId: "$vars.NINTENDO_PLAY_ACTIVITY_ACCOUNT_ID",
+            locale: "$vars.NINTENDO_PLAY_ACTIVITY_LOCALE",
           },
         },
         access: {
@@ -51,11 +55,14 @@ export const nintendoPlayActivity = {
           outputs: {
             accessToken: "$secrets.NINTENDO_PLAY_ACTIVITY_ACCESS_TOKEN",
             idToken: "$secrets.NINTENDO_PLAY_ACTIVITY_ID_TOKEN",
+            locale: "$vars.NINTENDO_PLAY_ACTIVITY_LOCALE",
           },
           refreshableSecrets: ["NINTENDO_PLAY_ACTIVITY_ACCESS_TOKEN"],
           envBindings: {
             NINTENDO_PLAY_ACTIVITY_TOKEN:
               "$secrets.NINTENDO_PLAY_ACTIVITY_ACCESS_TOKEN",
+            NINTENDO_PLAY_ACTIVITY_LOCALE:
+              "$vars.NINTENDO_PLAY_ACTIVITY_LOCALE",
           },
         },
         revoke: { kind: "none" },
