@@ -62,7 +62,7 @@ export async function shouldForceUpgrade(
 
   const response = await fetcher(buildForceUpgradeUrl(version, apiBase), {
     cache: "no-store",
-    credentials: "omit",
+    credentials: "include",
     method: "GET",
   });
 

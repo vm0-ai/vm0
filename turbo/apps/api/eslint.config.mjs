@@ -91,9 +91,42 @@ const promiseChainAllowlist = [
 const apiTestExternalBehaviorMessage =
   "API tests must exercise external behavior through API endpoints. Do not test internal implementation details. See docs/testing/testing-external-behavior.md.";
 
+const apiTestDirectDbImportMessage =
+  "API tests must not import DB handles directly. Exercise setup and assertions through API endpoints; add a test route only when an external-behavior exception is justified.";
+
+const productionRouteTestImportMessage =
+  "Production route composition must not import test-only routes. Mount required test fixture routes explicitly from tests.";
+
+const apiTestDirectDbImportPatterns = [
+  "./external/db",
+  "./external/db.ts",
+  "../external/db",
+  "../external/db.ts",
+  "../signals/external/db",
+  "../signals/external/db.ts",
+  "../../external/db",
+  "../../external/db.ts",
+  "../../signals/external/db",
+  "../../signals/external/db.ts",
+  "../../../external/db",
+  "../../../external/db.ts",
+  "../../../signals/external/db",
+  "../../../signals/external/db.ts",
+  "../../../../external/db",
+  "../../../../external/db.ts",
+  "../../../../signals/external/db",
+  "../../../../signals/external/db.ts",
+  "src/signals/external/db",
+  "src/signals/external/db.ts",
+];
+
 const apiTestServiceImportPatterns = [
+  "./*.service",
+  "./*.service.ts",
   "./services/*",
   "./services/**/*",
+  "../*.service",
+  "../*.service.ts",
   "../services/*",
   "../services/**/*",
   "../signals/services/*",
@@ -112,12 +145,6 @@ const apiTestServiceImportPatterns = [
   "../../../../signals/services/**/*",
   "src/signals/services/*",
   "src/signals/services/**/*",
-];
-
-const apiServiceTestParentImportPatterns = [
-  "../*.service",
-  "../*.utils",
-  "../assistant-message-id",
 ];
 
 export default [
@@ -182,6 +209,41 @@ export default [
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
   {
+    files: ["src/signals/services/**/*.test.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Program",
+          message:
+            "Service-directory tests must live behind API endpoint boundaries. Put coverage under routes/__tests__ or document a narrow exception in services/__tests__.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/signals/route.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["./routes/test-*", "./routes/test-*/**"],
+              message: productionRouteTestImportMessage,
+            },
+          ],
+          paths: [
+            {
+              name: "./routes/cli-auth-test",
+              message: productionRouteTestImportMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
@@ -202,35 +264,9 @@ export default [
               group: apiTestServiceImportPatterns,
               message: apiTestExternalBehaviorMessage,
             },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["src/signals/services/__tests__/**/*.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
             {
-              name: "@vm0/db/schema",
-              message: apiTestExternalBehaviorMessage,
-            },
-          ],
-          patterns: [
-            {
-              group: ["@vm0/db/schema/*"],
-              message: apiTestExternalBehaviorMessage,
-            },
-            {
-              group: apiTestServiceImportPatterns,
-              message: apiTestExternalBehaviorMessage,
-            },
-            {
-              group: apiServiceTestParentImportPatterns,
-              message: apiTestExternalBehaviorMessage,
+              group: apiTestDirectDbImportPatterns,
+              message: apiTestDirectDbImportMessage,
             },
           ],
         },

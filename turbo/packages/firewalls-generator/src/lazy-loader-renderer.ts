@@ -15,8 +15,10 @@ function compareEntryKeys(a: LazyLoaderEntry, b: LazyLoaderEntry): number {
 }
 
 function renderLazyLoaderEntry(entry: LazyLoaderEntry): string {
+  // Preserve a literal import in emitted JavaScript for bundlers while avoiding
+  // TypeScript resolving every generated detail module during type-checking.
   return `  [${JSON.stringify(entry.key)}]: async () => {
-    return (await import(${JSON.stringify(entry.moduleSpecifier)}))[${JSON.stringify(entry.exportName)}];
+    return (await import(${JSON.stringify(entry.moduleSpecifier)} as string))[${JSON.stringify(entry.exportName)}];
   },`;
 }
 

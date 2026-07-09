@@ -122,14 +122,19 @@ describe("getAllFeatureStates", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
+    expect(staffOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(true);
     expect(
@@ -144,6 +149,9 @@ describe("getAllFeatureStates", () => {
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
+    expect(otherOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
+      false,
+    );
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,
@@ -152,8 +160,10 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
@@ -175,13 +185,6 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
-  });
-
-  it("should enable chat thread emoji globally", () => {
-    const states = getAllFeatureStates({
-      orgId: "org_nonexistent",
-    });
-    expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {

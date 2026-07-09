@@ -343,13 +343,18 @@ describe("system storage presigned URL cache", () => {
             );
             expect(firstSkillEntry?.archiveUrl).toContain(skill.versionId);
 
+            // The dev-seeded skill storage is shared platform state, so
+            // concurrently running files' claims may hold cache rows under
+            // the same prefix — assert this claim's row exists rather than
+            // an exact global row count.
             const rowsAfterFirst = await readCacheRowsByObjectKeyPrefix(
               skill.s3Prefix,
             );
-            expect(rowsAfterFirst).toHaveLength(1);
-            expect(rowsAfterFirst[0]?.presigned_url).toBe(
-              firstSkillEntry?.archiveUrl,
-            );
+            expect(
+              rowsAfterFirst.some((row) => {
+                return row.presigned_url === firstSkillEntry?.archiveUrl;
+              }),
+            ).toBeTruthy();
 
             const secondRun = await api.createRun(actor, {
               agentId,

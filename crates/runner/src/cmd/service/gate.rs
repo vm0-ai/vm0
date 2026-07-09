@@ -24,10 +24,10 @@ pub(super) fn runner_base_dir(unit: &RunnerServiceUnit) -> Option<PathBuf> {
 /// Parsed snapshot of the runner's status.json.
 pub(super) struct RunnerStatusSnapshot {
     /// Mode string sourced verbatim from status.json. Valid values are the
-    /// lowercase serialization of [`crate::status::RunnerMode`]: `"running"`,
-    /// `"draining"`, `"stopped"`. Unknown values (e.g. from a newer runner
-    /// writing a future variant) are preserved and routed to the normal
-    /// refuse branch by [`decide_gate`].
+    /// lowercase serialization of [`crate::status::RunnerMode`]: `"starting"`,
+    /// `"running"`, `"draining"`, `"stopping"`, `"stopped"`. Unknown values
+    /// (e.g. from a newer runner writing a future variant) are preserved and
+    /// routed to the normal refuse branch by [`decide_gate`].
     pub(super) mode: String,
     /// UUIDs of runs currently in flight.
     run_ids: Vec<RunId>,
@@ -512,6 +512,14 @@ mod tests {
     #[test]
     fn decide_gate_running_without_jobs_bypasses() {
         assert_eq!(decide_gate(&snapshot("running", 0)), GateDecision::Bypass);
+    }
+
+    #[test]
+    fn decide_gate_starting_with_jobs_refuses_normal() {
+        assert_eq!(
+            decide_gate(&snapshot("starting", 1)),
+            GateDecision::Refuse { draining: false }
+        );
     }
 
     #[test]

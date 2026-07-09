@@ -374,10 +374,9 @@ export const storedExecutionContextSchema = z.object({
     .nullable()
     .optional(),
   cliAgentType: z.string(),
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
-  // Debug flag to force real Codex in mock environments (internal use only)
-  debugNoMockCodex: z.boolean().optional(),
+  // Preview evaluation escape hatch: bypass preview mock CLIs and use the real
+  // agent runtime.
+  realAgentInPreview: z.boolean().optional(),
   // Capture HTTP header names, selected safe header values, request bodies, and response bodies
   // in network logs
   captureNetworkBodies: z.boolean().optional(),
@@ -447,10 +446,9 @@ export const executionContextSchema = z.object({
     .nullable()
     .optional(),
   cliAgentType: z.string(),
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
-  // Debug flag to force real Codex in mock environments (internal use only)
-  debugNoMockCodex: z.boolean().optional(),
+  // Preview evaluation escape hatch: bypass preview mock CLIs and use the real
+  // agent runtime.
+  realAgentInPreview: z.boolean().optional(),
   // Capture HTTP header names, selected safe header values, request bodies, and response bodies
   // in network logs
   captureNetworkBodies: z.boolean().optional(),

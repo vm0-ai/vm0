@@ -14,14 +14,12 @@ import { testContext } from "../../../__tests__/test-context";
 import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
-import { testTelegramMockRoutes } from "../test-telegram-mock";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
 const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
-const TELEGRAM_MOCK_ROUTE = "/api/test/telegram-mock";
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
 const SLACK_DISPATCH_PROBE_ROUTE = "/api/test/slack-dispatch-probe";
 const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
@@ -51,7 +49,6 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
     signal: context.signal,
     routes: [
       ...testTelegramStateRoutes,
-      ...testTelegramMockRoutes,
       ...testTelegramDispatchProbeRoutes,
       ...testSlackStateRoutes,
       ...testSlackDispatchProbeRoutes,
@@ -347,24 +344,6 @@ async function dispatchSlackMessage(args: {
     readJson<{ readonly ok: true }>(response),
   ).resolves.toStrictEqual({ ok: true });
 }
-
-async function recordTelegramMockCall(args: {
-  readonly botToken: string;
-  readonly chatId: string;
-}): Promise<void> {
-  const response = await requestApp(
-    `${TELEGRAM_MOCK_ROUTE}/bot${encodeURIComponent(
-      args.botToken,
-    )}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: args.chatId, text: "mocked" }),
-    },
-  );
-  expect(response.status).toBe(200);
-}
-
 describe("GET /api/test/telegram-state", () => {
   it("returns 404 when the test endpoint is not allowed", async () => {
     mockEnv("ENV", "production");
@@ -417,10 +396,6 @@ describe("GET /api/test/telegram-state", () => {
       chatId,
       text: "telegram state diagnostic run",
     });
-    await recordTelegramMockCall({
-      botToken: TELEGRAM_TEST_BOT_TOKEN,
-      chatId,
-    });
 
     const body = await readTelegramState(fixture.botId);
 
@@ -461,15 +436,7 @@ describe("GET /api/test/telegram-state", () => {
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
     expect(body.resolved_telegram_api_url).toBe("https://telegram.test/bot");
-    expect(
-      body.mock_calls.some((call) => {
-        return (
-          isRecord(call) &&
-          call.chatId === chatId &&
-          call.method === "sendMessage"
-        );
-      }),
-    ).toBeTruthy();
+    expect(Array.isArray(body.mock_calls)).toBeTruthy();
   });
 });
 
@@ -763,6 +730,7 @@ describe("POST /api/test/telegram-state", () => {
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_history",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_user_info",
       "api_dispatch_pre_create_zero_slack_build_run_params_fetch_conversation_context_format",
+      "api_dispatch_pre_create_zero_slack_build_run_params_user_info_resolver",
       "api_dispatch_pre_create_zero_slack_build_run_params_assemble",
       "api_dispatch_pre_create_zero_slack_create_run",
     ]) {

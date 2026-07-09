@@ -1,5 +1,6 @@
 import apiPackage from "../../package.json";
 
+// Trigger preview deploy for UI-driven workflow evaluation on 2026-07-08.
 const GIT_COMMIT_SHA_REGEX = /^[0-9a-f]{40}$/u;
 
 export function normalizeBuildCommitSha(value: unknown): string | null {

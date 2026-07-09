@@ -41,11 +41,11 @@ BYPASS_QUERY=""
 if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
   CURL_HEADERS+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
   # The API preview probe may run after Vercel consumes the automation header.
-  CURL_HEADERS+=(-H "Cookie: vm0_preview_bypass=$VERCEL_AUTOMATION_BYPASS_SECRET")
+  CURL_HEADERS+=(-H "Cookie: x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET")
   ENCODED_BYPASS=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$VERCEL_AUTOMATION_BYPASS_SECRET")
   BYPASS_FINGERPRINT=$(node -e 'const crypto = require("node:crypto"); process.stdout.write(crypto.createHash("sha256").update(process.argv[1]).digest("hex").slice(0, 12))' "$VERCEL_AUTOMATION_BYPASS_SECRET")
   echo "Bypass fingerprint: ${BYPASS_FINGERPRINT}" >&2
-  BYPASS_QUERY="&vm0_preview_bypass=${ENCODED_BYPASS}"
+  BYPASS_QUERY="&x-vercel-protection-bypass=${ENCODED_BYPASS}"
 fi
 
 # Check if error is retryable (deployment propagation / cold start)

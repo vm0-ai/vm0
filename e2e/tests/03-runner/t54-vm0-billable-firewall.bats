@@ -92,8 +92,7 @@ teardown_file() {
         "$AGENT_ID" \
         "Reply with exactly: DONE" \
         "claude-sonnet-4-6" \
-        true \
-        false
+        true
     THREAD_IDS="$THREAD_IDS $LAST_THREAD_ID"
     export THREAD_IDS
 

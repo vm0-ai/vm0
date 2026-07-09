@@ -149,6 +149,27 @@ export const zeroConnectorManualGrantContract = c.router({
   },
 });
 
+export const zeroConnectorNoAuthGrantContract = c.router({
+  connect: {
+    method: "POST",
+    path: "/api/zero/connectors/:type/no-auth",
+    headers: authHeadersSchema,
+    pathParams: z.object({ type: connectorTypeSchema }),
+    body: z.object({
+      authMethod: connectorAuthMethodIdSchema,
+    }),
+    responses: {
+      200: connectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Enable a connector with a no-auth grant",
+  },
+});
+
 export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   create: {
     method: "POST",
@@ -273,6 +294,8 @@ export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorManualGrantContract =
   typeof zeroConnectorManualGrantContract;
+export type ZeroConnectorNoAuthGrantContract =
+  typeof zeroConnectorNoAuthGrantContract;
 export type ZeroConnectorOauthDeviceAuthSessionContract =
   typeof zeroConnectorOauthDeviceAuthSessionContract;
 export type ZeroConnectorExternalCodeSessionContract =

@@ -7,6 +7,7 @@ export interface WebsiteTemplateItem {
   readonly resourceId: `template:${string}`;
   readonly previewKind: "iframe";
   readonly previewUrl: string;
+  readonly previewImageUrl: string;
   readonly sourcePath: string;
   readonly target: "website";
 }
@@ -14,18 +15,133 @@ export interface WebsiteTemplateItem {
 // Curated user-facing website picker catalog. Keep this separate from the
 // generic Open Design website registry so feature-switched users only see vm0
 // built-in R2-backed website templates.
+const WEBSITE_TEMPLATE_PREVIEW_BASE_URL =
+  "https://static.vm0.io/vm0/artifact-templates/website/website-studio-v2-20260708-5f944f83";
+
 export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
+  {
+    id: "website-template:black-slabs",
+    slug: "black-slabs",
+    title: "Black Slabs",
+    description:
+      "High-contrast editorial website template with monolithic typography, full-bleed showcase panels, metric cards, and electric-indigo accents.",
+    templateId: "template:black-slabs",
+    resourceId: "template:black-slabs",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/black-slabs-preview-480x270.webp`,
+    sourcePath: "black-slabs",
+    target: "website",
+  },
+  {
+    id: "website-template:blueprint-grid",
+    slug: "blueprint-grid",
+    title: "Blueprint Grid",
+    description:
+      "Blueprint-inspired website template with oversized uppercase type, mono labels, ruled editorial grids, and cobalt navigation details.",
+    templateId: "template:blueprint-grid",
+    resourceId: "template:blueprint-grid",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/blueprint-grid-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/blueprint-grid-preview-480x270.webp`,
+    sourcePath: "blueprint-grid",
+    target: "website",
+  },
+  {
+    id: "website-template:coastal-hotel",
+    slug: "coastal-hotel",
+    title: "Coastal Hotel",
+    description:
+      "Hospitality website template with a crest-style hero, postcard cards, coastal contour details, hairline lists, and travel editorial motion.",
+    templateId: "template:coastal-hotel",
+    resourceId: "template:coastal-hotel",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/coastal-hotel-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/coastal-hotel-preview-480x270.webp`,
+    sourcePath: "coastal-hotel",
+    target: "website",
+  },
+  {
+    id: "website-template:frame-stack",
+    slug: "frame-stack",
+    title: "Frame Stack",
+    description:
+      "Architectural website template with full-bleed connected frames, coordinate labels, axon-style hero blocks, and stacked scroll sections.",
+    templateId: "template:frame-stack",
+    resourceId: "template:frame-stack",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frame-stack-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frame-stack-preview-480x270.webp`,
+    sourcePath: "frame-stack",
+    target: "website",
+  },
+  {
+    id: "website-template:gallery-wall",
+    slug: "gallery-wall",
+    title: "Gallery Wall",
+    description:
+      "Art-forward website template with cream canvas, painterly texture, framed artwork modules, accession labels, and serif editorial rhythm.",
+    templateId: "template:gallery-wall",
+    resourceId: "template:gallery-wall",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/gallery-wall-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/gallery-wall-preview-480x270.webp`,
+    sourcePath: "gallery-wall",
+    target: "website",
+  },
+  {
+    id: "website-template:glass-bloom",
+    slug: "glass-bloom",
+    title: "Glass Bloom",
+    description:
+      "Soft glassmorphism website template with frosted panels, blooming gradient light, italic serif accents, and pinned device storytelling.",
+    templateId: "template:glass-bloom",
+    resourceId: "template:glass-bloom",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/glass-bloom-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/glass-bloom-preview-480x270.webp`,
+    sourcePath: "glass-bloom",
+    target: "website",
+  },
+  {
+    id: "website-template:serif-stack",
+    slug: "serif-stack",
+    title: "Serif Stack",
+    description:
+      "Minimal serif website template with stacked cover sections, playful gravity tag clouds, scattered photos, and a characterful footer.",
+    templateId: "template:serif-stack",
+    resourceId: "template:serif-stack",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/serif-stack-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/serif-stack-preview-480x270.webp`,
+    sourcePath: "serif-stack",
+    target: "website",
+  },
+  {
+    id: "website-template:sticker-pop",
+    slug: "sticker-pop",
+    title: "Sticker Pop",
+    description:
+      "Playful website template with sticker cards, outlined serif type, warm cream palette, circular imagery, and sticky story panels.",
+    templateId: "template:sticker-pop",
+    resourceId: "template:sticker-pop",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/sticker-pop-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/sticker-pop-preview-480x270.webp`,
+    sourcePath: "sticker-pop",
+    target: "website",
+  },
   {
     id: "website-template:warm-cards",
     slug: "warm-cards",
     title: "Warm Cards",
     description:
-      "Editorial website template with warm color blocks, rounded content cards, image-led sections, numbered navigation, and a bold footer wordmark.",
+      "Playful website template with a numbered color-block sidebar, soft full-screen cards, image-led hero, ticker content, and oversized footer wordmark.",
     templateId: "template:warm-cards",
     resourceId: "template:warm-cards",
     previewKind: "iframe",
-    previewUrl:
-      "https://static.vm0.io/vm0/artifact-templates/website/dbd6ac19-bed3-4abf-bb51-da0bead40914/warm-cards-example.html",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/warm-cards-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/warm-cards-preview-480x270.webp`,
     sourcePath: "warm-cards",
     target: "website",
   },

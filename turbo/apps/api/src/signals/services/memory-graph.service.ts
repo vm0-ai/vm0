@@ -17,6 +17,10 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
+import {
+  deleteZeroMemorySearchEntryForMemory,
+  trySyncZeroMemorySearchEntryForMemory,
+} from "./zero-memory-search-index.service";
 
 interface GraphRelationshipTarget {
   readonly type: "person" | "organization";
@@ -343,6 +347,7 @@ async function linkMemorySource(args: {
 
 async function archiveResolvedCandidate(args: {
   readonly db: Db;
+  readonly scope: MemoryScope;
   readonly candidate: GraphMemoryCandidate;
 }): Promise<void> {
   await args.db
@@ -352,6 +357,10 @@ async function archiveResolvedCandidate(args: {
       updatedAt: nowDate(),
     })
     .where(eq(memories.id, args.candidate.id));
+  await deleteZeroMemorySearchEntryForMemory(args.db, {
+    ...args.scope,
+    memoryId: args.candidate.id,
+  });
 }
 
 async function applyGraphRelations(args: {
@@ -392,6 +401,7 @@ async function applyGraphRelations(args: {
     if (relation.relation === "updates" || relation.relation === "resolves") {
       await archiveResolvedCandidate({
         db: args.db,
+        scope: args.scope,
         candidate,
       });
     }
@@ -482,6 +492,10 @@ export async function upsertGraphMemory(args: {
     memoryId,
     relations: args.relations,
     candidates: args.candidates,
+  });
+  await trySyncZeroMemorySearchEntryForMemory(args.db, {
+    ...scope,
+    memoryId,
   });
 
   return memoryId;
@@ -654,6 +668,10 @@ export async function recordGraphInteraction(args: {
           updatedAt: nowDate(),
         })
         .where(eq(memories.id, existing.memoryId));
+      await trySyncZeroMemorySearchEntryForMemory(args.db, {
+        ...scope,
+        memoryId: existing.memoryId,
+      });
       return;
     }
   }
@@ -676,6 +694,12 @@ export async function recordGraphInteraction(args: {
     })
     .returning({ id: memories.id });
   if (!memory || !sourceId) {
+    if (memory) {
+      await trySyncZeroMemorySearchEntryForMemory(args.db, {
+        ...scope,
+        memoryId: memory.id,
+      });
+    }
     return;
   }
 
@@ -689,4 +713,8 @@ export async function recordGraphInteraction(args: {
       createdAt: currentTime,
     })
     .onConflictDoNothing();
+  await trySyncZeroMemorySearchEntryForMemory(args.db, {
+    ...scope,
+    memoryId: memory.id,
+  });
 }

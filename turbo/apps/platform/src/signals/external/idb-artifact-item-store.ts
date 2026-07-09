@@ -39,7 +39,7 @@ type StoredArtifactItem = ArtifactItem & {
   readonly searchText: string;
 };
 
-export interface ArtifactItemCacheFilter {
+interface ArtifactItemCacheFilter {
   readonly agentId?: string;
   readonly artifactCategory?: ArtifactCategory;
   readonly artifactKind?: ArtifactItemKind;
@@ -47,7 +47,7 @@ export interface ArtifactItemCacheFilter {
   readonly limit?: number;
 }
 
-export interface ArtifactItemReadStore {
+interface ArtifactItemReadStore {
   readRecent(
     filter?: ArtifactItemCacheFilter,
     signal?: AbortSignal,
@@ -59,7 +59,7 @@ export interface ArtifactItemReadStore {
   ): Promise<ArtifactItem | null>;
 }
 
-export interface ArtifactItemWriteStore {
+interface ArtifactItemWriteStore {
   upsertItems(
     items: readonly ArtifactItem[],
     signal?: AbortSignal,
@@ -75,7 +75,7 @@ export interface ArtifactItemWriteStore {
   clear(signal?: AbortSignal): Promise<void>;
 }
 
-export interface ArtifactItemStores {
+interface ArtifactItemStores {
   readonly readStore: ArtifactItemReadStore;
   readonly writeStore: ArtifactItemWriteStore;
 }

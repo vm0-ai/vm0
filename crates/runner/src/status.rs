@@ -12,6 +12,8 @@ use crate::ids::RunId;
 
 /// Runner lifecycle state.
 ///
+/// - `Starting`: startup/readiness work is still in progress. The process is
+///   alive, but must not discover or claim new jobs.
 /// - `Running`: normal operation — discover and claim new jobs.
 /// - `Draining`: soft drain. No new jobs claimed; in-flight jobs keep
 ///   running; idle pool destroyed. **Resumable** via SIGUSR2.
@@ -24,28 +26,46 @@ use crate::ids::RunId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RunnerMode {
+    Starting,
     Running,
     Draining,
     Stopping,
     Stopped,
 }
 
-/// One active run's identity: the `run_id` the user sees and the `sandbox_id`
-/// that identifies the Firecracker VM hosting it. After sandbox reuse these
-/// differ: the VM keeps its original `sandbox_id` while each successive job
-/// has a fresh `run_id`.
+/// Active run lifecycle phase serialized as `active_runs[*].phase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ActiveRunPhase {
+    /// The run is claimed and visible in `active_runs`, but a fresh sandbox is
+    /// still being prepared. Its Firecracker process may not exist yet.
     Preparing,
+    /// The sandbox is prepared, and the run is expected to be associated with
+    /// a Firecracker process.
     Running,
 }
 
+/// One active run entry serialized under `status.json` `active_runs`.
+///
+/// `run_id` is the user/control-plane visible run identity. `sandbox_id` is
+/// the sandbox identity used by runner maintenance commands to correlate
+/// Firecracker state. After sandbox reuse these can differ: the VM keeps its
+/// original `sandbox_id`, while each successive job has a fresh `run_id`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActiveRun {
+    /// User/control-plane visible run id.
     pub run_id: RunId,
+    /// Sandbox/VM id assigned to this run.
+    ///
+    /// Runner doctor, kill, and exec use this as the join key when correlating
+    /// status entries with Firecracker processes.
     pub sandbox_id: SandboxId,
+    /// Current active-run phase serialized as `active_runs[*].phase`.
     pub phase: ActiveRunPhase,
+    /// Timestamp when the current phase started.
+    ///
+    /// This is reset on `preparing -> running`; it is not the run creation
+    /// timestamp.
     #[serde(serialize_with = "serialize_iso")]
     pub phase_started_at: DateTime<Utc>,
 }
@@ -141,7 +161,7 @@ impl StatusTracker {
             dns_port,
             path,
             state: Mutex::new(MutableState {
-                mode: RunnerMode::Running,
+                mode: RunnerMode::Starting,
                 active_runs: BTreeMap::new(),
                 idle_revision: 0,
                 idle_vms: Vec::new(),
@@ -149,8 +169,7 @@ impl StatusTracker {
         }
     }
 
-    /// Transition the reported lifecycle mode (Running / Draining /
-    /// Stopping / Stopped) and flush the status file.
+    /// Transition the reported lifecycle mode and flush the status file.
     pub async fn set_mode(&self, mode: RunnerMode) {
         let mut state = self.state.lock().await;
         state.mode = mode;
@@ -358,7 +377,7 @@ impl StatusTracker {
 /// Remove a status file from a previous runner process, if present.
 ///
 /// Called only after the new process owns the runner base-dir lock. This clears
-/// stale `running` snapshots before startup has reached the main reactor.
+/// stale live snapshots before startup has published this process's state.
 pub async fn remove_stale_status_file(path: &Path) -> RunnerResult<()> {
     match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(()),
@@ -401,7 +420,7 @@ mod tests {
         tracker.write_initial().await;
 
         let status = read_status(&path);
-        assert_eq!(status["mode"], "running");
+        assert_eq!(status["mode"], "starting");
         assert_eq!(status["max_concurrent"], 4);
         assert!(status["active_runs"].as_array().unwrap().is_empty());
         assert!(status["started_at"].as_str().is_some());
@@ -429,7 +448,7 @@ mod tests {
                 .is_symlink()
         );
         let status = read_status(&path);
-        assert_eq!(status["mode"], "running");
+        assert_eq!(status["mode"], "starting");
     }
 
     #[tokio::test]

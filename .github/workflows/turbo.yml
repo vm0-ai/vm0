@@ -405,7 +405,48 @@ jobs:
       # dependsOn ^check-types does not re-run the shared packages here.
       - name: Type Check (api)
         working-directory: turbo
-        run: pnpm --filter api run check-types
+        run: |
+          set +e
+          result_file=".memory-results/api-check-types.jsonl"
+          rm -f "$result_file"
+
+          node scripts/measure-memory.mjs \
+            --label ci-api-check-types \
+            --json "$result_file" \
+            -- pnpm --filter api run check-types
+          status=$?
+
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const file = process.argv[1];
+            if (!fs.existsSync(file)) {
+              process.exit(0);
+            }
+
+            const lines = fs.readFileSync(file, "utf8").trim().split(/\n/).filter(Boolean);
+            if (lines.length === 0) {
+              process.exit(0);
+            }
+
+            const result = JSON.parse(lines[lines.length - 1]);
+            const durationSeconds = (result.durationMs / 1000).toFixed(1);
+            const summary = [
+              "### Type Check (api) memory",
+              "",
+              `- Peak RSS: ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB)`,
+              `- Duration: ${durationSeconds}s`,
+              `- Exit code: ${result.exitCode}`,
+              "",
+            ].join("\n");
+
+            console.log(`Peak RSS (api check-types): ${result.peakRssMiB} MiB (${result.peakRssKiB} KiB), duration ${durationSeconds}s`);
+            if (process.env.GITHUB_STEP_SUMMARY) {
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            }
+          ' "$result_file"
+
+          exit "$status"
       - name: Type Check (@vm0/app)
         working-directory: turbo
         run: pnpm --filter @vm0/app run check-types
@@ -454,7 +495,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -500,7 +541,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -644,7 +685,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -1140,7 +1181,6 @@ jobs:
             VITE_GIT_COMMIT_SHA=${{ steps.build-commit.outputs.sha }}
             VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
-            VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
@@ -1230,7 +1270,7 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
             echo "::add-mask::$encoded_bypass"
-            FORWARD_URL="${FORWARD_URL}?vm0_preview_bypass=${encoded_bypass}"
+            FORWARD_URL="${FORWARD_URL}?x-vercel-protection-bypass=${encoded_bypass}"
           fi
           EXTRA_VARS="$(jq -nc \
             --arg ansible_user "$METAL_USER" \
@@ -1352,7 +1392,7 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             encoded_bypass="$(node -e 'process.stdout.write(encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET || ""))')"
             echo "::add-mask::$encoded_bypass"
-            forward_url="${forward_url}?vm0_preview_bypass=${encoded_bypass}"
+            forward_url="${forward_url}?x-vercel-protection-bypass=${encoded_bypass}"
           fi
           stripe listen \
             --api-key "$STRIPE_SECRET_KEY" \
@@ -1721,7 +1761,7 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-api]
     outputs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
-    timeout-minutes: 2
+    timeout-minutes: 4
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
@@ -1752,21 +1792,10 @@ jobs:
         run: |
           read_host_capacity() {
             local HOST=$1
+            local RUNNER_NAME=$2
             local REMOTE="${METAL_USER}@${HOST}"
-            local MC=""
-
-            for _ in $(seq 1 60); do
-              # shellcheck disable=SC2029
-              MC=$(ssh "$REMOTE" "sudo jq -r '.max_concurrent // empty' ${RUNNER_DIR}/status.json 2>/dev/null") || true
-              if [[ "$MC" =~ ^[0-9]+$ ]]; then
-                echo "$MC"
-                return 0
-              fi
-              sleep 1
-            done
-
-            echo "::error::Failed to read max_concurrent from ${HOST}" >&2
-            return 1
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service wait-running --name ${RUNNER_NAME} --timeout-secs 120"
           }
 
           start_on_host() {
@@ -1823,13 +1852,13 @@ jobs:
               --env USE_MOCK_CLAUDE=true \
               --env USE_MOCK_CODEX=true"
 
-            # Wait for the runner main loop to publish status.json before
-            # health checks. systemd-run returns once the process starts, but
-            # proxy/DNS setup and the initial status write can take longer.
-            if ! MC=$(read_host_capacity "$HOST"); then
+            # Wait for the runner to become job-admitting before health checks.
+            # systemd-run returns once the process starts, but startup
+            # readiness can keep status.json at mode=starting for longer.
+            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
               return 1
             fi
-            echo "Runner status ready on ${HOST}: max_concurrent=${MC}"
+            echo "Runner ready on ${HOST}: max_concurrent=${MC}"
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
@@ -1838,22 +1867,133 @@ jobs:
           LOG_DIR=$(mktemp -d)
           HOSTS=()
           PIDS=()
+          PGIDS=()
+          RUNNER_START_SUCCEEDED=0
+          RUNNER_START_SIGNAL_EXIT=0
+          RUNNER_START_RECORDING=0
+
+          cleanup_logs() {
+            rm -rf "$LOG_DIR"
+          }
+
+          request_runner_start_exit() {
+            RUNNER_START_SIGNAL_EXIT=$1
+            if [ "$RUNNER_START_RECORDING" -ne 1 ]; then
+              exit "$RUNNER_START_SIGNAL_EXIT"
+            fi
+          }
+
+          check_runner_start_exit() {
+            if [ "$RUNNER_START_SIGNAL_EXIT" -ne 0 ]; then
+              exit "$RUNNER_START_SIGNAL_EXIT"
+            fi
+          }
+
+          process_group_for_pid() {
+            local PID=$1
+            ps -o pgid= -p "$PID" 2>/dev/null | tr -d ' '
+          }
+
+          stop_background_start_jobs() {
+            local JOB_PIDS=()
+            local START_PGIDS=()
+            local WAIT_PIDS=()
+            local CURRENT_PGID
+            CURRENT_PGID=$(process_group_for_pid "$$" || true)
+            for PGID in "${PGIDS[@]}"; do
+              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
+                START_PGIDS+=("$PGID")
+              fi
+            done
+            for PID in $(jobs -pr); do
+              JOB_PIDS+=("$PID")
+              WAIT_PIDS+=("$PID")
+            done
+            for PID in "${PIDS[@]}"; do
+              WAIT_PIDS+=("$PID")
+            done
+            for PID in "${JOB_PIDS[@]}"; do
+              local PGID
+              PGID=$(process_group_for_pid "$PID" || true)
+              if [[ "$PGID" =~ ^[0-9]+$ && "$PGID" != "$CURRENT_PGID" ]]; then
+                START_PGIDS+=("$PGID")
+              else
+                kill -TERM "$PID" 2>/dev/null || true
+              fi
+            done
+            for PGID in "${START_PGIDS[@]}"; do
+              kill -TERM -- "-$PGID" 2>/dev/null || true
+            done
+            for PGID in "${START_PGIDS[@]}"; do
+              kill -KILL -- "-$PGID" 2>/dev/null || true
+            done
+            for PID in "${JOB_PIDS[@]}"; do
+              kill -KILL "$PID" 2>/dev/null || true
+            done
+            for PID in "${WAIT_PIDS[@]}"; do
+              wait "$PID" 2>/dev/null || true
+            done
+          }
+
+          stop_started_hosts() {
+            local STOP_PIDS=()
+            local HOST_INDEX=0
+            for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
+              HOST_INDEX=$((HOST_INDEX + 1))
+              local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+              local UNIT="vm0-runner-${RUNNER_NAME}.service"
+              local REMOTE="${METAL_USER}@${HOST}"
+              echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
+              (
+                # shellcheck disable=SC2029
+                timeout 45s ssh "$REMOTE" "UNIT='${UNIT}'; timeout 20s sudo systemctl stop \"\$UNIT\" 2>/dev/null || true; STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|refreshing|deactivating) sudo systemctl kill --kill-whom=all --signal=SIGKILL \"\$UNIT\" 2>/dev/null || true; sudo systemctl stop --no-block \"\$UNIT\" 2>/dev/null || true ;; esac; sudo systemctl reset-failed \"\$UNIT\" 2>/dev/null || true; for _ in \$(seq 1 10); do STATE=\$(sudo systemctl show \"\$UNIT\" --property=ActiveState --value 2>/dev/null || true); case \"\$STATE\" in active|activating|reloading|refreshing|deactivating) sleep 1 ;; *) exit 0 ;; esac; done; echo \"::warning::Runner service \$UNIT still \$STATE after cleanup\" >&2" >/dev/null || true
+              ) &
+              STOP_PIDS+=($!)
+            done
+            for PID in "${STOP_PIDS[@]}"; do
+              wait "$PID" 2>/dev/null || true
+            done
+          }
+
+          cleanup_runner_start() {
+            local EXIT_CODE=$?
+            trap - EXIT
+            trap '' INT TERM
+            if [ "$RUNNER_START_SUCCEEDED" -ne 1 ]; then
+              stop_background_start_jobs
+              stop_started_hosts
+            fi
+            cleanup_logs
+            exit "$EXIT_CODE"
+          }
+
+          trap cleanup_runner_start EXIT
+          trap 'request_runner_start_exit 130' INT
+          trap 'request_runner_start_exit 143' TERM
+          export -f read_host_capacity start_on_host
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
-            start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
-            PIDS+=($!)
             HOSTS+=("$HOST")
+            RUNNER_START_RECORDING=1
+            setsid bash -c 'start_on_host "$@"' start_on_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            PIDS+=($!)
+            PGIDS+=($!)
+            RUNNER_START_RECORDING=0
+            check_runner_start_exit
           done
 
           FAILED=0
           for i in "${!PIDS[@]}"; do
             if ! wait "${PIDS[$i]}"; then
+              check_runner_start_exit
               FAILED=1
               echo "::error::Runner start failed on ${HOSTS[$i]}"
             fi
+            check_runner_start_exit
             echo "=== ${HOSTS[$i]} ==="
             cat "${LOG_DIR}/${HOSTS[$i]}.log"
+            check_runner_start_exit
           done
           rm -rf "$LOG_DIR"
           if [ "$FAILED" -ne 0 ]; then
@@ -1862,15 +2002,25 @@ jobs:
 
           # Sum auto-detected max_concurrent from all hosts' status.json
           TOTAL=0
+          HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
-            if ! MC=$(read_host_capacity "$HOST"); then
-              exit 1
+            HOST_INDEX=$((HOST_INDEX + 1))
+            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
+              check_runner_start_exit
+              FAILED=1
+              break
             fi
+            check_runner_start_exit
             echo "Host ${HOST}: max_concurrent=${MC}"
             TOTAL=$((TOTAL + MC))
           done
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
           echo "total-capacity=${TOTAL}" >> "$GITHUB_OUTPUT"
           echo "Total capacity across all hosts: ${TOTAL}"
+          RUNNER_START_SUCCEEDED=1
 
   # Run CLI E2E tests - Phase 3: Runner tests (needs runner deployed)
   # Bootstrap runner E2E test account (runs once, in parallel with deploy-runner-start)

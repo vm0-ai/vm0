@@ -191,6 +191,20 @@ export interface SlackUserInfo {
   readonly timezone?: string;
 }
 
+export interface SlackUserInfoResolverStats {
+  readonly requestedCount: number;
+  readonly cacheHitCount: number;
+  readonly missCount: number;
+  readonly inFlightHitCount: number;
+}
+
+export interface SlackUserInfoResolver {
+  readonly resolveMany: (
+    userIds: readonly string[],
+  ) => Promise<Map<string, SlackUserInfo>>;
+  readonly stats: () => SlackUserInfoResolverStats;
+}
+
 export function formatSenderBlock(info: SlackUserInfo): string {
   const parts = [`id: ${info.id}`];
   if (info.name) {
@@ -231,10 +245,89 @@ async function fetchSlackUserInfo(
   };
 }
 
+export function createSlackUserInfoResolver(
+  client: WebClient,
+): SlackUserInfoResolver {
+  const cache = new Map<string, SlackUserInfo>();
+  const inFlight = new Map<string, Promise<SlackUserInfo | undefined>>();
+  let requestedCount = 0;
+  let cacheHitCount = 0;
+  let missCount = 0;
+  let inFlightHitCount = 0;
+
+  const startLookup = (userId: string): Promise<SlackUserInfo | undefined> => {
+    const promise = (async () => {
+      const info = await fetchSlackUserInfo(client, userId);
+      if (info) {
+        cache.set(userId, info);
+      }
+      return info;
+    })().finally(() => {
+      inFlight.delete(userId);
+    });
+    inFlight.set(userId, promise);
+    return promise;
+  };
+
+  const resolveOne = async (
+    userId: string,
+  ): Promise<SlackUserInfo | undefined> => {
+    const cached = cache.get(userId);
+    if (cached) {
+      cacheHitCount += 1;
+      return cached;
+    }
+
+    const active = inFlight.get(userId);
+    if (active) {
+      inFlightHitCount += 1;
+      return await active;
+    }
+
+    missCount += 1;
+    return await startLookup(userId);
+  };
+
+  return {
+    async resolveMany(userIds) {
+      const map = new Map<string, SlackUserInfo>();
+      const uniqueIds = [...new Set(userIds)];
+      requestedCount += uniqueIds.length;
+      const results = await Promise.allSettled(
+        uniqueIds.map(async (id) => {
+          const info = await resolveOne(id);
+          return { id, info };
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value.info) {
+          map.set(result.value.id, result.value.info);
+        }
+      }
+
+      return map;
+    },
+    stats() {
+      return {
+        requestedCount,
+        cacheHitCount,
+        missCount,
+        inFlightHitCount,
+      };
+    },
+  };
+}
+
 export async function fetchSlackUserInfoMap(
   client: WebClient,
   userIds: readonly string[],
+  resolver?: SlackUserInfoResolver,
 ): Promise<Map<string, SlackUserInfo>> {
+  if (resolver) {
+    return await resolver.resolveMany(userIds);
+  }
+
   const map = new Map<string, SlackUserInfo>();
   const uniqueIds = [...new Set(userIds)];
   const results = await Promise.allSettled(

@@ -126,6 +126,9 @@ describe("Desktop preload bridge", () => {
     await computerUse.setFilesystemPluginEnabled(true);
     await computerUse.addFilesystemPluginAllowedDirectory();
     await computerUse.removeFilesystemPluginAllowedDirectory("/tmp/project");
+    await computerUse.importMcpPluginServers('{"mcpServers":{}}');
+    await computerUse.setMcpPluginServerEnabled("notes", true);
+    await computerUse.removeMcpPluginServer("notes");
     await computerUse.openAccessibilitySettings();
     await computerUse.openScreenRecordingSettings();
     await computerUse.openAutomationSettings();
@@ -145,6 +148,9 @@ describe("Desktop preload bridge", () => {
         COMPUTER_USE_CHANNELS.removeFilesystemPluginAllowedDirectory,
         "/tmp/project",
       ],
+      [COMPUTER_USE_CHANNELS.importMcpPluginServers, '{"mcpServers":{}}'],
+      [COMPUTER_USE_CHANNELS.setMcpPluginServerEnabled, "notes", true],
+      [COMPUTER_USE_CHANNELS.removeMcpPluginServer, "notes"],
       [COMPUTER_USE_CHANNELS.openAccessibilitySettings],
       [COMPUTER_USE_CHANNELS.openScreenRecordingSettings],
       [COMPUTER_USE_CHANNELS.openAutomationSettings],

@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
 import { afterEach } from "vitest";
@@ -33,6 +33,7 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 async function enableFeatureSwitches(
   orgId: string,
@@ -229,6 +230,85 @@ describe("GET /api/zero/connector-catalog", () => {
       hasDefaultPolicyOverrides: false,
     });
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
+  });
+
+  it("shows staff-only no-auth connector catalog entries for staff orgs", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const initialList = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      initialList.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toBeUndefined();
+
+    const initialStatus = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      initialStatus.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toBeUndefined();
+
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.NintendoEshopCatalogConnector]: true,
+    });
+    const overriddenList = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      overriddenList.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toBeUndefined();
+
+    mocks.clerk.session(userId, STAFF_ORG_ID);
+
+    const staffList = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      staffList.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toMatchObject({
+      connectorRef: "nintendo-eshop-catalog",
+      authMethods: [
+        {
+          id: "api",
+          grantKind: "none",
+        },
+      ],
+    });
+
+    const staffStatus = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      staffStatus.body.connectors.find((connector) => {
+        return connector.connectorRef === "nintendo-eshop-catalog";
+      }),
+    ).toMatchObject({
+      connectorRef: "nintendo-eshop-catalog",
+      connected: false,
+      authMethods: [
+        {
+          id: "api",
+          grantKind: "none",
+        },
+      ],
+    });
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {

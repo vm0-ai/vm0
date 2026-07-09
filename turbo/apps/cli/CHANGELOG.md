@@ -1,5 +1,52 @@
 # Changelog
 
+## [9.232.1](https://github.com/vm0-ai/vm0/compare/cli-v9.232.0...cli-v9.232.1) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.418.0
+
+## [9.232.0](https://github.com/vm0-ai/vm0/compare/cli-v9.231.0...cli-v9.232.0) (2026-07-09)
+
+
+### Features
+
+* add r2-backed website template packages ([#20700](https://github.com/vm0-ai/vm0/issues/20700)) ([2c9c4d4](https://github.com/vm0-ai/vm0/commit/2c9c4d43a96ee11abc8a25268cd8910af1f538de))
+* route mcp plugin commands and add plugin mcp cli ([#20756](https://github.com/vm0-ai/vm0/issues/20756)) ([89d4e76](https://github.com/vm0-ai/vm0/commit/89d4e76f2eda168c2d9012e93b4f00bb260f2bd4))
+
+
+### Bug Fixes
+
+* skip template-interpolation references in zero host asset scan ([#20739](https://github.com/vm0-ai/vm0/issues/20739)) ([29af713](https://github.com/vm0-ai/vm0/commit/29af713e85a60e89020a58cbff417e11d2415bc0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.173.0
+    * @vm0/connectors bumped to 1.150.1
+    * @vm0/core bumped to 8.417.0
+
+## [9.231.0](https://github.com/vm0-ai/vm0/compare/cli-v9.230.5...cli-v9.231.0) (2026-07-08)
+
+
+### Features
+
+* **cli:** report client request headers ([#20673](https://github.com/vm0-ai/vm0/issues/20673)) ([5b53561](https://github.com/vm0-ai/vm0/commit/5b535614ba0f017eb3f6f80805f6c555b3c2daaa)), closes [#20667](https://github.com/vm0-ai/vm0/issues/20667)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.172.0
+    * @vm0/connectors bumped to 1.150.0
+    * @vm0/core bumped to 8.416.0
+
 ## [9.230.5](https://github.com/vm0-ai/vm0/compare/cli-v9.230.4...cli-v9.230.5) (2026-07-08)
 
 

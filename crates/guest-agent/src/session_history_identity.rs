@@ -15,7 +15,8 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
-    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ, SESSION_HISTORY_SIDECAR_MAX_BYTES,
+    SessionHistorySidecarExportMetadata, SessionHistorySidecarRepresentation,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -71,6 +72,34 @@ pub fn verify_final_session_history_identity_file(
         return Err(FinalSessionHistoryIdentityVerifyError::ExpectedIdentityMismatch);
     }
     verify_final_session_history_identity(&identity)
+}
+
+pub fn export_final_session_history_sidecar_file(
+    metadata_path: impl AsRef<Path>,
+    export_path: impl AsRef<Path>,
+) -> Result<SessionHistorySidecarExportMetadata, FinalSessionHistoryIdentityVerifyError> {
+    let identity = read_final_session_history_identity(metadata_path)?;
+    verify_final_session_history_identity(&identity)?;
+    let source = session_history::read_session_history_checkpoint_source_from_payload_bounded(
+        &identity.history_marker_payload,
+        SESSION_HISTORY_SIDECAR_MAX_BYTES,
+    )
+    .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
+    let (representation, bytes) = match source {
+        session_history::SessionHistoryCheckpointSource::Decoded(bytes) => {
+            (SessionHistorySidecarRepresentation::Raw, bytes)
+        }
+        session_history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
+            (SessionHistorySidecarRepresentation::CodexZstd, encoded)
+        }
+    };
+    crate::paths::write_private(export_path.as_ref(), &bytes)
+        .map_err(AgentError::from)
+        .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
+    Ok(SessionHistorySidecarExportMetadata {
+        representation,
+        encoded_size: bytes.len() as u64,
+    })
 }
 
 fn read_final_session_history_identity(
@@ -259,6 +288,35 @@ mod tests {
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
+    }
+
+    #[test]
+    fn exports_claude_literal_history_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = br#"{"type":"system"}"#;
+        let history_path = dir.path().join("history.jsonl");
+        std::fs::write(&history_path, history).unwrap();
+        let identity = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            hex::encode(Sha256::digest(history)),
+            history.len() as u64,
+            history_path.to_string_lossy(),
+        )
+        .unwrap();
+        let metadata_path = write_metadata(&dir, &identity);
+        let export_path = dir.path().join("sidecar.blob");
+
+        let export_metadata =
+            export_final_session_history_sidecar_file(metadata_path, &export_path).unwrap();
+
+        assert_eq!(
+            export_metadata.representation,
+            SessionHistorySidecarRepresentation::Raw
+        );
+        assert_eq!(export_metadata.encoded_size, history.len() as u64);
+        assert_eq!(std::fs::read(export_path).unwrap(), history);
     }
 
     #[test]

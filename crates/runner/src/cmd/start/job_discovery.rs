@@ -287,6 +287,10 @@ fn build_session_history_restore_plan(
         | SandboxReuseResult::UnparkFailed => Some(SessionHistoryRestoreFallback::NonReuse),
     };
 
+    if reuse.result != SandboxReuseResult::Reused {
+        return SessionHistoryRestorePlan::DeferredHashBacked { fallback };
+    }
+
     let started_at = Instant::now();
     let materializer = SessionHistoryMaterializer::start_cancellable(
         http,
@@ -364,6 +368,10 @@ async fn claim_with_local_admission(
     let mode = *ctx.mode_rx.borrow();
     match mode {
         RunnerMode::Running => {}
+        RunnerMode::Starting => {
+            admission.rollback(ctx.cancel_tokens).await;
+            return None;
+        }
         RunnerMode::Draining => {
             admission.rollback(ctx.cancel_tokens).await;
             return None;
@@ -1212,6 +1220,34 @@ mod tests {
                 );
             }
             _ => panic!("mismatched reused identity should fall back to restore"),
+        }
+    }
+
+    #[test]
+    fn restore_plan_defers_hash_backed_history_for_non_reuse() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            SessionHistoryRestoreReuse {
+                entry: None,
+                result: SandboxReuseResult::PoolMiss,
+            },
+            &mut timing,
+            None,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::DeferredHashBacked { fallback } => {
+                assert_eq!(fallback, Some(SessionHistoryRestoreFallback::NonReuse));
+            }
+            _ => panic!("non-reuse hash-backed history should defer materialization"),
         }
     }
 

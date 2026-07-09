@@ -2463,6 +2463,7 @@ function sendMessageRequestBody(params: {
   readonly result: PreparedSendMessageResult;
   readonly modelSelection: ModelProviderSelection | null;
   readonly codexFastModeEnabled: boolean;
+  readonly realAgentInPreviewEnabled: boolean;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly options: SendMessageOptions | undefined;
 }) {
@@ -2478,6 +2479,7 @@ function sendMessageRequestBody(params: {
     clientMessageId: params.clientMessageId,
     chatThreadSortEventId: params.chatThreadSortEventId,
     ...(runOptions ? { runOptions } : {}),
+    ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     generationTemplate: params.generationTemplate,
     ...(params.options && "computerUseHostId" in params.options
       ? { computerUseHostId: params.options.computerUseHostId ?? null }
@@ -2548,8 +2550,11 @@ const postSendMessage$ = command(
     },
     signal: AbortSignal,
   ): Promise<string | null> => {
+    const features = get(featureSwitch$);
     const codexFastModeEnabled =
-      get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+      features[FeatureSwitchKey.CodexFastMode] ?? false;
+    const realAgentInPreviewEnabled =
+      features[FeatureSwitchKey.RealAgentInPreview] ?? false;
     const client = get(zeroClient$)(chatMessagesContract);
     const [, sendResult] = await Promise.all([
       set(args.flushDraftClear$, signal),
@@ -2563,6 +2568,7 @@ const postSendMessage$ = command(
             result: args.result,
             modelSelection: args.modelSelection,
             codexFastModeEnabled,
+            realAgentInPreviewEnabled,
             generationTemplate: args.generationTemplate,
             options: args.options,
           }),
@@ -2789,8 +2795,11 @@ function createQueueMessage(deps: QueueMessageDeps) {
         { signal },
       );
 
+      const features = get(featureSwitch$);
       const codexFastModeEnabled =
-        get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+        features[FeatureSwitchKey.CodexFastMode] ?? false;
+      const realAgentInPreviewEnabled =
+        features[FeatureSwitchKey.RealAgentInPreview] ?? false;
       const runOptions = runOptionsFromModelProviderSelection(
         modelSelection,
         codexFastModeEnabled,
@@ -2808,6 +2817,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
             chatThreadSortEventId,
             hasTextContent: result.hasTextContent,
             ...(runOptions ? { runOptions } : {}),
+            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
             generationTemplate,
             ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
           },

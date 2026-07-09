@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.140.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.0...runner-rs-v0.140.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* retry transient session history blob downloads ([#20760](https://github.com/vm0-ai/vm0/issues/20760)) ([fd7e2d2](https://github.com/vm0-ai/vm0/commit/fd7e2d2434e77c7b1709c24a5d4005165f7170fa))
+
+## [0.140.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.5...runner-rs-v0.140.0) (2026-07-09)
+
+
+### Features
+
+* gate runner readiness on starting mode ([#20720](https://github.com/vm0-ai/vm0/issues/20720)) ([2d07aec](https://github.com/vm0-ai/vm0/commit/2d07aec8042eeabeff3b316b246b29fbbdba3c99))
+
+
+### Performance Improvements
+
+* cache session history with workspace images ([#20733](https://github.com/vm0-ai/vm0/issues/20733)) ([d588e5a](https://github.com/vm0-ai/vm0/commit/d588e5a9aa6e67ca18199cd74cadfa7dd4d66418))
+
+## [0.139.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.4...runner-rs-v0.139.5) (2026-07-08)
+
+
+### Bug Fixes
+
+* bound zstd usage validation ([#20708](https://github.com/vm0-ai/vm0/issues/20708)) ([ba4069e](https://github.com/vm0-ai/vm0/commit/ba4069e87f9cc56e1fad5168fe6c9750141d69fc))
+
+
+### Documentation
+
+* clarify runner active run status schema ([#20686](https://github.com/vm0-ai/vm0/issues/20686)) ([1849808](https://github.com/vm0-ai/vm0/commit/18498089b25834157327be0142ed89637bedc6c0))
+
+
+### Refactoring
+
+* expose auth cache test hooks ([#20705](https://github.com/vm0-ai/vm0/issues/20705)) ([bfaceb4](https://github.com/vm0-ai/vm0/commit/bfaceb452d465411cceb39fd5beab4db3955dbe3))
+
 ## [0.139.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.139.3...runner-rs-v0.139.4) (2026-07-08)
 
 

@@ -4,7 +4,8 @@ const CHAT_IDB_FULL_CACHE_RESET_VERSION = 4;
 const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 6;
 const CHAT_IDB_RUN_FINISH_UNREAD_RESET_VERSION = 10;
 const CHAT_IDB_THREAD_EVENT_CACHE_RESET_VERSION = 11;
-const CHAT_IDB_SCHEMA_VERSION = 12;
+const CHAT_IDB_LOCAL_CACHE_RESET_VERSION = 13;
+const CHAT_IDB_SCHEMA_VERSION = 13;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
@@ -81,8 +82,19 @@ function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
   }
 }
 
+function deleteLocalCacheStores(db: IDBPDatabase): void {
+  deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+  deleteObjectStoreIfExists(db, CHAT_THREAD_SNAPSHOT_STORE);
+  deleteObjectStoreIfExists(db, CHAT_THREAD_EVENTS_STORE);
+  deleteObjectStoreIfExists(db, CHAT_THREAD_EVENT_SYNC_STORE);
+  deleteObjectStoreIfExists(db, ARTIFACT_ITEMS_STORE);
+  deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
+}
+
 export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
-  if (oldVersion < CHAT_IDB_FULL_CACHE_RESET_VERSION) {
+  if (oldVersion < CHAT_IDB_LOCAL_CACHE_RESET_VERSION) {
+    deleteLocalCacheStores(db);
+  } else if (oldVersion < CHAT_IDB_FULL_CACHE_RESET_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
   } else if (oldVersion < CHAT_IDB_MESSAGES_ORDER_RESET_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);

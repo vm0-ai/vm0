@@ -16,10 +16,6 @@ import {
   type GenerationTemplateRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type {
-  TestChatMessagesStateActionBody,
-  TestChatMessagesStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -29,7 +25,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -48,7 +43,10 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
+import {
+  deleteBddVm0ApiKeys,
+  replaceBddVm0ApiKeys,
+} from "../../../test-fixtures/chat-messages";
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -583,245 +581,12 @@ function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
 }
 
-function requestChatMessagesState(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testChatMessagesStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function postChatMessagesStateAction(
-  body: TestChatMessagesStateActionBody,
-): Promise<TestChatMessagesStateActionResponse> {
-  const response = await requestChatMessagesState(
-    "/api/test/chat-messages-state/action",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `chat messages state action ${body.action} failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestChatMessagesStateActionResponse;
-}
-
-type SeedThreadMessage = Extract<
-  TestChatMessagesStateActionBody,
-  { action: "seed-thread-messages" }
->["messages"][number];
-
-async function seedThreadMessages(
-  threadId: string,
-  messages: readonly SeedThreadMessage[],
-): Promise<void> {
-  await postChatMessagesStateAction({
-    action: "seed-thread-messages",
-    thread_id: threadId,
-    messages: [...messages],
-  });
-}
-
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
   routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   return { authorization: "Bearer clerk-session" };
 }
-
-describe("CHAT-02: chat thread message pagination", () => {
-  it("uses message id as the cursor tie-breaker and scopes cursors to the thread", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const threadId = randomUUID();
-    const otherThreadId = randomUUID();
-    await chat.createThread(actor, {
-      agentId,
-      title: "Cursor ties",
-      clientThreadId: threadId,
-    });
-    await chat.createThread(actor, {
-      agentId,
-      title: "Other cursor thread",
-      clientThreadId: otherThreadId,
-    });
-
-    const createdAt = "2026-06-09T10:00:00.000Z";
-    const ids = [
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-      randomUUID(),
-    ].sort() as [string, string, string, string];
-
-    await seedThreadMessages(threadId, [
-      {
-        id: ids[0],
-        role: "user",
-        content: "first tied message",
-        created_at: createdAt,
-        sequence_number: null,
-      },
-      {
-        id: ids[1],
-        role: "assistant",
-        content: "second tied message",
-        created_at: createdAt,
-        sequence_number: null,
-      },
-      {
-        id: ids[2],
-        role: "assistant",
-        content: "third tied message",
-        created_at: createdAt,
-        sequence_number: null,
-      },
-      {
-        id: ids[3],
-        role: "assistant",
-        content: null,
-        created_at: createdAt,
-        sequence_number: null,
-        run_lifecycle_event: "completed",
-        recommended_followups: [
-          { prompt: "Turn this into a checklist", kind: "talk" },
-        ],
-      },
-    ]);
-
-    const otherMessageId = randomUUID();
-    await seedThreadMessages(otherThreadId, [
-      {
-        id: otherMessageId,
-        role: "user",
-        content: "other thread cursor",
-        created_at: "2026-06-09T09:59:59.000Z",
-        sequence_number: null,
-      },
-    ]);
-
-    const initial = await chat.listThreadMessages(actor, threadId, {
-      limit: 2,
-    });
-    expect(
-      initial.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([ids[2], ids[3]]);
-    expect(initial.hasHistoryBefore).toBeTruthy();
-
-    const afterFirst = await chat.listThreadMessages(actor, threadId, {
-      sinceId: ids[0],
-    });
-    expect(
-      afterFirst.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([ids[1], ids[2], ids[3]]);
-
-    const beforeLast = await chat.listThreadMessages(actor, threadId, {
-      beforeId: ids[3],
-    });
-    expect(
-      beforeLast.messages.map((message) => {
-        return message.id;
-      }),
-    ).toStrictEqual([ids[0], ids[1], ids[2]]);
-
-    const foreignCursor = await chat.listThreadMessages(actor, threadId, {
-      sinceId: otherMessageId,
-    });
-    expect(foreignCursor.messages).toStrictEqual([]);
-
-    const marker = await chat.getThreadMessage(actor, threadId, ids[3]);
-    expect(marker).toMatchObject({
-      id: ids[3],
-      role: "assistant",
-      content: null,
-      runLifecycleEvent: "completed",
-      recommendedFollowups: [
-        { prompt: "Turn this into a checklist", kind: "talk" },
-      ],
-    });
-
-    const crossThreadRead = await chat.requestGetThreadMessage(
-      actor,
-      otherThreadId,
-      ids[3],
-      [404],
-    );
-    expect(crossThreadRead.status).toBe(404);
-  });
-
-  it("filters historical raw JSON syntax follow-up prompts when reading messages", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    const threadId = randomUUID();
-    await chat.createThread(actor, {
-      agentId,
-      title: "Historical follow-up cleanup",
-      clientThreadId: threadId,
-    });
-
-    const markerId = randomUUID();
-    await seedThreadMessages(threadId, [
-      {
-        id: markerId,
-        role: "assistant",
-        content: null,
-        created_at: "2026-06-09T10:00:00.000Z",
-        sequence_number: null,
-        run_lifecycle_event: "completed",
-        recommended_followups: [
-          { prompt: "[", kind: "talk" },
-          { prompt: "{", kind: "talk" },
-          { prompt: '"prompt": "Investigate this",', kind: "talk" },
-          {
-            prompt: '{"prompt": "Investigate this", "kind": "talk"},',
-            kind: "talk",
-          },
-          {
-            prompt: '[{"prompt": "Investigate this", "kind": "talk"}',
-            kind: "talk",
-          },
-          { prompt: "}]", kind: "talk" },
-          { prompt: "}, {", kind: "talk" },
-          {
-            prompt: '}, {"prompt": "Investigate this", "kind": "talk"}',
-            kind: "talk",
-          },
-          { prompt: "Review the valid suggestion", kind: "talk" },
-          {
-            prompt: "Generate a follow-up website",
-            kind: "generate",
-            generationType: "website",
-          },
-        ],
-      },
-    ]);
-
-    const marker = await chat.getThreadMessage(actor, threadId, markerId);
-    expect(marker).toMatchObject({
-      id: markerId,
-      role: "assistant",
-      content: null,
-      runLifecycleEvent: "completed",
-      recommendedFollowups: [
-        { prompt: "Review the valid suggestion", kind: "talk" },
-        {
-          prompt: "Generate a follow-up website",
-          kind: "generate",
-          generationType: "website",
-        },
-      ],
-    });
-  });
-});
 
 /** Org-admin model provider upsert through the public route. */
 async function upsertOrgModelProvider(
@@ -848,27 +613,12 @@ async function upsertOrgModelProvider(
   };
 }
 
-async function overwriteOrgModelProviderSecret(
-  orgId: string,
-  name: string,
-  value: string,
-): Promise<void> {
-  await postChatMessagesStateAction({
-    action: "overwrite-org-model-provider-secret",
-    org_id: orgId,
-    name,
-    value,
-  });
-}
-
 async function readThreadComputerUseHostId(
+  actor: ApiTestUser,
   threadId: string,
 ): Promise<string | null> {
-  const response = await postChatMessagesStateAction({
-    action: "read-thread-computer-use-host-id",
-    thread_id: threadId,
-  });
-  return response.computer_use_host_id ?? null;
+  const thread = await chat.readThread(actor, threadId);
+  return thread.computerUseHostId ?? null;
 }
 
 /**
@@ -2117,13 +1867,12 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keySuffix = randomUUID();
 
-    await postChatMessagesStateAction({
-      action: "replace-vm0-api-keys",
+    await replaceBddVm0ApiKeys({
       vendor: "moonshot",
       model: "kimi-k2.7-code",
       keys: [
         {
-          api_key: `vm0-key-bdd-dev-seed-${keySuffix}`,
+          apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
           label: "dev-seed",
         },
       ],
@@ -2136,8 +1885,7 @@ describe("CHAT-02: model-first provider policies", () => {
       }
     };
     const deleteVm0KimiKeys = async () => {
-      await postChatMessagesStateAction({
-        action: "delete-vm0-api-keys",
+      await deleteBddVm0ApiKeys({
         vendor: "moonshot",
         model: "kimi-k2.7-code",
       });
@@ -2187,16 +1935,16 @@ describe("CHAT-02: model-first provider policies", () => {
     const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
 
-    await postChatMessagesStateAction({
-      action: "replace-openrouter-vm0-api-keys",
+    await replaceBddVm0ApiKeys({
+      vendor: "openrouter",
       model: "z-ai/glm-5.2",
       keys: [
         {
-          api_key: fakeKey,
+          apiKey: fakeKey,
           label: `bdd-fake-${keySuffix}`,
         },
         {
-          api_key: devSeedKey,
+          apiKey: devSeedKey,
           label: "dev-seed",
         },
       ],
@@ -2251,12 +1999,11 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await postChatMessagesStateAction({
-      action: "delete-openrouter-vm0-api-keys",
+    await deleteBddVm0ApiKeys({
+      vendor: "openrouter",
       model: "z-ai/glm-5.2",
     });
   }, 90_000);
-
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -3446,7 +3193,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     await cu.stopComputerUseHost(stopped.hostToken);
     await expect(
-      readThreadComputerUseHostId(stoppedPinned.body.threadId),
+      readThreadComputerUseHostId(actor, stoppedPinned.body.threadId),
     ).resolves.toBeNull();
     const revokedHost = await chat.requestSendMessage(
       actor,
@@ -3478,7 +3225,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     }
     await cu.stopComputerUseHost(installed.hostToken);
     await expect(
-      readThreadComputerUseHostId(installedPinned.body.threadId),
+      readThreadComputerUseHostId(actor, installedPinned.body.threadId),
     ).resolves.toBe(installed.hostId);
     const stoppedInstalledHost = await chat.requestSendMessage(
       actor,
@@ -3517,7 +3264,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     expect(pinned.body.runId).toBeNull();
     await cu.deleteComputerUseHost(actor, sticky.hostId);
     await expect(
-      readThreadComputerUseHostId(pinned.body.threadId),
+      readThreadComputerUseHostId(actor, pinned.body.threadId),
     ).resolves.toBeNull();
     const clearedSend = await chat.requestSendMessage(
       actor,

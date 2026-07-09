@@ -84,6 +84,14 @@ pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
     pub(crate) history_size_bytes: u64,
 }
 
+pub(crate) struct RestoredSessionIdentityFields<'a> {
+    pub(crate) framework: FinalSessionHistoryFramework,
+    pub(crate) session_id_hash: &'a str,
+    pub(crate) history_ref_kind: FinalSessionHistoryRefKind,
+    pub(crate) history_hash: &'a str,
+    pub(crate) history_size_bytes: u64,
+}
+
 impl RestoredSessionIdentity {
     pub(crate) fn new(
         framework: RestoredSessionFramework,
@@ -184,6 +192,16 @@ impl RestoredSessionIdentity {
                 })
             }
         }
+    }
+
+    pub(crate) fn cache_fields(&self) -> Option<RestoredSessionIdentityFields<'_>> {
+        Some(RestoredSessionIdentityFields {
+            framework: final_session_history_framework(self.framework),
+            session_id_hash: &self.session_id_hash,
+            history_ref_kind: final_session_history_ref_kind(self.history_ref_kind),
+            history_hash: &self.history_hash,
+            history_size_bytes: self.history_size_bytes?,
+        })
     }
 
     pub(crate) fn has_final_metadata_verification(&self) -> bool {

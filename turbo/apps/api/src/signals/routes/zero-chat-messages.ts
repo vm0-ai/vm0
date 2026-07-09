@@ -118,8 +118,7 @@ interface NormalSendBody {
   readonly attachFiles?: AttachFile[];
   readonly computerUseHostId?: string | null;
   readonly clientMessageId?: string;
-  readonly debugNoMockClaude?: boolean;
-  readonly debugNoMockCodex?: boolean;
+  readonly realAgentInPreview?: boolean;
   readonly revokesMessageId?: string;
 }
 
@@ -2788,8 +2787,7 @@ function buildCreateZeroRunArgs(params: {
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
-      debugNoMockClaude: args.body.debugNoMockClaude,
-      debugNoMockCodex: args.body.debugNoMockCodex,
+      ...(args.body.realAgentInPreview ? { realAgentInPreview: true } : {}),
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,

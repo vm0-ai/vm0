@@ -227,19 +227,17 @@ send_chat_run_message() {
     local agent_id="$1"
     local prompt="$2"
     local payload body
-    # debugNoMockCodex=true bypasses USE_MOCK_CODEX in the runner so the real
+    # realAgentInPreview=true bypasses USE_MOCK_CODEX in the runner so the real
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
     # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
-    # guest_mock_codex::build_events. The chat/messages contract
-    # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
-    # the same passthrough on /api/zero/runs.
+    # guest_mock_codex::build_events.
     local selected_model="${CODEX_ZERO_SELECTED_MODEL:-gpt-5.5}"
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
         --arg selectedModel "$selected_model" \
-        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, debugNoMockCodex: true}')
+        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, realAgentInPreview: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")

@@ -3637,8 +3637,24 @@ export interface WebsiteTemplatePackage {
 // Archive digests for uploaded private R2 website template packages. Keep these
 // in sync with the private R2 version ids served by the API download route.
 const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
+  "black-slabs":
+    "7e2dfc9f61dc1b9d187661d36854d27b150c0be92f882d845e5adcfd4054e6ba",
+  "blueprint-grid":
+    "ff42dcfd99f00eaa5e5d9eec58e417a4337f4f2e715aa5414d7059a419d918ab",
+  "coastal-hotel":
+    "3818e2e01616e2a3108d63bfda0453c42cc9a41805da7851333ebad28c9bd1df",
+  "frame-stack":
+    "52934dc77544e0b65e8727a7978c292e69627be1cee6b04b8ab276ee94dc11ac",
+  "gallery-wall":
+    "d5233f8c2df39753df6a40d6336516efa5db887d8a57978eb86635794040a34b",
+  "glass-bloom":
+    "60642ffe68a70d953f43b5d27fdff278b10009f4b78497d67d31a09a443e7686",
+  "serif-stack":
+    "3fcd90b0017801c431f6562c92f8469c065508840cfa85c6fc2efb392ebc0bf6",
+  "sticker-pop":
+    "1c24754b99a419eeb655cce6ad65819c1ae33b64f990e84591a7652923e4bb70",
   "warm-cards":
-    "1fafd9e5541dfe53ffdfafcbb6e45d525328c9a0cc5bb4afb2a06b4685e153d2",
+    "a11dcf83f4c6c37266905f7333ebc6faca8e82d22499b17cc50905f220b5e3a8",
 };
 
 function websiteTemplateArchiveSha256(slug: string): string {

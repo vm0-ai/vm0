@@ -19,22 +19,17 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
-import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteFeatureSwitchesForUser,
-  updateFeatureSwitchesForUser,
-} from "./helpers/zero-feature-switches";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedTelegramUserLink$ } from "./helpers/zero-telegram";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createComposesBddApi } from "./helpers/api-bdd-composes";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
 const store = createStore();
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const composes = createComposesBddApi(context);
 
 const TEST_BOT_TOKEN = "test-bot-token";
 const OFFICIAL_BOT_TOKEN = "123456:official-test-token";
@@ -61,11 +56,14 @@ interface TelegramCallbackPayload {
   readonly thinkingMessageId?: string | null;
 }
 
-interface TelegramFixture extends UsageInsightFixture {
+interface TelegramFixture {
+  readonly orgId: string;
+  readonly userId: string;
   readonly composeId: string;
   readonly installationId: string;
   readonly userLinkId: string;
   readonly runId: string;
+  readonly sessionId: string;
   readonly callbackId: string;
   readonly payload: TelegramCallbackPayload;
 }
@@ -87,11 +85,6 @@ interface TelegramStateMessage {
   readonly isBot: boolean;
   readonly officialOrgId?: string | null;
   readonly officialUserLinkId?: string | null;
-}
-
-interface TelegramStateRun {
-  readonly session_id: string | null;
-  readonly selected_model: string | null;
 }
 
 function runTelegramSendDelaysImmediately(): {
@@ -251,17 +244,6 @@ function officialStateMessages(
   );
 }
 
-async function deleteFixture(fixture: TelegramFixture): Promise<void> {
-  await postTelegramStateAction({
-    action: "delete-fixture",
-    org_id: fixture.orgId,
-    compose_ids: [fixture.composeId],
-    telegram_bot_ids: [fixture.installationId],
-  });
-  await deleteFeatureSwitchesForUser(context, fixture);
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-}
-
 async function seedTelegramInstallation(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -315,38 +297,72 @@ async function seedTelegramCallback(args: {
   return { callbackId };
 }
 
-async function seedFixture(): Promise<TelegramFixture> {
-  const base = await store.set(
-    seedUsageInsightFixture$,
-    undefined,
-    context.signal,
+/**
+ * Seeds an org-scoped actor with credits (Stripe webhook grant) and an agent
+ * created through the product agent API whose compose head declares an inline
+ * ANTHROPIC_API_KEY, so real runs can be created through POST /api/zero/runs
+ * without an org model provider (the run then records no selected model,
+ * matching the pre-existing fixture runs these tests were written against).
+ */
+async function seedEntitledActor(): Promise<ApiTestUser> {
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Telegram callback fixtures require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  await api.grantProEntitlement(actor);
+  return actor;
+}
+
+async function createInlineKeyAgent(
+  actor: ApiTestUser,
+  displayName: string,
+): Promise<string> {
+  const agent = await bdd.createAgent(actor, {
+    displayName,
+    visibility: "private",
+  });
+  const composeRead = await composes.requestReadComposeById(
+    actor,
+    agent.agentId,
+    [200],
   );
-  const { composeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: base.orgId,
-      userId: base.userId,
-      name: `telegram-callback-${randomUUID().slice(0, 8)}`,
-      displayName: "Telegram Agent",
+  await api.createCompose(actor, {
+    version: "1.0",
+    agents: {
+      [composeRead.body.name]: {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+      },
     },
-    context.signal,
-  );
+  });
+  return agent.agentId;
+}
+
+async function createFixtureRun(
+  actor: ApiTestUser,
+  agentId: string,
+  prompt: string,
+): Promise<{ readonly runId: string; readonly sessionId: string }> {
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  const run = await api.createRun(actor, { agentId, prompt });
+  return { runId: run.runId, sessionId: run.sessionId };
+}
+
+async function seedFixture(): Promise<TelegramFixture> {
+  const actor = await seedEntitledActor();
+  const orgId = actor.orgId ?? "";
+  const composeId = await createInlineKeyAgent(actor, "Telegram Agent");
   const { installationId, userLinkId } = await seedTelegramInstallation({
-    orgId: base.orgId,
-    userId: base.userId,
+    orgId,
+    userId: actor.userId,
     composeId,
   });
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: base.orgId,
-      userId: base.userId,
-      composeId,
-      triggerSource: "telegram",
-      prompt: "Handle Telegram message",
-      lastEventSequence: 0,
-    },
-    context.signal,
+  const { runId, sessionId } = await createFixtureRun(
+    actor,
+    composeId,
+    "Handle Telegram message",
   );
   const payload: TelegramCallbackPayload = {
     installationId,
@@ -361,58 +377,32 @@ async function seedFixture(): Promise<TelegramFixture> {
   const { callbackId } = await seedTelegramCallback({ runId, payload });
 
   return {
-    ...base,
+    orgId,
+    userId: actor.userId,
     composeId,
     installationId,
     userLinkId,
     runId,
+    sessionId,
     callbackId,
     payload,
   };
 }
 
 async function seedResponderFixture(): Promise<TelegramFixture> {
-  const base = await store.set(
-    seedUsageInsightFixture$,
-    undefined,
-    context.signal,
-  );
-  const { composeId: defaultComposeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: base.orgId,
-      userId: base.userId,
-      name: `telegram-default-${randomUUID().slice(0, 8)}`,
-      displayName: "Default Agent",
-    },
-    context.signal,
-  );
-  const { composeId: responderComposeId } = await store.set(
-    seedCompose$,
-    {
-      orgId: base.orgId,
-      userId: base.userId,
-      name: `telegram-responder-${randomUUID().slice(0, 8)}`,
-      displayName: "Responder",
-    },
-    context.signal,
-  );
+  const actor = await seedEntitledActor();
+  const orgId = actor.orgId ?? "";
+  const defaultComposeId = await createInlineKeyAgent(actor, "Default Agent");
+  const responderComposeId = await createInlineKeyAgent(actor, "Responder");
   const { installationId, userLinkId } = await seedTelegramInstallation({
-    orgId: base.orgId,
-    userId: base.userId,
+    orgId,
+    userId: actor.userId,
     composeId: defaultComposeId,
   });
-  const { runId } = await store.set(
-    seedRun$,
-    {
-      orgId: base.orgId,
-      userId: base.userId,
-      composeId: responderComposeId,
-      triggerSource: "telegram",
-      prompt: "Handle Telegram responder message",
-      lastEventSequence: 0,
-    },
-    context.signal,
+  const { runId, sessionId } = await createFixtureRun(
+    actor,
+    responderComposeId,
+    "Handle Telegram responder message",
   );
   const payload: TelegramCallbackPayload = {
     installationId,
@@ -427,11 +417,13 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
   const { callbackId } = await seedTelegramCallback({ runId, payload });
 
   return {
-    ...base,
+    orgId,
+    userId: actor.userId,
     composeId: responderComposeId,
     installationId,
     userLinkId,
     runId,
+    sessionId,
     callbackId,
     payload,
   };
@@ -509,12 +501,8 @@ afterEach(() => {
 });
 
 describe("POST /api/internal/callbacks/telegram", () => {
-  const track = createFixtureTracker<TelegramFixture>((fixture) => {
-    return deleteFixture(fixture);
-  });
-
   it("rejects invalid payloads", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
@@ -531,7 +519,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("refreshes typing for progress callbacks without sending a message", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
 
     const result = await dispatchTelegramCallback({
@@ -548,7 +536,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("renders completed output as Telegram HTML and stores the bot reply", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
     completedOutput();
 
@@ -579,7 +567,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("retries Telegram completion replies on 429 with Fibonacci backoff", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks(TEST_BOT_TOKEN, {
       sendMessageResponses: [
         {
@@ -606,7 +594,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("returns the Telegram 429 after exhausting Fibonacci retries", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks(TEST_BOT_TOKEN, {
       sendMessageResponses: Array.from({ length: 6 }, () => {
         return {
@@ -638,7 +626,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("throttles split completion reply chunks", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
     completedOutput("x".repeat(5000));
 
@@ -659,7 +647,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("renders markdown links in completed replies", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
     completedOutput(
       "Please [connect Notion](https://example.com/connect?agentId=123)",
@@ -681,24 +669,22 @@ describe("POST /api/internal/callbacks/telegram", () => {
     expect(text).not.toContain("[connect Notion](");
   });
 
-  it("sends completed replies through the preview Telegram mock when enabled", async () => {
-    const fixture = await track(seedFixture());
+  it("sends completed replies through a configured Telegram API URL", async () => {
+    const fixture = await seedFixture();
     const calls: {
       readonly headers: Headers;
       readonly body: TelegramSendMessageBody;
     }[] = [];
-    mockOptionalEnv("E2E_TELEGRAM_MOCK_ENABLED", "1");
-    mockOptionalEnv("VERCEL_URL", "preview.example.test");
-    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
+    mockOptionalEnv("TELEGRAM_API_URL", "https://telegram.mock.test/bot");
     server.use(
       http.post(
-        `https://preview.example.test/api/test/telegram-mock/bot${TEST_BOT_TOKEN}/sendChatAction`,
+        `https://telegram.mock.test/bot${TEST_BOT_TOKEN}/sendChatAction`,
         () => {
           return HttpResponse.json({ ok: true, result: true });
         },
       ),
       http.post(
-        `https://preview.example.test/api/test/telegram-mock/bot${TEST_BOT_TOKEN}/sendMessage`,
+        `https://telegram.mock.test/bot${TEST_BOT_TOKEN}/sendMessage`,
         async ({ request }) => {
           const body = (await request.json()) as TelegramSendMessageBody;
           calls.push({ headers: request.headers, body });
@@ -726,7 +712,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     expect(calls).toHaveLength(1);
     const [call] = calls;
     if (!call) {
-      throw new Error("Expected preview Telegram mock call");
+      throw new Error("Expected configured Telegram API call");
     }
     expect(call.body).toMatchObject({
       chat_id: fixture.payload.chatId,
@@ -734,16 +720,11 @@ describe("POST /api/internal/callbacks/telegram", () => {
       parse_mode: "HTML",
       reply_parameters: { message_id: Number(fixture.payload.messageId) },
     });
-    expect(call.headers.get("x-vercel-protection-bypass")).toBe(
-      "preview-secret",
-    );
-    expect(call.headers.get("x-vm0-test-endpoint-bypass")).toBe(
-      "preview-secret",
-    );
+    expect(call.headers.get("content-type")).toContain("application/json");
   });
 
   it("includes audit links and agent reply footer text when configured", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     await enableAuditLink(fixture);
     await postTelegramStateAction({
       action: "update-run",
@@ -770,7 +751,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("renders responded-by and selected-model footer text for non-default agent replies", async () => {
-    const fixture = await track(seedResponderFixture());
+    const fixture = await seedResponderFixture();
     await postTelegramStateAction({
       action: "update-run",
       run_id: fixture.runId,
@@ -792,7 +773,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("deletes legacy thinking placeholders and formats generic failed callbacks like Web", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
 
     const result = await dispatchTelegramCallback({
@@ -814,7 +795,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("preserves actionable failed callback errors like Web", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
 
     const result = await dispatchTelegramCallback({
@@ -832,18 +813,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("does not quote DM replies and replaces the DM thread mapping", async () => {
-    const fixture = await track(seedFixture());
-    const runResponse = await postTelegramStateAction({
-      action: "get-run",
-      run_id: fixture.runId,
-    });
-    const run =
-      typeof runResponse.run === "object" && runResponse.run !== null
-        ? (runResponse.run as TelegramStateRun)
-        : null;
-    if (!run?.session_id) {
-      throw new Error("Expected seeded run");
-    }
+    const fixture = await seedFixture();
     const oldSession = await postTelegramStateAction({
       action: "seed-thread-session",
       user_link_id: fixture.userLinkId,
@@ -882,12 +852,12 @@ describe("POST /api/internal/callbacks/telegram", () => {
       chatId: fixture.payload.chatId,
       rootMessageId: "dm",
     });
-    expect(session?.agentSessionId).toBe(run.session_id);
+    expect(session?.agentSessionId).toBe(fixture.sessionId);
     expect(session?.agentSessionId).not.toBe(oldSessionId);
   });
 
   it("uses the official bot token and official message scope", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const officialLink = await postTelegramStateAction({
       action: "seed-official-user-link",
       org_id: fixture.orgId,
@@ -929,7 +899,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   it("returns success without side effects when the installation is missing", async () => {
-    const fixture = await track(seedFixture());
+    const fixture = await seedFixture();
     const telegram = telegramApiMocks();
 
     const result = await dispatchTelegramCallback({

@@ -39,6 +39,7 @@ mod inspection;
 mod lifecycle;
 mod metadata;
 mod path_safety;
+mod sidecar;
 mod types;
 
 #[cfg(test)]
@@ -55,6 +56,8 @@ pub(crate) use types::{
     WorkspaceImageCacheInspectionSummary, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
+    WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarPromotionSource,
+    WorkspaceSessionHistorySidecarRepresentation,
 };
 
 const CACHE_FORMAT_VERSION: u32 = 1;

@@ -2,6 +2,7 @@ import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 
 export type ArtifactCategory =
   | "image"
+  | "video"
   | "website"
   | "presentation"
   | "document"
@@ -18,6 +19,13 @@ function filenameMatches(filename: string, pattern: RegExp): boolean {
 
 function isImageArtifact(item: ArtifactItem): boolean {
   return normalizedContentType(item.contentType).startsWith("image/");
+}
+
+function isVideoArtifact(item: ArtifactItem): boolean {
+  return (
+    normalizedContentType(item.contentType).startsWith("video/") ||
+    filenameMatches(item.filename, /\.(mp4|webm|mov|ogv)$/)
+  );
 }
 
 function isWebsiteArtifact(item: ArtifactItem): boolean {
@@ -85,6 +93,10 @@ export function artifactMatchesCategory(
     return isImageArtifact(item);
   }
 
+  if (category === "video") {
+    return isVideoArtifact(item);
+  }
+
   if (category === "website") {
     return isWebsiteArtifact(item);
   }
@@ -103,21 +115,10 @@ export function artifactMatchesCategory(
 
   return (
     !isImageArtifact(item) &&
+    !isVideoArtifact(item) &&
     !isWebsiteArtifact(item) &&
     !isPresentationArtifact(item) &&
     !isDocumentArtifact(item) &&
     !isDataArtifact(item)
   );
-}
-
-export function filterArtifactsByCategory(
-  artifacts: readonly ArtifactItem[],
-  category: ArtifactCategory | null,
-): ArtifactItem[] {
-  if (!category) {
-    return [...artifacts];
-  }
-  return artifacts.filter((artifact) => {
-    return artifactMatchesCategory(artifact, category);
-  });
 }

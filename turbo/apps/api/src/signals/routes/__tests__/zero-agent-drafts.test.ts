@@ -1,27 +1,34 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteZeroChatThread$,
-  seedZeroChatThread$,
-  type ZeroChatThreadFixture,
-} from "./helpers/zero-chat-threads";
+import { createBddApi } from "./helpers/api-bdd";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
 
-const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-  return store.set(deleteZeroChatThread$, fixture, context.signal);
-});
+interface AgentDraftFixture {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+}
+
+/** Creates an agent through the product routes. */
+async function seedAgent(): Promise<AgentDraftFixture> {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Agent draft agent",
+  });
+  if (!actor.orgId) {
+    throw new Error("Expected the seeded actor to belong to an org");
+  }
+  return { userId: actor.userId, orgId: actor.orgId, agentId: agent.agentId };
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -33,14 +40,12 @@ function draftsClient() {
 
 describe("GET/PATCH /api/zero/agents/:id/draft", () => {
   it("returns an empty draft when none is saved", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
+    const fixture = await seedAgent();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
       draftsClient().get({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
       }),
       [200],
@@ -53,9 +58,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
   });
 
   it("stores and clears the current user's agent draft", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
+    const fixture = await seedAgent();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const attachment = {
@@ -68,7 +71,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     await accept(
       draftsClient().patch({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
           draftContent: "draft text",
@@ -80,7 +83,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     const saved = await accept(
       draftsClient().get({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
       }),
       [200],
@@ -92,7 +95,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     await accept(
       draftsClient().patch({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
           draftContent: null,
@@ -104,7 +107,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     const cleared = await accept(
       draftsClient().get({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
       }),
       [200],
@@ -116,14 +119,12 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
   });
 
   it("does not expose another user's draft on the same public agent", async () => {
-    const fixture = await track(
-      store.set(seedZeroChatThread$, {}, context.signal),
-    );
+    const fixture = await seedAgent();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     await accept(
       draftsClient().patch({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
           draftContent: "owner draft",
@@ -138,7 +139,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
 
     const peerDraft = await accept(
       draftsClient().get({
-        params: { id: fixture.composeId },
+        params: { id: fixture.agentId },
         headers: authHeaders(),
       }),
       [200],

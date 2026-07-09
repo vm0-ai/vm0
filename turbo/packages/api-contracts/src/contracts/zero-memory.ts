@@ -20,6 +20,15 @@ const memoryRecallItemKindSchema = z.enum([
   "preference",
   "open_loop",
 ]);
+const memoryInjectionItemKindSchema = z.enum([
+  "key_fact",
+  "preference",
+  "open_loop",
+  "role",
+  "project",
+  "communication_style",
+  "recent_context",
+]);
 const memorySourceDirectionSchema = z.enum([
   "sent",
   "received",
@@ -118,6 +127,39 @@ export const memoryContextResponseSchema = z.object({
   memories: z.array(memoryRecallItemSchema),
 });
 
+const memoryInjectionItemSchema = z.object({
+  id: z.string().uuid(),
+  kind: memoryInjectionItemKindSchema,
+  text: z.string(),
+  confidence: z.number().int().min(0).max(100),
+  lastSeenAt: z.string(),
+  entity: z.object({
+    id: z.string().uuid(),
+    type: z.enum(["person", "organization", "project", "channel"]),
+    displayName: z.string(),
+  }),
+  sources: z.array(memoryRecallSourceSchema),
+});
+
+export const memoryInjectionPreviewRequestSchema = z.object({
+  prompt: z.string().min(1).max(4000),
+});
+
+export const memoryInjectionPreviewResponseSchema = z.object({
+  prompt: z.string(),
+  appendSystemPrompt: z.string(),
+  profile: z.object({
+    static: z.array(memoryInjectionItemSchema),
+    dynamic: z.array(memoryInjectionItemSchema),
+  }),
+  queryMemories: z.array(memoryInjectionItemSchema),
+  stats: z.object({
+    injectedCount: z.number().int().nonnegative(),
+    omittedCount: z.number().int().nonnegative(),
+    characterCount: z.number().int().nonnegative(),
+  }),
+});
+
 export const memorySourceListResponseSchema = z.object({
   sources: z.array(memorySourceSchema),
   pagination: z.object({
@@ -184,6 +226,16 @@ export type MemoryRecallItemKind = z.infer<typeof memoryRecallItemKindSchema>;
 export type MemoryRecallItem = z.infer<typeof memoryRecallItemSchema>;
 export type MemoryRecallResponse = z.infer<typeof memoryRecallResponseSchema>;
 export type MemoryContextResponse = z.infer<typeof memoryContextResponseSchema>;
+export type MemoryInjectionItemKind = z.infer<
+  typeof memoryInjectionItemKindSchema
+>;
+export type MemoryInjectionItem = z.infer<typeof memoryInjectionItemSchema>;
+export type MemoryInjectionPreviewRequest = z.infer<
+  typeof memoryInjectionPreviewRequestSchema
+>;
+export type MemoryInjectionPreviewResponse = z.infer<
+  typeof memoryInjectionPreviewResponseSchema
+>;
 export type MemorySourceProvider = z.infer<typeof memorySourceProviderSchema>;
 export type MemorySourceListResponse = z.infer<
   typeof memorySourceListResponseSchema
@@ -248,6 +300,20 @@ export const zeroMemoryContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Get prompt-ready structured memory context for the current user",
+  },
+  injectionPreview: {
+    method: "POST",
+    path: "/api/zero/memory/injection-preview",
+    headers: authHeadersSchema,
+    body: memoryInjectionPreviewRequestSchema,
+    responses: {
+      200: memoryInjectionPreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Preview relationship memory runtime system prompt injection",
   },
   sources: {
     method: "GET",

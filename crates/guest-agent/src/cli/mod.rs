@@ -373,6 +373,8 @@ impl<'a> CliRuntimeConfig<'a> {
         {
             return Cow::Borrowed(self.user_env);
         }
+        // Structured Codex runtime config is authoritative; do not let stale
+        // provider env leak a conflicting base URL into the child process.
         let mut user_env = self.user_env.clone();
         user_env.remove(OPENAI_BASE_URL_ENV_KEY);
         Cow::Owned(user_env)
@@ -1520,7 +1522,7 @@ mod tests {
     }
 
     #[test]
-    fn structured_codex_runtime_config_omits_legacy_openai_base_url_from_child_env() {
+    fn structured_codex_runtime_config_omits_stale_openai_base_url_from_child_env() {
         let user_env = HashMap::from([
             ("OPENAI_API_KEY".to_string(), "sk-test".to_string()),
             ("OPENAI_MODEL".to_string(), "MiniMax-M3".to_string()),

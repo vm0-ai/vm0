@@ -495,13 +495,9 @@ const chatMessageNormalSendBodySchema = z.preprocess(
     // Lets the client render an optimistic row and reconcile with the
     // server row by id — no temp-id swap, no React remount.
     clientMessageId: z.string().uuid().optional(),
-    // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
-    // set (CI default), allow the request to bypass the mock and execute
-    // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
-    // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
-    // entry path end-to-end.
-    debugNoMockClaude: z.boolean().optional(),
-    debugNoMockCodex: z.boolean().optional(),
+    // Preview evaluation escape hatch: when enabled, the request asks the
+    // runner to bypass preview mock CLIs and use the real agent runtime.
+    realAgentInPreview: z.boolean().optional(),
     revokesMessageId: z.string().min(1).optional(),
     interruptsRunId: z.undefined().optional(),
   }),
@@ -925,8 +921,7 @@ export const chatMessagesContract = c.router({
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
-        debugNoMockClaude: z.undefined().optional(),
-        debugNoMockCodex: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
         interruptsRunId: z.undefined().optional(),
       }),
       z.object({
@@ -944,8 +939,7 @@ export const chatMessagesContract = c.router({
         computerUseHostId: z.undefined().optional(),
         hasTextContent: z.undefined().optional(),
         attachFiles: z.undefined().optional(),
-        debugNoMockClaude: z.undefined().optional(),
-        debugNoMockCodex: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
         revokesMessageId: z.undefined().optional(),
       }),
     ]),

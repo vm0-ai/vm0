@@ -27,6 +27,9 @@ function parseSource(source: string): ts.SourceFile {
 }
 
 function stringLiteralText(node: ts.Node | undefined): string | null {
+  if (node !== undefined && ts.isAsExpression(node)) {
+    return stringLiteralText(node.expression);
+  }
   if (
     node === undefined ||
     (!ts.isStringLiteral(node) && !ts.isNoSubstitutionTemplateLiteral(node))

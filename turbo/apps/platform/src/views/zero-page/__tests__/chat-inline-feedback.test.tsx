@@ -125,6 +125,18 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
 function dispatchDocumentShortcut(key: string): KeyboardEvent {
   const event = new KeyboardEvent("keydown", {
     bubbles: true,
@@ -262,6 +274,55 @@ describe("chat inline feedback", () => {
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
     });
+  });
+
+  it("keeps composer focus after the inline feedback toolbar closes", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The composer should keep focus after feedback.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      chatMessages: [
+        {
+          id: "msg-feedback-composer-focus-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-composer-focus",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-composer-focus-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-composer-focus",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    const assistantReplyElement = await screen.findByText(assistantReply);
+    selectTextForInlineFeedback(assistantReplyElement);
+
+    await waitFor(() => {
+      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+    });
+
+    const composerEditor = await findComposerEditor();
+    await user.click(composerEditor);
+    expect(composerEditor).toHaveFocus();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    });
+    await waitForDeferredSelectionCapture();
+
+    expect(composerEditor).toHaveFocus();
   });
 
   it("focuses the inline feedback composer when started from the keyboard shortcut", async () => {

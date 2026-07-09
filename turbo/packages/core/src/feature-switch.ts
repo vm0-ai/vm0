@@ -101,6 +101,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
+  [FeatureSwitchKey.NintendoEshopCatalogConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Nintendo eShop public catalog connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
@@ -259,6 +266,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.RealAgentInPreview]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Send preview chat runs through real agent CLIs instead of preview mock runners.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ComposerUploadPopover]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -272,12 +285,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatThreadEmoji]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut.",
-    enabled: true,
-  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -289,6 +296,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the experimental relationship memory tab in the Memory page for org-user-scoped relationship context.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Inject compact relationship memory profile and prompt-relevant memories into Zero run system prompts.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

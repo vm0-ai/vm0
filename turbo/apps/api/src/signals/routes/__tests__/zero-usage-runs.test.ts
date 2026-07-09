@@ -1,26 +1,37 @@
 import { randomUUID } from "node:crypto";
 
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { nowDate } from "../../../lib/time";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteUsageFixture$,
-  insertModelUsage$,
-  insertUsageEvent$,
-  seedRun$,
-  seedUsageFixture$,
-  type UsageFixture,
-} from "./helpers/zero-usage";
+import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
+import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
+const bdd = createBddApi(context);
+const api = createRunsAutomationsApi(context);
+const billing = createBillingMediaApi(context);
+const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
+
+const MODEL_TOKEN_CATEGORIES = {
+  input: "tokens.input",
+  output: "tokens.output",
+  cacheRead: "tokens.cache_read",
+  cacheCreation: "tokens.cache_creation",
+} as const;
+
+interface ModelTokenCounts {
+  readonly input?: number;
+  readonly output?: number;
+  readonly cacheRead?: number;
+  readonly cacheCreation?: number;
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -67,9 +78,147 @@ function createdAt(minutesAgo: number): Date {
   return new Date(nowDate().getTime() - minutesAgo * 60 * 1000);
 }
 
+async function entitledUsageActor(): Promise<ApiTestUser> {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  await api.grantProEntitlement(actor);
+  return actor;
+}
+
+/**
+ * Creates a run whose compose declares an inline framework API key. Such runs
+ * skip model-provider resolution (zero_runs.model_provider stays NULL), so the
+ * sandbox usage-event webhook accepts their model-kind events into the
+ * billing ledger. Without runner infrastructure the run settles into a
+ * terminal status on creation; usage reads only depend on the run row.
+ */
+async function createBillableRun(
+  actor: ApiTestUser,
+  args: {
+    readonly prompt?: string;
+    readonly triggerSource?: TriggerSource;
+    readonly createdAt?: Date;
+  } = {},
+): Promise<{ readonly runId: string; readonly composeId: string }> {
+  const name = `bdd-usage-runs-${randomUUID().slice(0, 8)}`;
+  const compose = await api.createCompose(actor, {
+    version: "1.0",
+    agents: {
+      [name]: {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+      },
+    },
+  });
+  if (args.createdAt) {
+    mockNow(args.createdAt);
+  }
+  const run = await api.createDirectRun(actor, {
+    agentComposeId: compose.composeId,
+    prompt: args.prompt ?? "usage run",
+    ...(args.triggerSource ? { triggerSource: args.triggerSource } : {}),
+  });
+  if (args.createdAt) {
+    clearMockNow();
+  }
+  return { runId: run.runId, composeId: compose.composeId };
+}
+
+// Unit pricing (1 credit per token) keeps webhook-recorded quantities and
+// cron-computed credits aligned one-to-one for readable assertions.
+async function seedModelPricing(model: string): Promise<void> {
+  await seedUsagePricingRows(
+    Object.values(MODEL_TOKEN_CATEGORIES).map((category) => {
+      return {
+        kind: "model",
+        provider: model,
+        category,
+        unitPrice: 1,
+        unitSize: 1,
+      };
+    }),
+  );
+}
+
+async function seedConnectorPricing(provider: string): Promise<void> {
+  await seedUsagePricingRows([
+    {
+      kind: "connector",
+      provider,
+      category: "api_request",
+      unitPrice: 10,
+      unitSize: 1,
+    },
+  ]);
+}
+
+function sandboxHeaders(actor: ApiTestUser, runId: string) {
+  return { authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}` };
+}
+
+async function recordModelUsage(
+  actor: ApiTestUser,
+  runId: string,
+  model: string,
+  tokens: ModelTokenCounts,
+): Promise<void> {
+  const events = (
+    Object.keys(MODEL_TOKEN_CATEGORIES) as (keyof ModelTokenCounts)[]
+  ).flatMap((key) => {
+    const quantity = tokens[key];
+    if (!quantity) {
+      return [];
+    }
+    return [
+      {
+        idempotencyKey: randomUUID(),
+        kind: "model" as const,
+        provider: model,
+        category: MODEL_TOKEN_CATEGORIES[key],
+        quantity,
+      },
+    ];
+  });
+  await webhooks.requestAgentUsageEvent(
+    { runId, events },
+    sandboxHeaders(actor, runId),
+    [200],
+  );
+}
+
+async function recordConnectorUsage(
+  actor: ApiTestUser,
+  runId: string,
+  provider: string,
+  quantity: number,
+): Promise<void> {
+  await webhooks.requestAgentUsageEvent(
+    {
+      runId,
+      events: [
+        {
+          idempotencyKey: randomUUID(),
+          kind: "connector",
+          provider,
+          category: "api_request",
+          quantity,
+        },
+      ],
+    },
+    sandboxHeaders(actor, runId),
+    [200],
+  );
+}
+
+function uniqueModelName(): string {
+  return `bdd-model-${randomUUID().slice(0, 8)}`;
+}
+
 describe("GET /api/zero/usage/runs", () => {
-  const track = createFixtureTracker<UsageFixture>((fixture) => {
-    return store.set(deleteUsageFixture$, fixture, context.signal);
+  afterEach(() => {
+    clearMockNow();
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -84,10 +233,11 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("returns 403 for non-admin users", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
+    mocks.clerk.session(
+      `user_${randomUUID()}`,
+      `org_${randomUUID()}`,
+      "org:member",
     );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -104,10 +254,7 @@ describe("GET /api/zero/usage/runs", () => {
 
   it("returns empty result when no runs have processed usage events", async () => {
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -121,51 +268,30 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("returns per-run records with credit totals", async () => {
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const older = await createBillableRun(actor, {
+      createdAt: createdAt(10),
+    });
+    await recordModelUsage(actor, older.runId, model, {
+      input: 1000,
+      output: 500,
+      cacheRead: 200,
+      cacheCreation: 100,
+    });
+    const newer = await createBillableRun(actor, {
+      createdAt: createdAt(1),
+    });
+    await recordModelUsage(actor, newer.runId, model, {
+      input: 2000,
+      output: 1000,
+    });
+    await billing.processUsageEvents();
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const older = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        createdAt: createdAt(10),
-      },
-      context.signal,
-    );
-    const newer = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(1) },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: older.runId,
-        inputTokens: 1000,
-        outputTokens: 500,
-        cacheReadInputTokens: 200,
-        cacheCreationInputTokens: 100,
-        creditsCharged: 50,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: newer.runId,
-        inputTokens: 2000,
-        outputTokens: 1000,
-        creditsCharged: 100,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -175,51 +301,34 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs).toHaveLength(2);
     expect(response.body.pagination.total).toBe(2);
     expect(response.body.runs[0]?.runId).toBe(newer.runId);
-    expect(response.body.runs[0]?.creditsCharged).toBe(100);
+    expect(response.body.runs[0]?.creditsCharged).toBe(3000);
     expect(response.body.runs[1]?.runId).toBe(older.runId);
-    expect(response.body.runs[1]?.creditsCharged).toBe(50);
+    expect(response.body.runs[1]?.creditsCharged).toBe(1800);
   });
 
   it("filters by runId", async () => {
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const included = await createBillableRun(actor, {
+      createdAt: createdAt(2),
+    });
+    const excluded = await createBillableRun(actor, {
+      createdAt: createdAt(1),
+    });
+    await recordModelUsage(actor, included.runId, model, {
+      input: 123,
+      output: 45,
+    });
+    await recordModelUsage(actor, excluded.runId, model, {
+      input: 999,
+      output: 999,
+    });
+    await billing.processUsageEvents();
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const included = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(2) },
-      context.signal,
-    );
-    const excluded = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(1) },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: included.runId,
-        inputTokens: 123,
-        outputTokens: 45,
-        creditsCharged: 67,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: excluded.runId,
-        inputTokens: 999,
-        outputTokens: 999,
-        creditsCharged: 999,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -237,18 +346,15 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs).toHaveLength(1);
     expect(response.body.runs[0]).toMatchObject({
       runId: included.runId,
-      model: "claude-sonnet-4-6",
+      model,
       inputTokens: 123,
       outputTokens: 45,
-      creditsCharged: 67,
+      creditsCharged: 168,
     });
   });
 
   it("rejects invalid runId format", async () => {
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -262,16 +368,11 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("returns empty result for runId without processed usage", async () => {
+    const actor = await entitledUsageActor();
+    const run = await createBillableRun(actor);
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const run = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -288,31 +389,18 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("does not leak another org's runId", async () => {
+    const otherActor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+    const otherRun = await createBillableRun(otherActor);
+    await recordModelUsage(otherActor, otherRun.runId, model, {
+      input: 100,
+      output: 50,
+    });
+    await billing.processUsageEvents();
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const otherFixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const otherRun = await store.set(
-      seedRun$,
-      { orgId: otherFixture.orgId, userId: otherFixture.userId },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: otherFixture.orgId,
-        userId: otherFixture.userId,
-        runId: otherRun.runId,
-        inputTokens: 100,
-        outputTokens: 50,
-        creditsCharged: 25,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -329,32 +417,22 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("paginates results correctly", async () => {
-    mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
     for (let index = 0; index < 3; index++) {
-      const run = await store.set(
-        seedRun$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          createdAt: createdAt(10 - index),
-        },
-        context.signal,
-      );
-      await store.set(
-        insertModelUsage$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          runId: run.runId,
-          creditsCharged: (index + 1) * 10,
-        },
-        context.signal,
-      );
+      const run = await createBillableRun(actor, {
+        createdAt: createdAt(10 - index),
+      });
+      await recordModelUsage(actor, run.runId, model, {
+        output: (index + 1) * 10,
+      });
     }
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await billing.processUsageEvents();
+
+    mockClerkUserLookup();
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response1 = await accept(
       apiClient().get({
@@ -382,93 +460,54 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("filters by userIds", async () => {
+    const actor = await entitledUsageActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const actorRun = await createBillableRun(actor, {
+      createdAt: createdAt(2),
+    });
+    const memberRun = await createBillableRun(member, {
+      createdAt: createdAt(1),
+    });
+    await recordModelUsage(actor, actorRun.runId, model, { output: 50 });
+    await recordModelUsage(member, memberRun.runId, model, { output: 100 });
+    await billing.processUsageEvents();
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const user1 = `user_${randomUUID()}`;
-    const user2 = `user_${randomUUID()}`;
-    const run1 = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: user1, createdAt: createdAt(2) },
-      context.signal,
-    );
-    const run2 = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: user2, createdAt: createdAt(1) },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: user1,
-        runId: run1.runId,
-        creditsCharged: 50,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: user2,
-        runId: run2.runId,
-        creditsCharged: 100,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({
-        query: { userIds: ` ${user1}, ` },
+        query: { userIds: ` ${member.userId}, ` },
         headers: authHeaders(),
       }),
       [200],
     );
 
     expect(response.body.runs).toHaveLength(1);
-    expect(response.body.runs[0]?.userId).toBe(user1);
-    expect(response.body.runs[0]?.creditsCharged).toBe(50);
+    expect(response.body.runs[0]?.userId).toBe(member.userId);
+    expect(response.body.runs[0]?.creditsCharged).toBe(100);
   });
 
   it("filters by agentId", async () => {
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const included = await createBillableRun(actor, {
+      createdAt: createdAt(2),
+    });
+    const excluded = await createBillableRun(actor, {
+      createdAt: createdAt(1),
+    });
+    await recordModelUsage(actor, included.runId, model, { output: 50 });
+    await recordModelUsage(actor, excluded.runId, model, { output: 100 });
+    await billing.processUsageEvents();
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const included = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(2) },
-      context.signal,
-    );
-    const excluded = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(1) },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: included.runId,
-        creditsCharged: 50,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: excluded.runId,
-        creditsCharged: 100,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -487,61 +526,31 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("filters by created-at date range", async () => {
-    mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
     const dateFrom = new Date("2026-01-10T00:00:00.000Z");
     const dateTo = new Date("2026-01-11T00:00:00.000Z");
-    const before = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        createdAt: new Date("2026-01-09T12:00:00.000Z"),
-      },
-      context.signal,
-    );
-    const inside = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        createdAt: new Date("2026-01-10T12:00:00.000Z"),
-      },
-      context.signal,
-    );
-    const endBoundary = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        createdAt: dateTo,
-      },
-      context.signal,
-    );
-    const after = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        createdAt: new Date("2026-01-11T12:00:00.000Z"),
-      },
-      context.signal,
-    );
+    const before = await createBillableRun(actor, {
+      createdAt: new Date("2026-01-09T12:00:00.000Z"),
+    });
+    const inside = await createBillableRun(actor, {
+      createdAt: new Date("2026-01-10T12:00:00.000Z"),
+    });
+    const endBoundary = await createBillableRun(actor, {
+      createdAt: dateTo,
+    });
+    const after = await createBillableRun(actor, {
+      createdAt: new Date("2026-01-11T12:00:00.000Z"),
+    });
     for (const run of [before, inside, endBoundary, after]) {
-      await store.set(
-        insertModelUsage$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          runId: run.runId,
-          creditsCharged: 50,
-        },
-        context.signal,
-      );
+      await recordModelUsage(actor, run.runId, model, { output: 50 });
     }
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await billing.processUsageEvents();
+
+    mockClerkUserLookup();
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({
@@ -563,42 +572,23 @@ describe("GET /api/zero/usage/runs", () => {
   });
 
   it("excludes runs with only pending usage events", async () => {
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const processed = await createBillableRun(actor, {
+      createdAt: createdAt(2),
+    });
+    await recordModelUsage(actor, processed.runId, model, { output: 50 });
+    await billing.processUsageEvents();
+
+    const pending = await createBillableRun(actor, {
+      createdAt: createdAt(1),
+    });
+    await recordModelUsage(actor, pending.runId, model, { output: 999 });
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const processed = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(2) },
-      context.signal,
-    );
-    const pending = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId, createdAt: createdAt(1) },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: processed.runId,
-        creditsCharged: 50,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: pending.runId,
-        creditsCharged: 0,
-        status: "pending",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -610,50 +600,23 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.runs[0]?.creditsCharged).toBe(50);
   });
 
-  it("returns run-linked usage_event records and excludes runless events", async () => {
+  // Run-less usage events (built-in generation charges without a run) are
+  // exercised through their own product surfaces in zero-image-io-generate
+  // tests; the agent usage-event webhook always requires a run.
+  it("aggregates mixed-kind usage_event records for a run", async () => {
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    const connectorProvider = `bdd-connector-${randomUUID().slice(0, 8)}`;
+    await seedModelPricing(model);
+    await seedConnectorPricing(connectorProvider);
+
+    const run = await createBillableRun(actor);
+    await recordModelUsage(actor, run.runId, model, { input: 300 });
+    await recordConnectorUsage(actor, run.runId, connectorProvider, 2);
+    await billing.processUsageEvents();
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const run = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 300,
-        creditsCharged: 30,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        creditsCharged: 20,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        creditsCharged: 999,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -664,110 +627,39 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.body.pagination.total).toBe(1);
     expect(response.body.runs[0]).toMatchObject({
       runId: run.runId,
-      model: "claude-sonnet-4-6",
+      model,
       inputTokens: 300,
       outputTokens: 0,
       cacheTokens: 0,
-      creditsCharged: 50,
+      creditsCharged: 320,
     });
   });
 
   it("sums multiple usage_event totals for the same run", async () => {
+    const actor = await entitledUsageActor();
+    const model = uniqueModelName();
+    await seedModelPricing(model);
+
+    const run = await createBillableRun(actor);
+    await recordModelUsage(actor, run.runId, model, {
+      input: 100,
+      output: 50,
+      cacheRead: 20,
+      cacheCreation: 10,
+    });
+    await recordModelUsage(actor, run.runId, model, {
+      input: 30,
+      output: 70,
+      cacheRead: 11,
+      cacheCreation: 13,
+    });
+    await billing.processUsageEvents();
+
+    // A later, still-pending event must not contribute to the totals.
+    await recordModelUsage(actor, run.runId, model, { input: 9999 });
+
     mockClerkUserLookup();
-    const fixture = await track(
-      store.set(seedUsageFixture$, {}, context.signal),
-    );
-    const run = await store.set(
-      seedRun$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsage$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 20,
-        cacheCreationInputTokens: 10,
-        creditsCharged: 40,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 30,
-        creditsCharged: 3,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.output",
-        quantity: 70,
-        creditsCharged: 7,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.cache_read",
-        quantity: 11,
-        creditsCharged: 1,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.cache_creation",
-        quantity: 13,
-        creditsCharged: 2,
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run.runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 9999,
-        creditsCharged: 999,
-        status: "pending",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const response = await accept(
       apiClient().get({ query: {}, headers: authHeaders() }),
@@ -781,7 +673,7 @@ describe("GET /api/zero/usage/runs", () => {
       inputTokens: 130,
       outputTokens: 120,
       cacheTokens: 54,
-      creditsCharged: 53,
+      creditsCharged: 304,
     });
   });
 });

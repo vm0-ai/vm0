@@ -4,12 +4,18 @@ import {
   type FirewallPolicyValue,
 } from "../firewall-types";
 import { loadGeneratedFirewallPermissionMetadata } from "./permission-detail-loader.generated";
-import { FIREWALL_PERMISSION_METADATA_SUMMARIES } from "./permission-summaries.generated";
+import {
+  FIREWALL_PERMISSION_METADATA_SUMMARIES,
+  type FirewallPermissionMetadataConnectorType,
+} from "./permission-summaries.generated";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyResolver,
 } from "./policy-resolver";
-import { FIREWALL_SERVER_EXECUTION_METADATA } from "./server-execution.generated";
+import {
+  FIREWALL_SERVER_EXECUTION_METADATA,
+  type FirewallServerExecutionMetadataConnectorType,
+} from "./server-execution.generated";
 import { BUILTIN_FIREWALL_FIXED_HOST_OWNERS } from "./server.generated";
 import type {
   FirewallExecutionMetadata,
@@ -21,9 +27,9 @@ import type {
 export type { FirewallExecutionMetadata } from "./types";
 
 export type FirewallServerMetadataConnectorType =
-  keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
+  FirewallPermissionMetadataConnectorType;
 export type FirewallExecutionMetadataConnectorType =
-  keyof typeof FIREWALL_SERVER_EXECUTION_METADATA;
+  FirewallServerExecutionMetadataConnectorType;
 
 export interface BuiltinConnectorHostOwner {
   readonly type: FirewallServerMetadataConnectorType;

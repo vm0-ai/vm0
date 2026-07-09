@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const COMPUTER_USE_PLUGIN_CALL_KIND = "plugin.call" as const;
 export const COMPUTER_USE_FILESYSTEM_PLUGIN = "filesystem" as const;
+export const COMPUTER_USE_MCP_PLUGIN = "mcp" as const;
+export const COMPUTER_USE_MCP_LIST_TOOLS = "tools/list" as const;
 export const COMPUTER_USE_FILESYSTEM_MCP_PACKAGE =
   "@modelcontextprotocol/server-filesystem" as const;
 export const COMPUTER_USE_FILESYSTEM_MCP_VERSION = "2026.1.14" as const;
@@ -274,6 +276,78 @@ export function isComputerUsePluginCallPayload(
     payload.plugin === COMPUTER_USE_FILESYSTEM_PLUGIN &&
     typeof payload.tool === "string" &&
     isComputerUseFilesystemTool(payload.tool) &&
+    typeof payload.arguments === "object" &&
+    payload.arguments !== null &&
+    !Array.isArray(payload.arguments)
+  );
+}
+
+export const COMPUTER_USE_MCP_SERVER_NAME_PATTERN = /^[a-z0-9_-]{1,64}$/;
+
+export function computerUseMcpServerCapability(server: string): string {
+  return `plugin.${COMPUTER_USE_MCP_PLUGIN}.${server}`;
+}
+
+export const computerUseMcpPluginCallBodySchema = z.object({
+  plugin: z.literal(COMPUTER_USE_MCP_PLUGIN),
+  server: z
+    .string()
+    .regex(
+      COMPUTER_USE_MCP_SERVER_NAME_PATTERN,
+      "MCP server names must match [a-z0-9_-]{1,64}",
+    ),
+  tool: z.string().trim().min(1).max(256),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  timeoutMs: z.number().int().min(1_000).max(120_000).default(60_000),
+});
+
+export type ComputerUseMcpPluginCallBody = z.infer<
+  typeof computerUseMcpPluginCallBodySchema
+>;
+
+export const computerUseAnyPluginCallBodySchema = z.union([
+  computerUsePluginCallBodySchema,
+  computerUseMcpPluginCallBodySchema,
+]);
+
+export type ComputerUseAnyPluginCallBody = z.infer<
+  typeof computerUseAnyPluginCallBodySchema
+>;
+
+export function computerUseMcpPluginCallRequiredCapabilities(
+  server: string,
+): readonly string[] {
+  return [
+    COMPUTER_USE_PLUGIN_CALL_KIND,
+    computerUseMcpServerCapability(server),
+  ];
+}
+
+export interface ComputerUseMcpPluginCallPayload {
+  readonly plugin: typeof COMPUTER_USE_MCP_PLUGIN;
+  readonly server: string;
+  readonly tool: string;
+  readonly arguments: Record<string, unknown>;
+}
+
+export function isComputerUseMcpPluginCallPayload(
+  value: unknown,
+): value is ComputerUseMcpPluginCallPayload {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const payload = value as {
+    readonly plugin?: unknown;
+    readonly server?: unknown;
+    readonly tool?: unknown;
+    readonly arguments?: unknown;
+  };
+  return (
+    payload.plugin === COMPUTER_USE_MCP_PLUGIN &&
+    typeof payload.server === "string" &&
+    COMPUTER_USE_MCP_SERVER_NAME_PATTERN.test(payload.server) &&
+    typeof payload.tool === "string" &&
+    payload.tool.length > 0 &&
     typeof payload.arguments === "object" &&
     payload.arguments !== null &&
     !Array.isArray(payload.arguments)

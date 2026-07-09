@@ -1,8 +1,9 @@
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
+
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { v5 as uuidv5 } from "uuid";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -11,25 +12,17 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
 import {
-  deleteGenerationFixture,
-  deleteGenerationPricingRows,
-  readGenerationJobs,
-  readGenerationUploadedFiles,
-  readGenerationUsageEvents,
-  restoreGenerationPricingRows,
-  seedGenerationFixture,
-  type GenerationPricingRow,
-  upsertGenerationPricingRows,
-} from "./helpers/zero-generation-state";
+  deleteUsagePricingRows,
+  seedOrgMetadata,
+  seedUsagePricingRows,
+  type UsagePricingRow,
+} from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-} from "./helpers/zero-usage-insight";
+import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -44,8 +37,6 @@ const VIDEO_BYTES = Buffer.from("fake video bytes");
 const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
 const BYTEPLUS_VIDEO_TASKS_URL =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
-const BUILT_IN_GENERATION_USAGE_NAMESPACE =
-  "7ed0d80f-a1be-4a53-b182-0195e2e8b7f4";
 const BYTEPLUS_VIDEO_URL =
   "https://ark-content.byteplus.example/files/video-output.mp4";
 const FAL_VEO_FAST_MODEL = "fal-ai/veo3.1/fast";
@@ -151,19 +142,12 @@ const VIDEO_PRICING_DEFAULTS = [
   },
 ] as const;
 
-function builtInGenerationUsageIdempotencyKey(parts: {
-  readonly generationId: string;
-  readonly scope: string;
-  readonly category: string;
-}): string {
-  return uuidv5(
-    `${parts.generationId}:${parts.scope}:${parts.category}`,
-    BUILT_IN_GENERATION_USAGE_NAMESPACE,
-  );
+interface VideoFixture {
+  readonly orgId: string;
+  readonly userId: string;
 }
 
-type VideoFixture = Awaited<ReturnType<typeof seedGenerationFixture>>;
-type PricingSnapshot = GenerationPricingRow;
+type PricingSnapshot = UsagePricingRow;
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -176,6 +160,7 @@ function createVideoIoTestApp() {
       ...zeroBuiltInGenerationRoutes,
       ...zeroVideoIoGenerateRoutes,
       ...webhooksBuiltInGenerationRoutes,
+      ...zeroBillingStatusRoutes,
     ],
   });
 }
@@ -290,6 +275,24 @@ function readGenerationResult(body: unknown): unknown {
   throw new Error("Expected completed generation result");
 }
 
+// Recovers the generation ID for a synchronously failed submission from its
+// realtime failure publish (`built-in-generation:{id}`), the product-visible
+// signal a client would use.
+function readPublishedGenerationId(
+  publishCalls: readonly (readonly unknown[])[],
+): string {
+  for (const call of publishCalls) {
+    const eventName = call[0];
+    if (
+      typeof eventName === "string" &&
+      eventName.startsWith("built-in-generation:")
+    ) {
+      return eventName.slice("built-in-generation:".length);
+    }
+  }
+  throw new Error("Expected a built-in-generation publish");
+}
+
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -309,8 +312,7 @@ function zeroToken(args: {
 }
 
 async function upsertDefaultVideoPricingRows(): Promise<void> {
-  await upsertGenerationPricingRows(
-    context.signal,
+  await seedUsagePricingRows(
     VIDEO_PRICING_DEFAULTS.map((row) => {
       return {
         kind: "video",
@@ -331,7 +333,7 @@ async function deleteDefaultModelPricingRows(): Promise<
   }).map((row) => {
     return row.category;
   });
-  return await deleteGenerationPricingRows(context.signal, {
+  return await deleteUsagePricingRows({
     kind: "video",
     provider: VIDEO_IO_MODEL,
     categories,
@@ -341,19 +343,25 @@ async function deleteDefaultModelPricingRows(): Promise<
 async function restoreVideoPricingRows(
   rows: readonly PricingSnapshot[],
 ): Promise<void> {
-  await restoreGenerationPricingRows(context.signal, rows);
+  await seedUsagePricingRows(rows);
 }
 
+// Isolation comes from random org/user IDs; no teardown is needed.
 async function seedVideoFixture(options: {
   readonly credits?: number;
   readonly tier?: OrgTier;
   readonly withPricing?: boolean;
 }): Promise<VideoFixture> {
-  const fixture = await seedGenerationFixture(context.signal, {
-    credits: options.credits,
-    tier: options.tier,
-  });
+  const fixture = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
 
+  await seedOrgMetadata({
+    orgId: fixture.orgId,
+    tier: options.tier ?? "free",
+    credits: options.credits ?? 10_000,
+  });
   await store.set(
     seedOrgMembership$,
     { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
@@ -367,13 +375,28 @@ async function seedVideoFixture(options: {
   return fixture;
 }
 
-async function deleteVideoFixture(fixture: VideoFixture): Promise<void> {
-  await deleteGenerationFixture(context.signal, fixture);
-  await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+// Reads the org credit balance through the product billing surface so charge
+// assertions stay on externally observable state.
+async function orgCredits(fixture: VideoFixture): Promise<number> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  const app = createVideoIoTestApp();
+  const response = await app.request("/api/zero/billing/status", {
+    headers: authHeaders(),
+  });
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("credits" in body) ||
+    typeof body.credits !== "number"
+  ) {
+    throw new Error("Expected billing status credits");
+  }
+  return body.credits;
 }
 
 describe("POST /api/zero/video-io/generate", () => {
-  const track = createFixtureTracker<VideoFixture>(deleteVideoFixture);
   const trackPricing = createFixtureTracker<readonly PricingSnapshot[]>(
     restoreVideoPricingRows,
   );
@@ -411,7 +434,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects unsupported durations before BytePlus", async () => {
-    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const fixture = await seedVideoFixture({ withPricing: true });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -440,7 +463,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects BytePlus 4k requests before provider submission", async () => {
-    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const fixture = await seedVideoFixture({ withPricing: true });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -472,7 +495,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("returns 402 when the org has no spendable credits", async () => {
-    const fixture = await track(seedVideoFixture({ credits: 0 }));
+    const fixture = await seedVideoFixture({ credits: 0 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const app = createVideoIoTestApp();
@@ -492,13 +515,11 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("returns 402 with the paid-plan upgrade message for limited-free-1 orgs", async () => {
-    const fixture = await track(
-      seedVideoFixture({
-        credits: 10_000,
-        tier: "limited-free-1",
-        withPricing: true,
-      }),
-    );
+    const fixture = await seedVideoFixture({
+      credits: 10_000,
+      tier: "limited-free-1",
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -527,13 +548,11 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("allows Team orgs to submit paid video generation", async () => {
-    const fixture = await track(
-      seedVideoFixture({
-        credits: 10_000,
-        tier: "team",
-        withPricing: true,
-      }),
-    );
+    const fixture = await seedVideoFixture({
+      credits: 10_000,
+      tier: "team",
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -560,7 +579,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("returns 503 when video pricing is not configured", async () => {
-    const fixture = await track(seedVideoFixture({ credits: 1000 }));
+    const fixture = await seedVideoFixture({ credits: 1000 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     await upsertDefaultVideoPricingRows();
     await trackPricing(deleteDefaultModelPricingRows());
@@ -590,7 +609,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates video files with BytePlus and charges actual callback token usage", async () => {
-    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const fixture = await seedVideoFixture({ withPricing: true });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -752,59 +771,14 @@ describe("POST /api/zero/video-io/generate", () => {
     }
     expect(putBody).toStrictEqual(VIDEO_BYTES);
 
-    const uploadRows = await readGenerationUploadedFiles(context.signal, {
-      externalId: fileId,
-    });
-    expect(uploadRows).toHaveLength(1);
-    expect(uploadRows[0]).toMatchObject({
-      runId,
-      source: "web",
-      externalId: fileId,
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      filename,
-      contentType: "video/mp4",
-      sizeBytes: VIDEO_BYTES.byteLength,
-      url,
-    });
-    expect(uploadRows[0]?.metadata).toMatchObject({
-      generatedBy: "zero-official-video",
-      model: VIDEO_IO_MODEL,
-      sourceUrl: BYTEPLUS_VIDEO_URL,
-      requestId: "byteplus-video-task",
-      aspectRatio: "16:9",
-      duration: "8s",
-      durationSeconds: 8,
-      resolution: "720p",
-      generateAudio: true,
-      billingQuantity: 123_456,
-      s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
-    });
-
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "video",
-      provider: VIDEO_IO_MODEL,
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      runId,
-      idempotencyKey: builtInGenerationUsageIdempotencyKey({
-        generationId,
-        scope: "video",
-        category: "output_video_tokens.480p_720p.no_video",
-      }),
-      category: "output_video_tokens.480p_720p.no_video",
-      quantity: 123_456,
-      creditsCharged: 1383,
-      status: "processed",
-      billingError: null,
-    });
+    // The callback-token charge (123,456 tokens at the no-video 720p rate) is
+    // asserted through the result body above and the exact org balance drop,
+    // observed on the product billing surface.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1383);
   });
 
   it("submits a single Dreamina first-frame image without a frame role", async () => {
-    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const fixture = await seedVideoFixture({ withPricing: true });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -900,7 +874,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
-    const fixture = await track(seedVideoFixture({ credits: 10_000 }));
+    const fixture = await seedVideoFixture({ credits: 10_000 });
     await upsertDefaultVideoPricingRows();
     const { composeId } = await store.set(
       seedCompose$,
@@ -1034,24 +1008,14 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "dreamina-video-task",
     });
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "video",
-      provider: "dreamina-seedance-2-0-260128",
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      category: "output_video_tokens.1080p.with_video",
-      quantity: 200_000,
-      creditsCharged: 1880,
-      status: "processed",
-      billingError: null,
-    });
+    // creditsCharged 1880 = 200,000 tokens at the 1080p with-video rate
+    // (9400/1M); the no-video rate would charge 3080, so the exact balance
+    // drop pins the with-video pricing category.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1880);
   });
 
   it("generates video files with the recommended Fal fallback model", async () => {
-    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const fixture = await seedVideoFixture({ withPricing: true });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1160,24 +1124,13 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "video-request",
     });
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "video",
-      provider: FAL_VEO_FAST_MODEL,
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      category: "output_video_seconds.audio",
-      quantity: 8,
-      creditsCharged: 1440,
-      status: "processed",
-      billingError: null,
-    });
+    // creditsCharged 1440 = 8 seconds at the audio rate (180/s); the silent
+    // rate would charge 960, so the exact balance drop pins the category.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 1440);
   });
 
   it("generates video files with the recommended Kling 4K model", async () => {
-    const fixture = await track(seedVideoFixture({ withPricing: true }));
+    const fixture = await seedVideoFixture({ withPricing: true });
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1269,26 +1222,16 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "kling-video-request",
     });
 
-    const usageRows = await readGenerationUsageEvents(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      kind: "video",
-      provider: KLING_V3_4K_MODEL,
-    });
-    expect(usageRows).toHaveLength(1);
-    expect(usageRows[0]).toMatchObject({
-      category: "output_video_seconds.audio.4k",
-      quantity: 5,
-      creditsCharged: 2520,
-      status: "processed",
-      billingError: null,
-    });
+    // creditsCharged 2520 = 5 seconds at the 4k audio rate (504/s); the exact
+    // balance drop pins the single settled charge.
+    await expect(orgCredits(fixture)).resolves.toBe(10_000 - 2520);
   });
 
   it("records a failed job when BytePlus video generation fails", async () => {
-    const fixture = await track(
-      seedVideoFixture({ credits: 1000, withPricing: true }),
-    );
+    const fixture = await seedVideoFixture({
+      credits: 1000,
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
       http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
@@ -1322,12 +1265,26 @@ describe("POST /api/zero/video-io/generate", () => {
         code: "BYTEPLUS_INVALID_PARAMETER",
       },
     });
-    const jobRows = await readGenerationJobs(context.signal, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-    });
-    expect(jobRows).toHaveLength(1);
-    expect(jobRows[0]).toMatchObject({
+    // The failed job is observed through its realtime failure event and the
+    // product status route rather than by reading job rows.
+    const generationId = readPublishedGenerationId(
+      context.mocks.ably.publish.mock.calls,
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `built-in-generation:${generationId}`,
+      expect.objectContaining({
+        generationId,
+        type: "video",
+        status: "failed",
+      }),
+    );
+    const statusResponse = await app.request(
+      `/api/zero/built-in-generations/${generationId}`,
+      { headers: authHeaders() },
+    );
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      generationId,
       type: "video",
       status: "failed",
       error: {
@@ -1336,21 +1293,14 @@ describe("POST /api/zero/video-io/generate", () => {
         code: "BYTEPLUS_INVALID_PARAMETER",
       },
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `built-in-generation:${jobRows[0]?.id}`,
-      expect.objectContaining({
-        generationId: jobRows[0]?.id,
-        type: "video",
-        status: "failed",
-      }),
-    );
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
   it("records specific BytePlus webhook failure details on async failure", async () => {
-    const fixture = await track(
-      seedVideoFixture({ credits: 1000, withPricing: true }),
-    );
+    const fixture = await seedVideoFixture({
+      credits: 1000,
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     let observedBody: unknown = null;
@@ -1406,17 +1356,7 @@ describe("POST /api/zero/video-io/generate", () => {
       },
     });
 
-    const jobRows = await readGenerationJobs(context.signal, {
-      id: generationId,
-    });
-    expect(jobRows[0]).toMatchObject({
-      type: "video",
-      status: "failed",
-      error: {
-        message:
-          "BytePlus video generation failed: The request failed because the input image may contain real person.",
-        code: "BYTEPLUS_INPUT_IMAGE_SENSITIVE_CONTENT_DETECTED_PRIVACY_INFORMATION",
-      },
-    });
+    // The failure details are fully asserted on the product status route
+    // above; the internal job-row read added no product-visible coverage.
   });
 });

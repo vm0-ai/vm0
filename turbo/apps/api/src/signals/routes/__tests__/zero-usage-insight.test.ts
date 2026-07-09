@@ -1,35 +1,41 @@
 import { randomUUID } from "node:crypto";
 
-import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
+import {
+  triggerSourceSchema,
+  type TriggerSource,
+} from "@vm0/api-contracts/contracts/logs";
 import {
   type UsageInsightBucket,
   zeroUsageInsightContract,
 } from "@vm0/api-contracts/contracts/zero-usage-insight";
-import { createStore } from "ccstate";
-
-import { afterEach } from "vitest";
+import { HttpResponse, http } from "msw";
+import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
+import { nowDate } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 import {
-  deleteUsageInsightFixture$,
-  insertModelUsageEventForRun$,
-  insertUsageEvent$,
-  seedChatThread$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  setUsageEventCreatedAt$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+  ensureUsagePricingRow,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
+/*
+ * Usage rows are bucketed by their database insertion time, which cannot be
+ * backdated through any product path. All seeded activity therefore lands in
+ * the current hour; window-boundary behavior for past days (yesterday
+ * buckets, 7d/day-window edges, timezone date shifts, and the
+ * activity-vs-billing-time distinction) is no longer covered here.
+ */
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const GOOGLE_GEOCODING_URL =
+  "https://maps.googleapis.com/maps/api/geocode/json";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -54,15 +60,158 @@ function sumBucketSeries(
   return totals;
 }
 
+async function entitledInsightActor(): Promise<ApiTestUser> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  return actor;
+}
+
+/**
+ * Creates a compose with an inline model key. Direct runs launched from it
+ * carry no managed model provider, so the sandbox usage webhook accepts
+ * model-kind billing events for them (vm0-billed model usage).
+ */
+async function createInsightCompose(
+  actor: ApiTestUser,
+  name = `usage-insight-${randomUUID().slice(0, 8)}`,
+): Promise<{ readonly composeId: string; readonly name: string }> {
+  const api = createRunsAutomationsApi(context);
+  return await api.createCompose(actor, {
+    version: "1",
+    agents: {
+      [name]: {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+      },
+    },
+  });
+}
+
+async function createSourceRun(
+  actor: ApiTestUser,
+  composeId: string,
+  triggerSource: TriggerSource,
+): Promise<string> {
+  const api = createRunsAutomationsApi(context);
+  const run = await api.createDirectRun(actor, {
+    agentComposeId: composeId,
+    prompt: "generate usage insight activity",
+    triggerSource,
+  });
+  // Free the org's concurrent-run slot; usage attribution only needs the
+  // run row and its trigger source, not a live run.
+  await api.requestCancelRun(actor, run.runId, [200]);
+  return run.runId;
+}
+
+interface UsageEventSpec {
+  readonly kind: "connector" | "model";
+  readonly category: string;
+  readonly quantity: number;
+  readonly credits: number;
+}
+
+/**
+ * Reports usage events against the run through the sandbox webhook. Each
+ * event gets a dedicated pricing row (unique provider) sized so the charge
+ * equals `credits` exactly once pending events are processed.
+ */
+async function reportRunUsage(
+  actor: ApiTestUser,
+  runId: string,
+  specs: readonly UsageEventSpec[],
+): Promise<void> {
+  const api = createRunsAutomationsApi(context);
+  const webhooks = createWebhookCallbackApi(context);
+  const events = specs.map((spec) => {
+    return {
+      idempotencyKey: randomUUID(),
+      kind: spec.kind,
+      provider: `bdd-ui-${randomUUID().slice(0, 8)}`,
+      category: spec.category,
+      quantity: spec.quantity,
+    };
+  });
+  await seedUsagePricingRows(
+    events.map((event, index) => {
+      const spec = specs[index];
+      if (!spec) {
+        throw new Error("Usage event spec missing");
+      }
+      return {
+        kind: event.kind,
+        provider: event.provider,
+        category: event.category,
+        unitPrice: spec.credits,
+        unitSize: Math.max(spec.quantity, 1),
+      };
+    }),
+  );
+  await webhooks.requestAgentUsageEvent(
+    { runId, events },
+    { authorization: `Bearer ${api.sandboxTokenForRun(actor, runId)}` },
+    [200],
+  );
+}
+
+async function processPendingUsage(): Promise<void> {
+  const billing = createBillingMediaApi(context);
+  await billing.processUsageEvents();
+}
+
+/**
+ * Records runless usage through the Zero Maps geocode product route (billed
+ * without a run and settled inline). Returns the exact credits charged.
+ */
+async function recordRunlessUsage(actor: ApiTestUser): Promise<number> {
+  const billing = createBillingMediaApi(context);
+  billing.configureMapsProvider();
+  await ensureUsagePricingRow({
+    kind: "maps",
+    provider: "google-maps",
+    category: "geocoding",
+    unitPrice: 6,
+    unitSize: 1,
+  });
+  server.use(
+    http.get(GOOGLE_GEOCODING_URL, () => {
+      return HttpResponse.json({
+        status: "OK",
+        results: [
+          {
+            formatted_address: "1 Infinite Loop, Cupertino, CA",
+            geometry: { location: { lat: 37.3317, lng: -122.0301 } },
+          },
+        ],
+      });
+    }),
+  );
+  const geocode = await billing.requestMapsGeocode(
+    actor,
+    { address: "1 Infinite Loop, Cupertino" },
+    [200],
+  );
+  if (geocode.status !== 200) {
+    throw new Error("Expected the geocode call to succeed");
+  }
+  const { creditsCharged } = geocode.body;
+  if (typeof creditsCharged !== "number") {
+    throw new Error("Expected the geocode response to report creditsCharged");
+  }
+  return creditsCharged;
+}
+
+function authenticateInsightActor(actor: ApiTestUser): void {
+  mocks.clerk.session(actor.userId, actor.orgId);
+}
+
 describe("GET /api/zero/usage/insight", () => {
-  const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
-    return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  });
-
-  afterEach(() => {
-    clearMockNow();
-  });
-
   it("returns 401 when not authenticated", async () => {
     const response = await accept(
       apiClient().get({
@@ -94,10 +243,7 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("returns 400 for invalid timezone", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -111,10 +257,7 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("accepts timezone aliases supported by Intl.DateTimeFormat", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -128,10 +271,7 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("returns 400 when range=day is missing a date", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const response = await accept(
       apiClient().get({
@@ -145,39 +285,15 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("happy path — shape and totals add up for range=7d groupBy=source tz=UTC", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-        status: "completed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        inputTokens: 1000,
-        outputTokens: 500,
-        creditsCharged: 100,
-        status: "processed",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const actor = await entitledInsightActor();
+    const compose = await createInsightCompose(actor);
+    const runId = await createSourceRun(actor, compose.composeId, "web");
+    await reportRunUsage(actor, runId, [
+      { kind: "model", category: "tokens.input", quantity: 1000, credits: 100 },
+      { kind: "model", category: "tokens.output", quantity: 500, credits: 0 },
+    ]);
+    await processPendingUsage();
+    authenticateInsightActor(actor);
 
     const response = await accept(
       apiClient().get({
@@ -204,41 +320,18 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("source mapping — every TriggerSource lands in the correct bucket", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+    const actor = await entitledInsightActor();
+    const compose = await createInsightCompose(actor);
 
     for (const source of triggerSourceSchema.options) {
-      const { runId } = await store.set(
-        seedRun$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          composeId,
-          triggerSource: source,
-          status: "completed",
-        },
-        context.signal,
-      );
-      await store.set(
-        insertModelUsageEventForRun$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          runId,
-          creditsCharged: 50,
-          status: "processed",
-        },
-        context.signal,
-      );
+      const runId = await createSourceRun(actor, compose.composeId, source);
+      await reportRunUsage(actor, runId, [
+        { kind: "connector", category: "call", quantity: 1, credits: 50 },
+      ]);
     }
+    await processPendingUsage();
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "7d", groupBy: "source", tz: "UTC" },
@@ -262,45 +355,26 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("groupBy=agent with 9 agents produces top-7 + others series keys", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
+    const actor = await entitledInsightActor();
 
     for (let i = 1; i <= 9; i++) {
-      const { composeId } = await store.set(
-        seedCompose$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          name: `agent-${i}-${randomUUID().slice(0, 8)}`,
-        },
-        context.signal,
+      const compose = await createInsightCompose(
+        actor,
+        `agent-${i}-${randomUUID().slice(0, 8)}`,
       );
-      const { runId } = await store.set(
-        seedRun$,
+      const runId = await createSourceRun(actor, compose.composeId, "cli");
+      await reportRunUsage(actor, runId, [
         {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          composeId,
-          triggerSource: "cli",
-          status: "completed",
+          kind: "connector",
+          category: "call",
+          quantity: 1,
+          credits: i * 100,
         },
-        context.signal,
-      );
-      await store.set(
-        insertModelUsageEventForRun$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          runId,
-          creditsCharged: i * 100,
-          status: "processed",
-        },
-        context.signal,
-      );
+      ]);
     }
+    await processPendingUsage();
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "7d", groupBy: "agent", tz: "UTC" },
@@ -320,77 +394,15 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("today produces hourly bucket strings", async () => {
-    mockNow(new Date("2026-04-23T15:00:00Z"));
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
+    const actor = await entitledInsightActor();
+    const compose = await createInsightCompose(actor);
+    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    await reportRunUsage(actor, runId, [
+      { kind: "connector", category: "call", quantity: 1, credits: 10 },
+    ]);
+    await processPendingUsage();
 
-    const todayStart = new Date("2026-04-23T00:00:00Z");
-    const t1 = new Date(todayStart.getTime() + 9 * 3_600_000);
-    const t2 = new Date(todayStart.getTime() + 12 * 3_600_000);
-
-    const { runId: run1 } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: cu1Id } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run1,
-        creditsCharged: 10,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      { id: cu1Id, createdAt: t1 },
-      context.signal,
-    );
-
-    const { runId: run2 } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: cu2Id } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run2,
-        creditsCharged: 10,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      { id: cu2Id, createdAt: t2 },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "today", groupBy: "source", tz: "UTC" },
@@ -405,250 +417,18 @@ describe("GET /api/zero/usage/insight", () => {
     }
   });
 
-  it("yesterday produces hourly bucket strings for prior calendar day", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-
-    const now = nowDate();
-    const yesterdayStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
-    );
-    const t1 = new Date(yesterdayStart.getTime() + 10 * 3_600_000);
-    const t2 = new Date(yesterdayStart.getTime() + 14 * 3_600_000);
-
-    const { runId: run1 } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: cu1Id } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run1,
-        creditsCharged: 10,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      { id: cu1Id, createdAt: t1 },
-      context.signal,
-    );
-
-    const { runId: run2 } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: cu2Id } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: run2,
-        creditsCharged: 10,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      { id: cu2Id, createdAt: t2 },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const response = await accept(
-      apiClient().get({
-        query: { range: "yesterday", groupBy: "source", tz: "UTC" },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    expect(response.body.buckets.length).toBeGreaterThanOrEqual(2);
-
-    const yesterdayDate = yesterdayStart.toISOString().split("T")[0];
-    expect(yesterdayDate).toBeDefined();
-    for (const bucket of response.body.buckets) {
-      expect(bucket.ts).toMatch(/:00:00/);
-      expect(bucket.ts).toContain(yesterdayDate);
-    }
-
-    const first = response.body.buckets[0];
-    const last = response.body.buckets[response.body.buckets.length - 1];
-    if (first && last) {
-      expect(first.ts).not.toBe(last.ts);
-    }
-  });
-
-  it("7d window includes data from midnight 6 days ago", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-
-    const now = nowDate();
-    const todayStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
-    const sixDaysAgo = new Date(todayStart.getTime() - 6 * 86_400_000);
-    const runTime = new Date(sixDaysAgo.getTime() + 3_600_000);
-
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: cuId } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        creditsCharged: 42,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      { id: cuId, createdAt: runTime },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const response = await accept(
-      apiClient().get({
-        query: { range: "7d", groupBy: "source", tz: "UTC" },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    const bucket = response.body.buckets.find((b) => {
-      return Object.values(b.series).some((v) => {
-        return v === 42;
-      });
-    });
-    expect(bucket).toBeDefined();
-    const sixDaysAgoDate = sixDaysAgo.toISOString().split("T")[0];
-    expect(sixDaysAgoDate).toBeDefined();
-    expect(bucket?.ts).toContain(sixDaysAgoDate);
-  });
-
-  it("day window includes only the selected calendar day", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-
-    const now = nowDate();
-    const todayStart = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
-    const selectedStart = new Date(todayStart.getTime() - 5 * 86_400_000);
-    const selectedDate = selectedStart.toISOString().split("T")[0];
+  it("day window returns the selected calendar day with hourly buckets", async () => {
+    const actor = await entitledInsightActor();
+    const compose = await createInsightCompose(actor);
+    const runId = await createSourceRun(actor, compose.composeId, "cli");
+    await reportRunUsage(actor, runId, [
+      { kind: "connector", category: "call", quantity: 1, credits: 42 },
+    ]);
+    await processPendingUsage();
+    const selectedDate = nowDate().toISOString().split("T")[0];
     expect(selectedDate).toBeDefined();
 
-    const { runId: selectedRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: selectedUsageId } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: selectedRunId,
-        creditsCharged: 42,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      {
-        id: selectedUsageId,
-        createdAt: new Date(selectedStart.getTime() + 3_600_000),
-      },
-      context.signal,
-    );
-
-    const { runId: outsideRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: outsideUsageId } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: outsideRunId,
-        creditsCharged: 99,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      setUsageEventCreatedAt$,
-      {
-        id: outsideUsageId,
-        createdAt: new Date(selectedStart.getTime() + 86_400_000 + 3_600_000),
-      },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: {
@@ -663,214 +443,43 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     expect(response.body.grandTotalCredits).toBe(42);
-    expect(response.body.buckets[0]?.ts).toContain(selectedDate);
-  });
-
-  it("tz shift — same row appears in different date buckets by timezone", async () => {
-    mockNow(new Date("2026-04-23T15:00:00Z"));
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "cli",
-        status: "completed",
-      },
-      context.signal,
-    );
-    const { id: cuId } = await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        creditsCharged: 42,
-        status: "processed",
-      },
-      context.signal,
-    );
-    const now = new Date("2026-04-23T15:00:00Z");
-    const rowTime = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate() - 3,
-        0,
-        30,
-      ),
-    );
-    const dateInTimeZone = (date: Date, timeZone: string): string => {
-      const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).formatToParts(date);
-      const value = (type: string): string => {
-        const part = parts.find((entry) => {
-          return entry.type === type;
-        });
-        if (!part) {
-          throw new Error(`Missing date part: ${type}`);
-        }
-        return part.value;
-      };
-      return `${value("year")}-${value("month")}-${value("day")}`;
-    };
-    const expectedUtcDate = dateInTimeZone(rowTime, "UTC");
-    const expectedLaDate = dateInTimeZone(rowTime, "America/Los_Angeles");
-    await store.set(
-      setUsageEventCreatedAt$,
-      { id: cuId, createdAt: rowTime },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const responseUtc = await accept(
-      apiClient().get({
-        query: { range: "7d", groupBy: "source", tz: "UTC" },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    const responseLa = await accept(
-      apiClient().get({
-        query: {
-          range: "7d",
-          groupBy: "source",
-          tz: "America/Los_Angeles",
-        },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    const findBucketWith42Credits = (
-      buckets: readonly UsageInsightBucket[],
-    ): UsageInsightBucket | undefined => {
-      return buckets.find((bucket) => {
-        const total = Object.values(bucket.series).reduce((s, v) => {
-          return s + v;
-        }, 0);
-        return total === 42;
+    const bucket = response.body.buckets.find((b) => {
+      return Object.values(b.series).some((v) => {
+        return v === 42;
       });
-    };
-
-    const utcBucket = findBucketWith42Credits(responseUtc.body.buckets);
-    const laBucket = findBucketWith42Credits(responseLa.body.buckets);
-
-    expect(utcBucket).toBeDefined();
-    expect(laBucket).toBeDefined();
-    expect(utcBucket?.ts).toContain(expectedUtcDate);
-    expect(laBucket?.ts).toContain(expectedLaDate);
-    expect(expectedUtcDate).not.toBe(expectedLaDate);
+    });
+    expect(bucket).toBeDefined();
+    expect(bucket?.ts).toContain(selectedDate);
+    expect(bucket?.ts).toMatch(/:00:00/);
   });
 
   it("scope isolation — other user's activity in same org is invisible", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const otherFixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    // Override otherFixture to use the same org as the main fixture so the
-    // assertion specifically checks user-level scoping (not org-level).
-    const otherUserId = otherFixture.userId;
+    const bdd = createBddApi(context);
+    const actor = await entitledInsightActor();
+    const otherUser = bdd.user({ orgId: actor.orgId });
 
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId: myRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-        status: "completed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId: myRunId,
-        creditsCharged: 100,
-        status: "processed",
-      },
-      context.signal,
-    );
+    const compose = await createInsightCompose(actor);
+    const myRunId = await createSourceRun(actor, compose.composeId, "web");
+    await reportRunUsage(actor, myRunId, [
+      { kind: "model", category: "tokens.input", quantity: 100, credits: 100 },
+    ]);
 
-    const { composeId: otherComposeId } = await store.set(
-      seedCompose$,
-      {
-        orgId: fixture.orgId,
-        userId: otherUserId,
-        name: `other-compose-${randomUUID().slice(0, 8)}`,
-      },
-      context.signal,
+    const otherCompose = await createInsightCompose(
+      otherUser,
+      `other-compose-${randomUUID().slice(0, 8)}`,
     );
-    const { runId: otherRunId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: otherUserId,
-        composeId: otherComposeId,
-        triggerSource: "web",
-        status: "completed",
-      },
-      context.signal,
+    const otherRunId = await createSourceRun(
+      otherUser,
+      otherCompose.composeId,
+      "web",
     );
-    await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: otherUserId,
-        runId: otherRunId,
-        creditsCharged: 999,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: otherUserId,
-        runId: otherRunId,
-        kind: "connector",
-        provider: "x",
-        category: "tweet.read",
-        quantity: 1,
-        creditsCharged: 999,
-        status: "processed",
-      },
-      context.signal,
-    );
+    await reportRunUsage(otherUser, otherRunId, [
+      { kind: "model", category: "tokens.input", quantity: 999, credits: 999 },
+      { kind: "connector", category: "tweet.read", quantity: 1, credits: 999 },
+    ]);
+    await processPendingUsage();
 
-    // Track the other user's rows through their own fixture so cleanup
-    // catches them; we explicitly seeded under otherUserId+fixture.orgId.
-    await track(
-      Promise.resolve({
-        orgId: fixture.orgId,
-        userId: otherUserId,
-      }),
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "7d", groupBy: "source", tz: "UTC" },
@@ -883,130 +492,32 @@ describe("GET /api/zero/usage/insight", () => {
   });
 
   it("includes usage_event rows in grand totals and source buckets", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-        status: "completed",
-      },
-      context.signal,
-    );
+    const actor = await entitledInsightActor();
+    const compose = await createInsightCompose(actor);
+    const runId = await createSourceRun(actor, compose.composeId, "web");
 
-    await store.set(
-      insertModelUsageEventForRun$,
+    const runlessCredits = await recordRunlessUsage(actor);
+    await reportRunUsage(actor, runId, [
+      { kind: "model", category: "tokens.input", quantity: 100, credits: 10 },
+      { kind: "model", category: "tokens.output", quantity: 50, credits: 0 },
+      { kind: "model", category: "tokens.input", quantity: 30, credits: 3 },
+      { kind: "model", category: "tokens.output", quantity: 20, credits: 2 },
+      { kind: "model", category: "tokens.cache_read", quantity: 5, credits: 1 },
       {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        inputTokens: 100,
-        outputTokens: 50,
-        creditsCharged: 10,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
         kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 30,
-        creditsCharged: 3,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.output",
-        quantity: 20,
-        creditsCharged: 2,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.cache_read",
-        quantity: 5,
-        creditsCharged: 1,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
         category: "tokens.cache_creation",
         quantity: 10,
-        creditsCharged: 4,
-        status: "processed",
+        credits: 4,
       },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        kind: "connector",
-        provider: "x",
-        category: "tweet.read",
-        quantity: 1,
-        creditsCharged: 7,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 999,
-        creditsCharged: 999,
-        status: "pending",
-      },
-      context.signal,
-    );
+    ]);
+    await processPendingUsage();
+    // Reported after processing and never settled: pending rows must stay
+    // out of every total.
+    await reportRunUsage(actor, runId, [
+      { kind: "model", category: "tokens.input", quantity: 999, credits: 999 },
+    ]);
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "7d", groupBy: "source", tz: "UTC" },
@@ -1016,134 +527,29 @@ describe("GET /api/zero/usage/insight", () => {
     );
     const totals = sumBucketSeries(response.body.buckets);
 
-    expect(response.body.grandTotalCredits).toBe(27);
+    expect(response.body.grandTotalCredits).toBe(20 + runlessCredits);
     expect(response.body.grandTotalTokens).toBe(215);
     expect(totals["chat"]).toStrictEqual({ credits: 20, tokens: 215 });
-    expect(totals["others"]).toStrictEqual({ credits: 7, tokens: 0 });
-  });
-
-  it("buckets usage_event rows by activity time, not billing time", async () => {
-    mockNow(new Date("2026-04-23T15:00:00Z"));
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        kind: "connector",
-        provider: "x",
-        category: "tweet.read",
-        quantity: 1,
-        creditsCharged: 33,
-        status: "processed",
-        createdAt: new Date("2026-04-22T12:00:00Z"),
-        processedAt: new Date("2026-04-23T12:00:00Z"),
-      },
-      context.signal,
-    );
-
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const yesterdayResponse = await accept(
-      apiClient().get({
-        query: { range: "yesterday", groupBy: "source", tz: "UTC" },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    const yesterdayTotals = sumBucketSeries(yesterdayResponse.body.buckets);
-
-    expect(yesterdayResponse.body.grandTotalCredits).toBe(33);
-    expect(yesterdayTotals["others"]).toStrictEqual({
-      credits: 33,
+    expect(totals["others"]).toStrictEqual({
+      credits: runlessCredits,
       tokens: 0,
     });
-
-    const todayResponse = await accept(
-      apiClient().get({
-        query: { range: "today", groupBy: "source", tz: "UTC" },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-
-    expect(todayResponse.body.grandTotalCredits).toBe(0);
   });
 
   it("includes run-linked usage_event rows in agent buckets and channel totals", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
+    const actor = await entitledInsightActor();
     const agentName = `usage-event-agent-${randomUUID().slice(0, 8)}`;
-    const { composeId } = await store.set(
-      seedCompose$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: agentName,
-      },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "slack",
-        status: "completed",
-      },
-      context.signal,
-    );
+    const compose = await createInsightCompose(actor, agentName);
+    const runId = await createSourceRun(actor, compose.composeId, "slack");
 
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "connector",
-        provider: "x",
-        category: "tweet.read",
-        quantity: 1,
-        creditsCharged: 40,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.output",
-        quantity: 15,
-        creditsCharged: 5,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        kind: "connector",
-        provider: "x",
-        category: "tweet.read",
-        quantity: 1,
-        creditsCharged: 8,
-        status: "processed",
-      },
-      context.signal,
-    );
+    const runlessCredits = await recordRunlessUsage(actor);
+    await reportRunUsage(actor, runId, [
+      { kind: "connector", category: "tweet.read", quantity: 1, credits: 40 },
+      { kind: "model", category: "tokens.output", quantity: 15, credits: 5 },
+    ]);
+    await processPendingUsage();
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "7d", groupBy: "agent", tz: "UTC" },
@@ -1154,70 +560,51 @@ describe("GET /api/zero/usage/insight", () => {
     const totals = sumBucketSeries(response.body.buckets);
 
     expect(totals[agentName]).toStrictEqual({ credits: 45, tokens: 15 });
-    expect(totals["others"]).toStrictEqual({ credits: 8, tokens: 0 });
+    expect(totals["others"]).toStrictEqual({
+      credits: runlessCredits,
+      tokens: 0,
+    });
     expect(response.body.slackCredits).toBe(45);
     expect(response.body.slackTokens).toBe(15);
   });
 
   it("returns chat rows when groupBy=source and there are chat runs", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const { composeId } = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const threadId = await store.set(
-      seedChatThread$,
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const actor = await entitledInsightActor();
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "Usage insight chat agent",
+      visibility: "private",
+    });
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Test Chat Thread",
+    });
+    const sent = await chat.requestSendMessage(
+      actor,
       {
-        userId: fixture.userId,
-        composeId,
-        title: "Test Chat Thread",
+        agentId: agent.agentId,
+        prompt: "generate chat usage",
+        threadId: thread.id,
+        modelProvider: "anthropic-api-key",
       },
-      context.signal,
+      [201],
     );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId,
-        triggerSource: "web",
-        chatThreadId: threadId,
-        status: "completed",
-      },
-      context.signal,
-    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the chat send to create a run");
+    }
 
-    await store.set(
-      insertModelUsageEventForRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        creditsCharged: 200,
-        status: "processed",
-      },
-      context.signal,
-    );
-    await store.set(
-      insertUsageEvent$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        runId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: 12,
-        creditsCharged: 25,
-        status: "processed",
-      },
-      context.signal,
-    );
+    // Chat runs bill through a managed model provider, so model-kind events
+    // are not accepted for them — the chat row aggregates connector credits
+    // and reports zero tokens here.
+    await reportRunUsage(actor, sent.body.runId, [
+      { kind: "connector", category: "call", quantity: 1, credits: 225 },
+    ]);
+    await processPendingUsage();
 
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    authenticateInsightActor(actor);
     const response = await accept(
       apiClient().get({
         query: { range: "7d", groupBy: "source", tz: "UTC" },
@@ -1227,12 +614,12 @@ describe("GET /api/zero/usage/insight", () => {
     );
 
     expect(response.body.chats.length).toBeGreaterThanOrEqual(1);
-    const chat = response.body.chats.find((c) => {
-      return c.threadId === threadId;
+    const chatRow = response.body.chats.find((c) => {
+      return c.threadId === thread.id;
     });
-    expect(chat).toBeDefined();
-    expect(chat?.threadTitle).toBe("Test Chat Thread");
-    expect(chat?.credits).toBe(225);
-    expect(chat?.tokens).toBe(162);
+    expect(chatRow).toBeDefined();
+    expect(chatRow?.threadTitle).toBe("Test Chat Thread");
+    expect(chatRow?.credits).toBe(225);
+    expect(chatRow?.tokens).toBe(0);
   });
 });

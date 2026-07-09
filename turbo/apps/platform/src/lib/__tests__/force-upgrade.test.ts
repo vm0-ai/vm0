@@ -38,7 +38,7 @@ describe("force upgrade", () => {
       "https://api.example.test/api/client/compatibility?version=0.540.0",
       {
         cache: "no-store",
-        credentials: "omit",
+        credentials: "include",
         method: "GET",
       },
     );

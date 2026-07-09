@@ -4,6 +4,7 @@ import {
   fetchSlackUserInfoMap,
   formatSenderBlock,
   type SlackUserInfo,
+  type SlackUserInfoResolver,
 } from "../signals/external/slack-message-client";
 
 export interface SlackFile {
@@ -99,6 +100,11 @@ export interface SlackConversationContextObserver {
   readonly dimensions: (
     dimensions: SlackConversationContextTelemetryDimensions,
   ) => void;
+}
+
+interface SlackConversationContextOptions {
+  readonly observer?: SlackConversationContextObserver;
+  readonly userInfoResolver?: SlackUserInfoResolver;
 }
 
 async function fetchThreadContext(
@@ -473,8 +479,9 @@ export async function fetchConversationContexts(
   channelId: string,
   threadTs: string | undefined,
   currentMessageTs?: string,
-  observer?: SlackConversationContextObserver,
+  options?: SlackConversationContextOptions,
 ): Promise<{ readonly executionContext: string }> {
+  const observer = options?.observer;
   const measureContext = async <T>(
     phase: SlackConversationContextPhase,
     operation: () => T | Promise<T>,
@@ -541,7 +548,11 @@ export async function fetchConversationContexts(
     ),
   });
   const userInfoMap = await measureContext("user_info", async () => {
-    return await fetchSlackUserInfoMap(client, userInfoIds);
+    return await fetchSlackUserInfoMap(
+      client,
+      userInfoIds,
+      options?.userInfoResolver,
+    );
   });
   const { channelContextPrefix, threadExecContext } = await measureContext(
     "format",
@@ -570,6 +581,7 @@ export async function enrichMessageContent(opts: {
   readonly files: readonly SlackFile[] | undefined;
   readonly client: WebClient;
   readonly userId: string;
+  readonly userInfoResolver?: SlackUserInfoResolver;
 }): Promise<{
   readonly prompt: string;
   readonly userInfoExtras: {
@@ -583,10 +595,11 @@ export async function enrichMessageContent(opts: {
   }
 
   const mentionedIds = extractMentionedUserIds([{ text: opts.messageContent }]);
-  const userInfoMap = await fetchSlackUserInfoMap(opts.client, [
-    opts.userId,
-    ...mentionedIds,
-  ]);
+  const userInfoMap = await fetchSlackUserInfoMap(
+    opts.client,
+    [opts.userId, ...mentionedIds],
+    opts.userInfoResolver,
+  );
   prompt = resolveUserMentions(prompt, userInfoMap);
 
   const currentUser = userInfoMap.get(opts.userId);

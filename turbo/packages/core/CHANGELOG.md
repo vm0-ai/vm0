@@ -1,5 +1,47 @@
 # Changelog
 
+## [8.418.0](https://github.com/vm0-ai/vm0/compare/core-v8.417.0...core-v8.418.0) (2026-07-09)
+
+
+### Features
+
+* use image previews for website templates ([#20766](https://github.com/vm0-ai/vm0/issues/20766)) ([eeeaafd](https://github.com/vm0-ai/vm0/commit/eeeaafd05bfd37c62adf890aac2e7cebd277d684))
+
+## [8.417.0](https://github.com/vm0-ai/vm0/compare/core-v8.416.0...core-v8.417.0) (2026-07-09)
+
+
+### Features
+
+* add r2-backed website template packages ([#20700](https://github.com/vm0-ai/vm0/issues/20700)) ([2c9c4d4](https://github.com/vm0-ai/vm0/commit/2c9c4d43a96ee11abc8a25268cd8910af1f538de))
+
+
+### Refactoring
+
+* remove chat thread emoji feature switch ([#20743](https://github.com/vm0-ai/vm0/issues/20743)) ([18ecbbb](https://github.com/vm0-ai/vm0/commit/18ecbbb276a4395d02252d5f9287aca3f2411f88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.173.0
+    * @vm0/connectors bumped to 1.150.1
+
+## [8.416.0](https://github.com/vm0-ai/vm0/compare/core-v8.415.0...core-v8.416.0) (2026-07-08)
+
+
+### Features
+
+* add nintendo eshop catalog connector ([#20660](https://github.com/vm0-ai/vm0/issues/20660)) ([2ea4549](https://github.com/vm0-ai/vm0/commit/2ea45494646c4ecfcdfe1dcce65c8517d902cabd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.172.0
+    * @vm0/connectors bumped to 1.150.0
+
 ## [8.415.0](https://github.com/vm0-ai/vm0/compare/core-v8.414.8...core-v8.415.0) (2026-07-08)
 
 

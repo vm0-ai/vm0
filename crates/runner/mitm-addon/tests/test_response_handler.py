@@ -17,6 +17,7 @@ import request_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_state_helpers import (
     auth_cache_key,
+    auth_state_is_empty,
     cached_headers,
     force_refresh_pending,
     has_auth_state,
@@ -1677,12 +1678,9 @@ class TestResponseHandler:
         cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
         flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         # Simulate: last forced refresh happened well before the cooldown window
-        set_last_force_refresh_monotonic_at(
-            cache_key,
-            time.monotonic() - auth_cache._FORCE_REFRESH_COOLDOWN_SECS - 1,
-        )
+        set_last_force_refresh_monotonic_at(cache_key, 0.0)
 
-        with mitm_ctx():
+        with patch.object(auth_cache.time, "monotonic", return_value=10_000.0), mitm_ctx():
             mitm_addon.response(flow)
 
         # Cooldown elapsed → marker re-added
@@ -1729,12 +1727,12 @@ class TestResponseHandler:
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
-        assert auth_cache._auth_state == {}
+        assert auth_state_is_empty()
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
-        assert auth_cache._auth_state == {}
+        assert auth_state_is_empty()
 
     def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
         """Response with status >= 400 writes to per-job proxy log."""

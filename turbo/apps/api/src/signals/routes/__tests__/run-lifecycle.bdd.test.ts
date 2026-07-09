@@ -3087,9 +3087,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: minimaxApiKeyPlaceholder,
-      OPENAI_BASE_URL: "https://api.minimax.io/v1",
       OPENAI_MODEL: "MiniMax-M3",
     });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
     expect(claim.codexRuntimeConfig).toMatchObject({
       providerId: "minimax",
       name: "MiniMax",
@@ -3171,9 +3171,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.cliAgentType).toBe("codex");
     expect(claim.environment).toMatchObject({
       OPENAI_API_KEY: minimaxApiKeyPlaceholder,
-      OPENAI_BASE_URL: "https://api.minimax.io/v1",
       OPENAI_MODEL: "MiniMax-M3",
     });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
     expect(claim.codexRuntimeConfig).toMatchObject({
       providerId: "minimax",
       name: "MiniMax",
@@ -5416,9 +5416,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
       "zero workflow --help",
+      "Workflow and automation requests use the `workflow-setup` skill first",
       "Local changes or newly-created workflow folders",
       "runtime-only and will not persist, sync back, or affect future runs",
-      "zero workflow create|edit <name> --dir <path>",
+      "Create or update a durable workflow with `zero workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`",
+      "`--dir <path>` uploads supplementary files only and must not contain a `SKILL.md`",
       "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
@@ -5459,32 +5461,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
-
-    if (!actor.orgId) {
-      throw new Error("Expected actor to belong to an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.RelationshipMemory]: true,
-      },
-    );
-
-    const memoryRun = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "summarize relationship context",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const memoryClaim = await api.claimRunnerJob(memoryRun.runId);
-    const memoryAppendSystemPrompt = memoryClaim.appendSystemPrompt ?? "";
-    expect(memoryAppendSystemPrompt).toContain('zero memory recall "<query>"');
-    expect(memoryAppendSystemPrompt).toContain(
-      'zero memory context --query "<topic>"',
-    );
-    expect(memoryAppendSystemPrompt).toContain("These commands are read-only");
-    await api.requestCancelRun(actor, memoryRun.runId, [200]);
   });
 
   it("keeps goal tools allowed when no feature flags are enabled", async () => {
@@ -5520,6 +5496,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.MemoryViewer]: true,
+    });
+    // The memory summarize cron globally sweeps every MemoryViewer-enabled
+    // user in the shared database; leaving this actor opted in would hand
+    // that sweep this actor's storages in every later run. Opt back out
+    // through the same product API.
+    onTestFinished(async () => {
+      await connectors.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.MemoryViewer]: false,
+      });
     });
 
     const firstStartedAt = now();

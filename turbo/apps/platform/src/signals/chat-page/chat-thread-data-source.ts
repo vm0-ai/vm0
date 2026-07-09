@@ -56,6 +56,7 @@ export interface AppendQueuedMessageArgs {
   chatThreadSortEventId: string;
   hasTextContent: boolean;
   runOptions?: ChatRunOptionsRequest;
+  realAgentInPreview?: boolean;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
 }

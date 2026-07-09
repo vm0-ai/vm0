@@ -61,6 +61,10 @@ function createComputerUsePluginsState(): DesktopComputerUsePluginsState {
       version: "2026.1.14",
       capabilities: [],
     },
+    mcp: {
+      featureEnabled: true,
+      servers: [],
+    },
   };
 }
 
@@ -237,6 +241,21 @@ function createComputerUseBridge(initialState: DesktopComputerUseState): {
     setFilesystemPluginEnabled,
     addFilesystemPluginAllowedDirectory,
     removeFilesystemPluginAllowedDirectory,
+    importMcpPluginServers: vi.fn<
+      DesktopComputerUseApi["importMcpPluginServers"]
+    >(async () => {
+      return currentState;
+    }),
+    setMcpPluginServerEnabled: vi.fn<
+      DesktopComputerUseApi["setMcpPluginServerEnabled"]
+    >(async () => {
+      return currentState;
+    }),
+    removeMcpPluginServer: vi.fn<
+      DesktopComputerUseApi["removeMcpPluginServer"]
+    >(async () => {
+      return currentState;
+    }),
     openAccessibilitySettings: vi.fn<
       DesktopComputerUseApi["openAccessibilitySettings"]
     >(async () => {}),

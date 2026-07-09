@@ -1412,12 +1412,14 @@ function WebsiteTemplateCard({
       )}
     >
       <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
-        <iframe
+        <img
+          alt={`${item.title} website template preview`}
           title={`${item.title} website template preview`}
-          src={item.previewUrl}
-          sandbox="allow-same-origin"
-          tabIndex={-1}
-          className="pointer-events-none h-full w-full border-0 bg-background"
+          src={item.previewImageUrl}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          className="pointer-events-none h-full w-full bg-background object-cover"
         />
       </div>
       <div className="flex flex-1 flex-wrap items-center gap-2 px-3.5 py-3">

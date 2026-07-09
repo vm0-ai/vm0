@@ -19,7 +19,10 @@ import {
   SUPPORTED_COMPUTER_USE_CAPABILITIES,
   executeComputerUseCommand,
 } from "./computer-use-accessibility";
-import { COMPUTER_USE_PLUGIN_CALL_KIND } from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
+import {
+  COMPUTER_USE_PLUGIN_CALL_KIND,
+  isComputerUseMcpPluginCallPayload,
+} from "@vm0/api-contracts/contracts/zero-computer-use-plugins";
 import {
   MAC_AUTOMATION_SETTINGS_URL,
   createAutomationPermissionDeniedPrompt,
@@ -59,6 +62,7 @@ import { DesktopComputerUseAutoStartSupervisor } from "./desktop-computer-use-au
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
 import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-installation";
 import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
+import { DesktopMcpPluginManager } from "./desktop-mcp-plugin";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
@@ -144,6 +148,7 @@ let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
 let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
+let mcpPluginManager: DesktopMcpPluginManager | null = null;
 let desktopAutoUpdatesInstalled = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
@@ -191,6 +196,7 @@ const developerTools = new DeveloperToolsController({
     ),
   setFilesystemPluginFeatureEnabled: (enabled) => {
     filesystemPluginManager?.setFeatureEnabled(enabled);
+    mcpPluginManager?.setFeatureEnabled(enabled);
   },
   onChange: notifyDeveloperToolsChanged,
   logRefreshError: (error) => {
@@ -203,6 +209,7 @@ const computerUseController = new ComputerUseRuntimeController({
   getAuthState: () => getAuthSession().getAuthState(),
   setHostRuntimeOnline: (online) => {
     filesystemPluginManager?.setHostRuntimeOnline(online);
+    mcpPluginManager?.setHostRuntimeOnline(online);
   },
   onChange: notifyComputerUseChanged,
 });
@@ -217,6 +224,9 @@ function refreshDesktopTrayAuth(): void {
 
 function notifyComputerUseChanged(): void {
   filesystemPluginManager?.setHostRuntimeOnline(
+    computerUseController.isRuntimeOnline(),
+  );
+  mcpPluginManager?.setHostRuntimeOnline(
     computerUseController.isRuntimeOnline(),
   );
   notifyDesktopComputerUseChanged();
@@ -399,6 +409,10 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
         version: "",
         capabilities: [],
       },
+      mcp: mcpPluginManager?.getState() ?? {
+        featureEnabled: false,
+        servers: [],
+      },
     },
   };
 }
@@ -435,10 +449,22 @@ function ensureFilesystemPluginManager(): DesktopFilesystemPluginManager {
   return filesystemPluginManager;
 }
 
+function ensureMcpPluginManager(): DesktopMcpPluginManager {
+  if (!mcpPluginManager) {
+    mcpPluginManager = new DesktopMcpPluginManager({
+      preferencesPath: desktopPreferencesPath(),
+      onChange: notifyComputerUseChanged,
+    });
+    mcpPluginManager.load();
+  }
+  return mcpPluginManager;
+}
+
 function supportedComputerUseCapabilities(): readonly string[] {
   return [
     ...SUPPORTED_COMPUTER_USE_CAPABILITIES,
     ...(filesystemPluginManager?.getCapabilities() ?? []),
+    ...(mcpPluginManager?.getCapabilities() ?? []),
   ];
 }
 
@@ -467,6 +493,9 @@ function createComputerUseHostRuntime(): ComputerUseHostRuntime {
     getSupportedCapabilities: supportedComputerUseCapabilities,
     executeCommand: (command, permissions) => {
       if (command.kind === COMPUTER_USE_PLUGIN_CALL_KIND) {
+        if (isComputerUseMcpPluginCallPayload(command.payload)) {
+          return ensureMcpPluginManager().execute(command);
+        }
         return ensureFilesystemPluginManager().execute(command);
       }
       return executeComputerUseCommand(command, permissions, {
@@ -493,6 +522,24 @@ async function stopComputerUseRuntime(): Promise<DesktopComputerUseState> {
 
 function setFilesystemPluginEnabled(enabled: boolean): DesktopComputerUseState {
   ensureFilesystemPluginManager().setEnabled(enabled);
+  return getComputerUseBridgeState();
+}
+
+function importMcpPluginServers(json: string): DesktopComputerUseState {
+  ensureMcpPluginManager().importServersJson(json);
+  return getComputerUseBridgeState();
+}
+
+function setMcpPluginServerEnabled(
+  server: string,
+  enabled: boolean,
+): DesktopComputerUseState {
+  ensureMcpPluginManager().setServerEnabled(server, enabled);
+  return getComputerUseBridgeState();
+}
+
+function removeMcpPluginServer(server: string): DesktopComputerUseState {
+  ensureMcpPluginManager().removeServer(server);
   return getComputerUseBridgeState();
 }
 
@@ -551,6 +598,7 @@ async function probeComputerUseAutomation(
 
 function installComputerUse(): void {
   ensureFilesystemPluginManager();
+  ensureMcpPluginManager();
   installComputerUseIpc(
     {
       getState: getComputerUseBridgeState,
@@ -564,6 +612,9 @@ function installComputerUse(): void {
       setFilesystemPluginEnabled,
       addFilesystemPluginAllowedDirectory,
       removeFilesystemPluginAllowedDirectory,
+      importMcpPluginServers,
+      setMcpPluginServerEnabled,
+      removeMcpPluginServer,
     },
     { rendererUrl: localRendererUrl },
   );

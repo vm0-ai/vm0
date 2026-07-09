@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroMemoryContract,
   type MemoryDetailResponse,
+  type MemoryInjectionPreviewResponse,
   type MemoryRecallItemKind,
   type MemoryRecallResponse,
   type MemorySourceDetailResponse,
@@ -42,6 +43,7 @@ export type MemoryRecallKindFilter = "all" | MemoryRecallItemKind;
 
 export type MemoryTab =
   | "updates"
+  | "injection"
   | "recall"
   | "relationships"
   | "sources"
@@ -129,6 +131,9 @@ const internalSubmittedMemoryRecallQuery$ = state("");
 const internalMemoryRecallKindFilter$ = state<MemoryRecallKindFilter>("all");
 const internalMemoryRecallLimit$ = state(10);
 const internalMemoryRecallReload$ = state(0);
+const internalMemoryInjectionPrompt$ = state("");
+const internalSubmittedMemoryInjectionPrompt$ = state("");
+const internalMemoryInjectionReload$ = state(0);
 
 export const memoryRecallQuery$ = computed((get) => {
   return get(internalMemoryRecallQuery$);
@@ -169,6 +174,29 @@ export const memoryRecallLimit$ = computed((get) => {
 
 export const setMemoryRecallLimit$ = command(({ set }, limit: number) => {
   set(internalMemoryRecallLimit$, limit);
+});
+
+export const memoryInjectionPrompt$ = computed((get) => {
+  return get(internalMemoryInjectionPrompt$);
+});
+
+export const setMemoryInjectionPrompt$ = command(({ set }, prompt: string) => {
+  set(internalMemoryInjectionPrompt$, prompt);
+});
+
+export const submittedMemoryInjectionPrompt$ = computed((get) => {
+  return get(internalSubmittedMemoryInjectionPrompt$);
+});
+
+export const submitMemoryInjectionPreview$ = command(({ get, set }) => {
+  const prompt = get(internalMemoryInjectionPrompt$).trim();
+  const previousPrompt = get(internalSubmittedMemoryInjectionPrompt$).trim();
+  set(internalSubmittedMemoryInjectionPrompt$, prompt);
+  if (prompt === previousPrompt) {
+    set(internalMemoryInjectionReload$, (current) => {
+      return current + 1;
+    });
+  }
 });
 
 export const memoryRelationshipSearch$ = computed((get) => {
@@ -537,6 +565,25 @@ export const memoryRecallResults$ = computed(
           kind: kindFilter === "all" ? undefined : kindFilter,
           limit,
         },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryInjectionPreview$ = computed(
+  async (get): Promise<MemoryInjectionPreviewResponse | null> => {
+    get(internalMemoryInjectionReload$);
+    const prompt = get(submittedMemoryInjectionPrompt$).trim();
+    if (prompt.length === 0) {
+      return null;
+    }
+
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.injectionPreview({
+        body: { prompt },
       }),
       [200],
     );

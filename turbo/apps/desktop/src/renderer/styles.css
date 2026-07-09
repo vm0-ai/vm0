@@ -684,6 +684,21 @@ button {
   overflow-wrap: anywhere;
 }
 
+.mcp-config-input {
+  width: 100%;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  color: #202631;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
 .raw-log-details summary {
   color: #3d4a5c;
   font-size: 12px;

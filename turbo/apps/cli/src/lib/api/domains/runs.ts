@@ -41,10 +41,8 @@ export async function createRun(body: {
     version?: string;
     mountPath: string;
   }>;
-  // Debug flag (internal use only)
-  debugNoMockClaude?: boolean;
-  // Debug flag (internal use only)
-  debugNoMockCodex?: boolean;
+  // Preview evaluation escape hatch (internal use only)
+  realAgentInPreview?: boolean;
   // Capture HTTP header names, selected safe header values, request bodies, and response bodies
   // in network logs
   captureNetworkBodies?: boolean;

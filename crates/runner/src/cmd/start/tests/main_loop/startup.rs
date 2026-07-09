@@ -1,6 +1,7 @@
 use super::super::super::*;
 use super::super::support::{
-    mock_run_config_with_runtime, shutdown, test_profiles, wait_status_mode,
+    assert_run_exits_within, mock_run_config_with_runtime, shutdown, test_profiles,
+    wait_status_mode,
 };
 use crate::provider::{ClaimedJob, CompletionAuth, JobCandidate};
 use crate::types::{HeartbeatState, SandboxReuseResult};
@@ -292,12 +293,84 @@ async fn startup_does_not_publish_running_before_factories_are_ready() {
         Some("running"),
         "runner must not publish running before factories are ready",
     );
+    assert_eq!(
+        status_mode_if_exists(&status_path).await.as_deref(),
+        Some("starting"),
+        "runner should publish startup progress while factories are not ready",
+    );
 
     release_tx
         .send(())
         .expect("runner should still be waiting for factory release");
     wait_status_mode(&status_path, "running", Duration::from_secs(5)).await;
     shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn drain_during_startup_exits_after_readiness_without_running() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+
+    env.drain();
+    env.resume();
+    assert_eq!(
+        *env.mode_tx.borrow(),
+        RunnerMode::Draining,
+        "resume before startup readiness must not open admission",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup drain should exit without entering Running",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn stop_during_startup_exits_after_readiness_without_running() {
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let runtime = BlockingFactoryRuntime::new(entered_tx, release_rx);
+    let (config, env) =
+        mock_run_config_with_runtime(test_profiles(), 8, 32768, 4, Box::new(runtime));
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    tokio::time::timeout(Duration::from_secs(2), entered_rx)
+        .await
+        .expect("factory startup should be entered")
+        .expect("factory startup should report entry");
+
+    env.trigger_stopping().await;
+    assert_eq!(
+        *env.mode_tx.borrow(),
+        RunnerMode::Stopping,
+        "startup stop must not be lost before factories become ready",
+    );
+
+    release_tx
+        .send(())
+        .expect("runner should still be waiting for factory release");
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup stop should exit without entering Running",
+    )
+    .await;
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
 }
 
 #[tokio::test]

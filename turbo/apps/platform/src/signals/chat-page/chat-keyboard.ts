@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -19,7 +18,6 @@ import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   currentChatThreadId$,
   currentChatThreadListIds$,
@@ -226,16 +224,13 @@ function setupChatPageGlobalShortcutListener({
 
 const setFocusedThreadEmoji$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       thread: ChatThreadSignals;
       emoji: string;
     },
     signal: AbortSignal,
   ) => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
-      return;
-    }
     await set(
       setChatThreadEmojiFromThreadMeta$,
       {
@@ -248,14 +243,7 @@ const setFocusedThreadEmoji$ = command(
 );
 
 const clearFocusedThreadEmoji$ = command(
-  async (
-    { get, set },
-    args: { thread: ChatThreadSignals },
-    signal: AbortSignal,
-  ) => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
-      return;
-    }
+  async ({ set }, args: { thread: ChatThreadSignals }, signal: AbortSignal) => {
     await set(
       clearChatThreadEmojiFromThreadMeta$,
       {
@@ -341,9 +329,6 @@ const openFocusedThreadEmojiMenu$ = command(
     args: { thread: ChatThreadSignals },
     signal: AbortSignal,
   ) => {
-    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatThreadEmoji] ?? false)) {
-      return;
-    }
     const threadMeta = await get(args.thread.threadMeta$);
     signal.throwIfAborted();
     set(openChatThreadEmojiMenu$, {
