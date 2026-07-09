@@ -81,9 +81,8 @@ class _RegistryCacheState:
     # compiled matcher sidecars are published together.
     snapshot: _RegistrySnapshot = field(default_factory=_empty_snapshot)
     unavailable: RegistryUnavailable | None = None
-    # Known-bad decoded registry input. Unlike the snapshot loaded key, this
-    # means the current snapshot belongs to an older file state and this key
-    # should short-circuit until the file changes again.
+    # Known-bad decoded registry input. This key should short-circuit until the
+    # file changes again, while enforcement continues to see RegistryUnavailable.
     failed_key: _RegistryCacheKey | None = None
     # Open/stat failures do not provide a key, so use a one-shot guard. Read
     # errors have a key but are retried on every call; track their last warning
