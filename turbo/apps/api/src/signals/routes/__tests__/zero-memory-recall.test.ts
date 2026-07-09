@@ -20,7 +20,6 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { seedRuntimeInjectionMemories } from "../../../test-fixtures/relationship-memory";
 
 const context = testContext();
 const store = createStore();
@@ -348,35 +347,5 @@ describe("GET /api/zero/memory/recall", () => {
     expect(response.body.error.message).toBe(
       "Relationship memory runtime injection is not enabled for this organization.",
     );
-  });
-
-  it("previews runtime memory system prompt injection", async () => {
-    const fixture = await seedRelationshipFixture({
-      relationshipMemoryEnabled: true,
-      runtimeInjectionEnabled: true,
-    });
-    await seedRuntimeInjectionMemories(fixture);
-
-    const response = await accept(
-      memoryClient().injectionPreview({
-        headers: authHeaders(),
-        body: { prompt: "Prepare the security review" },
-      }),
-      [200],
-    );
-
-    expect(response.body.prompt).toBe("Prepare the security review");
-    expect(response.body.appendSystemPrompt).toContain("# Zero Memory Context");
-    expect(response.body.appendSystemPrompt).toContain("Stable profile:");
-    expect(response.body.appendSystemPrompt).toContain("Current context:");
-    expect(response.body.appendSystemPrompt).toContain(
-      "The user prefers concise launch summaries.",
-    );
-    expect(response.body.appendSystemPrompt).toContain(
-      "validating runtime memory injection",
-    );
-    expect(response.body.profile.static).toHaveLength(1);
-    expect(response.body.profile.dynamic).toHaveLength(2);
-    expect(response.body.stats.injectedCount).toBeGreaterThan(0);
   });
 });

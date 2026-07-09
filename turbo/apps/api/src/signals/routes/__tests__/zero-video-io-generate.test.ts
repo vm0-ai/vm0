@@ -15,12 +15,12 @@ import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generation
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
-import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
 import {
   deleteUsagePricingRows,
-  upsertUsagePricingRows,
+  seedOrgMetadata,
+  seedUsagePricingRows,
   type UsagePricingRow,
-} from "../../../test-fixtures/usage-pricing";
+} from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 import {
@@ -312,7 +312,7 @@ function zeroToken(args: {
 }
 
 async function upsertDefaultVideoPricingRows(): Promise<void> {
-  await upsertUsagePricingRows(
+  await seedUsagePricingRows(
     VIDEO_PRICING_DEFAULTS.map((row) => {
       return {
         kind: "video",
@@ -343,7 +343,7 @@ async function deleteDefaultModelPricingRows(): Promise<
 async function restoreVideoPricingRows(
   rows: readonly PricingSnapshot[],
 ): Promise<void> {
-  await upsertUsagePricingRows(rows);
+  await seedUsagePricingRows(rows);
 }
 
 // Isolation comes from random org/user IDs; no teardown is needed.
@@ -357,7 +357,7 @@ async function seedVideoFixture(options: {
     userId: `user_${randomUUID()}`,
   };
 
-  await upsertOrgMetadataFixture({
+  await seedOrgMetadata({
     orgId: fixture.orgId,
     tier: options.tier ?? "free",
     credits: options.credits ?? 10_000,

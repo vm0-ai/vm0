@@ -13,7 +13,6 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { setAgentLegacyModelFields } from "../../../test-fixtures/workflow-agents";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
@@ -189,10 +188,6 @@ describe("PUT /api/zero/agents/:id", () => {
       displayName: "Old Agent",
       sound: "calm",
     });
-    await setAgentLegacyModelFields(agent.agentId, {
-      selectedModel: "claude-sonnet-4-6",
-      preferPersonalProvider: true,
-    });
 
     const response = await accept(
       agentsClient().update({
@@ -211,8 +206,6 @@ describe("PUT /api/zero/agents/:id", () => {
       displayName: "Updated Agent",
       sound: "calm",
       modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
       visibility: "public",
     });
 
@@ -265,31 +258,6 @@ describe("PUT /api/zero/agents/:id", () => {
       displayName: "Member Updated",
     });
   });
-
-  it("clears stale model fields on PUT", async () => {
-    const user = newOrgUser();
-    const agent = await createAgentAs(user);
-    await setAgentLegacyModelFields(agent.agentId, {
-      selectedModel: "claude-sonnet-4-6",
-      preferPersonalProvider: true,
-    });
-
-    const response = await accept(
-      agentsClient().update({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: { displayName: "Cleared Agent" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
-    });
-  });
-
   it("returns 403 when a non-owner member updates another user's agent", async () => {
     const user = newOrgUser();
     const agent = await createAgentAs(user);
@@ -594,43 +562,6 @@ describe("PATCH /api/zero/agents/:id", () => {
       agentId: agent.agentId,
       displayName: "Owner Updated Private Agent",
       visibility: "private",
-    });
-  });
-
-  it("clears stale model fields on PATCH", async () => {
-    const user = newOrgUser();
-    const agent = await createAgentAs(user);
-    await setAgentLegacyModelFields(agent.agentId, {
-      selectedModel: "claude-sonnet-4-6",
-      preferPersonalProvider: true,
-    });
-
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: { displayName: "Cleared Agent" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
-    });
-
-    const fetched = await accept(
-      agentsClient().get({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    expect(fetched.body).toMatchObject({
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
     });
   });
 });

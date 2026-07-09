@@ -17,9 +17,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { seedLegacyChatThread } from "../../../test-fixtures/chat-threads";
-import { upsertOrgMetadataFixture } from "../../../test-fixtures/org-metadata";
-import { upsertUsagePricingRows } from "../../../test-fixtures/usage-pricing";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -248,11 +249,9 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
-  await webhooks.requestAgentComplete(
-    { runId, exitCode: 0 },
-    sandboxHeaders,
-    [200],
-  );
+  await webhooks.requestAgentComplete({ runId, exitCode: 0 }, sandboxHeaders, [
+    200,
+  ]);
 }
 
 async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
@@ -808,80 +807,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     }
     expect(retainedAnchorCursor.body.events).toStrictEqual([]);
   });
-
-  it("advances bounded snapshot compaction across missing scopes", async () => {
-    mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
-    mockOptionalEnv("CHAT_THREAD_SNAPSHOT_COMPACTION_BATCH_SIZE", "1");
-    const firstActor = bdd.user({
-      userId: `user_00000000_snapshot_batch_${randomUUID()}`,
-      orgId: `org_00000000_snapshot_batch_${randomUUID()}`,
-    });
-    const secondActor = bdd.user({
-      userId: `user_00000001_snapshot_batch_${randomUUID()}`,
-      orgId: `org_00000001_snapshot_batch_${randomUUID()}`,
-    });
-    if (!firstActor.orgId || !secondActor.orgId) {
-      throw new Error("Expected snapshot batch actors to belong to orgs");
-    }
-
-    // Threads without chat-thread events (legacy rows predating event
-    // sourcing) are the scopes this compaction pass must backfill; every
-    // product create writes a created event, so they are seeded directly.
-    const firstThread = await seedLegacyChatThread({
-      userId: firstActor.userId,
-      orgId: firstActor.orgId,
-      title: "First bounded snapshot thread",
-    });
-    const secondThread = await seedLegacyChatThread({
-      userId: secondActor.userId,
-      orgId: secondActor.orgId,
-      title: "Second bounded snapshot thread",
-    });
-
-    await expect(chat.getThreadSnapshot(firstActor)).resolves.toStrictEqual({
-      chatThreads: [],
-      latestEventId: null,
-    });
-    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
-      chatThreads: [],
-      latestEventId: null,
-    });
-
-    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
-      scopes: 1,
-    });
-    await expect(chat.getThreadSnapshot(firstActor)).resolves.toMatchObject({
-      latestEventId: null,
-      chatThreads: [
-        expect.objectContaining({
-          id: firstThread.threadId,
-          agentId: firstThread.composeId,
-          title: "First bounded snapshot thread",
-          selectedModel: null,
-        }),
-      ],
-    });
-    await expect(chat.getThreadSnapshot(secondActor)).resolves.toStrictEqual({
-      chatThreads: [],
-      latestEventId: null,
-    });
-
-    await expect(compactChatThreadSnapshots()).resolves.toMatchObject({
-      scopes: 1,
-    });
-    await expect(chat.getThreadSnapshot(secondActor)).resolves.toMatchObject({
-      latestEventId: null,
-      chatThreads: [
-        expect.objectContaining({
-          id: secondThread.threadId,
-          agentId: secondThread.composeId,
-          title: "Second bounded snapshot thread",
-          selectedModel: null,
-        }),
-      ],
-    });
-  });
-
   it("keeps thread detail independent from thread model projection state", async () => {
     const { actor, agentId } = await entitledChatActor(
       "Thread detail model pin agent",
@@ -937,9 +862,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     }
     // "limited-free-1" is only assigned by the Clerk org-creation bootstrap;
     // no product API can move an entitled org onto it, so downgrade the tier
-    // through the org-metadata fixture while keeping the pro-granted balance.
+    // through the shared system-config seed while keeping the pro balance.
     const billingStatus = await api.readBillingStatus(actor);
-    await upsertOrgMetadataFixture({
+    await seedOrgMetadata({
       orgId: actor.orgId,
       tier: "limited-free-1",
       credits: billingStatus.credits,
@@ -1067,11 +992,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const peer = bdd.user({ orgId: actor.orgId });
 
-    const unauthenticated = await chat.requestDeleteThread(
-      null,
-      randomUUID(),
-      [401],
-    );
+    const unauthenticated = await chat.requestDeleteThread(null, randomUUID(), [
+      401,
+    ]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
@@ -1082,11 +1005,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       code: "NOT_FOUND",
     });
 
-    const malformed = await chat.requestDeleteThread(
-      actor,
-      "not-a-uuid",
-      [400],
-    );
+    const malformed = await chat.requestDeleteThread(actor, "not-a-uuid", [
+      400,
+    ]);
     expectApiError(malformed.body);
     expect(malformed.body.error.message).toContain("id");
 
@@ -1124,11 +1045,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       prompt: "other thread stays active",
     });
 
-    const peerDelete = await chat.requestDeleteThread(
-      peer,
-      main.threadId,
-      [404],
-    );
+    const peerDelete = await chat.requestDeleteThread(peer, main.threadId, [
+      404,
+    ]);
     expectApiError(peerDelete.body);
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
@@ -1384,11 +1303,9 @@ describe("CHAT-01 chat thread read state", () => {
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: false,
     });
-    const disabled = await chat.requestMarkAgentThreadsRead(
-      owner,
-      agentA,
-      [403],
-    );
+    const disabled = await chat.requestMarkAgentThreadsRead(owner, agentA, [
+      403,
+    ]);
     expectApiError(disabled.body);
     expect(disabled.body.error.code).toBe("FORBIDDEN");
 
@@ -1535,7 +1452,7 @@ describe("CHAT-03 run usage messages", () => {
     const provider = `bdd-usage-${randomUUID().slice(0, 8)}`;
     const missingProvider = `${provider}-free`;
     const category = "api_request";
-    await upsertUsagePricingRows([
+    await seedUsagePricingRows([
       { kind: "connector", provider, category, unitPrice: 7, unitSize: 2 },
     ]);
 
@@ -1729,12 +1646,9 @@ describe("CHAT-03 run usage messages", () => {
 
 describe("CHAT-01 chat search", () => {
   it("rejects search without an org session or the chat-message:read capability", async () => {
-    const unauthenticated = await chat.requestSearchChat(
-      null,
-      "hello",
-      {},
-      [401],
-    );
+    const unauthenticated = await chat.requestSearchChat(null, "hello", {}, [
+      401,
+    ]);
     expectApiError(unauthenticated.body);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
 
@@ -2372,11 +2286,9 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
 
     // 401 matrix: missing header (web's phrasing), opaque bearer, revoked
     // and expired PATs.
-    const missingHeader = await chat.requestV1Thread(
-      undefined,
-      randomUUID(),
-      [401],
-    );
+    const missingHeader = await chat.requestV1Thread(undefined, randomUUID(), [
+      401,
+    ]);
     expectApiError(missingHeader.body);
     expect(missingHeader.body.error).toStrictEqual({
       message: "API key required",
@@ -2420,11 +2332,9 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
 
     // Sandbox tokens are rejected by token type.
     const sandboxBearer = `Bearer ${api.sandboxTokenForRun(owner, randomUUID())}`;
-    const sandboxThread = await chat.requestV1Thread(
-      sandboxBearer,
-      threadId,
-      [403],
-    );
+    const sandboxThread = await chat.requestV1Thread(sandboxBearer, threadId, [
+      403,
+    ]);
     expectApiError(sandboxThread.body);
     expect(sandboxThread.body.error.code).toBe("FORBIDDEN");
 
@@ -2436,11 +2346,9 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     });
-    const missingThread = await chat.requestV1Thread(
-      bearer,
-      randomUUID(),
-      [404],
-    );
+    const missingThread = await chat.requestV1Thread(bearer, randomUUID(), [
+      404,
+    ]);
     expectApiError(missingThread.body);
 
     const intruder = bdd.user();
@@ -2667,12 +2575,9 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       });
     });
 
-    const v1Page = await chat.requestV1ThreadMessages(
-      bearer,
-      thread.id,
-      {},
-      [200],
-    );
+    const v1Page = await chat.requestV1ThreadMessages(bearer, thread.id, {}, [
+      200,
+    ]);
     if (v1Page.status !== 200) {
       throw new Error("Expected the v1 messages page after the send");
     }

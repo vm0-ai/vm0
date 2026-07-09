@@ -6,7 +6,7 @@ import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
-import { upsertUsagePricingRows } from "../../../test-fixtures/usage-pricing";
+import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -152,7 +152,7 @@ async function createUnthreadedRun(
 // connector events charge 10 credits per unit, image events 30 per unit,
 // model token events 1 credit per token.
 async function seedModelPricing(model: string): Promise<void> {
-  await upsertUsagePricingRows(
+  await seedUsagePricingRows(
     Object.values(MODEL_TOKEN_CATEGORIES).map((category) => {
       return {
         kind: "model",
@@ -166,7 +166,7 @@ async function seedModelPricing(model: string): Promise<void> {
 }
 
 async function seedConnectorPricing(provider: string): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "connector",
       provider,
@@ -178,7 +178,7 @@ async function seedConnectorPricing(provider: string): Promise<void> {
 }
 
 async function seedImagePricing(provider: string): Promise<void> {
-  await upsertUsagePricingRows([
+  await seedUsagePricingRows([
     {
       kind: "image",
       provider,
@@ -283,10 +283,9 @@ describe("GET /api/zero/usage/record", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const response = await accept(
-      apiClient().get({ query: {}, headers: {} }),
-      [401],
-    );
+    const response = await accept(apiClient().get({ query: {}, headers: {} }), [
+      401,
+    ]);
 
     expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },

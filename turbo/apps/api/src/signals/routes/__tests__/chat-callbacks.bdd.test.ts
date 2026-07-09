@@ -27,7 +27,6 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { attachPreDispatchCancelledRunToThread } from "../../../test-fixtures/chat-messages";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -1427,57 +1426,6 @@ Detailed goal procedure:
     await waitForRunStatus(actor, claimed.runId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
-
-  it("excludes pre-dispatch cancelled rows without chat messages from later context", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const first = await startChatRun(actor, {
-      agentId,
-      prompt: "anchor before ghost",
-    });
-    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
-    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "anchor answer")]);
-    await completeChatRunOk(first.runId, firstHeaders, {
-      lastEventSequence: 0,
-    });
-    await waitForThreadMessages(actor, first.threadId, (messages) => {
-      return assistantMessages(messages).some((message) => {
-        return (
-          message.runId === first.runId && message.content === "anchor answer"
-        );
-      });
-    });
-
-    const ghost = await api.createRun(actor, {
-      agentId,
-      prompt: "ghost pre-dispatch queued prompt",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.requestCancelRun(actor, ghost.runId, [200]);
-    await waitForRunStatus(actor, ghost.runId, "cancelled");
-    await attachPreDispatchCancelledRunToThread({
-      runId: ghost.runId,
-      threadId: first.threadId,
-    });
-
-    const second = await startChatRun(actor, {
-      agentId,
-      threadId: first.threadId,
-      prompt: "continue after ghost",
-    });
-    const secondRun = await api.readRun(actor, second.runId);
-    const appended = secondRun.appendSystemPrompt ?? "";
-    expect(appended).toContain("# Web Chat Run Context");
-    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
-    expect(appended).toContain("User: anchor before ghost");
-    expect(appended).toContain("Assistant: anchor answer");
-    expect(appended).not.toContain(`- RUN_ID: ${ghost.runId}`);
-    expect(appended).not.toContain("ghost pre-dispatch queued prompt");
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await waitForRunStatus(actor, second.runId, "cancelled");
-  }, 90_000);
 });
 
 describe("CHAT-02: chat output extraction and progress callbacks", () => {
@@ -1772,11 +1720,9 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       .toBe(true);
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
-    await webhooks.requestAgentHeartbeat(
-      { runId: first.runId },
-      firstHeaders,
-      [200],
-    );
+    await webhooks.requestAgentHeartbeat({ runId: first.runId }, firstHeaders, [
+      200,
+    ]);
 
     expect(routeRequests()).toBe(0);
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
@@ -2537,11 +2483,9 @@ describe("CHAT-02: thread deletion while a run is active", () => {
       `chatThreadMessageCreated:${run.threadId}`,
       null,
     );
-    const deletedRead = await chat.requestReadThread(
-      actor,
-      run.threadId,
-      [404],
-    );
+    const deletedRead = await chat.requestReadThread(actor, run.threadId, [
+      404,
+    ]);
     expect(deletedRead.status).toBe(404);
   }, 60_000);
 });

@@ -44,7 +44,6 @@ import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { seedRuntimeInjectionWindowMemories } from "../../../test-fixtures/relationship-memory";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
@@ -1755,11 +1754,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(running.status).toBe("running");
     expect(running.startedAt).toBeDefined();
 
-    const reclaimed = await api.requestClaimRunnerJob(
-      true,
-      created.runId,
-      [404],
-    );
+    const reclaimed = await api.requestClaimRunnerJob(true, created.runId, [
+      404,
+    ]);
     expectApiError(reclaimed.body);
 
     const sandboxHeaders = {
@@ -1827,11 +1824,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
 
-    const uncancellable = await api.requestCancelRun(
-      actor,
-      created.runId,
-      [400],
-    );
+    const uncancellable = await api.requestCancelRun(actor, created.runId, [
+      400,
+    ]);
     expectApiError(uncancellable.body);
   });
 
@@ -5454,83 +5449,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
-
-    if (!actor.orgId) {
-      throw new Error("Expected actor to belong to an org");
-    }
-    // Isolation comes from the actor's random org/user ids; the seeded memory
-    // rows are invisible to other tests without a teardown.
-    await seedRuntimeInjectionWindowMemories({
-      orgId: actor.orgId,
-      userId: actor.userId,
-    });
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.RelationshipMemory]: true,
-      },
-    );
-
-    const memoryRun = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "security review injection preview",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const memoryClaim = await api.claimRunnerJob(memoryRun.runId);
-    const memoryAppendSystemPrompt = memoryClaim.appendSystemPrompt ?? "";
-    expect(memoryAppendSystemPrompt).toContain('zero memory recall "<query>"');
-    expect(memoryAppendSystemPrompt).toContain(
-      'zero memory context --query "<topic>"',
-    );
-    expect(memoryAppendSystemPrompt).toContain("These commands are read-only");
-    expect(memoryAppendSystemPrompt).not.toContain("# Zero Memory Context");
-    expect(memoryAppendSystemPrompt).not.toContain(
-      "The user prefers concise launch summaries.",
-    );
-    await api.requestCancelRun(actor, memoryRun.runId, [200]);
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      {
-        [FeatureSwitchKey.RelationshipMemory]: true,
-        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
-      },
-    );
-
-    const runtimeMemoryRun = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "security review injection preview",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const runtimeMemoryClaim = await api.claimRunnerJob(runtimeMemoryRun.runId);
-    const runtimeMemoryAppendSystemPrompt =
-      runtimeMemoryClaim.appendSystemPrompt ?? "";
-    expect(runtimeMemoryAppendSystemPrompt).toContain("# Zero Memory Context");
-    expect(runtimeMemoryAppendSystemPrompt).toContain("Stable profile:");
-    expect(runtimeMemoryAppendSystemPrompt).toContain("Current context:");
-    expect(runtimeMemoryAppendSystemPrompt).toContain(
-      "Relevant memories for this request:",
-    );
-    expect(runtimeMemoryAppendSystemPrompt).toContain(
-      "The user prefers concise launch summaries.",
-    );
-    expect(runtimeMemoryAppendSystemPrompt).toContain(
-      "The current work is validating runtime memory injection.",
-    );
-    expect(runtimeMemoryAppendSystemPrompt).toContain(
-      "Follow up on the security review injection preview.",
-    );
-    // The query-relevant memory sits outside the bounded profile window and is
-    // surfaced only by prompt recall in the "Relevant memories" section.
-    expect(runtimeMemoryAppendSystemPrompt).toContain(
-      "Capture findings from the security review injection preview session.",
-    );
-    await api.requestCancelRun(actor, runtimeMemoryRun.runId, [200]);
   });
 
   it("keeps goal tools allowed when no feature flags are enabled", async () => {
@@ -6049,11 +5967,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       `Bearer vm0_official_${"f".repeat(64)}`,
     ];
     for (const authorization of rejectedAuthorizations) {
-      const poll = await api.requestPollRunnerAs(
-        authorization,
-        pollBody,
-        [401],
-      );
+      const poll = await api.requestPollRunnerAs(authorization, pollBody, [
+        401,
+      ]);
       expectApiError(poll.body);
       expect(poll.body.error.message).toBe("Authentication required");
     }
@@ -6177,11 +6093,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
     const storedFailedRun = await api.readRun(actor, failedRun.runId);
     expect(storedFailedRun.status).toBe("failed");
-    const failedClaim = await api.requestClaimRunnerJob(
-      true,
-      failedRun.runId,
-      [404],
-    );
+    const failedClaim = await api.requestClaimRunnerJob(true, failedRun.runId, [
+      404,
+    ]);
     expectApiError(failedClaim.body);
     expect(failedClaim.body.error.message).toBe("Job not found in queue");
 

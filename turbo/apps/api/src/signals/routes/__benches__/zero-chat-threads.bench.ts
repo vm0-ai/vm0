@@ -9,6 +9,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatThreadEvents } from "@vm0/db/schema/chat-thread-event";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
@@ -33,10 +34,6 @@ import { setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
-import {
-  seedLegacyChatThread,
-  type LegacyChatThreadFixture,
-} from "../../../test-fixtures/chat-threads";
 import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
@@ -82,6 +79,13 @@ const orgClient = setupApp({ context })(zeroOrgContract);
 const personalModelProvidersClient = setupApp({ context })(
   zeroPersonalModelProvidersMainContract,
 );
+
+interface BenchChatThreadFixture {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly composeId: string;
+  readonly threadId: string;
+}
 
 async function chunkedInsert<T>(
   rows: T[],
@@ -300,8 +304,46 @@ async function seedBackgroundLoad(): Promise<void> {
   });
 }
 
+async function seedBenchChatThread(): Promise<BenchChatThreadFixture> {
+  const db = store.set(writeDb$);
+  const userId = `user_${randomUUID()}`;
+  const orgId = `org_${randomUUID()}`;
+  const composeId = randomUUID();
+  const threadId = randomUUID();
+  const title = "bench";
+
+  await db.insert(agentComposes).values({
+    id: composeId,
+    userId,
+    orgId,
+    name: `compose-${composeId.slice(0, 8)}`,
+  });
+  await db.insert(zeroAgents).values({
+    id: composeId,
+    orgId,
+    owner: userId,
+    name: `agent-${composeId.slice(0, 8)}`,
+  });
+  await db.insert(chatThreads).values({
+    id: threadId,
+    userId,
+    agentComposeId: composeId,
+    title,
+  });
+  await db.insert(chatThreadEvents).values({
+    userId,
+    orgId,
+    chatThreadId: threadId,
+    kind: "created",
+    agentComposeId: composeId,
+    title,
+  });
+
+  return { userId, orgId, composeId, threadId };
+}
+
 async function seedTargetThreadRuns(
-  fixture: LegacyChatThreadFixture,
+  fixture: BenchChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
   const versionId = randomUUID();
@@ -391,7 +433,7 @@ async function seedTargetThreadRuns(
 }
 
 async function seedSideEffectFreeGetData(
-  fixture: LegacyChatThreadFixture,
+  fixture: BenchChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
 
@@ -483,7 +525,7 @@ async function seedSideEffectFreeGetData(
 }
 
 async function logPlannerDiagnostic(
-  fixture: LegacyChatThreadFixture,
+  fixture: BenchChatThreadFixture,
 ): Promise<void> {
   const db = store.set(writeDb$);
   await db.execute(sql`
@@ -513,12 +555,12 @@ async function logPlannerDiagnostic(
   );
 }
 
-const ensureSeeded: () => Promise<LegacyChatThreadFixture> = (() => {
-  let cached: Promise<LegacyChatThreadFixture> | undefined;
+const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
+  let cached: Promise<BenchChatThreadFixture> | undefined;
   return () => {
     cached ??= (async () => {
       installR2ListMock();
-      const seeded = await seedLegacyChatThread({ title: "bench" });
+      const seeded = await seedBenchChatThread();
       await seedBackgroundLoad();
       await seedTargetThreadRuns(seeded);
       await seedSideEffectFreeGetData(seeded);
