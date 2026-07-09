@@ -40,12 +40,15 @@ function formatTime(value: string): string {
 
 function sourceLabel(source: ComputerUseAuthorizationSource): string {
   switch (source) {
-    case "chat":
+    case "chat": {
       return "this chat thread";
-    case "slack":
+    }
+    case "slack": {
       return "this Slack thread";
-    case "teams":
+    }
+    case "teams": {
       return "this Teams thread";
+    }
   }
 }
 
