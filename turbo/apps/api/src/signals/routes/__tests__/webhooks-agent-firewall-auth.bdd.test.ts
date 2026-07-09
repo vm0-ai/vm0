@@ -441,7 +441,7 @@ describe("FW-3: billable firewall lease", () => {
     );
   });
 
-  it("denies billable firewall auth after the subscription is deleted", async () => {
+  it("continues billable firewall auth after subscription deletion when credits remain", async () => {
     const bdd = createBddApi(context);
     const runsApi = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -487,11 +487,26 @@ describe("FW-3: billable firewall lease", () => {
       [200],
     );
 
-    const denied = await fw.requestFirewallAuth(headers, body, [402]);
-    if (denied.status !== 402) {
-      throw new Error("Expected the suspended billable auth to be denied");
+    const downgraded = await runsApi.readBillingStatus(actor);
+    expect(downgraded.tier).toBe("limited-free-1");
+    expect(downgraded.subscriptionStatus).toBe("canceled");
+
+    const postDeletionBefore = Math.floor(now() / 1000);
+    const postDeletionLease = await fw.requestFirewallAuth(
+      headers,
+      body,
+      [200],
+    );
+    if (postDeletionLease.status !== 200) {
+      throw new Error("Expected the limited-free-1 billable auth to lease");
     }
-    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(postDeletionLease.body.expiresAt).not.toBeNull();
+    expect(postDeletionLease.body.expiresAt ?? 0).toBeGreaterThanOrEqual(
+      postDeletionBefore + 25,
+    );
+    expect(postDeletionLease.body.expiresAt ?? 0).toBeLessThanOrEqual(
+      postDeletionBefore + 35,
+    );
 
     await runsApi.requestCancelRun(actor, run.runId, [200]);
   });
