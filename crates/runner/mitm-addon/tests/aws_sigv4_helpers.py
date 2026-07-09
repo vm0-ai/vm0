@@ -1,6 +1,7 @@
 """Shared AWS SigV4 fixture builders for mitm-addon tests."""
 
 import urllib.parse
+from collections.abc import Sequence
 
 from aws_sigv4 import AwsSigV4Credentials
 
@@ -64,7 +65,7 @@ def aws_sigv4_header_auth_headers(
     authorization: str | None = None,
     content_type: str | None = None,
     amz_date: str | None = DEFAULT_SIGV4_TIMESTAMP,
-    extra_headers: tuple[tuple[str, str], ...] = (),
+    extra_headers: Sequence[tuple[str, str]] = (),
 ) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = [("Host", host)]
     if content_type is not None:

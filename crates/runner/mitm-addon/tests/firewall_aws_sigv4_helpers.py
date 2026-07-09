@@ -232,7 +232,7 @@ def make_sts_header_sigv4_flow(
     authorization: str | None = None,
     signed_headers: str = "host;x-amz-date",
     amz_date: str | None = DEFAULT_SIGV4_TIMESTAMP,
-    extra_headers: tuple[tuple[str, str], ...] = (),
+    extra_headers: Sequence[tuple[str, str]] = (),
 ) -> http.HTTPFlow:
     return real_flow(
         with_response=False,
