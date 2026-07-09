@@ -322,6 +322,7 @@ async function fetchFirecrawlScrape(
       body: JSON.stringify({
         url: targetUrl.toString(),
         formats: [request.format],
+        parsers: [],
         proxy: firecrawlProxy(request.mode),
         skipTlsVerification: false,
         storeInCache: false,

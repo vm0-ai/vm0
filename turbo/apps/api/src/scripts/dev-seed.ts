@@ -382,9 +382,8 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["__fallback__", usd(0.005), 1],
   ]),
 
-  // Firecrawl single-page scrape fixed vm0 product pricing.
-  // Firecrawl Cloud credits are plan-dependent, so v1 uses conservative
-  // per-request fixed pricing to avoid underbilling the exposed modes.
+  // Firecrawl single-page scrape fixed vm0 product pricing. Requests disable
+  // document parsers so provider cost stays bounded to the exposed modes.
   ...usageGroup("scrape", "firecrawl", [
     ["standard.markdown", usd(0.004), 1],
     ["standard.links", usd(0.004), 1],

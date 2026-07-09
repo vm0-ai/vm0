@@ -399,6 +399,7 @@ describe("zero scrape route", () => {
     expect(requestBody).toStrictEqual({
       url: "https://example.com/page",
       formats: ["markdown"],
+      parsers: [],
       proxy: "basic",
       skipTlsVerification: false,
       storeInCache: false,
@@ -661,6 +662,7 @@ describe("zero scrape route", () => {
     expect(requestBody).toStrictEqual({
       url: "https://example.com/page",
       formats: ["links"],
+      parsers: [],
       proxy: "enhanced",
       skipTlsVerification: false,
       storeInCache: false,
