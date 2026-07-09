@@ -575,30 +575,49 @@ function workflowSnapshotFromRow(
   };
 }
 
-function goalEventFromRow(
-  event: ChatMessageGoalEvent | null,
-): ChatMessageGoalEvent | undefined {
-  if (!event) {
+function recordFromJson(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function goalEventFromRow(event: unknown): ChatMessageGoalEvent | undefined {
+  const record = recordFromJson(event);
+  if (!record) {
     return undefined;
   }
-  if (event.type === "state" && event.status === "active") {
+  if (record.type === "cleared") {
+    return { type: "cleared" };
+  }
+  if (record.type !== "state") {
+    return undefined;
+  }
+  if (record.status === "active") {
     return {
-      ...event,
-      objectiveBrief: nonEmptyGoalObjectiveBrief(event.objectiveBrief),
+      type: "state",
+      status: "active",
+      objectiveBrief: nonEmptyGoalObjectiveBrief(record.objectiveBrief),
     };
   }
-  return event;
+  if (
+    record.status === "paused" ||
+    record.status === "blocked" ||
+    record.status === "complete"
+  ) {
+    return { type: "state", status: record.status };
+  }
+  return undefined;
 }
 
 function goalSnapshotFromRow(
-  snapshot: ChatMessageGoalSnapshot | null,
+  snapshot: unknown,
 ): ChatMessageGoalSnapshot | undefined {
-  if (!snapshot) {
+  const record = recordFromJson(snapshot);
+  if (!record) {
     return undefined;
   }
   return {
-    ...snapshot,
-    objectiveBrief: nonEmptyGoalObjectiveBrief(snapshot.objectiveBrief),
+    objectiveBrief: nonEmptyGoalObjectiveBrief(record.objectiveBrief),
   };
 }
 

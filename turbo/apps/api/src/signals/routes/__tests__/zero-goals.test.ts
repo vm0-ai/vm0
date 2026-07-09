@@ -298,7 +298,7 @@ describe("zero goals", () => {
     );
   });
 
-  it("normalizes legacy goal marker JSON with invalid objective briefs", async () => {
+  it("normalizes invalid legacy goal marker JSON", async () => {
     const fixture = await seedGoalApiFixture();
     const chat = createChatFilesBddApi(context);
     await createGoal(fixture, "ship goals");
@@ -315,6 +315,21 @@ describe("zero goals", () => {
         AND goal_event IS NOT NULL
     `);
     expect(updated.rowCount).toBe(1);
+    const inserted = await db().execute(sql`
+      INSERT INTO chat_messages (
+        chat_thread_id,
+        role,
+        goal_event,
+        goal_snapshot
+      )
+      VALUES (
+        ${fixture.threadId},
+        'assistant',
+        '{"type":"state","status":"unknown","objectiveBrief":"bad"}'::jsonb,
+        '{"objectiveBrief":{"bad":true}}'::jsonb
+      )
+    `);
+    expect(inserted.rowCount).toBe(1);
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const messages = await chat.listThreadMessages(
@@ -327,17 +342,24 @@ describe("zero goals", () => {
       fixture.threadId,
     );
 
-    expect(messages.messages).toContainEqual(
-      expect.objectContaining({
-        role: "assistant",
-        goalEvent: {
-          type: "state",
-          status: "active",
-          objectiveBrief: "Untitled goal",
-        },
-        goalSnapshot: { objectiveBrief: "Untitled goal" },
+    const legacyMessages = messages.messages.filter((message) => {
+      return message.goalSnapshot?.objectiveBrief === "Untitled goal";
+    });
+    expect(legacyMessages).toHaveLength(2);
+    expect(
+      legacyMessages.some((message) => {
+        return (
+          message.goalEvent?.type === "state" &&
+          message.goalEvent.status === "active" &&
+          message.goalEvent.objectiveBrief === "Untitled goal"
+        );
       }),
-    );
+    ).toBeTruthy();
+    expect(
+      legacyMessages.some((message) => {
+        return message.goalEvent === undefined;
+      }),
+    ).toBeTruthy();
   });
 
   it("clears the current goal and writes a cleared marker", async () => {
