@@ -1761,7 +1761,9 @@ jobs:
     needs: [prepare, deploy-runner-prepare, deploy-api]
     outputs:
       total-capacity: ${{ steps.start.outputs.total-capacity }}
-    timeout-minutes: 4
+    # Normal starts should finish quickly; failures need enough room for the
+    # bounded partial-start cleanup watchdog to run before GitHub kills the job.
+    timeout-minutes: 8
     if: |
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
