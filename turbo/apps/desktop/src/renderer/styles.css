@@ -684,6 +684,45 @@ button {
   overflow-wrap: anywhere;
 }
 
+.mcp-server-entry {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-server-row {
+  min-height: 58px;
+  border: 1px solid rgba(30, 38, 52, 0.08);
+  border-radius: 7px;
+  padding: 6px 6px 6px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: rgba(249, 250, 251, 0.76);
+}
+
+.mcp-server-toggle {
+  min-width: 0;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.mcp-server-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.mcp-server-toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .mcp-config-input {
   width: 100%;
   border: 1px solid rgba(30, 38, 52, 0.08);
@@ -697,6 +736,11 @@ button {
   font-size: 12px;
   line-height: 1.35;
   resize: vertical;
+}
+
+.mcp-config-input::placeholder {
+  color: #667085;
+  opacity: 0.78;
 }
 
 .raw-log-details summary {
@@ -1566,6 +1610,18 @@ button {
   }
 
   .checkbox-row-meta {
+    grid-column: 2;
+  }
+
+  .mcp-server-row {
+    align-items: start;
+  }
+
+  .mcp-server-toggle {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .mcp-server-toggle .checkbox-row-meta {
     grid-column: 2;
   }
 
