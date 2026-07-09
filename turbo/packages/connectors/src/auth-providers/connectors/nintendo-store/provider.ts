@@ -1,0 +1,126 @@
+import { z } from "zod";
+
+import type {
+  ExternalCodeConnectorAuthProvider,
+  RefreshTokenAccessProvider,
+} from "../../types";
+import {
+  buildNintendoStoreAuthorizationUrl,
+  createNintendoStoreProviderState,
+  exchangeNintendoStoreSessionToken,
+  exchangeNintendoStoreSessionTokenCode,
+  fetchNintendoStoreLocale,
+  nintendoStoreAccountId,
+  nintendoStoreUserInfo,
+  parseNintendoStoreSessionTokenCode,
+} from "./api";
+
+const NINTENDO_STORE_EXTERNAL_CODE_EXPIRES_IN_SECONDS = 10 * 60;
+
+const nintendoStoreProviderStateSchema = z.object({
+  version: z.literal(1),
+  state: z.string().min(1).max(128),
+  codeVerifier: z.string().min(43).max(128),
+});
+
+function parseNintendoStoreProviderState(providerState: string) {
+  const parsed: unknown = JSON.parse(providerState);
+  return nintendoStoreProviderStateSchema.parse(parsed);
+}
+
+function createNintendoStoreExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
+  "nintendo-store",
+  "api"
+>["grant"] {
+  return {
+    kind: "external-code",
+    startExternalCodeAuthorization: async (args) => {
+      const providerState = createNintendoStoreProviderState();
+      return {
+        authorizationUrl: buildNintendoStoreAuthorizationUrl({
+          clientId: args.authClient.clientId,
+          grant: args.externalCodeGrant,
+          providerState,
+        }),
+        providerState: JSON.stringify(providerState),
+        expiresIn: NINTENDO_STORE_EXTERNAL_CODE_EXPIRES_IN_SECONDS,
+      };
+    },
+    completeExternalCodeAuthorization: async (args) => {
+      const providerState = parseNintendoStoreProviderState(args.providerState);
+      const sessionTokenCode = parseNintendoStoreSessionTokenCode({
+        code: args.code,
+        expectedState: providerState.state,
+      });
+      const session = await exchangeNintendoStoreSessionTokenCode({
+        clientId: args.authClient.clientId,
+        sessionTokenCode,
+        codeVerifier: providerState.codeVerifier,
+        signal: args.signal,
+      });
+      const token = await exchangeNintendoStoreSessionToken({
+        clientId: args.authClient.clientId,
+        sessionToken: session.sessionToken,
+        signal: args.signal,
+      });
+      const locale = await fetchNintendoStoreLocale({
+        accessToken: token.accessToken,
+        signal: args.signal,
+      });
+      return {
+        outputs: {
+          sessionToken: session.sessionToken,
+          accessToken: token.accessToken,
+          idToken: token.idToken,
+          accountId: nintendoStoreAccountId(token.idToken),
+          locale: locale.locale,
+        },
+        expiresIn: token.expiresIn,
+        scopes:
+          token.scopes.length > 0
+            ? token.scopes
+            : args.externalCodeGrant.scopes,
+        userInfo: nintendoStoreUserInfo(token.idToken),
+      };
+    },
+  };
+}
+
+function createNintendoStoreRefreshTokenAccessProvider(): RefreshTokenAccessProvider<
+  "nintendo-store",
+  "api"
+> {
+  return {
+    kind: "refresh-token",
+    refresh: async (args) => {
+      const token = await exchangeNintendoStoreSessionToken({
+        clientId: args.authClient.clientId,
+        sessionToken: args.inputs.sessionToken,
+        signal: args.signal,
+      });
+      const locale = await fetchNintendoStoreLocale({
+        accessToken: token.accessToken,
+        signal: args.signal,
+      });
+      return {
+        outputs: {
+          accessToken: token.accessToken,
+          idToken: token.idToken,
+          locale: locale.locale,
+        },
+        expiresIn: token.expiresIn,
+      };
+    },
+  };
+}
+
+export const nintendoStoreProvider = {
+  grant: createNintendoStoreExternalCodeGrantProvider(),
+  access: createNintendoStoreRefreshTokenAccessProvider(),
+  revoke: { kind: "none" },
+} as const satisfies ExternalCodeConnectorAuthProvider<
+  "nintendo-store",
+  "api"
+> & {
+  readonly access: RefreshTokenAccessProvider<"nintendo-store", "api">;
+};

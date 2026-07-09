@@ -122,9 +122,7 @@ describe("getAllFeatureStates", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(staffOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
@@ -149,9 +147,7 @@ describe("getAllFeatureStates", () => {
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(otherOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,
