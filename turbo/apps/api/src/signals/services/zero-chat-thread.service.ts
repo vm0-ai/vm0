@@ -71,7 +71,7 @@ import {
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
-import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
+import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 
@@ -596,7 +596,7 @@ function goalEventFromRow(event: unknown): ChatMessageGoalEvent | undefined {
     return {
       type: "state",
       status: "active",
-      objectiveBrief: nonEmptyGoalObjectiveBrief(record.objectiveBrief),
+      objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
     };
   }
   if (
@@ -617,7 +617,7 @@ function goalSnapshotFromRow(
     return undefined;
   }
   return {
-    objectiveBrief: nonEmptyGoalObjectiveBrief(record.objectiveBrief),
+    objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
   };
 }
 

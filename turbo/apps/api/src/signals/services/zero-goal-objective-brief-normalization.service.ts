@@ -49,12 +49,17 @@ export function fallbackGoalObjectiveBrief(objective: string): string {
   return capGoalObjectiveBriefText(fallback);
 }
 
-export function nonEmptyGoalObjectiveBrief(objectiveBrief: unknown): string {
-  const trimmed =
-    typeof objectiveBrief === "string" ? objectiveBrief.trim() : "";
+export function nonEmptyGoalObjectiveBrief(
+  objectiveBrief: string | null | undefined,
+): string {
+  const trimmed = objectiveBrief?.trim() ?? "";
   return trimmed.length > 0
     ? capGoalObjectiveBriefText(trimmed)
     : DEFAULT_OBJECTIVE_BRIEF;
+}
+
+export function goalObjectiveBriefFromJson(value: unknown): string {
+  return nonEmptyGoalObjectiveBrief(typeof value === "string" ? value : null);
 }
 
 export function normalizeGoalObjectiveBrief(args: {
