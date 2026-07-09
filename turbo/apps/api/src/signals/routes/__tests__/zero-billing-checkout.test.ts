@@ -16,10 +16,10 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { seedUsageFixture$ } from "./helpers/zero-usage";
 
 const context = testContext();
 const store = createStore();
@@ -332,8 +332,17 @@ describe("POST /api/zero/billing/checkout", () => {
     return createOnboardingPaymentPendingOrg();
   }
 
-  function trackedCustomSeed(): Promise<{ orgId: string; userId: string }> {
-    return store.set(seedUsageFixture$, { tier: "custom" }, context.signal);
+  async function trackedCustomSeed(): Promise<{
+    orgId: string;
+    userId: string;
+  }> {
+    const fixture = createOrgFixture();
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "custom",
+      credits: 0,
+    });
+    return fixture;
   }
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -1028,7 +1037,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     expect(response.body).toStrictEqual({ completed: false });
 
     const status = await readBillingStatus(fixture);
-    expect(status.tier).toBe("pro-suspend");
+    expect(status.tier).toBe("limited-free-1");
     expect(status.hasSubscription).toBeTruthy();
     expect(status.subscriptionStatus).toBe("trialing");
     expect(status.onboardingPaymentPending).toBeTruthy();
@@ -1078,7 +1087,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     expect(response.body).toStrictEqual({ completed: false });
 
     const status = await readBillingStatus(fixture);
-    expect(status.tier).toBe("pro-suspend");
+    expect(status.tier).toBe("limited-free-1");
     expect(status.hasSubscription).toBeTruthy();
     expect(status.subscriptionStatus).toBe("incomplete");
     expect(status.onboardingPaymentPending).toBeTruthy();

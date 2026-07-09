@@ -46,7 +46,11 @@ import {
 
 const L = logger("WebhookStripe");
 
-type BillingDowngradeCheckoutTargetTier = "pro-suspend" | "pro";
+type BillingDowngradeCheckoutTargetTier =
+  | "limited-free-1"
+  | "pro-suspend"
+  | "pro";
+const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type UsageAllowanceSubscriptionUpdateStore = Pick<Db, "select" | "update">;
@@ -171,9 +175,11 @@ interface PaidWebhookOutcome {
   readonly drainOrgId: string | null;
 }
 
+type AtomGrantTier = Extract<OrgTier, "pro" | "team" | "custom">;
+
 interface AtomGrantInvoiceDetails {
   readonly orgId: string;
-  readonly tier: "pro" | "team";
+  readonly tier: AtomGrantTier;
   readonly grantExpiresAt: Date | null;
   readonly creditExpiresAt: Date;
   readonly customerId: string | null;
@@ -503,8 +509,34 @@ function isAtomGrantInvoice(invoice: InvoiceInput): boolean {
   );
 }
 
-function atomGrantTier(value: string | undefined): "pro" | "team" | null {
-  return value === "pro" || value === "team" ? value : null;
+function atomGrantTier(value: string | undefined): AtomGrantTier | null {
+  return value === "pro" || value === "team" || value === "custom"
+    ? value
+    : null;
+}
+
+function atomGrantTierRank(tier: string | null | undefined): number {
+  switch (tier) {
+    case "custom": {
+      return 3;
+    }
+    case "team": {
+      return 2;
+    }
+    case "pro": {
+      return 1;
+    }
+    default: {
+      return 0;
+    }
+  }
+}
+
+function atomGrantTierConflictMessage(args: {
+  readonly currentTier: string | null | undefined;
+  readonly targetTier: AtomGrantTier;
+}): string {
+  return `Cannot apply Atom ${args.targetTier} grant while current tier is ${args.currentTier ?? "unknown"}`;
 }
 
 function atomGrantExpiresAt(
@@ -598,7 +630,7 @@ function atomGrantInvoiceDetails(
 
 function atomGrantWouldReplaceWithSameOrLowerTier(args: {
   readonly lockedOrg: LockedInvoicePaidOrg;
-  readonly targetTier: "pro" | "team";
+  readonly targetTier: AtomGrantTier;
 }): boolean {
   if (
     args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
@@ -608,10 +640,9 @@ function atomGrantWouldReplaceWithSameOrLowerTier(args: {
     return false;
   }
 
-  return checkoutWouldReplaceWithSameOrLowerTier({
-    currentTier: args.lockedOrg.tier,
-    targetTier: args.targetTier,
-  });
+  return (
+    atomGrantTierRank(args.lockedOrg.tier) >= atomGrantTierRank(args.targetTier)
+  );
 }
 
 function positiveMetadataInteger(
@@ -1166,6 +1197,12 @@ async function processAtomGrantInvoicePaid(
       return false;
     }
     if (lockedOrg.lastProcessedInvoiceId === invoice.id) {
+      await cancelReplacedSubscriptionsAfterAtomGrant({
+        orgId: details.orgId,
+        customerId: details.customerId,
+        invoiceId: invoice.id,
+        knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+      });
       L.debug("atom grant invoice already processed", {
         invoiceId: invoice.id,
         orgId: details.orgId,
@@ -1183,7 +1220,7 @@ async function processAtomGrantInvoicePaid(
         orgId: details.orgId,
         currentTier: lockedOrg.tier,
         targetTier: details.tier,
-        reason: checkoutTierConflictMessage({
+        reason: atomGrantTierConflictMessage({
           currentTier: lockedOrg.tier,
           targetTier: details.tier,
         }),
@@ -1199,6 +1236,12 @@ async function processAtomGrantInvoicePaid(
       expiresAt: details.creditExpiresAt,
     });
     if (!inserted) {
+      await cancelReplacedSubscriptionsAfterAtomGrant({
+        orgId: details.orgId,
+        customerId: details.customerId,
+        invoiceId: invoice.id,
+        knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+      });
       L.debug("atom grant invoice credits already processed", {
         invoiceId: invoice.id,
         orgId: details.orgId,
@@ -1220,12 +1263,18 @@ async function processAtomGrantInvoicePaid(
         currentPeriodEnd: details.grantExpiresAt,
         pendingSubscriptionScheduleId: null,
         pendingSubscriptionTargetTier: details.grantExpiresAt
-          ? "pro-suspend"
+          ? CANCELED_SUBSCRIPTION_TARGET_TIER
           : null,
         pendingSubscriptionChangeAt: details.grantExpiresAt,
         updatedAt: nowDate(),
       })
       .where(eq(orgMetadata.orgId, details.orgId));
+    await cancelReplacedSubscriptionsAfterAtomGrant({
+      orgId: details.orgId,
+      customerId: details.customerId,
+      invoiceId: invoice.id,
+      knownOldSubscriptionId: lockedOrg.stripeSubscriptionId,
+    });
     return true;
   });
 }
@@ -1481,7 +1530,11 @@ function billingRestoreCheckoutMetadata(
 function billingDowngradeTargetTier(
   value: string | undefined,
 ): BillingDowngradeCheckoutTargetTier | null {
-  if (value === "pro" || value === "pro-suspend") {
+  if (
+    value === "pro" ||
+    value === "limited-free-1" ||
+    value === "pro-suspend"
+  ) {
     return value;
   }
   return null;
@@ -2331,6 +2384,87 @@ async function cancelReplacedProSubscriptionsAfterTeamInvoice(args: {
   });
 }
 
+function isReplaceablePaidSubscriptionForAtomGrant(args: {
+  readonly orgId: string;
+  readonly subscription: Stripe.Subscription;
+}): boolean {
+  const subscription = args.subscription;
+  return (
+    subscription.metadata?.orgId === args.orgId &&
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    tierFromSubscription(subscription) !== null
+  );
+}
+
+async function replacedAtomGrantSubscriptionIdsForCustomer(args: {
+  readonly orgId: string;
+  readonly customerId: string;
+}): Promise<readonly string[]> {
+  const stripe = getStripeClient();
+  const subscriptions = await stripe.subscriptions.list({
+    customer: args.customerId,
+    status: "all",
+    limit: 100,
+  });
+
+  return subscriptions.data
+    .filter((subscription) => {
+      return isReplaceablePaidSubscriptionForAtomGrant({
+        orgId: args.orgId,
+        subscription,
+      });
+    })
+    .map((subscription) => {
+      return subscription.id;
+    });
+}
+
+async function cancelReplacedSubscriptionsAfterAtomGrant(args: {
+  readonly orgId: string;
+  readonly customerId: string | null;
+  readonly invoiceId: string;
+  readonly knownOldSubscriptionId: string | null;
+}): Promise<void> {
+  const replacedSubscriptionIds = [
+    ...(args.knownOldSubscriptionId ? [args.knownOldSubscriptionId] : []),
+    ...(args.customerId
+      ? await replacedAtomGrantSubscriptionIdsForCustomer({
+          orgId: args.orgId,
+          customerId: args.customerId,
+        })
+      : []),
+  ];
+  if (replacedSubscriptionIds.length === 0) {
+    return;
+  }
+
+  const stripe = getStripeClient();
+  for (const oldSubscriptionId of new Set(replacedSubscriptionIds)) {
+    const cancelResult = await settle(
+      stripe.subscriptions.cancel(oldSubscriptionId, {
+        invoice_now: false,
+        prorate: false,
+      }),
+    );
+    if (!cancelResult.ok) {
+      if (!isStripeResourceMissingError(cancelResult.error)) {
+        throw cancelResult.error;
+      }
+      L.warn("replaced subscription already absent during Atom grant", {
+        orgId: args.orgId,
+        invoiceId: args.invoiceId,
+        oldSubscriptionId,
+      });
+      continue;
+    }
+    L.debug("canceled replaced subscription after Atom grant invoice paid", {
+      orgId: args.orgId,
+      invoiceId: args.invoiceId,
+      oldSubscriptionId,
+    });
+  }
+}
+
 function subscriptionIdFromInvoice(invoice: InvoiceInput): string | null {
   const subscription = invoice.parent?.subscription_details?.subscription;
   return typeof subscription === "string"
@@ -2471,7 +2605,9 @@ async function updateSubscriptionInvoiceMetadata(
       lastProcessedInvoiceId: args.invoiceId,
       currentPeriodEnd: pendingChangeAt ?? args.details.periodEndDate,
       pendingSubscriptionScheduleId: pendingChangeAt ? scheduleId : null,
-      pendingSubscriptionTargetTier: pendingChangeAt ? "pro-suspend" : null,
+      pendingSubscriptionTargetTier: pendingChangeAt
+        ? CANCELED_SUBSCRIPTION_TARGET_TIER
+        : null,
       pendingSubscriptionChangeAt: pendingChangeAt,
       updatedAt: nowDate(),
     })
@@ -3105,7 +3241,7 @@ async function handleSubscriptionUpdated(
         ...(periodEnd && pendingScheduleId
           ? {
               pendingSubscriptionScheduleId: pendingScheduleId,
-              pendingSubscriptionTargetTier: "pro-suspend",
+              pendingSubscriptionTargetTier: CANCELED_SUBSCRIPTION_TARGET_TIER,
               pendingSubscriptionChangeAt: periodEnd,
             }
           : {}),
@@ -3256,7 +3392,7 @@ async function handleSubscriptionDeleted(
   const rows = await db
     .update(orgMetadata)
     .set({
-      tier: "pro-suspend",
+      tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
       cancelAtPeriodEnd: false,

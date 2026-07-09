@@ -205,7 +205,7 @@ function billingScheduledChange(
   if (status.cancelAtPeriodEnd) {
     return {
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: status.currentPeriodEnd,
     };
   }
@@ -643,7 +643,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
 
   const isTeam = currentTier === "team";
   const isLockedTarget = lockedTarget !== null;
-  const downgradeTarget = isTeam ? selectedTarget : "pro-suspend";
+  const downgradeTarget = isTeam ? selectedTarget : "limited-free-1";
   const targetLabel = formatTierLabel(downgradeTarget);
 
   const handleConfirm = () => {
@@ -713,9 +713,10 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             <button
               type="button"
               onClick={() => {
-                return setSelectedTarget("pro-suspend");
+                return setSelectedTarget("limited-free-1");
               }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                selectedTarget === "limited-free-1" ||
                 selectedTarget === "pro-suspend"
                   ? "border-primary ring-2 ring-primary/20"
                   : "border-border hover:border-muted-foreground/30"
@@ -753,7 +754,8 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           >
             {loading
               ? "Downgrading..."
-              : downgradeTarget === "pro-suspend"
+              : downgradeTarget === "limited-free-1" ||
+                  downgradeTarget === "pro-suspend"
                 ? "Cancel subscription"
                 : `Downgrade to ${targetLabel}`}
           </Button>

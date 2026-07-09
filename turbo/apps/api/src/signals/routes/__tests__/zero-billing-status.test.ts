@@ -8,6 +8,7 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
@@ -17,11 +18,6 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import {
-  deleteUsageFixture$,
-  seedUsageFixture$,
-  type UsageFixture,
-} from "./helpers/zero-usage";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 
 const context = testContext();
@@ -73,9 +69,6 @@ describe("GET /api/zero/billing/status", () => {
   const track = createFixtureTracker<BillingStatusFixture>((fixture) => {
     return store.set(deleteBillingStatusOrg$, fixture, context.signal);
   });
-  const trackUsage = createFixtureTracker<UsageFixture>((fixture) => {
-    return store.set(deleteUsageFixture$, fixture, context.signal);
-  });
 
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroBillingStatusContract);
@@ -117,7 +110,7 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
 
-    expect(response.body.tier).toBe("pro-suspend");
+    expect(response.body.tier).toBe("limited-free-1");
     expect(response.body.credits).toBe(100_000);
     expect(response.body.onboardingPaymentPending).toBeFalsy();
     expect(response.body.hasSubscription).toBeFalsy();
@@ -203,9 +196,14 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns custom tier status without subscription plan credits", async () => {
-    const fixture = await trackUsage(
-      store.set(seedUsageFixture$, { tier: "custom" }, context.signal),
+    const fixture = await track(
+      store.set(seedBillingStatusOrg$, { credits: 0 }, context.signal),
     );
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: "custom",
+      credits: 0,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroBillingStatusContract);
@@ -559,7 +557,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.cancelAtPeriodEnd).toBeTruthy();
     expect(response.body.scheduledChange).toStrictEqual({
       type: "cancel",
-      targetTier: "pro-suspend",
+      targetTier: "limited-free-1",
       effectiveDate: periodEnd.toISOString(),
     });
   });

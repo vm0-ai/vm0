@@ -34,7 +34,7 @@ export type BillingTier =
   | "pro"
   | "team"
   | "custom";
-type DowngradeTargetTier = "pro-suspend" | "pro";
+type DowngradeTargetTier = "limited-free-1" | "pro-suspend" | "pro";
 export type CreditCheckoutSelection =
   | { readonly credits: number; readonly customAmount?: false }
   | { readonly credits: number; readonly customAmount: true };
@@ -98,7 +98,7 @@ function downgradeSuccessToastMessage(
   effectiveDateValue: string | null,
 ): string {
   const effectiveDate = formatEffectiveDate(effectiveDateValue);
-  if (targetTier === "pro-suspend") {
+  if (targetTier === "limited-free-1" || targetTier === "pro-suspend") {
     return effectiveDate
       ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
       : "Cancellation scheduled. Your current plan stays active until the billing period ends.";
@@ -122,7 +122,11 @@ function clearPendingDowngradePayment(): void {
 function pendingDowngradeTargetTier(
   value: string | null,
 ): DowngradeTargetTier | null {
-  if (value === "pro" || value === "pro-suspend") {
+  if (
+    value === "pro" ||
+    value === "limited-free-1" ||
+    value === "pro-suspend"
+  ) {
     return value;
   }
   return null;
@@ -510,7 +514,7 @@ export const closeRestoreDialog$ = command(({ set }) => {
 export const confirmDowngrade$ = command(
   async (
     { get, set },
-    targetTier: "pro-suspend" | "pro",
+    targetTier: "limited-free-1" | "pro-suspend" | "pro",
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);

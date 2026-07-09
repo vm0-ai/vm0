@@ -585,7 +585,7 @@ function OverviewSection({
           ) : !period ? (
             <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
               No active billing period. Credit usage by member is available on
-              eligible workspaces.
+              paid plans.
             </div>
           ) : members.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">

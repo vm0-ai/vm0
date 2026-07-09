@@ -165,7 +165,7 @@ function mockBillingStory(): void {
       cancelAtPeriodEnd: true,
       scheduledChange: {
         type: "cancel",
-        targetTier: "pro-suspend",
+        targetTier: "limited-free-1",
         effectiveDate: "2026-04-01T00:00:00Z",
       },
     };
@@ -524,7 +524,7 @@ describe("organization billing settings", () => {
         cancelAtPeriodEnd: true,
         scheduledChange: {
           type: "cancel",
-          targetTier: "pro-suspend",
+          targetTier: "limited-free-1",
           effectiveDate: "2026-04-01T00:00:00Z",
         },
       });
@@ -695,10 +695,10 @@ describe("organization billing settings", () => {
     context.mocks.api(
       zeroBillingDowngradeContract.create,
       ({ body, respond }) => {
-        const targetTier = body.targetTier === "pro" ? "pro" : "pro-suspend";
+        const targetTier = body.targetTier === "pro" ? "pro" : "limited-free-1";
         billingStatus = {
           ...billingStatus,
-          cancelAtPeriodEnd: targetTier === "pro-suspend",
+          cancelAtPeriodEnd: targetTier === "limited-free-1",
           scheduledChange:
             targetTier === "pro"
               ? {
@@ -708,7 +708,7 @@ describe("organization billing settings", () => {
                 }
               : {
                   type: "cancel",
-                  targetTier: "pro-suspend",
+                  targetTier: "limited-free-1",
                   effectiveDate: "2026-05-01T00:00:00Z",
                 },
         };
@@ -804,7 +804,7 @@ describe("organization billing settings", () => {
       cancelAtPeriodEnd: true,
       scheduledChange: {
         type: "cancel",
-        targetTier: "pro-suspend",
+        targetTier: "limited-free-1",
         effectiveDate: "2026-05-01T00:00:00Z",
       },
     };

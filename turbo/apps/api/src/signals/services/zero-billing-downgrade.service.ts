@@ -29,6 +29,13 @@ const TIER_RANK = Object.freeze<Record<OrgTier, number>>({
   team: 2,
   custom: 3,
 });
+const CANCELED_SUBSCRIPTION_TARGET_TIER = "limited-free-1";
+type CancellationTargetTier = typeof CANCELED_SUBSCRIPTION_TARGET_TIER;
+type LegacyCancellationTargetTier = "pro-suspend";
+type DowngradeTargetTier =
+  | CancellationTargetTier
+  | LegacyCancellationTargetTier
+  | "pro";
 
 type DowngradeResult =
   | {
@@ -46,18 +53,18 @@ type DowngradeResult =
       readonly ok: false;
       readonly reason: "invalid_target_tier";
       readonly currentTier: OrgTier;
-      readonly targetTier: "pro-suspend" | "pro";
+      readonly targetTier: DowngradeTargetTier;
     };
 
 interface DowngradeArgs {
   readonly orgId: string;
-  readonly targetTier: "pro-suspend" | "pro";
+  readonly targetTier: DowngradeTargetTier;
   readonly returnUrl: string;
 }
 
 interface DowngradeSubscriptionForOrgArgs {
   readonly orgId: string;
-  readonly targetTier: "pro-suspend" | "pro";
+  readonly targetTier: DowngradeTargetTier;
   readonly returnUrl?: string;
   readonly requirePaymentMethod?: boolean;
 }
@@ -280,7 +287,7 @@ async function scheduleCancellationAtPeriodEnd(
     .set({
       cancelAtPeriodEnd: true,
       pendingSubscriptionScheduleId: scheduleId,
-      pendingSubscriptionTargetTier: "pro-suspend",
+      pendingSubscriptionTargetTier: CANCELED_SUBSCRIPTION_TARGET_TIER,
       pendingSubscriptionChangeAt: effectiveDate,
       currentPeriodEnd: effectiveDate,
       updatedAt: nowDate(),
@@ -291,7 +298,7 @@ async function scheduleCancellationAtPeriodEnd(
   const effectiveDateIso = effectiveDate.toISOString();
   L.debug("subscription cancellation initiated", {
     orgId: context.orgId,
-    targetTier: "pro-suspend",
+    targetTier: CANCELED_SUBSCRIPTION_TARGET_TIER,
     effectiveDate: effectiveDateIso,
   });
   return effectiveDateIso;
@@ -382,7 +389,7 @@ async function scheduleDowngradeToPro(
 
 /**
  * Downgrade an org's Stripe subscription. Two branches:
- * - `* → pro-suspend`: schedules cancellation and flips the local
+ * - `* → limited-free-1`: schedules cancellation and flips the local
  *   `cancelAtPeriodEnd` flag. Existing `cancel_at`, fixed-term paid-through
  *   dates, and external schedule final ends are preserved.
  * - `team → pro`: schedules a period-end phase change to Pro. effectiveDate
@@ -438,7 +445,10 @@ export async function downgradeSubscriptionForOrg(
     signal,
   };
 
-  if (args.targetTier === "pro-suspend") {
+  if (
+    args.targetTier === CANCELED_SUBSCRIPTION_TARGET_TIER ||
+    args.targetTier === "pro-suspend"
+  ) {
     const effectiveDate = await scheduleCancellationAtPeriodEnd(context);
     return { ok: true, status: "scheduled", effectiveDate };
   }

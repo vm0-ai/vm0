@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingAutoRechargeContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import { setUsageOrgTier$ } from "./helpers/zero-usage";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -15,7 +14,6 @@ const bdd = createBddApi(context);
 const billingApi = createBillingMediaApi(context);
 const runsApi = createRunsAutomationsApi(context);
 const mocks = createZeroRouteMocks(context);
-const store = createStore();
 
 const defaultAutoRechargeConfig = Object.freeze({
   enabled: false,
@@ -198,11 +196,11 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
 
   it("enables auto-recharge for custom tier org", async () => {
     const admin = await createOnboardedActor();
-    await store.set(
-      setUsageOrgTier$,
-      { orgId: admin.orgId, tier: "custom" },
-      context.signal,
-    );
+    await seedOrgMetadata({
+      orgId: admin.orgId,
+      tier: "custom",
+      credits: 0,
+    });
 
     const response = await billingApi.updateAutoRecharge(
       admin,

@@ -523,8 +523,7 @@ function TeamMemberUsageContent({
       {loadable.state === "hasData" &&
         (!loadable.data.period ? (
           <p className="text-sm text-muted-foreground">
-            No active billing period. Workspace usage is available on eligible
-            workspaces.
+            No active billing period. Team usage is available on paid plans.
           </p>
         ) : loadable.data.members.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage(range)}</p>

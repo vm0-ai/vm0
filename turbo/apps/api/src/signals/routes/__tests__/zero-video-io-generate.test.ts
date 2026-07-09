@@ -579,13 +579,11 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("allows Custom orgs to submit paid video generation", async () => {
-    const fixture = await track(
-      seedVideoFixture({
-        credits: 10_000,
-        tier: "custom",
-        withPricing: true,
-      }),
-    );
+    const fixture = await seedVideoFixture({
+      credits: 10_000,
+      tier: "custom",
+      withPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
