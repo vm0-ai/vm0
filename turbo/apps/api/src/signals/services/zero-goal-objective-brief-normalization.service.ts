@@ -49,8 +49,10 @@ export function fallbackGoalObjectiveBrief(objective: string): string {
   return capGoalObjectiveBriefText(fallback);
 }
 
-export function nonEmptyGoalObjectiveBrief(objectiveBrief: string): string {
-  const trimmed = objectiveBrief.trim();
+export function nonEmptyGoalObjectiveBrief(
+  objectiveBrief: string | null | undefined,
+): string {
+  const trimmed = objectiveBrief?.trim() ?? "";
   return trimmed.length > 0
     ? capGoalObjectiveBriefText(trimmed)
     : DEFAULT_OBJECTIVE_BRIEF;

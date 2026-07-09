@@ -1,7 +1,9 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import { sql } from "drizzle-orm";
 
+import { db } from "../../../lib/db";
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -292,6 +294,45 @@ describe("zero goals", () => {
           status: "active",
           objectiveBrief: "---",
         },
+      }),
+    );
+  });
+
+  it("normalizes legacy goal marker JSON without objective briefs", async () => {
+    const fixture = await seedGoalApiFixture();
+    const chat = createChatFilesBddApi(context);
+    await createGoal(fixture, "ship goals");
+
+    const updated = await db().execute(sql`
+      UPDATE chat_messages
+      SET
+        goal_event = '{"type":"state","status":"active"}'::jsonb,
+        goal_snapshot = '{}'::jsonb
+      WHERE chat_thread_id = ${fixture.threadId}
+        AND goal_event IS NOT NULL
+    `);
+    expect(updated.rowCount).toBe(1);
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadMessages(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: "Untitled goal",
+        },
+        goalSnapshot: { objectiveBrief: "Untitled goal" },
       }),
     );
   });
