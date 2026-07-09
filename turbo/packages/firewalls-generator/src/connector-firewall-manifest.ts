@@ -150,6 +150,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "n8n",
   "neon",
   "netdata",
+  "nintendo-play-activity",
   "notion",
   "novita",
   "onyx",

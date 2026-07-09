@@ -159,6 +159,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.NintendoPlayActivityConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Nintendo Play Activity connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",

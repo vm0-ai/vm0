@@ -270,6 +270,8 @@ const SETTINGS_ICON_ASSET_PATHS = {
   netter: "views/zero-page/components/settings/icons/netter-4c7de538303c.svg",
   "nintendo-eshop-catalog":
     "views/zero-page/components/settings/icons/nintendo-eshop-catalog-f3c8ad8b8d85.svg",
+  "nintendo-play-activity":
+    "views/zero-page/components/settings/icons/nintendo-eshop-catalog-f3c8ad8b8d85.svg",
   notion: "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",
   novita: "views/zero-page/components/settings/icons/novita-3aa7cdf6fd0b.svg",
   nyne: "views/zero-page/components/settings/icons/nyne-cb5e80de7d46.svg",

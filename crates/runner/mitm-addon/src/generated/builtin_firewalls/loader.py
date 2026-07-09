@@ -705,6 +705,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import netdata_0
 
         return (netdata_0.JSON_PART,)
+    if name == "nintendo-play-activity":
+        from . import nintendo_play_activity_0
+
+        return (nintendo_play_activity_0.JSON_PART,)
     if name == "notion":
         from . import notion_0
 
