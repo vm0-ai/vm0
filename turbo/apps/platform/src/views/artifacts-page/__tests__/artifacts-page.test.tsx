@@ -731,30 +731,66 @@ describe("artifacts page", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("surfaces capped bulk responses before applying local filters", async () => {
+  it("loads every artifact by following keyset pagination cursors", async () => {
     setupTeam();
-    const scope = testAuthScope("truncated");
-    context.mocks.api(artifactsContract.list, ({ respond }) => {
+    const scope = testAuthScope("paged");
+    context.mocks.api(artifactsContract.list, ({ query, respond }) => {
+      if (!query.cursor) {
+        return respond(200, {
+          artifacts: [
+            createArtifact({
+              artifactItemId: "page-one:file-1",
+              runId: "page-one",
+              filename: "page-one.html",
+            }),
+          ],
+          truncated: false,
+          nextCursor: "cursor-page-2",
+        });
+      }
       return respond(200, {
         artifacts: [
           createArtifact({
-            artifactItemId: "truncated-run:file-1",
-            runId: "truncated-run",
-            filename: "truncated-summary.html",
+            artifactItemId: "page-two:file-1",
+            runId: "page-two",
+            filename: "page-two.html",
           }),
         ],
-        truncated: true,
-        nextCursor: "next-page-token",
+        truncated: false,
+        nextCursor: null,
       });
     });
 
     setupArtifactsPage({ scope });
 
-    await screen.findByText("truncated-summary.html");
-    expect(
-      screen.getByText(
-        "Showing the newest 10,000 artifacts. Filters apply to this capped set.",
-      ),
-    ).toBeInTheDocument();
+    // Both pages surface, proving the client walks nextCursor to the end
+    // instead of stopping at the first (capped) response.
+    await screen.findByText("page-one.html");
+    await screen.findByText("page-two.html");
+  });
+
+  it("windows a large set behind a load more control", async () => {
+    setupTeam();
+    const scope = testAuthScope("windowed");
+    const many = Array.from({ length: 65 }, (_, index) => {
+      const label = String(index).padStart(2, "0");
+      return createArtifact({
+        artifactItemId: `windowed-${label}:file`,
+        runId: `windowed-${label}`,
+        filename: `windowed-${label}.html`,
+        createdAt: `2026-01-01T00:${label}:00Z`,
+      });
+    });
+    mockArtifacts(many);
+
+    setupArtifactsPage({ scope });
+
+    // The first window renders; the tail stays hidden until "Load more".
+    await screen.findByText("windowed-00.html");
+    expect(screen.queryByText("windowed-64.html")).not.toBeInTheDocument();
+
+    click(screen.getByRole("button", { name: "Load more" }));
+
+    await screen.findByText("windowed-64.html");
   });
 });
