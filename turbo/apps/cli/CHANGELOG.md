@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.235.0](https://github.com/vm0-ai/vm0/compare/cli-v9.234.0...cli-v9.235.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.178.0
+    * @vm0/core bumped to 8.421.1
+
 ## [9.234.0](https://github.com/vm0-ai/vm0/compare/cli-v9.233.1...cli-v9.234.0) (2026-07-09)
 
 

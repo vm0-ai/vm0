@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.255.0](https://github.com/vm0-ai/vm0/compare/api-v1.254.0...api-v1.255.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+
+
+### Bug Fixes
+
+* enable codex subscriptions for gpt 5.6 models ([#20851](https://github.com/vm0-ai/vm0/issues/20851)) ([1dcb103](https://github.com/vm0-ai/vm0/commit/1dcb103fddd113b29a124cbd1de0d24f1da3b8d1))
+
+
+### Refactoring
+
+* reduce fallback slop in webhook firewall auth ([#20852](https://github.com/vm0-ai/vm0/issues/20852)) ([ebf0b09](https://github.com/vm0-ai/vm0/commit/ebf0b09842436d3e33f701bb6d4bb1fa37e34c76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.178.0
+    * @vm0/core bumped to 8.421.1
+    * @vm0/db bumped to 1.107.0
+
 ## [1.254.0](https://github.com/vm0-ai/vm0/compare/api-v1.253.0...api-v1.254.0) (2026-07-09)
 
 

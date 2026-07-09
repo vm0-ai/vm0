@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.587.0](https://github.com/vm0-ai/vm0/compare/app-v0.586.0...app-v0.587.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.178.0
+    * @vm0/core bumped to 8.421.1
+
 ## [0.586.0](https://github.com/vm0-ai/vm0/compare/app-v0.585.0...app-v0.586.0) (2026-07-09)
 
 
