@@ -86,7 +86,7 @@ use active_sessions::new_active_cli_agent_sessions;
 use factory_lifecycle::{shutdown_factories, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeldSessionStateSnapshot,
-    collect_heartbeat_state, send_heartbeat,
+    collect_heartbeat_state, refresh_workspace_cache_held_session_snapshot, send_heartbeat,
 };
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
@@ -1289,6 +1289,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         active_cli_agent_sessions: &active_cli_agent_sessions,
         held_session_snapshot: held_session_snapshot.clone(),
     });
+    refresh_workspace_cache_held_session_snapshot(
+        &held_session_snapshot,
+        exec_config.workspace_cache.as_ref(),
+    )
+    .await;
+    debug_assert!(held_session_snapshot.workspace_cache_loaded());
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1418,7 +1424,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
                 discover_fut = Box::pin(provider_state.provider.discover());
-                let needs_session_affinity_refresh = handle_discovered_job(
+                let mut needs_session_affinity_refresh = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
                         profiles: &runner.profiles,
@@ -1433,16 +1439,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         jobs: &mut jobs,
                     },
                 ).await;
-                let live_mode = *mode_rx.borrow();
-                if needs_session_affinity_refresh
-                    && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
-                {
-                    info!(
-                        source = "post_discovery",
-                        "session affinity state triggered immediate heartbeat"
-                    );
-                    send_heartbeat(&hb_ctx, live_mode).await;
-                }
                 let mut drained_ready_candidates = 0;
                 while drained_ready_candidates < READY_DIRECT_CANDIDATE_DRAIN_LIMIT {
                     let live_mode = *mode_rx.borrow();
@@ -1459,7 +1455,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         break;
                     };
                     drained_ready_candidates += 1;
-                    let needs_session_affinity_refresh = handle_discovered_job(
+                    let candidate_needs_session_affinity_refresh = handle_discovered_job(
                         DiscoveredJob { candidate },
                         DiscoveredJobContext {
                             profiles: &runner.profiles,
@@ -1474,16 +1470,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                             jobs: &mut jobs,
                         },
                     ).await;
-                    let live_mode = *mode_rx.borrow();
-                    if needs_session_affinity_refresh
-                        && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
-                    {
-                        info!(
-                            source = "ready_direct_candidate_drain",
-                            "session affinity state triggered immediate heartbeat"
-                        );
-                        send_heartbeat(&hb_ctx, live_mode).await;
-                    }
+                    needs_session_affinity_refresh |= candidate_needs_session_affinity_refresh;
+                }
+                let live_mode = *mode_rx.borrow();
+                if needs_session_affinity_refresh
+                    && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
+                {
+                    info!(
+                        source = "direct_candidate_batch",
+                        drained_ready_candidates,
+                        "session affinity state triggered immediate heartbeat"
+                    );
+                    send_heartbeat(&hb_ctx, live_mode).await;
                 }
             }
             // Mode changes (signals)

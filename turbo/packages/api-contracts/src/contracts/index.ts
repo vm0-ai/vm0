@@ -1574,6 +1574,20 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
+  ZERO_IMAGE_INTERPRET_MARKS_MAX_REGIONS,
+  ZERO_IMAGE_INTERPRET_MARKS_MAX_INSTRUCTION_LENGTH,
+  zeroImageIoInterpretMarksContract,
+  zeroImageIoInterpretMarksRegionSchema,
+  zeroImageIoInterpretMarksRequestSchema,
+  zeroImageIoInterpretMarksResultSchema,
+  zeroImageIoInterpretMarksResponseSchema,
+  type ZeroImageIoInterpretMarksContract,
+  type ZeroImageIoInterpretMarksRegion,
+  type ZeroImageIoInterpretMarksRequest,
+  type ZeroImageIoInterpretMarksResult,
+  type ZeroImageIoInterpretMarksResponse,
+} from "./zero-image-io-interpret-marks";
+export {
   zeroBankingContract,
   zeroBankingProviderSchema,
   zeroBankingAccountSchema,

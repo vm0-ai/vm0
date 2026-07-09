@@ -8,6 +8,13 @@ import {
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
   type MemorySourceProvider,
+  type GithubMemoryBackfillRequest,
+  type GithubMemoryConfigureRequest,
+  type GithubMemoryContributorsResponse,
+  type GithubMemoryRepositoriesResponse,
+  type GithubMemoryStatusResponse,
+  type NotionMemoryBackfillRequest,
+  type NotionMemoryStatusResponse,
   type SlackMemoryBackfillRequest,
   type SlackMemoryStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
@@ -41,6 +48,22 @@ export type MemorySourceProviderFilter = "all" | MemorySourceProvider;
 
 export type MemoryRecallKindFilter = "all" | MemoryRecallItemKind;
 
+type GithubMemoryRepositoryResource =
+  GithubMemoryRepositoriesResponse["repositories"][number];
+
+export interface GithubMemoryRepositoryDraft {
+  readonly id: number | null;
+  readonly name: string;
+  readonly fullName: string;
+  readonly defaultBranch: string | null;
+  readonly selected: boolean;
+  readonly wasSelected: boolean;
+  readonly includeIssues: boolean;
+  readonly includePullRequests: boolean;
+  readonly includeComments: boolean;
+  readonly trustedText: string;
+}
+
 export type MemoryTab =
   | "updates"
   | "injection"
@@ -50,6 +73,7 @@ export type MemoryTab =
   | "raw";
 
 export const MEMORY_ACTIVITY_RECENT_LIMIT = 7;
+const GITHUB_MEMORY_REPOSITORIES_PAGE_SIZE = 50;
 
 function defaultGmailRelationshipBackfillRequest(): GmailRelationshipBackfillRequest {
   return {
@@ -66,6 +90,65 @@ function defaultSlackMemoryBackfillRequest(): SlackMemoryBackfillRequest {
     includePrivateChannels: true,
     includeDirectMessages: true,
   };
+}
+
+function defaultGithubMemoryBackfillRequest(): GithubMemoryBackfillRequest {
+  return { days: 180 };
+}
+
+function githubTrustedTextFromContributors(
+  contributors: GithubMemoryRepositoryResource["trustedContributors"],
+): string {
+  return contributors
+    .map((contributor) => {
+      return (
+        contributor.login ?? contributor.githubUserId ?? contributor.email ?? ""
+      );
+    })
+    .filter((value) => {
+      return value.length > 0;
+    })
+    .join(", ");
+}
+
+function githubRepositoryDraftFromResource(
+  repository: GithubMemoryRepositoryResource,
+): GithubMemoryRepositoryDraft {
+  return {
+    id: repository.id,
+    name: repository.name,
+    fullName: repository.fullName,
+    defaultBranch: repository.defaultBranch,
+    selected: repository.selected,
+    wasSelected: repository.selected,
+    includeIssues: repository.includeIssues,
+    includePullRequests: repository.includePullRequests,
+    includeComments: repository.includeComments,
+    trustedText: githubTrustedTextFromContributors(
+      repository.trustedContributors,
+    ),
+  };
+}
+
+function mergeGithubRepositoryDrafts(
+  current: readonly GithubMemoryRepositoryDraft[],
+  incoming: readonly GithubMemoryRepositoryResource[],
+): readonly GithubMemoryRepositoryDraft[] {
+  const currentKeys = new Set(
+    current.map((draft) => {
+      return draft.fullName.toLowerCase();
+    }),
+  );
+  const additions = incoming
+    .filter((repository) => {
+      return !currentKeys.has(repository.fullName.toLowerCase());
+    })
+    .map(githubRepositoryDraftFromResource);
+  return [...current, ...additions];
+}
+
+function defaultNotionMemoryBackfillRequest(): NotionMemoryBackfillRequest {
+  return { days: 180, documentLimit: 1000 };
 }
 
 function relationshipSearchQueryFilter(filter: MemoryRelationshipFilter): {
@@ -337,6 +420,25 @@ const internalSlackMemoryBackfillDialogOpen$ = state(false);
 const internalSlackMemoryBackfillRequest$ = state<SlackMemoryBackfillRequest>(
   defaultSlackMemoryBackfillRequest(),
 );
+const internalGithubMemoryStatusReload$ = state(0);
+const internalGithubMemoryRepositoriesReload$ = state(0);
+const internalGithubMemoryConfigDialogOpen$ = state(false);
+const internalGithubMemoryRepositoryDrafts$ = state<
+  readonly GithubMemoryRepositoryDraft[]
+>([]);
+const internalGithubMemoryRepositoryDraftPage$ = state(1);
+const internalGithubMemoryRepositoryDraftHasMore$ = state(false);
+const internalGithubMemoryContributorRepository$ = state<string | null>(null);
+const internalGithubMemoryContributorsReload$ = state(0);
+const internalGithubMemoryBackfillDialogOpen$ = state(false);
+const internalGithubMemoryBackfillRequest$ = state<GithubMemoryBackfillRequest>(
+  defaultGithubMemoryBackfillRequest(),
+);
+const internalNotionMemoryStatusReload$ = state(0);
+const internalNotionMemoryBackfillDialogOpen$ = state(false);
+const internalNotionMemoryBackfillRequest$ = state<NotionMemoryBackfillRequest>(
+  defaultNotionMemoryBackfillRequest(),
+);
 
 export const memorySourceProviderFilter$ = computed((get) => {
   return get(internalMemorySourceProviderFilter$);
@@ -416,6 +518,24 @@ export const reloadSlackMemoryStatus$ = command(({ set }) => {
   });
 });
 
+export const reloadGithubMemoryStatus$ = command(({ set }) => {
+  set(internalGithubMemoryStatusReload$, (current) => {
+    return current + 1;
+  });
+});
+
+export const reloadGithubMemoryRepositories$ = command(({ set }) => {
+  set(internalGithubMemoryRepositoriesReload$, (current) => {
+    return current + 1;
+  });
+});
+
+export const reloadNotionMemoryStatus$ = command(({ set }) => {
+  set(internalNotionMemoryStatusReload$, (current) => {
+    return current + 1;
+  });
+});
+
 export const slackMemoryBackfillDialogOpen$ = computed((get) => {
   return get(internalSlackMemoryBackfillDialogOpen$);
 });
@@ -439,6 +559,178 @@ export const slackMemoryBackfillRequest$ = computed((get) => {
 export const updateSlackMemoryBackfillRequest$ = command(
   ({ set }, patch: Partial<SlackMemoryBackfillRequest>) => {
     set(internalSlackMemoryBackfillRequest$, (current) => {
+      return { ...current, ...patch };
+    });
+  },
+);
+
+export const githubMemoryConfigDialogOpen$ = computed((get) => {
+  return get(internalGithubMemoryConfigDialogOpen$);
+});
+
+export const githubMemoryRepositoryDrafts$ = computed((get) => {
+  return get(internalGithubMemoryRepositoryDrafts$);
+});
+
+export const setGithubMemoryConfigDialogOpen$ = command(
+  (
+    { set },
+    args: {
+      readonly open: boolean;
+      readonly repositories?: readonly GithubMemoryRepositoryResource[];
+      readonly pagination?: GithubMemoryRepositoriesResponse["pagination"];
+    },
+  ) => {
+    set(internalGithubMemoryConfigDialogOpen$, args.open);
+    if (args.open && args.repositories) {
+      set(
+        internalGithubMemoryRepositoryDrafts$,
+        args.repositories.map(githubRepositoryDraftFromResource),
+      );
+      set(internalGithubMemoryRepositoryDraftPage$, args.pagination?.page ?? 1);
+      set(
+        internalGithubMemoryRepositoryDraftHasMore$,
+        args.pagination?.hasMore ?? false,
+      );
+      set(internalGithubMemoryContributorRepository$, null);
+    }
+    if (!args.open) {
+      set(internalGithubMemoryContributorRepository$, null);
+    }
+  },
+);
+
+export const githubMemoryRepositoryDraftHasMore$ = computed((get) => {
+  return get(internalGithubMemoryRepositoryDraftHasMore$);
+});
+
+export const updateGithubMemoryRepositoryDraft$ = command(
+  (
+    { set },
+    args: {
+      readonly index: number;
+      readonly patch: Partial<GithubMemoryRepositoryDraft>;
+    },
+  ) => {
+    set(internalGithubMemoryRepositoryDrafts$, (current) => {
+      return current.map((draft, index) => {
+        return index === args.index ? { ...draft, ...args.patch } : draft;
+      });
+    });
+  },
+);
+
+export const githubMemoryContributorRepository$ = computed((get) => {
+  return get(internalGithubMemoryContributorRepository$);
+});
+
+export const setGithubMemoryContributorRepository$ = command(
+  ({ set }, repository: string | null) => {
+    set(internalGithubMemoryContributorRepository$, repository);
+    if (repository !== null) {
+      set(internalGithubMemoryContributorsReload$, (current) => {
+        return current + 1;
+      });
+    }
+  },
+);
+
+export const githubMemoryContributors$ = computed(
+  async (get): Promise<GithubMemoryContributorsResponse | null> => {
+    get(internalGithubMemoryContributorsReload$);
+    const repository = get(internalGithubMemoryContributorRepository$);
+    if (repository === null) {
+      return null;
+    }
+
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.githubContributors({
+        query: { repository, page: 1, limit: 100 },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const loadMoreGithubMemoryRepositories$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const nextPage = get(internalGithubMemoryRepositoryDraftPage$) + 1;
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.githubRepositories({
+        query: {
+          page: nextPage,
+          limit: GITHUB_MEMORY_REPOSITORIES_PAGE_SIZE,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalGithubMemoryRepositoryDrafts$, (current) => {
+      return mergeGithubRepositoryDrafts(current, result.body.repositories);
+    });
+    set(internalGithubMemoryRepositoryDraftPage$, result.body.pagination.page);
+    set(
+      internalGithubMemoryRepositoryDraftHasMore$,
+      result.body.pagination.hasMore,
+    );
+  },
+);
+
+export const githubMemoryBackfillDialogOpen$ = computed((get) => {
+  return get(internalGithubMemoryBackfillDialogOpen$);
+});
+
+export const setGithubMemoryBackfillDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalGithubMemoryBackfillDialogOpen$, open);
+    if (open) {
+      set(
+        internalGithubMemoryBackfillRequest$,
+        defaultGithubMemoryBackfillRequest(),
+      );
+    }
+  },
+);
+
+export const githubMemoryBackfillRequest$ = computed((get) => {
+  return get(internalGithubMemoryBackfillRequest$);
+});
+
+export const updateGithubMemoryBackfillRequest$ = command(
+  ({ set }, patch: Partial<GithubMemoryBackfillRequest>) => {
+    set(internalGithubMemoryBackfillRequest$, (current) => {
+      return { ...current, ...patch };
+    });
+  },
+);
+
+export const notionMemoryBackfillDialogOpen$ = computed((get) => {
+  return get(internalNotionMemoryBackfillDialogOpen$);
+});
+
+export const setNotionMemoryBackfillDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalNotionMemoryBackfillDialogOpen$, open);
+    if (open) {
+      set(
+        internalNotionMemoryBackfillRequest$,
+        defaultNotionMemoryBackfillRequest(),
+      );
+    }
+  },
+);
+
+export const notionMemoryBackfillRequest$ = computed((get) => {
+  return get(internalNotionMemoryBackfillRequest$);
+});
+
+export const updateNotionMemoryBackfillRequest$ = command(
+  ({ set }, patch: Partial<NotionMemoryBackfillRequest>) => {
+    set(internalNotionMemoryBackfillRequest$, (current) => {
       return { ...current, ...patch };
     });
   },
@@ -600,6 +892,29 @@ export const slackMemoryStatus$ = computed(
   },
 );
 
+export const githubMemoryStatus$ = computed(
+  async (get): Promise<GithubMemoryStatusResponse> => {
+    get(internalGithubMemoryStatusReload$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(client.githubStatus(), [200]);
+    return result.body;
+  },
+);
+
+export const githubMemoryRepositories$ = computed(
+  async (get): Promise<GithubMemoryRepositoriesResponse> => {
+    get(internalGithubMemoryRepositoriesReload$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.githubRepositories({
+        query: { page: 1, limit: GITHUB_MEMORY_REPOSITORIES_PAGE_SIZE },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
 export const startSlackMemoryBackfill$ = command(
   async (
     { get, set },
@@ -625,6 +940,97 @@ export const stopSlackMemoryBackfill$ = command(
     signal.throwIfAborted();
     toast.success("Slack memory backfill stopped");
     set(reloadSlackMemoryStatus$);
+    set(reloadMemorySources$);
+  },
+);
+
+export const configureGithubMemory$ = command(
+  async (
+    { get, set },
+    options: GithubMemoryConfigureRequest,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.githubConfigure({ body: options, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("GitHub memory configuration saved");
+    set(reloadGithubMemoryStatus$);
+    set(reloadGithubMemoryRepositories$);
+  },
+);
+
+export const startGithubMemoryBackfill$ = command(
+  async (
+    { get, set },
+    options: GithubMemoryBackfillRequest,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.githubBackfill({ body: options, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("GitHub memory backfill started");
+    set(reloadGithubMemoryStatus$);
+    set(reloadMemorySources$);
+  },
+);
+
+export const stopGithubMemoryBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.githubStopBackfill({ fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("GitHub memory backfill stopped");
+    set(reloadGithubMemoryStatus$);
+    set(reloadMemorySources$);
+  },
+);
+
+export const notionMemoryStatus$ = computed(
+  async (get): Promise<NotionMemoryStatusResponse> => {
+    get(internalNotionMemoryStatusReload$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(client.notionStatus(), [200]);
+    return result.body;
+  },
+);
+
+export const startNotionMemoryBackfill$ = command(
+  async (
+    { get, set },
+    options: NotionMemoryBackfillRequest,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.notionBackfill({ body: options, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Notion memory backfill started");
+    set(reloadNotionMemoryStatus$);
+    set(reloadMemorySources$);
+  },
+);
+
+export const stopNotionMemoryBackfill$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.notionStopBackfill({ fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Notion memory backfill stopped");
+    set(reloadNotionMemoryStatus$);
     set(reloadMemorySources$);
   },
 );

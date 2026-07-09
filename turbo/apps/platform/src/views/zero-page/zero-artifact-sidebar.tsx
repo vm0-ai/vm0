@@ -15,10 +15,13 @@ import {
   IconExternalLink,
   IconLoader2,
   IconLink,
+  IconMessageCircle,
   IconPalette,
   IconPaperclip,
   IconPencil,
+  IconPointer2,
   IconPlus,
+  IconSend2,
   IconShare,
   IconSparkles,
   IconTrash,
@@ -93,8 +96,11 @@ import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   artifactImageEditMode$,
+  closeArtifactImageEdit$,
   importEditableImageCanvasImageUrl$,
   imageEditUploading$,
+  type ImageEditRegionComment,
+  type ImageEditRegion,
   runImageEdit$,
   type ImageEditOperation,
   uploadEditableImageCanvasImage$,
@@ -115,13 +121,28 @@ import {
 } from "./zero-zoomable-image-canvas.tsx";
 import { EditableArtifactImageCanvas } from "./zero-editable-image-canvas.tsx";
 import {
-  editableImageArtifactCanvasKey,
+  addEditableImageCanvasRegionComment$,
+  clearEditableImageCanvasRegionSelection$,
   deleteEditableImageCanvasItem$,
   type EditableImageCanvasItem,
+  type EditableImageCanvasRegionComment,
+  type EditableImageCanvasRegion,
+  editableImageArtifactCanvasKey,
+  editableImageCanvasRegionCommentsByKey$,
+  editableImageCanvasRegionInstructionDraftByKey$,
+  editableImageCanvasRegionSelectionActiveByKey$,
+  removeEditableImageCanvasRegionComment$,
+  setEditableImageCanvasRegionInstructionDraft$,
+  startEditingEditableImageCanvasRegionComment$,
+  startEditableImageCanvasRegionSelection$,
 } from "../../signals/zero-page/zero-editable-image-canvas.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  ZERO_IMAGE_INTERPRET_MARKS_MAX_INSTRUCTION_LENGTH,
+  ZERO_IMAGE_INTERPRET_MARKS_MAX_REGIONS,
+} from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
 import {
   ArtifactActionSeparator,
   ArtifactActionTooltip,
@@ -562,6 +583,7 @@ function ArtifactSidebarContent({
   const close = useSet(closeArtifact$);
   const clearHtmlDomEditPending = useSet(clearHtmlDomEditPending$);
   const closeHtmlCommentMode = useSet(closeArtifactHtmlEditMode$);
+  const closeImageEditMode = useSet(closeArtifactImageEdit$);
   const markHtmlDomEditPending = useSet(markHtmlDomEditPending$);
   const openHtmlCommentMode = useSet(openArtifactHtmlEditMode$);
   const publishHtmlDomEditPreviewDraft = useSet(
@@ -632,6 +654,7 @@ function ArtifactSidebarContent({
   return (
     <ArtifactSidebarResolvedContent
       closeHtmlCommentMode={closeHtmlCommentMode}
+      closeImageEditMode={closeImageEditMode}
       closePreview={closePreview}
       display={display}
       fullscreen={fullscreen}
@@ -656,6 +679,7 @@ function ArtifactSidebarContent({
 
 function ArtifactSidebarResolvedContent({
   closeHtmlCommentMode,
+  closeImageEditMode,
   closePreview,
   display,
   fullscreen,
@@ -676,6 +700,7 @@ function ArtifactSidebarResolvedContent({
   toggleFullscreen,
 }: {
   readonly closeHtmlCommentMode: () => void;
+  readonly closeImageEditMode: () => void;
   readonly closePreview: () => void;
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
@@ -721,6 +746,7 @@ function ArtifactSidebarResolvedContent({
     htmlHeaderState,
     closeHtmlCommentMode,
   );
+  const exitImageEdit = imageEditActive ? closeImageEditMode : undefined;
 
   return (
     <ArtifactSidebarSurface
@@ -740,6 +766,7 @@ function ArtifactSidebarResolvedContent({
         onEditPresentation={editPresentation}
         onEditHtml={editHtml}
         onExitHtmlEdit={exitHtmlEdit}
+        onExitImageEdit={exitImageEdit}
         onBack={onBack}
         onToggleFullscreen={artifactSidebarFullscreenToggleAction({
           display,
@@ -1134,6 +1161,7 @@ function ArtifactSidebarHeader({
   onEditHtml,
   onEditPresentation,
   onExitHtmlEdit,
+  onExitImageEdit,
   onToggleFullscreen,
   onClose,
 }: {
@@ -1150,6 +1178,7 @@ function ArtifactSidebarHeader({
   onEditHtml?: () => void;
   onEditPresentation?: () => void;
   onExitHtmlEdit?: () => void;
+  onExitImageEdit?: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
@@ -1190,6 +1219,7 @@ function ArtifactSidebarHeader({
         onEditHtml={onEditHtml}
         onEditPresentation={onEditPresentation}
         onExitHtmlEdit={onExitHtmlEdit}
+        onExitImageEdit={onExitImageEdit}
         onToggleFullscreen={onToggleFullscreen}
         syncTarget={syncTarget}
         title={title}
@@ -1210,6 +1240,7 @@ function ArtifactSidebarActions({
   onEditHtml,
   onEditPresentation,
   onExitHtmlEdit,
+  onExitImageEdit,
   onToggleFullscreen,
   syncTarget,
   title,
@@ -1225,6 +1256,7 @@ function ArtifactSidebarActions({
   onEditHtml?: () => void;
   onEditPresentation?: () => void;
   onExitHtmlEdit?: () => void;
+  onExitImageEdit?: () => void;
   onToggleFullscreen: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
   title: string;
@@ -1284,6 +1316,8 @@ function ArtifactSidebarActions({
       />
       {htmlExitAction ? (
         <ArtifactExitHtmlEditAction onClick={htmlExitAction} />
+      ) : onExitImageEdit ? (
+        <ArtifactExitImageEditAction onClick={onExitImageEdit} />
       ) : compactActions ? (
         <ArtifactMoreActions onClose={onClose} />
       ) : (
@@ -1332,6 +1366,22 @@ function ArtifactExitHtmlEditAction({ onClick }: { onClick: () => void }) {
         onClick={onClick}
         aria-label="Exit editing"
         data-testid="artifact-sidebar-exit-html-edit"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconX size={16} />
+      </button>
+    </ArtifactActionTooltip>
+  );
+}
+
+function ArtifactExitImageEditAction({ onClick }: { onClick: () => void }) {
+  return (
+    <ArtifactActionTooltip label="Exit image editing">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Exit image editing"
+        data-testid="artifact-sidebar-exit-image-edit"
         className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
       >
         <IconX size={16} />
@@ -2120,11 +2170,15 @@ function imageStylePromptFromForm(form: HTMLFormElement): string {
 }
 
 function ArtifactImageEditToolbarButton({
+  active = false,
+  grouped = false,
   icon,
   label,
   onClick,
   testId,
 }: {
+  active?: boolean;
+  grouped?: boolean;
   icon: ReactNode;
   label: string;
   onClick: () => void;
@@ -2137,7 +2191,13 @@ function ArtifactImageEditToolbarButton({
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+          className={cn(
+            grouped
+              ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground"
+              : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground",
+            active &&
+              "border-blue-500 bg-blue-600 text-white hover:bg-blue-700 hover:text-white",
+          )}
           data-testid={testId}
           aria-label={label}
           title={label}
@@ -2151,9 +2211,11 @@ function ArtifactImageEditToolbarButton({
 }
 
 function ArtifactImageStyleTransferPopover({
+  grouped = false,
   item,
   onApply,
 }: {
+  grouped?: boolean;
   item: EditableImageCanvasItem;
   onApply: (stylePrompt: string, item: EditableImageCanvasItem) => void;
 }) {
@@ -2174,7 +2236,11 @@ function ArtifactImageStyleTransferPopover({
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+              className={cn(
+                grouped
+                  ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+                  : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground",
+              )}
               data-testid="image-edit-style-transfer"
               aria-label="Style Transfer"
               title="Style Transfer"
@@ -2226,7 +2292,13 @@ function ArtifactImageStyleTransferPopover({
   );
 }
 
-function ArtifactImageEditShareMenu({ disabled }: { disabled: boolean }) {
+function ArtifactImageEditShareMenu({
+  disabled,
+  grouped = false,
+}: {
+  disabled: boolean;
+  grouped?: boolean;
+}) {
   return (
     <DropdownMenu>
       <ArtifactActionTooltip label="Share" side="top">
@@ -2236,7 +2308,11 @@ function ArtifactImageEditShareMenu({ disabled }: { disabled: boolean }) {
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+              className={cn(
+                grouped
+                  ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground"
+                  : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground data-[state=open]:bg-gray-100 data-[state=open]:text-foreground",
+              )}
               aria-label="Share image"
               disabled={disabled}
               data-testid="image-edit-share"
@@ -2267,20 +2343,32 @@ function ArtifactImageEditShareMenu({ disabled }: { disabled: boolean }) {
 }
 
 function ArtifactImageEditSelectionToolbar({
+  comments,
+  imageUploading,
   item,
   onDelete,
   onDownload,
   onOperation,
+  onRegionSelectionToggle,
+  onSubmitRegionComments,
+  regionSelectionActive,
 }: {
+  comments: readonly EditableImageCanvasRegionComment[];
+  imageUploading: boolean;
   item: EditableImageCanvasItem;
   onDelete: (item: EditableImageCanvasItem) => void;
   onDownload: (item: EditableImageCanvasItem) => void;
-  onOperation: (
-    operation: ImageEditOperation,
+  onOperation: ArtifactImageEditOperationHandler;
+  onRegionSelectionToggle: () => void;
+  onSubmitRegionComments: (
     item: EditableImageCanvasItem,
-    stylePrompt?: string,
+    comments: readonly EditableImageCanvasRegionComment[],
   ) => void;
+  regionSelectionActive: boolean;
 }) {
+  const selectRegionLabel = regionSelectionActive
+    ? "Cancel area selection"
+    : "Select area";
   return (
     <div
       data-testid="image-edit-toolbar"
@@ -2290,26 +2378,73 @@ function ArtifactImageEditSelectionToolbar({
       }}
     >
       <ArtifactImageEditToolbarButton
-        icon={<IconBackground size={18} stroke={1.8} />}
-        label="Remove background"
-        onClick={() => {
-          onOperation("removeBackground", item);
-        }}
-        testId="image-edit-remove-background"
+        active={regionSelectionActive}
+        icon={<IconPointer2 size={18} stroke={1.8} />}
+        label={selectRegionLabel}
+        onClick={onRegionSelectionToggle}
+        testId="image-edit-select-region"
       />
-      <ArtifactImageEditToolbarButton
-        icon={<IconSparkles size={18} stroke={1.8} />}
-        label="Enhance"
-        onClick={() => {
-          onOperation("enhance", item);
-        }}
-        testId="image-edit-enhance"
-      />
-      <ArtifactImageStyleTransferPopover
+      <div
+        className="flex items-center overflow-hidden rounded-lg border border-border/70 bg-gray-50"
+        data-testid="image-edit-actions-group"
+        role="group"
+        aria-label="Image edit actions"
+      >
+        <ArtifactImageEditToolbarButton
+          grouped
+          icon={<IconBackground size={18} stroke={1.8} />}
+          label="Remove background"
+          onClick={() => {
+            onOperation({ item, operation: "removeBackground" });
+          }}
+          testId="image-edit-remove-background"
+        />
+        <span className="h-5 w-px bg-border/70" aria-hidden />
+        <ArtifactImageEditToolbarButton
+          grouped
+          icon={<IconSparkles size={18} stroke={1.8} />}
+          label="Enhance"
+          onClick={() => {
+            onOperation({ item, operation: "enhance" });
+          }}
+          testId="image-edit-enhance"
+        />
+        <span className="h-5 w-px bg-border/70" aria-hidden />
+        <ArtifactImageStyleTransferPopover
+          grouped
+          item={item}
+          onApply={(stylePrompt, selectedItem) => {
+            onOperation({
+              item: selectedItem,
+              operation: "styleTransfer",
+              stylePrompt,
+            });
+          }}
+        />
+      </div>
+      <div
+        className="flex items-center overflow-hidden rounded-lg border border-border/70 bg-gray-50"
+        data-testid="image-edit-share-download-group"
+        role="group"
+        aria-label="Image share and download actions"
+      >
+        <ArtifactImageEditShareMenu disabled={false} grouped />
+        <span className="h-5 w-px bg-border/70" aria-hidden />
+        <ArtifactImageEditToolbarButton
+          grouped
+          icon={<IconDownload size={18} stroke={1.8} />}
+          label="Download"
+          onClick={() => {
+            onDownload(item);
+          }}
+          testId="image-edit-download"
+        />
+      </div>
+      <ArtifactImageEditRegionSendButton
+        comments={comments}
+        imageUploading={imageUploading}
         item={item}
-        onApply={(stylePrompt, selectedItem) => {
-          onOperation("styleTransfer", selectedItem, stylePrompt);
-        }}
+        onSubmitRegionComments={onSubmitRegionComments}
       />
       <ArtifactActionTooltip label="Delete" side="top">
         <span className="inline-flex">
@@ -2329,25 +2464,150 @@ function ArtifactImageEditSelectionToolbar({
           </Button>
         </span>
       </ArtifactActionTooltip>
-      <ArtifactImageEditShareMenu disabled={false} />
-      <ArtifactActionTooltip label="Download" side="top">
-        <span className="inline-flex">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
-            data-testid="image-edit-download"
-            aria-label="Download"
-            title="Download"
-            onClick={() => {
-              onDownload(item);
-            }}
-          >
-            <IconDownload size={18} stroke={1.8} />
-          </Button>
-        </span>
-      </ArtifactActionTooltip>
+    </div>
+  );
+}
+
+function ArtifactImageEditRegionSendButton({
+  comments,
+  imageUploading,
+  item,
+  onSubmitRegionComments,
+}: {
+  comments: readonly EditableImageCanvasRegionComment[];
+  imageUploading: boolean;
+  item: EditableImageCanvasItem;
+  onSubmitRegionComments: (
+    item: EditableImageCanvasItem,
+    comments: readonly EditableImageCanvasRegionComment[],
+  ) => void;
+}) {
+  if (comments.length === 0) {
+    return null;
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      className="h-9 gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-600/60 disabled:text-white/75"
+      disabled={imageUploading}
+      data-testid="image-edit-region-send"
+      aria-label="Send edit instruction"
+      title={imageUploading ? "Working" : "Send"}
+      onClick={() => {
+        onSubmitRegionComments(item, comments);
+      }}
+    >
+      {imageUploading ? (
+        <IconLoader2 size={16} className="animate-spin" />
+      ) : (
+        <IconSend2 size={16} stroke={1.9} />
+      )}
+      <span>{imageUploading ? "Working" : "Send"}</span>
+    </Button>
+  );
+}
+
+function ArtifactImageEditRegionCommentDraft({
+  draft,
+  onDraftChange,
+  onSubmit,
+}: {
+  draft: string;
+  onDraftChange: (instruction: string) => void;
+  onSubmit: (instruction: string) => void;
+}) {
+  return (
+    <div
+      data-testid="image-edit-region-comment-form"
+      className="flex h-12 w-[min(320px,calc(100vw-32px))] items-center rounded-full border border-border/70 bg-background/95 px-4 text-foreground shadow-xl backdrop-blur"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      <input
+        autoFocus
+        autoCapitalize="off"
+        autoComplete="off"
+        autoCorrect="off"
+        className="h-9 min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+        data-testid="image-edit-region-comment-input"
+        maxLength={ZERO_IMAGE_INTERPRET_MARKS_MAX_INSTRUCTION_LENGTH}
+        placeholder="Describe edit"
+        spellCheck={false}
+        value={draft}
+        onChange={(event) => {
+          onDraftChange(event.currentTarget.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") {
+            return;
+          }
+          event.preventDefault();
+          onDraftChange(event.currentTarget.value);
+          if (event.currentTarget.value.trim()) {
+            onSubmit(event.currentTarget.value);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function ArtifactImageEditRegionComment({
+  comment,
+  onEdit,
+  onRemove,
+}: {
+  comment: EditableImageCanvasRegionComment;
+  onEdit: (comment: EditableImageCanvasRegionComment) => void;
+  onRemove: (comment: EditableImageCanvasRegionComment) => void;
+}) {
+  return (
+    <div
+      data-testid="image-edit-region-comment"
+      aria-label={`Edit comment: ${comment.instruction}`}
+      title={comment.instruction}
+      className="relative flex h-9 w-9 items-center justify-center"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 rounded-full border border-blue-200 bg-background/95 p-0 text-blue-600 shadow-lg backdrop-blur hover:bg-background hover:text-blue-700"
+        data-testid="image-edit-region-comment-edit"
+        aria-label="Edit region comment"
+        title="Edit"
+        onClick={() => {
+          onEdit(comment);
+        }}
+      >
+        <IconMessageCircle size={18} stroke={1.9} />
+      </Button>
+      <div
+        data-testid="image-edit-region-comment-content"
+        className="pointer-events-none absolute left-1/2 top-full mt-2 max-w-[min(260px,calc(100vw-32px))] -translate-x-1/2 whitespace-nowrap rounded-lg border border-border/70 bg-background/95 px-3 py-2 text-sm font-medium text-foreground opacity-0 shadow-lg transition-opacity group-hover:opacity-100"
+      >
+        {comment.instruction}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="pointer-events-none absolute -right-2 -top-2 h-5 w-5 rounded-full border border-border/70 bg-background p-0 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted hover:text-foreground group-hover:pointer-events-auto group-hover:opacity-100"
+        data-testid="image-edit-region-comment-clear"
+        aria-label="Remove edit comment"
+        title="Remove"
+        onClick={() => {
+          onRemove(comment);
+        }}
+      >
+        <IconX size={18} stroke={1.9} />
+      </Button>
     </div>
   );
 }
@@ -2489,88 +2749,228 @@ function ArtifactImageEditUploadMenu({
   uploading: boolean;
 }) {
   return (
-    <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
-      <Popover modal={false}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 rounded-lg border-border/70 bg-background/90 p-0 shadow-sm backdrop-blur hover:bg-muted"
-            disabled={disabled}
-            data-testid="image-edit-upload-menu"
-            aria-label="Upload image"
-            title="Upload image"
-          >
-            {uploading ? (
-              <IconLoader2 size={16} className="animate-spin" />
-            ) : (
-              <IconUpload size={16} stroke={1.8} />
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="center"
-          sideOffset={8}
-          className="z-[10000] w-56 p-1 shadow-lg"
-          data-testid="image-edit-upload-popover"
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-          }}
+    <Popover modal={false}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-12 w-12 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground disabled:text-muted-foreground/45"
+          disabled={disabled}
+          data-testid="image-edit-upload-menu"
+          aria-label="Upload image"
+          title="Upload image"
         >
-          <div className="flex items-center gap-1">
-            <ArtifactImageEditUploadFileControl
-              disabled={disabled}
-              onSelectFiles={onSelectFiles}
-              uploading={uploading}
-            />
-            <ArtifactImageEditUploadLinkForm
-              disabled={disabled}
-              onSelectLink={onSelectLink}
-            />
-          </div>
-        </PopoverContent>
-      </Popover>
+          {uploading ? (
+            <IconLoader2 size={16} className="animate-spin" />
+          ) : (
+            <IconUpload size={16} stroke={1.8} />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="center"
+        sideOffset={8}
+        className="z-[10000] w-56 p-1 shadow-lg"
+        data-testid="image-edit-upload-popover"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+      >
+        <div className="flex items-center gap-1">
+          <ArtifactImageEditUploadFileControl
+            disabled={disabled}
+            onSelectFiles={onSelectFiles}
+            uploading={uploading}
+          />
+          <ArtifactImageEditUploadLinkForm
+            disabled={disabled}
+            onSelectLink={onSelectLink}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ArtifactImageEditBottomControls({
+  imageUploading,
+  onUploadFiles,
+  onUploadLink,
+}: {
+  imageUploading: boolean;
+  onUploadFiles: (files: readonly File[]) => void;
+  onUploadLink: (src: string) => void;
+}) {
+  return (
+    <div className="absolute bottom-4 left-1/2 z-10 flex w-max -translate-x-1/2 flex-row flex-nowrap items-center justify-center overflow-hidden rounded-full border border-border/70 bg-background/95 shadow-xl backdrop-blur">
+      <ArtifactImageEditUploadMenu
+        disabled={imageUploading}
+        onSelectFiles={onUploadFiles}
+        onSelectLink={onUploadLink}
+        uploading={imageUploading}
+      />
     </div>
   );
 }
 
-function ArtifactImageEditBody({
-  imageNavigation,
-  url,
+function ArtifactImageEditCanvasChrome({
+  controls,
+  imageUploading,
+  onUploadFiles,
+  onUploadLink,
+}: {
+  controls: ZoomableImageControls;
+  imageUploading: boolean;
+  onUploadFiles: (files: readonly File[]) => void;
+  onUploadLink: (src: string) => void;
+}) {
+  return (
+    <>
+      <ArtifactImageZoomControls controls={controls} />
+      <ArtifactImageEditBottomControls
+        imageUploading={imageUploading}
+        onUploadFiles={onUploadFiles}
+        onUploadLink={onUploadLink}
+      />
+    </>
+  );
+}
+
+type ArtifactImageEditOperationArgs = {
+  item: EditableImageCanvasItem;
+  operation: ImageEditOperation;
+  regionComments?: readonly ImageEditRegionComment[];
+  stylePrompt?: string;
+};
+
+type ArtifactImageEditOperationHandler = (
+  args: ArtifactImageEditOperationArgs,
+) => void;
+
+function imageEditRegionFromEditableRegion(
+  region: EditableImageCanvasRegion,
+): ImageEditRegion {
+  return {
+    height: region.height,
+    width: region.width,
+    x: region.x,
+    y: region.y,
+  };
+}
+
+function imageEditCommentFromEditableComment(
+  comment: EditableImageCanvasRegionComment,
+): ImageEditRegionComment {
+  return {
+    id: comment.id,
+    instruction: comment.instruction,
+    region: imageEditRegionFromEditableRegion(comment.region),
+  };
+}
+
+type AddRegionComment = (args: {
+  instruction: string;
+  key: string;
+  region: EditableImageCanvasRegion;
+}) => boolean;
+
+function createAddRegionCommentHandler({
+  addCanvasRegionComment,
+  canvasKey,
+}: {
+  addCanvasRegionComment: AddRegionComment;
+  canvasKey: string;
+}) {
+  return (region: EditableImageCanvasRegion, instruction: string) => {
+    const trimmedInstruction = instruction.trim();
+    if (!trimmedInstruction) {
+      toast.error("Describe the change you want");
+      return;
+    }
+    const added = addCanvasRegionComment({
+      instruction: trimmedInstruction,
+      key: canvasKey,
+      region,
+    });
+    if (!added) {
+      toast.error(
+        `You can add up to ${ZERO_IMAGE_INTERPRET_MARKS_MAX_REGIONS} edits per image`,
+      );
+    }
+  };
+}
+
+function createSubmitRegionCommentsHandler({
+  onOperation,
+}: {
+  onOperation: ArtifactImageEditOperationHandler;
+}) {
+  return (
+    item: EditableImageCanvasItem,
+    comments: readonly EditableImageCanvasRegionComment[],
+  ) => {
+    if (comments.length === 0) {
+      return;
+    }
+    onOperation({
+      item,
+      operation: "editRegion",
+      regionComments: comments.map((comment) => {
+        return imageEditCommentFromEditableComment(comment);
+      }),
+    });
+  };
+}
+
+function useArtifactImageEditActions({
+  canvasKey,
+  canvasSrc,
   filename,
   pageSignal,
+  regionSelectionActive,
 }: {
-  imageNavigation?: ArtifactImageNavigationActions;
-  url: string;
+  canvasKey: string;
+  canvasSrc: string;
   filename: string;
   pageSignal: AbortSignal;
+  regionSelectionActive: boolean;
 }) {
-  const fullscreen = useGet(artifactFullscreen$);
-  const modalOpen = useGet(lightboxDialogVisible$);
-  const imageUploading = useGet(imageEditUploading$);
   const runImageEdit = useSet(runImageEdit$);
+  const addCanvasRegionComment = useSet(addEditableImageCanvasRegionComment$);
   const deleteCanvasItem = useSet(deleteEditableImageCanvasItem$);
+  const clearCanvasRegionSelection = useSet(
+    clearEditableImageCanvasRegionSelection$,
+  );
   const importCanvasImageUrl = useSet(importEditableImageCanvasImageUrl$);
+  const removeCanvasRegionComment = useSet(
+    removeEditableImageCanvasRegionComment$,
+  );
+  const setCanvasRegionInstructionDraft = useSet(
+    setEditableImageCanvasRegionInstructionDraft$,
+  );
+  const startEditingCanvasRegionComment = useSet(
+    startEditingEditableImageCanvasRegionComment$,
+  );
+  const startCanvasRegionSelection = useSet(
+    startEditableImageCanvasRegionSelection$,
+  );
   const uploadCanvasImage = useSet(uploadEditableImageCanvasImage$);
-  const canvasSrc = publicAttachmentUrl(url);
-  const canvasKey = editableImageArtifactCanvasKey(url);
 
-  const onOperation = (
-    operation: ImageEditOperation,
-    item: EditableImageCanvasItem,
-    stylePrompt?: string,
-  ) => {
+  const onOperation: ArtifactImageEditOperationHandler = (args) => {
     detach(
       runImageEdit(
         {
           canvasKey,
           canvasSrc,
-          operation,
-          sourceItemId: item.id,
-          stylePrompt,
-          url: item.src,
+          operation: args.operation,
+          regionComments: args.regionComments,
+          sourceImageNaturalHeight: args.item.naturalHeight,
+          sourceImageNaturalWidth: args.item.naturalWidth,
+          sourceItemId: args.item.id,
+          stylePrompt: args.stylePrompt,
+          url: args.item.src,
         },
         pageSignal,
       ),
@@ -2606,6 +3006,92 @@ function ArtifactImageEditBody({
       "importEditableImageCanvasImageUrl",
     );
   };
+  const onRegionSelectionToggle = () => {
+    if (regionSelectionActive) {
+      clearCanvasRegionSelection(canvasKey);
+      return;
+    }
+    startCanvasRegionSelection(canvasKey);
+  };
+  const onRegionInstructionDraftChange = (instruction: string) => {
+    setCanvasRegionInstructionDraft({
+      instruction,
+      key: canvasKey,
+    });
+  };
+  const onAddRegionComment = createAddRegionCommentHandler({
+    addCanvasRegionComment,
+    canvasKey,
+  });
+  const onRemoveRegionComment = (comment: EditableImageCanvasRegionComment) => {
+    removeCanvasRegionComment({
+      commentId: comment.id,
+      key: canvasKey,
+    });
+  };
+  const onEditRegionComment = (comment: EditableImageCanvasRegionComment) => {
+    startEditingCanvasRegionComment({
+      commentId: comment.id,
+      key: canvasKey,
+    });
+  };
+  const onSubmitRegionComments = createSubmitRegionCommentsHandler({
+    onOperation,
+  });
+
+  return {
+    onDelete,
+    onDownload,
+    onAddRegionComment,
+    onEditRegionComment,
+    onOperation,
+    onRegionInstructionDraftChange,
+    onRemoveRegionComment,
+    onRegionSelectionToggle,
+    onSubmitRegionComments,
+    onUploadFiles,
+    onUploadLink,
+  };
+}
+
+function ArtifactImageEditBody({
+  imageNavigation,
+  url,
+  filename,
+  pageSignal,
+}: {
+  imageNavigation?: ArtifactImageNavigationActions;
+  url: string;
+  filename: string;
+  pageSignal: AbortSignal;
+}) {
+  const fullscreen = useGet(artifactFullscreen$);
+  const modalOpen = useGet(lightboxDialogVisible$);
+  const imageUploading = useGet(imageEditUploading$);
+  const canvasSrc = publicAttachmentUrl(url);
+  const canvasKey = editableImageArtifactCanvasKey(url);
+  const regionCommentsByKey = useGet(editableImageCanvasRegionCommentsByKey$);
+  const regionInstructionDraftByKey = useGet(
+    editableImageCanvasRegionInstructionDraftByKey$,
+  );
+  const regionSelectionActiveByKey = useGet(
+    editableImageCanvasRegionSelectionActiveByKey$,
+  );
+  const regionComments = regionCommentsByKey[canvasKey] ?? [];
+  const regionInstructionDraft = regionInstructionDraftByKey[canvasKey] ?? "";
+  const regionSelectionActive = regionSelectionActiveByKey[canvasKey] ?? false;
+  const actions = useArtifactImageEditActions({
+    canvasKey,
+    canvasSrc,
+    filename,
+    pageSignal,
+    regionSelectionActive,
+  });
+  const commentsForItem = (itemId: string) => {
+    return regionComments.filter((comment) => {
+      return comment.region.itemId === itemId;
+    });
+  };
 
   return (
     <ArtifactStageShell flush scrollable={false}>
@@ -2623,28 +3109,50 @@ function ArtifactImageEditBody({
             imageTestId="artifact-sidebar-body-image"
             canvasTestId="artifact-sidebar-image-edit-canvas"
             viewportKey={fullscreen ? "fullscreen" : "sidebar"}
+            renderRegionToolbar={(region) => {
+              return (
+                <ArtifactImageEditRegionCommentDraft
+                  draft={regionInstructionDraft}
+                  onDraftChange={actions.onRegionInstructionDraftChange}
+                  onSubmit={(instruction) => {
+                    actions.onAddRegionComment(region, instruction);
+                  }}
+                />
+              );
+            }}
+            renderRegionComment={(comment) => {
+              return (
+                <ArtifactImageEditRegionComment
+                  comment={comment}
+                  onEdit={actions.onEditRegionComment}
+                  onRemove={actions.onRemoveRegionComment}
+                />
+              );
+            }}
             renderSelectionToolbar={(item) => {
               return (
                 <ArtifactImageEditSelectionToolbar
+                  comments={commentsForItem(item.id)}
+                  imageUploading={imageUploading}
                   item={item}
-                  onDelete={onDelete}
-                  onDownload={onDownload}
-                  onOperation={onOperation}
+                  onDelete={actions.onDelete}
+                  onDownload={actions.onDownload}
+                  onOperation={actions.onOperation}
+                  onRegionSelectionToggle={actions.onRegionSelectionToggle}
+                  onSubmitRegionComments={actions.onSubmitRegionComments}
+                  regionSelectionActive={regionSelectionActive}
                 />
               );
             }}
           >
             {(controls) => {
               return (
-                <>
-                  <ArtifactImageZoomControls controls={controls} />
-                  <ArtifactImageEditUploadMenu
-                    disabled={imageUploading}
-                    onSelectFiles={onUploadFiles}
-                    onSelectLink={onUploadLink}
-                    uploading={imageUploading}
-                  />
-                </>
+                <ArtifactImageEditCanvasChrome
+                  controls={controls}
+                  imageUploading={imageUploading}
+                  onUploadFiles={actions.onUploadFiles}
+                  onUploadLink={actions.onUploadLink}
+                />
               );
             }}
           </EditableArtifactImageCanvas>

@@ -457,12 +457,6 @@ async fn current_local_held_session_states(
         let pool = ctx.idle_pool.lock().await;
         pool.held_session_states()
     };
-    if let Some(workspace_cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
-        let cache_states = workspace_cache.held_session_states().await;
-        ctx.spawn_ctx
-            .held_session_snapshot
-            .update_workspace_cache_states(cache_states);
-    }
     ctx.spawn_ctx
         .held_session_snapshot
         .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
@@ -824,6 +818,7 @@ mod tests {
                 idle_pool: Arc::clone(&idle_pool),
                 status,
                 park_notify: Arc::new(tokio::sync::Notify::new()),
+                held_session_snapshot: super::super::heartbeat::HeldSessionStateSnapshot::new(),
                 parking_gate,
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 exit_code: 0,

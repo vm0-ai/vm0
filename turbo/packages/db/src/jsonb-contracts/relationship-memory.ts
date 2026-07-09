@@ -2,7 +2,7 @@ export interface RelationshipSyncJobPayload {
   readonly connectorId?: string;
   readonly relationshipStateId?: string;
   readonly memorySource?: {
-    readonly provider: "gmail" | "slack";
+    readonly provider: "gmail" | "slack" | "github" | "notion";
     readonly externalId: string;
   };
   readonly gmailThreadId?: string;

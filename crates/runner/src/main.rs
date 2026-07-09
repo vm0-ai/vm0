@@ -358,6 +358,27 @@ mod tests {
     }
 
     #[test]
+    fn service_unit_state_command_is_registered() {
+        assert!(
+            Cli::try_parse_from([
+                "runner",
+                "service",
+                "unit-state",
+                "--name",
+                "v1.2.3",
+                "--name",
+                "v1.2.2",
+            ])
+            .is_ok(),
+            "service unit-state should accept one or more --name values"
+        );
+        assert!(
+            Cli::try_parse_from(["runner", "service", "unit-state"]).is_err(),
+            "service unit-state should require at least one --name"
+        );
+    }
+
+    #[test]
     fn old_gc_workspace_image_cache_command_is_removed() {
         assert!(
             Cli::try_parse_from(["runner", "gc-workspace-image-cache", "--dry-run"]).is_err(),

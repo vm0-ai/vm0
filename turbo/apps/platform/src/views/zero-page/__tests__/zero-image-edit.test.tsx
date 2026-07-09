@@ -9,12 +9,14 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
+import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -117,9 +119,14 @@ function setupChatThread({
 
 function mockImageEditGeneration(
   onGenerate?: (body: {
+    maskImageUrl?: string;
+    model?: string;
+    outputFormat?: string;
     prompt?: string;
+    size?: string;
     sourceImageUrls?: readonly string[];
   }) => void,
+  options?: { resultReady?: Promise<void> },
 ): void {
   context.mocks.api(zeroImageIoGenerateContract.post, ({ body, respond }) => {
     onGenerate?.(body);
@@ -140,7 +147,10 @@ function mockImageEditGeneration(
       },
     });
   });
-  context.mocks.api(zeroBuiltInGenerationContract.get, ({ respond }) => {
+  context.mocks.api(zeroBuiltInGenerationContract.get, async ({ respond }) => {
+    if (options?.resultReady) {
+      await options.resultReady;
+    }
     return respond(200, {
       generationId: GENERATION_ID,
       type: "image",
@@ -203,7 +213,11 @@ function mockSequentialUploads(results: readonly MockUploadResult[]): void {
 
 function mockPendingImageEditGeneration(
   onGenerate?: (body: {
+    maskImageUrl?: string;
+    model?: string;
+    outputFormat?: string;
     prompt?: string;
+    size?: string;
     sourceImageUrls?: readonly string[];
   }) => void,
 ): void {
@@ -236,6 +250,121 @@ function mockPendingImageEditGeneration(
       completedAt: null,
     });
   });
+}
+
+const MARKED_DATA_URI = "data:image/png;base64,bWFya2Vk";
+
+// Region editing loads the source image and draws a downscaled copy with a
+// numbered outline over each region to a data URI. jsdom neither loads <img>
+// nor renders <canvas>, so stub image loading (fire onload) and the 2d context
+// (no-op drawing calls, return a fixed data URI).
+function mockImageEditMarkedCanvas(): void {
+  const getContextDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLCanvasElement.prototype,
+    "getContext",
+  );
+  const toDataURLDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLCanvasElement.prototype,
+    "toDataURL",
+  );
+  const srcDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLImageElement.prototype,
+    "src",
+  );
+
+  const canvasContext = {
+    drawImage: () => {},
+    strokeRect: () => {},
+    fillRect: () => {},
+    fillText: () => {},
+    measureText: () => {
+      return { width: 12 } as TextMetrics;
+    },
+    lineWidth: 0,
+    strokeStyle: "",
+    fillStyle: "",
+    font: "",
+    textBaseline: "",
+  } as unknown as CanvasRenderingContext2D;
+
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: (contextId: string) => {
+      return contextId === "2d" ? canvasContext : null;
+    },
+  });
+  Object.defineProperty(HTMLCanvasElement.prototype, "toDataURL", {
+    configurable: true,
+    value: () => {
+      return MARKED_DATA_URI;
+    },
+  });
+  Object.defineProperty(HTMLImageElement.prototype, "src", {
+    configurable: true,
+    set(this: HTMLImageElement, value: string) {
+      this.setAttribute("src", value);
+      queueMicrotask(() => {
+        this.dispatchEvent(new Event("load"));
+      });
+    },
+    get(this: HTMLImageElement) {
+      return this.getAttribute("src") ?? "";
+    },
+  });
+
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      const restore = (
+        proto: object,
+        name: string,
+        descriptor: PropertyDescriptor | undefined,
+      ) => {
+        if (descriptor) {
+          Object.defineProperty(proto, name, descriptor);
+        } else {
+          Reflect.deleteProperty(proto, name);
+        }
+      };
+      restore(HTMLCanvasElement.prototype, "getContext", getContextDescriptor);
+      restore(HTMLCanvasElement.prototype, "toDataURL", toDataURLDescriptor);
+      restore(HTMLImageElement.prototype, "src", srcDescriptor);
+    },
+    { once: true },
+  );
+}
+
+interface MockInterpretRegion {
+  readonly id: string;
+  readonly mark: number;
+  readonly instruction: string;
+  readonly location?: string;
+}
+
+// Echo each region back as a resolved edit so the downstream generation prompt
+// carries a target + instruction per mark.
+function mockInterpretMarks(
+  onRequest?: (body: {
+    imageUrl: string;
+    regions: readonly MockInterpretRegion[];
+  }) => void,
+): void {
+  context.mocks.api(
+    zeroImageIoInterpretMarksContract.post,
+    ({ body, respond }) => {
+      onRequest?.(body);
+      return respond(200, {
+        regions: body.regions.map((region) => {
+          return {
+            id: region.id,
+            target: `marked area ${region.mark}`,
+            edit: region.instruction,
+            confidence: 90,
+          };
+        }),
+      });
+    },
+  );
 }
 
 async function openImageEditMode(
@@ -278,6 +407,51 @@ async function openSelectedImageEditToolbar(
   });
 }
 
+async function createRegionComment(
+  user: ReturnType<typeof userEvent.setup>,
+  instruction: string,
+): Promise<void> {
+  await user.click(screen.getByTestId("image-edit-select-region"));
+
+  const image = screen.getByTestId("artifact-sidebar-body-image");
+  image.getBoundingClientRect = () => {
+    return {
+      bottom: 560,
+      height: 540,
+      left: 10,
+      right: 730,
+      top: 20,
+      width: 720,
+      x: 10,
+      y: 20,
+      toJSON: () => {
+        return {};
+      },
+    };
+  };
+
+  fireEvent.pointerDown(image, { button: 0, clientX: 90, clientY: 110 });
+  fireEvent.pointerMove(window, { clientX: 270, clientY: 260 });
+  fireEvent.pointerUp(window);
+
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("image-edit-region-comment-form"),
+    ).toBeInTheDocument();
+  });
+  await user.type(
+    screen.getByTestId("image-edit-region-comment-input"),
+    instruction,
+  );
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+      "title",
+      instruction,
+    );
+  });
+}
+
 describe("image editing", () => {
   it("adds a remove-background result for the selected canvas image", async () => {
     const user = userEvent.setup({ delay: null });
@@ -287,6 +461,68 @@ describe("image editing", () => {
     });
 
     await openSelectedImageEditToolbar(user);
+    expect(
+      Array.from(
+        screen
+          .getByTestId("image-edit-toolbar")
+          .querySelectorAll("[data-testid]"),
+      ).map((element) => {
+        return element instanceof HTMLElement
+          ? element.dataset.testid
+          : undefined;
+      }),
+    ).toStrictEqual([
+      "image-edit-select-region",
+      "image-edit-actions-group",
+      "image-edit-remove-background",
+      "image-edit-enhance",
+      "image-edit-style-transfer",
+      "image-edit-share-download-group",
+      "image-edit-share",
+      "image-edit-download",
+      "image-edit-delete",
+    ]);
+    expect(screen.getByTestId("image-edit-actions-group")).toHaveAttribute(
+      "role",
+      "group",
+    );
+    expect(screen.getByTestId("image-edit-actions-group")).toHaveClass(
+      "overflow-hidden",
+      "rounded-lg",
+    );
+    expect(
+      Array.from(
+        screen
+          .getByTestId("image-edit-actions-group")
+          .querySelectorAll("[data-testid]"),
+      ).map((element) => {
+        return element instanceof HTMLElement
+          ? element.dataset.testid
+          : undefined;
+      }),
+    ).toStrictEqual([
+      "image-edit-remove-background",
+      "image-edit-enhance",
+      "image-edit-style-transfer",
+    ]);
+    expect(
+      screen.getByTestId("image-edit-share-download-group"),
+    ).toHaveAttribute("role", "group");
+    expect(screen.getByTestId("image-edit-share-download-group")).toHaveClass(
+      "overflow-hidden",
+      "rounded-lg",
+    );
+    expect(
+      Array.from(
+        screen
+          .getByTestId("image-edit-share-download-group")
+          .querySelectorAll("[data-testid]"),
+      ).map((element) => {
+        return element instanceof HTMLElement
+          ? element.dataset.testid
+          : undefined;
+      }),
+    ).toStrictEqual(["image-edit-share", "image-edit-download"]);
     expect(screen.getByTestId("image-edit-remove-background")).toHaveAttribute(
       "aria-label",
       "Remove background",
@@ -314,6 +550,487 @@ describe("image editing", () => {
       expect(
         screen.getByTestId("artifact-sidebar-body-image-copy"),
       ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+  });
+
+  it("interprets marked regions and applies all comments in one edited image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const prompts: string[] = [];
+    const models: string[] = [];
+    const outputFormats: string[] = [];
+    const sizes: string[] = [];
+    const sourceImageUrls: (readonly string[])[] = [];
+    const interpretRequests: {
+      imageUrl: string;
+      regions: readonly MockInterpretRegion[];
+    }[] = [];
+    const imageEditResultReady = createDeferredPromise<void>(context.signal);
+    mockImageEditMarkedCanvas();
+    mockInterpretMarks((body) => {
+      interpretRequests.push(body);
+    });
+    mockImageEditGeneration(
+      (body) => {
+        models.push(body.model ?? "");
+        outputFormats.push(body.outputFormat ?? "");
+        prompts.push(body.prompt ?? "");
+        sizes.push(body.size ?? "");
+        sourceImageUrls.push(body.sourceImageUrls ?? []);
+      },
+      { resultReady: imageEditResultReady.promise },
+    );
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    expect(screen.getByTestId("image-edit-select-region")).toHaveAttribute(
+      "aria-label",
+      "Select area",
+    );
+    await user.click(screen.getByTestId("image-edit-select-region"));
+
+    expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+    expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
+      "bg-blue-600",
+    );
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-controls"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("image-edit-upload-menu")).toBeInTheDocument();
+    expect(screen.getByTestId("image-edit-select-region")).toHaveAttribute(
+      "aria-label",
+      "Cancel area selection",
+    );
+
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    image.getBoundingClientRect = () => {
+      return {
+        bottom: 560,
+        height: 540,
+        left: 10,
+        right: 730,
+        top: 20,
+        width: 720,
+        x: 10,
+        y: 20,
+        toJSON: () => {
+          return {};
+        },
+      };
+    };
+
+    fireEvent.pointerDown(image, { button: 0, clientX: 90, clientY: 110 });
+    fireEvent.pointerMove(window, { clientX: 270, clientY: 260 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-region-comment-form"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+    expect(screen.queryByTestId("image-edit-region-remove")).toBeNull();
+    expect(screen.getByTestId("image-edit-upload-menu")).toBeInTheDocument();
+    expect(screen.queryByTestId("image-edit-region-send")).toBeNull();
+
+    const commentInput = screen.getByTestId("image-edit-region-comment-input");
+    expect(commentInput).toHaveAttribute("autocomplete", "off");
+    expect(commentInput).not.toHaveAttribute("name");
+    // Bounded to the interpret-marks contract's instruction limit so an
+    // over-length instruction can't reach the API as a 400.
+    expect(commentInput).toHaveAttribute("maxlength", "2000");
+
+    await user.type(commentInput, "Remove the logo");
+    expect(prompts).toStrictEqual([]);
+    expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
+
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+        "aria-label",
+        "Edit comment: Remove the logo",
+      );
+      expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+        "title",
+        "Remove the logo",
+      );
+    });
+    expect(screen.queryByTestId("image-edit-region-selection")).toBeNull();
+    expect(screen.getByTestId("image-edit-region-comment-frame")).toHaveClass(
+      "border-dashed",
+      "opacity-0",
+    );
+    expect(
+      screen
+        .getByTestId("image-edit-region-comment-frame")
+        .getAttribute("class"),
+    ).toContain("group-hover:opacity-100");
+    expect(
+      screen.getByTestId("image-edit-region-comment-content"),
+    ).toHaveTextContent("Remove the logo");
+
+    await user.click(screen.getByTestId("image-edit-region-comment-edit"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-region-comment-form"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
+    expect(screen.getByTestId("image-edit-region-comment-input")).toHaveValue(
+      "Remove the logo",
+    );
+    await fill(
+      screen.getByTestId("image-edit-region-comment-input"),
+      "Remove the small logo",
+    );
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+        "title",
+        "Remove the small logo",
+      );
+    });
+    expect(screen.queryByTestId("image-edit-region-comment-input")).toBeNull();
+    expect(screen.getByTestId("image-edit-select-region")).toHaveAttribute(
+      "aria-label",
+      "Cancel area selection",
+    );
+    expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
+      "bg-blue-600",
+    );
+    expect(screen.getByTestId("image-edit-region-comment-clear")).toHaveClass(
+      "opacity-0",
+    );
+    expect(
+      screen
+        .getByTestId("image-edit-region-comment-clear")
+        .getAttribute("class"),
+    ).toContain("group-hover:opacity-100");
+
+    fireEvent.pointerDown(image, { button: 0, clientX: 320, clientY: 190 });
+    fireEvent.pointerMove(window, { clientX: 440, clientY: 300 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-region-comment-form"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
+
+    await user.type(
+      screen.getByTestId("image-edit-region-comment-input"),
+      "Make the badge blue",
+    );
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("image-edit-region-comment")).toHaveLength(
+        2,
+      );
+    });
+    expect(
+      screen.getByLabelText("Edit comment: Remove the small logo"),
+    ).toHaveAttribute("title", "Remove the small logo");
+    expect(
+      screen.getByLabelText("Edit comment: Make the badge blue"),
+    ).toHaveAttribute("title", "Make the badge blue");
+
+    const sendButton = screen.getByTestId("image-edit-region-send");
+    expect(sendButton).toHaveAttribute("aria-label", "Send edit instruction");
+    expect(sendButton).toHaveTextContent("Send");
+    expect(sendButton).not.toBeDisabled();
+
+    await user.click(sendButton);
+
+    await waitFor(() => {
+      expect(sendButton).toHaveTextContent("Working");
+    });
+    expect(sendButton).toBeDisabled();
+    imageEditResultReady.resolve();
+
+    // One understanding pass over the marked image, then a single generation
+    // that applies every resolved instruction to the clean source image.
+    await waitFor(() => {
+      expect(prompts).toHaveLength(1);
+    });
+    expect(interpretRequests).toHaveLength(1);
+    expect(interpretRequests[0]?.imageUrl).toBe(MARKED_DATA_URI);
+    expect(
+      interpretRequests[0]?.regions.map((region) => {
+        return { mark: region.mark, instruction: region.instruction };
+      }),
+    ).toStrictEqual([
+      { mark: 1, instruction: "Remove the small logo" },
+      { mark: 2, instruction: "Make the badge blue" },
+    ]);
+    expect(prompts[0]).toContain("Remove the small logo");
+    expect(prompts[0]).toContain("Make the badge blue");
+    expect(prompts[0]).toContain("marked area 1");
+    expect(prompts[0]).toContain("marked area 2");
+    expect(models).toStrictEqual(["nano-banana-2"]);
+    expect(outputFormats[0]).toBe("png");
+    expect(sizes[0]).toBe("auto");
+    expect(sourceImageUrls[0]).toStrictEqual([SOURCE_IMAGE_URL]);
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "src",
+      SOURCE_IMAGE_URL,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+    expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
+    // A multi-edit single pass can silently skip an edit; the user is told to
+    // verify rather than left assuming all applied.
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Applied 2 edits — check the result/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps region comments when the single region edit fails", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockImageEditMarkedCanvas();
+    mockInterpretMarks();
+    context.mocks.api(zeroImageIoGenerateContract.post, ({ respond }) => {
+      return respond(202, {
+        generationId: GENERATION_ID,
+        type: "image",
+        status: "queued",
+        realtime: {
+          channelName: "gen:image",
+          eventName: "update",
+          tokenRequest: {
+            keyName: "test-key",
+            timestamp: 0,
+            capability: "{}",
+            nonce: "test-nonce",
+            mac: "test-mac",
+          },
+        },
+      });
+    });
+    context.mocks.api(zeroBuiltInGenerationContract.get, ({ respond }) => {
+      return respond(200, {
+        generationId: GENERATION_ID,
+        type: "image",
+        status: "failed",
+        error: { code: "generation_failed", message: "boom" },
+        createdAt: "2026-03-10T00:00:00Z",
+        startedAt: "2026-03-10T00:00:01Z",
+        completedAt: "2026-03-10T00:00:02Z",
+      });
+    });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-select-region"));
+
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    image.getBoundingClientRect = () => {
+      return {
+        bottom: 560,
+        height: 540,
+        left: 10,
+        right: 730,
+        top: 20,
+        width: 720,
+        x: 10,
+        y: 20,
+        toJSON: () => {
+          return {};
+        },
+      };
+    };
+
+    fireEvent.pointerDown(image, { button: 0, clientX: 90, clientY: 110 });
+    fireEvent.pointerMove(window, { clientX: 270, clientY: 260 });
+    fireEvent.pointerUp(window);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-region-comment-form"),
+      ).toBeInTheDocument();
+    });
+    await user.type(
+      screen.getByTestId("image-edit-region-comment-input"),
+      "Remove the logo",
+    );
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+        "title",
+        "Remove the logo",
+      );
+    });
+
+    await user.click(screen.getByTestId("image-edit-region-send"));
+
+    // The single-pass edit failed, so the comment is kept for a retry.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Couldn't edit the image, try again"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+      "title",
+      "Remove the logo",
+    );
+    expect(screen.queryByTestId("artifact-sidebar-body-image-copy")).toBeNull();
+  });
+
+  it("cancels pending region comment editing without leaving select area on the current image", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-select-region"));
+
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    image.getBoundingClientRect = () => {
+      return {
+        bottom: 560,
+        height: 540,
+        left: 10,
+        right: 730,
+        top: 20,
+        width: 720,
+        x: 10,
+        y: 20,
+        toJSON: () => {
+          return {};
+        },
+      };
+    };
+
+    fireEvent.pointerDown(image, { button: 0, clientX: 90, clientY: 110 });
+    fireEvent.pointerMove(window, { clientX: 270, clientY: 260 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-region-comment-form"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(image, { button: 0, clientX: 320, clientY: 320 });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("image-edit-region-comment-form")).toBeNull();
+    });
+    expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
+    expect(screen.getByTestId("image-edit-select-region")).toHaveAttribute(
+      "aria-label",
+      "Cancel area selection",
+    );
+    expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
+      "bg-blue-600",
+    );
+
+    fireEvent.pointerDown(image, { button: 0, clientX: 120, clientY: 140 });
+    fireEvent.pointerMove(window, { clientX: 250, clientY: 240 });
+    fireEvent.pointerUp(window);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-region-comment-form"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas-surface"),
+      { button: 0 },
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("image-edit-region-comment-form")).toBeNull();
+    });
+    expect(screen.queryByTestId("image-edit-select-region")).toBeNull();
+  });
+
+  it("keeps comments across fullscreen, skips comments on copy, and clears them on exit", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await createRegionComment(user, "Make the collar red");
+
+    await user.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-fullscreen-toggle"),
+      ).toHaveAttribute("aria-label", "Exit fullscreen");
+    });
+    expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+      "title",
+      "Make the collar red",
+    );
+
+    await user.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-fullscreen-toggle"),
+      ).toHaveAttribute("aria-label", "Enter fullscreen");
+    });
+    expect(screen.getByTestId("image-edit-region-comment")).toHaveAttribute(
+      "title",
+      "Make the collar red",
+    );
+
+    fireEvent.keyDown(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+      {
+        key: "c",
+        metaKey: true,
+      },
+    );
+    fireEvent.keyDown(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+      {
+        key: "v",
+        metaKey: true,
+      },
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", SOURCE_IMAGE_URL);
+    });
+    expect(screen.getAllByTestId("image-edit-region-comment")).toHaveLength(1);
+
+    await user.click(screen.getByTestId("artifact-sidebar-exit-image-edit"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("artifact-sidebar-image-edit-canvas"),
+      ).toBeNull();
+    });
+    expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
+  });
+
+  it("removes comments when their image is deleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await createRegionComment(user, "Remove the tag");
+
+    await user.click(screen.getByTestId("image-edit-delete"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
     });
   });
 
@@ -764,5 +1481,46 @@ describe("image editing", () => {
     expect(
       screen.getByTestId("artifact-sidebar-body-image-copy"),
     ).toHaveAttribute("src", SOURCE_IMAGE_URL);
+  });
+
+  it("deletes the selected image with the Delete or Backspace key", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    const canvas = screen.getByTestId("artifact-sidebar-image-edit-canvas");
+
+    // Duplicate the source, then remove the copy with Backspace.
+    fireEvent.keyDown(canvas, { key: "c", metaKey: true });
+    fireEvent.keyDown(canvas, { key: "v", metaKey: true });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(canvas, { key: "Backspace" });
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("artifact-sidebar-body-image-copy"),
+      ).toBeNull();
+    });
+    expect(
+      screen.getByTestId("artifact-sidebar-body-image"),
+    ).toBeInTheDocument();
+
+    // Select the source itself, then remove it with Delete.
+    await user.click(screen.getByTestId("artifact-sidebar-body-image"));
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(canvas, { key: "Delete" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
+    });
+    expect(screen.queryByTestId("image-edit-toolbar")).toBeNull();
   });
 });

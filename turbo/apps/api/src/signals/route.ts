@@ -113,6 +113,7 @@ import { zeroRelationshipsRoutes } from "./routes/zero-relationships";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
+import { zeroImageIoInterpretMarksRoutes } from "./routes/zero-image-io-interpret-marks";
 import { zeroLogsRoutes } from "./routes/zero-logs";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
@@ -304,6 +305,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
+  ...zeroImageIoInterpretMarksRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
   ...zeroMapsRoutes,

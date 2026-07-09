@@ -1,10 +1,15 @@
 use super::super::super::*;
 use super::super::support::{
     assert_run_exits_within, context_with_session, minimal_context, mock_run_config,
-    mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown, test_profiles,
-    wait_budget_count, wait_cancel_token, wait_cancel_token_removed, wait_discover_entered,
+    mock_run_config_with_overrides, push_job, seed_idle_pool, seed_idle_pool_with_overrides,
+    seed_workspace_cache_state, shutdown, test_profiles, wait_budget_count, wait_cancel_token,
+    wait_cancel_token_removed, wait_discover_entered,
 };
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
+
+use crate::paths::RunnerPaths;
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
 
@@ -451,6 +456,181 @@ async fn affinity_protected_candidate_with_local_session_claims() {
         env.handle.deferred_poll_delays().is_empty(),
         "runner holding the protected session should not defer the claim"
     );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn affinity_protected_candidate_with_workspace_cache_session_claims_from_startup_snapshot() {
+    let session_id = "sess-cache-local";
+    let image_size_bytes = 1024 * 1024;
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        session_id,
+        "vm0/default",
+        image_size_bytes,
+    )
+    .await;
+    let cache_key = crate::paths::scoped_session_workspace_cache_key(
+        &config.runner.group,
+        "vm0/default",
+        session_id,
+        CANONICAL_WORKING_DIR,
+        image_size_bytes,
+    );
+    let cache_entry_dir = config
+        .paths
+        .home
+        .workspace_image_cache_dir()
+        .join(cache_key);
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    tokio::fs::remove_dir_all(&cache_entry_dir).await.unwrap();
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(run_id, session_id))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        completion.is_some(),
+        "runner should claim from the startup workspace-cache snapshot even if a later scan would miss"
+    );
+
+    let claim_candidates = env.handle.claim_candidates();
+    let claimed_candidate = claim_candidates
+        .iter()
+        .find(|candidate| candidate.run_id() == run_id)
+        .expect("claim should record the protected candidate");
+    assert_eq!(
+        claimed_candidate.pre_local_admission_outcome(),
+        Some(crate::provider::PreLocalAdmissionOutcome::LocalHolder)
+    );
+    assert!(
+        env.handle.deferred_poll_delays().is_empty(),
+        "snapshot-backed local holders should not defer before claim"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn ready_direct_drain_batches_session_affinity_heartbeat() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (config, env) =
+        mock_run_config_with_overrides(test_profiles(), 12, 49152, 6, Arc::clone(&overrides));
+    let budget = Arc::clone(&config.capacity.budget);
+    let trigger_session = "sess-batch-trigger";
+    let ready_session_1 = "sess-batch-ready-1";
+    let ready_session_2 = "sess-batch-ready-2";
+    for session_id in [trigger_session, ready_session_1, ready_session_2] {
+        seed_idle_pool_with_overrides(
+            &env.idle_pool,
+            &budget,
+            &overrides,
+            session_id,
+            "vm0/default",
+            2,
+            4096,
+        )
+        .await;
+    }
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    let heartbeat_count = env.handle.heartbeat_count();
+
+    let trigger_run_id = RunId::new_v4();
+    let ready_run_id_1 = RunId::new_v4();
+    let ready_run_id_2 = RunId::new_v4();
+    env.provider.set_claim_result(
+        trigger_run_id,
+        Some(context_with_session(trigger_run_id, trigger_session)),
+    );
+    env.provider.set_claim_result(
+        ready_run_id_1,
+        Some(context_with_session(ready_run_id_1, ready_session_1)),
+    );
+    env.provider.set_claim_result(
+        ready_run_id_2,
+        Some(context_with_session(ready_run_id_2, ready_session_2)),
+    );
+    env.handle
+        .push_ready_candidate(crate::provider::JobCandidate::new(
+            ready_run_id_1,
+            "vm0/default".into(),
+        ));
+    env.handle
+        .push_ready_candidate(crate::provider::JobCandidate::new(
+            ready_run_id_2,
+            "vm0/default".into(),
+        ));
+
+    push_job(
+        &env,
+        trigger_run_id,
+        "vm0/default",
+        Some(context_with_session(trigger_run_id, trigger_session)),
+    );
+
+    wait_gate
+        .wait_entered(3, Duration::from_secs(5))
+        .await
+        .expect("all reused jobs should block in wait_process");
+    assert!(
+        env.handle
+            .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
+            .await,
+        "reusing direct-candidate sessions should trigger a prompt heartbeat"
+    );
+    assert_eq!(
+        env.handle.heartbeat_count(),
+        heartbeat_count + 1,
+        "direct-candidate drain should batch session-affinity refresh into one heartbeat"
+    );
+
+    let claimed_run_ids: std::collections::HashSet<RunId> = env
+        .handle
+        .claim_candidates()
+        .into_iter()
+        .map(|candidate| candidate.run_id())
+        .collect();
+    assert_eq!(
+        claimed_run_ids,
+        std::collections::HashSet::from([trigger_run_id, ready_run_id_1, ready_run_id_2])
+    );
+
+    wait_gate.release_many(3);
+    for run_id in [trigger_run_id, ready_run_id_1, ready_run_id_2] {
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "run {run_id} should complete");
+    }
 
     shutdown(&env, run_handle).await;
 }

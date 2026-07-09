@@ -6,6 +6,7 @@ import {
   type RelationshipMemoryProvider,
   type RelationshipSyncJobPayload,
 } from "@vm0/db/schema/relationship-memory";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
 import {
   memorySources,
   type MemorySourceMetadata,
@@ -13,6 +14,7 @@ import {
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { htmlToText } from "html-to-text";
 
+import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { generateText, isLlmConfigured } from "../external/openrouter";
 import { createSlackClient } from "../external/slack-message-client";
@@ -24,6 +26,13 @@ import {
   messageIsInbound,
   resolveGmailAccess,
 } from "./gmail-workflow-event.service";
+import { getGithubInstallationAccessToken } from "./github-app.service";
+import {
+  fetchGithubIssue,
+  fetchGithubIssueComment,
+  type GithubIssueComment,
+  type GithubIssueDetail,
+} from "./github-issues-api.service";
 import {
   relationshipMemoryFeatureEnabled,
   relationshipTargets,
@@ -74,6 +83,13 @@ interface RelationshipEvidence {
 }
 
 interface LoadedSlackRelationshipMessage {
+  readonly source: RelationshipEvidenceSource;
+  readonly target: RelationshipTarget;
+  readonly evidence: RelationshipEvidence;
+  readonly occurredAt: Date;
+}
+
+interface LoadedExternalSourceRelationshipMessage {
   readonly source: RelationshipEvidenceSource;
   readonly target: RelationshipTarget;
   readonly evidence: RelationshipEvidence;
@@ -137,6 +153,14 @@ function transientBodyExcerptFromMessage(
 }
 
 function parsedMessageOccurredAt(value: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parsedProviderDate(value: string | null | undefined): Date | null {
   if (!value) {
     return null;
   }
@@ -385,6 +409,41 @@ async function applyRelationshipExtraction(args: {
       candidates: graphCandidates,
     });
   }
+}
+
+async function markRelationshipProviderSynced(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly provider: RelationshipMemoryProvider;
+}): Promise<void> {
+  const currentTime = nowDate();
+  await args.db
+    .insert(relationshipMemorySettings)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      provider: args.provider,
+      enabled: true,
+      bootstrapStatus: "done",
+      lastSyncAt: currentTime,
+      createdAt: currentTime,
+      updatedAt: currentTime,
+    })
+    .onConflictDoUpdate({
+      target: [
+        relationshipMemorySettings.orgId,
+        relationshipMemorySettings.userId,
+        relationshipMemorySettings.provider,
+      ],
+      set: {
+        enabled: true,
+        bootstrapStatus: "done",
+        lastSyncAt: currentTime,
+        lastError: null,
+        updatedAt: currentTime,
+      },
+    });
 }
 
 async function loadMessageForRelationshipExtraction(
@@ -683,6 +742,430 @@ async function loadSlackSourceForRelationshipExtraction(
   };
 }
 
+function githubRelationshipTarget(repository: string): RelationshipTarget {
+  const normalizedRepository = repository.trim().toLowerCase();
+  return {
+    type: "organization",
+    identityKey: `organization:github:${normalizedRepository}`,
+    displayName: `GitHub repo ${repository}`,
+    primaryEmail: null,
+    domain: null,
+  };
+}
+
+function githubMemoryMetadata(metadata: MemorySourceMetadata): {
+  readonly installationId: string;
+  readonly repository: string;
+  readonly subjectKind: "issue" | "pull_request";
+  readonly subjectNumber: number;
+  readonly subjectUrl: string | null;
+  readonly issueCommentId: string | null;
+  readonly actorLogin: string | null;
+  readonly authorLogin: string | null;
+  readonly labels: readonly string[];
+} | null {
+  if (
+    !metadata.githubInstallationId ||
+    !metadata.githubRepository ||
+    !metadata.githubSubjectKind ||
+    typeof metadata.githubSubjectNumber !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    installationId: metadata.githubInstallationId,
+    repository: metadata.githubRepository,
+    subjectKind: metadata.githubSubjectKind,
+    subjectNumber: metadata.githubSubjectNumber,
+    subjectUrl: metadata.githubSubjectUrl ?? null,
+    issueCommentId: metadata.githubIssueCommentId ?? null,
+    actorLogin: metadata.githubActorLogin ?? null,
+    authorLogin: metadata.githubAuthorLogin ?? null,
+    labels: metadata.githubLabels ?? [],
+  };
+}
+
+async function githubInstallationToken(
+  db: Db,
+  installationId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const appId = optionalEnv("GITHUB_APP_ID");
+  const privateKey = optionalEnv("GITHUB_APP_PRIVATE_KEY");
+  if (!appId || !privateKey) {
+    throw new Error("GitHub App is not configured");
+  }
+
+  const [installation] = await db
+    .select({ remoteInstallationId: githubInstallations.installationId })
+    .from(githubInstallations)
+    .where(eq(githubInstallations.id, installationId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!installation?.remoteInstallationId) {
+    return null;
+  }
+
+  const token = await getGithubInstallationAccessToken({
+    appId,
+    privateKey,
+    installationId: installation.remoteInstallationId,
+    signal,
+  });
+  return token.token;
+}
+
+function githubSourceLabel(args: {
+  readonly subjectKind: "issue" | "pull_request";
+  readonly isComment: boolean;
+}): string {
+  const subjectLabel =
+    args.subjectKind === "pull_request"
+      ? "GitHub pull request"
+      : "GitHub issue";
+  return args.isComment ? `${subjectLabel} comment` : subjectLabel;
+}
+
+interface GithubMemorySourceRow {
+  readonly externalId: string;
+  readonly connectorId: string | null;
+  readonly sourceType: string;
+  readonly occurredAt: Date | null;
+  readonly title: string | null;
+  readonly metadata: MemorySourceMetadata;
+}
+
+async function loadGithubMemorySourceRow(
+  db: Db,
+  job: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly payload: RelationshipSyncJobPayload;
+  },
+): Promise<GithubMemorySourceRow | null> {
+  const sourceRef = job.payload.memorySource;
+  if (sourceRef?.provider !== "github") {
+    return null;
+  }
+
+  const [source] = await db
+    .select({
+      externalId: memorySources.externalId,
+      connectorId: memorySources.connectorId,
+      sourceType: memorySources.sourceType,
+      occurredAt: memorySources.occurredAt,
+      title: memorySources.title,
+      metadata: memorySources.metadata,
+    })
+    .from(memorySources)
+    .where(
+      and(
+        eq(memorySources.orgId, job.orgId),
+        eq(memorySources.userId, job.userId),
+        eq(memorySources.provider, "github"),
+        eq(memorySources.externalId, sourceRef.externalId),
+      ),
+    )
+    .limit(1);
+  return source ?? null;
+}
+
+async function fetchGithubCommentForSource(args: {
+  readonly token: string;
+  readonly sourceType: string;
+  readonly metadata: NonNullable<ReturnType<typeof githubMemoryMetadata>>;
+  readonly signal: AbortSignal;
+}): Promise<GithubIssueComment | null | undefined> {
+  if (args.sourceType !== "github_issue_comment") {
+    return undefined;
+  }
+  if (!args.metadata.issueCommentId) {
+    return null;
+  }
+  return await fetchGithubIssueComment({
+    token: args.token,
+    repo: args.metadata.repository,
+    commentId: args.metadata.issueCommentId,
+    signal: args.signal,
+  });
+}
+
+function githubSourceOccurredAt(args: {
+  readonly source: GithubMemorySourceRow;
+  readonly issue: GithubIssueDetail;
+  readonly comment: GithubIssueComment | undefined;
+}): Date | null {
+  return (
+    (args.comment ? parsedProviderDate(args.comment.created_at) : null) ??
+    args.source.occurredAt ??
+    parsedProviderDate(args.issue.updated_at) ??
+    parsedProviderDate(args.issue.created_at)
+  );
+}
+
+function githubEvidencePayload(args: {
+  readonly source: GithubMemorySourceRow;
+  readonly metadata: NonNullable<ReturnType<typeof githubMemoryMetadata>>;
+  readonly issue: GithubIssueDetail;
+  readonly comment: GithubIssueComment | undefined;
+}): Record<string, unknown> {
+  const text = args.comment?.body ?? args.issue.body ?? "";
+  const labels =
+    args.issue.labels?.map((label) => {
+      return label.name;
+    }) ?? args.metadata.labels;
+  return {
+    direction: "sent",
+    repository: args.metadata.repository,
+    subjectKind: args.metadata.subjectKind,
+    subjectNumber: args.metadata.subjectNumber,
+    subjectUrl: args.metadata.subjectUrl ?? args.issue.html_url ?? null,
+    title: args.issue.title || args.source.title,
+    labels,
+    authorLogin: args.issue.user.login,
+    actorLogin:
+      args.comment?.user.login ??
+      args.metadata.actorLogin ??
+      args.issue.user.login,
+    commentId: args.comment ? String(args.comment.id) : null,
+    textExcerpt: truncate(
+      text.replace(/\s+/g, " ").trim(),
+      MAX_TRANSIENT_BODY_EXCERPT_LENGTH,
+    ),
+  };
+}
+
+async function loadGithubSourceForRelationshipExtraction(
+  db: Db,
+  job: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly payload: RelationshipSyncJobPayload;
+  },
+  signal: AbortSignal,
+): Promise<LoadedExternalSourceRelationshipMessage | null> {
+  const source = await loadGithubMemorySourceRow(db, job);
+  signal.throwIfAborted();
+  if (!source) {
+    return null;
+  }
+
+  const metadata = githubMemoryMetadata(source.metadata);
+  if (!metadata) {
+    return null;
+  }
+
+  const token = await githubInstallationToken(
+    db,
+    metadata.installationId,
+    signal,
+  );
+  signal.throwIfAborted();
+  if (!token) {
+    return null;
+  }
+
+  const issue = await fetchGithubIssue({
+    token,
+    repo: metadata.repository,
+    issueNumber: metadata.subjectNumber,
+    signal,
+  });
+  signal.throwIfAborted();
+  if (!issue) {
+    return null;
+  }
+
+  const comment = await fetchGithubCommentForSource({
+    token,
+    sourceType: source.sourceType,
+    metadata,
+    signal,
+  });
+  signal.throwIfAborted();
+  if (comment === null) {
+    return null;
+  }
+
+  const occurredAt = githubSourceOccurredAt({ source, issue, comment });
+  if (!occurredAt) {
+    return null;
+  }
+
+  return {
+    source: {
+      provider: "github",
+      connectorId: source.connectorId,
+      externalId: source.externalId,
+      threadId: String(metadata.subjectNumber),
+      messageId: comment ? String(comment.id) : null,
+      direction: "sent",
+    },
+    target: githubRelationshipTarget(metadata.repository),
+    evidence: {
+      label: githubSourceLabel({
+        subjectKind: metadata.subjectKind,
+        isComment: Boolean(comment),
+      }),
+      payload: githubEvidencePayload({ source, metadata, issue, comment }),
+    },
+    occurredAt,
+  };
+}
+
+function notionRelationshipTarget(args: {
+  readonly workspaceId: string | null;
+  readonly workspaceName: string | null;
+  readonly pageId: string;
+  readonly pageTitle: string | null;
+  readonly scopeType: string;
+  readonly scopeId: string;
+  readonly parentTitle: string | null;
+}): RelationshipTarget {
+  const workspaceKey = args.workspaceId ?? "unknown";
+  const displayName =
+    args.parentTitle ??
+    args.workspaceName ??
+    args.pageTitle ??
+    `Notion page ${args.pageId}`;
+  return {
+    type: "organization",
+    identityKey: `organization:notion:${workspaceKey}:${args.scopeType}:${args.scopeId}`,
+    displayName,
+    primaryEmail: null,
+    domain: null,
+  };
+}
+
+function notionMemoryMetadata(metadata: MemorySourceMetadata): {
+  readonly workspaceId: string | null;
+  readonly workspaceName: string | null;
+  readonly pageId: string;
+  readonly pageUrl: string | null;
+  readonly lastEditedTime: string | null;
+  readonly eventId: string | null;
+  readonly eventFamily: string | null;
+  readonly eventType: string | null;
+  readonly scopeType: string;
+  readonly scopeId: string;
+  readonly parentTitle: string | null;
+  readonly parentUrl: string | null;
+  readonly authorIds: readonly string[];
+} | null {
+  if (
+    !metadata.notionPageId ||
+    !metadata.notionScopeType ||
+    !metadata.notionScopeId
+  ) {
+    return null;
+  }
+
+  return {
+    workspaceId: metadata.notionWorkspaceId ?? null,
+    workspaceName: metadata.notionWorkspaceName ?? null,
+    pageId: metadata.notionPageId,
+    pageUrl: metadata.notionPageUrl ?? null,
+    lastEditedTime: metadata.notionLastEditedTime ?? null,
+    eventId: metadata.notionEventId ?? null,
+    eventFamily: metadata.notionEventFamily ?? null,
+    eventType: metadata.notionEventType ?? null,
+    scopeType: metadata.notionScopeType,
+    scopeId: metadata.notionScopeId,
+    parentTitle: metadata.notionParentTitle ?? null,
+    parentUrl: metadata.notionParentUrl ?? null,
+    authorIds: metadata.notionAuthorIds ?? [],
+  };
+}
+
+async function loadNotionSourceForRelationshipExtraction(
+  db: Db,
+  job: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly payload: RelationshipSyncJobPayload;
+  },
+  signal: AbortSignal,
+): Promise<LoadedExternalSourceRelationshipMessage | null> {
+  const sourceRef = job.payload.memorySource;
+  if (sourceRef?.provider !== "notion") {
+    return null;
+  }
+
+  const [source] = await db
+    .select({
+      externalId: memorySources.externalId,
+      connectorId: memorySources.connectorId,
+      sourceType: memorySources.sourceType,
+      occurredAt: memorySources.occurredAt,
+      title: memorySources.title,
+      metadata: memorySources.metadata,
+    })
+    .from(memorySources)
+    .where(
+      and(
+        eq(memorySources.orgId, job.orgId),
+        eq(memorySources.userId, job.userId),
+        eq(memorySources.provider, "notion"),
+        eq(memorySources.externalId, sourceRef.externalId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!source?.occurredAt) {
+    return null;
+  }
+
+  const metadata = notionMemoryMetadata(source.metadata);
+  if (!metadata) {
+    return null;
+  }
+
+  return {
+    source: {
+      provider: "notion",
+      connectorId: source.connectorId,
+      externalId: source.externalId,
+      threadId: metadata.pageId,
+      messageId: metadata.eventId,
+      direction: "unknown",
+    },
+    target: notionRelationshipTarget({
+      workspaceId: metadata.workspaceId,
+      workspaceName: metadata.workspaceName,
+      pageId: metadata.pageId,
+      pageTitle: source.title,
+      scopeType: metadata.scopeType,
+      scopeId: metadata.scopeId,
+      parentTitle: metadata.parentTitle,
+    }),
+    evidence: {
+      label:
+        source.sourceType === "notion_page"
+          ? "Notion page"
+          : "Notion page event",
+      payload: {
+        direction: "unknown",
+        workspaceId: metadata.workspaceId,
+        workspaceName: metadata.workspaceName,
+        pageId: metadata.pageId,
+        pageTitle: source.title,
+        pageUrl: metadata.pageUrl,
+        parentTitle: metadata.parentTitle,
+        parentUrl: metadata.parentUrl,
+        lastEditedTime: metadata.lastEditedTime,
+        eventId: metadata.eventId,
+        eventFamily: metadata.eventFamily,
+        eventType: metadata.eventType,
+        scopeType: metadata.scopeType,
+        scopeId: metadata.scopeId,
+        authorIds: metadata.authorIds,
+      },
+    },
+    occurredAt: source.occurredAt,
+  };
+}
+
 async function processGmailRelationshipRefreshJob(
   db: Db,
   job: {
@@ -745,32 +1228,12 @@ async function processGmailRelationshipRefreshJob(
     updated += 1;
   }
 
-  await db
-    .insert(relationshipMemorySettings)
-    .values({
-      orgId: job.orgId,
-      userId: job.userId,
-      provider: "gmail",
-      enabled: true,
-      bootstrapStatus: "done",
-      lastSyncAt: nowDate(),
-      createdAt: nowDate(),
-      updatedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: [
-        relationshipMemorySettings.orgId,
-        relationshipMemorySettings.userId,
-        relationshipMemorySettings.provider,
-      ],
-      set: {
-        enabled: true,
-        bootstrapStatus: "done",
-        lastSyncAt: nowDate(),
-        lastError: null,
-        updatedAt: nowDate(),
-      },
-    });
+  await markRelationshipProviderSynced({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    provider: "gmail",
+  });
 
   return updated;
 }
@@ -811,32 +1274,104 @@ async function processSlackSourceRelationshipExtractionJob(
     },
   });
 
-  await db
-    .insert(relationshipMemorySettings)
-    .values({
-      orgId: job.orgId,
-      userId: job.userId,
-      provider: "slack",
-      enabled: true,
-      bootstrapStatus: "done",
-      lastSyncAt: nowDate(),
-      createdAt: nowDate(),
-      updatedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: [
-        relationshipMemorySettings.orgId,
-        relationshipMemorySettings.userId,
-        relationshipMemorySettings.provider,
-      ],
-      set: {
-        enabled: true,
-        bootstrapStatus: "done",
-        lastSyncAt: nowDate(),
-        lastError: null,
-        updatedAt: nowDate(),
-      },
-    });
+  await markRelationshipProviderSynced({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    provider: "slack",
+  });
+
+  return 1;
+}
+
+async function processGithubSourceRelationshipExtractionJob(
+  db: Db,
+  job: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly payload: RelationshipSyncJobPayload;
+  },
+  signal: AbortSignal,
+): Promise<number> {
+  if (!(await relationshipMemoryFeatureEnabled(db, job.orgId, job.userId))) {
+    return 0;
+  }
+
+  const loaded = await loadGithubSourceForRelationshipExtraction(
+    db,
+    job,
+    signal,
+  );
+  if (!loaded) {
+    return 0;
+  }
+
+  await applyRelationshipExtraction({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    target: loaded.target,
+    source: loaded.source,
+    evidence: loaded.evidence,
+    occurredAt: loaded.occurredAt,
+    failureLogMessage: "GitHub relationship memory extraction failed",
+    logContext: {
+      externalId: loaded.source.externalId,
+    },
+  });
+
+  await markRelationshipProviderSynced({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    provider: "github",
+  });
+
+  return 1;
+}
+
+async function processNotionSourceRelationshipExtractionJob(
+  db: Db,
+  job: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly payload: RelationshipSyncJobPayload;
+  },
+  signal: AbortSignal,
+): Promise<number> {
+  if (!(await relationshipMemoryFeatureEnabled(db, job.orgId, job.userId))) {
+    return 0;
+  }
+
+  const loaded = await loadNotionSourceForRelationshipExtraction(
+    db,
+    job,
+    signal,
+  );
+  if (!loaded) {
+    return 0;
+  }
+
+  await applyRelationshipExtraction({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    target: loaded.target,
+    source: loaded.source,
+    evidence: loaded.evidence,
+    occurredAt: loaded.occurredAt,
+    failureLogMessage: "Notion relationship memory extraction failed",
+    logContext: {
+      externalId: loaded.source.externalId,
+    },
+  });
+
+  await markRelationshipProviderSynced({
+    db,
+    orgId: job.orgId,
+    userId: job.userId,
+    provider: "notion",
+  });
 
   return 1;
 }
@@ -893,7 +1428,13 @@ export const drainRelationshipSyncJobs$ = command(
           : job.kind === "memory_source_relationship_extract" &&
               job.provider === "slack"
             ? processSlackSourceRelationshipExtractionJob(db, job, signal)
-            : Promise.resolve(0),
+            : job.kind === "memory_source_relationship_extract" &&
+                job.provider === "github"
+              ? processGithubSourceRelationshipExtractionJob(db, job, signal)
+              : job.kind === "memory_source_relationship_extract" &&
+                  job.provider === "notion"
+                ? processNotionSourceRelationshipExtractionJob(db, job, signal)
+                : Promise.resolve(0),
       );
       signal.throwIfAborted();
 
