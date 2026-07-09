@@ -31,19 +31,23 @@ const log = logger("zero-memory-document-ingestion");
 const MAX_CHUNK_CHARS = 1800;
 const CHUNK_OVERLAP_CHARS = 180;
 
+type MemoryContextSpaceRow = typeof memoryContextSpaces.$inferSelect;
+type MemoryDocumentRow = typeof memoryDocuments.$inferSelect;
+type MemorySourceRow = typeof memorySources.$inferSelect;
+
 interface MemoryScope {
   readonly orgId: string;
   readonly userId: string;
 }
 
-export interface MemoryContextSpaceInput {
+interface MemoryContextSpaceInput {
   readonly type: MemoryContextSpaceType;
   readonly key: string;
   readonly displayName: string;
   readonly metadata?: MemoryContextSpaceMetadata;
 }
 
-export interface MemoryDocumentIngestionInput extends MemoryScope {
+interface MemoryDocumentIngestionInput extends MemoryScope {
   readonly provider: MemoryProvider;
   readonly sourceType: MemorySourceType;
   readonly externalId: string;
@@ -60,6 +64,14 @@ interface DocumentChunkInput {
   readonly text: string;
   readonly contentHash: string;
   readonly tokenCount: number;
+}
+
+interface PreparedMemoryDocument {
+  readonly normalizedContent: string;
+  readonly chunks: readonly DocumentChunkInput[];
+  readonly title: string | null;
+  readonly contentHash: string;
+  readonly metadata: MemoryDocumentMetadata;
 }
 
 function normalizeDocumentText(value: string): string {
@@ -95,7 +107,7 @@ function nextChunkBoundary(
   return maxEnd;
 }
 
-export function chunkMemoryDocumentText(content: string): readonly string[] {
+function chunkMemoryDocumentText(content: string): readonly string[] {
   const text = normalizeDocumentText(content);
   if (!text) {
     return [];
@@ -132,10 +144,10 @@ function defaultContextSpace(args: MemoryScope): MemoryContextSpaceInput {
   };
 }
 
-export async function upsertMemoryContextSpace(
+async function upsertMemoryContextSpace(
   db: Db,
   args: MemoryScope & MemoryContextSpaceInput,
-): Promise<typeof memoryContextSpaces.$inferSelect> {
+): Promise<MemoryContextSpaceRow> {
   const currentTime = nowDate();
   const values: typeof memoryContextSpaces.$inferInsert = {
     orgId: args.orgId,
@@ -178,7 +190,7 @@ async function loadMemorySource(
     readonly provider: MemoryProvider;
     readonly externalId: string;
   },
-): Promise<typeof memorySources.$inferSelect | null> {
+): Promise<MemorySourceRow | null> {
   const [row] = await db
     .select()
     .from(memorySources)
@@ -200,7 +212,7 @@ async function loadMemoryDocument(
     readonly provider: MemoryProvider;
     readonly externalId: string;
   },
-): Promise<typeof memoryDocuments.$inferSelect | null> {
+): Promise<MemoryDocumentRow | null> {
   const [row] = await db
     .select()
     .from(memoryDocuments)
@@ -241,6 +253,28 @@ function buildCitation(
     url: args.citation?.url ?? args.metadata?.externalUrl ?? null,
     locator: args.citation?.locator ?? null,
     occurredAt: args.occurredAt?.toISOString() ?? null,
+  };
+}
+
+function prepareMemoryDocument(
+  args: MemoryDocumentIngestionInput,
+): PreparedMemoryDocument | null {
+  const normalizedContent = normalizeDocumentText(args.content);
+  const chunks = buildDocumentChunks(normalizedContent);
+  if (chunks.length === 0) {
+    return null;
+  }
+  return {
+    normalizedContent,
+    chunks,
+    title: args.title ?? null,
+    contentHash: memoryContentHash(normalizedContent),
+    metadata: {
+      ...args.metadata,
+      provider: args.provider,
+      sourceType: args.sourceType,
+      externalUrl: args.metadata?.externalUrl ?? args.citation?.url ?? null,
+    },
   };
 }
 
@@ -293,7 +327,7 @@ async function recordDocumentVersion(
     .onConflictDoNothing();
 }
 
-export async function trySyncMemoryDocumentSearchEntriesForDocument(
+async function trySyncMemoryDocumentSearchEntriesForDocument(
   db: Db,
   args: MemoryScope & { readonly documentId: string },
 ): Promise<void> {
@@ -370,53 +404,33 @@ export async function trySyncMemoryDocumentSearchEntriesForDocument(
   }
 }
 
-export async function recordMemoryDocumentFromConnectorSource(
+async function upsertMemoryDocument(
   db: Db,
-  args: MemoryDocumentIngestionInput,
-): Promise<boolean> {
-  if (!(await memorySubstrateEnabled(db, args))) {
-    return false;
-  }
-
-  const normalizedContent = normalizeDocumentText(args.content);
-  const chunks = buildDocumentChunks(normalizedContent);
-  if (chunks.length === 0) {
-    return false;
-  }
-
-  const contextSpace = await upsertMemoryContextSpace(db, {
-    ...args,
-    ...(args.contextSpace ?? defaultContextSpace(args)),
-  });
-  const source = await loadMemorySource(db, args);
-  const currentTime = nowDate();
-  const title = args.title ?? null;
-  const documentContentHash = memoryContentHash(normalizedContent);
-  const existingDocument = await loadMemoryDocument(db, args);
-  const metadata: MemoryDocumentMetadata = {
-    ...args.metadata,
-    provider: args.provider,
-    sourceType: args.sourceType,
-    externalUrl: args.metadata?.externalUrl ?? args.citation?.url ?? null,
-  };
-
+  args: MemoryDocumentIngestionInput & {
+    readonly contextSpaceId: string;
+    readonly source: MemorySourceRow | null;
+    readonly prepared: PreparedMemoryDocument;
+    readonly currentTime: Date;
+  },
+): Promise<MemoryDocumentRow> {
+  const occurredAt = args.occurredAt ?? args.source?.occurredAt ?? null;
   const [document] = await db
     .insert(memoryDocuments)
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      contextSpaceId: contextSpace.id,
-      sourceId: source?.id ?? null,
+      contextSpaceId: args.contextSpaceId,
+      sourceId: args.source?.id ?? null,
       provider: args.provider,
       sourceType: args.sourceType,
       externalId: args.externalId,
       status: "active",
-      title,
-      contentHash: documentContentHash,
-      occurredAt: args.occurredAt ?? source?.occurredAt ?? null,
-      metadata,
-      createdAt: currentTime,
-      updatedAt: currentTime,
+      title: args.prepared.title,
+      contentHash: args.prepared.contentHash,
+      occurredAt,
+      metadata: args.prepared.metadata,
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
     })
     .onConflictDoUpdate({
       target: [
@@ -426,15 +440,15 @@ export async function recordMemoryDocumentFromConnectorSource(
         memoryDocuments.externalId,
       ],
       set: {
-        contextSpaceId: contextSpace.id,
-        sourceId: source?.id ?? null,
+        contextSpaceId: args.contextSpaceId,
+        sourceId: args.source?.id ?? null,
         sourceType: args.sourceType,
         status: "active",
-        title,
-        contentHash: documentContentHash,
-        occurredAt: args.occurredAt ?? source?.occurredAt ?? null,
-        metadata,
-        updatedAt: currentTime,
+        title: args.prepared.title,
+        contentHash: args.prepared.contentHash,
+        occurredAt,
+        metadata: args.prepared.metadata,
+        updatedAt: args.currentTime,
       },
     })
     .returning();
@@ -442,57 +456,123 @@ export async function recordMemoryDocumentFromConnectorSource(
   if (!document) {
     throw new Error("Failed to upsert memory document");
   }
+  return document;
+}
 
-  if (source && source.contextSpaceId !== contextSpace.id) {
-    await db
-      .update(memorySources)
-      .set({
-        contextSpaceId: contextSpace.id,
-        updatedAt: currentTime,
-      })
-      .where(eq(memorySources.id, source.id));
+async function syncMemorySourceContextSpace(
+  db: Db,
+  args: {
+    readonly source: MemorySourceRow | null;
+    readonly contextSpaceId: string;
+    readonly currentTime: Date;
+  },
+): Promise<void> {
+  if (!args.source || args.source.contextSpaceId === args.contextSpaceId) {
+    return;
   }
+  await db
+    .update(memorySources)
+    .set({
+      contextSpaceId: args.contextSpaceId,
+      updatedAt: args.currentTime,
+    })
+    .where(eq(memorySources.id, args.source.id));
+}
 
-  if (existingDocument?.contentHash === documentContentHash) {
-    return true;
-  }
-
-  const version = await nextDocumentVersion(db, { documentId: document.id });
+async function replaceMemoryDocumentChunks(
+  db: Db,
+  args: MemoryDocumentIngestionInput & {
+    readonly documentId: string;
+    readonly contextSpaceId: string;
+    readonly source: MemorySourceRow | null;
+    readonly prepared: PreparedMemoryDocument;
+    readonly currentTime: Date;
+  },
+): Promise<void> {
   await db
     .delete(memoryDocumentChunks)
-    .where(eq(memoryDocumentChunks.documentId, document.id));
+    .where(eq(memoryDocumentChunks.documentId, args.documentId));
 
   const citation = buildCitation({
     ...args,
-    title,
-    sourceId: source?.id ?? null,
+    title: args.prepared.title,
+    sourceId: args.source?.id ?? null,
   });
   await db.insert(memoryDocumentChunks).values(
-    chunks.map((chunk) => {
+    args.prepared.chunks.map((chunk) => {
       return {
         orgId: args.orgId,
         userId: args.userId,
-        contextSpaceId: contextSpace.id,
-        documentId: document.id,
-        sourceId: source?.id ?? null,
+        contextSpaceId: args.contextSpaceId,
+        documentId: args.documentId,
+        sourceId: args.source?.id ?? null,
         status: "active" as const,
         chunkIndex: chunk.chunkIndex,
         text: chunk.text,
         contentHash: chunk.contentHash,
         tokenCount: chunk.tokenCount,
         citation,
-        createdAt: currentTime,
-        updatedAt: currentTime,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
       };
     }),
   );
+}
+
+export async function recordMemoryDocumentFromConnectorSource(
+  db: Db,
+  args: MemoryDocumentIngestionInput,
+): Promise<boolean> {
+  if (!(await memorySubstrateEnabled(db, args))) {
+    return false;
+  }
+
+  const prepared = prepareMemoryDocument(args);
+  if (!prepared) {
+    return false;
+  }
+
+  const contextSpace = await upsertMemoryContextSpace(db, {
+    ...args,
+    ...(args.contextSpace ?? defaultContextSpace(args)),
+  });
+  const source = await loadMemorySource(db, args);
+  const currentTime = nowDate();
+  const existingDocument = await loadMemoryDocument(db, args);
+  const document = await upsertMemoryDocument(db, {
+    ...args,
+    contextSpaceId: contextSpace.id,
+    source,
+    prepared,
+    currentTime,
+  });
+
+  await syncMemorySourceContextSpace(db, {
+    source,
+    contextSpaceId: contextSpace.id,
+    currentTime,
+  });
+
+  if (existingDocument?.contentHash === prepared.contentHash) {
+    return true;
+  }
+
+  const version = await nextDocumentVersion(db, { documentId: document.id });
+  await replaceMemoryDocumentChunks(db, {
+    ...args,
+    contextSpaceId: contextSpace.id,
+    documentId: document.id,
+    source,
+    prepared,
+    currentTime,
+  });
 
   await recordDocumentVersion(db, {
     orgId: args.orgId,
     userId: args.userId,
     contextSpaceId: contextSpace.id,
     documentId: document.id,
-    contentHash: documentContentHash,
+    contentHash: prepared.contentHash,
     version,
     operation: version === 1 ? "create" : "update",
   });
