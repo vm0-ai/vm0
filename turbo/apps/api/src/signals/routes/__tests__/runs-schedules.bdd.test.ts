@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import {
+  insertEmailOutboxRow,
+  readEmailOutboxRow,
+  touchEmailOutboxRow,
+} from "../../../test-fixtures/email-outbox";
 import { testContext } from "../../../__tests__/test-context";
 import {
   createBddApi,
@@ -11,14 +17,6 @@ import {
 } from "./helpers/api-bdd";
 import { createEmailApi } from "./helpers/api-bdd-email";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import {
-  deleteEmailOutboxBySubjectState,
-  deleteEmailSuppressionState,
-  readEmailOutboxBySubjectState,
-  seedEmailOutboxState,
-  seedEmailSuppressionState,
-  touchEmailOutboxState,
-} from "./helpers/email-state";
 
 /**
  * helper gap:
@@ -56,17 +54,13 @@ interface SeedEmailOutboxOptions {
 }
 
 async function seedEmailOutbox(options: SeedEmailOutboxOptions): Promise<void> {
-  await seedEmailOutboxState(context, options);
-  onTestFinished(async () => {
-    await deleteEmailOutboxBySubjectState(context, options.subject);
-  });
+  await insertEmailOutboxRow(options);
 }
 
+// Suppressions are constructed through the production Resend bounce webhook;
+// isolation comes from the per-test random recipient address.
 async function seedEmailSuppression(address: string): Promise<void> {
-  await seedEmailSuppressionState(context, address);
-  onTestFinished(async () => {
-    await deleteEmailSuppressionState(context, address);
-  });
+  await createEmailApi(context).suppressEmailAddress(address);
 }
 
 function resendSendCallsTo(recipient: string): number {
@@ -85,13 +79,11 @@ function resendSendCallsTo(recipient: string): number {
 }
 
 async function touchEmailOutbox(subject: string): Promise<void> {
-  await touchEmailOutboxState(context, subject, new Date(now()));
+  await touchEmailOutboxRow(subject, new Date(now()));
 }
 
 async function emailOutboxStatus(subject: string): Promise<string | null> {
-  return (
-    (await readEmailOutboxBySubjectState(context, subject))?.status ?? null
-  );
+  return (await readEmailOutboxRow(subject))?.status ?? null;
 }
 
 async function emailOutboxRow(subject: string): Promise<{
@@ -99,7 +91,7 @@ async function emailOutboxRow(subject: string): Promise<{
   readonly attempts: number;
   readonly lastError: string | null;
 } | null> {
-  return await readEmailOutboxBySubjectState(context, subject);
+  return await readEmailOutboxRow(subject);
 }
 
 async function drainEmailOutboxCronOk(): Promise<void> {
@@ -111,6 +103,14 @@ async function drainEmailOutboxCronOk(): Promise<void> {
   if (drain.status !== 200) {
     throw new Error("Expected drain email outbox cron to succeed");
   }
+}
+
+// The drain paces sends for Resend rate limits (500ms per item) and sweeps the
+// shared outbox in created_at order, so with a backlog from concurrently
+// running files a single drain request would spend seconds sleeping. Sends
+// here are mocked, so the pacing is pure dead time — turn it off.
+function disableOutboxDrainPacing(): void {
+  mockOptionalEnv("EMAIL_OUTBOX_DRAIN_DELAY_MS", "0");
 }
 
 async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
@@ -521,6 +521,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
   });
 
   it("marks suppressed pending outbox rows failed without sending", async () => {
+    disableOutboxDrainPacing();
     const subject = `BDD drain ${randomUUID().slice(0, 8)}`;
     const to = `bdd-suppressed-${randomUUID().slice(0, 12)}@example.test`;
     await seedEmailOutbox({ subject, to });
@@ -541,6 +542,7 @@ describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
   });
 
   it("cleans up expired pending and failed outbox rows", async () => {
+    disableOutboxDrainPacing();
     const pendingSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
     const failedSubject = `BDD drain ${randomUUID().slice(0, 8)}`;
     const expiredAt = new Date(now() - 60 * 60 * 1000);

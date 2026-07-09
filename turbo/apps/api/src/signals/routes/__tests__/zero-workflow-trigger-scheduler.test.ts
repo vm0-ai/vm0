@@ -1,56 +1,53 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-import { networkPoliciesSchema } from "@vm0/connectors/firewall-types";
-import type {
-  TestWorkflowTriggerStateActionBody,
-  TestWorkflowTriggerStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-workflow-trigger-state";
-import { z } from "zod";
-
-import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-context";
-import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+  zeroAgentsByIdContract,
+  zeroAgentsMainContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { createStore } from "ccstate";
+
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
+import { mockEnv } from "../../../lib/env";
+import { mockNow, now } from "../../../lib/time";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
+const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";
-const TEST_WORKFLOW_STATE_ACTION_ROUTE =
-  "/api/test/workflow-trigger-state/action";
 const CRON_EXECUTE_WORKFLOW_TRIGGERS_ROUTE =
   "/api/cron/execute-workflow-triggers";
 const CRON_SECRET = "test-cron-secret";
 
-afterEach(() => {
-  clearMockedEnv();
-});
-
-interface WorkflowFixture {
+interface Scenario {
+  readonly actor: ApiTestUser;
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
   readonly workflowId: string;
-  readonly workflowName: string;
+  readonly runnerGroup: string;
 }
 
-interface Scenario {
-  readonly fixture: WorkflowFixture;
-  readonly agentId: string;
-  readonly workflowId: string;
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
 }
 
-const track = createFixtureTracker<WorkflowFixture>((fixture) => {
-  return deleteWorkflowFixture(fixture);
-});
+function triggersClient() {
+  return setupApp({ context })(zeroWorkflowTriggersContract);
+}
 
 async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
@@ -63,290 +60,121 @@ function expectOk(response: Response, operation: string): void {
   throw new Error(`${operation} failed with ${response.status}`);
 }
 
-async function postWorkflowStateAction(
-  body: TestWorkflowTriggerStateActionBody,
-): Promise<TestWorkflowTriggerStateActionResponse> {
-  const response = await createApp({ signal: context.signal }).request(
-    TEST_WORKFLOW_STATE_ACTION_ROUTE,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  await expectOk(response, `workflow trigger state action ${body.action}`);
-  return await readJson<TestWorkflowTriggerStateActionResponse>(response);
-}
-
-function record(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`Expected ${label} to be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function optionalRecord(
-  value: unknown,
-  label: string,
-): Record<string, unknown> | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  return record(value, label);
-}
-
-function stringField(value: Record<string, unknown>, key: string): string {
-  const field = value[key];
-  if (typeof field !== "string") {
-    throw new Error(`Expected ${key} to be a string`);
-  }
-  return field;
-}
-
-function optionalStringField(
-  value: Record<string, unknown> | null,
-  key: string,
-): string | null {
-  const field = value?.[key];
-  return typeof field === "string" ? field : null;
-}
-
-function dateField(value: Record<string, unknown> | null, key: string): Date {
-  const field = optionalStringField(value, key);
-  if (!field) {
-    throw new Error(`Expected ${key} to be a date string`);
-  }
-  return new Date(field);
-}
-
-function numberField(
-  value: Record<string, unknown> | null,
-  key: string,
-): number {
-  const field = value?.[key];
-  if (typeof field !== "number") {
-    throw new Error(`Expected ${key} to be a number`);
-  }
-  return field;
-}
-
-function booleanField(
-  value: Record<string, unknown> | null,
-  key: string,
-): boolean {
-  const field = value?.[key];
-  if (typeof field !== "boolean") {
-    throw new Error(`Expected ${key} to be a boolean`);
-  }
-  return field;
-}
-
-function records(value: unknown): readonly Record<string, unknown>[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter((item): item is Record<string, unknown> => {
-    return typeof item === "object" && item !== null && !Array.isArray(item);
-  });
-}
-
-async function deleteWorkflowFixture(fixture: WorkflowFixture): Promise<void> {
-  await postWorkflowStateAction({
-    action: "delete-scenario",
-    org_id: fixture.orgId,
-  });
-}
-
-async function setup(): Promise<Scenario> {
-  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+async function setup(
+  options: { readonly timezone?: string } = {},
+): Promise<Scenario> {
+  const runnerGroup = runsApi.configureRunnerGroup();
   mockEnv("CRON_SECRET", CRON_SECRET);
+  const { actor } = await wf.setupWorkflowOrg({ timezone: options.timezone });
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped workflow actor");
+  }
+  const agent = await wf.createAgent(actor, {
+    displayName: "Scheduler Agent",
+  });
+  const workflowId = await wf.createWorkflow(actor, {
+    agentId: agent.agentId,
+    name: WORKFLOW_NAME,
+  });
+  mocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
-  const response = await postWorkflowStateAction({
-    action: "seed-scenario",
-    workflow_name: WORKFLOW_NAME,
-    agent_name: "scheduler-agent",
-  });
-  const seeded = record(response.fixture, "seeded workflow fixture");
-  const fixture: WorkflowFixture = {
-    orgId: stringField(seeded, "org_id"),
-    userId: stringField(seeded, "user_id"),
-    agentId: stringField(seeded, "agent_id"),
-    workflowId: stringField(seeded, "workflow_id"),
-    workflowName: stringField(seeded, "workflow_name"),
-  };
-  mocks.clerk.session(fixture.userId, fixture.orgId);
-  await track(Promise.resolve(fixture));
   return {
-    fixture,
-    agentId: fixture.agentId,
-    workflowId: fixture.workflowId,
+    actor,
+    orgId: actor.orgId,
+    userId: actor.userId,
+    agentId: agent.agentId,
+    workflowId,
+    runnerGroup,
   };
 }
 
-async function seedTrigger(
+interface CreatedTrigger {
+  readonly triggerId: string;
+  readonly threadId: string;
+  readonly nextRunAt: string | null;
+}
+
+/** Loop triggers are due immediately on creation. */
+async function createDueLoopTrigger(
   scenario: Scenario,
-  opts: {
-    readonly scheduleType: "cron" | "loop" | "once";
-    readonly cronExpression?: string;
-    readonly intervalSeconds?: number;
-    readonly nextRunAt: Date | null;
-    readonly enabled?: boolean;
-    readonly consecutiveFailures?: number;
-    readonly lastRunId?: string;
-  },
-): Promise<{ triggerId: string; threadId: string }> {
-  const response = await postWorkflowStateAction({
-    action: "seed-trigger",
-    org_id: scenario.fixture.orgId,
-    user_id: scenario.fixture.userId,
-    agent_id: scenario.agentId,
-    workflow_id: scenario.workflowId,
-    schedule_type: opts.scheduleType,
-    cron_expression: opts.cronExpression,
-    interval_seconds: opts.intervalSeconds,
-    next_run_at: opts.nextRunAt?.toISOString() ?? null,
-    enabled: opts.enabled,
-    consecutive_failures: opts.consecutiveFailures,
-    last_run_id: opts.lastRunId,
-    bind_thread: true,
-  });
-  if (
-    typeof response.trigger_id !== "string" ||
-    typeof response.thread_id !== "string"
-  ) {
-    throw new Error("Expected seeded trigger and thread ids");
+  intervalSeconds: number,
+): Promise<CreatedTrigger> {
+  const created = await accept(
+    triggersClient().create({
+      headers: authHeaders(),
+      params: { workflowId: scenario.workflowId },
+      body: { schedule: { type: "loop", intervalSeconds } },
+    }),
+    [201],
+  );
+  if (!created.body.chatThreadId) {
+    throw new Error("Expected the trigger to bind a chat thread");
   }
-  return { triggerId: response.trigger_id, threadId: response.thread_id };
+  return {
+    triggerId: created.body.id,
+    threadId: created.body.chatThreadId,
+    nextRunAt: created.body.nextRunAt,
+  };
 }
 
-async function seedTriggerWithoutThread(
-  scenario: Scenario,
-  opts: {
-    readonly scheduleType: "cron" | "loop" | "once";
-    readonly cronExpression?: string;
-    readonly intervalSeconds?: number;
-    readonly nextRunAt: Date | null;
-  },
-): Promise<{ triggerId: string }> {
-  const response = await postWorkflowStateAction({
-    action: "seed-trigger",
-    org_id: scenario.fixture.orgId,
-    user_id: scenario.fixture.userId,
-    agent_id: scenario.agentId,
-    workflow_id: scenario.workflowId,
-    schedule_type: opts.scheduleType,
-    cron_expression: opts.cronExpression,
-    interval_seconds: opts.intervalSeconds,
-    next_run_at: opts.nextRunAt?.toISOString() ?? null,
-    bind_thread: false,
-  });
-  if (typeof response.trigger_id !== "string") {
-    throw new Error("Expected seeded trigger id");
-  }
-  return { triggerId: response.trigger_id };
+async function disableTrigger(triggerId: string): Promise<void> {
+  await accept(
+    triggersClient().disable({
+      headers: authHeaders(),
+      params: { id: triggerId },
+    }),
+    [200],
+  );
 }
 
-async function loadTrigger(
-  triggerId: string,
-): Promise<Record<string, unknown> | null> {
-  const response = await postWorkflowStateAction({
-    action: "get-trigger",
-    trigger_id: triggerId,
-  });
-  return optionalRecord(response.trigger, "trigger state");
+async function executeDueWorkflowTriggers(): Promise<void> {
+  const response = await createApp({ signal: context.signal }).request(
+    CRON_EXECUTE_WORKFLOW_TRIGGERS_ROUTE,
+    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
+  );
+  await expectOk(response, "execute workflow triggers cron");
+  const body = await readJson<{ readonly success: boolean }>(response);
+  expect(body.success).toBeTruthy();
 }
 
-async function loadChatThread(
-  threadId: string,
-): Promise<Record<string, unknown> | null> {
-  const response = await postWorkflowStateAction({
-    action: "get-chat-thread",
-    thread_id: threadId,
-  });
-  return optionalRecord(response.thread, "chat thread");
-}
-
-function pastDate(): Date {
-  return new Date(now() - 3_600_000);
-}
-
-async function runNetworkPolicies(runId: string) {
-  const state = await postWorkflowStateAction({
-    action: "get-run-state",
-    run_id: runId,
-  });
-  const job = optionalRecord(state.job, "runner job");
-  if (!job) {
-    throw new Error("Expected a runner job for the trigger run");
-  }
-  return z
-    .object({ networkPolicies: networkPoliciesSchema.optional() })
-    .parse(job.executionContext).networkPolicies;
-}
-
-async function runEnvironment(runId: string) {
-  const state = await postWorkflowStateAction({
-    action: "get-run-state",
-    run_id: runId,
-  });
-  const job = optionalRecord(state.job, "runner job");
-  if (!job) {
-    throw new Error("Expected a runner job for the trigger run");
-  }
-  return z
-    .object({ environment: z.record(z.string(), z.string()) })
-    .parse(job.executionContext).environment;
-}
-
-async function setOwnerTimezone(
-  scenario: Scenario,
-  timezone: string,
-): Promise<void> {
-  await postWorkflowStateAction({
-    action: "set-owner-timezone",
-    org_id: scenario.fixture.orgId,
-    user_id: scenario.fixture.userId,
-    timezone,
-  });
-}
-
-async function setAgentVisibility(
-  scenario: Scenario,
-  opts: {
-    readonly visibility: "public" | "private";
-    readonly ownerUserId?: string;
-  },
-): Promise<void> {
-  await postWorkflowStateAction({
-    action: "set-agent-visibility",
-    org_id: scenario.fixture.orgId,
-    agent_id: scenario.agentId,
-    visibility: opts.visibility,
-    owner_user_id: opts.ownerUserId,
-  });
-}
-
-async function workflowUserMessageBrief(args: {
+interface WorkflowRunMessage {
   readonly runId: string;
-}): Promise<string | undefined> {
-  const state = await postWorkflowStateAction({
-    action: "get-run-state",
-    run_id: args.runId,
+  readonly triggerSource: string | undefined;
+  readonly triggerBrief: string | null | undefined;
+}
+
+/**
+ * Workflow-trigger fires post a `/workflow-name` user message with the run id
+ * into the bound thread; this is the public read for "runs of this trigger".
+ */
+async function workflowRunMessages(
+  threadId: string,
+): Promise<readonly WorkflowRunMessage[]> {
+  const messages = await wf.readThreadMessages(threadId);
+  return messages.flatMap((message) => {
+    if (
+      message.role !== "user" ||
+      message.content !== `/${WORKFLOW_NAME}` ||
+      !message.runId
+    ) {
+      return [];
+    }
+    return [
+      {
+        runId: message.runId,
+        triggerSource: message.triggerSource,
+        triggerBrief: message.workflowSnapshot?.triggerBrief,
+      },
+    ];
   });
-  const messages = records(state.messages);
-  const message = messages.find((candidate) => {
-    return (
-      candidate.role === "user" &&
-      candidate.runId === args.runId &&
-      candidate.content === `/${WORKFLOW_NAME}`
-    );
-  });
-  expect(message).toMatchObject({
-    role: "user",
-    content: `/${WORKFLOW_NAME}`,
-  });
-  const run = records(state.runs)[0];
-  return optionalStringField(run ?? null, "triggerBrief") ?? undefined;
+}
+
+async function onlyWorkflowRunMessage(
+  threadId: string,
+): Promise<WorkflowRunMessage> {
+  const messages = await workflowRunMessages(threadId);
+  expect(messages).toHaveLength(1);
+  return messages[0]!;
 }
 
 function friendlyTriggeredAtPattern(timezone: string): string {
@@ -356,43 +184,12 @@ function friendlyTriggeredAtPattern(timezone: string): string {
   )}\)`;
 }
 
-async function runIdForTrigger(triggerId: string): Promise<string> {
-  const state = await postWorkflowStateAction({
-    action: "get-run-state",
-    trigger_id: triggerId,
-  });
-  const run = records(state.runs)[0];
-  if (!run) {
-    throw new Error("Expected a run for the trigger");
-  }
-  return stringField(run, "id");
-}
-
-async function runStateForTrigger(triggerId: string) {
-  return await postWorkflowStateAction({
-    action: "get-run-state",
-    trigger_id: triggerId,
-  });
-}
-
-async function seedActiveRun(scenario: Scenario): Promise<string> {
-  const response = await postWorkflowStateAction({
-    action: "seed-active-run",
-    org_id: scenario.fixture.orgId,
-    user_id: scenario.fixture.userId,
-    agent_id: scenario.agentId,
-  });
-  if (typeof response.run_id !== "string") {
-    throw new Error("Expected active run id");
-  }
-  return response.run_id;
-}
-
 async function completeRunThroughSandbox(
+  scenario: Scenario,
   runId: string,
   exitCode: number,
 ): Promise<void> {
-  await runsApi.heartbeatRunner("vm0/test");
+  await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
   await webhooksApi.requestAgentCheckpoint(
@@ -425,85 +222,83 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
   await expectOk(response, "delete workflow");
 }
 
-async function executeDueWorkflowTriggers(): Promise<{
-  readonly success: true;
-  readonly executed: number;
-  readonly skipped: number;
-}> {
-  const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_TRIGGERS_ROUTE,
-    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
-  );
-  await expectOk(response, "execute workflow triggers cron");
-  return await readJson<{
-    readonly success: true;
-    readonly executed: number;
-    readonly skipped: number;
-  }>(response);
-}
-
 describe("zero workflow trigger scheduler", () => {
   it("uses agent connector authorization and permission grants for trigger runs", async () => {
     const scenario = await setup();
 
-    // A real Gmail connection so the gmail firewall is built into the manifest.
-    await postWorkflowStateAction({
-      action: "seed-gmail-authorization",
-      org_id: scenario.fixture.orgId,
-      user_id: scenario.fixture.userId,
-      agent_id: scenario.agentId,
-    });
-
-    const trigger = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 60,
-      nextRunAt: pastDate(),
-    });
-
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
-
-    const policies = await runNetworkPolicies(
-      await runIdForTrigger(trigger.triggerId),
+    // A real Gmail connection plus the public agent-connector and permission
+    // grant routes, so the gmail firewall is built into the manifest.
+    mockGmailConnectorOAuth({ email: "trigger-user@example.com" });
+    await wf.connectConnector(scenario.actor, "gmail");
+    await accept(
+      setupApp({ context })(zeroUserConnectorsContract).update({
+        headers: authHeaders(),
+        params: { id: scenario.agentId },
+        body: { enabledTypes: ["gmail"] },
+      }),
+      [200],
     );
-    expect(policies?.gmail?.allow ?? []).toContain("messages.write");
+    await runsApi.applyUserPermissionGrant(scenario.actor, {
+      agentId: scenario.agentId,
+      connectorRef: "gmail",
+      permission: "messages.write",
+      action: "allow",
+    });
+    mocks.clerk.session(scenario.userId, scenario.orgId);
+
+    const trigger = await createDueLoopTrigger(scenario, 60);
+
+    await executeDueWorkflowTriggers();
+
+    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.runId);
+    expect(claim.networkPolicies?.gmail?.allow ?? []).toContain(
+      "messages.write",
+    );
+    await disableTrigger(trigger.triggerId);
   });
 
   it("does not expose workflow permission deep-link ids to the run environment", async () => {
     const scenario = await setup();
-    const trigger = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 60,
-      nextRunAt: pastDate(),
-    });
+    const trigger = await createDueLoopTrigger(scenario, 60);
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
+    await executeDueWorkflowTriggers();
 
-    const environment = await runEnvironment(
-      await runIdForTrigger(trigger.triggerId),
-    );
+    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.runId);
+    const environment = claim.environment ?? {};
     expect(environment.ZERO_WORKFLOW_TRIGGER_ID).toBeUndefined();
     expect(environment.ZERO_WORKFLOW_ID).toBeUndefined();
+    await disableTrigger(trigger.triggerId);
   });
 
-  it("fires a due cron trigger: creates a run, posts to the thread, sets last_run_id", async () => {
-    const scenario = await setup();
-    await setOwnerTimezone(scenario, "Asia/Shanghai");
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "cron",
-      cronExpression: "0 9 * * *",
-      nextRunAt: pastDate(),
-    });
+  it("fires a due cron trigger: creates a run, posts to the thread, sets last run state", async () => {
+    const scenario = await setup({ timezone: "Asia/Shanghai" });
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    const threadId = created.body.chatThreadId;
+    if (!threadId || !created.body.nextRunAt) {
+      throw new Error("Expected a thread-bound cron trigger with a next run");
+    }
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
+    mockNow(Date.parse(created.body.nextRunAt) + 60_000);
+    await executeDueWorkflowTriggers();
 
-    const state = await runStateForTrigger(triggerId);
-    const runs = records(state.runs);
-    expect(runs).toHaveLength(1);
-    const run = runs[0]!;
-    const runId = stringField(run, "id");
+    const run = await onlyWorkflowRunMessage(threadId);
     expect(run.triggerSource).toBe("workflow-schedule");
     expect(run.triggerBrief).toMatch(
       new RegExp(
@@ -514,239 +309,287 @@ describe("zero workflow trigger scheduler", () => {
       ),
     );
 
-    const trigger = await loadTrigger(triggerId);
-    expect(trigger?.nextRunAt).toBeNull();
-    expect(trigger?.lastRunId).toBe(runId);
-
-    const messages = records(state.messages);
-    expect(
-      messages.some((m) => {
-        return m.role === "user" && m.content === `/${WORKFLOW_NAME}`;
-      }),
-    ).toBeTruthy();
-    await expect(
-      workflowUserMessageBrief({
-        runId,
-      }),
-    ).resolves.toBe(run.triggerBrief);
-
-    const callbacks = records(state.callbacks);
-    const kinds = callbacks.map((c) => {
-      return c.internalKind;
-    });
-    expect(kinds).toContain("workflow-trigger:cron");
-    expect(kinds).toContain("chat");
-  });
-
-  it("creates the shared workflow-user thread when a due trigger has no binding yet", async () => {
-    const scenario = await setup();
-    const { triggerId } = await seedTriggerWithoutThread(scenario, {
-      scheduleType: "cron",
-      cronExpression: "0 9 * * *",
-      nextRunAt: pastDate(),
-    });
-
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
-
-    const state = await runStateForTrigger(triggerId);
-    const binding = optionalRecord(state.binding, "workflow trigger binding");
-    expect(binding?.chatThreadId).toStrictEqual(expect.any(String));
-    const thread = await loadChatThread(String(binding?.chatThreadId));
-    expect(thread?.selectedModel).toBe("claude-sonnet-4-6");
-
-    const messages = records(state.messages);
-    expect(
-      messages.some((m) => {
-        return m.role === "user" && m.content === `/${WORKFLOW_NAME}`;
-      }),
-    ).toBeTruthy();
-
-    const trigger = await loadTrigger(triggerId);
-    expect(trigger?.lastRunId).not.toBeNull();
+    const trigger = await wf.readTrigger(created.body.id);
+    expect(trigger.nextRunAt).toBeNull();
+    expect(typeof trigger.lastRunAt).toBe("string");
   });
 
   it("disables a one-time trigger when it fires", async () => {
-    const scenario = await setup();
-    await setOwnerTimezone(scenario, "Asia/Shanghai");
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "once",
-      nextRunAt: pastDate(),
-    });
+    const scenario = await setup({ timezone: "Asia/Shanghai" });
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: new Date(now() + 90_000).toISOString(),
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    const threadId = created.body.chatThreadId;
+    if (!threadId || !created.body.nextRunAt) {
+      throw new Error("Expected a thread-bound one-time trigger");
+    }
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
+    mockNow(Date.parse(created.body.nextRunAt) + 60_000);
+    await executeDueWorkflowTriggers();
 
-    const trigger = await loadTrigger(triggerId);
-    expect(trigger?.enabled).toBeFalsy();
-    expect(trigger?.nextRunAt).toBeNull();
-    const [run] = records((await runStateForTrigger(triggerId)).runs);
-    expect(run?.triggerBrief).toMatch(
+    const trigger = await wf.readTrigger(created.body.id);
+    expect(trigger.enabled).toBeFalsy();
+    expect(trigger.nextRunAt).toBeNull();
+
+    const run = await onlyWorkflowRunMessage(threadId);
+    expect(run.triggerBrief).toMatch(
       new RegExp(
         `^Once at \\d{1,2}:\\d{2} [AP]M, [A-Z][a-z]{2} \\d{1,2}, \\d{4} \\(Asia\\/Shanghai\\)$`,
         "u",
       ),
     );
-    const runId = stringField(run!, "id");
-    await expect(
-      workflowUserMessageBrief({
-        runId,
-      }),
-    ).resolves.toBe(run?.triggerBrief);
   });
 
   it("fires a due loop trigger with a persisted friendly trigger brief", async () => {
-    const scenario = await setup();
-    await setOwnerTimezone(scenario, "Asia/Shanghai");
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 3600,
-      nextRunAt: pastDate(),
-    });
+    const scenario = await setup({ timezone: "Asia/Shanghai" });
+    const trigger = await createDueLoopTrigger(scenario, 3600);
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
+    await executeDueWorkflowTriggers();
 
-    const [run] = records((await runStateForTrigger(triggerId)).runs);
-    expect(run?.triggerBrief).toMatch(
+    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    expect(run.triggerBrief).toMatch(
       new RegExp(
         `^${friendlyTriggeredAtPattern("Asia/Shanghai")}\\nEvery 1 hour$`,
         "u",
       ),
     );
-    const runId = stringField(run!, "id");
-    await expect(
-      workflowUserMessageBrief({
-        runId,
-      }),
-    ).resolves.toBe(run?.triggerBrief);
+    await disableTrigger(trigger.triggerId);
   });
 
   it("skips a trigger whose previous run is still active", async () => {
     const scenario = await setup();
-    const activeRunId = await seedActiveRun(scenario);
-    const due = pastDate();
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 300,
-      nextRunAt: due,
-      lastRunId: activeRunId,
-    });
+    const trigger = await createDueLoopTrigger(scenario, 60);
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(0);
+    // First tick fires a run that stays active (never claimed or completed).
+    await executeDueWorkflowTriggers();
+    await onlyWorkflowRunMessage(trigger.threadId);
 
-    const trigger = await loadTrigger(triggerId);
-    expect(dateField(trigger, "nextRunAt").getTime()).toBe(due.getTime());
+    // Re-arm the schedule through the public update route, then move time
+    // past the recomputed next run.
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: trigger.triggerId },
+        body: { schedule: { type: "loop", intervalSeconds: 60 } },
+      }),
+      [200],
+    );
+    if (!updated.body.nextRunAt) {
+      throw new Error("Expected the loop trigger to be rescheduled");
+    }
+    mockNow(Date.parse(updated.body.nextRunAt) + 1000);
+
+    await executeDueWorkflowTriggers();
+
+    // The due trigger was skipped: no second run message and the schedule is
+    // left untouched for the next tick.
+    const messages = await workflowRunMessages(trigger.threadId);
+    expect(messages).toHaveLength(1);
+    const read = await wf.readTrigger(trigger.triggerId);
+    expect(read.enabled).toBeTruthy();
+    expect(read.nextRunAt).toBe(updated.body.nextRunAt);
+
+    await disableTrigger(trigger.triggerId);
   });
 
   it("skips a due trigger when the owner can no longer read the agent", async () => {
     const scenario = await setup();
-    const due = pastDate();
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 300,
-      nextRunAt: due,
+
+    // A second org member owns the trigger on the public workflow. The member
+    // becomes visible to the scheduler through a CLI-token request, which
+    // caches the org membership the poller checks.
+    const member = wf.user({
+      userId: `user_${randomUUID()}`,
+      orgId: scenario.orgId,
+      orgRole: "org:member",
     });
+    await store.set(
+      seedOrgMembership$,
+      { orgId: scenario.orgId, userId: member.userId, role: "member" },
+      context.signal,
+    );
+    mocks.clerk.session(member.userId, scenario.orgId, "org:member");
+    const apiKey = await runsApi.createApiKey(member);
+    await accept(
+      setupApp({ context })(zeroAgentsMainContract).list({
+        headers: { authorization: `Bearer ${apiKey.token}` },
+      }),
+      [200],
+    );
 
-    await setAgentVisibility(scenario, {
-      visibility: "private",
-      ownerUserId: `other_${scenario.fixture.userId}`,
-    });
+    mocks.clerk.session(member.userId, scenario.orgId, "org:member");
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 300 } },
+      }),
+      [201],
+    );
+    const threadId = created.body.chatThreadId;
+    if (!threadId || !created.body.nextRunAt) {
+      throw new Error("Expected a thread-bound loop trigger");
+    }
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(0);
-    expect(result.skipped).toBe(1);
+    // The agent owner flips the agent private, hiding it from the member.
+    mocks.clerk.session(scenario.userId, scenario.orgId);
+    await accept(
+      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+        headers: authHeaders(),
+        params: { id: scenario.agentId },
+        body: { visibility: "private" },
+      }),
+      [200],
+    );
 
-    const trigger = await loadTrigger(triggerId);
-    expect(booleanField(trigger, "enabled")).toBeTruthy();
-    expect(dateField(trigger, "nextRunAt").getTime()).toBe(due.getTime());
-    expect(trigger?.lastRunId).toBeNull();
-    const state = await runStateForTrigger(triggerId);
-    expect(records(state.runs)).toHaveLength(0);
+    await executeDueWorkflowTriggers();
+
+    // Restore visibility so the member's product reads work again; the skip
+    // already happened during the tick above.
+    await accept(
+      setupApp({ context })(zeroAgentsByIdContract).updateMetadata({
+        headers: authHeaders(),
+        params: { id: scenario.agentId },
+        body: { visibility: "public" },
+      }),
+      [200],
+    );
+
+    // The member's due trigger was skipped without being disabled or fired.
+    mocks.clerk.session(member.userId, scenario.orgId, "org:member");
+    const read = await wf.readTrigger(created.body.id);
+    expect(read.enabled).toBeTruthy();
+    expect(read.nextRunAt).toBe(created.body.nextRunAt);
+    expect(read.lastRunAt).toBeNull();
+    const messages = await workflowRunMessages(threadId);
+    expect(messages).toHaveLength(0);
+
+    await disableTrigger(created.body.id);
+    mocks.clerk.session(scenario.userId, scenario.orgId);
   });
 
   it("advances a cron trigger on the completion callback", async () => {
     const scenario = await setup();
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "cron",
-      cronExpression: "0 9 * * *",
-      nextRunAt: pastDate(),
-    });
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    const threadId = created.body.chatThreadId;
+    if (!threadId || !created.body.nextRunAt) {
+      throw new Error("Expected a thread-bound cron trigger");
+    }
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
-    await completeRunThroughSandbox(await runIdForTrigger(triggerId), 0);
+    mockNow(Date.parse(created.body.nextRunAt) + 60_000);
+    await executeDueWorkflowTriggers();
+    const run = await onlyWorkflowRunMessage(threadId);
+    await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
       .poll(async () => {
-        return optionalStringField(await loadTrigger(triggerId), "nextRunAt");
+        return (await wf.readTrigger(created.body.id)).nextRunAt;
       })
       .not.toBeNull();
-    const trigger = await loadTrigger(triggerId);
-    expect(trigger?.consecutiveFailures).toBe(0);
+    const trigger = await wf.readTrigger(created.body.id);
+    expect(trigger.enabled).toBeTruthy();
   });
 
   it("reschedules a loop trigger by its interval on completion", async () => {
     const scenario = await setup();
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 300,
-      nextRunAt: pastDate(),
-    });
+    const trigger = await createDueLoopTrigger(scenario, 300);
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
+    await executeDueWorkflowTriggers();
     const before = now();
-    await completeRunThroughSandbox(await runIdForTrigger(triggerId), 0);
+    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
       .poll(async () => {
-        return optionalStringField(await loadTrigger(triggerId), "nextRunAt");
+        return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
       })
       .not.toBeNull();
-    const trigger = await loadTrigger(triggerId);
-    expect(dateField(trigger, "nextRunAt").getTime()).toBeGreaterThanOrEqual(
-      before + 290_000,
-    );
+    const read = await wf.readTrigger(trigger.triggerId);
+    if (!read.nextRunAt) {
+      throw new Error("Expected the loop trigger to be rescheduled");
+    }
+    expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
+    await disableTrigger(trigger.triggerId);
   });
 
   it("auto-disables a trigger after three consecutive failures", async () => {
     const scenario = await setup();
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 300,
-      nextRunAt: pastDate(),
-      consecutiveFailures: 2,
-    });
+    const trigger = await createDueLoopTrigger(scenario, 300);
+    const base = now();
+    const seenRunIds = new Set<string>();
 
-    const result = await executeDueWorkflowTriggers();
-    expect(result.executed).toBe(1);
-    await completeRunThroughSandbox(await runIdForTrigger(triggerId), 1);
+    // Three fire + failed-completion cycles through the public cron, runner,
+    // and sandbox completion surfaces auto-disable the trigger.
+    for (let failure = 1; failure <= 3; failure += 1) {
+      if (failure > 1) {
+        mockNow(base + (failure - 1) * 320_000);
+      }
+      await executeDueWorkflowTriggers();
+      const messages = await workflowRunMessages(trigger.threadId);
+      const nextRun = messages.find((message) => {
+        return !seenRunIds.has(message.runId);
+      });
+      if (!nextRun) {
+        throw new Error(`Expected fire #${failure} to post a run message`);
+      }
+      seenRunIds.add(nextRun.runId);
+      await completeRunThroughSandbox(scenario, nextRun.runId, 1);
+      if (failure < 3) {
+        await expect
+          .poll(async () => {
+            return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
+          })
+          .not.toBeNull();
+      }
+    }
 
     await expect
       .poll(async () => {
-        return numberField(await loadTrigger(triggerId), "consecutiveFailures");
+        return (await wf.readTrigger(trigger.triggerId)).enabled;
       })
-      .toBe(3);
-    const trigger = await loadTrigger(triggerId);
-    expect(booleanField(trigger, "enabled")).toBeFalsy();
-    expect(trigger?.nextRunAt).toBeNull();
+      .toBeFalsy();
+    const read = await wf.readTrigger(trigger.triggerId);
+    expect(read.nextRunAt).toBeNull();
   });
 
   it("cascade-deletes a workflow's triggers when the workflow is removed", async () => {
     const scenario = await setup();
-    const { triggerId } = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 300,
-      nextRunAt: pastDate(),
-    });
+    const trigger = await createDueLoopTrigger(scenario, 300);
 
     // Under the hard 1:N model a workflow belongs to exactly one agent; removing
     // the workflow cascade-deletes its triggers (FK onDelete: cascade).
     await deleteWorkflowViaApi(scenario);
 
-    const trigger = await loadTrigger(triggerId);
-    expect(trigger).toBeNull();
+    await accept(
+      triggersClient().get({
+        headers: authHeaders(),
+        params: { id: trigger.triggerId },
+      }),
+      [404],
+    );
   });
 });

@@ -10,13 +10,8 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
-import type {
-  TestChatMessagesStateActionBody,
-  TestChatMessagesStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { describe, expect, it, onTestFinished } from "vitest";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { testContext } from "../../../__tests__/test-context";
@@ -32,7 +27,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
+import { attachPreDispatchCancelledRunToThread } from "../../../test-fixtures/chat-messages";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -547,36 +542,6 @@ function chatOutputAxiomQueryCalls(): readonly unknown[][] {
 function pushPayload(call: readonly unknown[] | undefined): unknown {
   const raw = call?.[1];
   return JSON.parse(typeof raw === "string" ? raw : "{}");
-}
-
-function requestChatMessagesState(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const app = createAppWithRoutes({
-    signal: context.signal,
-    routes: testChatMessagesStateRoutes,
-  });
-  return Promise.resolve(app.request(path, init));
-}
-
-async function postChatMessagesStateAction(
-  body: TestChatMessagesStateActionBody,
-): Promise<TestChatMessagesStateActionResponse> {
-  const response = await requestChatMessagesState(
-    "/api/test/chat-messages-state/action",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `chat messages state action ${body.action} failed with ${response.status}`,
-    );
-  }
-  return (await response.json()) as TestChatMessagesStateActionResponse;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1491,10 +1456,9 @@ Detailed goal procedure:
     });
     await api.requestCancelRun(actor, ghost.runId, [200]);
     await waitForRunStatus(actor, ghost.runId, "cancelled");
-    await postChatMessagesStateAction({
-      action: "attach-pre-dispatch-cancelled-run-to-thread",
-      run_id: ghost.runId,
-      thread_id: first.threadId,
+    await attachPreDispatchCancelledRunToThread({
+      runId: ghost.runId,
+      threadId: first.threadId,
     });
 
     const second = await startChatRun(actor, {

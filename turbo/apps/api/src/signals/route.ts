@@ -14,7 +14,7 @@ import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import { cliAuthRoutes } from "./routes/cli-auth";
-import { cliAuthTestRoutes } from "./routes/cli-auth-test";
+import { E2E_ROUTES } from "./e2e-routes";
 import type { RouteEntry } from "./route-entry";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
@@ -189,32 +189,6 @@ import { storagesCommitRoutes } from "./routes/storages-commit";
 import { storagesDownloadRoutes } from "./routes/storages-download";
 import { storagesListRoutes } from "./routes/storages-list";
 import { storagesPrepareRoutes } from "./routes/storages-prepare";
-import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
-import { testOAuthProviderDeviceAuthRoutes } from "./routes/test-oauth-provider-device-auth";
-import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
-import { testOAuthProviderTokenRoutes } from "./routes/test-oauth-provider-token";
-import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-userinfo";
-import { testSlackDispatchProbeRoutes } from "./routes/test-slack-dispatch-probe";
-import { testSlackMockRoutes } from "./routes/test-slack-mock";
-import { testSlackStateRoutes } from "./routes/test-slack-state";
-import { testSystemStoragePresignedUrlCacheStateRoutes } from "./routes/test-system-storage-presigned-url-cache-state";
-import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "./routes/test-workflow-skill-storage-presigned-url-cache-state";
-import { testEmailStateRoutes } from "./routes/test-email-state";
-import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
-import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
-import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
-import { testTelegramStateRoutes } from "./routes/test-telegram-state";
-import { testGenerationStateRoutes } from "./routes/test-generation-state";
-import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
-import { testMemoryStateRoutes } from "./routes/test-memory-state";
-import { testRelationshipStateRoutes } from "./routes/test-relationship-state";
-import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
-import { testUsageStateRoutes } from "./routes/test-usage-state";
-import { testUserExportStateRoutes } from "./routes/test-user-export-state";
-import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
-import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
-import { testWebhooksStateRoutes } from "./routes/test-webhooks-state";
-import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -231,7 +205,6 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...authMeRoutes,
   ...cliAuthRoutes,
-  ...cliAuthTestRoutes,
   ...desktopAuthRoutes,
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
@@ -412,30 +385,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
   ...runnersRoutes,
-  ...testOAuthProviderAuthorizeRoutes,
-  ...testOAuthProviderDeviceAuthRoutes,
-  ...testOAuthProviderEchoRoutes,
-  ...testOAuthProviderTokenRoutes,
-  ...testOAuthProviderUserinfoRoutes,
-  ...testSlackDispatchProbeRoutes,
-  ...testSlackMockRoutes,
-  ...testSlackStateRoutes,
-  ...testSystemStoragePresignedUrlCacheStateRoutes,
-  ...testWorkflowSkillStoragePresignedUrlCacheStateRoutes,
-  ...testEmailStateRoutes,
-  ...testBillingRedeemStateRoutes,
-  ...testTelegramDispatchProbeRoutes,
-  ...testTelegramMockRoutes,
-  ...testTelegramStateRoutes,
-  ...testGenerationStateRoutes,
-  ...testOnboardingStatusStateRoutes,
-  ...testMemoryStateRoutes,
-  ...testRelationshipStateRoutes,
-  ...testUsageInsightStateRoutes,
-  ...testUsageStateRoutes,
-  ...testUserExportStateRoutes,
-  ...testWorkflowTriggerStateRoutes,
-  ...testChatMessagesStateRoutes,
-  ...testWebhooksStateRoutes,
-  ...testZeroAgentStateRoutes,
+  ...E2E_ROUTES,
 ];

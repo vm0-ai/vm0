@@ -10,71 +10,15 @@ import {
   findTool,
   findWebsiteTemplateResource,
 } from "@vm0/core/resource-registry";
-import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-import { command, createStore, state } from "ccstate";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import {
-  deleteMemoryForFixture$,
-  seedMemoryStorage$,
-  type MemoryFixture,
-} from "./helpers/zero-memory";
+import { seedRegistryArchiveStorage } from "../../../test-fixtures/registry-archive-storage";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const routeMocks = createZeroRouteMocks(context);
-
-interface SeededStorageFixture {
-  readonly storageName: string;
-  readonly fixture: MemoryFixture;
-}
-
-const seededStorageFixtures$ = state<readonly SeededStorageFixture[]>([]);
-
-const takeSeededStorageFixture$ = command(
-  (
-    { get, set },
-    storageName: string,
-    _signal: AbortSignal,
-  ): MemoryFixture | null => {
-    const fixtures = get(seededStorageFixtures$);
-    set(
-      seededStorageFixtures$,
-      fixtures.filter((fixture) => {
-        return fixture.storageName !== storageName;
-      }),
-    );
-    return (
-      fixtures.find((fixture) => {
-        return fixture.storageName === storageName;
-      })?.fixture ?? null
-    );
-  },
-);
-
-const rememberSeededStorageFixture$ = command(
-  ({ get, set }, entry: SeededStorageFixture, _signal: AbortSignal): void => {
-    set(seededStorageFixtures$, [
-      ...get(seededStorageFixtures$).filter((fixture) => {
-        return fixture.storageName !== entry.storageName;
-      }),
-      entry,
-    ]);
-  },
-);
-
-const deleteStorageFixtures$ = command(
-  async ({ get, set }, _input: void, signal: AbortSignal): Promise<void> => {
-    const fixtures = get(seededStorageFixtures$);
-    for (const entry of fixtures) {
-      await set(deleteMemoryForFixture$, entry.fixture, signal);
-    }
-    set(seededStorageFixtures$, []);
-  },
-);
 
 const PRIVATE_ARCHIVE_FIXTURES = [
   {
@@ -221,64 +165,16 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-async function deleteStorageFixtures(): Promise<void> {
-  await store.set(deleteStorageFixtures$, undefined, context.signal);
-}
-
-async function seedPrivateArchiveStorage(
-  fixture: (typeof PRIVATE_ARCHIVE_FIXTURES)[number],
-): Promise<string> {
-  const storageName = storageNameFor(fixture.id);
-  const previousFixture = await store.set(
-    takeSeededStorageFixture$,
-    storageName,
-    context.signal,
-  );
-  if (previousFixture) {
-    await store.set(deleteMemoryForFixture$, previousFixture, context.signal);
-  }
-
-  const orgId = `org_${randomUUID()}`;
-  const s3Prefix = `${orgId}/volume/${storageName}`;
-  const s3Key = `${s3Prefix}/${fixture.versionId}`;
-  await store.set(
-    seedMemoryStorage$,
-    {
-      orgId,
-      userId: VOLUME_ORG_USER_ID,
-      s3Key,
-      headVersionId: fixture.versionId,
-      size: 1_433_248,
-      fileCount: 19,
-      type: "volume",
-      name: storageName,
-    },
-    context.signal,
-  );
-  await store.set(
-    rememberSeededStorageFixture$,
-    {
-      storageName,
-      fixture: {
-        orgId,
-        userId: VOLUME_ORG_USER_ID,
-      },
-    },
-    context.signal,
-  );
-
-  return s3Key;
-}
-
-afterEach(async () => {
-  await deleteStorageFixtures();
-});
-
 describe("registry resource download", () => {
   it.each(PRIVATE_ARCHIVE_FIXTURES)(
     "returns a presigned URL for allowlisted private registry archive $id",
     async (fixture) => {
-      const s3Key = await seedPrivateArchiveStorage(fixture);
+      const { s3Key } = await seedRegistryArchiveStorage({
+        storageName: storageNameFor(fixture.id),
+        versionId: fixture.versionId,
+        size: 1_433_248,
+        fileCount: 19,
+      });
       mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
       context.mocks.s3.getSignedUrl.mockResolvedValue(
         "https://r2.example.test/private-resource.tar.gz?sig=test",

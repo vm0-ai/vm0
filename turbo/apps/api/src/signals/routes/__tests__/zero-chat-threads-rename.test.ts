@@ -11,20 +11,43 @@ import { describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  deleteZeroChatThread$,
-  seedZeroChatThread$,
-  type ZeroChatThreadFixture,
-} from "./helpers/zero-chat-threads";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
-import { createFixtureTracker } from "./helpers/zero-route-test";
+import { createBddApi } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
+const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
+
+interface ChatThreadFixture {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly threadId: string;
+}
+
+/** Creates an agent and chat thread through the product routes. */
+async function seedChatThread(title: string): Promise<ChatThreadFixture> {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  const agent = await bdd.createAgent(actor, {
+    displayName: "Chat thread rename agent",
+    visibility: "private",
+  });
+  const thread = await chat.createThread(actor, {
+    agentId: agent.agentId,
+    title,
+  });
+  if (!actor.orgId) {
+    throw new Error("Expected the seeded actor to belong to an org");
+  }
+  await store.set(
+    seedOrgMembership$,
+    { orgId: actor.orgId, userId: actor.userId },
+    context.signal,
+  );
+  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+}
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -56,30 +79,8 @@ function metadataClient() {
 }
 
 describe("POST /api/zero/chat-threads/:id/rename", () => {
-  const trackThread = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return store.set(deleteZeroChatThread$, fixture, context.signal);
-  });
-  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
-
   it("renames a thread with ZERO_TOKEN chat-thread:write capability", async () => {
-    const fixture = await trackThread(
-      store.set(
-        seedZeroChatThread$,
-        { title: "Original title" },
-        context.signal,
-      ),
-    );
-    await trackMembership(
-      store.set(
-        seedOrgMembership$,
-        { orgId: fixture.orgId, userId: fixture.userId },
-        context.signal,
-      ),
-    );
+    const fixture = await seedChatThread("Original title");
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
@@ -112,25 +113,12 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     expect(metadataResponse.body).toStrictEqual({
       id: fixture.threadId,
       title: "CLI renamed title",
-      selectedModel: null,
+      selectedModel: "claude-sonnet-4-6",
     });
   });
 
   it("rejects ZERO_TOKEN without chat-thread:write capability", async () => {
-    const fixture = await trackThread(
-      store.set(
-        seedZeroChatThread$,
-        { title: "Original title" },
-        context.signal,
-      ),
-    );
-    await trackMembership(
-      store.set(
-        seedOrgMembership$,
-        { orgId: fixture.orgId, userId: fixture.userId },
-        context.signal,
-      ),
-    );
+    const fixture = await seedChatThread("Original title");
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,

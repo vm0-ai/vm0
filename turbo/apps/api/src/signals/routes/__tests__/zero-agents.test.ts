@@ -1,20 +1,13 @@
+import { randomUUID } from "node:crypto";
+
+import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  deleteOnboardingStatusOrg$,
-  seedOnboardingStatusOrg$,
-  type OnboardingStatusFixture,
-} from "./helpers/zero-onboarding-status";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 function hideSlackConnectorAuthMethods(): () => void {
@@ -49,16 +42,20 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     }
   });
 
-  const track = createFixtureTracker<OnboardingStatusFixture>((fixture) => {
-    return store.set(deleteOnboardingStatusOrg$, fixture, context.signal);
-  });
-
   it("filters connector grants for connector types removed from the registry", async () => {
-    const fixture = await track(
-      store.set(seedOnboardingStatusOrg$, { defaultAgent: {} }, context.signal),
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      setupApp({ context })(zeroAgentsMainContract).create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [201],
     );
-    const agentId = fixture.composeId!;
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const agentId = created.body.agentId;
 
     const client = setupApp({ context })(zeroUserConnectorsContract);
 

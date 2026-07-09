@@ -3,28 +3,32 @@ import { randomUUID } from "node:crypto";
 import {
   zeroAgentInstructionsContract,
   zeroAgentsByIdContract,
+  zeroAgentsMainContract,
+  type ZeroAgentRequest,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { apiKeysContract } from "@vm0/api-contracts/contracts/api-keys";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { setAgentLegacyModelFields } from "../../../test-fixtures/workflow-agents";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  deleteWorkflowsForFixture$,
-  seedAgentForInstructions$,
-  seedWorkflowsFixture$,
-  type WorkflowsFixture,
-} from "./helpers/zero-workflows";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+interface OrgUser {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+function newOrgUser(): OrgUser {
+  return { orgId: `org_${randomUUID()}`, userId: `user_${randomUUID()}` };
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -35,17 +39,17 @@ function currentSecond(): number {
 }
 
 async function cliAuthHeaders(
-  fixture: WorkflowsFixture,
+  user: OrgUser,
   role: "admin" | "member" = "admin",
 ): Promise<{ readonly authorization: string }> {
   await store.set(
     seedOrgMembership$,
-    { orgId: fixture.orgId, userId: fixture.userId, role },
+    { orgId: user.orgId, userId: user.userId, role },
     context.signal,
   );
   mocks.clerk.session(
-    fixture.userId,
-    fixture.orgId,
+    user.userId,
+    user.orgId,
     role === "admin" ? "org:admin" : "org:member",
   );
 
@@ -64,8 +68,42 @@ function agentsClient() {
   return setupApp({ context })(zeroAgentsByIdContract);
 }
 
+function agentsCollectionClient() {
+  return setupApp({ context })(zeroAgentsMainContract);
+}
+
 function instructionsClient() {
   return setupApp({ context })(zeroAgentInstructionsContract);
+}
+
+/** Creates an agent through POST /api/zero/agents with the user as owner. */
+async function createAgentAs(
+  user: OrgUser,
+  body: ZeroAgentRequest = {},
+): Promise<{ readonly agentId: string }> {
+  mocks.clerk.session(user.userId, user.orgId);
+  context.mocks.s3.send.mockResolvedValue({});
+  const response = await accept(
+    agentsCollectionClient().create({ headers: authHeaders(), body }),
+    [201],
+  );
+  return { agentId: response.body.agentId };
+}
+
+/** Binds a workflow to the agent through POST /api/zero/workflows. */
+async function createWorkflowFor(
+  user: OrgUser,
+  agentId: string,
+  name: string,
+): Promise<void> {
+  mocks.clerk.session(user.userId, user.orgId);
+  await accept(
+    setupApp({ context })(zeroWorkflowsCollectionContract).create({
+      headers: authHeaders(),
+      body: { agentId, name },
+    }),
+    [201],
+  );
 }
 
 function s3CommandInput(command: unknown): Record<string, unknown> {
@@ -88,10 +126,6 @@ function s3PutInputs(): readonly Record<string, unknown>[] {
 }
 
 describe("PUT /api/zero/agents/:id", () => {
-  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
-    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       agentsClient().update({
@@ -150,23 +184,15 @@ describe("PUT /api/zero/agents/:id", () => {
   });
 
   it("updates agent metadata and model selection while preserving omitted fields", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "Old Agent",
-        sound: "calm",
-        modelProviderId: null,
-        selectedModel: "claude-sonnet-4-6",
-        preferPersonalProvider: true,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, {
+      displayName: "Old Agent",
+      sound: "calm",
+    });
+    await setAgentLegacyModelFields(agent.agentId, {
+      selectedModel: "claude-sonnet-4-6",
+      preferPersonalProvider: true,
+    });
 
     const response = await accept(
       agentsClient().update({
@@ -181,7 +207,7 @@ describe("PUT /api/zero/agents/:id", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       displayName: "Updated Agent",
       sound: "calm",
       modelProviderId: null,
@@ -201,19 +227,9 @@ describe("PUT /api/zero/agents/:id", () => {
   });
 
   it("updates an agent that has workflow bindings", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        workflowNames: ["existing-skill"],
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    await createWorkflowFor(user, agent.agentId, "existing-skill");
 
     const response = await accept(
       agentsClient().update({
@@ -228,19 +244,11 @@ describe("PUT /api/zero/agents/:id", () => {
   });
 
   it("allows an owner member to update their own agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "Member Agent",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, {
+      displayName: "Member Agent",
+    });
+    mocks.clerk.session(user.userId, user.orgId, "org:member");
 
     const response = await accept(
       agentsClient().update({
@@ -253,27 +261,18 @@ describe("PUT /api/zero/agents/:id", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       displayName: "Member Updated",
     });
   });
 
   it("clears stale model fields on PUT", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        modelProviderId: null,
-        selectedModel: "claude-sonnet-4-6",
-        preferPersonalProvider: true,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    await setAgentLegacyModelFields(agent.agentId, {
+      selectedModel: "claude-sonnet-4-6",
+      preferPersonalProvider: true,
+    });
 
     const response = await accept(
       agentsClient().update({
@@ -292,18 +291,9 @@ describe("PUT /api/zero/agents/:id", () => {
   });
 
   it("returns 403 when a non-owner member updates another user's agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    mocks.clerk.session(`user_${randomUUID()}`, user.orgId, "org:member");
 
     const response = await accept(
       agentsClient().update({
@@ -324,10 +314,8 @@ describe("PUT /api/zero/agents/:id", () => {
   });
 
   it("returns 404 for an unknown agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    mocks.clerk.session(user.userId, user.orgId);
     const agentId = randomUUID();
 
     const response = await accept(
@@ -346,10 +334,6 @@ describe("PUT /api/zero/agents/:id", () => {
 });
 
 describe("PATCH /api/zero/agents/:id", () => {
-  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
-    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       agentsClient().updateMetadata({
@@ -395,23 +379,14 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("updates metadata fields and preserves omitted fields without recomposing", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "Original Agent",
-        description: "Original description",
-        sound: "calm",
-        avatarUrl: "preset:4",
-        workflowNames: ["existing-skill"],
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, {
+      displayName: "Original Agent",
+      description: "Original description",
+      sound: "calm",
+      avatarUrl: "preset:4",
+    });
+    await createWorkflowFor(user, agent.agentId, "existing-skill");
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -428,7 +403,7 @@ describe("PATCH /api/zero/agents/:id", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       displayName: "Updated Agent",
       description: "Updated description",
       sound: "calm",
@@ -464,10 +439,8 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("returns 404 for an unknown agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    mocks.clerk.session(user.userId, user.orgId);
     const agentId = randomUUID();
 
     const response = await accept(
@@ -485,18 +458,9 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("returns 403 when a non-owner member updates another user's agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    mocks.clerk.session(`user_${randomUUID()}`, user.orgId, "org:member");
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -516,20 +480,12 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("allows an org admin to update another user's public agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+    const user = newOrgUser();
     const adminUserId = `user_${randomUUID()}`;
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "Owner Agent",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+    const agent = await createAgentAs(user, {
+      displayName: "Owner Agent",
+    });
+    mocks.clerk.session(adminUserId, user.orgId, "org:admin");
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -542,26 +498,16 @@ describe("PATCH /api/zero/agents/:id", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       displayName: "Admin Updated",
     });
   });
 
   it("returns 403 when an org admin changes another user's public agent visibility", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+    const user = newOrgUser();
     const adminUserId = `user_${randomUUID()}`;
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        visibility: "public",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+    const agent = await createAgentAs(user, { visibility: "public" });
+    mocks.clerk.session(adminUserId, user.orgId, "org:admin");
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -581,20 +527,10 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("returns 403 when an org admin updates another user's private agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+    const user = newOrgUser();
     const adminUserId = `user_${randomUUID()}`;
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        visibility: "private",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(adminUserId, fixture.orgId, "org:admin");
+    const agent = await createAgentAs(user, { visibility: "private" });
+    mocks.clerk.session(adminUserId, user.orgId, "org:admin");
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -614,30 +550,11 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("returns 409 when changing a private agent to public would exceed the public limit", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+    const user = newOrgUser();
     for (let index = 0; index < 7; index += 1) {
-      await store.set(
-        seedAgentForInstructions$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          visibility: "public",
-        },
-        context.signal,
-      );
+      await createAgentAs(user, { visibility: "public" });
     }
-    const privateAgent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        visibility: "private",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const privateAgent = await createAgentAs(user, { visibility: "private" });
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -658,20 +575,11 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("allows an owner to update private agent metadata without changing visibility", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "Private Agent",
-        visibility: "private",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, {
+      displayName: "Private Agent",
+      visibility: "private",
+    });
 
     const response = await accept(
       agentsClient().updateMetadata({
@@ -690,62 +598,18 @@ describe("PATCH /api/zero/agents/:id", () => {
   });
 
   it("clears stale model fields on PATCH", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        modelProviderId: null,
-        selectedModel: "claude-sonnet-4-6",
-        preferPersonalProvider: true,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    await setAgentLegacyModelFields(agent.agentId, {
+      selectedModel: "claude-sonnet-4-6",
+      preferPersonalProvider: true,
+    });
 
     const response = await accept(
       agentsClient().updateMetadata({
         params: { id: agent.agentId },
         headers: authHeaders(),
         body: { displayName: "Cleared Agent" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toMatchObject({
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
-    });
-  });
-
-  it("clears stale agent model fields on PATCH", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        modelProviderId: null,
-        selectedModel: "claude-sonnet-4-6",
-        preferPersonalProvider: true,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      agentsClient().updateMetadata({
-        params: { id: agent.agentId },
-        headers: authHeaders(),
-        body: {
-          displayName: "Still no model",
-        },
       }),
       [200],
     );
@@ -772,10 +636,6 @@ describe("PATCH /api/zero/agents/:id", () => {
 });
 
 describe("PUT /api/zero/agents/:id/instructions", () => {
-  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
-    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       instructionsClient().update({
@@ -821,10 +681,8 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
   });
 
   it("returns 400 for an invalid agent id", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    mocks.clerk.session(user.userId, user.orgId);
 
     const response = await accept(
       instructionsClient().update({
@@ -844,20 +702,13 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
   });
 
   it("updates instructions storage and preserves agent metadata", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "Instructions Agent",
-        workflowNames: ["existing-skill"],
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, {
+      displayName: "Instructions Agent",
+    });
+    await createWorkflowFor(user, agent.agentId, "existing-skill");
+    context.mocks.s3.send.mockClear();
+    context.mocks.s3.send.mockResolvedValue({});
 
     const response = await accept(
       instructionsClient().update({
@@ -870,7 +721,7 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       displayName: "Instructions Agent",
     });
 
@@ -894,23 +745,15 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
   });
 
   it("allows an owner CLI token to update instructions", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        displayName: "CLI Instructions Agent",
-      },
-      context.signal,
-    );
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, {
+      displayName: "CLI Instructions Agent",
+    });
 
     const response = await accept(
       instructionsClient().update({
         params: { id: agent.agentId },
-        headers: await cliAuthHeaders(fixture, "member"),
+        headers: await cliAuthHeaders(user, "member"),
         body: { content: "Use CLI-authenticated operating notes." },
       }),
       [200],
@@ -918,25 +761,15 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       displayName: "CLI Instructions Agent",
     });
   });
 
   it("allows an owner member to update private agent instructions", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        visibility: "private",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const user = newOrgUser();
+    const agent = await createAgentAs(user, { visibility: "private" });
+    mocks.clerk.session(user.userId, user.orgId, "org:member");
 
     const response = await accept(
       instructionsClient().update({
@@ -949,24 +782,15 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
 
     expect(response.body).toMatchObject({
       agentId: agent.agentId,
-      ownerId: fixture.userId,
+      ownerId: user.userId,
       visibility: "private",
     });
   });
 
   it("returns 403 when a non-owner member updates another user's instructions", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    const agent = await store.set(
-      seedAgentForInstructions$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-      },
-      context.signal,
-    );
-    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId, "org:member");
+    const user = newOrgUser();
+    const agent = await createAgentAs(user);
+    mocks.clerk.session(`user_${randomUUID()}`, user.orgId, "org:member");
 
     const response = await accept(
       instructionsClient().update({
@@ -987,10 +811,8 @@ describe("PUT /api/zero/agents/:id/instructions", () => {
   });
 
   it("returns 404 for an unknown agent", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const user = newOrgUser();
+    mocks.clerk.session(user.userId, user.orgId);
     const agentId = randomUUID();
 
     const response = await accept(

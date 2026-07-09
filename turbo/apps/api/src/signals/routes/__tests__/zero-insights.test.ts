@@ -5,25 +5,23 @@ import {
   zeroInsightsRangeContract,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { createStore } from "ccstate";
-
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { nowDate } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  deleteInsightsForFixture$,
-  seedInsightsDaily$,
-  seedInsightsFixture$,
-  type InsightsFixture,
-} from "./helpers/zero-insights";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { insertInsightsDailyFixture } from "../../../test-fixtures/insights-daily";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+interface InsightsFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+function newInsightsFixture(): InsightsFixture {
+  return { orgId: `org_${randomUUID()}`, userId: `user_${randomUUID()}` };
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -138,10 +136,6 @@ function mockCurrentOrgMembers(
 }
 
 describe("GET /api/zero/insights", () => {
-  const track = createFixtureTracker<InsightsFixture>((fixture) => {
-    return store.set(deleteInsightsForFixture$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       apiClient().get({ query: {}, headers: {} }),
@@ -164,9 +158,7 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("returns empty days when no insights exist", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -181,20 +173,14 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("returns insights with correct structure", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const yesterday = daysAgo(1);
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: yesterday,
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: yesterday,
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -219,32 +205,26 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("translates legacy stored schedule entries to wire automations", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const yesterday = daysAgo(1);
     // Historical day blobs persist automation rows under the legacy
     // `schedules` key with schedule* entry keys; the wire renames them.
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: yesterday,
-        data: defaultInsightData({
-          schedules: [
-            {
-              scheduleId: "legacy-automation-1",
-              scheduleName: "Morning Briefing",
-              scheduleDescription: "Daily market briefing",
-              credits: 12,
-              tokens: 3400,
-            },
-          ],
-        }),
-      },
-      context.signal,
-    );
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: yesterday,
+      data: defaultInsightData({
+        schedules: [
+          {
+            scheduleId: "legacy-automation-1",
+            scheduleName: "Morning Briefing",
+            scheduleDescription: "Daily market briefing",
+            credits: 12,
+            tokens: 3400,
+          },
+        ],
+      }),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -264,42 +244,36 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("filters stale team usage entries for users no longer in the org", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const removedUserId = `user_${randomUUID()}`;
     const cachedOtherUserId = `user_${randomUUID()}`;
     const yesterday = daysAgo(1);
     await cacheOrgMemberViaConnectorReadAuth(fixture.orgId, cachedOtherUserId);
     mockCurrentOrgMembers(fixture.orgId, [fixture.userId, cachedOtherUserId]);
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: yesterday,
-        data: defaultInsightData({
-          creditsUsed: 1000,
-          teamUsage: [
-            {
-              userId: fixture.userId,
-              name: "active",
-              credits: 100,
-              agentNames: ["Test Agent"],
-              agentCredits: { "Test Agent": 100 },
-            },
-            {
-              userId: removedUserId,
-              name: "removed",
-              credits: 900,
-              agentNames: ["Old Agent"],
-              agentCredits: { "Old Agent": 900 },
-            },
-          ],
-        }),
-      },
-      context.signal,
-    );
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: yesterday,
+      data: defaultInsightData({
+        creditsUsed: 1000,
+        teamUsage: [
+          {
+            userId: fixture.userId,
+            name: "active",
+            credits: 100,
+            agentNames: ["Test Agent"],
+            agentCredits: { "Test Agent": 100 },
+          },
+          {
+            userId: removedUserId,
+            name: "removed",
+            credits: 900,
+            agentNames: ["Old Agent"],
+            agentCredits: { "Old Agent": 900 },
+          },
+        ],
+      }),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -320,20 +294,14 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("normalizes sparse insight rows to the full day shape", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const yesterday = daysAgo(1);
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: yesterday,
-        data: {},
-      },
-      context.signal,
-    );
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: yesterday,
+      data: {},
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -361,39 +329,29 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("aggregates totals across multiple days", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: daysAgo(1),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: daysAgo(2),
-        data: defaultInsightData({
-          agents: [
-            {
-              agentName: "Agent B",
-              agentId: "agent-2",
-              runs: 3,
-              credits: 200,
-            },
-          ],
-          creditsUsed: 200,
-        }),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: daysAgo(1),
+      data: defaultInsightData(),
+    });
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: daysAgo(2),
+      data: defaultInsightData({
+        agents: [
+          {
+            agentName: "Agent B",
+            agentId: "agent-2",
+            runs: 3,
+            credits: 200,
+          },
+        ],
+        creditsUsed: 200,
+      }),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -407,39 +365,25 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("respects days query parameter", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: daysAgo(1),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: daysAgo(2),
-        data: defaultInsightData({ creditsUsed: 50 }),
-      },
-      context.signal,
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: daysAgo(5),
-        data: defaultInsightData({ creditsUsed: 75 }),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: daysAgo(1),
+      data: defaultInsightData(),
+    });
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: daysAgo(2),
+      data: defaultInsightData({ creditsUsed: 50 }),
+    });
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: daysAgo(5),
+      data: defaultInsightData({ creditsUsed: 75 }),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -451,19 +395,13 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("clamps days parameter between 1 and 90", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date: daysAgo(0),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date: daysAgo(0),
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response1 = await accept(
@@ -480,25 +418,17 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("does not return insights from other orgs", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    const otherOrgFixture = await track(
-      Promise.resolve<InsightsFixture>({
-        orgId: `org_${randomUUID()}`,
-        userId: fixture.userId,
-      }),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: otherOrgFixture.orgId,
-        userId: otherOrgFixture.userId,
-        date: daysAgo(1),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    const otherOrgFixture = {
+      orgId: `org_${randomUUID()}`,
+      userId: fixture.userId,
+    };
+    await insertInsightsDailyFixture({
+      orgId: otherOrgFixture.orgId,
+      userId: otherOrgFixture.userId,
+      date: daysAgo(1),
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -510,25 +440,17 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("does not return insights from other users", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    const otherUserFixture = await track(
-      Promise.resolve<InsightsFixture>({
-        orgId: fixture.orgId,
-        userId: `user_${randomUUID()}`,
-      }),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: otherUserFixture.orgId,
-        userId: otherUserFixture.userId,
-        date: daysAgo(1),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    const otherUserFixture = {
+      orgId: fixture.orgId,
+      userId: `user_${randomUUID()}`,
+    };
+    await insertInsightsDailyFixture({
+      orgId: otherUserFixture.orgId,
+      userId: otherUserFixture.userId,
+      date: daysAgo(1),
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -540,23 +462,17 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("orders days by date descending", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const day1 = daysAgo(3);
     const day2 = daysAgo(1);
     const day3 = daysAgo(2);
     for (const date of [day1, day2, day3]) {
-      await store.set(
-        seedInsightsDaily$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          date,
-          data: defaultInsightData(),
-        },
-        context.signal,
-      );
+      await insertInsightsDailyFixture({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date,
+        data: defaultInsightData(),
+      });
     }
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -573,10 +489,6 @@ describe("GET /api/zero/insights", () => {
 });
 
 describe("GET /api/zero/insights/range", () => {
-  const track = createFixtureTracker<InsightsFixture>((fixture) => {
-    return store.set(deleteInsightsForFixture$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(apiRangeClient().get({ headers: {} }), [401]);
     expect(response.body).toStrictEqual({
@@ -596,9 +508,7 @@ describe("GET /api/zero/insights/range", () => {
   });
 
   it("returns nulls when no insights exist", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -612,20 +522,14 @@ describe("GET /api/zero/insights/range", () => {
   });
 
   it("returns correct range for a single day", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const date = daysAgo(1);
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        date,
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    await insertInsightsDailyFixture({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      date,
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -639,23 +543,17 @@ describe("GET /api/zero/insights/range", () => {
   });
 
   it("returns correct range for multiple days", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
+    const fixture = newInsightsFixture();
     const day1 = daysAgo(5);
     const day2 = daysAgo(3);
     const day3 = daysAgo(1);
     for (const date of [day1, day2, day3]) {
-      await store.set(
-        seedInsightsDaily$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          date,
-          data: defaultInsightData(),
-        },
-        context.signal,
-      );
+      await insertInsightsDailyFixture({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date,
+        data: defaultInsightData(),
+      });
     }
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -670,25 +568,17 @@ describe("GET /api/zero/insights/range", () => {
   });
 
   it("does not include insights from other orgs", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    const otherOrgFixture = await track(
-      Promise.resolve<InsightsFixture>({
-        orgId: `org_${randomUUID()}`,
-        userId: fixture.userId,
-      }),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: otherOrgFixture.orgId,
-        userId: otherOrgFixture.userId,
-        date: daysAgo(1),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    const otherOrgFixture = {
+      orgId: `org_${randomUUID()}`,
+      userId: fixture.userId,
+    };
+    await insertInsightsDailyFixture({
+      orgId: otherOrgFixture.orgId,
+      userId: otherOrgFixture.userId,
+      date: daysAgo(1),
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -702,25 +592,17 @@ describe("GET /api/zero/insights/range", () => {
   });
 
   it("does not include insights from other users", async () => {
-    const fixture = await track(
-      store.set(seedInsightsFixture$, undefined, context.signal),
-    );
-    const otherUserFixture = await track(
-      Promise.resolve<InsightsFixture>({
-        orgId: fixture.orgId,
-        userId: `user_${randomUUID()}`,
-      }),
-    );
-    await store.set(
-      seedInsightsDaily$,
-      {
-        orgId: otherUserFixture.orgId,
-        userId: otherUserFixture.userId,
-        date: daysAgo(1),
-        data: defaultInsightData(),
-      },
-      context.signal,
-    );
+    const fixture = newInsightsFixture();
+    const otherUserFixture = {
+      orgId: fixture.orgId,
+      userId: `user_${randomUUID()}`,
+    };
+    await insertInsightsDailyFixture({
+      orgId: otherUserFixture.orgId,
+      userId: otherUserFixture.userId,
+      date: daysAgo(1),
+      data: defaultInsightData(),
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
