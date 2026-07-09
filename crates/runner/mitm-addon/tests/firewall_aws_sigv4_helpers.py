@@ -54,7 +54,7 @@ class AwsVmInfoBase(TypedDict):
     sandboxToken: str
     encryptedSecrets: str
     networkLogPath: str
-    billableFirewalls: list[object]
+    billableFirewalls: list[str]
     vars: dict[str, str]
 
 
@@ -125,7 +125,7 @@ def aws_vm_info(
     sandbox_token: str | None = None,
     encrypted_secrets: str = "iv:tag:data",
     region: str = DEFAULT_AWS_REGION,
-    billable_firewalls: list[object] | None = None,
+    billable_firewalls: list[str] | None = None,
     secret_connector_map: dict[str, str] | None = None,
     secret_connector_metadata_map: dict[str, object] | None = None,
 ) -> AwsVmInfo:
@@ -140,7 +140,7 @@ def aws_vm_info(
     if secret_connector_map is not None:
         vm_info["secretConnectorMap"] = dict(secret_connector_map)
     if secret_connector_metadata_map is not None:
-        vm_info["secretConnectorMetadataMap"] = dict(secret_connector_metadata_map)
+        vm_info["secretConnectorMetadataMap"] = copy.deepcopy(secret_connector_metadata_map)
     return vm_info
 
 
