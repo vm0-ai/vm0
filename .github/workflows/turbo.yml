@@ -495,7 +495,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -541,7 +541,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s
@@ -685,7 +685,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     services:
       postgres:
-        image: postgres:17-alpine
+        image: pgvector/pgvector:pg17
         options: >-
           --health-cmd pg_isready
           --health-interval 2s

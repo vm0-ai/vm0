@@ -78,7 +78,7 @@ export async function deleteZeroMemorySearchEntryForMemory(
     );
 }
 
-export async function syncZeroMemorySearchEntryForMemory(
+async function syncZeroMemorySearchEntryForMemory(
   db: Db,
   args: MemoryScope & { readonly memoryId: string },
 ): Promise<void> {

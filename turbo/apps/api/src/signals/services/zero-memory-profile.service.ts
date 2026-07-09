@@ -28,12 +28,12 @@ import {
 const log = logger("zero-memory-profile");
 const SEMANTIC_SCORE_THRESHOLD = 0.24;
 
-export interface MemoryScope {
+interface MemoryScope {
   readonly orgId: string;
   readonly userId: string;
 }
 
-export interface ZeroMemoryProfileItem {
+interface ZeroMemoryProfileItem {
   readonly id: string;
   readonly kind: MemoryKind;
   readonly text: string;
@@ -55,7 +55,7 @@ export interface ZeroMemoryProfileItem {
   readonly sources: MemoryRecallItem["sources"];
 }
 
-export interface ZeroMemoryProfileResult {
+interface ZeroMemoryProfileResult {
   readonly profile: {
     readonly static: readonly ZeroMemoryProfileItem[];
     readonly dynamic: readonly ZeroMemoryProfileItem[];

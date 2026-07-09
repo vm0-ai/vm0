@@ -4,8 +4,8 @@ import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 
-export const ZERO_MEMORY_EMBEDDING_DIMENSIONS = 1536;
-export const ZERO_MEMORY_EMBEDDING_MODEL =
+const ZERO_MEMORY_EMBEDDING_DIMENSIONS = 1536;
+const ZERO_MEMORY_EMBEDDING_MODEL =
   optionalEnv("ZERO_MEMORY_EMBEDDING_MODEL") ?? "text-embedding-3-small";
 
 const openAiEmbeddingResponseSchema = z.object({
@@ -18,7 +18,7 @@ const openAiEmbeddingResponseSchema = z.object({
     .min(1),
 });
 
-export interface MemoryEmbeddingResult {
+interface MemoryEmbeddingResult {
   readonly model: string;
   readonly embedding: readonly number[];
 }
