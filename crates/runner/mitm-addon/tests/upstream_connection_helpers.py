@@ -4,7 +4,9 @@ from typing import cast
 
 from mitmproxy import certs, connection, http
 
+# Keep the shape mitmproxy types expect without adding an authoritative endpoint.
 _NO_CONNECTED_CLIENT_SOCKNAME = ("", 0)
+# Admission only checks that mitmproxy recorded at least one upstream certificate.
 _TLS_CERTIFICATE_PROOF = cast(certs.Cert, object())
 
 
