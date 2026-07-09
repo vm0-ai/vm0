@@ -1117,20 +1117,24 @@ async fn stop_cleanup_with_ops(
             None
         }
     };
-    if stop_needs_escalation
-        && let Some(state) = state.as_ref()
-        && state.is_active_like()
-    {
-        warn!(
-            unit = %unit.unit_name(),
-            active_state = state.active_state(),
-            "runner service remains active-like after stop; escalating cleanup"
-        );
-        if let Err(e) = ops.kill_all_sigkill(unit).await {
-            warn!(unit = %unit.unit_name(), error = %e, "failed to SIGKILL runner service during cleanup");
-        }
-        if let Err(e) = ops.stop_no_block(unit).await {
-            warn!(unit = %unit.unit_name(), error = %e, "failed to queue no-block stop during cleanup");
+    if stop_needs_escalation {
+        match state.as_ref() {
+            Some(state) if state.is_active_like() => {
+                warn!(
+                    unit = %unit.unit_name(),
+                    active_state = state.active_state(),
+                    "runner service remains active-like after stop; escalating cleanup"
+                );
+                escalate_cleanup_stop(unit, ops).await;
+            }
+            None => {
+                warn!(
+                    unit = %unit.unit_name(),
+                    "runner service state is unknown after failed stop; escalating cleanup"
+                );
+                escalate_cleanup_stop(unit, ops).await;
+            }
+            Some(_) => {}
         }
     }
 
@@ -1148,6 +1152,15 @@ async fn stop_cleanup_with_ops(
     }
 
     verify_cleanup_inactive(unit, ops).await
+}
+
+async fn escalate_cleanup_stop(unit: &RunnerServiceUnit, ops: &mut impl ServiceStopOps) {
+    if let Err(e) = ops.kill_all_sigkill(unit).await {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to SIGKILL runner service during cleanup");
+    }
+    if let Err(e) = ops.stop_no_block(unit).await {
+        warn!(unit = %unit.unit_name(), error = %e, "failed to queue no-block stop during cleanup");
+    }
 }
 
 async fn verify_cleanup_inactive(
@@ -2167,6 +2180,45 @@ profiles:
             bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::TimedOut)]),
             cleanup_states: VecDeque::from([
                 cleanup_state("deactivating", true),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "kill_all_sigkill",
+                "stop_no_block",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_escalates_when_stop_times_out_and_state_read_fails() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            bounded_stop_results: VecDeque::from([Ok(BoundedSystemctlOutcome::TimedOut)]),
+            cleanup_states: VecDeque::from([
+                Err(fake_error("state unavailable")),
                 cleanup_state("inactive", false),
             ]),
             ..FakeStopOps::default()
