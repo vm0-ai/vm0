@@ -24,6 +24,7 @@ import type {
   DesktopComputerUsePluginStatus,
 } from "./computer-use-types";
 import { PluginRestartPolicy } from "./desktop-plugin-restart-policy";
+import { resolveLoginShellPath } from "./desktop-shell-env";
 import {
   commandFailure,
   normalizePluginToolResult,
@@ -80,6 +81,16 @@ interface McpServerSlot {
 interface DesktopMcpPluginManagerOptions {
   readonly preferencesPath: string;
   readonly onChange: () => void;
+  readonly resolveShellPath?: () => Promise<string | null>;
+}
+
+const ENOENT_PATH_HINT =
+  'Command not found on PATH. Set "env": {"PATH": "..."} in the server config or use an absolute command path.';
+
+function withEnoentHint(message: string): string {
+  return message.includes("ENOENT")
+    ? `${message} — ${ENOENT_PATH_HINT}`
+    : message;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -219,10 +230,20 @@ export class DesktopMcpPluginManager {
   private featureEnabled = false;
   private hostRuntimeOnline = false;
   private readonly slots = new Map<string, McpServerSlot>();
+  private readonly resolveShellPath: () => Promise<string | null>;
+  private shellPathPromise: Promise<string | null> | null = null;
 
   constructor(options: DesktopMcpPluginManagerOptions) {
     this.preferencesPath = options.preferencesPath;
     this.onChange = options.onChange;
+    this.resolveShellPath = options.resolveShellPath ?? resolveLoginShellPath;
+  }
+
+  private loginShellPath(): Promise<string | null> {
+    this.shellPathPromise ??= this.resolveShellPath().catch(() => {
+      return null;
+    });
+    return this.shellPathPromise;
   }
 
   load(): void {
@@ -537,14 +558,19 @@ export class DesktopMcpPluginManager {
     await slot.startPromise;
   }
 
-  private createTransport(config: McpServerConfig): Transport {
+  private async createTransport(config: McpServerConfig): Promise<Transport> {
     if (isMcpHttpServerConfig(config)) {
       return new StreamableHTTPClientTransport(new URL(config.url));
     }
+    const shellPath = await this.loginShellPath();
     return new StdioClientTransport({
       command: config.command,
       args: [...config.args],
-      env: { ...getDefaultEnvironment(), ...config.env },
+      env: {
+        ...getDefaultEnvironment(),
+        ...(shellPath ? { PATH: shellPath } : {}),
+        ...config.env,
+      },
       stderr: "pipe",
     });
   }
@@ -562,7 +588,7 @@ export class DesktopMcpPluginManager {
         this.onChange();
         return;
       }
-      transport = this.createTransport(config);
+      transport = await this.createTransport(config);
       transport.onerror = (error) => {
         slot.lastError = error.message;
         this.onChange();
@@ -610,11 +636,15 @@ export class DesktopMcpPluginManager {
         }
       }
       if (this.serverShouldRun(this.preferences.servers[name])) {
-        this.scheduleRestartOrFail(name, slot, pluginErrorMessage(error));
+        this.scheduleRestartOrFail(
+          name,
+          slot,
+          withEnoentHint(pluginErrorMessage(error)),
+        );
         return;
       }
       slot.status = "error";
-      slot.lastError = pluginErrorMessage(error);
+      slot.lastError = withEnoentHint(pluginErrorMessage(error));
       this.onChange();
     }
   }
