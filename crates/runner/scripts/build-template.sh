@@ -111,14 +111,14 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.5"
-CLAUDE_CODE_VERSION="2.1.204"
+CLAUDE_CODE_VERSION="2.1.205"
 CODEX_CLI_VERSION="0.143.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.2.2"
 AGENT_BROWSER_VERSION="0.31.1"
 PNPM_VERSION="11.10.0"
-CHROMIUM_VERSION="149.0.7827.196-1~deb12u1"
-CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260626T014759Z"
+CHROMIUM_VERSION="150.0.7871.100-1~deb12u1"
+CHROMIUM_SECURITY_SNAPSHOT_URL="https://snapshot.debian.org/archive/debian-security/20260709T001500Z"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -372,7 +372,7 @@ install_packages() {
 
   # Chromium from Debian Bookworm security (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
-  # Pin to 149 until Debian #1141488 is fixed in the Bookworm security package.
+  # Pin to a Debian security snapshot for reproducible Chromium packages.
   sudo chroot "$ROOTFS_DIR" env \
     CHROMIUM_VERSION="$CHROMIUM_VERSION" \
     CHROMIUM_SECURITY_SNAPSHOT_URL="$CHROMIUM_SECURITY_SNAPSHOT_URL" \
