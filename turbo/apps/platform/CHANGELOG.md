@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.581.0](https://github.com/vm0-ai/vm0/compare/app-v0.580.0...app-v0.581.0) (2026-07-09)
+
+
+### Features
+
+* remember codex fast mode locally ([#20763](https://github.com/vm0-ai/vm0/issues/20763)) ([c00976b](https://github.com/vm0-ai/vm0/commit/c00976b1b38d14d13f87d27cd0be5e42c74b68f6))
+* use image previews for website templates ([#20766](https://github.com/vm0-ai/vm0/issues/20766)) ([eeeaafd](https://github.com/vm0-ai/vm0/commit/eeeaafd05bfd37c62adf890aac2e7cebd277d684))
+
+
+### Bug Fixes
+
+* support auth redirects on legacy safari ([#20757](https://github.com/vm0-ai/vm0/issues/20757)) ([78991a3](https://github.com/vm0-ai/vm0/commit/78991a3c3b292ced88af187f05d4686b7a9e84ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.418.0
+
 ## [0.580.0](https://github.com/vm0-ai/vm0/compare/app-v0.579.0...app-v0.580.0) (2026-07-09)
 
 

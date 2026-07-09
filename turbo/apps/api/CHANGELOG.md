@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.250.1](https://github.com/vm0-ai/vm0/compare/api-v1.250.0...api-v1.250.1) (2026-07-09)
+
+
+### Refactoring
+
+* tighten slack user info resolver coverage ([#20764](https://github.com/vm0-ai/vm0/issues/20764)) ([7b3ae3b](https://github.com/vm0-ai/vm0/commit/7b3ae3b543e7ee0b8ace4a88ab2bfa4c81b21165))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.418.0
+    * @vm0/db bumped to 1.101.1
+
 ## [1.250.0](https://github.com/vm0-ai/vm0/compare/api-v1.249.0...api-v1.250.0) (2026-07-09)
 
 
