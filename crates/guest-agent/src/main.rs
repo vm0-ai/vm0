@@ -62,33 +62,65 @@ fn helper_exit_code_from_args() -> Option<i32> {
     let mut args = std::env::args_os();
     let _program = args.next()?;
     let command = args.next()?;
-    if command != "verify-session-history-identity" {
-        return None;
-    }
-    let metadata_path = args
-        .next()
-        .unwrap_or_else(final_session_history_identity_path_from_process_env);
-    let remaining = args.collect::<Vec<_>>();
-    let expected = match parse_session_history_identity_expectation(&remaining) {
-        Ok(expected) => expected,
-        Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
-    };
-    Some(
-        match session_history_identity::verify_final_session_history_identity_file(
-            metadata_path,
-            expected.as_ref(),
-        ) {
-            Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
-            Err(error) => {
-                let exit_code = error.helper_exit_code();
-                if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
-                    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
-                } else {
-                    exit_code
-                }
+    match command.to_str()? {
+        "verify-session-history-identity" => {
+            let metadata_path = args
+                .next()
+                .unwrap_or_else(final_session_history_identity_path_from_process_env);
+            let remaining = args.collect::<Vec<_>>();
+            let expected = match parse_session_history_identity_expectation(&remaining) {
+                Ok(expected) => expected,
+                Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
+            };
+            Some(
+                match session_history_identity::verify_final_session_history_identity_file(
+                    metadata_path,
+                    expected.as_ref(),
+                ) {
+                    Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+                    Err(error) => session_history_identity_helper_exit_code(&error),
+                },
+            )
+        }
+        "export-session-history-sidecar" => {
+            let Some(metadata_path) = args.next() else {
+                return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS);
+            };
+            let Some(export_path) = args.next() else {
+                return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS);
+            };
+            if args.next().is_some() {
+                return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS);
             }
-        },
-    )
+            Some(
+                match session_history_identity::export_final_session_history_sidecar_file(
+                    metadata_path,
+                    export_path,
+                ) {
+                    Ok(metadata) => match serde_json::to_string(&metadata) {
+                        Ok(json) => {
+                            println!("{json}");
+                            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS
+                        }
+                        Err(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+                    },
+                    Err(error) => session_history_identity_helper_exit_code(&error),
+                },
+            )
+        }
+        _ => None,
+    }
+}
+
+fn session_history_identity_helper_exit_code(
+    error: &session_history_identity::FinalSessionHistoryIdentityVerifyError,
+) -> i32 {
+    let exit_code = error.helper_exit_code();
+    if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
+        SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
+    } else {
+        exit_code
+    }
 }
 
 #[allow(clippy::panic)]

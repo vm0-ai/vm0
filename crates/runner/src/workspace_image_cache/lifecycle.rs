@@ -29,6 +29,8 @@ use super::types::{
     WorkspaceImageActiveLeaseRequest, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
+    WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss,
+    WorkspaceSessionHistorySidecarPromotionSource,
 };
 use super::{
     CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
@@ -65,6 +67,7 @@ pub(crate) struct WorkspaceImagePromotionContext {
     terminal_status: WorkspaceCacheTerminalStatus,
     completed_at: String,
     storage_fingerprints: StorageFingerprints,
+    restored_session_identity: Option<crate::restored_session_identity::RestoredSessionIdentity>,
 }
 
 pub(crate) struct WorkspaceImagePromotionIdentityFailure {
@@ -90,6 +93,7 @@ struct WorkspaceImagePromotionInput<'a> {
     terminal_status: WorkspaceCacheTerminalStatus,
     completed_at: &'a str,
     storage_fingerprints: &'a StorageFingerprints,
+    session_history_sidecar: Option<&'a WorkspaceSessionHistorySidecarPromotionSource>,
 }
 
 struct WorkspaceImagePromotionTarget {
@@ -859,6 +863,21 @@ impl SessionWorkspaceCache {
                 current.display()
             )));
         }
+        if let Err(e) = self
+            .publish_session_history_sidecar(
+                input.cache_key,
+                input.run_id,
+                input.session_history_sidecar,
+            )
+            .await
+        {
+            warn!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                error = %e,
+                "workspace image cache session history sidecar publish failed"
+            );
+        }
         let allocated = allocated_bytes(&current_metadata);
         let metadata = WorkspaceCacheMetadata {
             format_version: CACHE_FORMAT_VERSION,
@@ -886,6 +905,7 @@ impl SessionWorkspaceCache {
             .await
         {
             let _ = remove_workspace_cache_path_if_exists(&current).await;
+            let _ = self.prune_session_history_sidecar(input.cache_key).await;
             return Err(e);
         }
         info!(
@@ -917,6 +937,22 @@ impl WorkspaceImageLease {
 
     pub(crate) fn is_cache_hit(&self) -> bool {
         self.result == WorkspaceCacheCheckoutResult::Hit
+    }
+
+    pub(crate) async fn probe_session_history_sidecar(
+        &self,
+        expected: &crate::restored_session_identity::RestoredSessionIdentity,
+    ) -> Result<WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss> {
+        if !self.is_cache_hit() {
+            return Err(WorkspaceSessionHistorySidecarMiss::NoCacheHit);
+        }
+        let cache_key = self
+            .cache_key
+            .as_deref()
+            .ok_or(WorkspaceSessionHistorySidecarMiss::Missing)?;
+        self.cache
+            .probe_session_history_sidecar(cache_key, expected)
+            .await
     }
 
     pub(crate) fn previous_storage(&self) -> Option<&StorageFingerprints> {
@@ -966,6 +1002,7 @@ impl WorkspaceImageLease {
             run_id,
             sandbox_id: sandbox::SandboxId::new_v4(),
             cli_agent_session_id_override,
+            restored_session_identity: None,
             terminal_status,
             completed_at,
             storage_fingerprints: storage_fingerprints.clone(),
@@ -1039,6 +1076,7 @@ impl WorkspaceImageLease {
             terminal_status: request.terminal_status,
             completed_at: request.completed_at,
             storage_fingerprints: request.storage_fingerprints,
+            restored_session_identity: request.restored_session_identity.cloned(),
         })
     }
 }
@@ -1058,6 +1096,40 @@ impl WorkspaceImagePromotionContext {
 
     pub(crate) fn cli_agent_session_id(&self) -> &str {
         &self.cli_agent_session_id
+    }
+
+    pub(crate) fn restored_session_identity(
+        &self,
+    ) -> Option<&crate::restored_session_identity::RestoredSessionIdentity> {
+        self.restored_session_identity.as_ref()
+    }
+
+    pub(crate) fn session_history_sidecar_tmp_path(&self) -> PathBuf {
+        self.cache
+            .session_workspace_cache_tmp_sidecar(&self.cache_key, self.run_id)
+    }
+
+    pub(crate) fn session_history_sidecar_source(
+        &self,
+        tmp_path: PathBuf,
+        representation: super::types::WorkspaceSessionHistorySidecarRepresentation,
+        encoded_size: u64,
+    ) -> Option<WorkspaceSessionHistorySidecarPromotionSource> {
+        Some(WorkspaceSessionHistorySidecarPromotionSource {
+            tmp_path,
+            representation,
+            encoded_size,
+            restored_session_identity: self.restored_session_identity.clone()?,
+        })
+    }
+
+    pub(crate) async fn discard_session_history_sidecar_source(
+        &self,
+        source: &WorkspaceSessionHistorySidecarPromotionSource,
+    ) {
+        self.cache
+            .discard_session_history_sidecar_source(source)
+            .await;
     }
 
     pub(crate) fn validate_identity(
@@ -1104,7 +1176,15 @@ impl WorkspaceImagePromotionContext {
         self.validate_expected_identity(&self.cache, request)
     }
 
+    #[cfg(test)]
     pub(crate) async fn promote(&self) -> RunnerResult<WorkspaceImagePromotionOutcome> {
+        self.promote_with_session_history_sidecar(None).await
+    }
+
+    pub(crate) async fn promote_with_session_history_sidecar(
+        &self,
+        session_history_sidecar: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
+    ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         let tainted_storage_fingerprints;
         let promotion_storage_fingerprints = match self.terminal_status {
             WorkspaceCacheTerminalStatus::Success => &self.storage_fingerprints,
@@ -1144,6 +1224,7 @@ impl WorkspaceImagePromotionContext {
                 terminal_status: self.terminal_status,
                 completed_at: &self.completed_at,
                 storage_fingerprints: promotion_storage_fingerprints,
+                session_history_sidecar,
             })
             .await
     }
@@ -1261,6 +1342,7 @@ impl WorkspaceImagePromotionContext {
             terminal_status: _,
             completed_at: _,
             storage_fingerprints: _,
+            restored_session_identity: _,
         } = self;
         let base = WorkspaceImageLeaseBase {
             cache,
