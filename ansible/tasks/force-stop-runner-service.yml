@@ -1,0 +1,38 @@
+- name: Force stop runner service unit
+  shell: |
+    set -euo pipefail
+    case "$FORCE_STOP_RUNNER_NAME" in
+      ""|.*|-*|*[!a-z0-9.-]*)
+        echo "invalid runner service name" >&2
+        exit 2
+        ;;
+    esac
+    if [ "${#FORCE_STOP_RUNNER_NAME}" -gt 128 ]; then
+      echo "invalid runner service name: exceeds 128 bytes" >&2
+      exit 2
+    fi
+    unit="vm0-runner-${FORCE_STOP_RUNNER_NAME}.service"
+    timeout 20s systemctl stop "$unit" 2>/dev/null || true
+    state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
+    case "$state" in
+      active|activating|reloading|refreshing|deactivating)
+        timeout 10s systemctl kill --kill-whom=all --signal=SIGKILL "$unit" 2>/dev/null || true
+        timeout 10s systemctl stop --no-block "$unit" 2>/dev/null || true
+        ;;
+    esac
+    timeout 10s systemctl disable "$unit" 2>/dev/null || true
+    timeout 10s systemctl reset-failed "$unit" 2>/dev/null || true
+    for _ in $(seq 1 10); do
+      state="$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)"
+      case "$state" in
+        active|activating|reloading|refreshing|deactivating) sleep 1 ;;
+        *) exit 0 ;;
+      esac
+    done
+    echo "failed to stop $unit; ActiveState=$state" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  environment:
+    FORCE_STOP_RUNNER_NAME: "{{ force_stop_runner_name }}"
+  changed_when: true

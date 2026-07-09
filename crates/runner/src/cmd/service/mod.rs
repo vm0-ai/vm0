@@ -3,9 +3,12 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::live_runner_instances::{self, LiveRunnerInstance};
 use crate::paths::{HomePaths, touch_mtime};
+use crate::status_file::{self, StatusFileReadError, StatusForReadiness};
 use clap::{Args, Subcommand};
 use sha2::{Digest, Sha256};
+use tokio::time::{Duration as TokioDuration, Instant as TokioInstant};
 use tracing::{info, warn};
 
 mod diagnostic;
@@ -53,6 +56,8 @@ enum ServiceCommand {
     Drain(ServiceDrainArgs),
     /// Resume a draining runner (SIGUSR2, reverses `drain` before teardown begins)
     Resume(ServiceResumeArgs),
+    /// Wait until a runner service is active and job-admitting
+    WaitRunning(ServiceWaitRunningArgs),
     /// Show service status (all runner services if --name is omitted)
     Status(ServiceStatusArgs),
     /// Show service logs
@@ -111,6 +116,16 @@ struct ServiceResumeArgs {
 }
 
 #[derive(Args)]
+struct ServiceWaitRunningArgs {
+    /// Service name suffix (e.g. v0.2.0 -> unit vm0-runner-v0.2.0)
+    #[arg(long)]
+    name: String,
+    /// Maximum time to wait for status.json mode=running.
+    #[arg(long, default_value_t = 120)]
+    timeout_secs: u64,
+}
+
+#[derive(Args)]
 struct ServiceStatusArgs {
     /// Service name suffix (omit to show all runner services)
     #[arg(long)]
@@ -142,6 +157,7 @@ pub async fn run_service(args: ServiceArgs) -> RunnerResult<()> {
         ServiceCommand::Uninstall(a) => uninstall(a).await,
         ServiceCommand::Drain(a) => drain(a).await,
         ServiceCommand::Resume(a) => resume(a).await,
+        ServiceCommand::WaitRunning(a) => wait_running(a).await,
         ServiceCommand::Status(a) => status(a).await,
         ServiceCommand::Logs(a) => logs(a).await,
     }
@@ -405,6 +421,10 @@ fn ensure_resume_mode_is_draining(unit: &RunnerServiceUnit, mode: &str) -> Runne
         ))),
         "running" => Err(RunnerError::Internal(format!(
             "{} is running, not draining — cannot resume",
+            unit.unit_name()
+        ))),
+        "starting" => Err(RunnerError::Internal(format!(
+            "{} is starting, not draining — cannot resume",
             unit.unit_name()
         ))),
         _ => Err(RunnerError::Internal(format!(
@@ -962,6 +982,116 @@ async fn resume(args: ServiceResumeArgs) -> RunnerResult<()> {
     Ok(())
 }
 
+fn readiness_base_dir_from_live_instances(
+    unit: &RunnerServiceUnit,
+    instances: &[LiveRunnerInstance],
+) -> RunnerResult<Option<PathBuf>> {
+    let matches = instances
+        .iter()
+        .filter(|instance| instance.runner_name == unit.suffix() && instance.subcommand == "start")
+        .collect::<Vec<_>>();
+
+    match matches.as_slice() {
+        [instance] => Ok(Some(instance.base_dir.clone())),
+        [] => Ok(None),
+        _ => Err(RunnerError::Internal(format!(
+            "{} has multiple live runner instance records for readiness",
+            unit.unit_name()
+        ))),
+    }
+}
+
+async fn readiness_base_dir(
+    unit: &RunnerServiceUnit,
+    home: &HomePaths,
+) -> RunnerResult<Option<PathBuf>> {
+    let instances = live_runner_instances::try_list(home).await?;
+    readiness_base_dir_from_live_instances(unit, &instances)
+}
+
+async fn wait_running(args: ServiceWaitRunningArgs) -> RunnerResult<()> {
+    if args.timeout_secs == 0 {
+        return Err(RunnerError::Internal(
+            "--timeout-secs must be greater than zero".into(),
+        ));
+    }
+
+    let unit = RunnerServiceUnit::from_suffix(&args.name)?;
+    let home = HomePaths::new()?;
+    let deadline = TokioInstant::now() + TokioDuration::from_secs(args.timeout_secs);
+    let mut last_observation = "not checked".to_string();
+
+    loop {
+        if !is_unit_active(&unit).await? {
+            return Err(RunnerError::Internal(format!(
+                "{} is not active while waiting for running (last observation: {})",
+                unit.unit_name(),
+                last_observation
+            )));
+        }
+
+        match readiness_base_dir(&unit, &home).await? {
+            Some(base_dir) => match status_file::read_as::<StatusForReadiness>(&base_dir).await {
+                Ok(Some(status)) => match status.mode.as_str() {
+                    "running" => {
+                        println!("{}", status.max_concurrent);
+                        return Ok(());
+                    }
+                    "starting" => {
+                        last_observation = "mode=starting".to_string();
+                    }
+                    "draining" | "stopping" | "stopped" => {
+                        return Err(RunnerError::Internal(format!(
+                            "{} reported mode={} while waiting for running",
+                            unit.unit_name(),
+                            status.mode
+                        )));
+                    }
+                    mode => {
+                        return Err(RunnerError::Internal(format!(
+                            "{} reported unknown mode {:?} while waiting for running",
+                            unit.unit_name(),
+                            mode
+                        )));
+                    }
+                },
+                Ok(None) => {
+                    last_observation =
+                        format!("{} missing", status_file::path(&base_dir).display());
+                }
+                Err(StatusFileReadError::Read { path, error }) => {
+                    return Err(RunnerError::Internal(format!(
+                        "read {} while waiting for {} to run: {error}",
+                        path.display(),
+                        unit.unit_name()
+                    )));
+                }
+                Err(StatusFileReadError::ParseJson { path, error }) => {
+                    return Err(RunnerError::Internal(format!(
+                        "parse {} while waiting for {} to run: {error}",
+                        path.display(),
+                        unit.unit_name()
+                    )));
+                }
+            },
+            None => {
+                last_observation = "live runner instance record missing".to_string();
+            }
+        }
+
+        let now = TokioInstant::now();
+        if now >= deadline {
+            return Err(RunnerError::Internal(format!(
+                "timed out waiting {}s for {} to reach running (last observation: {})",
+                args.timeout_secs,
+                unit.unit_name(),
+                last_observation
+            )));
+        }
+        tokio::time::sleep(std::cmp::min(TokioDuration::from_secs(1), deadline - now)).await;
+    }
+}
+
 /// `service status` — show systemctl status for the named unit, or all runner units.
 async fn status(args: ServiceStatusArgs) -> RunnerResult<()> {
     let pattern = match &args.name {
@@ -1204,6 +1334,19 @@ profiles:
         RunnerServiceUnit::from_suffix("test").unwrap()
     }
 
+    fn live_runner_instance(runner_name: &str, base_dir: PathBuf) -> LiveRunnerInstance {
+        LiveRunnerInstance {
+            pid: 123,
+            starttime: 456,
+            config_path: base_dir.join("runner.yaml"),
+            base_dir,
+            runner_name: runner_name.to_string(),
+            runner_group: "test/group".to_string(),
+            subcommand: "start".to_string(),
+            started_at: "2026-01-01T00:00:00.000Z".to_string(),
+        }
+    }
+
     struct FakeDrainOps {
         events: Vec<&'static str>,
         active_results: VecDeque<RunnerResult<bool>>,
@@ -1390,6 +1533,42 @@ profiles:
                 "signal_drain",
                 "disable",
             ]
+        );
+    }
+
+    #[test]
+    fn readiness_base_dir_waits_without_live_record() {
+        let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+
+        let base_dir = readiness_base_dir_from_live_instances(&unit, &[]).unwrap();
+
+        assert_eq!(base_dir, None);
+    }
+
+    #[test]
+    fn readiness_base_dir_uses_live_record_for_nonstandard_runner_dirname() {
+        let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+        let actual_base_dir = PathBuf::from("/vm0-runner/runners/pr-123");
+        let instances = vec![live_runner_instance("pr-123-1", actual_base_dir.clone())];
+
+        let base_dir = readiness_base_dir_from_live_instances(&unit, &instances).unwrap();
+
+        assert_eq!(base_dir, Some(actual_base_dir));
+    }
+
+    #[test]
+    fn readiness_base_dir_rejects_duplicate_live_records() {
+        let unit = RunnerServiceUnit::from_suffix("pr-123-1").unwrap();
+        let instances = vec![
+            live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/pr-123")),
+            live_runner_instance("pr-123-1", PathBuf::from("/vm0-runner/runners/other")),
+        ];
+
+        let error = readiness_base_dir_from_live_instances(&unit, &instances).unwrap_err();
+
+        assert!(
+            error.to_string().contains("multiple live runner instance"),
+            "unexpected error: {error}"
         );
     }
 
@@ -1611,6 +1790,9 @@ profiles:
 
         let running = ensure_resume_mode_is_draining(&unit, "running").unwrap_err();
         assert!(running.to_string().contains("running, not draining"));
+
+        let starting = ensure_resume_mode_is_draining(&unit, "starting").unwrap_err();
+        assert!(starting.to_string().contains("starting, not draining"));
 
         let stopping = ensure_resume_mode_is_draining(&unit, "stopping").unwrap_err();
         assert!(stopping.to_string().contains("already shutting down"));

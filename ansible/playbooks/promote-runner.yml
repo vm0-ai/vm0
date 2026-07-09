@@ -43,26 +43,43 @@
     # ========================================
     # Phase 3b: Install systemd service (traffic cutover point)
     # ========================================
-    - name: Install and start runner service
-      command: >
-        {{ bin_dir }}/runner service install
-        --name {{ runner_name }}
-        --config {{ runner_dir }}/runner.yaml
-        {% if sentry_dsn is defined and sentry_dsn %}
-        --env SENTRY_DSN={{ sentry_dsn }}
-        {% endif %}
-        {% if axiom_token_telemetry is defined and axiom_token_telemetry %}
-        --env AXIOM_TOKEN_TELEMETRY={{ axiom_token_telemetry }}
-        {% endif %}
-        {% if axiom_dataset_suffix is defined and axiom_dataset_suffix %}
-        --env AXIOM_DATASET_SUFFIX={{ axiom_dataset_suffix }}
-        {% endif %}
+    - name: Install target runner and wait for readiness
+      block:
+        - name: Install and start runner service
+          command: >
+            {{ bin_dir }}/runner service install
+            --name {{ runner_name }}
+            --config {{ runner_dir }}/runner.yaml
+            {% if sentry_dsn is defined and sentry_dsn %}
+            --env SENTRY_DSN={{ sentry_dsn }}
+            {% endif %}
+            {% if axiom_token_telemetry is defined and axiom_token_telemetry %}
+            --env AXIOM_TOKEN_TELEMETRY={{ axiom_token_telemetry }}
+            {% endif %}
+            {% if axiom_dataset_suffix is defined and axiom_dataset_suffix %}
+            --env AXIOM_DATASET_SUFFIX={{ axiom_dataset_suffix }}
+            {% endif %}
 
-    # ========================================
-    # Phase 4: Health check
-    # ========================================
-    - name: Verify runner health
-      command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+        # ========================================
+        # Phase 4: Readiness + health check
+        # ========================================
+        - name: Wait for target runner readiness
+          command: "{{ bin_dir }}/runner service wait-running --name {{ runner_name }} --timeout-secs 120"
+          changed_when: false
+
+        - name: Verify runner health
+          command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
+      rescue:
+        - name: Stop failed target runner service
+          include_tasks: ../tasks/force-stop-runner-service.yml
+          vars:
+            force_stop_runner_name: "{{ runner_name }}"
+
+        - name: Fail promote after target runner readiness failure
+          fail:
+            msg: >-
+              Runner {{ runner_name }} failed readiness or health checks and
+              was stopped to avoid leaving a non-admitting service running.
 
     # ========================================
     # Phase 5: Drain old runners + Cleanup
