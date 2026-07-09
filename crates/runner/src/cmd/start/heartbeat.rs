@@ -72,6 +72,12 @@ pub(super) struct HeldSessionStateSnapshot {
 struct HeldSessionStateSnapshotInner {
     workspace_cache_states: Vec<HeldSessionState>,
     workspace_cache_loaded: bool,
+    workspace_cache_revision: u64,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct WorkspaceCacheSnapshotRefresh {
+    revision: u64,
 }
 
 impl HeldSessionStateSnapshot {
@@ -83,11 +89,26 @@ impl HeldSessionStateSnapshot {
         self.lock_inner().workspace_cache_loaded
     }
 
-    pub(super) fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
+    pub(super) fn begin_workspace_cache_refresh(&self) -> WorkspaceCacheSnapshotRefresh {
+        WorkspaceCacheSnapshotRefresh {
+            revision: self.lock_inner().workspace_cache_revision,
+        }
+    }
+
+    pub(super) fn finish_workspace_cache_refresh(
+        &self,
+        refresh: WorkspaceCacheSnapshotRefresh,
+        states: Vec<HeldSessionState>,
+    ) {
         let mut inner = self.lock_inner();
-        inner.workspace_cache_states = states;
+        inner.workspace_cache_states = if inner.workspace_cache_revision == refresh.revision {
+            states
+        } else {
+            merge_workspace_cache_snapshot_states(inner.workspace_cache_states.clone(), states)
+        };
         cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
         inner.workspace_cache_loaded = true;
+        inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
     }
 
     pub(super) fn upsert_workspace_cache_state(&self, state: HeldSessionState) {
@@ -103,6 +124,7 @@ impl HeldSessionStateSnapshot {
             None => inner.workspace_cache_states.push(state),
         }
         cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
+        inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
     }
 
     pub(super) fn might_contain_workspace_cache_session(&self, session_id: &str) -> bool {
@@ -178,8 +200,9 @@ pub(super) async fn refresh_workspace_cache_held_session_snapshot(
     snapshot: &HeldSessionStateSnapshot,
     workspace_cache: Option<&SessionWorkspaceCache>,
 ) -> Vec<HeldSessionState> {
+    let refresh = snapshot.begin_workspace_cache_refresh();
     let states = workspace_cache_held_session_states(workspace_cache).await;
-    snapshot.update_workspace_cache_states(states.clone());
+    snapshot.finish_workspace_cache_refresh(refresh, states.clone());
     states
 }
 
@@ -238,6 +261,22 @@ fn merge_held_session_states(
     states.truncate(MAX_HELD_SESSION_STATES);
     states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
     states
+}
+
+fn merge_workspace_cache_snapshot_states(
+    existing_states: Vec<HeldSessionState>,
+    refreshed_states: Vec<HeldSessionState>,
+) -> Vec<HeldSessionState> {
+    let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
+    for state in refreshed_states.into_iter().chain(existing_states) {
+        match by_session.get(&state.session_id) {
+            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
+            _ => {
+                by_session.insert(state.session_id.clone(), state);
+            }
+        }
+    }
+    by_session.into_values().collect()
 }
 
 fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldSessionState>) {
@@ -359,6 +398,11 @@ mod tests {
         )
         .with_mock_sandbox_name("test")
         .build()
+    }
+
+    fn refresh_snapshot(snapshot: &HeldSessionStateSnapshot, states: Vec<HeldSessionState>) {
+        let refresh = snapshot.begin_workspace_cache_refresh();
+        snapshot.finish_workspace_cache_refresh(refresh, states);
     }
 
     async fn seed_workspace_cache_state(
@@ -657,20 +701,23 @@ mod tests {
     #[tokio::test]
     async fn held_session_snapshot_merges_cached_states_and_filters_active_sessions() {
         let snapshot = HeldSessionStateSnapshot::new();
-        snapshot.update_workspace_cache_states(vec![
-            HeldSessionState {
-                session_id: "sess-cache".into(),
-                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-            },
-            HeldSessionState {
-                session_id: "sess-claimed".into(),
-                last_completed_at: "2026-06-01T00:00:03.000Z".into(),
-            },
-            HeldSessionState {
-                session_id: "sess-active".into(),
-                last_completed_at: "2026-06-01T00:00:04.000Z".into(),
-            },
-        ]);
+        refresh_snapshot(
+            &snapshot,
+            vec![
+                HeldSessionState {
+                    session_id: "sess-cache".into(),
+                    last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+                },
+                HeldSessionState {
+                    session_id: "sess-claimed".into(),
+                    last_completed_at: "2026-06-01T00:00:03.000Z".into(),
+                },
+                HeldSessionState {
+                    session_id: "sess-active".into(),
+                    last_completed_at: "2026-06-01T00:00:04.000Z".into(),
+                },
+            ],
+        );
         let active_cli_agent_sessions =
             super::super::active_sessions::new_active_cli_agent_sessions();
         super::super::active_sessions::insert_active_cli_agent_session(
@@ -722,7 +769,7 @@ mod tests {
             "unloaded snapshot should trigger one refresh for cache-enabled runners"
         );
 
-        snapshot.update_workspace_cache_states(Vec::new());
+        refresh_snapshot(&snapshot, Vec::new());
         assert!(
             snapshot.workspace_cache_loaded(),
             "refresh should mark workspace-cache state loaded even when empty"
@@ -732,10 +779,13 @@ mod tests {
             "loaded empty snapshot should not keep triggering cache refreshes"
         );
 
-        snapshot.update_workspace_cache_states(vec![HeldSessionState {
-            session_id: "sess-cache".into(),
-            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-        }]);
+        refresh_snapshot(
+            &snapshot,
+            vec![HeldSessionState {
+                session_id: "sess-cache".into(),
+                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            }],
+        );
         assert!(
             snapshot.might_contain_workspace_cache_session("sess-cache"),
             "loaded matching snapshot should trigger refresh when that session is claimed"
@@ -768,6 +818,37 @@ mod tests {
                 .any(|state| state.session_id == format!("sess-{MAX_HELD_SESSION_STATES:04}")),
             "newest upserted workspace-cache state should be retained at the cap"
         );
+    }
+
+    #[test]
+    fn held_session_snapshot_refresh_preserves_concurrent_upsert() {
+        let snapshot = HeldSessionStateSnapshot::new();
+        let original = HeldSessionState {
+            session_id: "sess-original".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+        };
+        let promoted = HeldSessionState {
+            session_id: "sess-promoted".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+        };
+        refresh_snapshot(&snapshot, vec![original.clone()]);
+
+        let refresh = snapshot.begin_workspace_cache_refresh();
+        snapshot.upsert_workspace_cache_state(promoted.clone());
+        snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
+
+        let active_cli_agent_sessions =
+            super::super::active_sessions::new_active_cli_agent_sessions();
+        let states =
+            snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
+        assert_eq!(states, vec![original.clone(), promoted]);
+
+        let refresh = snapshot.begin_workspace_cache_refresh();
+        snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
+
+        let states =
+            snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
+        assert_eq!(states, vec![original]);
     }
 
     fn timestamp_for_index(index: usize) -> String {
