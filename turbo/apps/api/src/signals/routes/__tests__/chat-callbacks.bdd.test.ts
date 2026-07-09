@@ -1986,6 +1986,31 @@ describe("CHAT-02: failed chat callbacks", () => {
     });
   }, 90_000);
 
+  it("stores insufficient credits failures as the billing recovery marker", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "post-dispatch billing failure",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+
+    await failChatRun(
+      run.runId,
+      sandboxHeaders,
+      "INSUFFICIENT_CREDITS: Insufficient credits. Please add credits to continue.",
+    );
+
+    const page = await waitForThreadMessages(actor, run.threadId, (messages) => {
+      return lifecycleMarkers(messages, run.runId, "failed").some((message) => {
+        return message.error === "insufficient_credits";
+      });
+    });
+    const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+    expect(marker?.error).toBe("insufficient_credits");
+    expect(marker?.content).toBe("insufficient_credits");
+  }, 90_000);
+
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
