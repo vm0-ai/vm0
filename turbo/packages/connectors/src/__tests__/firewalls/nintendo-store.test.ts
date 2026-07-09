@@ -82,7 +82,7 @@ describe("Nintendo Store firewall", () => {
     });
     expectNintendoStoreMatches({
       apiBase: "https://app-api.znej.nintendo.com",
-      method: "POST",
+      method: "GET",
       path: "/api/v2.0/products:search",
       permissionNames: ["nintendo-store-catalog-read"],
     });
@@ -150,6 +150,24 @@ describe("Nintendo Store firewall", () => {
       apiBase: "https://api.accounts.nintendo.com",
       method: "POST",
       path: "/2.0.0/users/me",
+      permissionNames: [],
+    });
+    expectNintendoStoreMatches({
+      apiBase: "https://app-api.znej.nintendo.com",
+      method: "POST",
+      path: "/api/v2.0/products:search",
+      permissionNames: [],
+    });
+    expectNintendoStoreMatches({
+      apiBase: "https://app-api.znej.nintendo.com",
+      method: "GET",
+      path: "/api/v2.0/users/me/play_histories/hidden_list",
+      permissionNames: [],
+    });
+    expectNintendoStoreMatches({
+      apiBase: "https://app-api.znej.nintendo.com",
+      method: "POST",
+      path: "/api/v2.0/check_in_events/event-id/check_in_points/point-id",
       permissionNames: [],
     });
     expectNintendoStoreMatches({

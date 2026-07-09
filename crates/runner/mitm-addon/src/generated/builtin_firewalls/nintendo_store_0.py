@@ -37,7 +37,6 @@ JSON_PART = r"""{
           "rules": [
             "GET /api/v2.0/check_in_events",
             "GET /api/v2.0/check_in_events/{eventId}/check_in_points",
-            "GET /api/v2.0/check_in_events/{eventId}/check_in_points/{checkInPointId}",
             "GET /api/v2.0/maintenance_check",
             "GET /api/v2.0/news",
             "GET /api/v2.0/news/app_news/{appNewsId}",
@@ -51,7 +50,7 @@ JSON_PART = r"""{
             "POST /api/v2.0/product_details",
             "POST /api/v2.0/products/-/images:batch_get",
             "POST /api/v2.0/products/-/meta:batch_get",
-            "POST /api/v2.0/products:search"
+            "GET /api/v2.0/products:search"
           ]
         },
         {
@@ -69,8 +68,7 @@ JSON_PART = r"""{
           "name": "nintendo-store-play-activity-read",
           "rules": [
             "GET /api/v2.0/users/me/play_histories",
-            "GET /api/v2.0/users/me/play_histories/game_titles/{titleId}",
-            "GET /api/v2.0/users/me/play_histories/hidden_list"
+            "GET /api/v2.0/users/me/play_histories/game_titles/{titleId}"
           ]
         },
         {
