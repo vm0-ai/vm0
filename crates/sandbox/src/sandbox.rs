@@ -1,35 +1,3 @@
-//! The [`Sandbox`] trait — the core backend abstraction of this crate.
-//!
-//! A sandbox is a process-isolation environment (a Firecracker VM in
-//! production, a mock harness in tests) that runs guest workloads on
-//! behalf of the runner. Implementations are created by a
-//! [`SandboxFactory`](crate::SandboxFactory) and handed to callers as
-//! `Box<dyn Sandbox>`.
-//!
-//! # Lifecycle
-//! ```text
-//!   created  ──start()──▶  running  ──stop()/kill()──▶  stopped
-//!                             │  ▲
-//!                             └──┤ park()/unpark()
-//! ```
-//! - [`start`](Sandbox::start) boots the guest and must be called before
-//!   any operation; subsequent `start` calls on the same instance fail.
-//! - [`stop`](Sandbox::stop) asks the guest to shut down gracefully, then
-//!   kills the backing process. [`kill`](Sandbox::kill) skips the graceful
-//!   step. Both are idempotent and both end in the stopped state.
-//! - [`park`](Sandbox::park) / [`unpark`](Sandbox::unpark) reclaim guest
-//!   resources while the sandbox is idle; a parked sandbox must be
-//!   unparked before further operations.
-//!
-//! # Operations
-//! Once running, callers invoke [`exec`](Sandbox::exec) /
-//! [`read_file`](Sandbox::read_file) / [`copy_file`](Sandbox::copy_file) /
-//! [`write_file`](Sandbox::write_file) / [`start_process`](Sandbox::start_process) /
-//! [`wait_process`](Sandbox::wait_process) via the host-to-guest IPC channel
-//! (vsock, in the Firecracker backend). Operations race against a crash
-//! notifier so that a dying backend process surfaces as a specific
-//! "backend crashed" error rather than an opaque IPC timeout.
-
 use std::any::Any;
 use std::path::Path;
 use std::time::Duration;
@@ -68,8 +36,9 @@ use crate::types::{
 /// [`write_file`](Self::write_file) / [`start_process`](Self::start_process) /
 /// [`wait_process`](Self::wait_process) via the host-to-guest IPC channel
 /// (vsock, in the Firecracker backend). Operations race against a crash
-/// notifier so that a dying backend process surfaces as a specific
-/// error rather than an opaque IPC timeout.
+/// notifier so that a dying backend process surfaces as
+/// [`BackendCrashed`](crate::SandboxOperationReason::BackendCrashed)
+/// instead of an opaque IPC timeout.
 ///
 /// # Thread-safety and trait objects
 /// Implementations are consumed as `Box<dyn Sandbox>` and shared across
