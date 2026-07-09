@@ -287,6 +287,13 @@ struct ActiveInputPayload {
     text: String,
 }
 
+/// Derives the deterministic Claude user-frame UUID for the run's initial prompt.
+///
+/// Claude stream-JSON stdin writers use this UUID when sending the initial
+/// prompt, and replay filtering uses the same derivation to identify that
+/// echoed prompt in CLI stdout. Callers that need to produce or recognize the
+/// initial prompt frame should use this helper instead of duplicating the UUID
+/// derivation.
 pub fn claude_initial_prompt_uuid(run_id: &str) -> String {
     Uuid::new_v5(
         &Uuid::NAMESPACE_OID,
@@ -364,10 +371,22 @@ fn prompt_user_content(event: &Value) -> PromptUserContent {
 }
 
 impl ActiveInputRuntime {
+    /// Creates a runtime whose controller rejects active-input control payloads.
+    ///
+    /// The paired writer still exists so the CLI execution path can use the
+    /// same ownership and shutdown flow as enabled runs, but no follow-up frames
+    /// will be accepted from the process-control side.
     pub fn new_disabled(run_id: &str) -> Self {
         Self::new_with_initial_prompt(run_id, false, "")
     }
 
+    /// Creates the controller/writer pair for one guest-agent run.
+    ///
+    /// When `enabled` is `false`, control payloads are rejected while the writer
+    /// can still be closed through the normal CLI lifecycle. When `enabled` is
+    /// `true`, accepted active-input frames are queued for the single writer.
+    /// `initial_prompt_text` is retained for replay filtering when CLI stdout
+    /// emits a prompt-like user event without the expected initial-prompt UUID.
     pub fn new_with_initial_prompt(run_id: &str, enabled: bool, initial_prompt_text: &str) -> Self {
         let (tx, rx) = mpsc::channel(ACTIVE_INPUT_QUEUE_CAPACITY);
         let (close_tx, close_rx) = watch::channel(false);
@@ -390,20 +409,46 @@ impl ActiveInputRuntime {
         Self { controller, writer }
     }
 
+    /// Returns a cloneable control-plane handle for this runtime.
+    ///
+    /// Controllers may be cloned for process-control and event-filtering paths;
+    /// they all coordinate with the same single writer owned by this runtime.
     pub fn controller(&self) -> ActiveInputController {
         self.controller.clone()
     }
 
+    /// Transfers the single active-input writer to the CLI execution path.
+    ///
+    /// The writer is intentionally single-consumer. After this call, the
+    /// runtime is consumed and only cloned controllers can continue to accept
+    /// control payloads or classify replayed user events.
     pub fn into_writer(self) -> ActiveInputWriter {
         self.writer
     }
 }
 
 impl ActiveInputController {
+    /// Returns whether this run accepts active-input control payloads.
+    ///
+    /// Disabled runs keep the same controller/writer lifecycle shape, but
+    /// [`ActiveInputController::handle_control_payload`] rejects follow-up
+    /// input instead of queueing frames.
     pub fn is_enabled(&self) -> bool {
         self.inner.enabled
     }
 
+    /// Validates and queues one process-control active-input payload.
+    ///
+    /// `message_id` is the control-plane id used to reject duplicate requests.
+    /// `payload` must decode to an active-input request with non-empty text.
+    ///
+    /// The method returns [`ActiveInputControlOutcome::Accepted`] only after the
+    /// follow-up frame has been queued for the paired writer. Unsupported,
+    /// invalid, duplicate, disabled, or closed inputs are rejected. A bounded
+    /// backlog returns [`ActiveInputControlOutcome::QueueFull`] so callers can
+    /// distinguish backpressure from validation rejection. Callers should branch
+    /// on the outcome variant rather than treating diagnostic text as a stable
+    /// protocol.
     pub fn handle_control_payload(
         &self,
         message_id: &str,
@@ -493,6 +538,12 @@ impl ActiveInputController {
         }
     }
 
+    /// Marks a writer-owned frame as delivered to its follow-up sink.
+    ///
+    /// Writers should call this after successfully writing the frame to stdin
+    /// or an equivalent transport. The mark lets replay filtering later match
+    /// the CLI's echoed user event, or finish cleanup if a uuidless replay was
+    /// already observed. Unknown UUIDs are ignored.
     pub fn mark_written(&self, uuid: &str) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         let should_remove = match state.pending_by_uuid.get_mut(uuid) {
@@ -515,6 +566,13 @@ impl ActiveInputController {
         state.remove_pending_by_uuid(uuid);
     }
 
+    /// Marks a writer-owned frame as actively being delivered.
+    ///
+    /// Writers should call this immediately before starting delivery to stdin
+    /// or another follow-up sink. Replay filtering only treats writer-owned
+    /// input as internally replayable, which prevents stale events from
+    /// consuming accepted frames that have not reached the CLI. Unknown UUIDs
+    /// are ignored.
     pub fn mark_writing(&self, uuid: &str) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(input) = state.pending_by_uuid.get_mut(uuid)
@@ -524,6 +582,15 @@ impl ActiveInputController {
         }
     }
 
+    /// Attempts to close active input after a CLI result event.
+    ///
+    /// A `true` return means the caller can treat active input as idle for this
+    /// result. For enabled runs, this also signals the writer to close when the
+    /// runtime is still open. A `false` return means there is still pending
+    /// input to observe, a delivered input was only just accounted for, or the
+    /// runtime was already closing or closed.
+    ///
+    /// This is a result-time idle check, not an unconditional terminal close.
     pub fn close_for_result_if_idle(&self) -> bool {
         if !self.inner.enabled {
             return true;
@@ -556,12 +623,27 @@ impl ActiveInputController {
         }
     }
 
+    /// Closes active input terminally for this run.
+    ///
+    /// This wakes the paired writer, causes future [`ActiveInputWriter::next_frame`]
+    /// calls to resolve with `None`, and makes subsequent enabled control
+    /// payloads reject as closed.
     pub fn close_terminal(&self) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         state.lifecycle = Lifecycle::Closed;
         let _ = self.inner.close_tx.send(true);
     }
 
+    /// Classifies a CLI stdout user event for replay filtering.
+    ///
+    /// [`ReplayUserEventAction::External`] means the event is ordinary CLI
+    /// output and should continue through event delivery.
+    /// [`ReplayUserEventAction::InternalInitialPrompt`] and
+    /// [`ReplayUserEventAction::InternalActiveInput`] mean the event is an
+    /// internal echo of input vm0 already delivered and should be filtered.
+    /// [`ReplayUserEventAction::UnknownPromptUser`] means the event looks like a
+    /// prompt-style user event but cannot be attributed to known input, so
+    /// callers should handle it conservatively.
     pub fn replay_user_event_action(&self, event: &Value) -> ReplayUserEventAction {
         if event.get("type").and_then(Value::as_str) != Some("user") {
             return ReplayUserEventAction::External;
@@ -607,6 +689,10 @@ impl ActiveInputController {
 }
 
 impl ActiveInputWriter {
+    /// Returns the controller paired with this writer.
+    ///
+    /// The returned controller clone observes and mutates the same run-scoped
+    /// active-input state as this writer.
     pub fn controller(&self) -> ActiveInputController {
         self.controller.clone()
     }
@@ -618,6 +704,11 @@ impl ActiveInputWriter {
         self.rx.try_recv().ok()
     }
 
+    /// Waits for the next accepted follow-up frame.
+    ///
+    /// This writer is the single consumer of frames accepted by the paired
+    /// controller. The method returns `None` when active input has been closed
+    /// or when no further frames can be received.
     pub async fn next_frame(&mut self) -> Option<ActiveInputFrame> {
         loop {
             if *self.close_rx.borrow() {
@@ -635,10 +726,15 @@ impl ActiveInputWriter {
         }
     }
 
+    /// Returns whether the paired controller accepts active-input payloads.
     pub fn is_enabled(&self) -> bool {
         self.controller.is_enabled()
     }
 
+    /// Marks the current writer-owned frame as delivered.
+    ///
+    /// This delegates to [`ActiveInputController::mark_written`] and should be
+    /// called after the writer sink has successfully delivered the frame.
     pub fn mark_written(&self, uuid: &str) {
         self.controller.mark_written(uuid);
     }
@@ -647,10 +743,15 @@ impl ActiveInputWriter {
         self.controller.mark_written_without_replay(uuid);
     }
 
+    /// Marks the current frame as actively being delivered by this writer.
+    ///
+    /// This delegates to [`ActiveInputController::mark_writing`] and should be
+    /// paired with [`ActiveInputWriter::mark_written`] after delivery succeeds.
     pub fn mark_writing(&self, uuid: &str) {
         self.controller.mark_writing(uuid);
     }
 
+    /// Closes active input terminally through the paired controller.
     pub fn close_terminal(&self) {
         self.controller.close_terminal();
     }
