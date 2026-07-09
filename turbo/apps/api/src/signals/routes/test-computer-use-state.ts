@@ -10,6 +10,9 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
+import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
@@ -18,6 +21,7 @@ import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import { slackOrgCallbackPayloadSchema } from "../services/slack-org-callback-payload";
+import { teamsOrgCallbackPayloadSchema } from "../services/teams-org-callback-payload";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -36,6 +40,27 @@ interface RunState {
   readonly triggerSource: string | null;
   readonly chatThreadId: string | null;
 }
+
+interface BaseComputerUseRunSeed {
+  readonly composeId: string;
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly threadId: string | null;
+}
+
+interface SlackComputerUseSeed {
+  readonly connection_id: string;
+  readonly channel_id: string;
+  readonly thread_ts: string;
+}
+
+interface TeamsComputerUseSeed {
+  readonly connection_id: string;
+  readonly conversation_id: string;
+  readonly thread_id: string;
+}
+
+type ComputerUseTriggerSource = "web" | "slack" | "teams";
 
 async function loadRunState(db: Db, runId: string): Promise<RunState | null> {
   const [run] = await db
@@ -71,6 +96,21 @@ async function slackCallbackPayload(db: Db, runId: string) {
   return parsed.success ? parsed.data : null;
 }
 
+async function teamsCallbackPayload(db: Db, runId: string) {
+  const [callback] = await db
+    .select({ payload: agentRunCallbacks.payload })
+    .from(agentRunCallbacks)
+    .where(
+      and(
+        eq(agentRunCallbacks.runId, runId),
+        eq(agentRunCallbacks.internalKind, "teams:org"),
+      ),
+    )
+    .limit(1);
+  const parsed = teamsOrgCallbackPayloadSchema.safeParse(callback?.payload);
+  return parsed.success ? parsed.data : null;
+}
+
 async function sourceComputerUseHostId(
   db: Db,
   run: RunState,
@@ -103,7 +143,206 @@ async function sourceComputerUseHostId(
     return session?.computerUseHostId ?? null;
   }
 
+  if (run.triggerSource === "teams") {
+    const payload = await teamsCallbackPayload(db, run.id);
+    if (!payload) {
+      return null;
+    }
+    const [session] = await db
+      .select({ computerUseHostId: teamsOrgThreadSessions.computerUseHostId })
+      .from(teamsOrgThreadSessions)
+      .where(
+        and(
+          eq(teamsOrgThreadSessions.connectionId, payload.connectionId),
+          eq(
+            teamsOrgThreadSessions.teamsConversationId,
+            payload.conversationId,
+          ),
+          eq(teamsOrgThreadSessions.teamsThreadId, payload.threadId),
+        ),
+      )
+      .limit(1);
+    return session?.computerUseHostId ?? null;
+  }
+
   return null;
+}
+
+async function seedBaseComputerUseRun(args: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly triggerSource: ComputerUseTriggerSource;
+  readonly signal: AbortSignal;
+}): Promise<BaseComputerUseRunSeed> {
+  const composeId = randomUUID();
+  const sessionId = randomUUID();
+  const runId = randomUUID();
+  const threadId = args.triggerSource === "web" ? randomUUID() : null;
+
+  await args.db.insert(agentComposes).values({
+    id: composeId,
+    userId: args.userId,
+    orgId: args.orgId,
+    name: `computer-use-auth-${composeId.slice(0, 8)}`,
+  });
+  args.signal.throwIfAborted();
+
+  if (threadId) {
+    await args.db.insert(chatThreads).values({
+      id: threadId,
+      userId: args.userId,
+      agentComposeId: composeId,
+      title: "Computer Use authorization test",
+    });
+    args.signal.throwIfAborted();
+  }
+
+  await args.db.insert(agentSessions).values({
+    id: sessionId,
+    userId: args.userId,
+    orgId: args.orgId,
+    agentComposeId: composeId,
+  });
+  args.signal.throwIfAborted();
+
+  await args.db.insert(agentRuns).values({
+    id: runId,
+    userId: args.userId,
+    orgId: args.orgId,
+    sessionId,
+    status: "running",
+    prompt: "Need Computer Use",
+  });
+  args.signal.throwIfAborted();
+
+  await args.db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: args.triggerSource,
+    chatThreadId: threadId,
+  });
+  args.signal.throwIfAborted();
+
+  return { composeId, sessionId, runId, threadId };
+}
+
+async function seedSlackComputerUseCallback(args: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly runId: string;
+  readonly composeId: string;
+  readonly signal: AbortSignal;
+}): Promise<SlackComputerUseSeed> {
+  const workspaceId = `T${randomUUID().replaceAll("-", "").slice(0, 10)}`;
+  const slackUserId = `U${randomUUID().replaceAll("-", "").slice(0, 10)}`;
+  const channelId = `C${randomUUID().replaceAll("-", "").slice(0, 10)}`;
+  const threadTs = "1710000000.000100";
+  const connectionId = randomUUID();
+
+  await args.db.insert(slackOrgInstallations).values({
+    slackWorkspaceId: workspaceId,
+    slackWorkspaceName: "Computer Use Auth Workspace",
+    orgId: args.orgId,
+    encryptedBotToken: "encrypted-bot-token",
+    botUserId: "U_BOT_TEST",
+  });
+  args.signal.throwIfAborted();
+
+  await args.db.insert(slackOrgConnections).values({
+    id: connectionId,
+    slackWorkspaceId: workspaceId,
+    slackUserId,
+    vm0UserId: args.userId,
+  });
+  args.signal.throwIfAborted();
+
+  await args.db.insert(agentRunCallbacks).values({
+    runId: args.runId,
+    internalKind: "slack:org",
+    encryptedSecret: "encrypted-callback-secret",
+    payload: {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: args.composeId,
+    },
+  });
+  args.signal.throwIfAborted();
+
+  return {
+    connection_id: connectionId,
+    channel_id: channelId,
+    thread_ts: threadTs,
+  };
+}
+
+async function seedTeamsComputerUseCallback(args: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly runId: string;
+  readonly composeId: string;
+  readonly signal: AbortSignal;
+}): Promise<TeamsComputerUseSeed> {
+  const tenantId = `tenant-${randomUUID()}`;
+  const conversationId = `19:${randomUUID()}@thread.tacv2`;
+  const threadId = `root-${randomUUID()}`;
+  const connectionId = randomUUID();
+  const teamsUserId = `29:${randomUUID()}`;
+
+  await args.db.insert(teamsOrgInstallations).values({
+    teamsTenantId: tenantId,
+    teamsTenantName: "Computer Use Auth Tenant",
+    orgId: args.orgId,
+    botId: "28:bot-test",
+    botName: "Zero",
+    serviceUrl: "https://smba.trafficmanager.net/amer/",
+  });
+  args.signal.throwIfAborted();
+
+  await args.db.insert(teamsOrgConnections).values({
+    id: connectionId,
+    teamsTenantId: tenantId,
+    teamsUserId,
+    vm0UserId: args.userId,
+  });
+  args.signal.throwIfAborted();
+
+  await args.db.insert(agentRunCallbacks).values({
+    runId: args.runId,
+    internalKind: "teams:org",
+    encryptedSecret: "encrypted-callback-secret",
+    payload: {
+      tenantId,
+      tenantName: "Computer Use Auth Tenant",
+      teamId: null,
+      teamName: null,
+      channelId: null,
+      conversationId,
+      conversationType: "personal",
+      threadId,
+      activityId: threadId,
+      serviceUrl: "https://smba.trafficmanager.net/amer/",
+      connectionId,
+      teamsUserId,
+      teamsUserDisplayName: "Computer Use Tester",
+      teamsUserPrincipalName: "tester@example.com",
+      botId: "28:bot-test",
+      botName: "Zero",
+      agentId: args.composeId,
+      existingSessionId: null,
+    },
+  });
+  args.signal.throwIfAborted();
+
+  return {
+    connection_id: connectionId,
+    conversation_id: conversationId,
+    thread_id: threadId,
+  };
 }
 
 const postComputerUseState$ = command(
@@ -127,113 +366,46 @@ const postComputerUseState$ = command(
     }
 
     const db = set(writeDb$);
-    const composeId = randomUUID();
-    const sessionId = randomUUID();
-    const runId = randomUUID();
-    const threadId = body.trigger_source === "web" ? randomUUID() : null;
-
-    await db.insert(agentComposes).values({
-      id: composeId,
+    const seed = await seedBaseComputerUseRun({
+      db,
       userId: body.user_id,
       orgId: body.org_id,
-      name: `computer-use-auth-${composeId.slice(0, 8)}`,
-    });
-    signal.throwIfAborted();
-
-    if (threadId) {
-      await db.insert(chatThreads).values({
-        id: threadId,
-        userId: body.user_id,
-        agentComposeId: composeId,
-        title: "Computer Use authorization test",
-      });
-      signal.throwIfAborted();
-    }
-
-    await db.insert(agentSessions).values({
-      id: sessionId,
-      userId: body.user_id,
-      orgId: body.org_id,
-      agentComposeId: composeId,
-    });
-    signal.throwIfAborted();
-
-    await db.insert(agentRuns).values({
-      id: runId,
-      userId: body.user_id,
-      orgId: body.org_id,
-      sessionId,
-      status: "running",
-      prompt: "Need Computer Use",
-    });
-    signal.throwIfAborted();
-
-    await db.insert(zeroRuns).values({
-      id: runId,
       triggerSource: body.trigger_source,
-      chatThreadId: threadId,
+      signal,
     });
-    signal.throwIfAborted();
-
-    let slack: {
-      readonly connection_id: string;
-      readonly channel_id: string;
-      readonly thread_ts: string;
-    } | null = null;
-
-    if (body.trigger_source === "slack") {
-      const workspaceId = `T${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-      const slackUserId = `U${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-      const channelId = `C${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-      const threadTs = "1710000000.000100";
-      const connectionId = randomUUID();
-
-      await db.insert(slackOrgInstallations).values({
-        slackWorkspaceId: workspaceId,
-        slackWorkspaceName: "Computer Use Auth Workspace",
-        orgId: body.org_id,
-        encryptedBotToken: "encrypted-bot-token",
-        botUserId: "U_BOT_TEST",
-      });
-      signal.throwIfAborted();
-      await db.insert(slackOrgConnections).values({
-        id: connectionId,
-        slackWorkspaceId: workspaceId,
-        slackUserId,
-        vm0UserId: body.user_id,
-      });
-      signal.throwIfAborted();
-      await db.insert(agentRunCallbacks).values({
-        runId,
-        internalKind: "slack:org",
-        encryptedSecret: "encrypted-callback-secret",
-        payload: {
-          workspaceId,
-          channelId,
-          threadTs,
-          messageTs: threadTs,
-          connectionId,
-          agentId: composeId,
-        },
-      });
-      signal.throwIfAborted();
-
-      slack = {
-        connection_id: connectionId,
-        channel_id: channelId,
-        thread_ts: threadTs,
-      };
-    }
+    const slack =
+      body.trigger_source === "slack"
+        ? await seedSlackComputerUseCallback({
+            db,
+            userId: body.user_id,
+            orgId: body.org_id,
+            runId: seed.runId,
+            composeId: seed.composeId,
+            signal,
+          })
+        : null;
+    const teams =
+      body.trigger_source === "teams"
+        ? await seedTeamsComputerUseCallback({
+            db,
+            userId: body.user_id,
+            orgId: body.org_id,
+            runId: seed.runId,
+            composeId: seed.composeId,
+            signal,
+          })
+        : null;
 
     return {
       status: 200 as const,
       body: {
         ok: true as const,
-        compose_id: composeId,
-        run_id: runId,
-        session_id: sessionId,
-        thread_id: threadId,
+        compose_id: seed.composeId,
+        run_id: seed.runId,
+        session_id: seed.sessionId,
+        thread_id: seed.threadId,
         slack,
+        teams,
       },
     };
   },
@@ -268,7 +440,9 @@ const getComputerUseState$ = command(
       status: 200 as const,
       body: {
         source:
-          run.triggerSource === "web" || run.triggerSource === "slack"
+          run.triggerSource === "web" ||
+          run.triggerSource === "slack" ||
+          run.triggerSource === "teams"
             ? run.triggerSource
             : null,
         computer_use_host_id: await sourceComputerUseHostId(db, run),
@@ -317,6 +491,25 @@ const deleteComputerUseState$ = command(
         .where(
           eq(slackOrgInstallations.slackWorkspaceId, slackPayload.workspaceId),
         );
+      signal.throwIfAborted();
+    }
+
+    const teamsPayload = await teamsCallbackPayload(db, run.id);
+    signal.throwIfAborted();
+    if (teamsPayload) {
+      await db
+        .delete(teamsOrgThreadSessions)
+        .where(
+          eq(teamsOrgThreadSessions.connectionId, teamsPayload.connectionId),
+        );
+      signal.throwIfAborted();
+      await db
+        .delete(teamsOrgConnections)
+        .where(eq(teamsOrgConnections.id, teamsPayload.connectionId));
+      signal.throwIfAborted();
+      await db
+        .delete(teamsOrgInstallations)
+        .where(eq(teamsOrgInstallations.teamsTenantId, teamsPayload.tenantId));
       signal.throwIfAborted();
     }
 

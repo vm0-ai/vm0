@@ -7,6 +7,13 @@ const c = initContract();
 
 const nullableStringSchema = z.string().nullable();
 
+const teamsEnvironmentSchema = z.object({
+  requiredSecrets: z.array(z.string()),
+  requiredVars: z.array(z.string()),
+  missingSecrets: z.array(z.string()),
+  missingVars: z.array(z.string()),
+});
+
 const teamsConnectStatusSchema = z.object({
   isInstalled: z.boolean(),
   isConnected: z.boolean(),
@@ -18,6 +25,8 @@ const teamsConnectStatusSchema = z.object({
   teamId: nullableStringSchema.optional(),
   teamName: nullableStringSchema.optional(),
   defaultAgentName: nullableStringSchema.optional(),
+  agentOrgSlug: nullableStringSchema.optional(),
+  environment: teamsEnvironmentSchema.optional(),
 });
 
 const teamsConnectBodySchema = z
@@ -32,6 +41,7 @@ const teamsConnectBodySchema = z
     teamName: z.string().min(1).optional(),
     serviceUrl: z.string().min(1).optional(),
     conversationId: z.string().min(1).optional(),
+    conversationType: z.string().min(1).optional(),
     activityId: z.string().min(1).optional(),
     channelId: z.string().min(1).optional(),
     threadId: z.string().min(1).optional(),

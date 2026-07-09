@@ -1,17 +1,22 @@
 import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
+import { verifyZeroToken } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
@@ -22,11 +27,14 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
+const computerUseApi = createComputerUseBddApi(context);
 const runsApi = createRunsAutomationsApi(context);
+const userConfigApi = createUserConfigBddApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {
     await removeTeamsForTest(context.signal, fixture);
@@ -39,9 +47,10 @@ const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
-const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
+  "Please connect your account to use Zero in this Teams workspace.";
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "To use Zero in Teams, please connect your account first.";
+  "Please connect your account to use Zero in this Teams workspace.";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
 const BOT_FRAMEWORK_KEYS_URL =
@@ -113,12 +122,26 @@ interface TeamsOutboundRequest {
   readonly body: unknown;
 }
 
+interface TeamsReactionRequest {
+  readonly method: "PUT" | "DELETE";
+  readonly conversationId: string;
+  readonly activityId: string;
+  readonly reactionType: string;
+}
+
+type TeamsOutboundRequests = TeamsOutboundRequest[] & {
+  readonly reactions: TeamsReactionRequest[];
+};
+
 function teamsOutboundHandlers(
   serviceUrl: string,
   tenantId = "tenant-1",
-): TeamsOutboundRequest[] {
+): TeamsOutboundRequests {
   const serviceBaseUrl = teamsServiceBaseUrl(serviceUrl);
-  const requests: TeamsOutboundRequest[] = [];
+  const requests: TeamsOutboundRequests = Object.assign(
+    [] as TeamsOutboundRequest[],
+    { reactions: [] as TeamsReactionRequest[] },
+  );
   server.use(
     http.post(graphTokenUrl(tenantId), async ({ request }) => {
       const form = await request.formData();
@@ -158,6 +181,40 @@ function teamsOutboundHandlers(
           body: await request.json(),
         });
         return HttpResponse.json({ id: "teams-activity-1" });
+      },
+    ),
+    http.put(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId/reactions/:reactionType`,
+      ({ params }) => {
+        requests.reactions.push({
+          method: "PUT",
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId:
+            typeof params.activityId === "string" ? params.activityId : "",
+          reactionType:
+            typeof params.reactionType === "string" ? params.reactionType : "",
+        });
+        return new HttpResponse(null, { status: 200 });
+      },
+    ),
+    http.delete(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId/reactions/:reactionType`,
+      ({ params }) => {
+        requests.reactions.push({
+          method: "DELETE",
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId:
+            typeof params.activityId === "string" ? params.activityId : "",
+          reactionType:
+            typeof params.reactionType === "string" ? params.reactionType : "",
+        });
+        return new HttpResponse(null, { status: 200 });
       },
     ),
   );
@@ -212,7 +269,15 @@ function teamsGraphHistoryHandlers(args: {
       const form = await request.formData();
       expect(form.get("client_id")).toBe(BOT_APP_ID);
       expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
-      expect(form.get("scope")).toBe("https://graph.microsoft.com/.default");
+      const scope = form.get("scope");
+      if (scope === "https://api.botframework.com/.default") {
+        return HttpResponse.json({
+          access_token: "teams-access-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      }
+      expect(scope).toBe("https://graph.microsoft.com/.default");
       requests.push("graph-token");
       return HttpResponse.json({
         access_token: "teams-graph-token",
@@ -393,6 +458,38 @@ async function postTeamsActivity(args: {
   });
 }
 
+async function readTeamsBotResponseAndFlush(
+  response: Response,
+): Promise<unknown> {
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  await flushWaitUntilForTest();
+  return body;
+}
+
+async function runIdForPrompt(
+  actor: ReturnType<typeof authOrgApi.user>,
+  prompt: string,
+): Promise<string> {
+  const list = await runsApi.listAgentRuns(actor, { limit: 20 });
+  const run = list.runs.find((item) => {
+    return item.prompt === prompt;
+  });
+  if (!run) {
+    throw new Error(`Expected Teams run for prompt: ${prompt}`);
+  }
+  return run.id;
+}
+
+function requestTokenFromUrl(authorizationUrl: string): string {
+  const url = new URL(authorizationUrl);
+  const prefix = "/computer-use/authorize/";
+  if (!url.pathname.startsWith(prefix)) {
+    throw new Error(`Unexpected authorization URL: ${authorizationUrl}`);
+  }
+  return decodeURIComponent(url.pathname.slice(prefix.length));
+}
+
 function promptSection(
   prompt: string,
   heading: string,
@@ -431,17 +528,99 @@ async function connectTeamsFixture(
   );
 }
 
-function dispatchRunId(dispatch: unknown): string {
-  if (typeof dispatch !== "object" || dispatch === null) {
-    throw new Error("Expected Teams dispatch object");
-  }
-  const kind = Reflect.get(dispatch, "kind");
-  expect(kind === "accepted" || kind === "queued").toBeTruthy();
-  const runId = Reflect.get(dispatch, "runId");
-  if (typeof runId !== "string") {
-    throw new Error("Expected Teams dispatch run id");
-  }
-  return runId;
+function teamsPersonalMessageActivity(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly id: string;
+  readonly text: string;
+  readonly value?: Readonly<Record<string, unknown>>;
+}): Record<string, unknown> {
+  return teamsMessageActivity(args.fixture, {
+    id: args.id,
+    conversation: {
+      id: `a:personal-${args.fixture.teamsUserId}`,
+      conversationType: "personal",
+    },
+    channelData: {
+      tenant: {
+        id: args.fixture.teamsTenantId,
+        name: args.fixture.teamsTenantName,
+      },
+      teamsAppId: "teams-app-test",
+    },
+    text: args.text,
+    entities: [],
+    ...(args.value ? { value: args.value } : {}),
+    replyToId: null,
+  });
+}
+
+function teamsPersonalThreadMessageActivity(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly id: string;
+  readonly threadId: string;
+  readonly text: string;
+}): Record<string, unknown> {
+  return teamsMessageActivity(args.fixture, {
+    id: args.id,
+    conversation: {
+      id: `a:personal-${args.fixture.teamsUserId}`,
+      conversationType: "personal",
+    },
+    channelData: {
+      tenant: {
+        id: args.fixture.teamsTenantId,
+        name: args.fixture.teamsTenantName,
+      },
+      teamsAppId: "teams-app-test",
+    },
+    text: args.text,
+    entities: [],
+    replyToId: args.threadId,
+  });
+}
+
+async function setupConnectedTeamsBotActor(): Promise<{
+  readonly fixture: TeamsConnectFixture;
+  readonly actor: ReturnType<typeof authOrgApi.user>;
+  readonly runnerGroup: string;
+  readonly outboundRequests: TeamsOutboundRequests;
+}> {
+  const fixture = await trackTeamsFixture(
+    Promise.resolve(teamsConnectFixture()),
+  );
+  const actor = authOrgApi.user({
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+  });
+  const runnerGroup = runsApi.configureRunnerGroup();
+  context.mocks.ably.publish.mockResolvedValue(undefined);
+  authOrgApi.acceptAgentStorageWrites();
+  runsApi.acceptStorageDownloads();
+  runsApi.acceptTelemetryIngest();
+  const agent = await authOrgApi.createAgent(actor, {
+    displayName: "Teams default agent",
+    visibility: "public",
+  });
+  await authOrgApi.setDefaultAgent(actor, agent.agentId);
+  await runsApi.grantProEntitlement(actor);
+  await runsApi.ensureOrgModelProvider(actor);
+  botFrameworkHandlers();
+  const outboundRequests = teamsOutboundHandlers(
+    fixture.serviceUrl,
+    fixture.teamsTenantId,
+  );
+
+  const installResponse = await postTeamsActivity({
+    activity: teamsMessageActivity(fixture),
+    token: teamsToken(),
+  });
+  expect(installResponse.status).toBe(200);
+  await installResponse.json();
+  await flushWaitUntilForTest();
+  await connectTeamsFixture(fixture);
+
+  return { fixture, actor, runnerGroup, outboundRequests };
 }
 
 describe("POST /api/zero/teams/bot", () => {
@@ -456,6 +635,7 @@ describe("POST /api/zero/teams/bot", () => {
   });
 
   afterEach(async () => {
+    await flushWaitUntilForTest();
     await removeTeamsForTest(context.signal, botFixture());
   });
 
@@ -551,11 +731,9 @@ describe("POST /api/zero/teams/bot", () => {
     expect(connectUrl.searchParams.get("upn")).toBeNull();
     expect(connectUrl.searchParams.get("teamId")).toBe("team-1");
     expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
-    expect(body.dispatch).toMatchObject({
-      kind: "notice",
-      connectUrl: expect.stringContaining(`${APP_ORIGIN}/settings/teams`),
-      replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
-    });
+    expect(connectUrl.searchParams.get("conversationType")).toBe("channel");
+    expect(body).not.toHaveProperty("dispatch");
+    await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
       conversationId: "19:thread@thread.tacv2",
@@ -642,14 +820,16 @@ describe("POST /api/zero/teams/bot", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       activity: {
         kind: "message",
         text: "hello channel",
         mentionsRecipient: false,
       },
-      dispatch: { kind: "ignored" },
     });
+    expect(body).not.toHaveProperty("dispatch");
+    await flushWaitUntilForTest();
   });
 
   it("handles Teams personal messages without requiring a bot mention", async () => {
@@ -675,7 +855,8 @@ describe("POST /api/zero/teams/bot", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       activity: {
         kind: "message",
         conversationType: "personal",
@@ -683,11 +864,9 @@ describe("POST /api/zero/teams/bot", () => {
         text: "hello from dm",
         mentionsRecipient: false,
       },
-      dispatch: {
-        kind: "notice",
-        replyText: TEAMS_LOGIN_PROMPT_FALLBACK_TEXT,
-      },
     });
+    expect(body).not.toHaveProperty("dispatch");
+    await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
     expect(outboundRequests[0]).toMatchObject({
       conversationId: "a:personal-conversation",
@@ -748,13 +927,463 @@ describe("POST /api/zero/teams/bot", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       activity: {
         kind: "message",
         text: "ask @Grace Hopper (29:user-2) to review",
         mentionsRecipient: true,
       },
     });
+    expect(body).not.toHaveProperty("dispatch");
+    await flushWaitUntilForTest();
+  });
+
+  it("handles connected Teams bot commands", async () => {
+    const { fixture, actor, outboundRequests } =
+      await setupConnectedTeamsBotActor();
+    const switchAgent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams support agent",
+      visibility: "public",
+    });
+    outboundRequests.splice(0, outboundRequests.length);
+
+    const helpResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-help",
+        text: "help",
+      }),
+      token: teamsToken(),
+    });
+    expect(helpResponse.status).toBe(200);
+    const helpBody = await readTeamsBotResponseAndFlush(helpResponse);
+    expect(helpBody).not.toHaveProperty("dispatch");
+
+    const switchResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-switch",
+        text: "/zero switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchResponse.status).toBe(200);
+    const switchBody = await readTeamsBotResponseAndFlush(switchResponse);
+    expect(switchBody).not.toHaveProperty("dispatch");
+
+    const modelResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-model",
+        text: "zero model",
+      }),
+      token: teamsToken(),
+    });
+    expect(modelResponse.status).toBe(200);
+    const modelBody = await readTeamsBotResponseAndFlush(modelResponse);
+    expect(modelBody).not.toHaveProperty("dispatch");
+
+    const switchSubmitResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-switch-submit",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_agent",
+          selectedComposeId: switchAgent.agentId,
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(switchSubmitResponse.status).toBe(200);
+    const switchSubmitBody =
+      await readTeamsBotResponseAndFlush(switchSubmitResponse);
+    expect(switchSubmitBody).toMatchObject({
+      activity: {
+        value: {
+          zeroTeamsAction: "switch_agent",
+          selectedComposeId: switchAgent.agentId,
+        },
+      },
+    });
+    expect(switchSubmitBody).not.toHaveProperty("dispatch");
+    const modelSubmitResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-model-submit",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_model",
+          selectedModel: "claude-sonnet-4-6",
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(modelSubmitResponse.status).toBe(200);
+    const modelSubmitBody =
+      await readTeamsBotResponseAndFlush(modelSubmitResponse);
+    expect(modelSubmitBody).toMatchObject({
+      activity: {
+        value: {
+          zeroTeamsAction: "switch_model",
+          selectedModel: "claude-sonnet-4-6",
+        },
+      },
+    });
+    expect(modelSubmitBody).not.toHaveProperty("dispatch");
+    await expect(
+      userConfigApi.readModelPreference(actor),
+    ).resolves.toMatchObject({
+      selectedModel: "claude-sonnet-4-6",
+    });
+
+    expect(outboundRequests).toHaveLength(5);
+    expect(
+      outboundRequests.map((request) => {
+        return request.activityId;
+      }),
+    ).toStrictEqual([
+      "activity-command-help",
+      "activity-command-switch",
+      "activity-command-model",
+      "activity-command-switch-submit",
+      "activity-command-model-submit",
+    ]);
+    expect(outboundRequests[0]?.body).toMatchObject({
+      type: "message",
+      text: expect.stringContaining("Zero Teams Bot Help"),
+    });
+    expect(outboundRequests[1]?.body).toMatchObject({
+      type: "message",
+      summary: expect.stringContaining("Choose which agent should respond"),
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: expect.arrayContaining([
+              expect.objectContaining({
+                type: "Input.ChoiceSet",
+                id: "selectedComposeId",
+                choices: expect.arrayContaining([
+                  expect.objectContaining({
+                    title: expect.stringContaining("Use org default"),
+                    value: "__org_default__",
+                  }),
+                  expect.objectContaining({
+                    title: "Teams support agent",
+                    value: switchAgent.agentId,
+                  }),
+                ]),
+              }),
+            ]),
+            actions: [
+              {
+                type: "Action.Submit",
+                title: "Switch",
+                data: { zeroTeamsAction: "switch_agent" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(outboundRequests[2]?.body).toMatchObject({
+      type: "message",
+      summary: expect.stringContaining("Choose the model"),
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: expect.arrayContaining([
+              expect.objectContaining({
+                type: "Input.ChoiceSet",
+                id: "selectedModel",
+                choices: expect.arrayContaining([
+                  expect.objectContaining({
+                    title: expect.stringContaining("Claude Sonnet 4.6"),
+                    value: "claude-sonnet-4-6",
+                  }),
+                ]),
+              }),
+            ]),
+            actions: [
+              {
+                type: "Action.Submit",
+                title: "Switch",
+                data: { zeroTeamsAction: "switch_model" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(outboundRequests[3]?.body).toMatchObject({
+      type: "message",
+      text: expect.stringContaining("Teams support agent"),
+    });
+    expect(outboundRequests[4]?.body).toMatchObject({
+      type: "message",
+      text: expect.stringContaining("Claude Sonnet 4.6"),
+    });
+
+    outboundRequests.splice(0, outboundRequests.length);
+    const switchedRunResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-switch-run",
+        text: "run after switch",
+      }),
+      token: teamsToken(),
+    });
+    expect(switchedRunResponse.status).toBe(200);
+    const switchedRunBody =
+      await readTeamsBotResponseAndFlush(switchedRunResponse);
+    expect(switchedRunBody).not.toHaveProperty("dispatch");
+    const switchedRunId = await runIdForPrompt(actor, "run after switch");
+    await expect(
+      runsApi.listAgentRuns(actor, { limit: 10 }),
+    ).resolves.toMatchObject({
+      runs: expect.arrayContaining([
+        expect.objectContaining({
+          appendSystemPrompt: expect.stringContaining(
+            "Your name is Teams support agent.",
+          ),
+          prompt: "run after switch",
+        }),
+      ]),
+    });
+    await runsApi.requestCancelRun(actor, switchedRunId, [200]);
+
+    outboundRequests.splice(0, outboundRequests.length);
+    const disconnectResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-command-disconnect",
+        text: "disconnect",
+      }),
+      token: teamsToken(),
+    });
+    expect(disconnectResponse.status).toBe(200);
+    const disconnectBody =
+      await readTeamsBotResponseAndFlush(disconnectResponse);
+    expect(disconnectBody).not.toHaveProperty("dispatch");
+    expect(outboundRequests).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          body: expect.objectContaining({
+            type: "message",
+            text: expect.stringContaining("agent access has been revoked"),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("replies when a connected Teams run is queued", async () => {
+    const { fixture, actor, outboundRequests } =
+      await setupConnectedTeamsBotActor();
+    outboundRequests.splice(0, outboundRequests.length);
+
+    const firstResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-queue-active-1",
+        text: "active run one",
+      }),
+      token: teamsToken(),
+    });
+    expect(firstResponse.status).toBe(200);
+    const firstBody = await readTeamsBotResponseAndFlush(firstResponse);
+    expect(firstBody).not.toHaveProperty("dispatch");
+    const firstRunId = await runIdForPrompt(actor, "active run one");
+
+    const secondResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-queue-active-2",
+        text: "active run two",
+      }),
+      token: teamsToken(),
+    });
+    expect(secondResponse.status).toBe(200);
+    const secondBody = await readTeamsBotResponseAndFlush(secondResponse);
+    expect(secondBody).not.toHaveProperty("dispatch");
+    const secondRunId = await runIdForPrompt(actor, "active run two");
+
+    const queuedResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-queue-third",
+        text: "queued run three",
+      }),
+      token: teamsToken(),
+    });
+    expect(queuedResponse.status).toBe(200);
+    const queuedBody = await readTeamsBotResponseAndFlush(queuedResponse);
+    expect(queuedBody).not.toHaveProperty("dispatch");
+    const queuedRunId = await runIdForPrompt(actor, "queued run three");
+
+    expect(outboundRequests).toHaveLength(4);
+    expect(
+      outboundRequests.slice(0, 3).map((request) => {
+        return request.body;
+      }),
+    ).toStrictEqual([
+      {
+        type: "typing",
+        channelData: { tenant: { id: fixture.teamsTenantId } },
+      },
+      {
+        type: "typing",
+        channelData: { tenant: { id: fixture.teamsTenantId } },
+      },
+      {
+        type: "typing",
+        channelData: { tenant: { id: fixture.teamsTenantId } },
+      },
+    ]);
+    expect(outboundRequests[3]).toMatchObject({
+      activityId: "activity-queue-third",
+      body: {
+        type: "message",
+        summary: expect.stringContaining("Run queued"),
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: expect.arrayContaining([
+                expect.objectContaining({ text: "Run queued" }),
+              ]),
+              actions: [
+                {
+                  type: "Action.OpenUrl",
+                  title: "View queue",
+                  url: `${APP_ORIGIN}/?queue=1`,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(outboundRequests[3]?.body).not.toHaveProperty("text");
+    expect(outboundRequests.reactions).toHaveLength(0);
+
+    await runsApi.requestCancelRun(actor, queuedRunId, [200]);
+    await runsApi.requestCancelRun(actor, firstRunId, [200]);
+    await runsApi.requestCancelRun(actor, secondRunId, [200]);
+  });
+
+  it("sends typing and adds audit/footer text for Teams run pre-dispatch failures", async () => {
+    const fixture = await trackTeamsFixture(
+      Promise.resolve(teamsConnectFixture()),
+    );
+    const actor = authOrgApi.user({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+    });
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    authOrgApi.acceptAgentStorageWrites();
+    const defaultAgent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams default agent",
+      visibility: "public",
+    });
+    await authOrgApi.setDefaultAgent(actor, defaultAgent.agentId);
+    const supportAgent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams support agent",
+      visibility: "public",
+    });
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: { id: fixture.orgId },
+          role: "org:admin",
+        },
+      ],
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:admin",
+      },
+      {
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    );
+    botFrameworkHandlers();
+    const outboundRequests = teamsOutboundHandlers(
+      fixture.serviceUrl,
+      fixture.teamsTenantId,
+    );
+
+    const installResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture),
+      token: teamsToken(),
+    });
+    expect(installResponse.status).toBe(200);
+    await installResponse.json();
+    await flushWaitUntilForTest();
+    await connectTeamsFixture(fixture);
+
+    outboundRequests.splice(0, outboundRequests.length);
+    const switchResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-failure-switch-agent",
+        text: "",
+        value: {
+          zeroTeamsAction: "switch_agent",
+          selectedComposeId: supportAgent.agentId,
+        },
+      }),
+      token: teamsToken(),
+    });
+    expect(switchResponse.status).toBe(200);
+    const switchBody = await readTeamsBotResponseAndFlush(switchResponse);
+    expect(switchBody).not.toHaveProperty("dispatch");
+
+    outboundRequests.splice(0, outboundRequests.length);
+    const failedResponse = await postTeamsActivity({
+      activity: teamsPersonalMessageActivity({
+        fixture,
+        id: "activity-run-pre-dispatch-failure",
+        text: "run without entitlement",
+      }),
+      token: teamsToken(),
+    });
+    expect(failedResponse.status).toBe(200);
+    const body = await readTeamsBotResponseAndFlush(failedResponse);
+    expect(body).not.toHaveProperty("dispatch");
+
+    expect(outboundRequests).toHaveLength(2);
+    expect(outboundRequests[0]).toMatchObject({
+      body: {
+        type: "typing",
+        channelData: { tenant: { id: fixture.teamsTenantId } },
+      },
+    });
+    expect(outboundRequests[1]).toMatchObject({
+      activityId: "activity-run-pre-dispatch-failure",
+      body: {
+        type: "message",
+        text: expect.stringContaining(`[Audit](${APP_ORIGIN}/activities)`),
+        textFormat: "markdown",
+      },
+    });
+    expect(outboundRequests[1]?.body).toMatchObject({
+      text: expect.stringContaining("Sent via Teams support agent"),
+    });
+    expect(outboundRequests.reactions).toHaveLength(0);
   });
 
   it("dispatches connected Teams messages to the org default agent", async () => {
@@ -779,14 +1408,21 @@ describe("POST /api/zero/teams/bot", () => {
     await runsApi.grantProEntitlement(actor);
     await runsApi.ensureOrgModelProvider(actor);
     botFrameworkHandlers();
-    teamsOutboundHandlers(fixture.serviceUrl, fixture.teamsTenantId);
+    const outboundRequests = teamsOutboundHandlers(
+      fixture.serviceUrl,
+      fixture.teamsTenantId,
+    );
 
     const installResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture),
       token: teamsToken(),
     });
     expect(installResponse.status).toBe(200);
+    await installResponse.json();
+    await flushWaitUntilForTest();
     await connectTeamsFixture(fixture);
+    outboundRequests.splice(0, outboundRequests.length);
+    outboundRequests.reactions.splice(0, outboundRequests.reactions.length);
 
     const channelMessages: TeamsGraphMessageFixture[] = [];
     const threadRoots: Record<string, TeamsGraphMessageFixture> = {
@@ -850,8 +1486,23 @@ describe("POST /api/zero/teams/bot", () => {
       token: teamsToken(),
     });
     expect(channelContextResponse.status).toBe(200);
-    const channelContextBody = await channelContextResponse.json();
-    const channelContextRunId = dispatchRunId(channelContextBody.dispatch);
+    const channelContextBody = await readTeamsBotResponseAndFlush(
+      channelContextResponse,
+    );
+    expect(channelContextBody).not.toHaveProperty("dispatch");
+    expect(outboundRequests).toHaveLength(0);
+    expect(outboundRequests.reactions).toStrictEqual([
+      {
+        method: "PUT",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-channel-context-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
+    const channelContextRunId = await runIdForPrompt(
+      actor,
+      "start another topic",
+    );
     await runsApi.heartbeatRunner(runnerGroup);
     const channelContextClaim =
       await runsApi.claimRunnerJob(channelContextRunId);
@@ -896,13 +1547,25 @@ describe("POST /api/zero/teams/bot", () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.dispatch).toMatchObject({
-      kind: expect.stringMatching(/^(accepted|queued)$/u),
-      runId: expect.any(String),
-    });
+    const body = await readTeamsBotResponseAndFlush(response);
+    expect(body).not.toHaveProperty("dispatch");
+    expect(outboundRequests).toHaveLength(0);
+    expect(outboundRequests.reactions).toStrictEqual([
+      {
+        method: "PUT",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-channel-context-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+      {
+        method: "PUT",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-dispatch-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
 
-    const runId = dispatchRunId(body.dispatch);
+    const runId = await runIdForPrompt(actor, "ship the Teams dispatch");
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
@@ -971,6 +1634,72 @@ describe("POST /api/zero/teams/bot", () => {
     expect(graphRequests).toContain("thread-replies:root-dispatch");
   });
 
+  it("includes Teams thread computer use host bindings in queued zero tokens", async () => {
+    const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
+    const host = await computerUseApi.startComputerUseHost(actor, {
+      hostName: "Teams authorized host",
+    });
+    const threadId = "teams-computer-use-thread";
+
+    const firstResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-computer-use-authorize",
+        threadId,
+        text: "authorize the browser",
+      }),
+      token: teamsToken(),
+    });
+    expect(firstResponse.status).toBe(200);
+    const firstBody = await readTeamsBotResponseAndFlush(firstResponse);
+    expect(firstBody).not.toHaveProperty("dispatch");
+
+    const firstRunId = await runIdForPrompt(actor, "authorize the browser");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRunId);
+    const firstZeroToken = firstClaim.environment?.ZERO_TOKEN;
+    if (!firstZeroToken) {
+      throw new Error("Claimed Teams runner job did not include ZERO_TOKEN");
+    }
+    const created = await computerUseApi.createComputerUseAuthorizationRequest({
+      bearer: firstZeroToken,
+    });
+    const requestToken = requestTokenFromUrl(created.authorizationUrl);
+    await computerUseApi.applyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      host.hostId,
+    );
+    await runsApi.requestCancelRun(actor, firstRunId, [200]);
+
+    const secondResponse = await postTeamsActivity({
+      activity: teamsPersonalThreadMessageActivity({
+        fixture,
+        id: "activity-computer-use-resume",
+        threadId,
+        text: "use the browser",
+      }),
+      token: teamsToken(),
+    });
+    expect(secondResponse.status).toBe(200);
+    const secondBody = await readTeamsBotResponseAndFlush(secondResponse);
+    expect(secondBody).not.toHaveProperty("dispatch");
+
+    const secondRunId = await runIdForPrompt(actor, "use the browser");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const secondClaim = await runsApi.claimRunnerJob(secondRunId);
+    const secondZeroToken = secondClaim.environment?.ZERO_TOKEN;
+    if (!secondZeroToken) {
+      throw new Error("Claimed Teams runner job did not include ZERO_TOKEN");
+    }
+    const zeroAuth = verifyZeroToken(secondZeroToken);
+    expect(zeroAuth).toMatchObject({ computerUseHostId: host.hostId });
+    expect(zeroAuth?.capabilities).toContain("computer-use:write");
+
+    await runsApi.requestCancelRun(actor, secondRunId, [200]);
+    await computerUseApi.deleteComputerUseHost(actor, host.hostId);
+  });
+
   it("asks connected Teams users to configure a default agent", async () => {
     const fixture = await trackTeamsFixture(
       Promise.resolve(teamsConnectFixture()),
@@ -986,6 +1715,8 @@ describe("POST /api/zero/teams/bot", () => {
       token: teamsToken(),
     });
     expect(installResponse.status).toBe(200);
+    await installResponse.json();
+    await flushWaitUntilForTest();
     await connectTeamsFixture(fixture);
 
     const response = await postTeamsActivity({
@@ -997,12 +1728,8 @@ describe("POST /api/zero/teams/bot", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      dispatch: {
-        kind: "notice",
-        replyText: expect.stringContaining("No agent is configured"),
-      },
-    });
+    const body = await readTeamsBotResponseAndFlush(response);
+    expect(body).not.toHaveProperty("dispatch");
     expect(outboundRequests.at(-1)).toMatchObject({
       activityId: "activity-no-default",
       body: {
@@ -1051,6 +1778,7 @@ describe("POST /api/zero/teams/bot", () => {
       activity: teamsMessageActivity(),
       token: teamsToken(),
     });
+    await flushWaitUntilForTest();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroTeamsConnectContract);
     await accept(

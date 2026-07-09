@@ -47,6 +47,7 @@ import {
 } from "@vm0/db/schema/computer-use-host";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
+import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -297,6 +298,10 @@ async function clearComputerUseHostThreadBindings(params: {
     .update(slackOrgThreadSessions)
     .set({ computerUseHostId: null, updatedAt: now })
     .where(eq(slackOrgThreadSessions.computerUseHostId, params.hostId));
+  await params.tx
+    .update(teamsOrgThreadSessions)
+    .set({ computerUseHostId: null, updatedAt: now })
+    .where(eq(teamsOrgThreadSessions.computerUseHostId, params.hostId));
 }
 
 function isComputerUseWriteCommandKind(

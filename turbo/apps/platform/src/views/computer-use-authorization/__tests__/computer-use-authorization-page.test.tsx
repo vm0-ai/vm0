@@ -200,6 +200,39 @@ describe("computer use authorization page", () => {
     expect(remainingAuthorizeButtons[0]).toBeDisabled();
   });
 
+  it("labels Teams authorization requests", async () => {
+    context.mocks.api(
+      zeroComputerUseAuthorizationRequestsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          source: "teams",
+          expiresAt: "2026-06-25T12:00:00Z",
+          completedAt: null,
+          computerUseHostId: null,
+          hosts: [
+            computerUseHost({
+              id: "00000000-0000-4000-a000-000000000005",
+              displayName: "Teams Mac",
+              status: "online",
+            }),
+          ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/computer-use/authorize/vm0_computer_use_authorization_request_teams",
+    });
+
+    await expect(
+      screen.findByText(
+        "Choose an online computer for Zero to use in this Teams thread.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByText("Teams Mac")).toBeInTheDocument();
+  });
+
   it("shows desktop guidance when there are no online hosts", async () => {
     context.mocks.api(
       zeroComputerUseAuthorizationRequestsContract.get,

@@ -3956,6 +3956,13 @@
       "when": 1783586015281,
       "tag": "0564_soft_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 565,
+      "version": "7",
+      "when": 1783591372546,
+      "tag": "0565_eager_iron_monger",
+      "breakpoints": true
     }
   ]
 }

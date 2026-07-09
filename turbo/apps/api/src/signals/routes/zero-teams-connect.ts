@@ -64,6 +64,11 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       teamId: body.teamId,
       teamName: body.teamName,
       serviceUrl: body.serviceUrl,
+      conversationId: body.conversationId,
+      conversationType: body.conversationType,
+      activityId: body.activityId,
+      channelId: body.channelId,
+      threadId: body.threadId,
     },
     signal,
   );

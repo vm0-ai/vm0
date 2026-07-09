@@ -1,15 +1,22 @@
 import { command } from "ccstate";
-import { zeroTeamsBotContract } from "@vm0/api-contracts/contracts/zero-teams-bot";
+import {
+  zeroTeamsBotContract,
+  type TeamsInboundActivity,
+} from "@vm0/api-contracts/contracts/zero-teams-bot";
+import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 
 import {
   normalizeTeamsActivity,
   readTeamsActivityChannelId,
   readTeamsActivityServiceUrl,
 } from "../../lib/teams-bot-activity";
+import { env } from "../../lib/env";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { logger } from "../../lib/log";
 import { authorization$, request$ } from "../context/hono";
+import { waitUntil } from "../context/wait-until";
 import {
+  deleteTeamsReaction,
   sendTeamsMessageReply,
   type TeamsAdaptiveCard,
 } from "../external/teams-bot-client";
@@ -21,11 +28,13 @@ import {
   recordTeamsInstallationActivity$,
 } from "../services/zero-teams-connect.service";
 import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
-import { safeJsonParse } from "../utils";
+import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
+import { safeJsonParse, settle, tapError } from "../utils";
 
 const L = logger("TeamsBot");
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
-  "To use Zero in Teams, please connect your account first.";
+  "Please connect your account to use Zero in this Teams workspace.";
+const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -73,9 +82,187 @@ function buildTeamsLoginPromptCard(args: {
   };
 }
 
+function queueUrl(): string {
+  return `${env("APP_URL")}/?queue=1`;
+}
+
+function buildTeamsQueueText(url: string): string {
+  return `\u26a0 Run queued -- concurrency limit reached. Will start automatically when a slot is available. [View queue](${url})`;
+}
+
+function buildTeamsQueueCard(args: {
+  readonly url: string;
+}): TeamsAdaptiveCard {
+  return {
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
+      {
+        type: "TextBlock",
+        text: "Run queued",
+        wrap: true,
+      },
+      {
+        type: "TextBlock",
+        text: "Concurrency limit reached. Will start automatically when a slot is available.",
+        wrap: true,
+      },
+    ],
+    actions: [
+      {
+        type: "Action.OpenUrl",
+        title: "View queue",
+        url: args.url,
+      },
+    ],
+  };
+}
+
+type TeamsDispatchReplySource =
+  | {
+      readonly kind: "notice";
+      readonly replyText: string;
+      readonly connectUrl?: string;
+      readonly card?: TeamsAdaptiveCard;
+    }
+  | { readonly kind: "failed"; readonly replyText: string }
+  | { readonly kind: "queued" }
+  | { readonly kind: "ignored" | "accepted" };
+
+type TeamsMessageActivity = Extract<TeamsInboundActivity, { kind: "message" }>;
+type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
+
+function dispatchReplyContent(dispatch: TeamsDispatchReplySource): {
+  readonly replyText: string | null;
+  readonly card?: TeamsAdaptiveCard;
+} {
+  if (dispatch.kind === "notice") {
+    return {
+      replyText: dispatch.replyText,
+      ...(dispatch.card
+        ? { card: dispatch.card }
+        : dispatch.connectUrl
+          ? {
+              card: buildTeamsLoginPromptCard({
+                connectUrl: dispatch.connectUrl,
+              }),
+            }
+          : {}),
+    };
+  }
+  if (dispatch.kind === "failed") {
+    return { replyText: dispatch.replyText };
+  }
+  if (dispatch.kind === "queued") {
+    const url = queueUrl();
+    return {
+      replyText: buildTeamsQueueText(url),
+      card: buildTeamsQueueCard({ url }),
+    };
+  }
+  return { replyText: null };
+}
+
+async function clearTeamsThinkingReactionForActivity(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (
+    args.activity.conversationType === "personal" ||
+    !args.activity.activityId
+  ) {
+    return;
+  }
+
+  const result = await settle(
+    deleteTeamsReaction({
+      serviceUrl: args.activity.serviceUrl,
+      conversationId: args.activity.conversationId,
+      activityId: args.activity.activityId,
+      tenantId: args.activity.tenantId,
+      reactionType: TEAMS_THINKING_REACTION_TYPE,
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  const error = !result.ok
+    ? result.error
+    : result.value.kind === "teams-error"
+      ? result.value.error
+      : undefined;
+  if (error !== undefined) {
+    L.debug("Failed to clear Teams thinking reaction after dispatch failure", {
+      tenantId: args.activity.tenantId,
+      conversationId: args.activity.conversationId,
+      activityId: args.activity.activityId,
+      error,
+    });
+  }
+}
+
+const dispatchTeamsMessageAndReply$ = command(
+  async (
+    { set },
+    args: {
+      readonly activity: TeamsMessageActivity;
+      readonly installation: TeamsInstallation | null;
+      readonly apiStartTime: number;
+      readonly timing: ApiDispatchTimingCollector;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const dispatch = await set(
+      dispatchTeamsMessageToAgent$,
+      {
+        activity: args.activity,
+        installation: args.installation,
+        apiStartTime: args.apiStartTime,
+        timing: args.timing,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (dispatch.kind === "failed") {
+      await clearTeamsThinkingReactionForActivity({
+        activity: args.activity,
+        signal,
+      });
+      signal.throwIfAborted();
+    }
+
+    const { replyText, card } = dispatchReplyContent(dispatch);
+    if (!replyText) {
+      return;
+    }
+
+    const reply = await sendTeamsMessageReply({
+      serviceUrl: args.activity.serviceUrl,
+      conversationId: args.activity.conversationId,
+      activityId: args.activity.activityId ?? undefined,
+      tenantId: args.activity.tenantId,
+      text: replyText,
+      ...(card ? { card } : {}),
+      signal,
+    });
+    signal.throwIfAborted();
+
+    if (reply.kind === "teams-error") {
+      L.warn("Teams dispatch reply failed", {
+        tenantId: args.activity.tenantId,
+        conversationId: args.activity.conversationId,
+        activityId: args.activity.activityId,
+        status: reply.status,
+        error: reply.error,
+      });
+    }
+  },
+);
+
 const handleZeroTeamsBot$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const request = get(request$);
+    const apiStartTime = now();
     const bodyText = await request.text();
     signal.throwIfAborted();
 
@@ -130,47 +317,30 @@ const handleZeroTeamsBot$ = command(
 
     const installation =
       activityResult.kind === "upserted" ? activityResult.installation : null;
-    const dispatch = await set(
-      dispatchTeamsMessageToAgent$,
-      {
-        activity: normalized.activity,
-        installation,
-        apiStartTime: now(),
-      },
-      signal,
+    const timing = new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_teams_entrypoint_gap",
+      "nested",
+      apiStartTime,
     );
-    signal.throwIfAborted();
-
-    if (
-      normalized.activity.kind === "message" &&
-      (dispatch.kind === "notice" || dispatch.kind === "failed")
-    ) {
-      const reply = await sendTeamsMessageReply({
-        serviceUrl: normalized.activity.serviceUrl,
-        conversationId: normalized.activity.conversationId,
-        activityId: normalized.activity.activityId ?? undefined,
-        tenantId: normalized.activity.tenantId,
-        text: dispatch.replyText,
-        ...(dispatch.kind === "notice" && dispatch.connectUrl
-          ? {
-              card: buildTeamsLoginPromptCard({
-                connectUrl: dispatch.connectUrl,
-              }),
-            }
-          : {}),
-        signal,
-      });
-      signal.throwIfAborted();
-
-      if (reply.kind === "teams-error") {
-        L.warn("Teams dispatch reply failed", {
-          tenantId: normalized.activity.tenantId,
-          conversationId: normalized.activity.conversationId,
-          activityId: normalized.activity.activityId,
-          status: reply.status,
-          error: reply.error,
-        });
-      }
+    if (normalized.activity.kind === "message") {
+      waitUntil(
+        tapError(
+          set(
+            dispatchTeamsMessageAndReply$,
+            {
+              activity: normalized.activity,
+              installation,
+              apiStartTime,
+              timing,
+            },
+            signal,
+          ),
+          (error) => {
+            L.error("Error handling Teams message activity", { error });
+          },
+        ),
+      );
     }
 
     return {
@@ -182,7 +352,6 @@ const handleZeroTeamsBot$ = command(
           activity: normalized.activity,
           installation,
         }),
-        dispatch,
       },
     };
   },
