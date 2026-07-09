@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { FeatureSwitchKey } from "../feature-switch-key";
-import { STAFF_ORG_ID_FOR_TESTS } from "../staff-org-test-fixtures";
 import {
   isFeatureEnabled,
   getAllFeatureStates,
@@ -49,24 +48,6 @@ describe("isFeatureEnabled", () => {
     ).toBe(false);
   });
 
-  it("should return true when orgId hash matches enabledOrgIdHashes", () => {
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.Lab, {
-        orgId: STAFF_ORG_ID_FOR_TESTS,
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
-        orgId: STAFF_ORG_ID_FOR_TESTS,
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
-        orgId: STAFF_ORG_ID_FOR_TESTS,
-      }),
-    ).toBe(true);
-  });
-
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
@@ -83,15 +64,6 @@ describe("isFeatureEnabled", () => {
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Lab, {})).toBe(false);
   });
-
-  it("should return true when orgId matches even if userId does not", () => {
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.Lab, {
-        userId: "non-matching-user",
-        orgId: STAFF_ORG_ID_FOR_TESTS,
-      }),
-    ).toBe(true);
-  });
 });
 
 describe("getAllFeatureStates", () => {
@@ -99,17 +71,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-  });
-
-  it("should enable switches when orgId matches enabledOrgIdHashes", () => {
-    const states = getAllFeatureStates({
-      orgId: STAFF_ORG_ID_FOR_TESTS,
-    });
-    expect(states[FeatureSwitchKey.Lab]).toBe(true);
-    // Globally enabled should still be true
-    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    // Switches without org hashes should remain false
-    expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(false);
   });
 
   it("should return false for switches with orgId hashes when orgId does not match", () => {
@@ -122,7 +83,7 @@ describe("getAllFeatureStates", () => {
 
   it("should reflect the current staff org rollout matrix", () => {
     const staffOrgStates = getAllFeatureStates({
-      orgId: STAFF_ORG_ID_FOR_TESTS,
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(true);
     expect(

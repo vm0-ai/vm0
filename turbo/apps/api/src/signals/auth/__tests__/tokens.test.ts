@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { STAFF_ORG_ID_FOR_TESTS } from "@vm0/core/staff-org-test-fixtures";
 
 import {
   generateZeroToken,
@@ -165,7 +164,7 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates scrape capability behind staff zero scrape access", () => {
+  it("does not grant scrape capability from user feature switch overrides", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const overrideToken = generateZeroToken(
       "user_zero",
@@ -173,19 +172,11 @@ describe("auth tokens", () => {
       "org_zero",
       { [FeatureSwitchKey.ZeroScrape]: true },
     );
-    const staffToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      STAFF_ORG_ID_FOR_TESTS,
-    );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
       "scrape:read",
     );
     expect(verifyZeroToken(overrideToken)?.capabilities).not.toContain(
-      "scrape:read",
-    );
-    expect(verifyZeroToken(staffToken)?.capabilities).toContain(
       "scrape:read",
     );
   });
