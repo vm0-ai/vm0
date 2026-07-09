@@ -1076,6 +1076,82 @@ mod tests {
     }
 
     #[test]
+    fn service_unit_state_accepts_all_active_like_states_for_reporting() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let status = ExitStatus::from_raw(0);
+        for active_state in [
+            "active",
+            "activating",
+            "reloading",
+            "refreshing",
+            "deactivating",
+        ] {
+            let stdout = format!(
+                "LoadState=loaded\nActiveState={active_state}\nSubState=running\nResult=success\n"
+            );
+            let values = parse_systemctl_show_properties(
+                "vm0-runner-test.service",
+                &properties,
+                stdout.as_bytes(),
+            )
+            .unwrap();
+            let state = service_unit_state_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap();
+
+            assert_eq!(state.normalized_state, NormalizedUnitState::ActiveLike);
+            assert!(
+                state.is_active_like(),
+                "{active_state} should be active-like"
+            );
+        }
+    }
+
+    #[test]
+    fn service_unit_state_accepts_inactive_like_states_for_reporting() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "ActiveState", "SubState", "Result"];
+        let status = ExitStatus::from_raw(0);
+        for (active_state, normalized_state) in [
+            ("inactive", NormalizedUnitState::Inactive),
+            ("failed", NormalizedUnitState::Failed),
+            ("maintenance", NormalizedUnitState::Maintenance),
+        ] {
+            let stdout = format!(
+                "LoadState=loaded\nActiveState={active_state}\nSubState=dead\nResult=success\n"
+            );
+            let values = parse_systemctl_show_properties(
+                "vm0-runner-test.service",
+                &properties,
+                stdout.as_bytes(),
+            )
+            .unwrap();
+            let state = service_unit_state_from_systemctl_show(
+                "vm0-runner-test.service",
+                &properties,
+                &status,
+                &values,
+                b"",
+            )
+            .unwrap();
+
+            assert_eq!(state.normalized_state, normalized_state);
+            assert!(
+                !state.is_active_like(),
+                "{active_state} should not be active-like"
+            );
+        }
+    }
+
+    #[test]
     fn service_unit_state_preserves_empty_optional_fields() {
         use std::os::unix::process::ExitStatusExt;
 
