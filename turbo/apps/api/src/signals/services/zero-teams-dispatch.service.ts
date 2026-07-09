@@ -32,12 +32,15 @@ import {
   fetchTeamsChannelMessage,
   fetchTeamsChannelMessageReplies,
   fetchTeamsChannelMessages,
+  fetchTeamsUsers,
   sendTeamsReaction,
   sendTeamsTypingActivity,
   type TeamsAdaptiveCard,
+  type TeamsGraphAttachment,
   type TeamsGraphMessage,
+  type TeamsGraphUserInfo,
 } from "../external/teams-bot-client";
-import { settle } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -94,6 +97,7 @@ interface TeamsContextMessage {
   readonly senderId: string;
   readonly senderName: string | null;
   readonly senderPrincipalName: string | null;
+  readonly files: readonly TeamsPromptFile[];
 }
 
 interface TeamsAgent {
@@ -116,6 +120,7 @@ interface TeamsModelPickerOption {
 
 interface TeamsPromptFile {
   readonly fileId: string;
+  readonly sourceId?: string;
   readonly name: string;
   readonly contentType: string;
 }
@@ -407,6 +412,21 @@ function stringRecordValue(
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function recordFromUnknown(
+  value: unknown,
+): Readonly<Record<string, unknown>> | null {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Readonly<Record<string, unknown>>;
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  const parsed = safeJsonParse(value);
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    ? (parsed as Readonly<Record<string, unknown>>)
+    : null;
+}
+
 function teamsAttachmentDownloadUrl(
   attachment: TeamsInboundAttachment,
 ): string | null {
@@ -458,9 +478,11 @@ function teamsPromptFile(
     fileId: encodeTeamsFileToken({
       tenantId: activity.tenantId,
       url,
+      id: attachment.id ?? undefined,
       name,
       contentType,
     }),
+    sourceId: attachment.id ?? undefined,
     name,
     contentType,
   };
@@ -476,6 +498,7 @@ function teamsPromptFiles(activity: TeamsMessageActivity): TeamsPromptFile[] {
 function formatTeamsFileForContext(file: TeamsPromptFile): string {
   return [
     `[Teams file] ${file.name} (${file.contentType})`,
+    ...(file.sourceId ? [`   [Teams attachment ID] ${file.sourceId}`] : []),
     `   [ID] ${file.fileId}`,
   ].join("\n");
 }
@@ -494,6 +517,87 @@ function appendTeamsFilesToPrompt(
       return part.length > 0;
     })
     .join("\n\n");
+}
+
+function graphAttachmentContent(
+  attachment: TeamsGraphAttachment,
+): Readonly<Record<string, unknown>> | null {
+  return recordFromUnknown(attachment.content);
+}
+
+function teamsGraphAttachmentDownloadUrl(
+  attachment: TeamsGraphAttachment,
+): string | null {
+  const content = graphAttachmentContent(attachment);
+  return (
+    stringRecordValue(content, "downloadUrl") ??
+    attachment.contentUrl ??
+    stringRecordValue(content, "contentUrl")
+  );
+}
+
+function teamsGraphAttachmentName(attachment: TeamsGraphAttachment): string {
+  const content = graphAttachmentContent(attachment);
+  return (
+    attachment.name ??
+    stringRecordValue(content, "name") ??
+    stringRecordValue(content, "fileName") ??
+    "teams-file"
+  );
+}
+
+function teamsGraphAttachmentContentType(
+  attachment: TeamsGraphAttachment,
+  filename: string,
+): string {
+  const content = graphAttachmentContent(attachment);
+  if (
+    attachment.contentType &&
+    attachment.contentType !== TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE
+  ) {
+    return attachment.contentType;
+  }
+
+  const fileType = stringRecordValue(content, "fileType");
+  if (fileType && !filename.endsWith(`.${fileType}`)) {
+    return inferMimetype(`${filename}.${fileType}`);
+  }
+  return inferMimetype(filename);
+}
+
+function teamsGraphPromptFile(
+  tenantId: string,
+  attachment: TeamsGraphAttachment,
+): TeamsPromptFile | null {
+  const url = teamsGraphAttachmentDownloadUrl(attachment);
+  if (!url || !URL.canParse(url)) {
+    return null;
+  }
+
+  const name = teamsGraphAttachmentName(attachment);
+  const contentType = teamsGraphAttachmentContentType(attachment, name);
+  return {
+    fileId: encodeTeamsFileToken({
+      tenantId,
+      url,
+      id: attachment.id ?? undefined,
+      name,
+      contentType,
+    }),
+    sourceId: attachment.id ?? undefined,
+    name,
+    contentType,
+  };
+}
+
+function teamsGraphPromptFiles(
+  tenantId: string,
+  message: TeamsGraphMessage,
+): TeamsPromptFile[] {
+  return (message.attachments ?? []).flatMap((attachment) => {
+    const file = teamsGraphPromptFile(tenantId, attachment);
+    return file ? [file] : [];
+  });
 }
 
 async function installationForTenant(
@@ -958,14 +1062,18 @@ function formatTeamsContextMessage(
   message: TeamsContextMessage,
   relativeIndex: number,
 ): string {
-  return [
+  const parts = [
     "---",
     "",
     `- RELATIVE_INDEX: ${relativeIndex}`,
     formatTeamsSenderBlock(message),
     "",
     message.text,
-  ].join("\n");
+  ];
+  if (message.files.length > 0) {
+    parts.push(...message.files.map(formatTeamsFileForContext));
+  }
+  return parts.join("\n");
 }
 
 const TEAMS_CONTEXT_PREAMBLE = [
@@ -1005,8 +1113,52 @@ function formatTeamsContext(
   )}\n\n---`;
 }
 
+function plainTeamsMentionLabel(mentionText: string): string {
+  return mentionText
+    .replace(/<at[^>]*>/giu, "")
+    .replace(/<\/at>/giu, "")
+    .trim();
+}
+
+function teamsGraphMentionReplacement(
+  mention: NonNullable<TeamsGraphMessage["mentions"]>[number],
+): string | null {
+  const mentioned =
+    mention.mentioned?.user ??
+    mention.mentioned?.application ??
+    mention.mentioned?.device;
+  const label =
+    mentioned?.displayName ??
+    (mention.mentionText ? plainTeamsMentionLabel(mention.mentionText) : null);
+  if (!label) {
+    return null;
+  }
+  return mentioned?.id ? `@${label} (${mentioned.id})` : `@${label}`;
+}
+
+function replaceTeamsGraphMentions(
+  content: string,
+  mentions: readonly NonNullable<TeamsGraphMessage["mentions"]>[number][],
+): string {
+  let result = content;
+  for (const mention of mentions) {
+    if (!mention.mentionText) {
+      continue;
+    }
+    const replacement = teamsGraphMentionReplacement(mention);
+    if (!replacement) {
+      continue;
+    }
+    result = result.split(mention.mentionText).join(replacement);
+  }
+  return result;
+}
+
 function teamsGraphMessageText(message: TeamsGraphMessage): string {
-  const content = message.body?.content?.trim() ?? "";
+  const content = replaceTeamsGraphMentions(
+    message.body?.content?.trim() ?? "",
+    message.mentions ?? [],
+  );
   if (message.body?.contentType === "html") {
     return convert(content, { wordwrap: false }).trim();
   }
@@ -1015,21 +1167,29 @@ function teamsGraphMessageText(message: TeamsGraphMessage): string {
 
 function teamsGraphMessageSender(
   message: TeamsGraphMessage,
+  userInfoMap: ReadonlyMap<string, TeamsGraphUserInfo>,
 ): Pick<
   TeamsContextMessage,
   "senderId" | "senderName" | "senderPrincipalName"
 > {
   const sender =
     message.from?.user ?? message.from?.application ?? message.from?.device;
+  const userInfo = sender?.id ? userInfoMap.get(sender.id) : undefined;
   return {
     senderId: sender?.id ?? "unknown",
-    senderName: sender?.displayName ?? null,
-    senderPrincipalName: null,
+    senderName: userInfo?.displayName ?? sender?.displayName ?? null,
+    senderPrincipalName:
+      userInfo?.userPrincipalName ??
+      sender?.userPrincipalName ??
+      sender?.mail ??
+      null,
   };
 }
 
 function teamsGraphContextMessage(
+  tenantId: string,
   message: TeamsGraphMessage,
+  userInfoMap: ReadonlyMap<string, TeamsGraphUserInfo>,
 ): TeamsContextMessage | null {
   if (message.messageType && message.messageType !== "message") {
     return null;
@@ -1044,7 +1204,8 @@ function teamsGraphContextMessage(
     id: message.id ?? null,
     createdDateTime: message.createdDateTime ?? null,
     text,
-    ...teamsGraphMessageSender(message),
+    files: teamsGraphPromptFiles(tenantId, message),
+    ...teamsGraphMessageSender(message, userInfoMap),
   };
 }
 
@@ -1063,18 +1224,68 @@ function sortTeamsContextMessages(
 }
 
 function teamsContextMessages(
+  tenantId: string,
   messages: readonly TeamsGraphMessage[],
   excludedIds: ReadonlySet<string>,
+  userInfoMap: ReadonlyMap<string, TeamsGraphUserInfo>,
 ): TeamsContextMessage[] {
   return sortTeamsContextMessages(
     messages.flatMap((message) => {
       if (message.id && excludedIds.has(message.id)) {
         return [];
       }
-      const contextMessage = teamsGraphContextMessage(message);
+      const contextMessage = teamsGraphContextMessage(
+        tenantId,
+        message,
+        userInfoMap,
+      );
       return contextMessage ? [contextMessage] : [];
     }),
   );
+}
+
+function teamsGraphSenderUserIds(
+  messages: readonly TeamsGraphMessage[],
+): readonly string[] {
+  return [
+    ...new Set(
+      messages.flatMap((message) => {
+        const sender = message.from?.user;
+        const userId = sender?.id;
+        if (sender?.userPrincipalName || sender?.mail) {
+          return [];
+        }
+        return userId ? [userId] : [];
+      }),
+    ),
+  ];
+}
+
+async function fetchTeamsGraphUserInfoMap(args: {
+  readonly tenantId: string;
+  readonly messages: readonly TeamsGraphMessage[];
+  readonly signal: AbortSignal;
+}): Promise<ReadonlyMap<string, TeamsGraphUserInfo>> {
+  const userIds = teamsGraphSenderUserIds(args.messages);
+  if (userIds.length === 0) {
+    return new Map();
+  }
+
+  const result = await fetchTeamsUsers({
+    tenantId: args.tenantId,
+    userIds,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (result.kind === "teams-error") {
+    L.debug("Teams user context fetch failed", {
+      tenantId: args.tenantId,
+      status: result.status,
+      error: result.error,
+    });
+    return new Map();
+  }
+  return result.users;
 }
 
 function isTeamsThreadReply(activity: TeamsMessageActivity): boolean {
@@ -1171,10 +1382,19 @@ async function fetchTeamsThreadContext(args: {
     return "";
   }
 
+  const messages = [args.rootMessage, ...repliesResult.messages];
+  const userInfoMap = await fetchTeamsGraphUserInfoMap({
+    tenantId: activity.tenantId,
+    messages,
+    signal: args.signal,
+  });
+
   return formatTeamsThreadContext(
     teamsContextMessages(
-      [args.rootMessage, ...repliesResult.messages],
+      activity.tenantId,
+      messages,
       currentTeamsActivityIds(activity),
+      userInfoMap,
     ),
   );
 }
@@ -1223,10 +1443,22 @@ async function fetchRecentTeamsChannelContext(args: {
     return "";
   }
 
+  const messages = teamsMessagesBeforeReference(
+    result.messages,
+    args.beforeMessage,
+  );
+  const userInfoMap = await fetchTeamsGraphUserInfoMap({
+    tenantId: activity.tenantId,
+    messages,
+    signal: args.signal,
+  });
+
   return formatRecentTeamsChannelContext(
     teamsContextMessages(
-      teamsMessagesBeforeReference(result.messages, args.beforeMessage),
+      activity.tenantId,
+      messages,
       recentChannelContextExcludedIds(activity),
+      userInfoMap,
     ),
   );
 }

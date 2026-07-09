@@ -226,6 +226,9 @@ const download$ = command(async ({ get }, signal: AbortSignal) => {
   headers.set("Content-Type", contentType);
   headers.set("X-File-Name", encodeURIComponent(filename));
   headers.set("X-File-Mimetype", contentType);
+  if (payload.id) {
+    headers.set("X-Teams-Attachment-ID", encodeURIComponent(payload.id));
+  }
   if (contentLength) {
     headers.set("Content-Length", contentLength);
   }

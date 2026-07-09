@@ -235,6 +235,10 @@ interface TeamsGraphMessageFixture {
   readonly createdDateTime: string;
   readonly senderId?: string;
   readonly senderName?: string;
+  readonly senderPrincipalName?: string | null;
+  readonly graphUserPrincipalName?: string | null;
+  readonly attachments?: readonly Record<string, unknown>[];
+  readonly mentions?: readonly Record<string, unknown>[];
 }
 
 function graphTokenUrl(tenantId: string): string {
@@ -254,13 +258,48 @@ function teamsGraphMessage(
       user: {
         id: message.senderId ?? "29:user-1",
         displayName: message.senderName ?? "Ada Lovelace",
+        ...(message.senderPrincipalName !== undefined
+          ? { userPrincipalName: message.senderPrincipalName }
+          : {}),
       },
     },
     body: {
       contentType: "html",
       content: `<p>${message.text}</p>`,
     },
+    ...(message.attachments ? { attachments: message.attachments } : {}),
+    ...(message.mentions ? { mentions: message.mentions } : {}),
   };
+}
+
+function teamsGraphUserMap(
+  messages: readonly TeamsGraphMessageFixture[],
+): ReadonlyMap<
+  string,
+  {
+    readonly displayName: string;
+    readonly userPrincipalName: string | null;
+  }
+> {
+  const users = new Map<
+    string,
+    {
+      readonly displayName: string;
+      readonly userPrincipalName: string | null;
+    }
+  >();
+  for (const message of messages) {
+    const senderId = message.senderId ?? "29:user-1";
+    const existing = users.get(senderId);
+    const userPrincipalName =
+      message.graphUserPrincipalName ?? existing?.userPrincipalName ?? null;
+    users.set(senderId, {
+      displayName:
+        message.senderName ?? existing?.displayName ?? "Ada Lovelace",
+      userPrincipalName,
+    });
+  }
+  return users;
 }
 
 function teamsGraphHistoryHandlers(args: {
@@ -272,6 +311,11 @@ function teamsGraphHistoryHandlers(args: {
   >;
 }): string[] {
   const requests: string[] = [];
+  const users = teamsGraphUserMap([
+    ...args.channelMessages,
+    ...Object.values(args.threadRoots),
+    ...Object.values(args.threadReplies).flat(),
+  ]);
   server.use(
     http.post(graphTokenUrl(args.tenantId), async ({ request }) => {
       const form = await request.formData();
@@ -337,6 +381,21 @@ function teamsGraphHistoryHandlers(args: {
             );
       },
     ),
+    http.get("https://graph.microsoft.com/v1.0/users/:userId", ({ params }) => {
+      const userId = typeof params.userId === "string" ? params.userId : "";
+      const user = users.get(userId);
+      requests.push(`user:${userId}`);
+      return user
+        ? HttpResponse.json({
+            id: userId,
+            displayName: user.displayName,
+            userPrincipalName: user.userPrincipalName,
+          })
+        : HttpResponse.json(
+            { error: { code: "NotFound", message: "User not found" } },
+            { status: 404 },
+          );
+    }),
   );
   return requests;
 }
@@ -1581,15 +1640,39 @@ describe("POST /api/zero/teams/bot", () => {
         text: "remember the deployment target",
         createdDateTime: "2026-06-30T09:10:00.000Z",
         senderId: fixture.teamsUserId,
+        graphUserPrincipalName: "ada@example.com",
       },
     };
     const threadReplies: Record<string, TeamsGraphMessageFixture[]> = {
       "root-dispatch": [
         {
           id: "activity-context-1",
-          text: "confirm the target is staging",
+          text: 'confirm with <at id="0">Grace Hopper</at> that the target is staging',
           createdDateTime: "2026-06-30T09:11:00.000Z",
           senderId: fixture.teamsUserId,
+          mentions: [
+            {
+              id: 0,
+              mentionText: '<at id="0">Grace Hopper</at>',
+              mentioned: {
+                user: {
+                  id: "29:user-grace",
+                  displayName: "Grace Hopper",
+                },
+              },
+            },
+          ],
+          attachments: [
+            {
+              id: "teams-file-plan-1",
+              name: "deployment-plan.pdf",
+              contentType: "application/vnd.microsoft.teams.file.download.info",
+              content: {
+                downloadUrl: "https://files.example.test/deployment-plan.pdf",
+                fileType: "pdf",
+              },
+            },
+          ],
         },
         {
           id: "activity-dispatch-1",
@@ -1779,13 +1862,22 @@ describe("POST /api/zero/teams/bot", () => {
     );
     expect(teamsThreadContext).toContain("- RELATIVE_INDEX: -1");
     expect(teamsThreadContext).toContain(
-      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace}`,
+      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace, email: ada@example.com}`,
     );
     expect(teamsThreadContext).toContain("remember the deployment target");
-    expect(teamsThreadContext).toContain("confirm the target is staging");
+    expect(teamsThreadContext).toContain(
+      "confirm with @Grace Hopper (29:user-grace) that the target is staging",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams file] deployment-plan.pdf (application/pdf)",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams attachment ID] teams-file-plan-1",
+    );
     expect(teamsThreadContext).not.toContain("ship the Teams dispatch");
     expect(graphRequests).toContain("thread-root:root-dispatch");
     expect(graphRequests).toContain("thread-replies:root-dispatch");
+    expect(graphRequests).toContain(`user:${fixture.teamsUserId}`);
   });
 
   it("includes Teams thread computer use host bindings in queued zero tokens", async () => {

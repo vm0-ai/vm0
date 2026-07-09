@@ -30,6 +30,8 @@ const mocks = createZeroRouteMocks(context);
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 
 interface CapturedTeamsActivity {
+  conversationBody?: Record<string, unknown>;
+  conversationId?: string;
   body?: Record<string, unknown>;
   authorization?: string | null;
 }
@@ -75,17 +77,36 @@ function mockOutgoingTeams(captured: CapturedTeamsActivity): void {
       },
     ),
     http.post(
-      "https://smba.trafficmanager.net/amer/v3/conversations/:conversationId/activities/:activityId",
+      "https://smba.trafficmanager.net/amer/v3/conversations",
       async ({ request }) => {
         captured.authorization = request.headers.get("authorization");
+        captured.conversationBody = (await request.json()) as Record<
+          string,
+          unknown
+        >;
+        return HttpResponse.json({ id: "a:teams-dm-conversation" });
+      },
+    ),
+    http.post(
+      "https://smba.trafficmanager.net/amer/v3/conversations/:conversationId/activities/:activityId",
+      async ({ params, request }) => {
+        captured.authorization = request.headers.get("authorization");
+        captured.conversationId =
+          typeof params.conversationId === "string"
+            ? params.conversationId
+            : undefined;
         captured.body = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ id: "teams-activity-1" });
       },
     ),
     http.post(
       "https://smba.trafficmanager.net/amer/v3/conversations/:conversationId/activities",
-      async ({ request }) => {
+      async ({ params, request }) => {
         captured.authorization = request.headers.get("authorization");
+        captured.conversationId =
+          typeof params.conversationId === "string"
+            ? params.conversationId
+            : undefined;
         captured.body = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ id: "teams-activity-1" });
       },
@@ -171,6 +192,70 @@ describe("Microsoft Teams integration CLI routes", () => {
       text: "Hello from Teams CLI",
       textFormat: "markdown",
       replyToId: "root-activity",
+      channelData: { tenant: { id: fixture.teamsTenantId } },
+    });
+  });
+
+  it("sends a Teams DM with an Adaptive Card through the installed bot", async () => {
+    const fixture = teamsFixture();
+    fixtures.push(fixture);
+    await seedConnectedTeams(fixture);
+    const captured: CapturedTeamsActivity = {};
+    mockOutgoingTeams(captured);
+
+    const client = setupApp({ context })(integrationsTeamsMessageContract);
+    const response = await accept(
+      client.sendMessage({
+        body: {
+          user: "me",
+          text: "Pick a workflow",
+          card: {
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              {
+                type: "TextBlock",
+                text: "Pick a workflow",
+                wrap: true,
+              },
+            ],
+          },
+        },
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            runId: `run_${randomUUID()}`,
+          })}`,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      ok: true,
+      activityId: "teams-activity-1",
+      conversationId: "a:teams-dm-conversation",
+    });
+    expect(captured.conversationBody).toMatchObject({
+      bot: { id: "28:bot-1", name: "Zero" },
+      members: [{ id: fixture.teamsUserId, name: "Ada Lovelace" }],
+      isGroup: false,
+      channelData: { tenant: { id: fixture.teamsTenantId } },
+    });
+    expect(captured.conversationId).toBe("a:teams-dm-conversation");
+    expect(captured.body).toMatchObject({
+      type: "message",
+      summary: "Pick a workflow",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            type: "AdaptiveCard",
+            version: "1.4",
+          },
+        },
+      ],
       channelData: { tenant: { id: fixture.teamsTenantId } },
     });
   });

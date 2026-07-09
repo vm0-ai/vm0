@@ -115,11 +115,50 @@ export type IntegrationsTelegramMessageContract =
  * Sends a Microsoft Teams message via the org's installed Teams bot.
  * Requires `teams:write` capability (via ZERO_TOKEN).
  */
-const sendTeamsMessageBodySchema = z.object({
-  conversationId: z.string().min(1, "Conversation ID is required"),
-  text: z.string().min(1, "Message text is required"),
-  activityId: z.string().min(1, "Activity ID is required").optional(),
-});
+const teamsAdaptiveCardSchema = z
+  .object({
+    type: z.literal("AdaptiveCard"),
+    version: z.string().min(1),
+    body: z.array(z.record(z.string(), z.unknown())).optional(),
+    actions: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .passthrough();
+
+const sendTeamsMessageBodySchema = z
+  .object({
+    conversationId: z.string().min(1, "Conversation ID is required").optional(),
+    user: z.string().min(1, "Teams user ID is required").optional(),
+    text: z.string().min(1, "Message text is required").optional(),
+    activityId: z.string().min(1, "Activity ID is required").optional(),
+    card: teamsAdaptiveCardSchema.optional(),
+  })
+  .refine(
+    (body) => {
+      return Boolean(body.conversationId) !== Boolean(body.user);
+    },
+    {
+      message: "Exactly one of conversationId or user is required",
+      path: ["conversationId"],
+    },
+  )
+  .refine(
+    (body) => {
+      return Boolean(body.text) || Boolean(body.card);
+    },
+    {
+      message: "Message text or card is required",
+      path: ["text"],
+    },
+  )
+  .refine(
+    (body) => {
+      return !(body.user && body.activityId);
+    },
+    {
+      message: "activityId can only be used with conversationId",
+      path: ["activityId"],
+    },
+  );
 
 export type SendTeamsMessageBody = z.infer<typeof sendTeamsMessageBodySchema>;
 

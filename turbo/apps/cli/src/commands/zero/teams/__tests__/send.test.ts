@@ -63,6 +63,51 @@ describe("zero teams message send command", () => {
     expect(logCalls).toContain("activity_id: teams-activity-1");
   });
 
+  it("sends a DM with an Adaptive Card", async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+
+    server.use(
+      http.post(TEAMS_MESSAGE_URL, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          ok: true,
+          activityId: "teams-dm-activity-1",
+          conversationId: "a:teams-dm-conversation",
+        });
+      }),
+    );
+
+    await sendCommand.parseAsync([
+      "node",
+      "cli",
+      "--user",
+      "me",
+      "--text",
+      "Pick a workflow",
+      "--card",
+      '{"type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":"Pick a workflow","wrap":true}]}',
+    ]);
+
+    expect(capturedBody).toStrictEqual({
+      user: "me",
+      text: "Pick a workflow",
+      card: {
+        type: "AdaptiveCard",
+        version: "1.4",
+        body: [
+          {
+            type: "TextBlock",
+            text: "Pick a workflow",
+            wrap: true,
+          },
+        ],
+      },
+    });
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Message sent");
+    expect(logCalls).toContain("activity_id: teams-dm-activity-1");
+  });
+
   it("errors when message text is missing", async () => {
     await expect(async () => {
       await sendCommand.parseAsync([
@@ -74,7 +119,21 @@ describe("zero teams message send command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Either --text or piped stdin must be provided"),
+      expect.stringContaining(
+        "Either --text, --card, or piped stdin must be provided",
+      ),
+    );
+  });
+
+  it("errors when a target is missing", async () => {
+    await expect(async () => {
+      await sendCommand.parseAsync(["node", "cli", "--text", "hello"]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Either --conversation-id or --user must be provided",
+      ),
     );
   });
 });
