@@ -282,9 +282,11 @@ def cache_aws_sigv4_credentials(
     vm_info: AwsVmInfo | None = None,
     credentials: AwsSigV4Credentials | None = None,
     headers: dict[str, str] | None = None,
+    query: dict[str, str] | None = None,
 ) -> None:
     set_cached_headers(
         aws_auth_cache_key(tmp_path, api_entry=api_entry, vm_info=vm_info),
         headers=dict(headers) if headers is not None else {},
+        query=dict(query) if query is not None else None,
         aws_sigv4=(resolved_aws_sigv4_credentials() if credentials is None else credentials),
     )

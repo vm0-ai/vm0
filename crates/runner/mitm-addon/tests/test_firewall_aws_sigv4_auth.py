@@ -533,6 +533,7 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
         tmp_path,
         api_entry=api_entry,
         credentials=resolved_aws_sigv4_credentials(session_token=None),
+        query={"trace": "resolved-trace"},
     )
 
     with mitm_ctx():
@@ -545,6 +546,7 @@ async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is True
     assert flow.response is None
+    assert flow.request.query["trace"] == "resolved-trace"
     assert flow.request.headers["Authorization"].startswith(
         "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"
     )
