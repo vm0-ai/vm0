@@ -3,6 +3,19 @@
 //! These locks coordinate `/dev/nbdN` ownership across runner processes on the
 //! same host. The kernel releases `flock` locks automatically when the owning
 //! process exits.
+//!
+//! Claims are represented by per-index lock files named
+//! `vm0-nbd-{index}.lock`. The default directory is [`default_lock_dir`],
+//! currently `/var/lock`; callers using [`try_acquire_device_claim_in`] may
+//! provide another operator-approved lock-file directory. The directory must
+//! already exist, but this API does not require the directory itself to be
+//! owned by the current effective uid or private to the process.
+//!
+//! The security-sensitive object is the final per-index lock file. Existing
+//! lock files must be regular files owned by the current effective uid, must
+//! not have multiple hard links, and must not be group/other-writable. Unsafe
+//! or invalid final lock paths are reported as I/O errors instead of ordinary
+//! lock contention.
 
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -57,12 +70,32 @@ fn device_lock_path_in(index: u32, lock_dir: &Path) -> PathBuf {
 
 /// Try to acquire a host-global claim for an NBD device index.
 ///
-/// Returns `Ok(None)` when another process holds the per-index lock.
+/// This uses [`default_lock_dir`] for the lock file directory. Returns
+/// `Ok(Some(_))` when the caller owns the claim until the returned
+/// [`NbdDeviceClaim`] is dropped.
+///
+/// Returns `Ok(None)` only when another process holds the flock on the current
+/// per-index lock inode. Unsafe or invalid lock-file state is reported as an
+/// [`std::io::Error`] rather than as `Ok(None)`.
 pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>> {
     try_acquire_device_claim_in(index, &default_lock_dir())
 }
 
 /// Try to acquire a host-global claim in a custom lock directory.
+///
+/// `lock_dir` must already exist. The per-index lock path is
+/// `lock_dir/vm0-nbd-{index}.lock`.
+///
+/// Existing final lock files must be regular files owned by the current
+/// effective uid, must not have multiple hard links, and must not be
+/// group/other-writable. Unsafe final lock paths, including symlinks and
+/// non-regular files, are reported as [`std::io::Error`]. Existing lock files
+/// with otherwise acceptable legacy permissions may be tightened to `0600`.
+///
+/// Returns `Ok(Some(_))` when the caller owns the claim until the returned
+/// [`NbdDeviceClaim`] is dropped. Returns `Ok(None)` only when another process
+/// holds the flock on the current per-index lock inode; unsafe lock-file state
+/// and repeated path replacement during acquisition are reported as I/O errors.
 pub fn try_acquire_device_claim_in(
     index: u32,
     lock_dir: &Path,
