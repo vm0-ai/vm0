@@ -232,9 +232,12 @@ impl SessionWorkspaceCache {
 
     pub(super) async fn prune_session_history_sidecar(&self, cache_key: &str) -> RunnerResult<()> {
         let paths = self.entry_paths(cache_key);
-        let _ =
+        let metadata_result =
             remove_workspace_cache_path_if_exists(paths.session_history_sidecar_metadata()).await;
-        let _ = remove_workspace_cache_path_if_exists(paths.session_history_sidecar()).await;
+        let body_result =
+            remove_workspace_cache_path_if_exists(paths.session_history_sidecar()).await;
+        metadata_result?;
+        body_result?;
         Ok(())
     }
 
