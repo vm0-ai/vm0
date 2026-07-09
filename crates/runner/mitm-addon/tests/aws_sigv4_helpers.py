@@ -12,9 +12,9 @@ DEFAULT_AWS_REGION = "us-east-1"
 DEFAULT_AWS_SERVICE = "sts"
 PLACEHOLDER_ACCESS_KEY_ID = "PLACEHOLDER"
 PLACEHOLDER_SIGNATURE = "placeholder"
-REAL_AWS_ACCESS_KEY_ID = "AKIDEXAMPLE"
-REAL_AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
-REAL_AWS_SESSION_TOKEN = "real-session-token"
+RESOLVED_AWS_ACCESS_KEY_ID = "AKIDEXAMPLE"
+RESOLVED_AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"
+RESOLVED_AWS_SESSION_TOKEN = "resolved-session-token"
 SIGNER_TEST_SECRET_ACCESS_KEY = "secret"
 STS_HOST = "sts.amazonaws.com"
 STS_FORM_BODY = b"Action=GetCallerIdentity&Version=2011-06-15"
@@ -154,7 +154,7 @@ def aws_sigv4_presigned_url(
 
 def signer_test_credentials(
     *,
-    access_key_id: str = REAL_AWS_ACCESS_KEY_ID,
+    access_key_id: str = RESOLVED_AWS_ACCESS_KEY_ID,
     secret_access_key: str = SIGNER_TEST_SECRET_ACCESS_KEY,
     session_token: str | None = None,
 ) -> AwsSigV4Credentials:
@@ -163,8 +163,8 @@ def signer_test_credentials(
 
 def resolved_aws_sigv4_credentials(
     *,
-    access_key_id: str = REAL_AWS_ACCESS_KEY_ID,
-    secret_access_key: str = REAL_AWS_SECRET_ACCESS_KEY,
-    session_token: str | None = REAL_AWS_SESSION_TOKEN,
+    access_key_id: str = RESOLVED_AWS_ACCESS_KEY_ID,
+    secret_access_key: str = RESOLVED_AWS_SECRET_ACCESS_KEY,
+    session_token: str | None = RESOLVED_AWS_SESSION_TOKEN,
 ) -> AwsSigV4Credentials:
     return AwsSigV4Credentials(access_key_id, secret_access_key, session_token)

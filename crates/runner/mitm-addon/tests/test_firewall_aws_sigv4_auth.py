@@ -9,8 +9,8 @@ import flow_metadata_keys as metadata_keys
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
-    REAL_AWS_ACCESS_KEY_ID,
-    REAL_AWS_SESSION_TOKEN,
+    RESOLVED_AWS_ACCESS_KEY_ID,
+    RESOLVED_AWS_SESSION_TOKEN,
     STS_FORM_BODY,
     STS_HOST,
     STS_QUERY,
@@ -67,7 +67,7 @@ async def test_re_signs_header_sigv4_request(real_flow, headers, tmp_path, mitm_
     assert authorization.startswith("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/")
     assert "PLACEHOLDER" not in authorization
     assert "Signature=placeholder" not in authorization
-    assert flow.request.headers["x-amz-security-token"] == REAL_AWS_SESSION_TOKEN
+    assert flow.request.headers["x-amz-security-token"] == RESOLVED_AWS_SESSION_TOKEN
     assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == [
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
@@ -341,7 +341,7 @@ async def test_re_signs_query_sigv4_request(real_flow, tmp_path, mitm_ctx):
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(flow.request.url).query))
     assert query["X-Amz-Algorithm"] == "AWS4-HMAC-SHA256"
     assert query["X-Amz-Credential"] == "AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"
-    assert query["X-Amz-Security-Token"] == REAL_AWS_SESSION_TOKEN
+    assert query["X-Amz-Security-Token"] == RESOLVED_AWS_SESSION_TOKEN
     assert query["X-Amz-Signature"] != "placeholder"
     assert "PLACEHOLDER" not in flow.request.url
 
@@ -368,7 +368,7 @@ async def test_re_signs_query_sigv4_request_strips_session_token_header(
     assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
     assert "x-amz-security-token" not in flow.request.headers
     query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(flow.request.url).query))
-    assert query["X-Amz-Security-Token"] == REAL_AWS_SESSION_TOKEN
+    assert query["X-Amz-Security-Token"] == RESOLVED_AWS_SESSION_TOKEN
 
 
 async def test_re_signs_query_sigv4_request_preserves_literal_plus(
@@ -758,7 +758,7 @@ async def test_header_sigv4_with_real_source_access_key_fails_closed(
     flow = make_sts_header_sigv4_flow(
         real_flow,
         headers,
-        authorization=aws_sigv4_authorization(access_key_id=REAL_AWS_ACCESS_KEY_ID),
+        authorization=aws_sigv4_authorization(access_key_id=RESOLVED_AWS_ACCESS_KEY_ID),
     )
 
     result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
@@ -995,7 +995,7 @@ async def test_query_sigv4_without_signature_fails_closed(real_flow, tmp_path, m
 async def test_query_sigv4_with_real_source_access_key_fails_closed(real_flow, tmp_path, mitm_ctx):
     flow = make_sts_query_sigv4_flow(
         real_flow,
-        path=aws_sigv4_presigned_query_path(access_key_id=REAL_AWS_ACCESS_KEY_ID),
+        path=aws_sigv4_presigned_query_path(access_key_id=RESOLVED_AWS_ACCESS_KEY_ID),
     )
 
     result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
@@ -1004,7 +1004,9 @@ async def test_query_sigv4_with_real_source_access_key_fails_closed(real_flow, t
 
 
 async def test_query_sigv4_with_duplicate_credential_fails_closed(real_flow, tmp_path, mitm_ctx):
-    real_credential = quote_sigv4_value(aws_credential_scope(access_key_id=REAL_AWS_ACCESS_KEY_ID))
+    real_credential = quote_sigv4_value(
+        aws_credential_scope(access_key_id=RESOLVED_AWS_ACCESS_KEY_ID)
+    )
     flow = make_sts_query_sigv4_flow(
         real_flow,
         path=(

@@ -33,7 +33,7 @@ from tests.auth_state_helpers import (
 )
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
-    REAL_AWS_SESSION_TOKEN,
+    RESOLVED_AWS_SESSION_TOKEN,
     STS_FORM_BODY,
     STS_HOST,
     aws_sigv4_authorization,
@@ -1040,7 +1040,7 @@ class TestHandleFirewallRequest:
         assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
         assert flow.request.headers["host"] == STS_HOST
         assert flow.request.headers["x-amz-meta-test"] == "trusted-meta"
-        assert flow.request.headers["x-amz-security-token"] == REAL_AWS_SESSION_TOKEN
+        assert flow.request.headers["x-amz-security-token"] == RESOLVED_AWS_SESSION_TOKEN
         assert (
             "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"
             in flow.request.headers["authorization"]

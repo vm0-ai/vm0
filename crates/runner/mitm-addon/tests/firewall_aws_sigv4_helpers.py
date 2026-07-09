@@ -19,9 +19,9 @@ from tests.auth_state_helpers import auth_cache_key, set_cached_headers
 from tests.aws_sigv4_helpers import (
     DEFAULT_AWS_REGION,
     DEFAULT_SIGV4_TIMESTAMP,
-    REAL_AWS_ACCESS_KEY_ID,
-    REAL_AWS_SECRET_ACCESS_KEY,
-    REAL_AWS_SESSION_TOKEN,
+    RESOLVED_AWS_ACCESS_KEY_ID,
+    RESOLVED_AWS_SECRET_ACCESS_KEY,
+    RESOLVED_AWS_SESSION_TOKEN,
     STS_FORM_BODY,
     STS_HOST,
     aws_sigv4_authorization,
@@ -174,9 +174,9 @@ def aws_vm_info(
 def aws_auth_response(
     *,
     include_session_token: bool = True,
-    access_key_id: str = REAL_AWS_ACCESS_KEY_ID,
-    secret_access_key: str = REAL_AWS_SECRET_ACCESS_KEY,
-    session_token: str = REAL_AWS_SESSION_TOKEN,
+    access_key_id: str = RESOLVED_AWS_ACCESS_KEY_ID,
+    secret_access_key: str = RESOLVED_AWS_SECRET_ACCESS_KEY,
+    session_token: str = RESOLVED_AWS_SESSION_TOKEN,
     headers: Mapping[str, str] | None = None,
     query: Mapping[str, str] | None = None,
 ) -> dict[str, object]:

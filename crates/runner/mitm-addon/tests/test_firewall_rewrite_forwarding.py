@@ -12,7 +12,7 @@ from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.aws_sigv4_helpers import (
     DEFAULT_SIGV4_TIMESTAMP,
-    REAL_AWS_SESSION_TOKEN,
+    RESOLVED_AWS_SESSION_TOKEN,
     STS_FORM_BODY,
     aws_sigv4_authorization,
     aws_sigv4_presigned_query_path,
@@ -456,11 +456,11 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
         assert "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request" in authorization
         assert (
-            "Signature=d58b7e131d8f54e75a6ee98fd426242a7bab02e04a9e7eaec5dfad94425ab4ae"
+            "Signature=1735aaa47d56839a3157c545e28e02eb8fa1526da431e9fc980b7414df9c4f53"
             in authorization
         )
         assert upstream.socket.request_header_values("X-Amz-Security-Token") == [
-            REAL_AWS_SESSION_TOKEN
+            RESOLVED_AWS_SESSION_TOKEN
         ]
         assert upstream.socket.request_header_values("Cookie") == []
         assert upstream.socket.request_header_values("X-Api-Key") == []
@@ -514,7 +514,7 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.getaddrinfo_calls == [("sts.amazonaws.com", 443)]
         assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
         assert query["X-Amz-Credential"] == ["AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"]
-        assert query["X-Amz-Security-Token"] == [REAL_AWS_SESSION_TOKEN]
+        assert query["X-Amz-Security-Token"] == [RESOLVED_AWS_SESSION_TOKEN]
         assert query["X-Amz-Signature"] != ["placeholder"]
         assert upstream.socket.request_header_values("Authorization") == []
         assert upstream.socket.request_header_values("Cookie") == []
