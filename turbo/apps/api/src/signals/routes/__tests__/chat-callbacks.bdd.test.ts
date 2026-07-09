@@ -1249,7 +1249,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       throw new Error("Expected an org-scoped actor for goal continuation");
     }
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
@@ -1302,15 +1302,43 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     if (!goalContinuation?.runId) {
       throw new Error("Expected markdown-only goal continuation run id");
     }
-    const goalContext = await waitForRunContext(actor, goalContinuation.runId);
+    const goalRunId = goalContinuation.runId;
+    const goalContext = await waitForRunContext(actor, goalRunId);
     expect(goalContext.body.prompt).toContain("# Active thread goal");
     expect(goalContext.body.prompt).toContain(goalObjective);
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       broadMemoryText,
     );
+    await expect
+      .poll(() => {
+        return sandboxOperationEventsForRun(goalRunId).map((event) => {
+          return event.op_type;
+        });
+      })
+      .toContain(
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      );
+    const timingEvents = sandboxOperationEventsForRun(goalRunId);
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expect(
+      timingEvents.filter((event) => {
+        return (
+          typeof event.op_type === "string" &&
+          event.op_type.startsWith(
+            "api_dispatch_pre_create_zero_memory_profile_",
+          )
+        );
+      }),
+    ).toHaveLength(0);
 
-    await api.requestCancelRun(actor, goalContinuation.runId, [200]);
-    await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await waitForRunStatus(actor, goalRunId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
 

@@ -692,8 +692,10 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly timing?: ZeroMemoryTimingObserver;
   },
 ): Promise<string | undefined> {
-  const trimmedRetrievalQuery = args.retrievalQuery?.trim();
-  const searchQuery = trimmedRetrievalQuery || args.prompt;
+  const searchQuery =
+    args.retrievalQuery === undefined
+      ? args.prompt
+      : args.retrievalQuery.trim();
   return await measureZeroMemoryTiming(
     args.timing,
     "runtime_injection",
