@@ -220,6 +220,7 @@ async function completeSlackTriggeredRun(args: {
   readonly sandboxToken: string;
   readonly cliAgentType: string;
   readonly lastEventSequence?: number;
+  readonly omitLastEventSequence?: boolean;
 }): Promise<void> {
   const sandboxHeaders = {
     authorization: `Bearer ${args.sandboxToken}`,
@@ -240,9 +241,9 @@ async function completeSlackTriggeredRun(args: {
     {
       runId: args.runId,
       exitCode: 0,
-      ...(args.lastEventSequence === undefined
+      ...(args.omitLastEventSequence === true
         ? {}
-        : { lastEventSequence: args.lastEventSequence }),
+        : { lastEventSequence: args.lastEventSequence ?? 0 }),
     },
     sandboxHeaders,
     [200],
@@ -2960,6 +2961,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       runId: legacyRunId,
       sandboxToken: legacyClaim.sandboxToken,
       cliAgentType: "claude-code",
+      omitLastEventSequence: true,
     });
 
     await waitForExpectation(() => {
@@ -3027,6 +3029,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       runId: legacyTerminalOnlyRunId,
       sandboxToken: legacyTerminalOnlyClaim.sandboxToken,
       cliAgentType: "claude-code",
+      omitLastEventSequence: true,
     });
     await waitForExpectation(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
@@ -3040,6 +3043,75 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(legacyTerminalOnlyQueries).toBe(1);
     expect(legacyTerminalOnlyUnboundedOutputQueries).toBe(0);
     expect(slackPostMessageCallsJson()).not.toContain("STALE_LEGACY_OUTPUT");
+
+    const legacyCodexText = "Legacy Codex agent message output";
+    let legacyCodexTerminalOutputQueries = 0;
+    let legacyCodexUnboundedAssistantQueries = 0;
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (
+        apl.includes(
+          '| where eventType == "result" or (eventType == "item.completed"',
+        ) &&
+        !apl.includes("| where sequenceNumber <=")
+      ) {
+        legacyCodexTerminalOutputQueries++;
+        return Promise.resolve([
+          {
+            eventType: "result",
+            sequenceNumber: 2,
+            eventData: { result: "" },
+          },
+          {
+            eventType: "item.completed",
+            sequenceNumber: 1,
+            eventData: {
+              item: { type: "agent_message", text: legacyCodexText },
+            },
+          },
+        ]);
+      }
+      if (apl.includes('eventType == "assistant"')) {
+        legacyCodexUnboundedAssistantQueries++;
+        return Promise.resolve([
+          {
+            eventType: "result",
+            sequenceNumber: 0,
+            eventData: { result: "STALE_CODEX_OUTPUT" },
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUser,
+      text: "handle old runner codex item output",
+      ts: "4050.000195",
+      channel: channelId,
+    });
+    const legacyCodexRunId = await pollSlackRun(runnerGroup);
+    const legacyCodexClaim = await runs.claimRunnerJob(legacyCodexRunId);
+    context.mocks.slack.chat.postMessage.mockClear();
+    await completeSlackTriggeredRun({
+      runId: legacyCodexRunId,
+      sandboxToken: legacyCodexClaim.sandboxToken,
+      cliAgentType: "codex",
+      omitLastEventSequence: true,
+    });
+    await waitForExpectation(() => {
+      expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          thread_ts: "4050.000195",
+          text: legacyCodexText,
+        }),
+      );
+    });
+    expect(legacyCodexTerminalOutputQueries).toBe(1);
+    expect(legacyCodexUnboundedAssistantQueries).toBe(0);
+    expect(slackPostMessageCallsJson()).not.toContain("STALE_CODEX_OUTPUT");
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = typeof args[0] === "string" ? args[0] : "";

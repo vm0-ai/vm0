@@ -284,16 +284,16 @@ ${sequenceCap}
   return { text: null, watermarkVisible };
 }
 
-async function queryLatestTerminalResult(args: {
+async function queryLatestLegacyTerminalOutput(args: {
   readonly runId: string;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
   const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
   const apl = `['${dataset}']
 | where runId == "${escapeAplString(args.runId)}"
-| where eventType == "result"
+| where eventType == "result" or (eventType == "item.completed" and ['eventData.item.type'] == "agent_message")
 | order by sequenceNumber desc
-| limit 1`;
+| limit ${LATEST_OUTPUT_EVENT_LIMIT}`;
 
   const events = await queryAxiomDirect<AxiomChatOutputEvent>(
     apl,
@@ -307,9 +307,13 @@ async function queryLatestTerminalResult(args: {
     if (typeof sequenceNumber !== "number") {
       continue;
     }
-    const fallback = extractResultFallback(sequenceNumber, event);
-    if (fallback !== null) {
-      return fallback.content;
+    const assistantContent = extractAssistantContent(event);
+    if (assistantContent !== null) {
+      return assistantContent;
+    }
+    const resultFallback = extractResultFallback(sequenceNumber, event);
+    if (resultFallback !== null) {
+      return resultFallback.content;
     }
   }
 
@@ -447,7 +451,7 @@ async function resolveCompletedChatOutputOnce(args: {
 
   if (args.lastEventSequence === null) {
     if (args.allowUnwatermarkedTerminalResult) {
-      const terminalResult = await queryLatestTerminalResult({
+      const terminalResult = await queryLatestLegacyTerminalOutput({
         runId: args.runId,
         signal: args.signal,
       });

@@ -75,6 +75,42 @@ interface AuthHeaders {
   readonly authorization?: string;
 }
 
+function axiomApl(args: readonly unknown[]): string {
+  return typeof args[0] === "string" ? args[0] : "";
+}
+
+function isRunEventVisibilityQuery(apl: string): boolean {
+  return (
+    apl.includes("agent-run-events") && apl.includes("| project sequenceNumber")
+  );
+}
+
+function isCompletedOutputQuery(apl: string): boolean {
+  return (
+    apl.includes("agent-run-events") &&
+    apl.includes("order by sequenceNumber") &&
+    (apl.includes('eventType == "assistant"') ||
+      apl.includes('eventType == "result"') ||
+      apl.includes('eventType == "item.completed"'))
+  );
+}
+
+function mockSlackRunOutput(
+  context: TestContext,
+  event: Record<string, unknown>,
+): void {
+  context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+    const apl = axiomApl(args);
+    if (isRunEventVisibilityQuery(apl)) {
+      return Promise.resolve([{ sequenceNumber: 0 }]);
+    }
+    if (isCompletedOutputQuery(apl)) {
+      return Promise.resolve([event]);
+    }
+    return Promise.resolve([]);
+  });
+}
+
 interface ClerkUserProfile {
   readonly id: string;
   readonly emailAddresses: readonly {
@@ -1160,19 +1196,19 @@ export function createBddIntegrationApi(context: TestContext) {
     },
 
     mockSlackRunResultOutput(text: string): void {
-      context.mocks.axiom.query.mockResolvedValueOnce([
-        { eventType: "result", sequenceNumber: 0, eventData: { result: text } },
-      ]);
+      mockSlackRunOutput(context, {
+        eventType: "result",
+        sequenceNumber: 0,
+        eventData: { result: text },
+      });
     },
 
     mockSlackRunAgentMessageOutput(text: string): void {
-      context.mocks.axiom.query.mockResolvedValueOnce([
-        {
-          eventType: "item.completed",
-          sequenceNumber: 0,
-          eventData: { item: { type: "agent_message", text } },
-        },
-      ]);
+      mockSlackRunOutput(context, {
+        eventType: "item.completed",
+        sequenceNumber: 0,
+        eventData: { item: { type: "agent_message", text } },
+      });
     },
 
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
