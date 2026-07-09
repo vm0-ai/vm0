@@ -532,23 +532,12 @@ fn normalize_unit_state(
     load_state: &str,
     active_state: &str,
 ) -> RunnerResult<NormalizedUnitState> {
-    if load_state == "not-found" {
-        return match active_state {
-            "inactive" | "failed" | "maintenance" => Ok(NormalizedUnitState::NotFound),
-            "active" | "activating" | "reloading" | "refreshing" | "deactivating" => {
-                Err(RunnerError::Internal(format!(
-                    "not-found unit {svc} reported active-like ActiveState={active_state}"
-                )))
-            }
-            _ => Err(RunnerError::Internal(format!(
-                "unknown ActiveState for {svc}: {active_state} (LoadState={load_state})"
-            ))),
-        };
-    }
-
     match active_state {
         "active" | "activating" | "reloading" | "refreshing" | "deactivating" => {
             Ok(NormalizedUnitState::ActiveLike)
+        }
+        "inactive" | "failed" | "maintenance" if load_state == "not-found" => {
+            Ok(NormalizedUnitState::NotFound)
         }
         "inactive" => Ok(NormalizedUnitState::Inactive),
         "failed" => Ok(NormalizedUnitState::Failed),
@@ -618,13 +607,7 @@ fn service_unit_state_from_systemctl_show(
     let sub_state = systemctl_property(svc, values, "SubState")?;
     let result = systemctl_property(svc, values, "Result")?;
     let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
-    ensure_systemctl_show_status(
-        svc,
-        properties,
-        status,
-        stderr,
-        normalized_state == NormalizedUnitState::NotFound,
-    )?;
+    ensure_systemctl_show_status(svc, properties, status, stderr, load_state == "not-found")?;
 
     Ok(ServiceUnitState {
         load_state: load_state.to_string(),
@@ -1237,7 +1220,7 @@ mod tests {
     }
 
     #[test]
-    fn service_unit_state_rejects_not_found_active_like_state() {
+    fn service_unit_state_reports_not_found_active_like_state() {
         use std::os::unix::process::ExitStatusExt;
 
         let properties = ["LoadState", "ActiveState", "SubState", "Result"];
@@ -1248,16 +1231,18 @@ mod tests {
         )
         .unwrap();
         let status = ExitStatus::from_raw(0x100);
-        let err = service_unit_state_from_systemctl_show(
+        let state = service_unit_state_from_systemctl_show(
             "vm0-runner-test.service",
             &properties,
             &status,
             &values,
             b"Unit not found\n",
         )
-        .unwrap_err();
+        .unwrap();
 
-        assert!(err.to_string().contains("not-found unit"));
+        assert_eq!(state.load_state, "not-found");
+        assert_eq!(state.normalized_state, NormalizedUnitState::ActiveLike);
+        assert!(state.is_active_like());
     }
 
     #[test]
