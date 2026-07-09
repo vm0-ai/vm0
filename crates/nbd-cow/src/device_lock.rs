@@ -1,8 +1,9 @@
 //! Host-global NBD device index locks.
 //!
-//! These locks coordinate `/dev/nbdN` ownership across runner processes on the
-//! same host. Dropping the returned claim closes the lock file descriptor and
-//! releases the corresponding kernel `flock`.
+//! These locks coordinate `/dev/nbdN` ownership across runner processes that
+//! resolve their lock files through the same host-visible lock directory.
+//! Dropping the returned claim closes the lock file descriptor and releases the
+//! corresponding kernel `flock`.
 //!
 //! Claims are represented by per-index lock files named
 //! `vm0-nbd-{index}.lock`. When this API creates a missing lock file, it uses
@@ -11,8 +12,8 @@
 //! provide another operator-approved lock-file directory. The directory must
 //! already exist, but this API does not require the directory itself to be owned
 //! by the current effective uid or private to the process.
-//! Cooperating processes must use the same lock directory for their claims to
-//! coordinate with each other.
+//! Cooperating processes must use the same resolved lock directory for their
+//! claims to coordinate with each other.
 //!
 //! The security-sensitive object is the final per-index lock file. Existing
 //! lock files must be regular files openable for read and write by the current
@@ -101,7 +102,7 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 /// Processes using different lock directories do not coordinate with each
 /// other. Relative lock directories are resolved by each caller's current
 /// working directory, so cooperating processes should use paths that resolve to
-/// the same directory.
+/// the same directory inode.
 ///
 /// Existing final lock files must be regular files openable for read and write
 /// by the current process, must be owned by the current effective uid, must not
