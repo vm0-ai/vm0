@@ -62,11 +62,11 @@ inputs:
     required: false
     default: ""
   skip-domain:
-    description: "Produce a Staged production deployment that is prod-eligible but not yet serving traffic (requires prebuilt=true and environment=production). Promote later via vercel-promote."
+    description: "Produce a staged production deployment that is prod-eligible but not yet serving traffic (requires prebuilt=true and environment=production)."
     required: false
     default: "false"
   disable-crons:
-    description: "Remove Vercel Cron definitions from a staged prebuilt production deployment before upload. Requires skip-domain=true."
+    description: "Remove Vercel Cron definitions from a staged prebuilt production deployment before upload. Requires skip-domain=true; do not promote the stripped deployment."
     required: false
     default: "false"
 
