@@ -118,9 +118,9 @@ function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   const conditions = [
     isNull(runUploadedFiles.previewImageUrl),
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    // HTML/website artifacts (by artifactKind) or videos (by contentType, which
-    // is how videos are identified — they carry no artifactKind).
-    sql`(${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html') OR ${runUploadedFiles.contentType} LIKE 'video/%')`,
+    // HTML/website artifacts (by artifactKind) or generated video artifacts.
+    // Ordinary user-uploaded videos are not artifacts and should not be swept.
+    sql`(${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html') OR (jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string' AND ${runUploadedFiles.contentType} LIKE 'video/%'))`,
     // Grace window: skip rows touched in the last 2 minutes so the deploy-time
     // fast path can finish first. The cron only picks up rows it demonstrably
     // failed on, plus pre-feature backfill (already old), avoiding a duplicate
@@ -222,7 +222,12 @@ const renderAndStoreArtifactPreview$ = command(
 
     const key = buildArtifactKey(args.userId, args.id, filename);
     await get(
-      putS3Object(env("R2_USER_ARTIFACTS_BUCKET_NAME"), key, image, contentType),
+      putS3Object(
+        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+        key,
+        image,
+        contentType,
+      ),
     );
     signal.throwIfAborted();
 

@@ -45,11 +45,13 @@ export async function markHostedArtifactEligibleForPreviewCron(
     readonly runId: string;
     readonly url: string;
   },
+  options: { readonly generatedBy?: string } = {},
 ): Promise<void> {
   const body = await postArtifactPreviewState(context, {
     action: "mark-preview-cron-eligible",
     run_id: artifact.runId,
     url: artifact.url,
+    ...(options.generatedBy ? { generated_by: options.generatedBy } : {}),
   });
   if (body.updated !== 1) {
     throw new Error(

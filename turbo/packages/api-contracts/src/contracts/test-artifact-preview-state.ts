@@ -15,6 +15,7 @@ export const testArtifactPreviewStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("mark-preview-cron-eligible"),
       run_id: z.string(),
       url: z.string(),
+      generated_by: z.string().optional(),
     }),
   ],
 );

@@ -34,9 +34,17 @@ type ArtifactPreviewStateActionHandler = (
 
 const actionHandlers = {
   async "mark-preview-cron-eligible"(db, body, signal) {
+    const metadataPatch = body.generated_by
+      ? {
+          metadata: sql`${runUploadedFiles.metadata} || ${JSON.stringify({
+            generatedBy: body.generated_by,
+          })}::jsonb`,
+        }
+      : {};
     const rows = await db
       .update(runUploadedFiles)
       .set({
+        ...metadataPatch,
         previewImageUrl: null,
         updatedAt: sql`now() - interval '3 minutes'`,
       })
