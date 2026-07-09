@@ -131,7 +131,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(staffOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(true);
     expect(
       staffOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
@@ -161,7 +160,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.RelationshipMemory]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.RelationshipMemoryRuntimeInjection],
@@ -187,13 +185,6 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
     expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
-  });
-
-  it("should enable chat thread emoji globally", () => {
-    const states = getAllFeatureStates({
-      orgId: "org_nonexistent",
-    });
-    expect(states[FeatureSwitchKey.ChatThreadEmoji]).toBe(true);
   });
 
   it("should apply overrides to disable enabled features", () => {
