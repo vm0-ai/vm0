@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 
 import { cronDrainRelationshipMemoryContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
@@ -13,11 +13,13 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import type { ApiTestUser } from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
 import {
   createConnectorBddApi,
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { mockNotionConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
@@ -28,6 +30,8 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const gh = createGithubBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const CRON_SECRET = "test-cron-secret";
@@ -108,6 +112,172 @@ function configureGmailWatchMock(accessToken: string, historyId = "100"): void {
       },
     ),
   );
+}
+
+function privateKeyBase64(): string {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" });
+  return Buffer.from(pem).toString("base64");
+}
+
+function githubBackfillIssueFixture(
+  args: { readonly pullRequest?: boolean } = {},
+) {
+  return {
+    number: 42,
+    title: args.pullRequest
+      ? "Backfill memory pull request"
+      : "Backfill memory issue",
+    body: "Follow up on trusted contributor context.",
+    html_url: args.pullRequest
+      ? "https://github.com/vm0-ai/vm0/pull/42"
+      : "https://github.com/vm0-ai/vm0/issues/42",
+    created_at: "2026-07-01T12:00:00.000Z",
+    updated_at: "2026-07-06T12:00:00.000Z",
+    user: { id: 101, login: "lancy", type: "User" },
+    labels: [{ name: "memory" }],
+    ...(args.pullRequest
+      ? {
+          pull_request: {
+            url: "https://api.github.com/repos/vm0-ai/vm0/pulls/42",
+          },
+        }
+      : {}),
+  };
+}
+
+function configureGithubAppBackfillMocks(args: {
+  readonly remoteInstallationId: string;
+  readonly token: string;
+  readonly pullRequest?: boolean;
+}): void {
+  mockOptionalEnv("GITHUB_APP_ID", "123456");
+  mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", privateKeyBase64());
+  server.use(
+    http.post(
+      `https://api.github.com/app/installations/${args.remoteInstallationId}/access_tokens`,
+      () => {
+        return HttpResponse.json({
+          token: args.token,
+          expires_at: "2099-01-01T00:00:00Z",
+        });
+      },
+    ),
+    http.get("https://api.github.com/repos/vm0-ai/vm0/issues", () => {
+      return HttpResponse.json([
+        githubBackfillIssueFixture({ pullRequest: args.pullRequest }),
+      ]);
+    }),
+    http.get(
+      "https://api.github.com/repos/vm0-ai/vm0/issues/42/comments",
+      ({ request }) => {
+        const url = new URL(request.url);
+        const page = url.searchParams.get("page") ?? "1";
+        if (page === "2") {
+          return HttpResponse.json([
+            {
+              id: 4244,
+              body: "Second page trusted comment for memory.",
+              created_at: "2026-07-06T12:07:00.000Z",
+              user: { id: 101, login: "lancy", type: "User" },
+            },
+          ]);
+        }
+        return HttpResponse.json(
+          [
+            {
+              id: 4242,
+              body: "Trusted comment for memory.",
+              created_at: "2026-07-06T12:05:00.000Z",
+              user: { id: 101, login: "lancy", type: "User" },
+            },
+            {
+              id: 4243,
+              body: "Untrusted comment.",
+              created_at: "2026-07-06T12:06:00.000Z",
+              user: { id: 303, login: "external", type: "User" },
+            },
+          ],
+          {
+            headers: {
+              Link: '<https://api.github.com/repos/vm0-ai/vm0/issues/42/comments?page=2>; rel="next"',
+            },
+          },
+        );
+      },
+    ),
+    http.get("https://api.github.com/repos/vm0-ai/vm0/issues/42", () => {
+      return HttpResponse.json(
+        githubBackfillIssueFixture({ pullRequest: args.pullRequest }),
+      );
+    }),
+    http.get(
+      "https://api.github.com/repos/vm0-ai/vm0/issues/comments/4242",
+      () => {
+        return HttpResponse.json({
+          id: 4242,
+          body: "Trusted comment for memory.",
+          created_at: "2026-07-06T12:05:00.000Z",
+          user: { id: 101, login: "lancy", type: "User" },
+        });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/vm0-ai/vm0/issues/comments/4244",
+      () => {
+        return HttpResponse.json({
+          id: 4244,
+          body: "Second page trusted comment for memory.",
+          created_at: "2026-07-06T12:07:00.000Z",
+          user: { id: 101, login: "lancy", type: "User" },
+        });
+      },
+    ),
+  );
+}
+
+async function seedGithubMemoryInstallation(
+  fixture: RelationshipFixture,
+  args: {
+    readonly includeIssues?: boolean;
+    readonly includePullRequests?: boolean;
+    readonly includeComments?: boolean;
+  } = {},
+): Promise<{ readonly remoteInstallationId: string }> {
+  const actor = fixtureActor(fixture);
+  const agent = await bdd.createAgent(actor, {
+    displayName: "GitHub Memory Agent",
+  });
+  const installed = await gh.installGithubApp(actor, agent.agentId, {
+    oauthCode: {
+      code: `gh-memory-${randomUUID().slice(0, 8)}`,
+      githubUserId: "101",
+      login: "lancy",
+    },
+  });
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+
+  await accept(
+    memoryClient().githubConfigure({
+      headers: authHeaders(),
+      body: {
+        repositories: [
+          {
+            fullName: "vm0-ai/vm0",
+            name: "vm0",
+            defaultBranch: "main",
+            selected: true,
+            includeIssues: args.includeIssues ?? true,
+            includePullRequests: args.includePullRequests ?? true,
+            includeComments: args.includeComments ?? true,
+            trustedContributors: [{ githubUserId: "101", login: "lancy" }],
+          },
+        ],
+      },
+    }),
+    [200],
+  );
+  return { remoteInstallationId: installed.remoteInstallationId };
 }
 
 function gmailBodyData(text: string): string {
@@ -1183,6 +1353,226 @@ describe("GET /api/zero/relationships/*", () => {
       status: "active",
       lastInteractionAt: "2026-05-28T20:26:40.000Z",
       recentInteractions: [],
+    });
+  });
+
+  it("backfills GitHub source memory from selected repos and trusted contributors", async () => {
+    const fixture = await seedRelationshipFixture();
+    configureGmailEnv();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const installation = await seedGithubMemoryInstallation(fixture);
+    configureGithubAppBackfillMocks({
+      remoteInstallationId: installation.remoteInstallationId,
+      token: "ghs_memory_backfill",
+    });
+
+    const started = await accept(
+      memoryClient().githubBackfill({
+        headers: authHeaders(),
+        body: { days: 180 },
+      }),
+      [200],
+    );
+    expect(started.body).toMatchObject({
+      provider: "github",
+      connected: true,
+      selectedRepositoryCount: 1,
+      trustedContributorCount: 1,
+      backfill: { status: "pending", scannedCount: 0, recordedCount: 0 },
+    });
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toMatchObject({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 3,
+    });
+
+    const sources = await accept(
+      memoryClient().sources({
+        headers: authHeaders(),
+        query: { provider: "github", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(sources.body.sources).toHaveLength(3);
+    expect(sources.body.sources).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: "github",
+          sourceType: "github_issue",
+          title: "Backfill memory issue",
+          metadata: expect.objectContaining({
+            githubRepository: "vm0-ai/vm0",
+            githubActorLogin: "lancy",
+            githubSubjectNumber: 42,
+          }),
+        }),
+        expect.objectContaining({
+          provider: "github",
+          sourceType: "github_issue_comment",
+          title: "Backfill memory issue",
+          metadata: expect.objectContaining({
+            githubRepository: "vm0-ai/vm0",
+            githubActorLogin: "lancy",
+            githubSubjectNumber: 42,
+          }),
+        }),
+        expect.objectContaining({
+          provider: "github",
+          sourceType: "github_issue_comment",
+          title: "Backfill memory issue",
+          metadata: expect.objectContaining({
+            githubIssueCommentId: "4244",
+            githubRepository: "vm0-ai/vm0",
+            githubActorLogin: "lancy",
+            githubSubjectNumber: 42,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(sources.body)).not.toContain("external");
+  });
+
+  it("does not backfill GitHub comments when the parent pull request type is disabled", async () => {
+    const fixture = await seedRelationshipFixture();
+    configureGmailEnv();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const installation = await seedGithubMemoryInstallation(fixture, {
+      includePullRequests: false,
+      includeComments: true,
+    });
+    configureGithubAppBackfillMocks({
+      remoteInstallationId: installation.remoteInstallationId,
+      token: "ghs_memory_backfill_pr_disabled",
+      pullRequest: true,
+    });
+
+    await accept(
+      memoryClient().githubBackfill({
+        headers: authHeaders(),
+        body: { days: 180 },
+      }),
+      [200],
+    );
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toMatchObject({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 0,
+    });
+
+    const sources = await accept(
+      memoryClient().sources({
+        headers: authHeaders(),
+        query: { provider: "github", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(sources.body.sources).toHaveLength(0);
+  });
+
+  it("backfills Notion workspace pages with a document limit", async () => {
+    const fixture = await seedRelationshipFixture();
+    configureGmailEnv();
+    const actor = fixtureActor(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockNotionConnectorOAuth({ accessToken: "notion-memory-token" });
+    const start = await connectorsApi.startOauth(actor, "notion", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Notion OAuth start URL to include state");
+    }
+    await connectorsApi.completeOauthCallback("notion", {
+      code: "notion-code",
+      state,
+    });
+    server.use(
+      http.post("https://api.notion.com/v1/search", ({ request }) => {
+        if (
+          request.headers.get("authorization") !== "Bearer notion-memory-token"
+        ) {
+          return HttpResponse.json({ error: "invalid token" }, { status: 401 });
+        }
+        return HttpResponse.json({
+          results: [
+            {
+              object: "page",
+              id: "11111111-1111-4111-8111-111111111111",
+              created_time: "2026-07-01T12:00:00.000Z",
+              last_edited_time: "2026-07-06T12:00:00.000Z",
+              archived: false,
+              in_trash: false,
+              url: "https://www.notion.so/11111111111141118111111111111111",
+              parent: { type: "workspace" },
+              properties: {
+                Name: {
+                  type: "title",
+                  title: [{ plain_text: "Workspace memory page" }],
+                },
+              },
+            },
+          ],
+          next_cursor: null,
+          has_more: false,
+        });
+      }),
+    );
+
+    const started = await accept(
+      memoryClient().notionBackfill({
+        headers: authHeaders(),
+        body: { days: 180, documentLimit: 5 },
+      }),
+      [200],
+    );
+    expect(started.body).toMatchObject({
+      provider: "notion",
+      connected: true,
+      backfill: { status: "pending", scannedCount: 0, recordedCount: 0 },
+    });
+
+    const drained = await accept(
+      cronClient().drain({
+        headers: cronHeaders(),
+      }),
+      [200],
+    );
+    expect(drained.body.backfill).toMatchObject({
+      processed: 1,
+      failed: 0,
+      scanned: 1,
+      enqueued: 1,
+    });
+
+    const sources = await accept(
+      memoryClient().sources({
+        headers: authHeaders(),
+        query: { provider: "notion", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(sources.body.sources).toHaveLength(1);
+    expect(sources.body.sources[0]).toMatchObject({
+      provider: "notion",
+      sourceType: "notion_page",
+      title: "Workspace memory page",
+      metadata: {
+        notionPageId: "11111111-1111-4111-8111-111111111111",
+      },
     });
   });
 });

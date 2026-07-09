@@ -14,7 +14,12 @@ const relationshipItemKindSchema = z.enum([
   "preference",
   "open_loop",
 ]);
-const relationshipProviderSchema = z.enum(["gmail", "slack"]);
+const relationshipProviderSchema = z.enum([
+  "gmail",
+  "slack",
+  "github",
+  "notion",
+]);
 
 const relationshipEntitySchema = z.object({
   id: z.string().uuid(),

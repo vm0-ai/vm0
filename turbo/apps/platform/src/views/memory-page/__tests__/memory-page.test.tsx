@@ -1,11 +1,16 @@
 import { screen, waitFor } from "@testing-library/react";
 import {
   zeroMemoryContract,
+  type GithubMemoryConfigureRequest,
+  type GithubMemoryRepositoriesResponse,
+  type GithubMemoryStatusResponse,
   type MemoryDetailResponse,
   type MemoryInjectionPreviewResponse,
   type MemoryRecallResponse,
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
+  type MemorySourceProvider,
+  type NotionMemoryStatusResponse,
   type SlackMemoryStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
@@ -162,8 +167,110 @@ function slackMemoryStatus(
   };
 }
 
+function githubMemoryStatus(
+  overrides: Partial<GithubMemoryStatusResponse> = {},
+): GithubMemoryStatusResponse {
+  return {
+    provider: "github",
+    connected: true,
+    installationId: "github-installation-1",
+    targetName: "vm0-ai",
+    selectedRepositoryCount: 1,
+    trustedContributorCount: 1,
+    backfill: {
+      status: "done",
+      estimatedTotal: null,
+      scannedCount: 4,
+      recordedCount: 2,
+      lastError: null,
+      updatedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+      completedAt: `${localDateDaysAgo(0)}T12:00:00Z`,
+    },
+    ...overrides,
+  };
+}
+
+function githubMemoryRepositories(
+  args: {
+    readonly page?: number;
+    readonly hasMore?: boolean;
+  } = {},
+): GithubMemoryRepositoriesResponse {
+  const page = args.page ?? 1;
+  const repository = (() => {
+    if (page === 2) {
+      return {
+        id: 456,
+        name: "analytics",
+        fullName: "vm0-ai/analytics",
+        private: true,
+        defaultBranch: "main",
+        selected: false,
+        includeIssues: true,
+        includePullRequests: true,
+        includeComments: true,
+        trustedContributors: [],
+      };
+    }
+    if (page === 3) {
+      return {
+        id: 789,
+        name: "docs",
+        fullName: "vm0-ai/docs",
+        private: true,
+        defaultBranch: "main",
+        selected: false,
+        includeIssues: true,
+        includePullRequests: true,
+        includeComments: true,
+        trustedContributors: [],
+      };
+    }
+    return {
+      id: 123,
+      name: "vm0",
+      fullName: "vm0-ai/vm0",
+      private: true,
+      defaultBranch: "main",
+      selected: true,
+      includeIssues: true,
+      includePullRequests: true,
+      includeComments: true,
+      trustedContributors: [{ githubUserId: "101", login: "lancy" }],
+    };
+  })();
+  return {
+    provider: "github",
+    connected: true,
+    installationId: "github-installation-1",
+    targetName: "vm0-ai",
+    repositories: [repository],
+    pagination: { page, pageSize: 50, hasMore: args.hasMore ?? false },
+  };
+}
+
+function notionMemoryStatus(
+  overrides: Partial<NotionMemoryStatusResponse> = {},
+): NotionMemoryStatusResponse {
+  return {
+    provider: "notion",
+    connected: true,
+    workspaceName: "Memory Workspace",
+    backfill: {
+      status: "idle",
+      estimatedTotal: null,
+      scannedCount: 0,
+      recordedCount: 0,
+      lastError: null,
+      updatedAt: null,
+      completedAt: null,
+    },
+    ...overrides,
+  };
+}
+
 function memorySourceListPage(
-  provider?: "gmail" | "slack",
+  provider?: MemorySourceProvider,
 ): MemorySourceListResponse {
   const allSources: MemorySourceListResponse["sources"] = [
     {
@@ -442,6 +549,42 @@ function relationshipSearchPage(query: {
             },
           ],
         },
+        {
+          id: "00000000-0000-4000-8000-000000000106",
+          kind: "key_fact",
+          text: "The repo migration discussion lives in GitHub.",
+          confidence: 84,
+          lastSeenAt: "2026-07-01T12:00:00.000Z",
+          sources: [
+            {
+              id: "00000000-0000-4000-8000-000000000107",
+              provider: "github",
+              externalId: "github-source-1:key_fact:migration",
+              threadId: "42",
+              messageId: null,
+              quote: "Migration scope is tracked in the pull request.",
+              occurredAt: "2026-07-01T12:00:00.000Z",
+            },
+          ],
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000108",
+          kind: "preference",
+          text: "Use the Notion rollout checklist for launch memory.",
+          confidence: 86,
+          lastSeenAt: "2026-06-30T12:00:00.000Z",
+          sources: [
+            {
+              id: "00000000-0000-4000-8000-000000000109",
+              provider: "notion",
+              externalId: "notion-source-1:preference:rollout",
+              threadId: "notion-page-1",
+              messageId: null,
+              quote: "Rollout checklist is the source of truth.",
+              occurredAt: "2026-06-30T12:00:00.000Z",
+            },
+          ],
+        },
       ],
       recentInteractions: [
         {
@@ -599,12 +742,44 @@ function memoryRecallResponse(query: string): MemoryRecallResponse {
         sources: [
           {
             id: "00000000-0000-4000-8000-000000000104",
-            provider: "gmail",
-            externalId: "gmail-message-1:open_loop:security",
-            threadId: "thread-1",
-            messageId: "gmail-message-1",
-            quote: "Can you send the retention answer?",
+            provider: "github",
+            externalId: "github-source-1:open_loop:security",
+            threadId: "42",
+            messageId: null,
+            quote: "Security answer is tracked in the pull request.",
             occurredAt: "2026-07-02T12:00:00.000Z",
+          },
+        ],
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000110",
+        kind: "preference",
+        text: "Use the Notion rollout checklist for launch memory.",
+        confidence: 86,
+        lastSeenAt: "2026-06-30T12:00:00.000Z",
+        relationship: {
+          id: "00000000-0000-4000-8000-000000000101",
+          entity: {
+            id: "00000000-0000-4000-8000-000000000102",
+            type: "person",
+            displayName: "Alice Lee",
+            primaryEmail: "alice@acme.com",
+            domain: "acme.com",
+          },
+          relationshipType: "Customer champion",
+          status: "active",
+          summary: "Alice is waiting for the security review answer.",
+          lastInteractionAt: "2026-07-02T12:00:00.000Z",
+        },
+        sources: [
+          {
+            id: "00000000-0000-4000-8000-000000000111",
+            provider: "notion",
+            externalId: "notion-source-1:preference:rollout",
+            threadId: "notion-page-1",
+            messageId: null,
+            quote: "Rollout checklist is the source of truth.",
+            occurredAt: "2026-06-30T12:00:00.000Z",
           },
         ],
       },
@@ -839,6 +1014,21 @@ describe("memory page", () => {
     expect(
       screen.getByText("Send the security data-retention answer."),
     ).toBeInTheDocument();
+    expect(screen.getByText("GitHub")).toBeInTheDocument();
+    expect(screen.getByText("Notion")).toBeInTheDocument();
+    expect(
+      screen.getByText("The repo migration discussion lives in GitHub."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "GitHub - Jul 1 - Migration scope is tracked in the pull request.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Notion - Jun 30 - Rollout checklist is the source of truth.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("This org only")).toBeInTheDocument();
 
     click(getButtonContaining("Organizations"));
@@ -923,10 +1113,15 @@ describe("memory page", () => {
         screen.getByText("Send the security data-retention answer."),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText(/Alice Lee/)).toBeInTheDocument();
-    expect(screen.getByText("Evidence refs")).toBeInTheDocument();
+    expect(screen.getAllByText(/Alice Lee/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Evidence refs").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("gmail-message-1:open_loop:security"),
+      screen.getByText("github-source-1:open_loop:security"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/GitHub - Jul 2/u)).toBeInTheDocument();
+    expect(screen.getByText(/Notion - Jun 30/u)).toBeInTheDocument();
+    expect(
+      screen.getByText("notion-source-1:preference:rollout"),
     ).toBeInTheDocument();
     expect(recallQueries).toStrictEqual(["security review"]);
   });
@@ -988,7 +1183,7 @@ describe("memory page", () => {
     context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
       return respond(200, memoryDetailResponse());
     });
-    const sourceQueries: ("gmail" | "slack" | undefined)[] = [];
+    const sourceQueries: (MemorySourceProvider | undefined)[] = [];
     context.mocks.api(zeroMemoryContract.sources, ({ query, respond }) => {
       sourceQueries.push(query.provider);
       return respond(200, memorySourceListPage(query.provider));
@@ -1001,6 +1196,15 @@ describe("memory page", () => {
     let status = slackMemoryStatus();
     context.mocks.api(zeroMemoryContract.slackStatus, ({ respond }) => {
       return respond(200, status);
+    });
+    context.mocks.api(zeroMemoryContract.githubStatus, ({ respond }) => {
+      return respond(200, githubMemoryStatus());
+    });
+    context.mocks.api(zeroMemoryContract.githubRepositories, ({ respond }) => {
+      return respond(200, githubMemoryRepositories());
+    });
+    context.mocks.api(zeroMemoryContract.notionStatus, ({ respond }) => {
+      return respond(200, notionMemoryStatus());
     });
     context.mocks.api(zeroMemoryContract.slackBackfill, ({ body, respond }) => {
       expect(body).toStrictEqual({
@@ -1076,6 +1280,114 @@ describe("memory page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Participants")).toBeInTheDocument();
     expect(screen.getAllByText("U-memory-user").length).toBeGreaterThan(0);
+  });
+
+  it("loads additional GitHub repositories in the memory configuration dialog", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroMemoryContract.sources, ({ query, respond }) => {
+      return respond(200, memorySourceListPage(query.provider));
+    });
+    context.mocks.api(zeroMemoryContract.slackStatus, ({ respond }) => {
+      return respond(200, slackMemoryStatus());
+    });
+    context.mocks.api(zeroMemoryContract.githubStatus, ({ respond }) => {
+      return respond(200, githubMemoryStatus());
+    });
+    const repositoryPages: number[] = [];
+    context.mocks.api(
+      zeroMemoryContract.githubRepositories,
+      ({ query, respond }) => {
+        repositoryPages.push(query.page);
+        return respond(
+          200,
+          githubMemoryRepositories({
+            page: query.page,
+            hasMore: query.page < 3,
+          }),
+        );
+      },
+    );
+    let configured: unknown = null;
+    context.mocks.api(
+      zeroMemoryContract.githubConfigure,
+      ({ body, respond }) => {
+        configured = body;
+        return respond(
+          200,
+          githubMemoryStatus({
+            selectedRepositoryCount: body.repositories.filter((repository) => {
+              return repository.selected;
+            }).length,
+          }),
+        );
+      },
+    );
+    context.mocks.api(zeroMemoryContract.notionStatus, ({ respond }) => {
+      return respond(200, notionMemoryStatus());
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Sources"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub memory")).toBeInTheDocument();
+    });
+    click(getButtonWithText("Configure"));
+
+    await waitFor(() => {
+      expect(screen.getByText("vm0-ai/vm0")).toBeInTheDocument();
+    });
+    click(getButtonContaining("Load more repositories"));
+
+    await waitFor(() => {
+      expect(screen.getByText("vm0-ai/analytics")).toBeInTheDocument();
+    });
+    click(getButtonContaining("Load more repositories"));
+
+    await waitFor(() => {
+      expect(screen.getByText("vm0-ai/docs")).toBeInTheDocument();
+    });
+    expect(repositoryPages).toStrictEqual([1, 2, 3]);
+
+    click(screen.getByText("vm0-ai/docs"));
+    click(getButtonWithText("Save configuration"));
+
+    await waitFor(() => {
+      expect(configured).toMatchObject({
+        repositories: expect.arrayContaining([
+          expect.objectContaining({
+            fullName: "vm0-ai/docs",
+            selected: true,
+          }),
+        ]),
+      });
+    });
+    const repositories = (configured as GithubMemoryConfigureRequest)
+      .repositories;
+    expect(repositories).toHaveLength(2);
+    expect(
+      repositories.some((repository) => {
+        return repository.fullName === "vm0-ai/analytics";
+      }),
+    ).toBeFalsy();
   });
 
   it("moves through relationship pages from the relationships tab", async () => {

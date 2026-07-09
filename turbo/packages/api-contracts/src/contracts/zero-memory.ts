@@ -14,7 +14,12 @@ const memoryFileContentSchema = z.object({
   content: z.string(),
 });
 
-const memorySourceProviderSchema = z.enum(["gmail", "slack"]);
+const memorySourceProviderSchema = z.enum([
+  "gmail",
+  "slack",
+  "github",
+  "notion",
+]);
 const memoryRecallItemKindSchema = z.enum([
   "key_fact",
   "preference",
@@ -45,6 +50,20 @@ const memorySourceCompactMetadataSchema = z.object({
   senderId: z.string().optional(),
   mailboxEmail: z.string().optional(),
   direction: memorySourceDirectionSchema.optional(),
+  githubRepository: z.string().optional(),
+  githubSubjectKind: z.enum(["issue", "pull_request"]).optional(),
+  githubSubjectNumber: z.number().int().positive().optional(),
+  githubIssueCommentId: z.string().optional(),
+  githubActorLogin: z.string().optional(),
+  notionWorkspaceName: z.string().nullable().optional(),
+  notionPageId: z.string().optional(),
+  notionEventFamily: z
+    .enum(["new_child_page", "new_database_item", "page_content_updated"])
+    .optional(),
+  notionEventType: z
+    .enum(["page.created", "page.content_updated", "page.properties_updated"])
+    .optional(),
+  notionParentTitle: z.string().nullable().optional(),
 });
 
 const memorySourceMetadataSchema = memorySourceCompactMetadataSchema
@@ -56,6 +75,22 @@ const memorySourceMetadataSchema = memorySourceCompactMetadataSchema
     from: z.string().nullable().optional(),
     to: z.array(z.string()).optional(),
     cc: z.array(z.string()).optional(),
+    githubInstallationId: z.string().optional(),
+    githubRemoteInstallationId: z.string().optional(),
+    githubSubjectUrl: z.string().optional(),
+    githubIssueCommentId: z.string().optional(),
+    githubActorId: z.string().optional(),
+    githubAuthorId: z.string().optional(),
+    githubAuthorLogin: z.string().optional(),
+    githubLabels: z.array(z.string()).optional(),
+    notionWorkspaceId: z.string().optional(),
+    notionPageUrl: z.string().nullable().optional(),
+    notionLastEditedTime: z.string().nullable().optional(),
+    notionEventId: z.string().optional(),
+    notionScopeType: z.enum(["page", "data_source"]).optional(),
+    notionScopeId: z.string().optional(),
+    notionParentUrl: z.string().nullable().optional(),
+    notionAuthorIds: z.array(z.string()).optional(),
     reason: z.string().optional(),
   })
   .passthrough();
@@ -63,7 +98,15 @@ const memorySourceMetadataSchema = memorySourceCompactMetadataSchema
 const memorySourceBaseSchema = z.object({
   id: z.string().uuid(),
   provider: memorySourceProviderSchema,
-  sourceType: z.enum(["gmail_message", "slack_message"]),
+  sourceType: z.enum([
+    "gmail_message",
+    "slack_message",
+    "github_issue",
+    "github_pull_request",
+    "github_issue_comment",
+    "notion_page",
+    "notion_page_event",
+  ]),
   title: z.string().nullable(),
   occurredAt: z.string().nullable(),
   createdAt: z.string(),
@@ -205,6 +248,119 @@ export const slackMemoryBackfillRequestSchema = z.object({
   includeDirectMessages: z.boolean(),
 });
 
+const sourceBackfillStatusSchema = z.enum([
+  "idle",
+  "pending",
+  "running",
+  "stopped",
+  "done",
+  "failed",
+]);
+
+const sourceBackfillSchema = z.object({
+  status: sourceBackfillStatusSchema,
+  estimatedTotal: z.number().int().nonnegative().nullable(),
+  scannedCount: z.number().int().nonnegative(),
+  recordedCount: z.number().int().nonnegative(),
+  lastError: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+const githubTrustedContributorSchema = z.object({
+  githubUserId: z.string().optional(),
+  login: z.string().optional(),
+  email: z.string().email().optional(),
+});
+
+const githubMemoryRepositoryConfigSchema = z.object({
+  id: z.number().int().optional(),
+  name: z.string().optional(),
+  fullName: z.string().min(1),
+  defaultBranch: z.string().nullable().optional(),
+  selected: z.boolean(),
+  includeIssues: z.boolean().default(true),
+  includePullRequests: z.boolean().default(true),
+  includeComments: z.boolean().default(true),
+  trustedContributors: z.array(githubTrustedContributorSchema).default([]),
+});
+
+export const githubMemoryConfigureRequestSchema = z.object({
+  repositories: z.array(githubMemoryRepositoryConfigSchema).max(100),
+});
+
+export const githubMemoryBackfillRequestSchema = z.object({
+  days: z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)]),
+});
+
+const githubMemoryRepositoryResourceSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  fullName: z.string(),
+  private: z.boolean(),
+  defaultBranch: z.string().nullable(),
+  selected: z.boolean(),
+  includeIssues: z.boolean(),
+  includePullRequests: z.boolean(),
+  includeComments: z.boolean(),
+  trustedContributors: z.array(githubTrustedContributorSchema),
+});
+
+const githubMemoryContributorSchema = z.object({
+  githubUserId: z.string(),
+  login: z.string(),
+  type: z.string().nullable(),
+  contributions: z.number().int().nonnegative().nullable(),
+  trusted: z.boolean(),
+});
+
+export const githubMemoryRepositoriesResponseSchema = z.object({
+  provider: z.literal("github"),
+  connected: z.boolean(),
+  installationId: z.string().nullable(),
+  targetName: z.string().nullable(),
+  repositories: z.array(githubMemoryRepositoryResourceSchema),
+  pagination: z.object({
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    hasMore: z.boolean(),
+  }),
+});
+
+export const githubMemoryContributorsResponseSchema = z.object({
+  provider: z.literal("github"),
+  connected: z.boolean(),
+  repository: z.string(),
+  contributors: z.array(githubMemoryContributorSchema),
+  pagination: z.object({
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    hasMore: z.boolean(),
+  }),
+});
+
+export const githubMemoryStatusResponseSchema = z.object({
+  provider: z.literal("github"),
+  connected: z.boolean(),
+  installationId: z.string().nullable(),
+  targetName: z.string().nullable(),
+  selectedRepositoryCount: z.number().int().nonnegative(),
+  trustedContributorCount: z.number().int().nonnegative(),
+  backfill: sourceBackfillSchema,
+});
+
+export const notionMemoryBackfillRequestSchema = z.object({
+  days: z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)]),
+  documentLimit: z.number().int().min(1).max(10_000),
+});
+
+export const notionMemoryStatusResponseSchema = z.object({
+  provider: z.literal("notion"),
+  connected: z.boolean(),
+  workspaceName: z.string().nullable(),
+  backfill: sourceBackfillSchema,
+});
+
 /**
  * Read-only view of the current user's "memory" artifact (latest version).
  *
@@ -248,6 +404,27 @@ export type SlackMemoryStatusResponse = z.infer<
 >;
 export type SlackMemoryBackfillRequest = z.infer<
   typeof slackMemoryBackfillRequestSchema
+>;
+export type GithubMemoryConfigureRequest = z.infer<
+  typeof githubMemoryConfigureRequestSchema
+>;
+export type GithubMemoryBackfillRequest = z.infer<
+  typeof githubMemoryBackfillRequestSchema
+>;
+export type GithubMemoryStatusResponse = z.infer<
+  typeof githubMemoryStatusResponseSchema
+>;
+export type GithubMemoryRepositoriesResponse = z.infer<
+  typeof githubMemoryRepositoriesResponseSchema
+>;
+export type GithubMemoryContributorsResponse = z.infer<
+  typeof githubMemoryContributorsResponseSchema
+>;
+export type NotionMemoryBackfillRequest = z.infer<
+  typeof notionMemoryBackfillRequestSchema
+>;
+export type NotionMemoryStatusResponse = z.infer<
+  typeof notionMemoryStatusResponseSchema
 >;
 
 /**
@@ -385,6 +562,130 @@ export const zeroMemoryContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Stop the current Slack memory source backfill",
+  },
+  githubStatus: {
+    method: "GET",
+    path: "/api/zero/memory/sources/github/status",
+    headers: authHeadersSchema,
+    responses: {
+      200: githubMemoryStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Read GitHub memory source configuration and backfill status",
+  },
+  githubRepositories: {
+    method: "GET",
+    path: "/api/zero/memory/sources/github/repositories",
+    headers: authHeadersSchema,
+    query: z.object({
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: githubMemoryRepositoriesResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List GitHub repositories available for memory source sync",
+  },
+  githubContributors: {
+    method: "GET",
+    path: "/api/zero/memory/sources/github/contributors",
+    headers: authHeadersSchema,
+    query: z.object({
+      repository: z.string().min(1),
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: githubMemoryContributorsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List GitHub contributors for a repository memory allowlist",
+  },
+  githubConfigure: {
+    method: "PUT",
+    path: "/api/zero/memory/sources/github/config",
+    headers: authHeadersSchema,
+    body: githubMemoryConfigureRequestSchema,
+    responses: {
+      200: githubMemoryStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Configure selected GitHub repositories and trusted contributors",
+  },
+  githubBackfill: {
+    method: "POST",
+    path: "/api/zero/memory/sources/github/backfill",
+    headers: authHeadersSchema,
+    body: githubMemoryBackfillRequestSchema,
+    responses: {
+      200: githubMemoryStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Start or restart GitHub memory source backfill",
+  },
+  githubStopBackfill: {
+    method: "POST",
+    path: "/api/zero/memory/sources/github/backfill/stop",
+    headers: authHeadersSchema,
+    responses: {
+      200: githubMemoryStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Stop the current GitHub memory source backfill",
+  },
+  notionStatus: {
+    method: "GET",
+    path: "/api/zero/memory/sources/notion/status",
+    headers: authHeadersSchema,
+    responses: {
+      200: notionMemoryStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Read Notion memory source backfill status",
+  },
+  notionBackfill: {
+    method: "POST",
+    path: "/api/zero/memory/sources/notion/backfill",
+    headers: authHeadersSchema,
+    body: notionMemoryBackfillRequestSchema,
+    responses: {
+      200: notionMemoryStatusResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Start or restart Notion workspace memory source backfill",
+  },
+  notionStopBackfill: {
+    method: "POST",
+    path: "/api/zero/memory/sources/notion/backfill/stop",
+    headers: authHeadersSchema,
+    responses: {
+      200: notionMemoryStatusResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Stop the current Notion memory source backfill",
   },
 });
 

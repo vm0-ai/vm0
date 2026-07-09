@@ -108,6 +108,25 @@ function relationshipSubtitle(relationship: RelationshipRecord): string {
     .join(" - ");
 }
 
+function providerLabel(
+  provider: RelationshipRecord["items"][number]["sources"][number]["provider"],
+): string {
+  switch (provider) {
+    case "gmail": {
+      return "Gmail";
+    }
+    case "slack": {
+      return "Slack";
+    }
+    case "github": {
+      return "GitHub";
+    }
+    case "notion": {
+      return "Notion";
+    }
+  }
+}
+
 function relationshipSourceLabels(
   relationship: RelationshipRecord,
 ): readonly string[] {
@@ -119,7 +138,7 @@ function relationshipSourceLabels(
     }),
   );
   return [...providers].map((provider) => {
-    return provider === "slack" ? "Slack" : "Gmail";
+    return providerLabel(provider);
   });
 }
 
@@ -214,8 +233,7 @@ function sourceText(item: RelationshipRecord["items"][number]): string {
   }
   const date = formatShortDate(source.occurredAt);
   const quote = source.quote ? ` - ${source.quote}` : "";
-  const provider = source.provider === "slack" ? "Slack" : "Gmail";
-  return `${provider} - ${date}${quote}`;
+  return `${providerLabel(source.provider)} - ${date}${quote}`;
 }
 
 function RelationshipSection({

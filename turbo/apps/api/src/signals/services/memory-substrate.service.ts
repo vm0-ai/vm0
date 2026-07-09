@@ -114,6 +114,34 @@ function compactMemorySourceMetadata(
     ...(metadata.senderId ? { senderId: metadata.senderId } : {}),
     ...(metadata.mailboxEmail ? { mailboxEmail: metadata.mailboxEmail } : {}),
     ...(metadata.direction ? { direction: metadata.direction } : {}),
+    ...(metadata.githubRepository
+      ? { githubRepository: metadata.githubRepository }
+      : {}),
+    ...(metadata.githubSubjectKind
+      ? { githubSubjectKind: metadata.githubSubjectKind }
+      : {}),
+    ...(metadata.githubSubjectNumber
+      ? { githubSubjectNumber: metadata.githubSubjectNumber }
+      : {}),
+    ...(metadata.githubActorLogin
+      ? { githubActorLogin: metadata.githubActorLogin }
+      : {}),
+    ...(metadata.githubIssueCommentId
+      ? { githubIssueCommentId: metadata.githubIssueCommentId }
+      : {}),
+    ...(metadata.notionWorkspaceName !== undefined
+      ? { notionWorkspaceName: metadata.notionWorkspaceName }
+      : {}),
+    ...(metadata.notionPageId ? { notionPageId: metadata.notionPageId } : {}),
+    ...(metadata.notionEventFamily
+      ? { notionEventFamily: metadata.notionEventFamily }
+      : {}),
+    ...(metadata.notionEventType
+      ? { notionEventType: metadata.notionEventType }
+      : {}),
+    ...(metadata.notionParentTitle !== undefined
+      ? { notionParentTitle: metadata.notionParentTitle }
+      : {}),
   };
 }
 
@@ -138,6 +166,35 @@ function serializeMemorySourceMetadata(
     from: metadata.from,
     to: metadata.to ? [...metadata.to] : undefined,
     cc: metadata.cc ? [...metadata.cc] : undefined,
+    githubInstallationId: metadata.githubInstallationId,
+    githubRemoteInstallationId: metadata.githubRemoteInstallationId,
+    githubRepository: metadata.githubRepository,
+    githubSubjectKind: metadata.githubSubjectKind,
+    githubSubjectNumber: metadata.githubSubjectNumber,
+    githubSubjectUrl: metadata.githubSubjectUrl,
+    githubIssueCommentId: metadata.githubIssueCommentId,
+    githubActorId: metadata.githubActorId,
+    githubActorLogin: metadata.githubActorLogin,
+    githubAuthorId: metadata.githubAuthorId,
+    githubAuthorLogin: metadata.githubAuthorLogin,
+    githubLabels: metadata.githubLabels
+      ? [...metadata.githubLabels]
+      : undefined,
+    notionWorkspaceId: metadata.notionWorkspaceId,
+    notionWorkspaceName: metadata.notionWorkspaceName,
+    notionPageId: metadata.notionPageId,
+    notionPageUrl: metadata.notionPageUrl,
+    notionLastEditedTime: metadata.notionLastEditedTime,
+    notionEventId: metadata.notionEventId,
+    notionEventFamily: metadata.notionEventFamily,
+    notionEventType: metadata.notionEventType,
+    notionScopeType: metadata.notionScopeType,
+    notionScopeId: metadata.notionScopeId,
+    notionParentTitle: metadata.notionParentTitle,
+    notionParentUrl: metadata.notionParentUrl,
+    notionAuthorIds: metadata.notionAuthorIds
+      ? [...metadata.notionAuthorIds]
+      : undefined,
     reason: metadata.reason,
   };
 }

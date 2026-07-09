@@ -21,19 +21,164 @@ export interface GithubIssueComment {
   readonly user: {
     readonly login: string;
     readonly type: string;
+    readonly id?: number;
   };
   readonly body: string;
   readonly created_at: string;
 }
 
-export async function fetchGithubIssueComments(args: {
+export interface GithubIssueDetail {
+  readonly number: number;
+  readonly title: string;
+  readonly body: string | null;
+  readonly html_url?: string;
+  readonly created_at?: string;
+  readonly updated_at?: string;
+  readonly user: {
+    readonly id?: number;
+    readonly login: string;
+    readonly type: string;
+  };
+  readonly labels?: readonly {
+    readonly name: string;
+  }[];
+  readonly pull_request?: unknown;
+}
+
+interface GithubRepositoryResource {
+  readonly id: number;
+  readonly name: string;
+  readonly full_name: string;
+  readonly private: boolean;
+  readonly default_branch?: string | null;
+}
+
+interface GithubContributor {
+  readonly id?: number;
+  readonly login: string;
+  readonly type?: string;
+  readonly contributions?: number;
+}
+
+interface GithubIssuePage {
+  readonly items: readonly GithubIssueDetail[];
+  readonly hasMore: boolean;
+}
+
+function hasNextPage(linkHeader: string | null): boolean {
+  return linkHeader?.includes('rel="next"') ?? false;
+}
+
+export async function fetchGithubInstallationRepositories(args: {
+  readonly token: string;
+  readonly page: number;
+  readonly perPage: number;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly repositories: readonly GithubRepositoryResource[];
+  readonly hasMore: boolean;
+}> {
+  const url = new URL(`${GITHUB_API_BASE}/installation/repositories`);
+  url.searchParams.set("page", String(args.page));
+  url.searchParams.set("per_page", String(args.perPage));
+  const response = await fetch(url, {
+    headers: authHeaders(args.token),
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    L.warn("Failed to fetch installation repositories", {
+      status: response.status,
+      page: args.page,
+    });
+    return { repositories: [], hasMore: false };
+  }
+
+  const data = (await response.json()) as {
+    readonly repositories?: readonly GithubRepositoryResource[];
+  };
+  return {
+    repositories: data.repositories ?? [],
+    hasMore: hasNextPage(response.headers.get("link")),
+  };
+}
+
+export async function fetchGithubRepositoryContributors(args: {
+  readonly token: string;
+  readonly repo: string;
+  readonly page: number;
+  readonly perPage: number;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly contributors: readonly GithubContributor[];
+  readonly hasMore: boolean;
+}> {
+  const url = new URL(`${GITHUB_API_BASE}/repos/${args.repo}/contributors`);
+  url.searchParams.set("page", String(args.page));
+  url.searchParams.set("per_page", String(args.perPage));
+  const response = await fetch(url, {
+    headers: authHeaders(args.token),
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    L.warn("Failed to fetch repository contributors", {
+      status: response.status,
+      repo: args.repo,
+      page: args.page,
+    });
+    return { contributors: [], hasMore: false };
+  }
+
+  return {
+    contributors: (await response.json()) as readonly GithubContributor[],
+    hasMore: hasNextPage(response.headers.get("link")),
+  };
+}
+
+export async function fetchGithubIssuesPage(args: {
+  readonly token: string;
+  readonly repo: string;
+  readonly page: number;
+  readonly perPage: number;
+  readonly since: Date;
+  readonly signal: AbortSignal;
+}): Promise<GithubIssuePage> {
+  const url = new URL(`${GITHUB_API_BASE}/repos/${args.repo}/issues`);
+  url.searchParams.set("state", "all");
+  url.searchParams.set("sort", "updated");
+  url.searchParams.set("direction", "desc");
+  url.searchParams.set("since", args.since.toISOString());
+  url.searchParams.set("page", String(args.page));
+  url.searchParams.set("per_page", String(args.perPage));
+  const response = await fetch(url, {
+    headers: authHeaders(args.token),
+    signal: args.signal,
+  });
+
+  if (!response.ok) {
+    L.warn("Failed to fetch issues page", {
+      status: response.status,
+      repo: args.repo,
+      page: args.page,
+    });
+    return { items: [], hasMore: false };
+  }
+
+  return {
+    items: (await response.json()) as readonly GithubIssueDetail[],
+    hasMore: hasNextPage(response.headers.get("link")),
+  };
+}
+
+export async function fetchGithubIssue(args: {
   readonly token: string;
   readonly repo: string;
   readonly issueNumber: number;
   readonly signal: AbortSignal;
-}): Promise<readonly GithubIssueComment[]> {
+}): Promise<GithubIssueDetail | null> {
   const response = await fetch(
-    `${GITHUB_API_BASE}/repos/${args.repo}/issues/${args.issueNumber}/comments?per_page=100&direction=asc`,
+    `${GITHUB_API_BASE}/repos/${args.repo}/issues/${args.issueNumber}`,
     {
       headers: authHeaders(args.token),
       signal: args.signal,
@@ -41,15 +186,89 @@ export async function fetchGithubIssueComments(args: {
   );
 
   if (!response.ok) {
-    L.warn("Failed to fetch issue comments", {
+    L.warn("Failed to fetch issue", {
       status: response.status,
       repo: args.repo,
       issueNumber: args.issueNumber,
     });
-    return [];
+    return null;
   }
 
-  return (await response.json()) as readonly GithubIssueComment[];
+  return (await response.json()) as GithubIssueDetail;
+}
+
+export async function fetchGithubIssueComments(args: {
+  readonly token: string;
+  readonly repo: string;
+  readonly issueNumber: number;
+  readonly since?: Date;
+  readonly paginate?: boolean;
+  readonly signal: AbortSignal;
+}): Promise<readonly GithubIssueComment[]> {
+  const comments: GithubIssueComment[] = [];
+  let page = 1;
+
+  while (true) {
+    const url = new URL(
+      `${GITHUB_API_BASE}/repos/${args.repo}/issues/${args.issueNumber}/comments`,
+    );
+    url.searchParams.set("per_page", "100");
+    url.searchParams.set("direction", "asc");
+    url.searchParams.set("page", String(page));
+    if (args.since) {
+      url.searchParams.set("since", args.since.toISOString());
+    }
+
+    const response = await fetch(url, {
+      headers: authHeaders(args.token),
+      signal: args.signal,
+    });
+
+    if (!response.ok) {
+      L.warn("Failed to fetch issue comments", {
+        status: response.status,
+        repo: args.repo,
+        issueNumber: args.issueNumber,
+        page,
+      });
+      return comments;
+    }
+
+    comments.push(
+      ...((await response.json()) as readonly GithubIssueComment[]),
+    );
+
+    if (args.paginate !== true || !hasNextPage(response.headers.get("link"))) {
+      return comments;
+    }
+    page += 1;
+  }
+}
+
+export async function fetchGithubIssueComment(args: {
+  readonly token: string;
+  readonly repo: string;
+  readonly commentId: string;
+  readonly signal: AbortSignal;
+}): Promise<GithubIssueComment | null> {
+  const response = await fetch(
+    `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}`,
+    {
+      headers: authHeaders(args.token),
+      signal: args.signal,
+    },
+  );
+
+  if (!response.ok) {
+    L.warn("Failed to fetch issue comment", {
+      status: response.status,
+      repo: args.repo,
+      commentId: args.commentId,
+    });
+    return null;
+  }
+
+  return (await response.json()) as GithubIssueComment;
 }
 
 export async function postGithubIssueComment(args: {

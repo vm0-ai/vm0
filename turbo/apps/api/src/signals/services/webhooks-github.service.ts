@@ -16,6 +16,7 @@ import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../external/time";
+import { tapError } from "../utils";
 import {
   addGithubCommentReaction,
   fetchGithubIssueComments,
@@ -23,6 +24,10 @@ import {
   removeGithubCommentReaction,
   type GithubIssueComment,
 } from "./github-issues-api.service";
+import {
+  recordGithubIssueCommentMemorySource,
+  recordGithubSubjectMemorySource,
+} from "./github-memory-source.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { signGithubConnectParams } from "./github-oauth.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
@@ -61,6 +66,9 @@ const gitHubIssueSchema = z.object({
   number: z.number(),
   title: z.string(),
   body: z.string().nullable(),
+  html_url: z.string().optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
   labels: z.array(gitHubLabelSchema),
   user: gitHubUserSchema,
   pull_request: gitHubPullRequestMarkerSchema.optional(),
@@ -69,6 +77,8 @@ const gitHubIssueSchema = z.object({
 const gitHubCommentSchema = z.object({
   id: z.number(),
   body: z.string(),
+  html_url: z.string().optional(),
+  created_at: z.string().optional(),
   user: gitHubUserSchema,
 });
 
@@ -135,6 +145,19 @@ type GitHubPullRequestEvent = z.infer<typeof gitHubPullRequestEventSchema>;
 type GitHubInstallationEvent = z.infer<typeof gitHubInstallationEventSchema>;
 type GitHubInstallationRecord = typeof githubInstallations.$inferSelect;
 type GitHubTriggerKind = "issue" | "pull_request";
+
+function logMemorySourceError(
+  provider: "github",
+  context: Record<string, unknown>,
+): (error: unknown) => void {
+  return (error) => {
+    L.warn("Failed to record memory source", {
+      provider,
+      ...context,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  };
+}
 
 interface GitHubFileReference {
   readonly url: string;
@@ -1157,6 +1180,7 @@ export const handleGithubIssuesEvent$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    const db = set(writeDb$);
     await set(
       dispatchGithubLabelWorkflowTriggers$,
       {
@@ -1175,6 +1199,24 @@ export const handleGithubIssuesEvent$ = command(
       },
       signal,
     );
+    signal.throwIfAborted();
+
+    await tapError(
+      recordGithubSubjectMemorySource({
+        db,
+        action: args.payload.action,
+        issue: args.payload.issue,
+        repository: args.payload.repository,
+        installation: args.payload.installation,
+        sender: args.payload.sender,
+        subjectKind: "issue",
+        reason: "github_issue_webhook",
+      }),
+      logMemorySourceError("github", {
+        repo: args.payload.repository.full_name,
+        issueNumber: args.payload.issue.number,
+      }),
+    );
   },
 );
 
@@ -1189,6 +1231,7 @@ export const handleGithubPullRequestEvent$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    const db = set(writeDb$);
     await set(
       dispatchGithubLabelWorkflowTriggers$,
       {
@@ -1206,6 +1249,24 @@ export const handleGithubPullRequestEvent$ = command(
         backgroundScheduledAt: args.backgroundScheduledAt,
       },
       signal,
+    );
+    signal.throwIfAborted();
+
+    await tapError(
+      recordGithubSubjectMemorySource({
+        db,
+        action: args.payload.action,
+        issue: args.payload.pull_request,
+        repository: args.payload.repository,
+        installation: args.payload.installation,
+        sender: args.payload.sender,
+        subjectKind: "pull_request",
+        reason: "github_pull_request_webhook",
+      }),
+      logMemorySourceError("github", {
+        repo: args.payload.repository.full_name,
+        issueNumber: args.payload.pull_request.number,
+      }),
     );
   },
 );
@@ -1235,6 +1296,26 @@ export const handleGithubIssueCommentEvent$ = command(
       return;
     }
 
+    const db = set(writeDb$);
+    await tapError(
+      recordGithubIssueCommentMemorySource({
+        db,
+        issue: payload.issue,
+        comment: payload.comment,
+        repository: payload.repository,
+        installation: payload.installation,
+        sender: payload.sender,
+        subjectKind: githubIssueCommentSubjectKind(payload.issue),
+        reason: "github_issue_comment_webhook",
+      }),
+      logMemorySourceError("github", {
+        repo: payload.repository.full_name,
+        issueNumber: payload.issue.number,
+        commentId: payload.comment.id,
+      }),
+    );
+    signal.throwIfAborted();
+
     if (!githubCommentMentionsBot(payload.comment.body)) {
       L.debug("Ignoring GitHub issue_comment without bot mention", {
         commentId: payload.comment.id,
@@ -1242,7 +1323,6 @@ export const handleGithubIssueCommentEvent$ = command(
       return;
     }
 
-    const db = set(writeDb$);
     const installation = await findActiveInstallation({
       db,
       ghInstallationId: String(payload.installation.id),
