@@ -24,6 +24,10 @@
 //! The per-index lock file path must remain stable while claims may be held:
 //! kernel `flock` locks the opened inode, so deleting or replacing the path can
 //! create a separate lock domain for later callers.
+//!
+//! A claim only represents cooperative ownership of the lock file. It does not
+//! validate that `/dev/nbdN` exists or is currently free; callers that need a
+//! usable device must check device state while holding the claim.
 
 use std::fs::{File, OpenOptions};
 use std::io;
