@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.142.0...runner-rs-v0.143.0) (2026-07-09)
+
+
+### Features
+
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
 ## [0.142.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.1...runner-rs-v0.142.0) (2026-07-09)
 
 

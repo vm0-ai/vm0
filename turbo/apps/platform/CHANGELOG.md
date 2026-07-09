@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.585.0](https://github.com/vm0-ai/vm0/compare/app-v0.584.0...app-v0.585.0) (2026-07-09)
+
+
+### Features
+
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.176.0
+    * @vm0/connectors bumped to 1.152.0
+    * @vm0/core bumped to 8.420.0
+
 ## [0.584.0](https://github.com/vm0-ai/vm0/compare/app-v0.583.0...app-v0.584.0) (2026-07-09)
 
 
