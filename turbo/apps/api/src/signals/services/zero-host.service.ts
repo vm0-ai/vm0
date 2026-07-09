@@ -2353,6 +2353,7 @@ const redeployHostedSiteIndexHtml$ = command(
       {
         orgId: args.orgId,
         userId: args.userId,
+        runId: activeDeployment.runId ?? undefined,
         body: {
           site: site.slug,
           artifactKind: args.artifactKind,

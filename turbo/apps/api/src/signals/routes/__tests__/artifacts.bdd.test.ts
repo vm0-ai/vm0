@@ -1,38 +1,82 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { mockOptionalEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import {
   createChatFilesBddApi,
   hostedTextFile,
 } from "./helpers/api-bdd-chat-files";
+import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
+const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
+const CLOUDFLARE_SCREENSHOT_URL =
+  "https://api.cloudflare.com/client/v4/accounts/test-account/browser-rendering/screenshot";
+const CRON_SECRET = "test-cron-secret";
 
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+type ChatObjectStorage = ReturnType<
+  typeof chatCallbacks.acceptChatObjectStorage
+>;
 
 interface ArtifactActor {
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly runnerGroup: string;
+  readonly objectStore: ChatObjectStorage;
+}
+
+interface ScreenshotRequest {
+  readonly authorization: string | null;
+  readonly body: unknown;
+}
+
+function cronClient() {
+  return setupApp({ context })(cronArtifactPreviewContract);
+}
+
+function cronHeaders(secret = CRON_SECRET) {
+  return { authorization: `Bearer ${secret}` };
+}
+
+function mockCloudflareScreenshot(): ScreenshotRequest[] {
+  const requests: ScreenshotRequest[] = [];
+  server.use(
+    http.post(CLOUDFLARE_SCREENSHOT_URL, async ({ request }) => {
+      requests.push({
+        authorization: request.headers.get("authorization"),
+        body: await request.json(),
+      });
+      return new HttpResponse(new Uint8Array([0x52, 0x49, 0x46, 0x46]), {
+        headers: { "Content-Type": "image/webp" },
+      });
+    }),
+  );
+  return requests;
 }
 
 async function artifactActor(
   displayName: string,
   actor: ApiTestUser = bdd.user(),
 ): Promise<ArtifactActor> {
-  chatCallbacks.acceptChatObjectStorage();
+  const objectStore = chatCallbacks.acceptChatObjectStorage();
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
@@ -44,7 +88,7 @@ async function artifactActor(
     displayName,
     visibility: "private",
   });
-  return { actor, agentId: agent.agentId, runnerGroup };
+  return { actor, agentId: agent.agentId, runnerGroup, objectStore };
 }
 
 async function sendChatRun(
@@ -120,6 +164,7 @@ async function createHostedArtifact(args: {
   readonly threadId: string;
   readonly fileId: string;
   readonly url: string;
+  readonly deploymentId: string;
 }> {
   const run = await sendChatRun(args.actor, {
     agentId: args.agentId,
@@ -143,8 +188,26 @@ async function createHostedArtifact(args: {
     threadId: run.threadId,
     fileId: prepared.url,
     url: prepared.url,
+    deploymentId: prepared.deploymentId,
   };
 }
+
+describe("GET /api/cron/artifact-preview", () => {
+  it("rejects invalid cron secrets and no-ops when browser rendering is unconfigured", async () => {
+    const rejected = await accept(
+      cronClient().generate({ headers: cronHeaders("wrong-secret") }),
+      [401],
+    );
+    expect(rejected.body.error.message).toBe("Invalid cron secret");
+
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
+    const generated = await accept(
+      cronClient().generate({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(generated.body).toStrictEqual({ generated: 0 });
+  });
+});
 
 describe("GET /api/zero/artifacts", () => {
   it("lists generated artifacts for the active organization and excludes ordinary uploads", async () => {
@@ -202,6 +265,7 @@ describe("GET /api/zero/artifacts", () => {
       url: prepared.url,
       artifactKind: "hosted-site",
     });
+    expect(response.artifacts[0]).not.toHaveProperty("previewImageUrl");
     expect(
       response.artifacts.some((artifact) => {
         return artifact.fileId === ordinaryUploadId;
@@ -213,6 +277,84 @@ describe("GET /api/zero/artifacts", () => {
       }),
     ).toBeFalsy();
     expect(response.truncated).toBeFalsy();
+  }, 120_000);
+
+  it("generates deploy-time preview images and refreshes them after redeploy", async () => {
+    const owner = await artifactActor("Artifacts API preview image agent");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected preview image test actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: owner.actor.userId,
+        orgId: owner.actor.orgId,
+        orgRole: owner.actor.orgRole,
+      },
+      {
+        [FeatureSwitchKey.ArtifactPreviewImage]: true,
+      },
+    );
+    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
+    const screenshotRequests = mockCloudflareScreenshot();
+
+    const artifact = await createHostedArtifact({
+      actor: owner.actor,
+      agentId: owner.agentId,
+      runnerGroup: owner.runnerGroup,
+      site: `preview-artifact-${randomUUID().slice(0, 8)}`,
+    });
+    await flushWaitUntilForTest();
+
+    const firstResponse = await chat.listArtifacts(owner.actor);
+    const firstArtifact = firstResponse.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    expect(firstArtifact?.previewImageUrl).toContain(
+      `/preview-${artifact.deploymentId}.webp`,
+    );
+    expect(screenshotRequests).toHaveLength(1);
+    expect(screenshotRequests[0]).toMatchObject({
+      authorization: "Bearer preview-token",
+      body: {
+        url: artifact.url,
+        viewport: {
+          width: 1280,
+          height: 800,
+          deviceScaleFactor: 0.5,
+        },
+        screenshotOptions: { type: "webp", quality: 80 },
+      },
+    });
+    expect(
+      owner.objectStore.puts.some((put) => {
+        return (
+          put.bucket === "test-user-artifacts" &&
+          put.key.endsWith(`/preview-${artifact.deploymentId}.webp`) &&
+          put.contentType === "image/webp"
+        );
+      }),
+    ).toBeTruthy();
+
+    host.captureHostedSitesS3();
+    const redeployed = await host.redeployHtml(owner.actor, {
+      url: artifact.url,
+      html: "<!doctype html><html><body>redeployed preview</body></html>",
+    });
+    await flushWaitUntilForTest();
+
+    const refreshedResponse = await chat.listArtifacts(owner.actor);
+    const refreshedArtifact = refreshedResponse.artifacts.find((item) => {
+      return item.fileId === artifact.fileId;
+    });
+    expect(refreshedArtifact?.previewImageUrl).toContain(
+      `/preview-${redeployed.deploymentId}.webp`,
+    );
+    expect(refreshedArtifact?.previewImageUrl).not.toBe(
+      firstArtifact?.previewImageUrl,
+    );
+    expect(screenshotRequests).toHaveLength(2);
+    expect(screenshotRequests[1]?.body).toMatchObject({ url: artifact.url });
   }, 120_000);
 
   it("returns every generated artifact for the org in one bulk response", async () => {
