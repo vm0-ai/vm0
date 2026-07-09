@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.141.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.0...runner-rs-v0.141.1) (2026-07-09)
+
+
+### Performance Improvements
+
+* preallocate storage cache body buffers ([#20810](https://github.com/vm0-ai/vm0/issues/20810)) ([1db13a2](https://github.com/vm0-ai/vm0/commit/1db13a209cf54ebb08ad9a5f976e9cc904ad7567))
+
 ## [0.141.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.140.2...runner-rs-v0.141.0) (2026-07-09)
 
 

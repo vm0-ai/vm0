@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.251.1](https://github.com/vm0-ai/vm0/compare/api-v1.251.0...api-v1.251.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* allow mcp server discovery from computer-use run tokens ([#20803](https://github.com/vm0-ai/vm0/issues/20803)) ([3a283a7](https://github.com/vm0-ai/vm0/commit/3a283a7e6b7aee2f546c5f698fbf11bc2d7b53af))
+* suppress notion content updates during create windows ([#20812](https://github.com/vm0-ai/vm0/issues/20812)) ([576b7d6](https://github.com/vm0-ai/vm0/commit/576b7d61565aed87f4088a5529586aa318b95ce7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.103.0
+
 ## [1.251.0](https://github.com/vm0-ai/vm0/compare/api-v1.250.3...api-v1.251.0) (2026-07-09)
 
 
