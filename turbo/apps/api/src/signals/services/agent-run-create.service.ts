@@ -878,11 +878,12 @@ function frameworkForProviderSelection(
   if (providerType !== "vm0") {
     return getFrameworkForType(providerType, featureStates);
   }
-  if (!selectedModel) {
+  const vm0Model = selectedModel ?? MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  if (!vm0Model) {
     return null;
   }
   return getFrameworkForType(
-    getVm0ConcreteProviderType(selectedModel),
+    getVm0ConcreteProviderType(vm0Model),
     featureStates,
   );
 }
