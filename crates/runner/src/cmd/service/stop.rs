@@ -400,6 +400,7 @@ async fn stop_cleanup_with_ops(
             None
         }
     };
+    let mut cleanup_escalated = false;
     match state.as_ref() {
         Some(state) if state.is_active_like() => {
             warn!(
@@ -408,6 +409,7 @@ async fn stop_cleanup_with_ops(
                 "runner service remains active-like after stop; escalating cleanup"
             );
             escalate_cleanup_stop(unit, ops).await;
+            cleanup_escalated = true;
         }
         None if stop_needs_escalation => {
             warn!(
@@ -415,6 +417,7 @@ async fn stop_cleanup_with_ops(
                 "runner service state is unknown after failed stop; escalating cleanup"
             );
             escalate_cleanup_stop(unit, ops).await;
+            cleanup_escalated = true;
         }
         _ => {}
     }
@@ -432,7 +435,7 @@ async fn stop_cleanup_with_ops(
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override during cleanup");
     }
 
-    verify_cleanup_inactive(unit, ops).await
+    verify_cleanup_inactive(unit, ops, cleanup_escalated).await
 }
 
 async fn escalate_cleanup_stop(unit: &RunnerServiceUnit, ops: &mut impl ServiceStopOps) {
@@ -447,6 +450,7 @@ async fn escalate_cleanup_stop(unit: &RunnerServiceUnit, ops: &mut impl ServiceS
 async fn verify_cleanup_inactive(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceStopOps,
+    mut cleanup_escalated: bool,
 ) -> RunnerResult<()> {
     let deadline = TokioInstant::now() + CLEANUP_VERIFY_TIMEOUT;
     let mut last_active_state: Option<String> = None;
@@ -460,6 +464,15 @@ async fn verify_cleanup_inactive(
                     return Ok(());
                 }
                 last_active_state = Some(state.active_state().to_string());
+                if !cleanup_escalated {
+                    warn!(
+                        unit = %unit.unit_name(),
+                        active_state = state.active_state(),
+                        "runner service remains active-like during verification; escalating cleanup"
+                    );
+                    escalate_cleanup_stop(unit, ops).await;
+                    cleanup_escalated = true;
+                }
             }
             Err(e) => {
                 warn!(unit = %unit.unit_name(), error = %e, "failed to read service state during cleanup verification");
@@ -1028,6 +1041,47 @@ mod tests {
                 "reset_failed_bounded",
                 "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
+                "sleep",
+                "cleanup_active_state",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_verify_escalates_after_initial_state_read_error() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            cleanup_states: VecDeque::from([
+                Err(fake_error("systemd show unavailable")),
+                cleanup_state("deactivating", true),
+                cleanup_state("inactive", false),
+            ]),
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+                "kill_all_sigkill",
+                "stop_no_block",
                 "sleep",
                 "cleanup_active_state",
             ]
