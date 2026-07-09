@@ -8,6 +8,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import {
@@ -275,6 +276,67 @@ describe("FW-2: template resolution without connector refresh", () => {
 });
 
 describe("FW-3: billable firewall lease", () => {
+  it("leases billable auth for limited-free-1 workspaces with spendable credits", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    if (!actor.orgId) {
+      throw new Error("Expected firewall actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "limited-free-1",
+      credits: 20_000,
+    });
+
+    const before = Math.floor(now() / 1000);
+    const leased = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({ API_KEY: "paid" }),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("API_KEY")}`,
+        },
+        firewallBillable: true,
+      },
+      [200],
+    );
+    if (leased.status !== 200) {
+      throw new Error("Expected limited-free-1 billable auth to succeed");
+    }
+    expect(leased.body.expiresAt).not.toBeNull();
+    expect(leased.body.expiresAt ?? 0).toBeGreaterThanOrEqual(before + 25);
+    expect(leased.body.expiresAt ?? 0).toBeLessThanOrEqual(before + 35);
+  });
+
+  it("denies billable auth for pro-suspend workspaces even with credits", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, headers } = await firewallRun();
+    if (!actor.orgId) {
+      throw new Error("Expected firewall actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 20_000,
+    });
+
+    const denied = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({ API_KEY: "paid" }),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("API_KEY")}`,
+        },
+        firewallBillable: true,
+      },
+      [402],
+    );
+    if (denied.status !== 402) {
+      throw new Error("Expected pro-suspend billable auth to be denied");
+    }
+    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
   it("bounds billable auth expiry by the credit authorization lease", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();
