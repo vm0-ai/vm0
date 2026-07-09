@@ -255,6 +255,9 @@ fn parse_cgroup_hierarchy_id(field: &str) -> Option<u32> {
     if field.is_empty() || !field.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
+    if field.len() > 1 && field.starts_with('0') {
+        return None;
+    }
     field.parse().ok()
 }
 
@@ -411,6 +414,14 @@ mod tests {
         );
         assert_eq!(
             parse_service_unit_from_cgroup("+1:cpu:/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("00::/system.slice/vm0-runner-invalid.service\n"),
+            None
+        );
+        assert_eq!(
+            parse_service_unit_from_cgroup("01:cpu:/system.slice/vm0-runner-invalid.service\n"),
             None
         );
         assert_eq!(
