@@ -170,6 +170,46 @@ async fn write_files_accepts_file_count_at_batch_limit() {
 }
 
 #[tokio::test]
+async fn write_files_accepts_content_at_batch_limit() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let content = vec![0xABu8; WRITE_FILES_BATCH_CONTENT_LIMIT];
+            host.write_files(&[WriteFileEntry {
+                path: "/tmp/content-limit.txt",
+                content: &content,
+            }])
+            .await
+        })
+    };
+
+    let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
+        .await
+        .expect("write_files at the content limit should send a frame");
+    let [(path, content)] = write.files.as_slice() else {
+        panic!("expected one write_files entry, got {}", write.files.len());
+    };
+    assert_eq!(path, "/tmp/content-limit.txt");
+    assert_eq!(content.len(), WRITE_FILES_BATCH_CONTENT_LIMIT);
+    assert!(content.iter().all(|byte| *byte == 0xAB));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
 async fn write_files_rejects_file_count_above_batch_limit_before_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
