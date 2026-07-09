@@ -563,9 +563,9 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber
 
-  # Run database migrations in production for API releases only. The API staged
-  # deployment is uploaded without cron definitions, then migrations run, then
-  # the already-built cron-enabled output is deployed to production.
+  # Run database migrations in production for API releases only. The API output
+  # is built first, then migrations run, then the already-built output is
+  # deployed to production.
   migrate-production:
     needs: [release-please, builds-complete, build-api-production]
     # always() prevents GitHub Actions from propagating "skipped" when upstream
@@ -771,10 +771,9 @@ jobs:
                   type: mrkdwn
                   text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Build API production deployment (Staged - prod-eligible, not serving traffic,
-  # with cron definitions stripped so Vercel cannot run production crons before
-  # migrations finish). The original cron-enabled output is archived for the
-  # final post-migration production deploy.
+  # Build API production output without creating a Vercel production deployment.
+  # This keeps the new deployment's cron jobs inactive until migrations complete;
+  # the archived output is deployed by promote-api-production after migration.
   build-api-production:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
@@ -814,12 +813,12 @@ jobs:
           token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*API* building staged production deployment..."
+            text: "*API* building production output..."
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*API* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+                  text: "*API* building production output...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
 
       - name: Record start time
         id: timer
@@ -892,28 +891,6 @@ jobs:
           overwrite: true
           retention-days: 1
 
-      - name: Deploy API Staged Production Deployment
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
-          environment: production
-          deployment-env: api
-          prebuilt: "true"
-          prebuilt-build-command: |
-            rm -rf .vercel/output
-            mkdir -p .vercel
-            tar -C .vercel -xzf /tmp/api-production-build-output.tgz
-            test -f .vercel/output/config.json
-            bash .github/scripts/vercel-assert-crons-match.sh turbo/apps/api/vercel.json .vercel/output/config.json
-          skip-domain: "true"
-          disable-crons: "true"
-          skip-start: "true"
-          skip-finish: "true"
-          environment-file: ${{ steps.api-production-env.outputs.file }}
-
       - name: Calculate duration
         id: duration
         if: ${{ always() && steps.timer.outputs.start }}
@@ -934,12 +911,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*API* ✅ Staged build ready (not yet serving)"
+            text: "*API* ✅ Production output ready"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*API* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+                  text: "*API* ✅ Production output ready\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -950,12 +927,12 @@ jobs:
           payload: |
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*API* ❌ Staged build failed"
+            text: "*API* ❌ Production output build failed"
             blocks:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*API* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  text: "*API* ❌ Production output build failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   detect-host-worker-deploy-inputs:
     needs: release-please
@@ -1155,10 +1132,8 @@ jobs:
           fi
           echo "✅ All build-phase jobs succeeded or were skipped."
 
-  # Deploy the final API production deployment after migrations. The
-  # pre-migration staged deployment is stripped of cron definitions and is not
-  # promoted, so production traffic only moves after the archived cron-enabled
-  # output is deployed successfully.
+  # Deploy API production after migrations by uploading the build output created
+  # by build-api-production.
   promote-api-production:
     needs:
       [

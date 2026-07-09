@@ -54,11 +54,12 @@ with the currently deployed backend until that backend is no longer serving
 traffic.
 
 This is a traffic-promotion guarantee, not a guarantee that no deployment
-preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
-builds, host provisioning, and other non-serving preparation jobs may complete
-before migrations run. API production activation must wait until the required
-migrations have completed; app and runner promotion also wait for API production
-activation when the same release changes the API.
+preparation has happened yet. API build-output generation, staged Vercel builds
+for other deployables, runner rootfs/snapshot builds, host provisioning, and
+other non-serving preparation jobs may complete before migrations run. API
+production activation must wait until the required migrations have completed;
+app and runner promotion also wait for API production activation when the same
+release changes the API.
 
 Backend changes must be safe with:
 
