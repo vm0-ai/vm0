@@ -99,7 +99,7 @@ impl HeldSessionStateSnapshot {
         &self,
         refresh: WorkspaceCacheSnapshotRefresh,
         states: Vec<HeldSessionState>,
-    ) {
+    ) -> Vec<HeldSessionState> {
         let mut inner = self.lock_inner();
         inner.workspace_cache_states = if inner.workspace_cache_revision == refresh.revision {
             states
@@ -109,6 +109,7 @@ impl HeldSessionStateSnapshot {
         cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
         inner.workspace_cache_loaded = true;
         inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
+        inner.workspace_cache_states.clone()
     }
 
     pub(super) fn upsert_workspace_cache_state(&self, state: HeldSessionState) {
@@ -202,8 +203,7 @@ pub(super) async fn refresh_workspace_cache_held_session_snapshot(
 ) -> Vec<HeldSessionState> {
     let refresh = snapshot.begin_workspace_cache_refresh();
     let states = workspace_cache_held_session_states(workspace_cache).await;
-    snapshot.finish_workspace_cache_refresh(refresh, states.clone());
-    states
+    snapshot.finish_workspace_cache_refresh(refresh, states)
 }
 
 async fn workspace_cache_held_session_states(
@@ -835,7 +835,8 @@ mod tests {
 
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.upsert_workspace_cache_state(promoted.clone());
-        snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
+        let refreshed = snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
+        assert_eq!(refreshed, vec![original.clone(), promoted.clone()]);
 
         let active_cli_agent_sessions =
             super::super::active_sessions::new_active_cli_agent_sessions();
