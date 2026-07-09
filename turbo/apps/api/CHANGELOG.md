@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.253.0](https://github.com/vm0-ai/vm0/compare/api-v1.252.0...api-v1.253.0) (2026-07-09)
+
+
+### Features
+
+* add artifact favorite api ([#20837](https://github.com/vm0-ai/vm0/issues/20837)) ([5c935ea](https://github.com/vm0-ai/vm0/commit/5c935eab0bc13098bbf06a7503939722a257b5f5))
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
+
+### Bug Fixes
+
+* allow limited-free billable firewall auth ([#20843](https://github.com/vm0-ai/vm0/issues/20843)) ([ef07fbb](https://github.com/vm0-ai/vm0/commit/ef07fbba1ec3cf8aa820e734c34414aa8f8f2033))
+* **api:** persist workflow schedule run briefs ([#20839](https://github.com/vm0-ai/vm0/issues/20839)) ([5db9855](https://github.com/vm0-ai/vm0/commit/5db98557afa4fbad5f2ebdcaacad658a1bd78b24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.176.0
+    * @vm0/connectors bumped to 1.152.0
+    * @vm0/core bumped to 8.420.0
+    * @vm0/db bumped to 1.105.0
+
 ## [1.252.0](https://github.com/vm0-ai/vm0/compare/api-v1.251.1...api-v1.252.0) (2026-07-09)
 
 
