@@ -5,7 +5,7 @@ and `request()`. The header hook may classify as a probe before mitmproxy has
 buffered the request body. When that header-phase decision must be reused by
 the request hook, it caches the classification on the current flow. When the
 header hook only probed to decide whether it can handle the request early, it
-restores the metadata touched by classification before falling through.
+restores the metadata touched by that probe path before falling through.
 
 The request hook consumes a cached classification when present, otherwise it
 performs a fresh classification. Cached classifications are scoped to a single
@@ -190,7 +190,7 @@ def classify_request(
 ) -> RequestClassification:
     """Classify a flow and write metadata needed by downstream hook handling.
 
-    The decision order is registry/TLS admission, registered VM metadata,
+    The decision order is registry/TLS admission, registered VM resolution,
     trusted authority validation, platform API allow, browser passthrough,
     firewall match, publicDestination runtime validation, and default allow.
 
