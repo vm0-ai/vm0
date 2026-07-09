@@ -235,6 +235,32 @@ zero_model_first_selection_provider_id() {
     printf '%s' "00000000-0000-4000-8000-000000000000"
 }
 
+zero_chat_run_with_model() {
+    local agent_id="$1"
+    local prompt="$2"
+    local selected_model="$3"
+    local debug_no_mock_claude="${4:-false}"
+    local debug_no_mock_codex="${5:-false}"
+    local payload body
+
+    payload=$(jq -nc \
+        --arg agentId "$agent_id" \
+        --arg prompt "$prompt" \
+        --arg selectedModel "$selected_model" \
+        --argjson debugNoMockClaude "$debug_no_mock_claude" \
+        --argjson debugNoMockCodex "$debug_no_mock_codex" \
+        '{agentId: $agentId, prompt: $prompt, model: $selectedModel, hasTextContent: true, debugNoMockClaude: $debugNoMockClaude, debugNoMockCodex: $debugNoMockCodex}')
+
+    body=$(zero_curl "/api/zero/chat/messages" -X POST -d "$payload")
+    LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
+    LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
+    export LAST_RUN_ID LAST_THREAD_ID
+    [[ -n "$LAST_RUN_ID" && -n "$LAST_THREAD_ID" ]] || {
+        echo "# zero_chat_run_with_model: bad response: $body" >&2
+        return 1
+    }
+}
+
 zero_chat_run_with_model_selection() {
     local agent_id="$1"
     local prompt="$2"

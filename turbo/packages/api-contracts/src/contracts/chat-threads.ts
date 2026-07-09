@@ -388,15 +388,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function legacyModelSelectionModel(value: unknown): string | null | undefined {
+type LegacyModelSelectionResult =
+  | { readonly kind: "model"; readonly model: string | null }
+  | { readonly kind: "reject" };
+
+function legacyModelSelectionModel(
+  value: unknown,
+): LegacyModelSelectionResult | undefined {
   if (value === null) {
-    return null;
+    return { kind: "model", model: null };
   }
   if (!isRecord(value)) {
     return undefined;
   }
+  if (value.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID) {
+    return { kind: "reject" };
+  }
   const selectedModel = value.selectedModel;
-  return typeof selectedModel === "string" ? selectedModel : undefined;
+  return typeof selectedModel === "string"
+    ? { kind: "model", model: selectedModel }
+    : undefined;
 }
 
 function normalizeLegacyModelSelectionInput(
@@ -406,11 +417,17 @@ function normalizeLegacyModelSelectionInput(
   if (!isRecord(value) || "model" in value || !("modelSelection" in value)) {
     return value;
   }
-  const model = legacyModelSelectionModel(value.modelSelection);
-  if (model === undefined || (model === null && !options.allowNull)) {
+  const legacyModelSelection = legacyModelSelectionModel(value.modelSelection);
+  if (legacyModelSelection?.kind === "reject") {
+    return { ...value, model: value.modelSelection };
+  }
+  if (
+    legacyModelSelection === undefined ||
+    (legacyModelSelection.model === null && !options.allowNull)
+  ) {
     return value;
   }
-  return { ...value, model };
+  return { ...value, model: legacyModelSelection.model };
 }
 
 const chatThreadCreateBodySchema = z.preprocess(

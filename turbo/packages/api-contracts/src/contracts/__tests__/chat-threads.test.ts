@@ -16,6 +16,11 @@ const legacyModelSelection = {
   selectedModel: "claude-sonnet-4-6",
 };
 
+const legacyProviderPinnedModelSelection = {
+  modelProviderId: "11111111-1111-4111-8111-111111111111",
+  selectedModel: "claude-sonnet-4-6",
+};
+
 describe("chat thread model request compatibility", () => {
   it("normalizes legacy thread create modelSelection bodies to model", () => {
     const parsed = chatThreadsContract.create.body.safeParse({
@@ -79,6 +84,35 @@ describe("chat thread model request compatibility", () => {
     });
     expect(parsed.data).not.toHaveProperty("modelProvider");
     expect(parsed.data).not.toHaveProperty("modelSelection");
+  });
+
+  it("rejects legacy thread create bodies pinned to a concrete provider", () => {
+    const parsed = chatThreadsContract.create.body.safeParse({
+      agentId: "agent-1",
+      modelSelection: legacyProviderPinnedModelSelection,
+      title: "Launch plan",
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects legacy thread model updates pinned to a concrete provider", () => {
+    const parsed = chatThreadModelSelectionContract.update.body.safeParse({
+      modelSelection: legacyProviderPinnedModelSelection,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects legacy chat send bodies pinned to a concrete provider", () => {
+    const parsed = chatMessagesContract.send.body.safeParse({
+      agentId: "agent-1",
+      prompt: "Build a launch plan",
+      modelProvider: "anthropic-api-key",
+      modelSelection: legacyProviderPinnedModelSelection,
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });
 
