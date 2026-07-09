@@ -337,6 +337,41 @@ async fn startup_readiness_blocks_running_and_discovery() {
 }
 
 #[tokio::test]
+async fn stop_during_startup_readiness_exits_without_running() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    env.handle.block_startup_readiness();
+    let status_path = env._temp_dir.path().join("status.json");
+    let run_handle = tokio::spawn(run(config));
+
+    assert!(
+        env.handle
+            .wait_startup_readiness_entered(Duration::from_secs(2))
+            .await,
+        "startup readiness should be entered",
+    );
+    assert_eq!(
+        status_mode_if_exists(&status_path).await.as_deref(),
+        Some("starting"),
+        "runner should publish starting while provider readiness is blocked",
+    );
+
+    env.trigger_stopping().await;
+    assert_eq!(
+        *env.mode_tx.borrow(),
+        RunnerMode::Stopping,
+        "startup stop must not be lost while provider readiness is blocked",
+    );
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(5),
+        "startup readiness stop should exit without entering Running",
+    )
+    .await;
+    wait_status_mode(&status_path, "stopped", Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
 async fn startup_readiness_failure_stops_status_and_cleans_startup_resources() {
     let runtime_shutdowns = Arc::new(AtomicUsize::new(0));
     let runtime = ShutdownRecordingRuntime {

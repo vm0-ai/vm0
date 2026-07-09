@@ -1178,6 +1178,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     shared.status.write_initial().await;
 
     if let Err(e) = provider_state.provider.prepare_startup_readiness().await {
+        let startup_readiness_cancelled = provider_state.cancel.is_cancelled();
+        let cleanup_reason = if startup_readiness_cancelled {
+            "provider_startup_readiness_cancelled"
+        } else {
+            "provider_startup_readiness_failure"
+        };
         shutdown_startup_resources_after_startup_failure(
             StartupFailureResources {
                 provider: provider_state.provider.as_ref(),
@@ -1188,11 +1194,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 memory_prefetch: &mut memory_prefetch,
                 status: shared.status.as_ref(),
             },
-            "provider_startup_readiness_failure",
+            cleanup_reason,
         )
         .await;
         if let Some(handler_task) = signal_handler_task.take() {
-            abort_signal_handler_task(handler_task, "provider_startup_readiness_failure").await;
+            abort_signal_handler_task(handler_task, cleanup_reason).await;
+        }
+        if startup_readiness_cancelled {
+            return Ok(());
         }
         return Err(e);
     }
