@@ -3,7 +3,6 @@
 import json
 
 import pytest
-from mitmproxy import connection
 from mitmproxy.flow import Error
 
 import auth_base_forwarder
@@ -13,6 +12,7 @@ import request_classification
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 
 def _write_public_destination_firewall_registry(
@@ -467,13 +467,12 @@ async def test_public_destination_allows_connected_prebound_public_original_dest
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("93.184.216.35", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -500,13 +499,12 @@ async def test_public_destination_blocks_connected_private_transparent_host_desp
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("93.184.216.35", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -535,13 +533,12 @@ async def test_public_destination_blocks_connected_public_original_port_mismatch
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("93.184.216.35", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -570,14 +567,13 @@ async def test_public_destination_allows_connected_public_transparent_sockname_w
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = None
-    flow.client_conn.sockname = ("93.184.216.34", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=None,
+        client_sockname=("93.184.216.34", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -596,14 +592,13 @@ async def test_public_destination_blocks_connected_private_transparent_sockname_
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = None
-    flow.client_conn.sockname = ("10.0.0.1", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=None,
+        client_sockname=("10.0.0.1", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -624,14 +619,13 @@ async def test_public_destination_blocks_private_peer_before_public_transparent_
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("10.0.0.1", 443)
-    flow.client_conn.sockname = ("93.184.216.34", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("10.0.0.1", 443),
+        client_sockname=("93.184.216.34", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -652,13 +646,12 @@ async def test_public_destination_blocks_private_transparent_host_despite_public
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("93.184.216.35", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -679,13 +672,12 @@ async def test_public_destination_blocks_private_server_address_despite_public_p
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("10.0.0.1", 443)
-    flow.server_conn.peername = ("93.184.216.35", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("10.0.0.1", 443),
+        peername=("93.184.216.35", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -727,14 +719,13 @@ async def test_public_destination_blocks_loopback_peer_before_public_transparent
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("127.0.0.1", 443)
-    flow.client_conn.sockname = ("93.184.216.34", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("127.0.0.1", 443),
+        client_sockname=("93.184.216.34", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -755,14 +746,13 @@ async def test_public_destination_blocks_transparent_sockname_port_mismatch(
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = None
-    flow.client_conn.sockname = ("93.184.216.34", 8443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=None,
+        client_sockname=("93.184.216.34", 8443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -783,14 +773,13 @@ async def test_public_destination_blocks_peer_port_mismatch_before_transparent_s
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("93.184.216.35", 8443)
-    flow.client_conn.sockname = ("93.184.216.34", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 8443),
+        client_sockname=("93.184.216.34", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -811,13 +800,12 @@ async def test_public_destination_blocks_connected_private_peer_despite_public_o
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("10.0.0.1", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("10.0.0.1", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -846,13 +834,12 @@ async def test_public_destination_blocks_private_original_despite_connected_publ
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
     flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
-    flow.server_conn.address = ("service.example.com", 443)
-    flow.server_conn.peername = ("93.184.216.35", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.sni = "service.example.com"
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
+    mark_connected_tls_upstream(
+        flow,
+        sni="service.example.com",
+        server_address=("service.example.com", 443),
+        peername=("93.184.216.35", 443),
+    )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -927,12 +914,12 @@ async def test_public_destination_revalidates_connected_peer_after_requestheader
         assert "Authorization" not in flow.request.headers
         assert flow.server_conn.address == ("service.example.com", 443)
 
-        flow.server_conn.peername = ("10.0.0.1", 443)
-        flow.server_conn.state = connection.ConnectionState.OPEN
-        flow.server_conn.sni = "service.example.com"
-        flow.server_conn.timestamp_tls_setup = 1.0
-        flow.server_conn.certificate_list = (object(),)
-        flow.server_conn.error = None
+        mark_connected_tls_upstream(
+            flow,
+            sni="service.example.com",
+            server_address=("service.example.com", 443),
+            peername=("10.0.0.1", 443),
+        )
 
         await mitm_addon.request(flow)
 
@@ -968,12 +955,12 @@ async def test_public_destination_requestheaders_defers_unresolved_hostname_unti
         assert flow.error is None
         assert flow.server_conn.address == ("service.example.com", 443)
 
-        flow.server_conn.peername = ("93.184.216.35", 443)
-        flow.server_conn.state = connection.ConnectionState.OPEN
-        flow.server_conn.sni = "service.example.com"
-        flow.server_conn.timestamp_tls_setup = 1.0
-        flow.server_conn.certificate_list = (object(),)
-        flow.server_conn.error = None
+        mark_connected_tls_upstream(
+            flow,
+            sni="service.example.com",
+            server_address=("service.example.com", 443),
+            peername=("93.184.216.35", 443),
+        )
 
         await mitm_addon.request(flow)
 
@@ -1006,12 +993,12 @@ async def test_public_destination_requestheaders_deferred_hostname_still_blocks_
         assert flow.response is None
         assert flow.error is None
 
-        flow.server_conn.peername = ("10.0.0.1", 443)
-        flow.server_conn.state = connection.ConnectionState.OPEN
-        flow.server_conn.sni = "service.example.com"
-        flow.server_conn.timestamp_tls_setup = 1.0
-        flow.server_conn.certificate_list = (object(),)
-        flow.server_conn.error = None
+        mark_connected_tls_upstream(
+            flow,
+            sni="service.example.com",
+            server_address=("service.example.com", 443),
+            peername=("10.0.0.1", 443),
+        )
 
         await mitm_addon.request(flow)
 
@@ -1066,12 +1053,12 @@ async def test_public_destination_revalidates_cached_auth_base_classification(
             mitm_addon.STREAM_BUFFER_LIMIT + 1,
         )
 
-        flow.server_conn.peername = ("10.0.0.1", 443)
-        flow.server_conn.state = connection.ConnectionState.OPEN
-        flow.server_conn.sni = "service.example.com"
-        flow.server_conn.timestamp_tls_setup = 1.0
-        flow.server_conn.certificate_list = (object(),)
-        flow.server_conn.error = None
+        mark_connected_tls_upstream(
+            flow,
+            sni="service.example.com",
+            server_address=("service.example.com", 443),
+            peername=("10.0.0.1", 443),
+        )
 
         await mitm_addon.request(flow)
 
@@ -1106,12 +1093,12 @@ async def test_public_destination_revalidates_cached_auth_base_hostname_classifi
             mitm_addon.STREAM_BUFFER_LIMIT + 1,
         )
 
-        flow.server_conn.peername = ("10.0.0.1", 443)
-        flow.server_conn.state = connection.ConnectionState.OPEN
-        flow.server_conn.sni = "service.example.com"
-        flow.server_conn.timestamp_tls_setup = 1.0
-        flow.server_conn.certificate_list = (object(),)
-        flow.server_conn.error = None
+        mark_connected_tls_upstream(
+            flow,
+            sni="service.example.com",
+            server_address=("service.example.com", 443),
+            peername=("10.0.0.1", 443),
+        )
 
         await mitm_addon.request(flow)
 
