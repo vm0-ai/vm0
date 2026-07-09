@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.584.0](https://github.com/vm0-ai/vm0/compare/app-v0.583.0...app-v0.584.0) (2026-07-09)
+
+
+### Features
+
+* add gated github and notion memory backfills ([#20801](https://github.com/vm0-ai/vm0/issues/20801)) ([a8fb592](https://github.com/vm0-ai/vm0/commit/a8fb59226bcf1f39e47e62e6c76ccbea5226b950))
+* align teams integration with slack parity ([#20544](https://github.com/vm0-ai/vm0/issues/20544)) ([3212311](https://github.com/vm0-ai/vm0/commit/3212311ffeb24690074c3df51fa02e9cc4045275))
+* delete canvas image with delete or backspace key ([#20833](https://github.com/vm0-ai/vm0/issues/20833)) ([a833bde](https://github.com/vm0-ai/vm0/commit/a833bded11b491756df88740119060225121fcf1))
+* interpret marked image regions into targeted edits ([#20822](https://github.com/vm0-ai/vm0/issues/20822)) ([62444e3](https://github.com/vm0-ai/vm0/commit/62444e3cb87332aafa869bc413077bbf4626a287))
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+
+
+### Bug Fixes
+
+* refine custom plan cancellation copy ([#20821](https://github.com/vm0-ai/vm0/issues/20821)) ([a6013f8](https://github.com/vm0-ai/vm0/commit/a6013f81e5adfb1b0870a0fc16193f3c06c97b0e))
+
 ## [0.583.0](https://github.com/vm0-ai/vm0/compare/app-v0.582.1...app-v0.583.0) (2026-07-09)
 
 
