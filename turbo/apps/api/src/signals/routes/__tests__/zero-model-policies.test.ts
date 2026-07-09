@@ -661,7 +661,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     },
   );
 
-  it("rejects unsupported GPT 5.6 Codex OAuth member routes", async () => {
+  it("allows GPT 5.6 Codex OAuth member routes", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const client = apiClient();
@@ -681,18 +681,22 @@ describe("GET/PUT /api/zero/model-policies", () => {
       };
     });
 
-    const response = await client.update({
-      headers: authHeaders(),
-      body: { policies: updates },
-    });
+    const response = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
 
-    expect(response.status).toBe(400);
-    expect(response.body).toStrictEqual({
-      error: {
-        message:
-          'Model "gpt-5.6-sol" is not supported by provider "codex-oauth-token"',
-        code: "BAD_REQUEST",
-      },
+    const sol = response.body.policies.find((policy) => {
+      return policy.model === "gpt-5.6-sol";
+    });
+    expect(sol).toMatchObject({
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+      routeStatus: "valid",
     });
   });
 
