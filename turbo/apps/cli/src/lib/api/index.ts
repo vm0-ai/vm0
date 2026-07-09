@@ -206,7 +206,11 @@ export {
 } from "./domains/zero-relationships";
 
 // Domain modules - Zero Memory
-export { recallZeroMemory, getZeroMemoryContext } from "./domains/zero-memory";
+export {
+  recallZeroMemory,
+  getZeroMemoryContext,
+  searchZeroMemory,
+} from "./domains/zero-memory";
 
 // Domain modules - Logs
 export {

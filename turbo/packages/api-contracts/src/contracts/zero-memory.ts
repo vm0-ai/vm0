@@ -20,10 +20,29 @@ const memorySourceProviderSchema = z.enum([
   "github",
   "notion",
 ]);
+const memorySourceTypeSchema = z.enum([
+  "gmail_message",
+  "slack_message",
+  "github_issue",
+  "github_pull_request",
+  "github_issue_comment",
+  "notion_page",
+  "notion_page_event",
+]);
 const memoryRecallItemKindSchema = z.enum([
   "key_fact",
   "preference",
   "open_loop",
+]);
+const memorySearchModeSchema = z.enum(["hybrid", "memories", "documents"]);
+const memoryContextSpaceTypeSchema = z.enum([
+  "user",
+  "org",
+  "project",
+  "repo",
+  "customer",
+  "agent",
+  "workflow",
 ]);
 const memoryInjectionItemKindSchema = z.enum([
   "key_fact",
@@ -98,15 +117,7 @@ const memorySourceMetadataSchema = memorySourceCompactMetadataSchema
 const memorySourceBaseSchema = z.object({
   id: z.string().uuid(),
   provider: memorySourceProviderSchema,
-  sourceType: z.enum([
-    "gmail_message",
-    "slack_message",
-    "github_issue",
-    "github_pull_request",
-    "github_issue_comment",
-    "notion_page",
-    "notion_page_event",
-  ]),
+  sourceType: memorySourceTypeSchema,
   title: z.string().nullable(),
   occurredAt: z.string().nullable(),
   createdAt: z.string(),
@@ -168,6 +179,55 @@ export const memoryContextResponseSchema = z.object({
   query: z.string().nullable(),
   context: z.string(),
   memories: z.array(memoryRecallItemSchema),
+});
+
+const memoryDocumentSearchCitationSchema = z.object({
+  provider: memorySourceProviderSchema,
+  sourceId: z.string(),
+  externalId: z.string(),
+  title: z.string().nullable(),
+  url: z.string().nullable(),
+  locator: z.string().nullable(),
+  occurredAt: z.string().nullable(),
+});
+
+const memoryDocumentSearchResultSchema = z.object({
+  kind: z.literal("document_chunk"),
+  id: z.string().uuid(),
+  documentId: z.string().uuid(),
+  chunkId: z.string().uuid(),
+  title: z.string().nullable(),
+  text: z.string(),
+  score: z.number(),
+  provider: memorySourceProviderSchema,
+  sourceType: memorySourceTypeSchema,
+  externalId: z.string(),
+  occurredAt: z.string().nullable(),
+  contextSpace: z.object({
+    id: z.string().uuid(),
+    type: memoryContextSpaceTypeSchema,
+    key: z.string(),
+    displayName: z.string(),
+  }),
+  citation: memoryDocumentSearchCitationSchema,
+});
+
+const memorySearchMemoryResultSchema = z.object({
+  kind: z.literal("memory"),
+  id: z.string().uuid(),
+  score: z.number(),
+  memory: memoryRecallItemSchema,
+});
+
+export const memorySearchResponseSchema = z.object({
+  query: z.string(),
+  mode: memorySearchModeSchema,
+  results: z.array(
+    z.discriminatedUnion("kind", [
+      memorySearchMemoryResultSchema,
+      memoryDocumentSearchResultSchema,
+    ]),
+  ),
 });
 
 const memoryInjectionItemSchema = z.object({
@@ -382,6 +442,9 @@ export type MemoryRecallItemKind = z.infer<typeof memoryRecallItemKindSchema>;
 export type MemoryRecallItem = z.infer<typeof memoryRecallItemSchema>;
 export type MemoryRecallResponse = z.infer<typeof memoryRecallResponseSchema>;
 export type MemoryContextResponse = z.infer<typeof memoryContextResponseSchema>;
+export type MemorySearchMode = z.infer<typeof memorySearchModeSchema>;
+export type MemorySearchResponse = z.infer<typeof memorySearchResponseSchema>;
+export type MemorySearchResult = MemorySearchResponse["results"][number];
 export type MemoryInjectionItemKind = z.infer<
   typeof memoryInjectionItemKindSchema
 >;
@@ -461,6 +524,26 @@ export const zeroMemoryContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Recall structured memories for the current user",
+  },
+  search: {
+    method: "GET",
+    path: "/api/zero/memory/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      q: z.string().min(1).max(300),
+      mode: memorySearchModeSchema.default("hybrid"),
+      provider: memorySourceProviderSchema.optional(),
+      limit: z.coerce.number().int().min(1).max(25).default(10),
+    }),
+    responses: {
+      200: memorySearchResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary:
+      "Search structured memories and document chunks for the current user",
   },
   context: {
     method: "GET",

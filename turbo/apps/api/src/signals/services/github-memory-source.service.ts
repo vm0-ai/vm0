@@ -10,6 +10,7 @@ import {
   recordMemorySource,
 } from "./memory-substrate.service";
 import { enqueueMemorySourceRelationshipExtractionJob } from "./relationship-memory-gmail-queue.service";
+import { recordMemoryDocumentFromConnectorSource } from "./zero-memory-document-ingestion.service";
 
 type GithubSubjectKind = "issue" | "pull_request";
 
@@ -134,6 +135,157 @@ function githubCommentExternalId(args: {
   return [args.installationId, args.repo, "issue_comment", args.commentId].join(
     ":",
   );
+}
+
+function githubSubjectSourceType(
+  subjectKind: GithubSubjectKind,
+): "github_pull_request" | "github_issue" {
+  return subjectKind === "pull_request"
+    ? "github_pull_request"
+    : "github_issue";
+}
+
+function githubRepoContextSpace(repo: string) {
+  return {
+    type: "repo" as const,
+    key: `github:${repo.toLowerCase()}`,
+    displayName: repo,
+    metadata: {
+      provider: "github",
+      externalId: repo,
+      displayName: repo,
+      reason: "GitHub repository memory context",
+    },
+  };
+}
+
+function githubLabelNames(issue: GithubIssueLike): readonly string[] {
+  return issue.labels.map((label) => {
+    return label.name;
+  });
+}
+
+function githubSubjectMemoryMetadata(args: {
+  readonly installation: ResolvedGithubInstallation;
+  readonly issue: GithubIssueLike;
+  readonly repository: GithubRepository;
+  readonly sender: GithubUser;
+  readonly subjectKind: GithubSubjectKind;
+  readonly subjectUrl: string;
+  readonly reason: string;
+}) {
+  return {
+    githubInstallationId: args.installation.id,
+    githubRemoteInstallationId: args.installation.remoteInstallationId,
+    githubRepository: args.repository.full_name,
+    githubSubjectKind: args.subjectKind,
+    githubSubjectNumber: args.issue.number,
+    githubSubjectUrl: args.subjectUrl,
+    githubActorId: String(args.sender.id),
+    githubActorLogin: args.sender.login,
+    githubAuthorId: String(args.issue.user.id),
+    githubAuthorLogin: args.issue.user.login,
+    githubLabels: githubLabelNames(args.issue),
+    direction: "sent" as const,
+    reason: args.reason,
+  };
+}
+
+function githubSubjectDocumentContent(args: {
+  readonly issue: GithubIssueLike;
+  readonly repository: GithubRepository;
+  readonly subjectKind: GithubSubjectKind;
+  readonly subjectUrl: string;
+}): string {
+  return [
+    `# ${args.issue.title}`,
+    "",
+    `Repository: ${args.repository.full_name}`,
+    `Kind: ${args.subjectKind}`,
+    `Number: #${args.issue.number}`,
+    `URL: ${args.subjectUrl}`,
+    args.issue.labels.length > 0
+      ? `Labels: ${args.issue.labels
+          .map((label) => {
+            return label.name;
+          })
+          .join(", ")}`
+      : null,
+    "",
+    args.issue.body ?? "",
+  ]
+    .filter((line): line is string => {
+      return line !== null;
+    })
+    .join("\n");
+}
+
+function githubCommentDocumentContent(args: {
+  readonly issue: GithubIssueLike;
+  readonly comment: GithubCommentLike;
+  readonly repository: GithubRepository;
+  readonly subjectKind: GithubSubjectKind;
+  readonly commentUrl: string | null;
+}): string {
+  return [
+    `# ${args.issue.title}`,
+    "",
+    `Repository: ${args.repository.full_name}`,
+    `Kind: ${args.subjectKind} comment`,
+    `Number: #${args.issue.number}`,
+    args.commentUrl ? `URL: ${args.commentUrl}` : null,
+    `Author: ${args.comment.user.login}`,
+    "",
+    args.comment.body,
+  ]
+    .filter((line): line is string => {
+      return line !== null;
+    })
+    .join("\n");
+}
+
+async function recordGithubSubjectMemoryDocument(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly externalId: string;
+  readonly issue: GithubIssueLike;
+  readonly repository: GithubRepository;
+  readonly subjectKind: GithubSubjectKind;
+  readonly subjectUrl: string;
+  readonly occurredAt: Date;
+  readonly reason: string;
+}): Promise<void> {
+  const sourceType = githubSubjectSourceType(args.subjectKind);
+  await recordMemoryDocumentFromConnectorSource(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    provider: "github",
+    sourceType,
+    externalId: args.externalId,
+    title: args.issue.title,
+    content: githubSubjectDocumentContent({
+      issue: args.issue,
+      repository: args.repository,
+      subjectKind: args.subjectKind,
+      subjectUrl: args.subjectUrl,
+    }),
+    occurredAt: args.occurredAt,
+    contextSpace: githubRepoContextSpace(args.repository.full_name),
+    metadata: {
+      provider: "github",
+      sourceType,
+      externalUrl: args.subjectUrl,
+      repository: args.repository.full_name,
+      subjectKind: args.subjectKind,
+      subjectNumber: args.issue.number,
+      reason: args.reason,
+    },
+    citation: {
+      url: args.subjectUrl,
+      locator: `#${args.issue.number}`,
+    },
+  });
 }
 
 async function findActiveGithubInstallation(args: {
@@ -352,39 +504,42 @@ export async function recordGithubSubjectMemorySource(args: {
     parsedDate(args.issue.updated_at) ??
     parsedDate(args.issue.created_at) ??
     nowDate();
+  const sourceType = githubSubjectSourceType(args.subjectKind);
   const didRecord = await recordMemorySource(args.db, {
     orgId: installation.orgId,
     userId: target.userId,
     provider: "github",
-    sourceType:
-      args.subjectKind === "pull_request"
-        ? "github_pull_request"
-        : "github_issue",
+    sourceType,
     externalId,
     occurredAt,
     title: args.issue.title,
     contentHash,
-    metadata: {
-      githubInstallationId: installation.id,
-      githubRemoteInstallationId: installation.remoteInstallationId,
-      githubRepository: args.repository.full_name,
-      githubSubjectKind: args.subjectKind,
-      githubSubjectNumber: args.issue.number,
-      githubSubjectUrl: subjectUrl,
-      githubActorId: String(args.sender.id),
-      githubActorLogin: args.sender.login,
-      githubAuthorId: String(args.issue.user.id),
-      githubAuthorLogin: args.issue.user.login,
-      githubLabels: args.issue.labels.map((label) => {
-        return label.name;
-      }),
-      direction: "sent",
+    metadata: githubSubjectMemoryMetadata({
+      installation,
+      issue: args.issue,
+      repository: args.repository,
+      sender: args.sender,
+      subjectKind: args.subjectKind,
+      subjectUrl,
       reason: args.reason,
-    },
+    }),
   });
   if (!didRecord) {
     return false;
   }
+
+  await recordGithubSubjectMemoryDocument({
+    db: args.db,
+    orgId: installation.orgId,
+    userId: target.userId,
+    externalId,
+    issue: args.issue,
+    repository: args.repository,
+    subjectKind: args.subjectKind,
+    subjectUrl,
+    occurredAt,
+    reason: args.reason,
+  });
 
   return await enqueueGithubSourceExtraction({
     db: args.db,
@@ -479,6 +634,45 @@ export async function recordGithubIssueCommentMemorySource(args: {
   if (!didRecord) {
     return false;
   }
+
+  const subjectUrl =
+    args.issue.html_url ??
+    githubSubjectUrl({
+      repo: args.repository.full_name,
+      subjectKind: args.subjectKind,
+      subjectNumber: args.issue.number,
+    });
+  const commentUrl = args.comment.html_url ?? null;
+  await recordMemoryDocumentFromConnectorSource(args.db, {
+    orgId: installation.orgId,
+    userId: target.userId,
+    provider: "github",
+    sourceType: "github_issue_comment",
+    externalId,
+    title: args.issue.title,
+    content: githubCommentDocumentContent({
+      issue: args.issue,
+      comment: args.comment,
+      repository: args.repository,
+      subjectKind: args.subjectKind,
+      commentUrl,
+    }),
+    occurredAt,
+    contextSpace: githubRepoContextSpace(args.repository.full_name),
+    metadata: {
+      provider: "github",
+      sourceType: "github_issue_comment",
+      externalUrl: commentUrl ?? subjectUrl,
+      repository: args.repository.full_name,
+      subjectKind: args.subjectKind,
+      subjectNumber: args.issue.number,
+      reason: args.reason,
+    },
+    citation: {
+      url: commentUrl ?? subjectUrl,
+      locator: `#${args.issue.number} comment ${args.comment.id}`,
+    },
+  });
 
   return await enqueueGithubSourceExtraction({
     db: args.db,

@@ -1,0 +1,420 @@
+import type {
+  MemoryRecallItem,
+  MemorySearchMode,
+  MemorySearchResponse,
+  MemorySearchResult,
+  MemorySourceProvider,
+} from "@vm0/api-contracts/contracts/zero-memory";
+import {
+  memoryContextSpaces,
+  memoryDocumentChunks,
+  memoryDocuments,
+  memoryDocumentSearchEntries,
+} from "@vm0/db/schema/memory-substrate";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+
+import { logger } from "../../lib/log";
+import type { ReadonlyDb } from "../external/db";
+import { nowDate } from "../external/time";
+import { settle } from "../utils";
+import {
+  embedZeroMemoryText,
+  memoryEmbeddingSqlLiteral,
+} from "./zero-memory-embedding.service";
+import { recallZeroMemory } from "./zero-memory-recall.service";
+
+const log = logger("zero-memory-search");
+const SEMANTIC_SCORE_THRESHOLD = 0.2;
+
+interface MemoryScope {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+interface SearchParams extends MemoryScope {
+  readonly q: string;
+  readonly mode: MemorySearchMode;
+  readonly provider?: MemorySourceProvider;
+  readonly limit: number;
+}
+
+interface DocumentCandidate {
+  readonly chunkId: string;
+  readonly semanticScore: number;
+  readonly lexicalScore: number;
+}
+
+type DocumentSearchResult = Extract<
+  MemorySearchResult,
+  { readonly kind: "document_chunk" }
+>;
+
+function clamp01(value: number): number {
+  if (value < 0) {
+    return 0;
+  }
+  if (value > 1) {
+    return 1;
+  }
+  return value;
+}
+
+function normalizedQuery(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function tokenize(value: string): readonly string[] {
+  return value
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}@._-]+/u)
+    .map((token) => {
+      return token.trim();
+    })
+    .filter((token) => {
+      return token.length >= 2;
+    });
+}
+
+function tokenMatchScore(
+  values: readonly (string | null)[],
+  query: string,
+): number {
+  const tokens = tokenize(query);
+  if (tokens.length === 0) {
+    return 0;
+  }
+  const haystack = values
+    .map((value) => {
+      return value?.toLowerCase() ?? "";
+    })
+    .join("\n");
+  const matched = tokens.filter((token) => {
+    return haystack.includes(token);
+  }).length;
+  return matched / tokens.length;
+}
+
+function freshnessScore(value: Date | null): number {
+  if (!value) {
+    return 0.3;
+  }
+  const ageMs = Math.max(0, nowDate().getTime() - value.getTime());
+  const ageDays = ageMs / 86_400_000;
+  return 1 / (1 + ageDays / 180);
+}
+
+function documentScore(args: {
+  readonly semanticScore: number;
+  readonly lexicalScore: number;
+  readonly occurredAt: Date | null;
+}): number {
+  return clamp01(
+    args.semanticScore * 0.55 +
+      args.lexicalScore * 0.35 +
+      freshnessScore(args.occurredAt) * 0.1,
+  );
+}
+
+function mergeDocumentCandidate(
+  candidates: Map<string, DocumentCandidate>,
+  next: DocumentCandidate,
+): void {
+  const existing = candidates.get(next.chunkId);
+  if (!existing) {
+    candidates.set(next.chunkId, next);
+    return;
+  }
+  candidates.set(next.chunkId, {
+    chunkId: next.chunkId,
+    semanticScore: Math.max(existing.semanticScore, next.semanticScore),
+    lexicalScore: Math.max(existing.lexicalScore, next.lexicalScore),
+  });
+}
+
+function documentFilters(args: SearchParams) {
+  const filters = [
+    eq(memoryDocumentChunks.orgId, args.orgId),
+    eq(memoryDocumentChunks.userId, args.userId),
+    eq(memoryDocumentChunks.status, "active" as const),
+    eq(memoryDocuments.status, "active" as const),
+  ];
+  if (args.provider) {
+    filters.push(eq(memoryDocuments.provider, args.provider));
+  }
+  return filters;
+}
+
+async function loadLexicalDocumentCandidates(
+  db: ReadonlyDb,
+  args: SearchParams & { readonly normalizedQuery: string },
+): Promise<readonly DocumentCandidate[]> {
+  const pattern = `%${args.normalizedQuery}%`;
+  const rows = await db
+    .select({
+      chunkId: memoryDocumentChunks.id,
+      text: memoryDocumentChunks.text,
+      title: memoryDocuments.title,
+      externalId: memoryDocuments.externalId,
+      occurredAt: memoryDocuments.occurredAt,
+    })
+    .from(memoryDocumentChunks)
+    .innerJoin(
+      memoryDocuments,
+      eq(memoryDocuments.id, memoryDocumentChunks.documentId),
+    )
+    .where(
+      and(
+        ...documentFilters(args),
+        or(
+          ilike(memoryDocumentChunks.text, pattern),
+          ilike(memoryDocuments.title, pattern),
+          ilike(memoryDocuments.externalId, pattern),
+        ),
+      ),
+    )
+    .orderBy(desc(memoryDocuments.occurredAt))
+    .limit(Math.max(args.limit * 8, 40));
+
+  const candidates = new Map<string, DocumentCandidate>();
+  for (const row of rows) {
+    mergeDocumentCandidate(candidates, {
+      chunkId: row.chunkId,
+      semanticScore: 0,
+      lexicalScore: Math.max(
+        row.text.toLowerCase().includes(args.normalizedQuery) ? 1 : 0,
+        row.title?.toLowerCase().includes(args.normalizedQuery) ? 0.92 : 0,
+        tokenMatchScore([row.text, row.title, row.externalId], args.q),
+      ),
+    });
+  }
+  return [...candidates.values()];
+}
+
+async function embedQuery(query: string) {
+  const result = await settle(embedZeroMemoryText(query));
+  if (result.ok) {
+    return result.value;
+  }
+  log.warn("Failed to embed zero memory document query", {
+    error: result.error,
+  });
+  return null;
+}
+
+async function loadSemanticDocumentCandidates(
+  db: ReadonlyDb,
+  args: SearchParams & { readonly normalizedQuery: string },
+): Promise<readonly DocumentCandidate[]> {
+  const embedded = await embedQuery(args.normalizedQuery);
+  if (!embedded) {
+    return [];
+  }
+
+  const queryVector = sql`${memoryEmbeddingSqlLiteral(embedded.embedding)}::vector`;
+  const distance = sql<number>`${memoryDocumentSearchEntries.embedding} <=> ${queryVector}`;
+  const rows = await db
+    .select({
+      chunkId: memoryDocumentSearchEntries.chunkId,
+      semanticScore: sql<number>`1 - (${distance})`,
+    })
+    .from(memoryDocumentSearchEntries)
+    .innerJoin(
+      memoryDocumentChunks,
+      eq(memoryDocumentChunks.id, memoryDocumentSearchEntries.chunkId),
+    )
+    .innerJoin(
+      memoryDocuments,
+      eq(memoryDocuments.id, memoryDocumentSearchEntries.documentId),
+    )
+    .where(
+      and(
+        eq(memoryDocumentSearchEntries.orgId, args.orgId),
+        eq(memoryDocumentSearchEntries.userId, args.userId),
+        eq(memoryDocumentSearchEntries.status, "active"),
+        eq(memoryDocumentSearchEntries.embeddingModel, embedded.model),
+        ...documentFilters(args),
+      ),
+    )
+    .orderBy(distance)
+    .limit(Math.max(args.limit * 10, 80));
+
+  return rows
+    .map((row) => {
+      return {
+        chunkId: row.chunkId,
+        semanticScore: clamp01(row.semanticScore),
+        lexicalScore: 0,
+      };
+    })
+    .filter((candidate) => {
+      return candidate.semanticScore >= SEMANTIC_SCORE_THRESHOLD;
+    });
+}
+
+function serializeDate(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+async function hydrateDocumentResults(
+  db: ReadonlyDb,
+  args: SearchParams & {
+    readonly candidates: readonly DocumentCandidate[];
+  },
+): Promise<readonly DocumentSearchResult[]> {
+  if (args.candidates.length === 0) {
+    return [];
+  }
+  const candidatesByChunkId = new Map(
+    args.candidates.map((candidate) => {
+      return [candidate.chunkId, candidate] as const;
+    }),
+  );
+  const rows = await db
+    .select({
+      chunkId: memoryDocumentChunks.id,
+      documentId: memoryDocuments.id,
+      text: memoryDocumentChunks.text,
+      citation: memoryDocumentChunks.citation,
+      title: memoryDocuments.title,
+      provider: memoryDocuments.provider,
+      sourceType: memoryDocuments.sourceType,
+      externalId: memoryDocuments.externalId,
+      occurredAt: memoryDocuments.occurredAt,
+      contextSpaceId: memoryContextSpaces.id,
+      contextSpaceType: memoryContextSpaces.type,
+      contextSpaceKey: memoryContextSpaces.key,
+      contextSpaceDisplayName: memoryContextSpaces.displayName,
+    })
+    .from(memoryDocumentChunks)
+    .innerJoin(
+      memoryDocuments,
+      eq(memoryDocuments.id, memoryDocumentChunks.documentId),
+    )
+    .innerJoin(
+      memoryContextSpaces,
+      eq(memoryContextSpaces.id, memoryDocumentChunks.contextSpaceId),
+    )
+    .where(
+      and(
+        ...documentFilters(args),
+        inArray(memoryDocumentChunks.id, [
+          ...candidatesByChunkId.keys(),
+        ] as string[]),
+      ),
+    );
+
+  const results: DocumentSearchResult[] = [];
+  for (const row of rows) {
+    const candidate = candidatesByChunkId.get(row.chunkId);
+    if (!candidate) {
+      continue;
+    }
+    results.push({
+      kind: "document_chunk",
+      id: row.chunkId,
+      documentId: row.documentId,
+      chunkId: row.chunkId,
+      title: row.title,
+      text: row.text,
+      score: documentScore({
+        semanticScore: candidate.semanticScore,
+        lexicalScore: candidate.lexicalScore,
+        occurredAt: row.occurredAt,
+      }),
+      provider: row.provider,
+      sourceType: row.sourceType,
+      externalId: row.externalId,
+      occurredAt: serializeDate(row.occurredAt),
+      contextSpace: {
+        id: row.contextSpaceId,
+        type: row.contextSpaceType,
+        key: row.contextSpaceKey,
+        displayName: row.contextSpaceDisplayName,
+      },
+      citation: {
+        provider: row.provider,
+        sourceId: row.citation.sourceId,
+        externalId: row.citation.externalId,
+        title: row.citation.title ?? null,
+        url: row.citation.url ?? null,
+        locator: row.citation.locator ?? null,
+        occurredAt: row.citation.occurredAt ?? null,
+      },
+    });
+  }
+  return results
+    .sort((a, b) => {
+      return b.score - a.score;
+    })
+    .slice(0, args.limit);
+}
+
+async function searchMemoryDocuments(
+  db: ReadonlyDb,
+  args: SearchParams,
+): Promise<readonly DocumentSearchResult[]> {
+  const query = normalizedQuery(args.q);
+  const candidates = new Map<string, DocumentCandidate>();
+  const [lexicalCandidates, semanticCandidates] = await Promise.all([
+    loadLexicalDocumentCandidates(db, { ...args, normalizedQuery: query }),
+    loadSemanticDocumentCandidates(db, { ...args, normalizedQuery: query }),
+  ]);
+  for (const candidate of [...lexicalCandidates, ...semanticCandidates]) {
+    mergeDocumentCandidate(candidates, candidate);
+  }
+  return await hydrateDocumentResults(db, {
+    ...args,
+    candidates: [...candidates.values()],
+  });
+}
+
+function memoryResultScore(memory: MemoryRecallItem, index: number): number {
+  return clamp01(
+    0.82 +
+      (memory.confidence / 100) * 0.12 +
+      freshnessScore(new Date(memory.lastSeenAt)) * 0.04 -
+      index * 0.01,
+  );
+}
+
+async function searchMemories(
+  db: ReadonlyDb,
+  args: SearchParams,
+): Promise<readonly MemorySearchResult[]> {
+  const response = await recallZeroMemory(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    q: args.q,
+    limit: args.limit,
+  });
+  return response.memories.map((memory, index) => {
+    return {
+      kind: "memory" as const,
+      id: memory.id,
+      score: memoryResultScore(memory, index),
+      memory,
+    };
+  });
+}
+
+export async function searchZeroMemory(
+  db: ReadonlyDb,
+  args: SearchParams,
+): Promise<MemorySearchResponse> {
+  const includeMemories = args.mode === "hybrid" || args.mode === "memories";
+  const includeDocuments = args.mode === "hybrid" || args.mode === "documents";
+  const [memoryResults, documentResults] = await Promise.all([
+    includeMemories ? searchMemories(db, args) : Promise.resolve([]),
+    includeDocuments ? searchMemoryDocuments(db, args) : Promise.resolve([]),
+  ]);
+  const results = [...memoryResults, ...documentResults]
+    .sort((a, b) => {
+      return b.score - a.score;
+    })
+    .slice(0, args.limit);
+  return {
+    query: args.q,
+    mode: args.mode,
+    results,
+  };
+}
