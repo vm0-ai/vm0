@@ -10,9 +10,11 @@ import {
   feedbackItemsValue$,
   feedbackSelectionValue$,
   feedbackThreadIdValue$,
+  setFeedbackSelectionListenersRef$,
   setFeedbackSelectionToolbarRef$,
 } from "../zero-page/chat-feedback.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
+import { createDeferredPromise } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 // Render a minimal assistant bubble inside a thread container, matching the DOM
@@ -44,6 +46,27 @@ function dispatchShortcut(key: string): KeyboardEvent {
   });
   document.dispatchEvent(event);
   return event;
+}
+
+function dispatchPointerEvent(
+  element: HTMLElement,
+  type: "pointerdown" | "pointerup" | "pointercancel",
+  pointerType = "mouse",
+): void {
+  const event = new Event(type, { bubbles: true });
+  Object.defineProperty(event, "pointerType", {
+    configurable: true,
+    value: pointerType,
+  });
+  element.dispatchEvent(event);
+}
+
+function waitForDeferredSelectionCapture(signal: AbortSignal): Promise<void> {
+  const deferred = createDeferredPromise<void>(signal);
+  window.setTimeout(() => {
+    deferred.resolve();
+  }, 0);
+  return deferred.promise;
 }
 
 describe("inline feedback thread scoping", () => {
@@ -269,6 +292,39 @@ describe("inline feedback thread scoping", () => {
     expect(event.defaultPrevented).toBeFalsy();
     expect(ctx.store.get(feedbackItemsValue$)).toHaveLength(0);
     cleanup?.();
+  });
+
+  it("does not restore the toolbar from stale selection after composer interaction starts", async () => {
+    const bubble = mountThreadBubble("thread-a", "Reply from thread A");
+    selectContents(bubble);
+    ctx.store.set(captureFeedbackSelection$);
+    expect(ctx.store.get(feedbackSelectionValue$)).not.toBeNull();
+
+    const listenersScope = document.createElement("span");
+    const cleanup = ctx.store.set(
+      setFeedbackSelectionListenersRef$,
+      listenersScope,
+    );
+    const composer = document.createElement("div");
+    composer.dataset.chatComposer = "true";
+    const editor = document.createElement("div");
+    editor.setAttribute("contenteditable", "true");
+    composer.appendChild(editor);
+    document.body.appendChild(composer);
+
+    dispatchPointerEvent(editor, "pointerdown");
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    expect(window.getSelection()?.toString()).toBe("Reply from thread A");
+
+    // Some browser event orders can leave the old assistant selection readable
+    // until the click completes. The composer interaction should still win.
+    selectContents(bubble);
+    editor.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await waitForDeferredSelectionCapture(ctx.signal);
+
+    expect(ctx.store.get(feedbackSelectionValue$)).toBeNull();
+    cleanup?.();
+    composer.remove();
   });
 });
 

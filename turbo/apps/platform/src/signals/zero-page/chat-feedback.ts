@@ -13,6 +13,7 @@ const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 // Each chat thread renders inside a container tagged with its thread id. We
 // read it off the selection so a feedback draft stays bound to its own thread.
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
+const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 
 export interface FeedbackSelectionRect {
   readonly top: number;
@@ -247,10 +248,17 @@ function formatFeedbackPrompt(items: readonly FeedbackItem[]): string {
   return `${intro}\n\n${blocks.join("\n\n---\n\n")}`;
 }
 
-export const closeFeedbackSelectionToolbar$ = command(({ set }) => {
+const hideFeedbackSelectionToolbar$ = command(({ set }) => {
   set(resetFeedbackSelectionToolbarSignal$);
-  window.getSelection()?.removeAllRanges();
   set(feedbackSelection$, null);
+});
+
+export const closeFeedbackSelectionToolbar$ = command(({ get, set }) => {
+  if (get(feedbackSelection$) === null) {
+    return;
+  }
+  set(hideFeedbackSelectionToolbar$);
+  window.getSelection()?.removeAllRanges();
 });
 
 // Watch the document selection and drive the floating toolbar. The toolbar
@@ -403,6 +411,24 @@ function shouldIgnoreTextShortcut(event: KeyboardEvent): boolean {
   return isEditableTarget(event.target);
 }
 
+function shouldDismissSelectionForInteractionTarget(
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    isEditableTarget(target) || target.closest(CHAT_COMPOSER_SELECTOR) !== null
+  );
+}
+
+function clearWindowTimer(timerId: number | null): null {
+  if (timerId !== null) {
+    window.clearTimeout(timerId);
+  }
+  return null;
+}
+
 export const setFeedbackSelectionToolbarRef$ = onRef(
   command(({ set }, el: HTMLElement, signal: AbortSignal) => {
     const toolbarSignal = set(resetFeedbackSelectionToolbarSignal$, signal);
@@ -436,11 +462,13 @@ export const setFeedbackSelectionToolbarRef$ = onRef(
 );
 
 export const setFeedbackSelectionListenersRef$ = onRef(
-  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+  command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
     const doc = el.ownerDocument;
     let captureTimerId: number | null = null;
     let pendingDismissWhenEmpty = false;
     let mouseIsDown = false;
+    let suppressSelectionCapture = false;
+    let suppressSelectionClearTimerId: number | null = null;
     const capture = () => {
       set(captureFeedbackSelection$);
     };
@@ -449,9 +477,7 @@ export const setFeedbackSelectionListenersRef$ = onRef(
     };
     const captureDeferred = (dismissWhenEmpty: boolean) => {
       pendingDismissWhenEmpty ||= dismissWhenEmpty;
-      if (captureTimerId !== null) {
-        window.clearTimeout(captureTimerId);
-      }
+      captureTimerId = clearWindowTimer(captureTimerId);
       captureTimerId = window.setTimeout(() => {
         const shouldDismissWhenEmpty = pendingDismissWhenEmpty;
         captureTimerId = null;
@@ -463,7 +489,53 @@ export const setFeedbackSelectionListenersRef$ = onRef(
         captureIfPresent();
       }, 0);
     };
+    const clearSuppressedSelectionCaptureSoon = () => {
+      suppressSelectionClearTimerId = clearWindowTimer(
+        suppressSelectionClearTimerId,
+      );
+      suppressSelectionClearTimerId = window.setTimeout(() => {
+        suppressSelectionCapture = false;
+        suppressSelectionClearTimerId = null;
+      }, 0);
+    };
+    const dismissSelectionForComposerInteraction = (
+      target: EventTarget | null,
+    ) => {
+      if (
+        get(feedbackSelection$) === null ||
+        !shouldDismissSelectionForInteractionTarget(target)
+      ) {
+        return;
+      }
+      suppressSelectionCapture = true;
+      // Do not clear the native selection here: the composer may already own
+      // the caret by the time the popover finishes closing.
+      set(hideFeedbackSelectionToolbar$);
+    };
 
+    // Starting an interaction in the composer should hand focus back to the
+    // composer, not let a stale assistant selection reopen the toolbar.
+    doc.addEventListener(
+      "pointerdown",
+      (event) => {
+        dismissSelectionForComposerInteraction(event.target);
+      },
+      { capture: true, signal },
+    );
+    doc.addEventListener(
+      "pointerup",
+      (event) => {
+        // Mouse interactions finish through the mouseup path below; touch/pen
+        // may not, so clear their suppression after the pointer sequence.
+        if ((event as PointerEvent).pointerType !== "mouse") {
+          clearSuppressedSelectionCaptureSoon();
+        }
+      },
+      { signal },
+    );
+    doc.addEventListener("pointercancel", clearSuppressedSelectionCaptureSoon, {
+      signal,
+    });
     doc.addEventListener(
       "mousedown",
       () => {
@@ -475,6 +547,10 @@ export const setFeedbackSelectionListenersRef$ = onRef(
       "mouseup",
       () => {
         mouseIsDown = false;
+        if (suppressSelectionCapture) {
+          suppressSelectionCapture = false;
+          return;
+        }
         captureDeferred(true);
       },
       { signal },
@@ -490,7 +566,7 @@ export const setFeedbackSelectionListenersRef$ = onRef(
     doc.addEventListener(
       "selectionchange",
       () => {
-        if (mouseIsDown) {
+        if (mouseIsDown || suppressSelectionCapture) {
           return;
         }
         captureDeferred(false);
@@ -512,10 +588,10 @@ export const setFeedbackSelectionListenersRef$ = onRef(
     signal.addEventListener(
       "abort",
       () => {
-        if (captureTimerId !== null) {
-          window.clearTimeout(captureTimerId);
-          captureTimerId = null;
-        }
+        captureTimerId = clearWindowTimer(captureTimerId);
+        suppressSelectionClearTimerId = clearWindowTimer(
+          suppressSelectionClearTimerId,
+        );
       },
       { once: true },
     );
