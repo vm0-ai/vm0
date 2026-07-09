@@ -18,6 +18,7 @@ import { openChatIdb } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
+import { onRejection } from "../utils.ts";
 
 // Page size for the keyset-paginated fetch. The frontend follows `nextCursor`
 // until the whole set is loaded, so this only bounds per-request payload size,
@@ -36,6 +37,10 @@ const ARTIFACT_WINDOW_STEP = 60;
 const internalArtifactsSearch$ = state("");
 const internalArtifactsAgentId$ = state<string | null>(null);
 const internalArtifactsCategory$ = state<ArtifactCategory | null>(null);
+const internalArtifactsFavoritesOnly$ = state(false);
+const internalArtifactFavoriteOverrides$ = state<
+  Readonly<Record<string, boolean>>
+>({});
 const internalArtifactsReload$ = state(0);
 const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 
@@ -59,6 +64,10 @@ export const selectedArtifactsAgentId$ = computed((get) => {
 
 export const selectedArtifactsCategory$ = computed((get) => {
   return get(internalArtifactsCategory$);
+});
+
+export const artifactsFavoritesOnly$ = computed((get) => {
+  return get(internalArtifactsFavoritesOnly$);
 });
 
 // How many artifacts the grid currently reveals. Grown by the view's "load
@@ -92,10 +101,18 @@ export const setSelectedArtifactsCategory$ = command(
   },
 );
 
+export const setArtifactsFavoritesOnly$ = command(
+  ({ set }, favoritesOnly: boolean) => {
+    set(internalArtifactsFavoritesOnly$, favoritesOnly);
+    set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
+  },
+);
+
 export const resetArtifactsFilters$ = command(({ set }) => {
   set(internalArtifactsSearch$, "");
   set(internalArtifactsAgentId$, null);
   set(internalArtifactsCategory$, null);
+  set(internalArtifactsFavoritesOnly$, false);
   set(internalArtifactsWindow$, ARTIFACT_WINDOW_STEP);
 });
 
@@ -159,6 +176,29 @@ export const cachedArtifacts$ = computed(
   },
 );
 
+function applyArtifactFavoriteOverride(
+  item: ArtifactItem,
+  overrides: Readonly<Record<string, boolean>>,
+): ArtifactItem {
+  if (!(item.url in overrides)) {
+    return item;
+  }
+  return { ...item, isFavorited: overrides[item.url] ?? false };
+}
+
+export function applyArtifactFavoriteOverrides(
+  artifacts: readonly ArtifactItem[],
+  overrides: Readonly<Record<string, boolean>>,
+): ArtifactItem[] {
+  return artifacts.map((artifact) => {
+    return applyArtifactFavoriteOverride(artifact, overrides);
+  });
+}
+
+export const artifactFavoriteOverrides$ = computed((get) => {
+  return get(internalArtifactFavoriteOverrides$);
+});
+
 // Applies the search / agent / category filters in memory over the active set,
 // so switching filters is instant and never re-fetches or truncates.
 export function filterArtifacts(
@@ -167,14 +207,18 @@ export function filterArtifacts(
     readonly search: string;
     readonly agentId: string | null;
     readonly category: ArtifactCategory | null;
+    readonly favoritesOnly: boolean;
   },
 ): ArtifactItem[] {
   const searchTokens = normalizedSearchTokens(filters.search);
-  return artifacts.filter((item) => {
+  const filtered = artifacts.filter((item) => {
     if (filters.agentId && item.agentId !== filters.agentId) {
       return false;
     }
     if (!artifactMatchesCategory(item, filters.category)) {
+      return false;
+    }
+    if (filters.favoritesOnly && item.isFavorited !== true) {
       return false;
     }
     if (searchTokens.length === 0) {
@@ -185,7 +229,55 @@ export function filterArtifacts(
       return text.includes(token);
     });
   });
+  return filtered;
 }
+
+export const toggleArtifactFavorite$ = command(
+  async ({ get, set }, item: ArtifactItem, signal: AbortSignal) => {
+    const currentIsFavorited = item.isFavorited === true;
+    const nextIsFavorited = !currentIsFavorited;
+    set(internalArtifactFavoriteOverrides$, (overrides) => {
+      return { ...overrides, [item.url]: nextIsFavorited };
+    });
+
+    const client = get(zeroClient$)(artifactsContract);
+    const request = nextIsFavorited
+      ? accept(
+          client.favorite({
+            body: { artifactUrl: item.url },
+            fetchOptions: { signal },
+          }),
+          [204],
+        )
+      : accept(
+          client.unfavorite({
+            body: { artifactUrl: item.url },
+            fetchOptions: { signal },
+          }),
+          [204],
+        );
+    await onRejection(request, () => {
+      if (!signal.aborted) {
+        set(internalArtifactFavoriteOverrides$, (overrides) => {
+          return { ...overrides, [item.url]: currentIsFavorited };
+        });
+      }
+    });
+    signal.throwIfAborted();
+
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const userId = clerk.user?.id;
+    const orgId = clerk.organization?.id;
+    if (userId && orgId) {
+      await artifactItemCacheStores(userId, orgId).writeStore.upsertItems([
+        { ...item, isFavorited: nextIsFavorited },
+      ]);
+    }
+    signal.throwIfAborted();
+    set(reloadArtifacts$);
+  },
+);
 
 export const navigateToArtifactThread$ = command(
   ({ set }, threadId: string) => {

@@ -374,9 +374,11 @@ function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
 function setupArtifactsPage({
   scope,
   enabled = true,
+  artifactFavoritesEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
+  readonly artifactFavoritesEnabled?: boolean;
 }): void {
   detachedSetupPage({
     context,
@@ -391,6 +393,7 @@ function setupArtifactsPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: enabled,
+      [FeatureSwitchKey.ArtifactFavorites]: artifactFavoritesEnabled,
     },
   });
 }
@@ -652,6 +655,75 @@ describe("artifacts page", () => {
 
     // All filtering was client-side: the bulk endpoint was hit once.
     expect(listCalls).toBe(1);
+  });
+
+  it("favorites artifacts optimistically and filters favorites locally", async () => {
+    setupTeam();
+    const scope = testAuthScope("favorites");
+    const launch = createArtifact({
+      artifactItemId: "favorite-launch:file-1",
+      runId: "favorite-launch",
+      filename: "launch-plan.html",
+      createdAt: "2026-01-03T00:00:00Z",
+      url: "https://artifacts.example.com/launch-plan.html",
+    });
+    const brief = createArtifact({
+      artifactItemId: "favorite-brief:file-1",
+      runId: "favorite-brief",
+      fileId: "favorite-brief-file",
+      filename: "favorite-brief.html",
+      createdAt: "2026-01-02T00:00:00Z",
+      isFavorited: true,
+      url: "https://artifacts.example.com/favorite-brief.html",
+    });
+    const archive = createArtifact({
+      artifactItemId: "favorite-archive:file-1",
+      runId: "favorite-archive",
+      fileId: "favorite-archive-file",
+      filename: "archive.html",
+      createdAt: "2026-01-01T00:00:00Z",
+      url: "https://artifacts.example.com/archive.html",
+    });
+    mockArtifacts([launch, brief, archive]);
+
+    let favoriteBody: { readonly artifactUrl: string } | undefined;
+    context.mocks.api(artifactsContract.favorite, ({ body, respond }) => {
+      favoriteBody = body;
+      return respond(204);
+    });
+
+    let unfavoriteBody: { readonly artifactUrl: string } | undefined;
+    context.mocks.api(artifactsContract.unfavorite, ({ body, respond }) => {
+      unfavoriteBody = body;
+      return respond(204);
+    });
+
+    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+
+    await screen.findByText("launch-plan.html");
+    await screen.findByText("favorite-brief.html");
+    await screen.findByText("archive.html");
+
+    click(buttonByLabel("Add launch-plan.html to favorites"));
+    await waitFor(() => {
+      expect(favoriteBody).toStrictEqual({ artifactUrl: launch.url });
+      expect(
+        buttonByLabel("Remove launch-plan.html from favorites"),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Show favorite artifacts"));
+    await waitFor(() => {
+      expect(screen.getByText("launch-plan.html")).toBeInTheDocument();
+      expect(screen.getByText("favorite-brief.html")).toBeInTheDocument();
+      expect(screen.queryByText("archive.html")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Remove favorite-brief.html from favorites"));
+    await waitFor(() => {
+      expect(unfavoriteBody).toStrictEqual({ artifactUrl: brief.url });
+      expect(screen.queryByText("favorite-brief.html")).not.toBeInTheDocument();
+    });
   });
 
   it("navigates to the source chat session", async () => {
