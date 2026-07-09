@@ -7,7 +7,7 @@ import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
-import { bestEffort, safeAsync, safeJsonParse } from "../utils";
+import { safeAsync, safeJsonParse, startUntrackedBestEffort } from "../utils";
 import {
   checkManagedCredits$,
   recordManagedUsage$,
@@ -232,9 +232,10 @@ function oversizedFirecrawlResponse(): ScrapeErrorResponse {
   );
 }
 
-async function startBestEffortCancel(cancel: Promise<unknown>): Promise<void> {
-  // Own cancellation errors without waiting for streams that may never settle.
-  await Promise.race([bestEffort(cancel), Promise.resolve()]);
+function startBestEffortCancel(cancel: Promise<unknown>): void {
+  // Stream cancellation is advisory. Some stream implementations never settle
+  // the cancel promise, so do not put it in the detached-promise drain.
+  startUntrackedBestEffort(cancel);
 }
 
 function contentLengthExceedsLimit(response: Response): boolean {
@@ -247,20 +248,18 @@ function contentLengthExceedsLimit(response: Response): boolean {
   return Number.isFinite(bytes) && bytes > MAX_FIRECRAWL_RESPONSE_BYTES;
 }
 
-async function startResponseBodyCancel(
-  body: ReadableStream<Uint8Array> | null,
-): Promise<void> {
+function startResponseBodyCancel(body: ReadableStream<Uint8Array> | null) {
   if (!body) {
     return;
   }
-  await startBestEffortCancel(body.cancel());
+  startBestEffortCancel(body.cancel());
 }
 
 async function readResponseText(
   response: Response,
 ): Promise<FirecrawlTextResult> {
   if (contentLengthExceedsLimit(response)) {
-    await startResponseBodyCancel(response.body);
+    startResponseBodyCancel(response.body);
     return scrapeErrorResult(oversizedFirecrawlResponse());
   }
 
@@ -281,7 +280,7 @@ async function readResponseText(
 
     bytesRead += value.byteLength;
     if (bytesRead > MAX_FIRECRAWL_RESPONSE_BYTES) {
-      await startBestEffortCancel(reader.cancel());
+      startBestEffortCancel(reader.cancel());
       return scrapeErrorResult(oversizedFirecrawlResponse());
     }
     chunks.push(decoder.decode(value, { stream: true }));
