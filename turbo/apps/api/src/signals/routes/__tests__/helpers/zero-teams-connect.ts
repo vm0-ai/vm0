@@ -221,7 +221,12 @@ export async function installTeamsForTest(
 ): Promise<void> {
   const response = await postTeamsActivityForTest({
     signal,
-    activity: teamsMessageActivityForTest(fixture),
+    activity: teamsMessageActivityForTest(fixture, {
+      id: "activity-install-seed",
+      text: "installation seed",
+      entities: [],
+      replyToId: null,
+    }),
   });
   if (!response.ok) {
     throw new Error(`Teams install seed failed with ${response.status}`);

@@ -21,6 +21,7 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import {
+  deleteTeamsReaction,
   sendTeamsMessageReply,
   sendTeamsTypingActivity,
 } from "../external/teams-bot-client";
@@ -36,6 +37,7 @@ import type {
 } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import { getRunOutputText } from "./run-output.service";
+import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
@@ -43,6 +45,7 @@ import {
 
 const L = logger("InternalCallbacksTeamsOrg");
 const ORG_SENTINEL_USER_ID = "__org__";
+const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
 
 type TerminalStatus = "completed" | "failed";
 
@@ -225,17 +228,53 @@ async function resolveRespondedByLabel(args: {
   return label ? `Responded by ${label}` : undefined;
 }
 
+async function countThreadMentioners(args: {
+  readonly db: Db;
+  readonly tenantId: string;
+  readonly conversationId: string;
+  readonly threadId: string;
+  readonly currentConnectionId: string;
+}): Promise<number> {
+  const rows = await args.db
+    .select({ connectionId: teamsOrgThreadSessions.connectionId })
+    .from(teamsOrgThreadSessions)
+    .innerJoin(
+      teamsOrgConnections,
+      eq(teamsOrgThreadSessions.connectionId, teamsOrgConnections.id),
+    )
+    .where(
+      and(
+        eq(teamsOrgConnections.teamsTenantId, args.tenantId),
+        eq(teamsOrgThreadSessions.teamsConversationId, args.conversationId),
+        eq(teamsOrgThreadSessions.teamsThreadId, args.threadId),
+      ),
+    );
+  return new Set([
+    args.currentConnectionId,
+    ...rows.map((row) => {
+      return row.connectionId;
+    }),
+  ]).size;
+}
+
 async function resolveFooterText(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly runId: string;
   readonly payload: TeamsOrgCallbackPayload;
 }): Promise<string | undefined> {
-  const [respondedBy, modelLabel] = await Promise.all([
+  const [respondedBy, mentionerCount, modelLabel] = await Promise.all([
     resolveRespondedByLabel({
       db: args.db,
       orgId: args.orgId,
       composeId: args.payload.agentId,
+    }),
+    countThreadMentioners({
+      db: args.db,
+      tenantId: args.payload.tenantId,
+      conversationId: args.payload.conversationId,
+      threadId: args.payload.threadId,
+      currentConnectionId: args.payload.connectionId,
     }),
     resolveModelLabel({
       db: args.db,
@@ -247,6 +286,15 @@ async function resolveFooterText(args: {
   const parts: string[] = [];
   if (respondedBy) {
     parts.push(respondedBy);
+  }
+  if (args.payload.conversationType !== "personal" && mentionerCount > 1) {
+    const replyTo =
+      args.payload.teamsUserDisplayName ??
+      args.payload.teamsUserPrincipalName ??
+      args.payload.teamsUserId;
+    if (replyTo) {
+      parts.push(`Reply to ${replyTo}`);
+    }
   }
   if (modelLabel) {
     parts.push(modelLabel);
@@ -292,7 +340,7 @@ function buildTeamsResponseText(args: {
 }): string {
   return [
     args.mainText,
-    args.logsUrl ? `[View run details](${args.logsUrl})` : undefined,
+    args.logsUrl ? `[Audit](${args.logsUrl})` : undefined,
     args.footerText ? `_${args.footerText}_` : undefined,
   ]
     .filter((part): part is string => {
@@ -415,7 +463,14 @@ async function handleProgress(args: {
   readonly payload: TeamsOrgCallbackPayload;
   readonly signal: AbortSignal;
 }): Promise<TeamsOrgCallbackResult> {
-  const typingResult = await settle(
+  if (
+    args.payload.conversationType !== "personal" &&
+    args.payload.activityId !== null
+  ) {
+    return successResponse();
+  }
+
+  const indicatorResult = await settle(
     sendTeamsTypingActivity({
       serviceUrl: args.payload.serviceUrl,
       conversationId: args.payload.conversationId,
@@ -424,19 +479,58 @@ async function handleProgress(args: {
     }),
     args.signal,
   );
-  const error = !typingResult.ok
-    ? typingResult.error
-    : typingResult.value.kind === "teams-error"
-      ? typingResult.value.error
+  const error = !indicatorResult.ok
+    ? indicatorResult.error
+    : indicatorResult.value.kind === "teams-error"
+      ? indicatorResult.value.error
       : undefined;
   if (error !== undefined) {
     L.debug("Failed to refresh Teams typing indicator", {
       tenantId: args.payload.tenantId,
       conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
       error,
     });
   }
   return successResponse();
+}
+
+async function clearTeamsThinkingReaction(args: {
+  readonly payload: TeamsOrgCallbackPayload;
+  readonly serviceUrl: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (
+    args.payload.conversationType === "personal" ||
+    args.payload.activityId === null
+  ) {
+    return;
+  }
+
+  const result = await settle(
+    deleteTeamsReaction({
+      serviceUrl: args.serviceUrl,
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      tenantId: args.payload.tenantId,
+      reactionType: TEAMS_THINKING_REACTION_TYPE,
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  const error = !result.ok
+    ? result.error
+    : result.value.kind === "teams-error"
+      ? result.value.error
+      : undefined;
+  if (error !== undefined) {
+    L.debug("Failed to clear Teams thinking reaction", {
+      tenantId: args.payload.tenantId,
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      error,
+    });
+  }
 }
 
 async function handleCompletion(args: {
@@ -454,6 +548,11 @@ async function handleCompletion(args: {
     readonly chatThreadId: string | null | undefined;
     readonly errorMessage: string;
   }) => Promise<string>;
+  readonly saveRunSummary: (
+    runId: string,
+    prompt: string,
+    resultText: string,
+  ) => Promise<void>;
   readonly signal: AbortSignal;
 }): Promise<TeamsOrgCallbackResult> {
   const installation = await loadInstallation({
@@ -544,6 +643,13 @@ async function handleCompletion(args: {
     return teamsApiCallbackError(sendResult);
   }
 
+  await clearTeamsThinkingReaction({
+    payload: args.payload,
+    serviceUrl,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
   await saveOrgThreadSession({
     db: args.db,
     payload: args.payload,
@@ -551,6 +657,11 @@ async function handleCompletion(args: {
     status: args.status,
     signal: args.signal,
   });
+
+  if (run?.prompt) {
+    await args.saveRunSummary(args.runId, run.prompt, output ?? "");
+    args.signal.throwIfAborted();
+  }
 
   L.debug("Teams org callback processed successfully", { runId: args.runId });
   return successResponse();
@@ -568,6 +679,11 @@ interface HandleTeamsOrgInternalCallbackInput {
     readonly chatThreadId: string | null | undefined;
     readonly errorMessage: string;
   }) => Promise<string>;
+  readonly saveRunSummary: (
+    runId: string,
+    prompt: string,
+    resultText: string,
+  ) => Promise<void>;
   readonly signal?: AbortSignal;
 }
 
@@ -602,6 +718,7 @@ async function handleTeamsOrgInternalCallback(
     payload,
     getFeatureOverrides: input.getFeatureOverrides,
     formatRunError: input.formatRunError,
+    saveRunSummary: input.saveRunSummary,
     signal,
   });
 }
@@ -620,6 +737,18 @@ export const handleTeamsOrgInternalCallback$ = command(
       },
       formatRunError: (params) => {
         return set(formatRunErrorForRunOwner$, params, signal);
+      },
+      saveRunSummary: (runId, prompt, resultText) => {
+        return set(
+          saveRunSummary$,
+          {
+            runId,
+            triggerSource: "teams",
+            prompt,
+            resultText,
+          },
+          signal,
+        );
       },
       signal,
     });
@@ -646,6 +775,18 @@ export async function handleTeamsOrgInternalCallbackWithoutCcstate(
           code: "INTERNAL_SERVER_ERROR",
           message: params.errorMessage,
         }),
+      );
+    },
+    saveRunSummary: async (runId, prompt, resultText) => {
+      await saveRunSummary(
+        db,
+        {
+          runId,
+          triggerSource: "teams",
+          prompt,
+          resultText,
+        },
+        signal,
       );
     },
     signal,

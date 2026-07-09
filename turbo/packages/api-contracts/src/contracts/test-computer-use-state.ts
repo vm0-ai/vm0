@@ -11,7 +11,7 @@ const testComputerUseStateErrorSchema = z.object({
 export const testComputerUseStatePostBodySchema = z.object({
   user_id: z.string().optional(),
   org_id: z.string().optional(),
-  trigger_source: z.enum(["web", "slack"]).optional(),
+  trigger_source: z.enum(["web", "slack", "teams"]).optional(),
 });
 
 export const testComputerUseStatePostResponseSchema = z.object({
@@ -27,10 +27,17 @@ export const testComputerUseStatePostResponseSchema = z.object({
       thread_ts: z.string(),
     })
     .nullable(),
+  teams: z
+    .object({
+      connection_id: z.string(),
+      conversation_id: z.string(),
+      thread_id: z.string(),
+    })
+    .nullable(),
 });
 
 export const testComputerUseStateGetResponseSchema = z.object({
-  source: z.enum(["web", "slack"]).nullable(),
+  source: z.enum(["web", "slack", "teams"]).nullable(),
   computer_use_host_id: z.string().nullable(),
 });
 

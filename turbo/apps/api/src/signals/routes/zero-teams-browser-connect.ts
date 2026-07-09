@@ -43,6 +43,7 @@ function teamsSettingsParams(
     readonly teamName?: string;
     readonly serviceUrl?: string;
     readonly conversationId?: string;
+    readonly conversationType?: string;
     readonly activityId?: string;
     readonly channelId?: string;
     readonly threadId?: string;
@@ -91,6 +92,9 @@ function teamsSettingsParams(
   }
   if (query.conversationId) {
     params.set("conversationId", query.conversationId);
+  }
+  if (query.conversationType) {
+    params.set("conversationType", query.conversationType);
   }
   if (query.activityId) {
     params.set("activityId", query.activityId);
@@ -236,6 +240,11 @@ const browserConnect$ = command(async ({ get, set }, signal: AbortSignal) => {
       teamId: query.teamId ?? installation.teamsTeamId ?? undefined,
       teamName: query.teamName ?? installation.teamsTeamName ?? undefined,
       serviceUrl: query.serviceUrl ?? installation.serviceUrl ?? undefined,
+      conversationId: query.conversationId,
+      conversationType: query.conversationType,
+      activityId: query.activityId,
+      channelId: query.channelId,
+      threadId: query.threadId,
     },
     signal,
   );

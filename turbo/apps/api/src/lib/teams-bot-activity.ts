@@ -240,6 +240,7 @@ function messageActivity(
     recipientId: recipient?.id ?? null,
     recipientName: recipient?.name ?? null,
   });
+  const value = isRecord(activity.value) ? activity.value : null;
 
   return {
     ...base,
@@ -249,6 +250,7 @@ function messageActivity(
     recipient,
     rawText,
     text: mentionNormalization.text,
+    value,
     mentionsRecipient: mentionNormalization.mentionsRecipient,
   };
 }

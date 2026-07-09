@@ -1,6 +1,9 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
+import { HttpResponse, http } from "msw";
 
+import { mockEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
   createFixtureTracker,
@@ -17,6 +20,16 @@ import {
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
+const BOT_APP_PASSWORD = "teams-test-password";
+const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
+const MICROSOFT_TOKEN_URL =
+  "https://login.microsoftonline.com/:tenantId/oauth2/v2.0/token";
+
+interface TeamsWelcomeRequest {
+  readonly kind: "conversation" | "activity";
+  readonly body: unknown;
+}
 
 function teamsInstallUrl(tenantId?: string): string {
   const url = new URL(
@@ -55,6 +68,50 @@ function connectBody(
     teamName: fixture.teamsTeamName,
     serviceUrl: fixture.serviceUrl,
   };
+}
+
+function teamsServiceBaseUrl(serviceUrl: string): string {
+  return serviceUrl.replace(/\/+$/u, "");
+}
+
+function teamsWelcomeHandlers(
+  fixture: TeamsConnectFixture,
+): TeamsWelcomeRequest[] {
+  const requests: TeamsWelcomeRequest[] = [];
+  const serviceBaseUrl = teamsServiceBaseUrl(fixture.serviceUrl);
+
+  server.use(
+    http.post(MICROSOFT_TOKEN_URL, async ({ request }) => {
+      const form = new URLSearchParams(await request.text());
+      expect(form.get("client_id")).toBe(BOT_APP_ID);
+      expect(form.get("client_secret")).toBe(BOT_APP_PASSWORD);
+      expect(form.get("scope")).toBe(BOT_FRAMEWORK_SCOPE);
+      return HttpResponse.json({
+        access_token: "teams-access-token",
+        token_type: "Bearer",
+        expires_in: 3600,
+      });
+    }),
+    http.post(`${serviceBaseUrl}/v3/conversations`, async ({ request }) => {
+      requests.push({
+        kind: "conversation",
+        body: await request.json(),
+      });
+      return HttpResponse.json({ id: "a:teams-welcome-conversation" });
+    }),
+    http.post(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities`,
+      async ({ request }) => {
+        requests.push({
+          kind: "activity",
+          body: await request.json(),
+        });
+        return HttpResponse.json({ id: "teams-welcome-activity" });
+      },
+    ),
+  );
+
+  return requests;
 }
 
 async function seedTeamsInstallation(
@@ -187,6 +244,13 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       teamId: fixture.teamsTeamId,
       teamName: fixture.teamsTeamName,
       defaultAgentName: null,
+      agentOrgSlug: null,
+      environment: {
+        requiredSecrets: [],
+        requiredVars: [],
+        missingSecrets: [],
+        missingVars: [],
+      },
     });
   });
 });
@@ -327,6 +391,71 @@ describe("POST /api/zero/integrations/teams/connect", () => {
     );
 
     expect(second.body.connectionId).toBe(first.body.connectionId);
+  });
+
+  it("sends a one-time Teams welcome message after connect", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
+    const welcomeRequests = teamsWelcomeHandlers(fixture);
+
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    const body = {
+      ...connectBody(fixture),
+      conversationId: "a:personal-conversation",
+      conversationType: "personal",
+      activityId: "activity-connect",
+    };
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body,
+      }),
+      [200],
+    );
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body,
+      }),
+      [200],
+    );
+
+    expect(welcomeRequests).toHaveLength(2);
+    expect(welcomeRequests[0]).toMatchObject({
+      kind: "conversation",
+      body: {
+        bot: { id: "28:bot-1", name: "Zero" },
+        members: [{ id: fixture.teamsUserId, name: "Ada Lovelace" }],
+        isGroup: false,
+        channelData: {
+          tenant: { id: fixture.teamsTenantId },
+        },
+      },
+    });
+    expect(welcomeRequests[1]).toMatchObject({
+      kind: "activity",
+      body: {
+        type: "message",
+        summary: "You're connected!",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.4",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: "You're connected! 🎉\nMention `@Zero` in any channel or send a DM to start chatting with your agent.",
+                  wrap: true,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
   });
 });
 

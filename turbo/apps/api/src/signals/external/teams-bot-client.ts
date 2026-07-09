@@ -21,6 +21,12 @@ const teamsActivityResponseSchema = z
   })
   .passthrough();
 
+const teamsConversationResponseSchema = z
+  .object({
+    id: z.string().min(1),
+  })
+  .passthrough();
+
 const teamsGraphIdentitySchema = z
   .object({
     id: z.string().nullable().optional(),
@@ -67,6 +73,12 @@ type SendTeamsActivityResult =
   | { readonly kind: "ok"; readonly activityId: string | undefined }
   | TeamsApiErrorResult;
 
+type SendTeamsReactionResult = { readonly kind: "ok" } | TeamsApiErrorResult;
+
+type CreateTeamsConversationResult =
+  | { readonly kind: "ok"; readonly conversationId: string }
+  | TeamsApiErrorResult;
+
 type FetchTeamsGraphMessageResult =
   | { readonly kind: "ok"; readonly message: TeamsGraphMessage }
   | TeamsApiErrorResult;
@@ -88,17 +100,46 @@ interface TeamsAdaptiveCardTextBlock {
   readonly wrap?: boolean;
 }
 
+interface TeamsAdaptiveCardChoice {
+  readonly title: string;
+  readonly value: string;
+}
+
+interface TeamsAdaptiveCardChoiceSetInput {
+  readonly type: "Input.ChoiceSet";
+  readonly id: string;
+  readonly label?: string;
+  readonly style?: "compact" | "expanded";
+  readonly isMultiSelect?: false;
+  readonly value?: string;
+  readonly choices: readonly TeamsAdaptiveCardChoice[];
+}
+
+type TeamsAdaptiveCardBodyElement =
+  | TeamsAdaptiveCardTextBlock
+  | TeamsAdaptiveCardChoiceSetInput;
+
 interface TeamsAdaptiveCardOpenUrlAction {
   readonly type: "Action.OpenUrl";
   readonly title: string;
   readonly url: string;
 }
 
+interface TeamsAdaptiveCardSubmitAction {
+  readonly type: "Action.Submit";
+  readonly title: string;
+  readonly data?: Readonly<Record<string, string>>;
+}
+
+type TeamsAdaptiveCardAction =
+  | TeamsAdaptiveCardOpenUrlAction
+  | TeamsAdaptiveCardSubmitAction;
+
 export interface TeamsAdaptiveCard {
   readonly type: "AdaptiveCard";
   readonly version: "1.4";
-  readonly body: readonly TeamsAdaptiveCardTextBlock[];
-  readonly actions?: readonly TeamsAdaptiveCardOpenUrlAction[];
+  readonly body: readonly TeamsAdaptiveCardBodyElement[];
+  readonly actions?: readonly TeamsAdaptiveCardAction[];
 }
 
 interface TeamsActivityAttachment {
@@ -115,6 +156,20 @@ interface TeamsActivityBody {
   readonly attachments?: readonly TeamsActivityAttachment[];
   readonly channelData?: {
     readonly tenant?: { readonly id: string };
+  };
+}
+
+interface TeamsConversationIdentity {
+  readonly id: string;
+  readonly name?: string;
+}
+
+interface TeamsCreateConversationBody {
+  readonly bot: TeamsConversationIdentity;
+  readonly members: readonly TeamsConversationIdentity[];
+  readonly isGroup: false;
+  readonly channelData: {
+    readonly tenant: { readonly id: string };
   };
 }
 
@@ -256,6 +311,35 @@ function teamsConversationActivityUrl(args: {
     : base;
 }
 
+function teamsConversationReactionUrl(args: {
+  readonly serviceUrl: string;
+  readonly conversationId: string;
+  readonly activityId: string;
+  readonly reactionType: string;
+}): string | undefined {
+  const activityUrl = teamsConversationActivityUrl({
+    serviceUrl: args.serviceUrl,
+    conversationId: args.conversationId,
+    activityId: args.activityId,
+  });
+  if (!activityUrl) {
+    return undefined;
+  }
+  return `${activityUrl}/reactions/${encodeURIComponent(args.reactionType)}`;
+}
+
+function teamsConversationsUrl(serviceUrl: string): string | undefined {
+  const parsed = safeUrlParse(serviceUrl);
+  if (
+    !parsed ||
+    (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+  ) {
+    return undefined;
+  }
+
+  return `${parsed.href.replace(/\/+$/u, "")}/v3/conversations`;
+}
+
 function teamsGraphChannelMessageUrl(args: {
   readonly teamId: string;
   readonly channelId: string;
@@ -387,6 +471,137 @@ async function postTeamsActivity(args: {
   };
 }
 
+export async function createTeamsPersonalConversation(args: {
+  readonly serviceUrl: string;
+  readonly tenantId: string;
+  readonly botId: string;
+  readonly botName?: string | null;
+  readonly teamsUserId: string;
+  readonly teamsUserDisplayName?: string | null;
+  readonly signal: AbortSignal;
+}): Promise<CreateTeamsConversationResult> {
+  const accessToken = await fetchTeamsBotAccessToken({
+    tenantId: args.tenantId,
+    signal: args.signal,
+  });
+  if (accessToken.kind === "teams-error") {
+    return accessToken;
+  }
+
+  const url = teamsConversationsUrl(args.serviceUrl);
+  if (!url) {
+    return teamsApiError(400, "Invalid Microsoft Teams serviceUrl");
+  }
+
+  const body: TeamsCreateConversationBody = {
+    bot: {
+      id: args.botId,
+      ...(args.botName ? { name: args.botName } : {}),
+    },
+    members: [
+      {
+        id: args.teamsUserId,
+        ...(args.teamsUserDisplayName
+          ? { name: args.teamsUserDisplayName }
+          : {}),
+      },
+    ],
+    isGroup: false,
+    channelData: {
+      tenant: { id: args.tenantId },
+    },
+  };
+
+  const responseResult = await settle(
+    fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  if (!responseResult.ok) {
+    return teamsApiError(502, networkErrorMessage(responseResult.error));
+  }
+
+  const response = responseResult.value;
+  const responseText = await response.text();
+  args.signal.throwIfAborted();
+  if (!response.ok) {
+    return teamsApiError(
+      response.status,
+      responseText || `Microsoft Teams API returned HTTP ${response.status}`,
+    );
+  }
+
+  const parsed = teamsConversationResponseSchema.safeParse(
+    safeJsonParse(responseText),
+  );
+  if (!parsed.success) {
+    return teamsApiError(502, "Invalid Microsoft Teams conversation response");
+  }
+
+  return { kind: "ok", conversationId: parsed.data.id };
+}
+
+async function requestTeamsReaction(args: {
+  readonly method: "PUT" | "DELETE";
+  readonly serviceUrl: string;
+  readonly conversationId: string;
+  readonly activityId: string;
+  readonly tenantId: string;
+  readonly reactionType: string;
+  readonly signal: AbortSignal;
+}): Promise<SendTeamsReactionResult> {
+  const accessToken = await fetchTeamsBotAccessToken({
+    tenantId: args.tenantId,
+    signal: args.signal,
+  });
+  if (accessToken.kind === "teams-error") {
+    return accessToken;
+  }
+
+  const url = teamsConversationReactionUrl({
+    serviceUrl: args.serviceUrl,
+    conversationId: args.conversationId,
+    activityId: args.activityId,
+    reactionType: args.reactionType,
+  });
+  if (!url) {
+    return teamsApiError(400, "Invalid Microsoft Teams serviceUrl");
+  }
+
+  const responseResult = await settle(
+    fetch(url, {
+      method: args.method,
+      headers: {
+        authorization: `Bearer ${accessToken.accessToken}`,
+      },
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  if (!responseResult.ok) {
+    return teamsApiError(502, networkErrorMessage(responseResult.error));
+  }
+
+  const response = responseResult.value;
+  const responseText = await response.text();
+  args.signal.throwIfAborted();
+  if (!response.ok) {
+    return teamsApiError(
+      response.status,
+      responseText || `Microsoft Teams API returned HTTP ${response.status}`,
+    );
+  }
+
+  return { kind: "ok" };
+}
+
 export function sendTeamsMessageReply(args: {
   readonly serviceUrl: string;
   readonly conversationId: string;
@@ -422,6 +637,34 @@ export function sendTeamsMessageReply(args: {
         tenant: { id: args.tenantId },
       },
     },
+  });
+}
+
+export function sendTeamsReaction(args: {
+  readonly serviceUrl: string;
+  readonly conversationId: string;
+  readonly activityId: string;
+  readonly tenantId: string;
+  readonly reactionType: string;
+  readonly signal: AbortSignal;
+}): Promise<SendTeamsReactionResult> {
+  return requestTeamsReaction({
+    method: "PUT",
+    ...args,
+  });
+}
+
+export function deleteTeamsReaction(args: {
+  readonly serviceUrl: string;
+  readonly conversationId: string;
+  readonly activityId: string;
+  readonly tenantId: string;
+  readonly reactionType: string;
+  readonly signal: AbortSignal;
+}): Promise<SendTeamsReactionResult> {
+  return requestTeamsReaction({
+    method: "DELETE",
+    ...args,
   });
 }
 

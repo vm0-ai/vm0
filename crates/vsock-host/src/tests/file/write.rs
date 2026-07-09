@@ -19,7 +19,8 @@ use super::support::{
     spawn_write_files,
 };
 use crate::{
-    FrameWriteObserver, WriteFileEntry, file::test_support::WRITE_FILE_CHUNK_LIMIT,
+    FrameWriteObserver, WriteFileEntry,
+    file::test_support::{WRITE_FILES_BATCH_CONTENT_LIMIT, WRITE_FILES_BATCH_FILE_LIMIT},
     operation_tracker::NormalOperationReadiness,
 };
 
@@ -103,11 +104,86 @@ async fn write_files_guest_failure_releases_tracker() {
 }
 
 #[tokio::test]
+async fn write_files_error_response_releases_tracker() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/a.txt", b"alpha".to_vec()),
+            ("/tmp/b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_files(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_guest_error(&mut guest, write.seq(), "guest write failed").await;
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("guest write failed"));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_unexpected_response_keeps_tracker_fail_closed() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_files(
+        Arc::clone(&host),
+        vec![
+            ("/tmp/a.txt", b"alpha".to_vec()),
+            ("/tmp/b.txt", b"beta".to_vec()),
+        ],
+    );
+
+    let write = expect_write_files(&mut guest).await;
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    let resp = vsock_proto::encode(MSG_EXEC_START, write.seq(), &[]).unwrap();
+    guest.write_all(&resp).await.unwrap();
+
+    let err = write_task.await.unwrap().unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
 async fn write_files_empty_batch_is_noop() {
     let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
 
-    host.write_files(&[]).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
+            &[],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("empty write_files should return before waiting for the writer")
+    .unwrap();
 
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("empty write_files must not send a frame; read {n} bytes"),
@@ -118,18 +194,210 @@ async fn write_files_empty_batch_is_noop() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer_guard);
 }
 
 #[tokio::test]
-async fn write_files_rejects_invalid_path_before_sending_frame() {
+async fn write_files_sends_empty_file_content() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            host.write_files(&[WriteFileEntry {
+                path: "/tmp/empty.txt",
+                content: b"",
+            }])
+            .await
+        })
+    };
+
+    let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
+        .await
+        .expect("write_files with empty file content should send a frame");
+    assert_eq!(
+        write.files,
+        vec![("/tmp/empty.txt".to_string(), Vec::new())]
+    );
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_accepts_file_count_at_batch_limit() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let files = (0..WRITE_FILES_BATCH_FILE_LIMIT)
+        .map(|index| {
+            (
+                format!("/tmp/batch-limit-{index}.txt"),
+                format!("content-{index}").into_bytes(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let expected_files = files.clone();
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let entries = files
+                .iter()
+                .map(|(path, content)| WriteFileEntry {
+                    path: path.as_str(),
+                    content: content.as_slice(),
+                })
+                .collect::<Vec<_>>();
+            host.write_files(&entries).await
+        })
+    };
+
+    let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
+        .await
+        .expect("write_files at the file-count limit should send a frame");
+    assert_eq!(write.files, expected_files);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_accepts_aggregate_content_at_batch_limit() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let write_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            let first_len = WRITE_FILES_BATCH_CONTENT_LIMIT / 2;
+            let second_len = WRITE_FILES_BATCH_CONTENT_LIMIT - first_len;
+            let first_content = vec![0xA1u8; first_len];
+            let second_content = vec![0xB2u8; second_len];
+            host.write_files(&[
+                WriteFileEntry {
+                    path: "/tmp/content-limit-a.txt",
+                    content: &first_content,
+                },
+                WriteFileEntry {
+                    path: "/tmp/content-limit-b.txt",
+                    content: &second_content,
+                },
+            ])
+            .await
+        })
+    };
+
+    let write = tokio::time::timeout(Duration::from_secs(5), expect_write_files(&mut guest))
+        .await
+        .expect("write_files at the content limit should send a frame");
+    let [(first_path, first_content), (second_path, second_content)] = write.files.as_slice()
+    else {
+        panic!(
+            "expected two write_files entries, got {}",
+            write.files.len()
+        );
+    };
+    assert_eq!(first_path, "/tmp/content-limit-a.txt");
+    assert_eq!(second_path, "/tmp/content-limit-b.txt");
+    assert_eq!(
+        first_content.len() + second_content.len(),
+        WRITE_FILES_BATCH_CONTENT_LIMIT
+    );
+    assert!(first_content.iter().all(|byte| *byte == 0xA1));
+    assert!(second_content.iter().all(|byte| *byte == 0xB2));
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Busy
+    );
+
+    send_write_files_success(&mut guest, write.seq()).await;
+
+    write_task.await.unwrap().unwrap();
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+}
+
+#[tokio::test]
+async fn write_files_rejects_file_count_above_batch_limit_before_sending_frame() {
     let (host, guest) = setup_host_and_guest().await;
     let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let paths = (0..=WRITE_FILES_BATCH_FILE_LIMIT)
+        .map(|index| format!("/tmp/too-many-files-{index}.txt"))
+        .collect::<Vec<_>>();
+    let files = paths
+        .iter()
+        .map(|path| WriteFileEntry {
+            path: path.as_str(),
+            content: b"x",
+        })
+        .collect::<Vec<_>>();
 
-    let err = host
-        .write_files_with_write_observer(
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
+            &files,
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("file-count-invalid write_files should return before waiting for the writer")
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("file-count-invalid write_files must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after file-count-invalid write_files: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    drop(writer_guard);
+}
+
+#[tokio::test]
+async fn write_files_rejects_content_above_batch_limit_before_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let content = vec![0u8; WRITE_FILES_BATCH_CONTENT_LIMIT + 1];
+
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
             &[WriteFileEntry {
-                path: "/tmp/has\0nul",
-                content: b"hello",
+                path: "/tmp/too-large-batch-content.txt",
+                content: &content,
             }],
             FrameWriteObserver::new({
                 let write_start_count = Arc::clone(&write_start_count);
@@ -138,11 +406,112 @@ async fn write_files_rejects_invalid_path_before_sending_frame() {
                     Ok(())
                 }
             }),
-        )
-        .await
-        .unwrap_err();
+        ),
+    )
+    .await
+    .expect("content-invalid write_files should return before waiting for the writer")
+    .unwrap_err();
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("content-invalid write_files must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after content-invalid write_files: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    drop(writer_guard);
+}
+
+#[tokio::test]
+async fn write_files_rejects_aggregate_content_above_batch_limit_before_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let first_len = (WRITE_FILES_BATCH_CONTENT_LIMIT / 2) + 1;
+    let second_len = WRITE_FILES_BATCH_CONTENT_LIMIT - first_len + 1;
+    let first_content = vec![0xA1u8; first_len];
+    let second_content = vec![0xB2u8; second_len];
+
+    let err = tokio::time::timeout(
+        Duration::from_secs(5),
+        host.write_files_with_write_observer(
+            &[
+                WriteFileEntry {
+                    path: "/tmp/too-large-batch-a.txt",
+                    content: &first_content,
+                },
+                WriteFileEntry {
+                    path: "/tmp/too-large-batch-b.txt",
+                    content: &second_content,
+                },
+            ],
+            FrameWriteObserver::new({
+                let write_start_count = Arc::clone(&write_start_count);
+                move || {
+                    write_start_count.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                }
+            }),
+        ),
+    )
+    .await
+    .expect("aggregate-content-invalid write_files should return before waiting for the writer")
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => {
+            panic!("aggregate-content-invalid write_files must not send a frame; read {n} bytes")
+        }
+        Err(err) => {
+            panic!("unexpected read error after aggregate-content-invalid write_files: {err}")
+        }
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+    drop(writer_guard);
+}
+
+#[tokio::test]
+async fn write_files_rejects_invalid_path_before_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+
+    for path in ["", "/tmp/has\0nul"] {
+        let err = tokio::time::timeout(
+            Duration::from_secs(5),
+            host.write_files_with_write_observer(
+                &[WriteFileEntry {
+                    path,
+                    content: b"hello",
+                }],
+                FrameWriteObserver::new({
+                    let write_start_count = Arc::clone(&write_start_count);
+                    move || {
+                        write_start_count.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                }),
+            ),
+        )
+        .await
+        .expect("path-invalid write_files should return before waiting for the writer")
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
     assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
     match guest.try_read(&mut [0u8; 1]) {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
@@ -154,6 +523,7 @@ async fn write_files_rejects_invalid_path_before_sending_frame() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    drop(writer_guard);
 }
 
 #[tokio::test]
@@ -714,7 +1084,7 @@ async fn write_files_rejects_protocol_message_too_large_before_waiting_for_write
     let write_start_count = Arc::new(AtomicUsize::new(0));
     let writer_guard = host.shared.writer.lock().await;
     let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
-    let content = vec![0u8; WRITE_FILE_CHUNK_LIMIT];
+    let content = vec![0u8; WRITE_FILES_BATCH_CONTENT_LIMIT];
     let mut files = Vec::new();
     files.push(WriteFileEntry {
         path: &path,
@@ -778,6 +1148,35 @@ async fn write_file_observer_error_cleans_pending_without_sending_frame() {
         Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
         Ok(n) => panic!("observer error must not send write_file frame; read {n} bytes"),
         Err(err) => panic!("unexpected read error after observer error: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::NotParkable
+    );
+}
+
+#[tokio::test]
+async fn write_files_observer_error_cleans_pending_without_sending_frame() {
+    let (host, guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+
+    let err = host
+        .write_files_with_write_observer(
+            &[WriteFileEntry {
+                path: "/tmp/observer-error.txt",
+                content: b"hello",
+            }],
+            FrameWriteObserver::new(|| Err(io::Error::other("observer failed"))),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("observer failed"));
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("observer error must not send write_files frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after write_files observer error: {err}"),
     }
     assert_eq!(pending_request_count(&host), 0);
     assert_eq!(

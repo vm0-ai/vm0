@@ -455,7 +455,11 @@ export const computerUseHostDeleteResponseSchema = z.object({
   ok: z.literal(true),
 });
 
-export const computerUseAuthorizationSourceSchema = z.enum(["chat", "slack"]);
+export const computerUseAuthorizationSourceSchema = z.enum([
+  "chat",
+  "slack",
+  "teams",
+]);
 
 const computerUseAuthorizationRequestCreateBodySchema = z.object({});
 

@@ -1,7 +1,15 @@
 import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
+import {
+  getVm0VisibleModels,
+  isSupportedRunModel,
+  type SupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
@@ -9,9 +17,10 @@ import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session"
 import { teamsUserAgentPreferences } from "@vm0/db/schema/teams-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-teams-bot";
-import { and, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { convert } from "html-to-text";
 
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
@@ -19,8 +28,12 @@ import {
   fetchTeamsChannelMessage,
   fetchTeamsChannelMessageReplies,
   fetchTeamsChannelMessages,
+  sendTeamsReaction,
+  sendTeamsTypingActivity,
+  type TeamsAdaptiveCard,
   type TeamsGraphMessage,
 } from "../external/teams-bot-client";
+import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
@@ -28,15 +41,39 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
+import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
   teamsOrgCallbackPayloadSchema,
   type TeamsOrgCallbackPayload,
 } from "./teams-org-callback-payload";
-import { buildTeamsConnectUrlForActivity } from "./zero-teams-connect.service";
+import {
+  updateUserModelPreference$,
+  userModelPreference,
+} from "./zero-user-data.service";
+import {
+  buildTeamsConnectUrlForActivity,
+  disconnectTeamsConnection$,
+  publishTeamsChanged$,
+} from "./zero-teams-connect.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const L = logger("TeamsDispatch");
-const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT = "Please connect your account first";
+const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
+  "Please connect your account to use Zero in this Teams workspace.";
+const TEAMS_AGENT_PICKER_MAX_OPTIONS = 100;
+const TEAMS_MODEL_PICKER_MAX_OPTIONS = 100;
+const TEAMS_CARD_ACTION_KEY = "zeroTeamsAction";
+const TEAMS_AGENT_PICKER_ACTION = "switch_agent";
+const TEAMS_MODEL_PICKER_ACTION = "switch_model";
+const TEAMS_AGENT_PICKER_INPUT_ID = "selectedComposeId";
+const TEAMS_MODEL_PICKER_INPUT_ID = "selectedModel";
+const TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE = "__org_default__";
+const TEAMS_THINKING_REACTION_TYPE = "1f4ad_thoughtballoon";
+
+type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
+type TeamsCardAction = "switch_agent" | "switch_model";
 
 type TeamsInstallation = typeof teamsOrgInstallations.$inferSelect;
 type BoundTeamsInstallation = TeamsInstallation & { readonly orgId: string };
@@ -58,6 +95,18 @@ interface TeamsAgent {
   readonly displayName: string | null;
 }
 
+interface TeamsAgentPickerOption {
+  readonly composeId: string;
+  readonly name: string;
+  readonly displayName: string | null;
+}
+
+interface TeamsModelPickerOption {
+  readonly model: SupportedRunModel;
+  readonly label: string;
+  readonly isDefault: boolean;
+}
+
 type EffectiveComposeResolution =
   | {
       readonly status: "resolved";
@@ -68,12 +117,23 @@ type EffectiveComposeResolution =
       readonly status: "not_configured" | "not_found" | "not_accessible";
     };
 
+type ResolvedEffectiveCompose = Extract<
+  EffectiveComposeResolution,
+  { readonly status: "resolved" }
+>;
+
+interface TeamsRunThreadContext {
+  readonly existingSessionId: string | undefined;
+  readonly computerUseHostId: string | undefined;
+}
+
 type TeamsMessageDispatchResult =
   | { readonly kind: "ignored" }
   | {
       readonly kind: "notice";
       readonly replyText: string;
       readonly connectUrl?: string;
+      readonly card?: TeamsAdaptiveCard;
     }
   | {
       readonly kind: "accepted" | "queued";
@@ -99,6 +159,231 @@ function optionalLine(
 ): string[] {
   const normalized = nonEmpty(value);
   return normalized ? [`${label}: ${normalized}`] : [];
+}
+
+function isTeamsBotCommand(value: string): value is TeamsBotCommand {
+  return (
+    value === "help" ||
+    value === "connect" ||
+    value === "disconnect" ||
+    value === "switch" ||
+    value === "model"
+  );
+}
+
+function stringValue(
+  value: Readonly<Record<string, unknown>> | null,
+  key: string,
+): string | undefined {
+  const raw = value?.[key];
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
+function teamsCardAction(
+  value: Readonly<Record<string, unknown>> | null,
+): TeamsCardAction | null {
+  const action = stringValue(value, TEAMS_CARD_ACTION_KEY);
+  if (action === TEAMS_AGENT_PICKER_ACTION) {
+    return "switch_agent";
+  }
+  if (action === TEAMS_MODEL_PICKER_ACTION) {
+    return "switch_model";
+  }
+  return null;
+}
+
+function choiceLabel(value: string): string {
+  return value.slice(0, 80);
+}
+
+function agentLabel(agent: TeamsAgent | TeamsAgentPickerOption): string {
+  return agent.displayName ?? agent.name;
+}
+
+function modelLabel(option: TeamsModelPickerOption): string {
+  if (!option.isDefault) {
+    return choiceLabel(option.label);
+  }
+  const suffix = " (workspace default)";
+  if (option.label.length + suffix.length <= 80) {
+    return `${option.label}${suffix}`;
+  }
+  return `${option.label.slice(0, 80 - suffix.length)}${suffix}`;
+}
+
+function parseTeamsBotCommand(prompt: string): TeamsBotCommand | null {
+  const parts = prompt.trim().split(/\s+/u);
+  const first = parts[0]?.toLowerCase() ?? "";
+  const prefixed = first === "/zero" || first === "zero";
+  const command = prefixed ? (parts[1]?.toLowerCase() ?? "") : first;
+  if (!isTeamsBotCommand(command)) {
+    return null;
+  }
+  return prefixed || parts.length === 1 ? command : null;
+}
+
+function commandHelpNotice(args: {
+  readonly canSwitch: boolean;
+  readonly canModel: boolean;
+}): TeamsMessageDispatchResult {
+  const switchLine = args.canSwitch
+    ? "\n- `switch` - Choose which agent responds to your messages"
+    : "";
+  const modelLine = args.canModel ? "\n- `model` - Choose your model" : "";
+  return {
+    kind: "notice",
+    replyText: [
+      "**Zero Teams Bot Help**",
+      "",
+      "**Commands**",
+      `- \`connect\` - Connect to Zero${switchLine}${modelLine}`,
+      "- `disconnect` - Disconnect from Zero",
+      "",
+      "**Usage**",
+      "- `@Zero <message>` - Send a message to your agent",
+      "- Send a DM to Zero to chat without mentioning the bot",
+    ].join("\n"),
+  };
+}
+
+function connectedNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText:
+      "You're already connected. Mention @Zero in any channel or send a DM to start chatting with your agent.",
+  };
+}
+
+function notInstalledNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText:
+      "The Zero Teams app hasn't been set up for this workspace yet. An org admin can complete the setup from VM0.",
+  };
+}
+
+function disconnectedNotice(): TeamsMessageDispatchResult {
+  return {
+    kind: "notice",
+    replyText:
+      "You have been disconnected and your agent access has been revoked.",
+  };
+}
+
+function buildTeamsAgentPickerCard(args: {
+  readonly options: readonly TeamsAgentPickerOption[];
+  readonly currentSelectedId: string | null;
+  readonly includeOrgDefault: boolean;
+  readonly orgDefaultName: string | null;
+}): TeamsAdaptiveCard {
+  const orgDefaultLabel = args.orgDefaultName
+    ? `Use org default (${args.orgDefaultName})`
+    : "Use org default";
+  const choices = [
+    ...(args.includeOrgDefault
+      ? [
+          {
+            title: choiceLabel(orgDefaultLabel),
+            value: TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE,
+          },
+        ]
+      : []),
+    ...args.options.map((option) => {
+      return {
+        title: choiceLabel(agentLabel(option)),
+        value: option.composeId,
+      };
+    }),
+  ];
+  const currentChoice = args.currentSelectedId
+    ? choices.find((choice) => {
+        return choice.value === args.currentSelectedId;
+      })
+    : undefined;
+  const initialValue = currentChoice?.value ?? choices[0]?.value;
+
+  return {
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
+      {
+        type: "TextBlock",
+        text: "Choose which agent should respond to your mentions and DMs. Only affects your own messages.",
+        wrap: true,
+      },
+      {
+        type: "Input.ChoiceSet",
+        id: TEAMS_AGENT_PICKER_INPUT_ID,
+        label: "Agent",
+        style: "compact",
+        isMultiSelect: false,
+        ...(initialValue ? { value: initialValue } : {}),
+        choices,
+      },
+    ],
+    actions: [
+      {
+        type: "Action.Submit",
+        title: "Switch",
+        data: { [TEAMS_CARD_ACTION_KEY]: TEAMS_AGENT_PICKER_ACTION },
+      },
+    ],
+  };
+}
+
+function buildTeamsModelPickerCard(args: {
+  readonly options: readonly TeamsModelPickerOption[];
+  readonly currentSelectedModel: string | null;
+}): TeamsAdaptiveCard {
+  const choices = args.options.map((option) => {
+    return {
+      title: modelLabel(option),
+      value: option.model,
+    };
+  });
+  const defaultModel = args.options.find((option) => {
+    return option.isDefault;
+  })?.model;
+  const currentChoice = args.currentSelectedModel
+    ? choices.find((choice) => {
+        return choice.value === args.currentSelectedModel;
+      })
+    : undefined;
+  const defaultChoice = defaultModel
+    ? choices.find((choice) => {
+        return choice.value === defaultModel;
+      })
+    : undefined;
+  const initialValue =
+    currentChoice?.value ?? defaultChoice?.value ?? choices[0]?.value;
+
+  return {
+    type: "AdaptiveCard",
+    version: "1.4",
+    body: [
+      {
+        type: "TextBlock",
+        text: "Choose your model. This only affects your own runs.",
+        wrap: true,
+      },
+      {
+        type: "Input.ChoiceSet",
+        id: TEAMS_MODEL_PICKER_INPUT_ID,
+        label: "Model",
+        style: "compact",
+        isMultiSelect: false,
+        ...(initialValue ? { value: initialValue } : {}),
+        choices,
+      },
+    ],
+    actions: [
+      {
+        type: "Action.Submit",
+        title: "Switch",
+        data: { [TEAMS_CARD_ACTION_KEY]: TEAMS_MODEL_PICKER_ACTION },
+      },
+    ],
+  };
 }
 
 async function installationForTenant(
@@ -171,6 +456,67 @@ async function resolveDefaultComposeId(
   return metadata?.defaultAgentId ?? null;
 }
 
+function buildTeamsDispatchErrorText(args: {
+  readonly errorText: string;
+  readonly logsUrl: string | undefined;
+  readonly footerText: string | undefined;
+}): string {
+  return [
+    args.errorText,
+    args.logsUrl ? `[Audit](${args.logsUrl})` : undefined,
+    args.footerText ? `_${args.footerText}_` : undefined,
+  ]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join("\n\n");
+}
+
+async function sendTeamsRunStartIndicator(args: {
+  readonly activity: TeamsMessageActivity;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const activityId = args.activity.activityId;
+  let mode: "typing" | "reaction";
+  let indicator:
+    | ReturnType<typeof sendTeamsTypingActivity>
+    | ReturnType<typeof sendTeamsReaction>;
+  if (isTeamsDirectMessage(args.activity) || !activityId) {
+    mode = "typing";
+    indicator = sendTeamsTypingActivity({
+      serviceUrl: args.activity.serviceUrl,
+      conversationId: args.activity.conversationId,
+      tenantId: args.activity.tenantId,
+      signal: args.signal,
+    });
+  } else {
+    mode = "reaction";
+    indicator = sendTeamsReaction({
+      serviceUrl: args.activity.serviceUrl,
+      conversationId: args.activity.conversationId,
+      activityId,
+      tenantId: args.activity.tenantId,
+      reactionType: TEAMS_THINKING_REACTION_TYPE,
+      signal: args.signal,
+    });
+  }
+  const result = await settle(indicator, args.signal);
+  const error = !result.ok
+    ? result.error
+    : result.value.kind === "teams-error"
+      ? result.value.error
+      : undefined;
+  if (error !== undefined) {
+    L.debug("Failed to send Teams run start indicator", {
+      tenantId: args.activity.tenantId,
+      conversationId: args.activity.conversationId,
+      activityId: args.activity.activityId,
+      mode,
+      error,
+    });
+  }
+}
+
 async function getUserAgentPreference(
   db: Db,
   vm0UserId: string,
@@ -187,6 +533,31 @@ async function getUserAgentPreference(
     )
     .limit(1);
   return preference?.selectedComposeId ?? null;
+}
+
+async function setUserAgentPreference(args: {
+  readonly db: Db;
+  readonly vm0UserId: string;
+  readonly orgId: string;
+  readonly composeId: string | null;
+}): Promise<void> {
+  await args.db
+    .insert(teamsUserAgentPreferences)
+    .values({
+      vm0UserId: args.vm0UserId,
+      orgId: args.orgId,
+      selectedComposeId: args.composeId,
+    })
+    .onConflictDoUpdate({
+      target: [
+        teamsUserAgentPreferences.vm0UserId,
+        teamsUserAgentPreferences.orgId,
+      ],
+      set: {
+        selectedComposeId: args.composeId,
+        updatedAt: nowDate(),
+      },
+    });
 }
 
 async function getWorkspaceAgent(
@@ -231,6 +602,37 @@ async function getVisibleWorkspaceAgent(args: {
     )
     .limit(1);
   return agent;
+}
+
+async function getVisibleAgentPickerOptions(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly defaultComposeId: string | null;
+}): Promise<readonly TeamsAgentPickerOption[]> {
+  const rows = await args.db
+    .select({
+      composeId: zeroAgents.id,
+      name: zeroAgents.name,
+      displayName: zeroAgents.displayName,
+    })
+    .from(zeroAgents)
+    .where(
+      and(
+        eq(zeroAgents.orgId, args.orgId),
+        or(
+          eq(zeroAgents.visibility, "public"),
+          eq(zeroAgents.owner, args.userId),
+        ),
+      ),
+    )
+    .orderBy(desc(zeroAgents.updatedAt));
+
+  return rows
+    .filter((agent) => {
+      return agent.composeId !== args.defaultComposeId;
+    })
+    .slice(0, TEAMS_AGENT_PICKER_MAX_OPTIONS);
 }
 
 async function resolveEffectiveCompose(args: {
@@ -283,17 +685,62 @@ async function resolveEffectiveCompose(args: {
   };
 }
 
+const teamsModelPickerState$ = command(
+  async (
+    { get, set },
+    orgId: string,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly enabled: boolean;
+    readonly options: readonly TeamsModelPickerOption[];
+    readonly currentSelectedModel: string | null;
+  }> => {
+    const visibleModels = new Set(getVm0VisibleModels());
+    const [policies, preference] = await Promise.all([
+      set(listOrgModelPolicies$, { orgId, userId }, signal),
+      get(userModelPreference({ orgId, userId })),
+    ]);
+    signal.throwIfAborted();
+
+    return {
+      enabled: true,
+      options: policies.policies
+        .flatMap((policy) => {
+          if (
+            !isSupportedRunModel(policy.model) ||
+            !visibleModels.has(policy.model) ||
+            policy.routeStatus !== "valid"
+          ) {
+            return [];
+          }
+          return {
+            model: policy.model,
+            label: policy.modelLabel,
+            isDefault: policy.isDefault,
+          };
+        })
+        .slice(0, TEAMS_MODEL_PICKER_MAX_OPTIONS),
+      currentSelectedModel: preference.selectedModel,
+    };
+  },
+);
+
 async function resolveCompatibleTeamsThreadSession(args: {
   readonly db: Db;
   readonly connectionId: string;
   readonly conversationId: string;
   readonly threadId: string;
+  readonly orgId: string;
   readonly userId: string;
   readonly composeId: string;
   readonly modelRoute: IntegrationModelRoutePin | undefined;
-}): Promise<string | undefined> {
+}): Promise<TeamsRunThreadContext> {
   const [threadSession] = await args.db
-    .select({ agentSessionId: teamsOrgThreadSessions.agentSessionId })
+    .select({
+      agentSessionId: teamsOrgThreadSessions.agentSessionId,
+      computerUseHostId: teamsOrgThreadSessions.computerUseHostId,
+    })
     .from(teamsOrgThreadSessions)
     .where(
       and(
@@ -303,16 +750,41 @@ async function resolveCompatibleTeamsThreadSession(args: {
       ),
     )
     .limit(1);
+  const computerUseHostId = await resolveComputerUseHostForTeamsThread({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    hostId: threadSession?.computerUseHostId ?? null,
+  });
+
   if (!threadSession?.agentSessionId) {
-    return undefined;
+    return { existingSessionId: undefined, computerUseHostId };
   }
 
+  const existingSessionId = await resolveCompatibleTeamsAgentSession({
+    db: args.db,
+    sessionId: threadSession.agentSessionId,
+    userId: args.userId,
+    composeId: args.composeId,
+    modelRoute: args.modelRoute,
+  });
+
+  return { existingSessionId, computerUseHostId };
+}
+
+async function resolveCompatibleTeamsAgentSession(args: {
+  readonly db: Db;
+  readonly sessionId: string;
+  readonly userId: string;
+  readonly composeId: string;
+  readonly modelRoute: IntegrationModelRoutePin | undefined;
+}): Promise<string | undefined> {
   const [agentSession] = await args.db
     .select({ agentComposeId: agentSessions.agentComposeId })
     .from(agentSessions)
     .where(
       and(
-        eq(agentSessions.id, threadSession.agentSessionId),
+        eq(agentSessions.id, args.sessionId),
         eq(agentSessions.userId, args.userId),
       ),
     )
@@ -324,7 +796,7 @@ async function resolveCompatibleTeamsThreadSession(args: {
   if (args.modelRoute) {
     const canReuseSession = await canReuseIntegrationSessionForModelRoute({
       db: args.db,
-      sessionId: threadSession.agentSessionId,
+      sessionId: args.sessionId,
       modelRoute: args.modelRoute,
     });
     if (!canReuseSession) {
@@ -332,7 +804,33 @@ async function resolveCompatibleTeamsThreadSession(args: {
     }
   }
 
-  return threadSession.agentSessionId;
+  return args.sessionId;
+}
+
+async function resolveComputerUseHostForTeamsThread(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly hostId: string | null;
+}): Promise<string | undefined> {
+  if (!args.hostId || !args.orgId) {
+    return undefined;
+  }
+
+  const [host] = await args.db
+    .select({ id: computerUseHosts.id })
+    .from(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.id, args.hostId),
+        eq(computerUseHosts.orgId, args.orgId),
+        eq(computerUseHosts.userId, args.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+
+  return host?.id;
 }
 
 function formatTeamsSenderBlock(message: TeamsContextMessage): string {
@@ -718,19 +1216,27 @@ function callbackPayload(args: {
 
 const runAgentForTeams$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly activity: TeamsMessageActivity;
       readonly installation: BoundTeamsInstallation;
       readonly connection: TeamsConnection;
       readonly composeId: string;
+      readonly agentLabel: string;
       readonly sessionId: string | undefined;
+      readonly computerUseHostId: string | undefined;
       readonly threadContext: string;
       readonly apiStartTime: number;
       readonly modelRoute: IntegrationModelRoutePin | undefined;
+      readonly timing: ApiDispatchTimingCollector;
     },
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult> => {
+    args.timing.recordElapsed(
+      "api_dispatch_pre_create_zero_teams_create_run",
+      "nested",
+      nowDate().getTime(),
+    );
     const result = await set(
       createZeroRun$,
       {
@@ -765,7 +1271,9 @@ const runAgentForTeams$ = command(
         modelProviderCredentialScope:
           args.modelRoute?.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: args.modelRoute?.selectedModel ?? undefined,
+        computerUseHostId: args.computerUseHostId,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+        timing: args.timing,
         callbacks: [
           {
             internalKind: "teams:org",
@@ -791,18 +1299,50 @@ const runAgentForTeams$ = command(
       };
     }
 
+    const errorText = await set(
+      formatIntegrationRunError$,
+      {
+        orgId: args.installation.orgId,
+        userId: args.connection.vm0UserId,
+        code: result.body.error.code,
+        message: result.body.error.message,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const overrides = await get(
+      userFeatureSwitchOverrides(
+        args.installation.orgId,
+        args.connection.vm0UserId,
+      ),
+    );
+    signal.throwIfAborted();
+    const logsUrl = isFeatureEnabled(FeatureSwitchKey.ZeroDebug, {
+      userId: args.connection.vm0UserId,
+      orgId: args.installation.orgId,
+      overrides,
+    })
+      ? `${env("APP_URL")}/activities`
+      : undefined;
+    const db = set(writeDb$);
+    const defaultComposeId = await resolveDefaultComposeId(
+      db,
+      args.installation.orgId,
+    );
+    signal.throwIfAborted();
+    const footerText =
+      args.composeId !== defaultComposeId
+        ? `Sent via ${args.agentLabel}`
+        : undefined;
+
     return {
       kind: "failed",
-      replyText: await set(
-        formatIntegrationRunError$,
-        {
-          orgId: args.installation.orgId,
-          userId: args.connection.vm0UserId,
-          code: result.body.error.code,
-          message: result.body.error.message,
-        },
-        signal,
-      ),
+      replyText: buildTeamsDispatchErrorText({
+        errorText,
+        logsUrl,
+        footerText,
+      }),
     };
   },
 );
@@ -850,6 +1390,367 @@ function composeResolutionNotice(
   }
 }
 
+function unboundInstallationNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly activity: TeamsMessageActivity;
+  readonly installation: TeamsInstallation | null;
+}): TeamsMessageDispatchResult {
+  if (args.command === "help") {
+    return commandHelpNotice({ canSwitch: false, canModel: false });
+  }
+  if (args.command === "connect" && !args.installation) {
+    return notInstalledNotice();
+  }
+  return connectNotice(args.activity, args.installation);
+}
+
+function missingConnectionNotice(args: {
+  readonly command: TeamsBotCommand | null;
+  readonly activity: TeamsMessageActivity;
+  readonly installation: TeamsInstallation;
+}): TeamsMessageDispatchResult {
+  if (args.command === "help") {
+    return commandHelpNotice({ canSwitch: true, canModel: false });
+  }
+  return connectNotice(args.activity, args.installation);
+}
+
+const connectedCommandBeforeCompose$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly command: TeamsBotCommand | null;
+      readonly installation: BoundTeamsInstallation;
+      readonly connection: TeamsConnection;
+    },
+    signal: AbortSignal,
+  ): Promise<TeamsMessageDispatchResult | null> => {
+    switch (args.command) {
+      case "help": {
+        return commandHelpNotice({ canSwitch: true, canModel: true });
+      }
+      case "connect": {
+        return connectedNotice();
+      }
+      case "disconnect": {
+        const result = await set(
+          disconnectTeamsConnection$,
+          {
+            orgId: args.installation.orgId,
+            userId: args.connection.vm0UserId,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        if (result.kind === "not_found") {
+          return {
+            kind: "notice",
+            replyText: "You are not connected.",
+          };
+        }
+        await set(
+          publishTeamsChanged$,
+          { orgId: result.orgId, userIds: [result.userId] },
+          signal,
+        );
+        signal.throwIfAborted();
+        return disconnectedNotice();
+      }
+      case "switch": {
+        const defaultComposeId = await resolveDefaultComposeId(
+          args.db,
+          args.installation.orgId,
+        );
+        signal.throwIfAborted();
+        const options = await getVisibleAgentPickerOptions({
+          db: args.db,
+          orgId: args.installation.orgId,
+          userId: args.connection.vm0UserId,
+          defaultComposeId,
+        });
+        signal.throwIfAborted();
+        const visibleDefaultAgent = defaultComposeId
+          ? await getVisibleWorkspaceAgent({
+              db: args.db,
+              composeId: defaultComposeId,
+              orgId: args.installation.orgId,
+              userId: args.connection.vm0UserId,
+            })
+          : undefined;
+        signal.throwIfAborted();
+        if (!visibleDefaultAgent && options.length === 0) {
+          return {
+            kind: "notice",
+            replyText: "No agents are available to your Teams account.",
+          };
+        }
+        const currentOverride = await getUserAgentPreference(
+          args.db,
+          args.connection.vm0UserId,
+          args.installation.orgId,
+        );
+        signal.throwIfAborted();
+        return {
+          kind: "notice",
+          replyText:
+            "Choose which agent should respond to your Teams messages.",
+          card: buildTeamsAgentPickerCard({
+            options,
+            currentSelectedId: currentOverride,
+            includeOrgDefault: Boolean(visibleDefaultAgent),
+            orgDefaultName: visibleDefaultAgent
+              ? agentLabel(visibleDefaultAgent)
+              : null,
+          }),
+        };
+      }
+      case "model": {
+        const picker = await set(
+          teamsModelPickerState$,
+          args.installation.orgId,
+          args.connection.vm0UserId,
+          signal,
+        );
+        signal.throwIfAborted();
+        if (!picker.enabled) {
+          return {
+            kind: "notice",
+            replyText: "Model switching is not available for this workspace.",
+          };
+        }
+        if (picker.options.length === 0) {
+          return {
+            kind: "notice",
+            replyText: "No models are configured for this workspace.",
+          };
+        }
+        return {
+          kind: "notice",
+          replyText: "Choose the model for your Teams agent.",
+          card: buildTeamsModelPickerCard({
+            options: picker.options,
+            currentSelectedModel: picker.currentSelectedModel,
+          }),
+        };
+      }
+      case null: {
+        return null;
+      }
+    }
+  },
+);
+
+const connectedTeamsCardAction$ = command(
+  async (
+    { set },
+    args: {
+      readonly action: TeamsCardAction;
+      readonly db: Db;
+      readonly activity: TeamsMessageActivity;
+      readonly installation: BoundTeamsInstallation;
+      readonly connection: TeamsConnection;
+    },
+    signal: AbortSignal,
+  ): Promise<TeamsMessageDispatchResult> => {
+    if (args.action === "switch_agent") {
+      const selected = stringValue(
+        args.activity.value,
+        TEAMS_AGENT_PICKER_INPUT_ID,
+      );
+      if (!selected) {
+        return {
+          kind: "notice",
+          replyText: "Please choose an agent.",
+        };
+      }
+
+      if (selected === TEAMS_AGENT_PICKER_ORG_DEFAULT_VALUE) {
+        const defaultComposeId = await resolveDefaultComposeId(
+          args.db,
+          args.installation.orgId,
+        );
+        signal.throwIfAborted();
+        const visibleDefaultAgent = defaultComposeId
+          ? await getVisibleWorkspaceAgent({
+              db: args.db,
+              composeId: defaultComposeId,
+              orgId: args.installation.orgId,
+              userId: args.connection.vm0UserId,
+            })
+          : undefined;
+        signal.throwIfAborted();
+        if (!visibleDefaultAgent) {
+          return {
+            kind: "notice",
+            replyText: "You don't have access to that agent.",
+          };
+        }
+        await setUserAgentPreference({
+          db: args.db,
+          vm0UserId: args.connection.vm0UserId,
+          orgId: args.installation.orgId,
+          composeId: null,
+        });
+        signal.throwIfAborted();
+        return {
+          kind: "notice",
+          replyText: `Switched to **${agentLabel(visibleDefaultAgent)}**.`,
+        };
+      }
+
+      const agent = await getVisibleWorkspaceAgent({
+        db: args.db,
+        composeId: selected,
+        orgId: args.installation.orgId,
+        userId: args.connection.vm0UserId,
+      });
+      signal.throwIfAborted();
+      if (!agent || agent.id !== selected) {
+        return {
+          kind: "notice",
+          replyText: "You don't have access to that agent.",
+        };
+      }
+      await setUserAgentPreference({
+        db: args.db,
+        vm0UserId: args.connection.vm0UserId,
+        orgId: args.installation.orgId,
+        composeId: agent.id,
+      });
+      signal.throwIfAborted();
+      return {
+        kind: "notice",
+        replyText: `Switched to **${agentLabel(agent)}**.`,
+      };
+    }
+
+    const selected = stringValue(
+      args.activity.value,
+      TEAMS_MODEL_PICKER_INPUT_ID,
+    );
+    if (!selected) {
+      return {
+        kind: "notice",
+        replyText: "Please choose a model.",
+      };
+    }
+
+    const picker = await set(
+      teamsModelPickerState$,
+      args.installation.orgId,
+      args.connection.vm0UserId,
+      signal,
+    );
+    signal.throwIfAborted();
+    const option = picker.options.find((candidate) => {
+      return candidate.model === selected;
+    });
+    if (!option) {
+      return {
+        kind: "notice",
+        replyText: "You don't have access to that model.",
+      };
+    }
+    await set(
+      updateUserModelPreference$,
+      {
+        orgId: args.installation.orgId,
+        userId: args.connection.vm0UserId,
+        preference: { selectedModel: option.model },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    return {
+      kind: "notice",
+      replyText: `Switched to **${option.label}**.`,
+    };
+  },
+);
+
+const runResolvedTeamsAgentForActivity$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly prompt: string;
+      readonly activity: TeamsMessageActivity;
+      readonly installation: BoundTeamsInstallation;
+      readonly connection: TeamsConnection;
+      readonly effectiveCompose: ResolvedEffectiveCompose;
+      readonly apiStartTime: number;
+      readonly timing: ApiDispatchTimingCollector;
+    },
+    signal: AbortSignal,
+  ): Promise<TeamsMessageDispatchResult> => {
+    await sendTeamsRunStartIndicator({
+      activity: args.activity,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: args.installation.orgId,
+        userId: args.connection.vm0UserId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const runThreadContext = await resolveCompatibleTeamsThreadSession({
+      db: args.db,
+      connectionId: args.connection.id,
+      conversationId: args.activity.conversationId,
+      threadId: args.activity.threadId,
+      orgId: args.installation.orgId,
+      userId: args.connection.vm0UserId,
+      composeId: args.effectiveCompose.composeId,
+      modelRoute,
+    });
+    signal.throwIfAborted();
+
+    const threadContext = await fetchTeamsPromptContext({
+      activity: args.activity,
+      signal,
+    });
+    signal.throwIfAborted();
+
+    const result = await set(
+      runAgentForTeams$,
+      {
+        activity: { ...args.activity, text: args.prompt },
+        installation: args.installation,
+        connection: args.connection,
+        composeId: args.effectiveCompose.composeId,
+        agentLabel: agentLabel(args.effectiveCompose.agent),
+        sessionId: runThreadContext.existingSessionId,
+        computerUseHostId: runThreadContext.computerUseHostId,
+        threadContext,
+        apiStartTime: args.apiStartTime,
+        modelRoute,
+        timing: args.timing,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.kind === "failed") {
+      L.warn("Teams agent dispatch failed", {
+        tenantId: args.activity.tenantId,
+        conversationId: args.activity.conversationId,
+        threadId: args.activity.threadId,
+        userId: args.connection.vm0UserId,
+        runId: result.runId,
+      });
+    }
+
+    return result;
+  },
+);
+
 export const dispatchTeamsMessageToAgent$ = command(
   async (
     { set },
@@ -857,25 +1758,28 @@ export const dispatchTeamsMessageToAgent$ = command(
       readonly activity: TeamsInboundActivity;
       readonly installation?: TeamsInstallation | null;
       readonly apiStartTime: number;
+      readonly timing: ApiDispatchTimingCollector;
     },
     signal: AbortSignal,
   ): Promise<TeamsMessageDispatchResult> => {
-    if (args.activity.kind !== "message") {
+    const { activity } = args;
+    if (activity.kind !== "message") {
       return { kind: "ignored" };
     }
 
-    const activity = args.activity;
-    if (!shouldDispatchTeamsMessage(activity)) {
+    const cardAction = teamsCardAction(activity.value);
+    if (!shouldDispatchTeamsMessage(activity) && !cardAction) {
       return { kind: "ignored" };
     }
 
     const prompt = activity.text.trim();
-    if (!prompt) {
+    if (!prompt && !cardAction) {
       return {
         kind: "notice",
         replyText: "Please include a message for Zero.",
       };
     }
+    const command = cardAction ? null : parseTeamsBotCommand(prompt);
 
     const db = set(writeDb$);
     const installation =
@@ -885,7 +1789,7 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     if (!installation?.orgId) {
-      return connectNotice(activity, installation);
+      return unboundInstallationNotice({ command, activity, installation });
     }
     const boundInstallation: BoundTeamsInstallation = {
       ...installation,
@@ -901,7 +1805,31 @@ export const dispatchTeamsMessageToAgent$ = command(
     signal.throwIfAborted();
 
     if (!connection) {
-      return connectNotice(activity, installation);
+      return missingConnectionNotice({ command, activity, installation });
+    }
+
+    if (cardAction) {
+      return set(
+        connectedTeamsCardAction$,
+        {
+          action: cardAction,
+          db,
+          activity,
+          installation: boundInstallation,
+          connection,
+        },
+        signal,
+      );
+    }
+
+    const commandResult = await set(
+      connectedCommandBeforeCompose$,
+      { db, command, installation: boundInstallation, connection },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (commandResult) {
+      return commandResult;
     }
 
     const effectiveCompose = await resolveEffectiveCompose({
@@ -915,59 +1843,19 @@ export const dispatchTeamsMessageToAgent$ = command(
       return composeResolutionNotice(effectiveCompose.status);
     }
 
-    const modelRoute = await set(
-      resolveIntegrationModelRouteForUser$,
+    return set(
+      runResolvedTeamsAgentForActivity$,
       {
-        orgId: boundInstallation.orgId,
-        userId: connection.vm0UserId,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    const existingSessionId = await resolveCompatibleTeamsThreadSession({
-      db,
-      connectionId: connection.id,
-      conversationId: activity.conversationId,
-      threadId: activity.threadId,
-      userId: connection.vm0UserId,
-      composeId: effectiveCompose.composeId,
-      modelRoute,
-    });
-    signal.throwIfAborted();
-
-    const threadContext = await fetchTeamsPromptContext({
-      activity,
-      signal,
-    });
-    signal.throwIfAborted();
-
-    const result = await set(
-      runAgentForTeams$,
-      {
-        activity: { ...activity, text: prompt },
+        db,
+        prompt,
+        activity,
         installation: boundInstallation,
         connection,
-        composeId: effectiveCompose.composeId,
-        sessionId: existingSessionId,
-        threadContext,
+        effectiveCompose,
         apiStartTime: args.apiStartTime,
-        modelRoute,
+        timing: args.timing,
       },
       signal,
     );
-    signal.throwIfAborted();
-
-    if (result.kind === "failed") {
-      L.warn("Teams agent dispatch failed", {
-        tenantId: activity.tenantId,
-        conversationId: activity.conversationId,
-        threadId: activity.threadId,
-        userId: connection.vm0UserId,
-        runId: result.runId,
-      });
-    }
-
-    return result;
   },
 );

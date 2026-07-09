@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.0...desktop-v0.27.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **desktop:** improve mcp server config panel ([#20806](https://github.com/vm0-ai/vm0/issues/20806)) ([74034dd](https://github.com/vm0-ai/vm0/commit/74034ddc8b5528f3f344fd5e81a21377d03e71e0))
+
 ## [0.27.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.26.1...desktop-v0.27.0) (2026-07-09)
 
 

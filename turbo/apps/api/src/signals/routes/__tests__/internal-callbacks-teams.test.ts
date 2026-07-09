@@ -64,8 +64,16 @@ interface TeamsPostedActivity {
   readonly channelData?: unknown;
 }
 
+interface TeamsReactionRequest {
+  readonly method: "PUT" | "DELETE";
+  readonly conversationId: string;
+  readonly activityId: string;
+  readonly reactionType: string;
+}
+
 interface ConnectedTeamsActor {
   readonly fixture: TeamsConnectFixture;
+  readonly actor: ReturnType<typeof authOrgApi.user>;
   readonly runnerGroup: string;
 }
 
@@ -97,9 +105,11 @@ function teamsApiMocks(args: {
 }): {
   readonly tokenRequests: URLSearchParams[];
   readonly postedActivities: TeamsPostedActivity[];
+  readonly reactionRequests: TeamsReactionRequest[];
 } {
   const tokenRequests: URLSearchParams[] = [];
   const postedActivities: TeamsPostedActivity[] = [];
+  const reactionRequests: TeamsReactionRequest[] = [];
   const serviceBaseUrl = teamsServiceBaseUrl(args.serviceUrl);
 
   server.use(
@@ -154,31 +164,150 @@ function teamsApiMocks(args: {
         });
       },
     ),
+    http.put(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId/reactions/:reactionType`,
+      ({ params }) => {
+        reactionRequests.push({
+          method: "PUT",
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId:
+            typeof params.activityId === "string" ? params.activityId : "",
+          reactionType:
+            typeof params.reactionType === "string" ? params.reactionType : "",
+        });
+        if (args.activityStatus) {
+          return new HttpResponse(args.activityError ?? "Teams API failed", {
+            status: args.activityStatus,
+          });
+        }
+        return new HttpResponse(null, { status: 200 });
+      },
+    ),
+    http.delete(
+      `${serviceBaseUrl}/v3/conversations/:conversationId/activities/:activityId/reactions/:reactionType`,
+      ({ params }) => {
+        reactionRequests.push({
+          method: "DELETE",
+          conversationId:
+            typeof params.conversationId === "string"
+              ? params.conversationId
+              : "",
+          activityId:
+            typeof params.activityId === "string" ? params.activityId : "",
+          reactionType:
+            typeof params.reactionType === "string" ? params.reactionType : "",
+        });
+        if (args.activityStatus) {
+          return new HttpResponse(args.activityError ?? "Teams API failed", {
+            status: args.activityStatus,
+          });
+        }
+        return new HttpResponse(null, { status: 200 });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages",
+      () => {
+        return HttpResponse.json({ value: [] });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId/replies",
+      () => {
+        return HttpResponse.json({ value: [] });
+      },
+    ),
+    http.get(
+      "https://graph.microsoft.com/v1.0/teams/:teamId/channels/:channelId/messages/:messageId",
+      ({ params }) => {
+        const messageId =
+          typeof params.messageId === "string" ? params.messageId : "root";
+        return HttpResponse.json({
+          id: messageId,
+          createdDateTime: "2026-06-30T09:00:00.000Z",
+          messageType: "message",
+          from: {
+            user: {
+              id: "29:user-1",
+              displayName: "Ada Lovelace",
+            },
+          },
+          body: {
+            contentType: "html",
+            content: "<p>Teams root context</p>",
+          },
+        });
+      },
+    ),
   );
 
-  return { tokenRequests, postedActivities };
+  return { tokenRequests, postedActivities, reactionRequests };
 }
 
-function dispatchRunId(body: unknown): string {
-  const response = recordFromUnknown(
-    body,
-    "Expected Teams bot response object",
-  );
-  const dispatch = recordFromUnknown(
-    response.dispatch,
-    "Expected Teams dispatch object",
-  );
-  expect(
-    dispatch.kind === "accepted" || dispatch.kind === "queued",
-  ).toBeTruthy();
-  if (typeof dispatch.runId !== "string") {
-    throw new Error("Expected Teams dispatch run id");
+function clearTeamsApiCalls(api: ReturnType<typeof teamsApiMocks>): void {
+  api.tokenRequests.splice(0, api.tokenRequests.length);
+  api.postedActivities.splice(0, api.postedActivities.length);
+  api.reactionRequests.splice(0, api.reactionRequests.length);
+}
+
+function dropLastTeamsIndicatorRequest(
+  api: ReturnType<typeof teamsApiMocks>,
+): void {
+  const lastActivity = api.postedActivities[api.postedActivities.length - 1];
+  if (lastActivity?.type === "typing") {
+    api.postedActivities.pop();
+    api.tokenRequests.pop();
+    return;
   }
-  return dispatch.runId;
+
+  const lastReaction = api.reactionRequests.at(-1);
+  expect(lastReaction).toMatchObject({
+    method: "PUT",
+    reactionType: "1f4ad_thoughtballoon",
+  });
+  api.reactionRequests.pop();
+  api.tokenRequests.pop();
+}
+
+function mockOpenRouterSummary(summary: string): unknown[] {
+  const requests: unknown[] = [];
+  server.use(
+    http.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({
+          choices: [{ message: { content: summary } }],
+        });
+      },
+    ),
+  );
+  return requests;
+}
+
+async function runIdForPrompt(
+  actor: ReturnType<typeof authOrgApi.user>,
+  prompt: string,
+): Promise<string> {
+  const list = await runsApi.listAgentRuns(actor, { limit: 20 });
+  const run = list.runs.find((item) => {
+    return item.prompt === prompt;
+  });
+  if (!run) {
+    throw new Error(`Expected Teams run for prompt: ${prompt}`);
+  }
+  return run.id;
 }
 
 async function connectTeamsFixture(
   fixture: TeamsConnectFixture,
+  options: {
+    readonly displayName?: string;
+    readonly principalName?: string;
+  } = {},
 ): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
   const client = setupApp({
@@ -191,8 +320,8 @@ async function connectTeamsFixture(
       body: {
         tenantId: fixture.teamsTenantId,
         teamsUserId: fixture.teamsUserId,
-        teamsUserDisplayName: "Ada Lovelace",
-        teamsUserPrincipalName: "ada@example.com",
+        teamsUserDisplayName: options.displayName ?? "Ada Lovelace",
+        teamsUserPrincipalName: options.principalName ?? "ada@example.com",
         teamId: fixture.teamsTeamId,
         teamName: fixture.teamsTeamName,
         serviceUrl: fixture.serviceUrl,
@@ -239,10 +368,14 @@ async function setupConnectedTeamsActor(
       },
     );
   }
+  const setupTeamsApi = teamsApiMocks({ serviceUrl: fixture.serviceUrl });
   await installTeamsForTest(context.signal, fixture);
+  await flushWaitUntilForTest();
   await connectTeamsFixture(fixture);
+  await flushWaitUntilForTest();
+  clearTeamsApiCalls(setupTeamsApi);
 
-  return { fixture, runnerGroup };
+  return { fixture, actor, runnerGroup };
 }
 
 async function dispatchTeamsRun(args: {
@@ -250,6 +383,8 @@ async function dispatchTeamsRun(args: {
   readonly activityId: string;
   readonly threadId: string;
   readonly text: string;
+  readonly senderName?: string;
+  readonly senderPrincipalName?: string;
 }): Promise<string> {
   const response = await postTeamsActivityForTest({
     signal: context.signal,
@@ -257,10 +392,27 @@ async function dispatchTeamsRun(args: {
       id: args.activityId,
       replyToId: args.threadId,
       text: `<at>Zero</at> ${args.text}`,
+      from: {
+        id: args.fixture.teamsUserId,
+        name: args.senderName ?? "Ada Lovelace",
+        aadObjectId: args.fixture.teamsAadObjectId,
+        userPrincipalName: args.senderPrincipalName ?? "ada@example.com",
+      },
     }),
   });
   expect(response.status).toBe(200);
-  return dispatchRunId(await response.json());
+  const body = recordFromUnknown(
+    await response.json(),
+    "Expected Teams bot response object",
+  );
+  expect(body).not.toHaveProperty("dispatch");
+  await flushWaitUntilForTest();
+  const actor = authOrgApi.user({
+    userId: args.fixture.userId,
+    orgId: args.fixture.orgId,
+    orgRole: "org:admin",
+  });
+  return await runIdForPrompt(actor, args.text);
 }
 
 async function claimTeamsRun(args: {
@@ -350,13 +502,15 @@ async function claimFollowUpInThread(args: {
 beforeEach(() => {
   setupTeamsConnectTestEnv(APP_URL);
   mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   mockEnv("VM0_WEB_URL", "https://www.vm0.test");
   mockEnv("VM0_API_URL", "https://api.vm0.test");
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   context.mocks.axiom.query.mockResolvedValue([]);
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await flushWaitUntilForTest();
   context.mocks.axiom.query.mockReset();
 });
 
@@ -364,6 +518,8 @@ describe("Teams org internal callbacks", () => {
   it("posts completed run replies and persists Teams thread sessions", async () => {
     const teams = await setupConnectedTeamsActor({ zeroDebug: true });
     const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    mockOptionalEnv("OPENROUTER_API_KEY", "teams-summary-key");
+    const summaryRequests = mockOpenRouterSummary("Teams completed summary");
     const runId = await dispatchTeamsRun({
       fixture: teams.fixture,
       activityId: "activity-completed-1",
@@ -374,6 +530,18 @@ describe("Teams org internal callbacks", () => {
       runnerGroup: teams.runnerGroup,
       runId,
     });
+    clearTeamsApiCalls(teamsApi);
+
+    await webhooksApi.requestAgentHeartbeat(
+      { runId },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(teamsApi.tokenRequests).toHaveLength(0);
+    expect(teamsApi.postedActivities).toHaveLength(0);
+    expect(teamsApi.reactionRequests).toHaveLength(0);
+    clearTeamsApiCalls(teamsApi);
 
     const cliAgentSessionId = await completeSandboxRun({
       runId,
@@ -381,7 +549,7 @@ describe("Teams org internal callbacks", () => {
       exitCode: 0,
     });
 
-    expect(teamsApi.tokenRequests).toHaveLength(1);
+    expect(teamsApi.tokenRequests).toHaveLength(2);
     expect(teamsApi.tokenRequests[0]?.get("client_id")).toBe(BOT_APP_ID);
     expect(teamsApi.tokenRequests[0]?.get("client_secret")).toBe(
       BOT_APP_PASSWORD,
@@ -399,8 +567,78 @@ describe("Teams org internal callbacks", () => {
       "Task completed successfully.",
     );
     expect(teamsApi.postedActivities[0]?.text).toContain(
-      `[View run details](${APP_URL}/activities/${runId})`,
+      `[Audit](${APP_URL}/activities/${runId})`,
     );
+    expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
+    expect(teamsApi.reactionRequests).toStrictEqual([
+      {
+        method: "DELETE",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-completed-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
+    expect(summaryRequests).toHaveLength(1);
+    const summaryRequest = recordFromUnknown(
+      summaryRequests[0],
+      "Expected OpenRouter summary request",
+    );
+    expect(JSON.stringify(summaryRequest.messages)).toContain(
+      "teams agent run",
+    );
+    expect(JSON.stringify(summaryRequest.messages)).toContain(
+      "finish the task",
+    );
+
+    const secondFixture = await trackTeamsFixture(
+      Promise.resolve(
+        teamsConnectFixture({
+          orgId: teams.fixture.orgId,
+          teamsTenantId: teams.fixture.teamsTenantId,
+          teamsTenantName: teams.fixture.teamsTenantName,
+          teamsTeamId: teams.fixture.teamsTeamId,
+          teamsTeamName: teams.fixture.teamsTeamName,
+          serviceUrl: teams.fixture.serviceUrl,
+        }),
+      ),
+    );
+    authOrgApi.user({
+      userId: secondFixture.userId,
+      orgId: secondFixture.orgId,
+      orgRole: "org:admin",
+    });
+    const tokenRequestCountBeforeConnect = teamsApi.tokenRequests.length;
+    const postedActivityCountBeforeConnect = teamsApi.postedActivities.length;
+    await connectTeamsFixture(secondFixture, {
+      displayName: "Grace Hopper",
+      principalName: "grace@example.com",
+    });
+    await flushWaitUntilForTest();
+    teamsApi.tokenRequests.splice(tokenRequestCountBeforeConnect);
+    teamsApi.postedActivities.splice(postedActivityCountBeforeConnect);
+    const secondRunId = await dispatchTeamsRun({
+      fixture: secondFixture,
+      activityId: "activity-completed-2",
+      threadId: "root-completed",
+      text: "finish the follow-up",
+      senderName: "Grace Hopper",
+      senderPrincipalName: "grace@example.com",
+    });
+    const secondClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: secondRunId,
+    });
+    dropLastTeamsIndicatorRequest(teamsApi);
+    await completeSandboxRun({
+      runId: secondRunId,
+      sandboxToken: secondClaim.sandboxToken,
+      exitCode: 0,
+    });
+    expect(teamsApi.postedActivities).toHaveLength(2);
+    expect(teamsApi.postedActivities[1]?.text).toContain(
+      "Reply to Grace Hopper",
+    );
+    expect(summaryRequests).toHaveLength(2);
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -424,6 +662,7 @@ describe("Teams org internal callbacks", () => {
       runnerGroup: teams.runnerGroup,
       runId,
     });
+    clearTeamsApiCalls(teamsApi);
 
     await completeSandboxRun({
       runId,
@@ -436,6 +675,14 @@ describe("Teams org internal callbacks", () => {
     expect(teamsApi.postedActivities[0]?.text).toContain(
       "Cannot continue session from checkpoint",
     );
+    expect(teamsApi.reactionRequests).toStrictEqual([
+      {
+        method: "DELETE",
+        conversationId: "19:thread@thread.tacv2",
+        activityId: "activity-failed-1",
+        reactionType: "1f4ad_thoughtballoon",
+      },
+    ]);
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -459,6 +706,7 @@ describe("Teams org internal callbacks", () => {
       runnerGroup: teams.runnerGroup,
       runId,
     });
+    clearTeamsApiCalls(teamsApi);
     await removeTeamsForTest(context.signal, teams.fixture);
 
     await completeSandboxRun({
@@ -469,8 +717,12 @@ describe("Teams org internal callbacks", () => {
 
     expect(teamsApi.tokenRequests).toHaveLength(0);
     expect(teamsApi.postedActivities).toHaveLength(0);
+    expect(teamsApi.reactionRequests).toHaveLength(0);
     await installTeamsForTest(context.signal, teams.fixture);
+    await flushWaitUntilForTest();
     await connectTeamsFixture(teams.fixture);
+    await flushWaitUntilForTest();
+    clearTeamsApiCalls(teamsApi);
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,
@@ -498,6 +750,7 @@ describe("Teams org internal callbacks", () => {
       runnerGroup: teams.runnerGroup,
       runId,
     });
+    clearTeamsApiCalls(teamsApi);
 
     await completeSandboxRun({
       runId,
@@ -510,6 +763,7 @@ describe("Teams org internal callbacks", () => {
     expect(teamsApi.postedActivities[0]?.text).toContain(
       "Task completed successfully.",
     );
+    expect(teamsApi.reactionRequests).toHaveLength(0);
 
     const followUpClaim = await claimFollowUpInThread({
       fixture: teams.fixture,

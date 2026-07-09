@@ -17,6 +17,7 @@ export const zeroTeamsBrowserConnectQuerySchema = z.object({
   teamName: z.string().optional(),
   serviceUrl: z.string().optional(),
   conversationId: z.string().optional(),
+  conversationType: z.string().optional(),
   activityId: z.string().optional(),
   channelId: z.string().optional(),
   threadId: z.string().optional(),

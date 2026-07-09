@@ -74,6 +74,7 @@ describe("zero Teams connect page", () => {
         teamsUserPrincipalName: "ada@example.com",
         teamId: "team-123",
         teamName: "Core Team",
+        conversationType: "personal",
       });
       return respond(200, {
         success: true,
@@ -92,6 +93,7 @@ describe("zero Teams connect page", () => {
         teamsUserPrincipalName: "ada@example.com",
         teamId: "team-123",
         teamName: "Core Team",
+        conversationType: "personal",
       }),
     );
 
