@@ -1331,6 +1331,7 @@ export function OrgBillingTab() {
     currentTier,
   );
   const showConcurrency = shouldShowConcurrencyBilling(currentTier);
+  const canManageBilling = isPaid && status?.hasSubscription === true;
   const openBillingPortal = () => {
     return detach(portal(pageSignal), Reason.DomCallback);
   };
@@ -1430,7 +1431,7 @@ export function OrgBillingTab() {
                   </div>
                 </>
               )}
-              {isPaid && (
+              {canManageBilling && (
                 <>
                   <div className="h-0 zero-border-t mx-5" />
                   <div className="flex items-center justify-between gap-4 px-5 py-4">
