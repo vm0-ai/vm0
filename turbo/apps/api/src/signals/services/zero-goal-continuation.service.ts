@@ -124,7 +124,7 @@ function stripGoalMemoryQueryMarkdown(text: string): string {
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^[-*_]{3,}\s*$/gm, "")
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 $2")
     .replace(/^["'](.+)["']$/, "$1")
     .trim();
 }

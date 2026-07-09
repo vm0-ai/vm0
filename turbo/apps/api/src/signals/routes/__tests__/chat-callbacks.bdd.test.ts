@@ -1184,10 +1184,10 @@ describe("CHAT-02: completed chat callback", () => {
     const goalBrief = "Keep making autonomous progress";
     const goalObjective = `${goalBrief}
 
-Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and account ACME-42 before marking done.`;
+Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
     await seedSemanticRecallMemory(
       { orgId: actor.orgId, userId: actor.userId },
-      "Keep making autonomous progress Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and account ACME-42 before marking done.",
+      "Keep making autonomous progress Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and ACME-42 https://acme.example.com/treasury before marking done.",
     );
     await createGoalForRun(actor, first.runId, goalObjective);
 
