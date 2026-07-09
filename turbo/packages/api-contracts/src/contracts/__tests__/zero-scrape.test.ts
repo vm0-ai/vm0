@@ -71,4 +71,24 @@ describe("zeroScrapeResponseSchema", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("requires response URL fields to be URLs", () => {
+    expect(
+      zeroScrapeResponseSchema.safeParse({
+        ...baseResponse,
+        requestedUrl: "not a url",
+        format: "markdown",
+        result: { markdown: "# Example" },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      zeroScrapeResponseSchema.safeParse({
+        ...baseResponse,
+        finalUrl: "/relative",
+        format: "markdown",
+        result: { markdown: "# Example" },
+      }).success,
+    ).toBe(false);
+  });
 });

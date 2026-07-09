@@ -29,8 +29,8 @@ export const zeroScrapeMetadataSchema = z.object({
 });
 
 const zeroScrapeResponseBaseSchema = z.object({
-  requestedUrl: z.string(),
-  finalUrl: z.string().optional(),
+  requestedUrl: z.string().url(),
+  finalUrl: z.string().url().optional(),
   provider: z.literal("firecrawl"),
   creditsCharged: z.number().int().nonnegative(),
   billingQuantity: z.number().int().positive(),
