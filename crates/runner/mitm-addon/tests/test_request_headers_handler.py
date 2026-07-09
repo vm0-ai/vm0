@@ -23,18 +23,12 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 from tests.requestheaders_helpers import await_requestheaders_result
+from tests.upstream_connection_helpers import mark_connected_tls_upstream
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
-
-
-def _mark_upstream_tls_verified(flow, *, sni: str) -> None:
-    flow.server_conn.sni = sni
-    flow.server_conn.timestamp_tls_setup = 1.0
-    flow.server_conn.certificate_list = (object(),)
-    flow.server_conn.error = None
 
 
 def _request_stream(flow):
@@ -173,9 +167,12 @@ async def test_capture_enabled_api_allow_uses_authenticated_connected_edge_upstr
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    flow.server_conn.peername = ("203.0.113.10", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -216,11 +213,13 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_tl
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    flow.server_conn.address = ("api.vm0.ai", 443)
-    flow.server_conn.peername = None
-    flow.client_conn.sockname = ("198.18.20.34", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("api.vm0.ai", 443),
+        peername=None,
+        client_sockname=("198.18.20.34", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -263,10 +262,13 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    flow.server_conn.peername = None
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.client_conn.sockname = ("198.18.20.34", 443)
-    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.vm0.ai",
+        server_address=("127.0.0.1", 443),
+        peername=None,
+        client_sockname=("198.18.20.34", 443),
+    )
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
     upstream_destination_binding.record_server_binding(
@@ -1129,9 +1131,12 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verif
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    flow.server_conn.peername = ("172.66.0.243", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("172.66.0.243", 443),
+        peername=("172.66.0.243", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -1451,9 +1456,12 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tl
         path="/repos/octocat/hello",
         request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
     )
-    flow.server_conn.peername = ("172.66.0.243", 443)
-    flow.server_conn.state = connection.ConnectionState.OPEN
-    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("172.66.0.243", 443),
+        peername=("172.66.0.243", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
