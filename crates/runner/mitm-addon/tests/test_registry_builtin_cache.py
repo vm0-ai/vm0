@@ -1163,6 +1163,34 @@ class TestRegistryBuiltinCache:
         assert inline_context is not None
         assert builtin_firewall_cache._cache_state.catalog is None
 
+    def test_no_builtin_registry_fast_path_clears_catalog_cache(self, tmp_path, mitm_ctx):
+        path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        _write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"cache-a": _cache_firewall("cache-a", "https://api-a.example.com")},
+        )
+        write_multi_vm_registry(path, {"10.200.0.1": inline_vm("run-inline")})
+
+        with mitm_ctx(
+            registry_path=str(path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            first_context = registry.get_vm_context("10.200.0.1", str(path))
+            assert first_context is not None
+            assert builtin_firewall_cache._cache_state.catalog is None
+
+            snapshot = registry_firewalls.load_catalog_snapshot(str(cache_path))
+            assert snapshot.catalog is not None
+            assert builtin_firewall_cache._cache_state.catalog is not None
+
+            second_context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert second_context is not None
+        assert builtin_firewall_cache._cache_state.catalog is None
+
     def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
         path = tmp_path / "registry.json"
         write_multi_vm_registry(

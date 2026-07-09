@@ -386,7 +386,15 @@ async fn write_catalog_cache(
         )));
     }
 
-    let _guard = lock::acquire(lock_path.to_path_buf()).await?;
+    let _guard = match lock::try_acquire_or_busy(lock_path.to_path_buf()).await? {
+        lock::TryLock::Acquired(guard) => guard,
+        lock::TryLock::Busy => {
+            return Err(RunnerError::Internal(format!(
+                "builtin firewall catalog cache lock is already held: {}",
+                lock_path.display()
+            )));
+        }
+    };
     crate::state_file::write_private_atomic(cache_path, &content).await?;
     info!(cache_path = %cache_path.display(), "builtin firewall catalog cache refreshed");
     Ok(())
@@ -760,6 +768,33 @@ mod tests {
         assert_eq!(cache.catalog_digest, digest());
         assert_eq!(cache.catalog_version, "test-catalog");
         assert_eq!(cache.firewalls["github"].name, "github");
+    }
+
+    #[tokio::test]
+    async fn write_catalog_cache_fails_fast_when_lock_is_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+        let _guard = lock::acquire(lock_path.clone()).await.unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            write_catalog_cache(&cache_path, &lock_path, catalog("github")),
+        )
+        .await
+        .expect("busy catalog cache lock should fail without blocking");
+        let error = result.unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("builtin firewall catalog cache lock is already held"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !cache_path.exists(),
+            "busy lock should not publish a cache file"
+        );
     }
 
     #[tokio::test]

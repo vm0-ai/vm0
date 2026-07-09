@@ -446,6 +446,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.unavailable = None
             state.stat_error_logged = False
             state.read_error_key = None
+            registry_firewalls.clear_catalog_cache()
             return state.snapshot
         if key == state.failed_key:
             return state.unavailable or _mark_unavailable(
