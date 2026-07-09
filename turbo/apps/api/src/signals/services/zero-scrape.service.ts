@@ -30,6 +30,32 @@ const MAX_FIRECRAWL_RESPONSE_BYTES = 5 * 1024 * 1024;
 const MAX_MARKDOWN_CHARS = 1_000_000;
 const MAX_LINKS = 5000;
 
+const SCRAPE_MODE_CONFIG = {
+  standard: {
+    firecrawlProxy: "basic",
+    billingCategories: {
+      markdown: "standard.markdown",
+      links: "standard.links",
+    },
+  },
+  enhanced: {
+    firecrawlProxy: "enhanced",
+    billingCategories: {
+      markdown: "enhanced.markdown",
+      links: "enhanced.links",
+    },
+  },
+} as const satisfies Record<
+  ZeroScrapeRequest["mode"],
+  {
+    readonly firecrawlProxy: "basic" | "enhanced";
+    readonly billingCategories: Record<
+      ZeroScrapeRequest["format"],
+      ZeroScrapeBillingCategory
+    >;
+  }
+>;
+
 type ErrorStatus = 400 | 402 | 502 | 503;
 
 interface ScrapeErrorResponse {
@@ -159,22 +185,11 @@ function runIdForUsage(auth: AuthContext): string | undefined {
 }
 
 function billingCategory(args: ZeroScrapeRequest): ZeroScrapeBillingCategory {
-  switch (args.mode) {
-    case "standard": {
-      return args.format === "markdown"
-        ? "standard.markdown"
-        : "standard.links";
-    }
-    case "enhanced": {
-      return args.format === "markdown"
-        ? "enhanced.markdown"
-        : "enhanced.links";
-    }
-  }
+  return SCRAPE_MODE_CONFIG[args.mode].billingCategories[args.format];
 }
 
 function firecrawlProxy(mode: ZeroScrapeRequest["mode"]): "basic" | "enhanced" {
-  return mode === "enhanced" ? "enhanced" : "basic";
+  return SCRAPE_MODE_CONFIG[mode].firecrawlProxy;
 }
 
 function targetPolicyMessage(error: ScrapeTargetPolicyError): string {
@@ -506,7 +521,8 @@ function standardSuccessBody(
         ...base,
         format: "markdown",
         mode: "standard",
-        billingCategory: "standard.markdown",
+        billingCategory:
+          SCRAPE_MODE_CONFIG.standard.billingCategories.markdown,
         result: normalized.result,
       };
     }
@@ -515,7 +531,7 @@ function standardSuccessBody(
         ...base,
         format: "links",
         mode: "standard",
-        billingCategory: "standard.links",
+        billingCategory: SCRAPE_MODE_CONFIG.standard.billingCategories.links,
         result: normalized.result,
       };
     }
@@ -532,7 +548,8 @@ function enhancedSuccessBody(
         ...base,
         format: "markdown",
         mode: "enhanced",
-        billingCategory: "enhanced.markdown",
+        billingCategory:
+          SCRAPE_MODE_CONFIG.enhanced.billingCategories.markdown,
         result: normalized.result,
       };
     }
@@ -541,7 +558,7 @@ function enhancedSuccessBody(
         ...base,
         format: "links",
         mode: "enhanced",
-        billingCategory: "enhanced.links",
+        billingCategory: SCRAPE_MODE_CONFIG.enhanced.billingCategories.links,
         result: normalized.result,
       };
     }
