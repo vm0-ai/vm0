@@ -11,6 +11,8 @@
 //! provide another operator-approved lock-file directory. The directory must
 //! already exist, but this API does not require the directory itself to be owned
 //! by the current effective uid or private to the process.
+//! Cooperating processes must use the same lock directory for their claims to
+//! coordinate with each other.
 //!
 //! The security-sensitive object is the final per-index lock file. Existing
 //! lock files must be regular files openable for read and write by the current
@@ -88,6 +90,8 @@ pub fn try_acquire_device_claim(index: u32) -> io::Result<Option<NbdDeviceClaim>
 /// `lock_dir` must already exist. The per-index lock path is
 /// `lock_dir/vm0-nbd-{index}.lock`. Missing per-index lock files are created
 /// with private permissions and then validated before locking.
+/// Processes using different lock directories do not coordinate with each
+/// other.
 ///
 /// Existing final lock files must be regular files openable for read and write
 /// by the current process, must be owned by the current effective uid, must not
