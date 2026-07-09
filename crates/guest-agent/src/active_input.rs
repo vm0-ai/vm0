@@ -420,7 +420,7 @@ impl ActiveInputRuntime {
     /// Transfers the single active-input writer to the CLI execution path.
     ///
     /// The writer is intentionally single-consumer. After this call, the
-    /// runtime is consumed and only cloned controllers can continue to accept
+    /// runtime is consumed and only cloned controllers can continue to handle
     /// control payloads or classify replayed user events.
     pub fn into_writer(self) -> ActiveInputWriter {
         self.writer
@@ -428,11 +428,12 @@ impl ActiveInputRuntime {
 }
 
 impl ActiveInputController {
-    /// Returns whether this run accepts active-input control payloads.
+    /// Returns whether this run was configured to support active input.
     ///
     /// Disabled runs keep the same controller/writer lifecycle shape, but
     /// [`ActiveInputController::handle_control_payload`] rejects follow-up
-    /// input instead of queueing frames.
+    /// input instead of queueing frames. Enabled runs may still reject payloads
+    /// later if active input has closed or the bounded backlog is full.
     pub fn is_enabled(&self) -> bool {
         self.inner.enabled
     }
@@ -726,7 +727,7 @@ impl ActiveInputWriter {
         }
     }
 
-    /// Returns whether the paired controller accepts active-input payloads.
+    /// Returns whether the paired controller was configured to support active input.
     pub fn is_enabled(&self) -> bool {
         self.controller.is_enabled()
     }
