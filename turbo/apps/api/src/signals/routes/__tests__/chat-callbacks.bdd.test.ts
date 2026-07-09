@@ -1376,7 +1376,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       agentId,
       prompt: "finish before default-placeholder goal continuation",
     });
-    const goalObjective = "Untitled goal";
+    const goalObjective = "untitled goal.";
     await createGoalForRun(actor, first.runId, goalObjective);
 
     chatCallbacks.mockChatOutputEvents([

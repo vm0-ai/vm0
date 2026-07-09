@@ -158,6 +158,21 @@ function hasGoalMemorySearchTerm(text: string): boolean {
   return /[\p{L}\p{N}]/u.test(text);
 }
 
+function goalMemoryPlaceholderKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isDefaultGoalMemoryPlaceholder(text: string): boolean {
+  return (
+    goalMemoryPlaceholderKey(text) ===
+    goalMemoryPlaceholderKey(DEFAULT_GOAL_OBJECTIVE_BRIEF)
+  );
+}
+
 function buildGoalMemoryRetrievalQuery(goal: {
   readonly objective: string;
   readonly objectiveBrief: string;
@@ -168,11 +183,11 @@ function buildGoalMemoryRetrievalQuery(goal: {
     GOAL_MEMORY_OBJECTIVE_EXCERPT_MAX_CHARS,
   );
   const isDefaultObjectiveBrief =
-    objectiveBrief === DEFAULT_GOAL_OBJECTIVE_BRIEF;
+    isDefaultGoalMemoryPlaceholder(objectiveBrief);
   if (
     isDefaultObjectiveBrief &&
     (objectiveExcerpt.length === 0 ||
-      objectiveExcerpt === DEFAULT_GOAL_OBJECTIVE_BRIEF)
+      isDefaultGoalMemoryPlaceholder(objectiveExcerpt))
   ) {
     return "";
   }
