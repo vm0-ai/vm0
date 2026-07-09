@@ -520,6 +520,36 @@ async def test_header_sigv4_with_empty_resolved_secret_key_fails_closed(
     assert_sigv4_failed_closed(result, flow, "Invalid AWS secret access key")
 
 
+async def test_header_sigv4_seeded_cache_matches_auth_query_identity(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    api_entry = aws_api_entry(auth_query={"trace": "${{ secrets.TRACE_ID }}"})
+    flow = make_sts_header_sigv4_flow(real_flow, headers)
+    prepare_firewall_request(flow)
+    cache_aws_sigv4_credentials(
+        tmp_path,
+        api_entry=api_entry,
+        credentials=resolved_aws_sigv4_credentials(session_token=None),
+    )
+
+    with mitm_ctx():
+        result = await auth.handle_firewall_request(
+            flow,
+            aws_allow(api_entry),
+            dict(aws_vm_info(tmp_path)),
+        )
+
+    assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+    assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is True
+    assert flow.response is None
+    assert flow.request.headers["Authorization"].startswith(
+        "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"
+    )
+
+
 async def test_header_sigv4_without_trusted_original_url_fails_closed(
     real_flow,
     headers,

@@ -260,6 +260,7 @@ def aws_auth_cache_key(
         encrypted_secrets=resolved_vm_info["encryptedSecrets"],
         auth_headers=auth_config["headers"],
         sandbox_token=resolved_vm_info["sandboxToken"],
+        auth_query=auth_config.get("query"),
         auth_aws_sigv4=auth_config["awsSigv4"],
         vars_map=resolved_vm_info["vars"],
     )
