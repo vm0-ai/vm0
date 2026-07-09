@@ -87,8 +87,6 @@ async function setActorCredits(
     {
       fixture: {
         orgId: actor.orgId,
-        userId: actor.userId,
-        userIds: [actor.userId],
       },
       credits,
     },
