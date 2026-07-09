@@ -6,7 +6,7 @@ import {
 } from "@slack/web-api";
 
 import { optionalEnv } from "../../lib/env";
-import { onRejection, settle } from "../utils";
+import { settle } from "../utils";
 
 type OpenDmResult =
   | { readonly kind: "ok"; readonly channelId: string }
@@ -256,19 +256,15 @@ export function createSlackUserInfoResolver(
   let inFlightHitCount = 0;
 
   const startLookup = (userId: string): Promise<SlackUserInfo | undefined> => {
-    const promise = onRejection(
-      (async () => {
-        const info = await fetchSlackUserInfo(client, userId);
-        if (info) {
-          cache.set(userId, info);
-        }
-        inFlight.delete(userId);
-        return info;
-      })(),
-      () => {
-        inFlight.delete(userId);
-      },
-    );
+    const promise = (async () => {
+      const info = await fetchSlackUserInfo(client, userId);
+      if (info) {
+        cache.set(userId, info);
+      }
+      return info;
+    })().finally(() => {
+      inFlight.delete(userId);
+    });
     inFlight.set(userId, promise);
     return promise;
   };
