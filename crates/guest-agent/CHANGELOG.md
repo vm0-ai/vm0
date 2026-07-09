@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.4...guest-agent-v0.49.5) (2026-07-09)
+
+
+### Documentation
+
+* document guest-agent active input api ([#20779](https://github.com/vm0-ai/vm0/issues/20779)) ([f350e32](https://github.com/vm0-ai/vm0/commit/f350e321ef38cfc23359af477cbd2b133b4ea579))
+
 ## [0.49.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.3...guest-agent-v0.49.4) (2026-07-09)
 
 

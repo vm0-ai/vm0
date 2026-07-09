@@ -18,6 +18,8 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
+  getVm0ConcreteProviderType,
+  getVm0Vendor,
   getVm0ModelPriceTier,
   getVm0ModelPriceTierLabel,
   isModelSupportedByProvider,
@@ -356,8 +358,12 @@ describe("model-first canonical catalog", () => {
     expect(getProviderRuntimeModel("vercel-ai-gateway", "claude-fable-5")).toBe(
       "anthropic/claude-fable-5",
     );
-    expect(getProviderRuntimeModel("vm0", "glm-5.2")).toBe("z-ai/glm-5.2");
-    expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("z-ai/glm-5.1");
+    expect(getProviderRuntimeModel("vm0", "glm-5.2")).toBe("glm-5.2");
+    expect(getProviderRuntimeModel("vm0", "glm-5.1")).toBe("glm-5.1");
+    expect(getVm0ConcreteProviderType("glm-5.2")).toBe("zai-api-key");
+    expect(getVm0ConcreteProviderType("glm-5.1")).toBe("zai-api-key");
+    expect(getVm0Vendor("glm-5.2")).toBe("zai");
+    expect(getVm0Vendor("glm-5.1")).toBe("zai");
     expect(getProviderRuntimeModel("vm0", "mimo-v2.5")).toBe(
       "xiaomi/mimo-v2.5",
     );

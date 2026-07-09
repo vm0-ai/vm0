@@ -24,6 +24,13 @@ import {
   embedZeroMemoryText,
   memoryEmbeddingSqlLiteral,
 } from "./zero-memory-embedding.service";
+import {
+  measureZeroMemoryTiming,
+  type ZeroMemoryTimingDimensions,
+  type ZeroMemoryTimingObserver,
+  type ZeroMemoryTimingStage,
+  zeroMemoryCountBucket,
+} from "./zero-memory-timing.service";
 
 const log = logger("zero-memory-profile");
 const SEMANTIC_SCORE_THRESHOLD = 0.24;
@@ -73,6 +80,7 @@ interface ProfileParams extends MemoryScope {
   readonly searchLimit: number;
   readonly includeGraphExpansion: boolean;
   readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
+  readonly timing?: ZeroMemoryTimingObserver;
 }
 
 interface SearchParams extends MemoryScope {
@@ -81,6 +89,7 @@ interface SearchParams extends MemoryScope {
   readonly limit: number;
   readonly includeGraphExpansion: boolean;
   readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
+  readonly timing?: ZeroMemoryTimingObserver;
 }
 
 interface CandidateScore {
@@ -92,6 +101,7 @@ interface CandidateScore {
 }
 
 type MemoryProfileRow = Omit<ZeroMemoryProfileItem, "sources">;
+type MemoryProfilePhase = "static" | "dynamic" | "search";
 
 interface LexicalCandidateRow {
   readonly id: string;
@@ -130,6 +140,40 @@ const relationshipLastInteractionProfiles = alias(
   "profile_relationship_last_interaction_profiles",
 );
 const lexicalAliases = alias(memoryEntityAliases, "profile_lexical_aliases");
+
+function countDimension(
+  dimensionName: string,
+  count: number,
+): ZeroMemoryTimingDimensions {
+  return {
+    [dimensionName]: zeroMemoryCountBucket(count),
+  };
+}
+
+async function measureMemoryList<T>(
+  observer: ZeroMemoryTimingObserver | undefined,
+  stage: ZeroMemoryTimingStage,
+  dimensionName: string,
+  operation: () => readonly T[] | Promise<readonly T[]>,
+  dimensions: ZeroMemoryTimingDimensions = {},
+): Promise<readonly T[]> {
+  let count = 0;
+  return await measureZeroMemoryTiming(
+    observer,
+    stage,
+    async () => {
+      const result = await operation();
+      count = result.length;
+      return result;
+    },
+    () => {
+      return {
+        ...dimensions,
+        ...countDimension(dimensionName, count),
+      };
+    },
+  );
+}
 
 function serializeDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -578,20 +622,58 @@ async function hydrateRows(
   db: ReadonlyDb,
   scope: MemoryScope,
   rows: readonly MemoryProfileRow[],
+  args: {
+    readonly timing?: ZeroMemoryTimingObserver;
+    readonly phase: MemoryProfilePhase;
+  },
 ): Promise<readonly ZeroMemoryProfileItem[]> {
-  const sourcesByMemoryId = await loadSourcesByMemoryId(
-    db,
-    scope,
-    rows.map((row) => {
-      return row.id;
-    }),
+  let hydratedCount = 0;
+  return await measureZeroMemoryTiming(
+    args.timing,
+    "profile_hydrate",
+    async () => {
+      let sourceCount = 0;
+      const sourcesByMemoryId = await measureZeroMemoryTiming(
+        args.timing,
+        "profile_load_sources",
+        async () => {
+          const loaded = await loadSourcesByMemoryId(
+            db,
+            scope,
+            rows.map((row) => {
+              return row.id;
+            }),
+          );
+          sourceCount = [...loaded.values()].reduce((sum, sources) => {
+            return sum + sources.length;
+          }, 0);
+          return loaded;
+        },
+        () => {
+          return {
+            memory_profile_phase: args.phase,
+            memory_profile_source_loaded_count_bucket:
+              zeroMemoryCountBucket(sourceCount),
+          };
+        },
+      );
+      const hydratedRows = rows.map((row) => {
+        return {
+          ...row,
+          sources: sourcesByMemoryId.get(row.id) ?? [],
+        };
+      });
+      hydratedCount = hydratedRows.length;
+      return hydratedRows;
+    },
+    () => {
+      return {
+        memory_profile_phase: args.phase,
+        memory_profile_hydrated_count_bucket:
+          zeroMemoryCountBucket(hydratedCount),
+      };
+    },
   );
-  return rows.map((row) => {
-    return {
-      ...row,
-      sources: sourcesByMemoryId.get(row.id) ?? [],
-    };
-  });
 }
 
 async function loadProfileWindow(
@@ -600,6 +682,8 @@ async function loadProfileWindow(
     readonly kinds: readonly MemoryKind[];
     readonly limit: number;
     readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
+    readonly timing?: ZeroMemoryTimingObserver;
+    readonly profilePhase: MemoryProfilePhase;
   },
 ): Promise<readonly ZeroMemoryProfileItem[]> {
   if (args.limit <= 0 || args.kinds.length === 0) {
@@ -635,7 +719,10 @@ async function loadProfileWindow(
     .filter((row): row is MemoryProfileRow => {
       return row !== undefined;
     });
-  return await hydrateRows(db, args, orderedRows);
+  return await hydrateRows(db, args, orderedRows, {
+    timing: args.timing,
+    phase: args.profilePhase,
+  });
 }
 
 async function loadLexicalCandidates(
@@ -721,50 +808,71 @@ async function loadSemanticCandidates(
   if (!args.normalizedQuery) {
     return [];
   }
-  const embedded = await embedQuery(args.normalizedQuery);
+  let embeddingResult = "empty";
+  const embedded = await measureZeroMemoryTiming(
+    args.timing,
+    "profile_search_semantic_embedding",
+    async () => {
+      const result = await embedQuery(args.normalizedQuery);
+      embeddingResult = result ? "present" : "empty";
+      return result;
+    },
+    () => {
+      return {
+        memory_profile_semantic_embedding_result: embeddingResult,
+      };
+    },
+  );
   if (!embedded) {
     return [];
   }
-  const queryVector = sql`${memoryEmbeddingSqlLiteral(embedded.embedding)}::vector`;
-  const distance = sql<number>`${memorySearchEntries.embedding} <=> ${queryVector}`;
-  const rows = await db
-    .select({
-      id: memorySearchEntries.memoryId,
-      semanticScore: sql<number>`1 - (${distance})`,
-    })
-    .from(memorySearchEntries)
-    .innerJoin(memories, eq(memories.id, memorySearchEntries.memoryId))
-    .innerJoin(memoryEntities, eq(memoryEntities.id, memories.entityId))
-    .where(
-      and(
-        eq(memorySearchEntries.orgId, args.orgId),
-        eq(memorySearchEntries.userId, args.userId),
-        eq(memorySearchEntries.status, "active"),
-        eq(memorySearchEntries.embeddingModel, embedded.model),
-        eq(memorySearchEntries.entryKind, "memory_text"),
-        ...baseMemoryFilters({
-          scope: args,
-          kinds: args.kinds,
-          entityTypes: args.entityTypes,
-        }),
-      ),
-    )
-    .orderBy(distance)
-    .limit(Math.max(args.limit * 10, 80));
+  return await measureMemoryList(
+    args.timing,
+    "profile_search_semantic_query",
+    "memory_profile_semantic_candidate_count_bucket",
+    async () => {
+      const queryVector = sql`${memoryEmbeddingSqlLiteral(embedded.embedding)}::vector`;
+      const distance = sql<number>`${memorySearchEntries.embedding} <=> ${queryVector}`;
+      const rows = await db
+        .select({
+          id: memorySearchEntries.memoryId,
+          semanticScore: sql<number>`1 - (${distance})`,
+        })
+        .from(memorySearchEntries)
+        .innerJoin(memories, eq(memories.id, memorySearchEntries.memoryId))
+        .innerJoin(memoryEntities, eq(memoryEntities.id, memories.entityId))
+        .where(
+          and(
+            eq(memorySearchEntries.orgId, args.orgId),
+            eq(memorySearchEntries.userId, args.userId),
+            eq(memorySearchEntries.status, "active"),
+            eq(memorySearchEntries.embeddingModel, embedded.model),
+            eq(memorySearchEntries.entryKind, "memory_text"),
+            ...baseMemoryFilters({
+              scope: args,
+              kinds: args.kinds,
+              entityTypes: args.entityTypes,
+            }),
+          ),
+        )
+        .orderBy(distance)
+        .limit(Math.max(args.limit * 10, 80));
 
-  return rows
-    .map((row) => {
-      return {
-        id: row.id,
-        semanticScore: clamp01(row.semanticScore),
-        lexicalScore: 0,
-        entityScore: 0,
-        expansionScore: 0,
-      };
-    })
-    .filter((candidate) => {
-      return candidate.semanticScore >= SEMANTIC_SCORE_THRESHOLD;
-    });
+      return rows
+        .map((row) => {
+          return {
+            id: row.id,
+            semanticScore: clamp01(row.semanticScore),
+            lexicalScore: 0,
+            entityScore: 0,
+            expansionScore: 0,
+          };
+        })
+        .filter((candidate) => {
+          return candidate.semanticScore >= SEMANTIC_SCORE_THRESHOLD;
+        });
+    },
+  );
 }
 
 async function loadExpansionCandidates(
@@ -922,14 +1030,23 @@ async function loadSearchResults(
       ...args,
       kinds: args.kinds,
       limit: args.limit,
+      profilePhase: "search",
     });
   }
 
   const candidates = new Map<string, CandidateScore>();
-  for (const candidate of await loadLexicalCandidates(db, {
-    ...args,
-    normalizedQuery,
-  })) {
+  const lexicalCandidates = await measureMemoryList(
+    args.timing,
+    "profile_search_lexical",
+    "memory_profile_lexical_candidate_count_bucket",
+    async () => {
+      return await loadLexicalCandidates(db, {
+        ...args,
+        normalizedQuery,
+      });
+    },
+  );
+  for (const candidate of lexicalCandidates) {
     mergeCandidate(candidates, candidate);
   }
   for (const candidate of await loadSemanticCandidates(db, {
@@ -939,25 +1056,50 @@ async function loadSearchResults(
     mergeCandidate(candidates, candidate);
   }
 
-  const seedRows = await rankCandidates(db, {
-    ...args,
-    normalizedQuery,
-    candidates: [...candidates.values()],
-    limit: Math.max(args.limit, Math.min(args.limit * 2, 20)),
-  });
-  for (const candidate of await loadExpansionCandidates(db, {
-    ...args,
-    seedRows,
-  })) {
+  const seedRows = await measureMemoryList(
+    args.timing,
+    "profile_search_seed_rank",
+    "memory_profile_seed_ranked_count_bucket",
+    async () => {
+      return await rankCandidates(db, {
+        ...args,
+        normalizedQuery,
+        candidates: [...candidates.values()],
+        limit: Math.max(args.limit, Math.min(args.limit * 2, 20)),
+      });
+    },
+  );
+  const expansionCandidates = await measureMemoryList(
+    args.timing,
+    "profile_search_graph_expansion",
+    "memory_profile_expansion_candidate_count_bucket",
+    async () => {
+      return await loadExpansionCandidates(db, {
+        ...args,
+        seedRows,
+      });
+    },
+  );
+  for (const candidate of expansionCandidates) {
     mergeCandidate(candidates, candidate);
   }
 
-  const rankedRows = await rankCandidates(db, {
-    ...args,
-    normalizedQuery,
-    candidates: [...candidates.values()],
+  const rankedRows = await measureMemoryList(
+    args.timing,
+    "profile_search_final_rank",
+    "memory_profile_final_ranked_count_bucket",
+    async () => {
+      return await rankCandidates(db, {
+        ...args,
+        normalizedQuery,
+        candidates: [...candidates.values()],
+      });
+    },
+  );
+  return await hydrateRows(db, args, rankedRows, {
+    timing: args.timing,
+    phase: "search",
   });
-  return await hydrateRows(db, args, rankedRows);
 }
 
 export async function getZeroMemoryProfile(
@@ -965,22 +1107,45 @@ export async function getZeroMemoryProfile(
   params: ProfileParams,
 ): Promise<ZeroMemoryProfileResult> {
   const [staticProfile, dynamicProfile, searchResultsRaw] = await Promise.all([
-    loadProfileWindow(db, {
-      ...params,
-      kinds: params.staticKinds,
-      limit: params.staticLimit,
-    }),
-    loadProfileWindow(db, {
-      ...params,
-      kinds: params.dynamicKinds,
-      limit: params.dynamicLimit,
-    }),
-    loadSearchResults(db, {
-      ...params,
-      kinds: params.searchKinds,
-      limit: params.searchLimit,
-      includeGraphExpansion: params.includeGraphExpansion,
-    }),
+    measureMemoryList(
+      params.timing,
+      "profile_static",
+      "memory_profile_static_result_count_bucket",
+      async () => {
+        return await loadProfileWindow(db, {
+          ...params,
+          kinds: params.staticKinds,
+          limit: params.staticLimit,
+          profilePhase: "static",
+        });
+      },
+    ),
+    measureMemoryList(
+      params.timing,
+      "profile_dynamic",
+      "memory_profile_dynamic_result_count_bucket",
+      async () => {
+        return await loadProfileWindow(db, {
+          ...params,
+          kinds: params.dynamicKinds,
+          limit: params.dynamicLimit,
+          profilePhase: "dynamic",
+        });
+      },
+    ),
+    measureMemoryList(
+      params.timing,
+      "profile_search",
+      "memory_profile_search_result_count_bucket",
+      async () => {
+        return await loadSearchResults(db, {
+          ...params,
+          kinds: params.searchKinds,
+          limit: params.searchLimit,
+          includeGraphExpansion: params.includeGraphExpansion,
+        });
+      },
+    ),
   ]);
 
   const profileIds = new Set(

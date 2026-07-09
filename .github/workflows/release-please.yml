@@ -1774,8 +1774,8 @@ jobs:
       - name: Install dependencies
         run: cd turbo && pnpm install --frozen-lockfile
 
-      - name: Use latest npm for OIDC support
-        run: npm install -g npm@latest
+      - name: Use stable npm for OIDC support
+        run: npm install -g npm@11.18.0
 
       - name: Build CLI
         run: cd turbo && pnpm --filter @vm0/cli build

@@ -3928,6 +3928,20 @@
       "when": 1783560031204,
       "tag": "0560_luxuriant_titania",
       "breakpoints": true
+    },
+    {
+      "idx": 561,
+      "version": "7",
+      "when": 1783579045330,
+      "tag": "0561_low_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 562,
+      "version": "7",
+      "when": 1783583686379,
+      "tag": "0562_migrate_zai_glm_5_2_key",
+      "breakpoints": true
     }
   ]
 }

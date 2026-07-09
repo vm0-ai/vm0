@@ -1,4 +1,5 @@
 import { and, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
+import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 
 import type { Db } from "../external/db";
@@ -79,15 +80,16 @@ export async function getMemberUsageTotals(
       CACHE_CREATION_TOKEN_CATEGORIES,
       "cache_creation_input_tokens",
     ),
-    creditsCharged:
-      sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
-        "credits_charged",
-      ),
+    creditsCharged: usageCreditsSum("credits_charged"),
   } satisfies Record<keyof UsageMemberTotalsRow, unknown>;
 
   return await db
     .select(totalsSelect)
     .from(usageEvent)
+    .leftJoin(
+      usageAllowanceAllocations,
+      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
+    )
     .where(
       and(
         eq(usageEvent.orgId, orgId),
@@ -119,10 +121,7 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
       ALL_CACHE_TOKEN_CATEGORIES,
       "cache_tokens_sum",
     ),
-    creditsCharged:
-      sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
-        "credits_sum",
-      ),
+    creditsCharged: usageCreditsSum("credits_sum"),
     model: sql<
       string | null
     >`MAX(CASE WHEN ${usageEvent.kind} = ${MODEL_USAGE_KIND} THEN ${usageEvent.provider} ELSE NULL END)`.as(
@@ -134,6 +133,10 @@ export function buildUsageEventRunUsageTotalsSubquery(db: Db, orgId: string) {
   return db
     .select(totalsSelect)
     .from(usageEvent)
+    .leftJoin(
+      usageAllowanceAllocations,
+      eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
+    )
     .where(
       and(
         eq(usageEvent.orgId, orgId),
@@ -191,4 +194,10 @@ function usageEventTokenSum(categories: readonly string[], alias: string) {
 
 function coalesceRunTotal(column: unknown, alias: string) {
   return sql<number>`COALESCE(${column}, 0)::bigint`.as(alias);
+}
+
+function usageCreditsSum(alias: string) {
+  return sql<number>`COALESCE(SUM(COALESCE(${usageEvent.creditsCharged}, 0) + COALESCE(${usageAllowanceAllocations.unitsApplied}, 0)), 0)::bigint`.as(
+    alias,
+  );
 }

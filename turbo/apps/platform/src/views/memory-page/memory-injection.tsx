@@ -56,7 +56,7 @@ function MemoryInjectionEmpty({
         </p>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           {hasPrompt
-            ? "The current profile and prompt did not match injectable memories."
+            ? "The prompt did not match injectable memories."
             : "Enter a user prompt to preview the memory block Zero would append."}
         </p>
       </div>
@@ -72,7 +72,7 @@ function MemoryInjectionSkeleton() {
           Building injection preview
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Loading profile and prompt-relevant memory.
+          Loading prompt-relevant memory.
         </p>
       </div>
     </div>
@@ -167,9 +167,7 @@ function MemoryInjectionResults({
             omitted
           </p>
         </div>
-        <MemoryGroup title="Stable profile" items={data.profile.static} />
-        <MemoryGroup title="Current context" items={data.profile.dynamic} />
-        <MemoryGroup title="Query memories" items={data.queryMemories} />
+        <MemoryGroup title="Relevant memories" items={data.queryMemories} />
       </aside>
     </div>
   );

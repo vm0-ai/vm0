@@ -1,5 +1,8 @@
 import { upsertOrgMetadataFixture } from "./org-metadata";
-import { upsertUsageAllowanceEntitlementFixture } from "./usage-allowance";
+import {
+  cancelUsageAllowanceEntitlementFixture,
+  upsertUsageAllowanceEntitlementFixture,
+} from "./usage-allowance";
 import {
   deleteUsagePricingRows,
   ensureUsagePricingRow,
@@ -12,5 +15,7 @@ export type { UsagePricingRow };
 export const seedOrgMetadata = upsertOrgMetadataFixture;
 export const seedUsageAllowanceEntitlement =
   upsertUsageAllowanceEntitlementFixture;
+export const cancelUsageAllowanceEntitlement =
+  cancelUsageAllowanceEntitlementFixture;
 export const seedUsagePricingRows = upsertUsagePricingRows;
 export { deleteUsagePricingRows, ensureUsagePricingRow };

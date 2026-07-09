@@ -21,10 +21,14 @@ import type {
 import {
   IconAlertTriangle,
   IconBrandGithub,
+  IconBrandNotion,
   IconCalendarTime,
   IconChevronDown,
   IconClock,
   IconCopy,
+  IconDatabasePlus,
+  IconFilePencil,
+  IconFilePlus,
   IconFileText,
   IconHistory,
   IconInfoCircle,
@@ -2447,19 +2451,19 @@ function buildNotionTriggerOptions(
       kind: "notion-child-page",
       title: "New Notion child page",
       description: "Run when a direct child page is created.",
-      icon: IconFileText,
+      icon: IconFilePlus,
     },
     {
       kind: "notion-database-item",
       title: "New Notion database item",
       description: "Run when a page is added to a Notion database.",
-      icon: IconFileText,
+      icon: IconDatabasePlus,
     },
     {
       kind: "notion-page-content-updated",
       title: "Notion page content updated",
       description: "Run when a page or database item content changes.",
-      icon: IconFileText,
+      icon: IconFilePencil,
     },
   ];
 }
@@ -2582,7 +2586,7 @@ function buildTriggerCreateCategories({
     {
       key: "notion",
       label: "Notion",
-      icon: IconFileText,
+      icon: IconBrandNotion,
       options: notionOptions,
     },
     {
@@ -3105,7 +3109,7 @@ function CreateNotionDatabaseItemTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : (
-                <IconFileText size={14} stroke={1.5} />
+                <IconBrandNotion size={14} stroke={1.5} />
               )}
               Add Notion automation
             </Button>
@@ -3272,7 +3276,7 @@ function CreateNotionPageContentUpdatedTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : (
-                <IconFileText size={14} stroke={1.5} />
+                <IconBrandNotion size={14} stroke={1.5} />
               )}
               Add Notion automation
             </Button>
@@ -3363,7 +3367,7 @@ function CreateNotionChildPageTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : (
-                <IconFileText size={14} stroke={1.5} />
+                <IconBrandNotion size={14} stroke={1.5} />
               )}
               Add Notion automation
             </Button>

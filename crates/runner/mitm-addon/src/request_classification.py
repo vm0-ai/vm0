@@ -1,4 +1,17 @@
-"""Request classification owner for HTTP mitmproxy hooks."""
+"""Shared HTTP request classification contract for mitmproxy hooks.
+
+This module owns the classification result consumed by both `requestheaders()`
+and `request()`. The header hook may classify as a probe before mitmproxy has
+buffered the request body. When that header-phase decision must be reused by
+the request hook, it caches the classification on the current flow. When the
+header hook only probed to decide whether it can handle the request early, it
+restores the metadata touched by that probe path before falling through.
+
+The request hook consumes a cached classification when present, otherwise it
+performs a fresh classification. Cached classifications are scoped to a single
+flow and must be popped by terminal, response/error, and final request paths so
+stale decisions cannot leak into later hook handling for the same flow.
+"""
 
 import urllib.parse
 from dataclasses import dataclass
@@ -17,6 +30,9 @@ import upstream_destination_binding
 from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
 
 REQUEST_CLASSIFICATION_METADATA_KEY = "_request_classification"
+# Metadata that the requestheaders probe path may write while using this
+# classification result. Restore it when the probe is not carried forward into
+# request handling.
 REQUEST_HEADERS_PROBE_METADATA_KEYS = (
     metadata_keys.VM_RUN_ID,
     metadata_keys.VM_NETWORK_LOG_PATH,
@@ -61,6 +77,8 @@ RequestClassificationKind = Literal[
 
 
 class TlsAdmissionView(Protocol):
+    """TLS admission facts captured before HTTP request classification."""
+
     @property
     def client_ip(self) -> str:
         raise NotImplementedError
@@ -72,6 +90,8 @@ class TlsAdmissionView(Protocol):
 
 @dataclass(frozen=True)
 class PublicDestinationDenial:
+    """Runtime publicDestination denial returned with its logging context."""
+
     name: str
     base: str
     trusted_authority_host: str
@@ -81,6 +101,24 @@ class PublicDestinationDenial:
 
 @dataclass(frozen=True)
 class RequestClassification:
+    """Classification result and the payload field valid for each kind.
+
+    Payload fields are tied to `kind`; optional fields are not independent
+    facts. The expected payloads are:
+
+    - `registry_unavailable`: `registry_unavailable`.
+    - `invalid_registry_vm`: `invalid_vm`.
+    - `authority_denied`: `vm_info` and `authority_error`.
+    - `firewall_block`: `vm_info` and `firewall_block`.
+    - `firewall_allow`: `vm_info` and `firewall_allow`.
+    - `public_destination_denied`: `vm_info` and
+      `public_destination_denial`.
+    - `api_allow`, `browser_allow`, and `allow`: `vm_info`.
+    - `stale_tls_admission`: `stale_tls_reason`; `vm_info` is present only
+      when the stale admission is detected after a VM entry is found.
+    - `no_client_ip` and `pass_through`: no additional payload.
+    """
+
     kind: RequestClassificationKind
     vm_info: dict | None = None
     registry_unavailable: registry.RegistryUnavailable | None = None
@@ -93,15 +131,26 @@ class RequestClassification:
 
 
 def cache_classification(flow: http.HTTPFlow, classification: RequestClassification) -> None:
+    """Cache a header-phase classification for request-phase reuse.
+
+    Callers should cache only when the request hook must continue from the same
+    classification decision, such as request streaming or header-phase auth
+    setup. Terminal and early-response paths must pop the cached value.
+    """
+
     flow.metadata[REQUEST_CLASSIFICATION_METADATA_KEY] = classification
 
 
 def pop_cached_classification(flow: http.HTTPFlow) -> RequestClassification | None:
+    """Remove and return the flow-scoped cached classification, if present."""
+
     classification = flow.metadata.pop(REQUEST_CLASSIFICATION_METADATA_KEY, None)
     return classification if isinstance(classification, RequestClassification) else None
 
 
 def cached_classification(flow: http.HTTPFlow) -> RequestClassification | None:
+    """Return the flow-scoped cached classification without consuming it."""
+
     classification = flow.metadata.get(REQUEST_CLASSIFICATION_METADATA_KEY)
     return classification if isinstance(classification, RequestClassification) else None
 
@@ -113,6 +162,13 @@ def classification_for_request(
     api_url: str,
     tls_admission: TlsAdmissionView | None,
 ) -> RequestClassification:
+    """Return the classification the request hook should use.
+
+    The request hook reuses a header-phase cached classification when one was
+    intentionally carried forward. Otherwise, it classifies the request using
+    the current flow state.
+    """
+
     classification = cached_classification(flow)
     if classification is not None:
         return classification
@@ -132,6 +188,26 @@ def classify_request(
     tls_admission: TlsAdmissionView | None,
     defer_unresolved_public_destination: bool = False,
 ) -> RequestClassification:
+    """Classify a flow and write metadata needed by downstream hook handling.
+
+    The decision order is registry/TLS admission, registered VM resolution,
+    trusted authority validation, platform API allow, browser passthrough,
+    firewall match, publicDestination runtime validation, and default allow.
+
+    After registry and TLS admission checks accept a registered VM,
+    classification stores VM/run metadata on the flow. Once trusted authority
+    validation succeeds, it stores the original URL, trusted authority host, and
+    network log target. Browser passthrough detection also records its metadata
+    marker. Header-phase callers that use this as a probe must snapshot and
+    restore those metadata fields if they do not carry the classification
+    forward.
+
+    `defer_unresolved_public_destination` is for header-phase classification
+    before the runtime endpoint may be fully known. A deferred `firewall_allow`
+    still requires request-phase publicDestination revalidation before the flow
+    is allowed to proceed.
+    """
+
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
 
     if not client_ip:
@@ -286,6 +362,13 @@ def current_public_destination_denial(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> PublicDestinationDenial | None:
+    """Revalidate a firewall allow against the current runtime destination.
+
+    This is required even when `requestheaders()` cached a `firewall_allow`,
+    because header-phase publicDestination checks may defer unresolved runtime
+    hostnames until the request phase can observe the final destination.
+    """
+
     trusted_authority_host = flow_metadata.trusted_authority_host(flow.metadata)
     if not trusted_authority_host:
         try:
@@ -323,6 +406,14 @@ def restore_request_headers_probe_metadata(
     *,
     extra_keys: tuple[str, ...] = (),
 ) -> None:
+    """Restore metadata after a requestheaders classification probe.
+
+    `REQUEST_HEADERS_PROBE_METADATA_KEYS` covers the metadata touched by this
+    module and adjacent requestheaders processing that depends on the
+    classification result. `extra_keys` lets callers restore companion probe
+    metadata owned by other modules, such as connector diagnostics.
+    """
+
     for key in (*REQUEST_HEADERS_PROBE_METADATA_KEYS, *extra_keys):
         if key in snapshot:
             flow.metadata[key] = snapshot[key]
