@@ -151,7 +151,16 @@ function capGoalMemoryQueryText(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
     return text;
   }
-  return text.slice(0, maxChars).trimEnd();
+  let endIndex = 0;
+  let charCount = 0;
+  for (const char of text) {
+    if (charCount === maxChars) {
+      return text.slice(0, endIndex).trimEnd();
+    }
+    endIndex += char.length;
+    charCount += 1;
+  }
+  return text;
 }
 
 function hasGoalMemorySearchTerm(text: string): boolean {

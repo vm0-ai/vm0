@@ -266,6 +266,45 @@ describe("zero goals", () => {
     });
   });
 
+  it("truncates long Unicode objective briefs without splitting codepoints", async () => {
+    const fixture = await seedGoalApiFixture();
+    const chat = createChatFilesBddApi(context);
+    const rareLetter = "\u{10400}";
+    const objective = rareLetter.repeat(200);
+    const expectedBrief = `${rareLetter.repeat(137)}...`;
+    const created = await createGoal(fixture, objective);
+
+    expect(created.body).toStrictEqual({
+      objective,
+      objectiveBrief: expectedBrief,
+      status: "active",
+    });
+    for (const char of created.body.objectiveBrief) {
+      expect(char === rareLetter || char === ".").toBeTruthy();
+    }
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadMessages(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: expectedBrief,
+        },
+      }),
+    );
+  });
+
   it("keeps markdown-only goal objective briefs non-empty", async () => {
     const fixture = await seedGoalApiFixture();
     const chat = createChatFilesBddApi(context);

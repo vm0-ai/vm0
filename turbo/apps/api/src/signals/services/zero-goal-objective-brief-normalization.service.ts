@@ -20,7 +20,17 @@ export function capGoalObjectiveBriefText(text: string): string {
   if (text.length <= OBJECTIVE_BRIEF_MAX_CHARS) {
     return text;
   }
-  return `${text.slice(0, OBJECTIVE_BRIEF_MAX_CHARS - 3).trimEnd()}...`;
+  const maxTextChars = OBJECTIVE_BRIEF_MAX_CHARS - 3;
+  let endIndex = 0;
+  let charCount = 0;
+  for (const char of text) {
+    if (charCount === maxTextChars) {
+      return `${text.slice(0, endIndex).trimEnd()}...`;
+    }
+    endIndex += char.length;
+    charCount += 1;
+  }
+  return text;
 }
 
 export function fallbackGoalObjectiveBrief(objective: string): string {

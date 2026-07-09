@@ -1245,6 +1245,82 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await flushWaitUntilForTest();
   }, 90_000);
 
+  it("truncates goal runtime memory queries without splitting Unicode codepoints", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before unicode goal continuation",
+    });
+    const goalBrief = "Preserve Unicode query boundaries";
+    const rareLetterPrefix = "\u{10400}".repeat(1100);
+    const goalObjective = `${goalBrief}
+
+${rareLetterPrefix}
+
+Continue after the long Unicode prefix.`;
+    const expectedMemoryQuery = [
+      ...`${goalBrief} ${rareLetterPrefix} Continue after the long Unicode prefix.`,
+    ]
+      .slice(0, 1024)
+      .join("")
+      .trimEnd();
+    await seedSemanticRecallMemory(
+      { orgId: actor.orgId, userId: actor.userId },
+      expectedMemoryQuery,
+    );
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before unicode goal continuation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalBrief);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalBrief);
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected unicode goal continuation run id");
+    }
+    const goalContext = await waitForRunContext(actor, goalContinuation.runId);
+    expect(goalContext.body.prompt).toContain(goalObjective);
+    expect(goalContext.body.appendSystemPrompt ?? "").toContain(
+      "The user prefers JPM IJTXX Treasury allocation.",
+    );
+
+    await api.requestCancelRun(actor, goalContinuation.runId, [200]);
+    await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
   it("does not broad-load runtime memory when a goal has no searchable text", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
