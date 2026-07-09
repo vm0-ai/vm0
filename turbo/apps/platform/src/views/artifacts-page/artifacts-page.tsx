@@ -55,6 +55,7 @@ const ARTIFACT_CATEGORY_OPTIONS: readonly {
 }[] = [
   { ariaLabel: "Show all artifacts", label: "All", value: null },
   { ariaLabel: "Show image artifacts", label: "Images", value: "image" },
+  { ariaLabel: "Show video artifacts", label: "Videos", value: "video" },
   { ariaLabel: "Show website artifacts", label: "Websites", value: "website" },
   {
     ariaLabel: "Show presentation artifacts",
