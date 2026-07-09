@@ -9,6 +9,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
+import { createDeferredPromise } from "../../utils";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroOnboardingSetupRoutes } from "../zero-onboarding-setup";
@@ -461,6 +462,58 @@ describe("zero scrape route", () => {
     const afterCredits = await credits(actor);
 
     expect(response.body.finalUrl).toBe("https://final.example.test/page");
+    expect(beforeCredits - afterCredits).toBe(4);
+  });
+
+  it("records usage when the request aborts while Firecrawl is in flight", async () => {
+    const actor = scrapeEnabledActor();
+    const controller = new AbortController();
+    const abortError = new Error("client disconnected during provider work");
+    abortError.name = "AbortError";
+    const providerStarted = createDeferredPromise<void>(context.signal);
+    const providerResponse = createDeferredPromise<void>(context.signal);
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, async () => {
+        providerStarted.resolve(undefined);
+        controller.abort(abortError);
+        await providerResponse.promise;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: {
+              sourceURL: "https://example.com/page",
+            },
+          },
+        });
+      }),
+    );
+
+    const responsePromise = accept(
+      client(controller.signal)(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [200],
+    );
+    await providerStarted.promise;
+    providerResponse.resolve(undefined);
+    const response = await responsePromise;
+    const afterCredits = await credits(actor);
+
+    expect(response.body.result).toStrictEqual({
+      markdown: "# Example page",
+    });
     expect(beforeCredits - afterCredits).toBe(4);
   });
 

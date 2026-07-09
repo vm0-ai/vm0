@@ -116,6 +116,13 @@ interface CompleteScrapeSuccessArgs {
   readonly recordUsage: () => Promise<number>;
 }
 
+interface CompleteScrapeAfterProviderArgs {
+  readonly apiKey: string;
+  readonly request: ZeroScrapeRequest;
+  readonly requestedUrl: URL;
+  readonly recordUsage: () => Promise<number>;
+}
+
 function errorBody(message: string, code: string) {
   return { error: { message, code } };
 }
@@ -304,7 +311,6 @@ async function fetchFirecrawlScrape(
   apiKey: string,
   request: ZeroScrapeRequest,
   targetUrl: URL,
-  signal: AbortSignal,
 ): Promise<FirecrawlBodyResult> {
   const result = await safeAsync(async (): Promise<FirecrawlResponseResult> => {
     const response = await fetch(FIRECRAWL_SCRAPE_URL, {
@@ -320,10 +326,7 @@ async function fetchFirecrawlScrape(
         skipTlsVerification: false,
         storeInCache: false,
       }),
-      signal: AbortSignal.any([
-        signal,
-        AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
-      ]),
+      signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
     });
 
     const readResult = await readResponseBody(response);
@@ -334,7 +337,6 @@ async function fetchFirecrawlScrape(
   });
 
   if ("error" in result) {
-    signal.throwIfAborted();
     const { error } = result;
     if (
       error instanceof Error &&
@@ -608,6 +610,23 @@ async function completeScrapeSuccess(
   return { status: 200 as const, body };
 }
 
+async function completeScrapeAfterProvider(
+  args: CompleteScrapeAfterProviderArgs,
+): Promise<ZeroScrapeCommandResponse> {
+  const firecrawlResult = await fetchFirecrawlScrape(
+    args.apiKey,
+    args.request,
+    args.requestedUrl,
+  );
+
+  return await completeScrapeSuccess({
+    request: args.request,
+    requestedUrl: args.requestedUrl,
+    firecrawlResult,
+    recordUsage: args.recordUsage,
+  });
+}
+
 function isScrapeErrorResponse(value: unknown): value is ScrapeErrorResponse {
   return (
     isRecord(value) &&
@@ -654,18 +673,12 @@ export const zeroScrape$ = command(
     if (creditError) {
       return creditError;
     }
+    signal.throwIfAborted();
 
-    const firecrawlResult = await fetchFirecrawlScrape(
+    return completeScrapeAfterProvider({
       apiKey,
-      args.body,
-      target.url,
-      signal,
-    );
-
-    return completeScrapeSuccess({
       request: args.body,
       requestedUrl: target.url,
-      firecrawlResult,
       recordUsage: () => {
         return set(
           recordManagedUsage$,
