@@ -92,7 +92,7 @@ struct ServiceStopArgs {
     /// Skip active-jobs pre-check and force stop (active jobs will be killed).
     #[arg(long)]
     force: bool,
-    /// Use bounded cleanup recovery semantics.
+    /// Use bounded cleanup recovery semantics. Requires --force.
     #[arg(long, value_enum)]
     cleanup: Option<StopCleanupPolicy>,
 }
@@ -1051,6 +1051,12 @@ async fn stop_with_ops(
     ops: &mut impl ServiceStopOps,
 ) -> RunnerResult<()> {
     if let Some(cleanup) = cleanup {
+        if !force {
+            return Err(RunnerError::Internal(
+                "runner service stop --cleanup requires --force because cleanup may kill active jobs"
+                    .to_string(),
+            ));
+        }
         ops.check_active_jobs_gate(unit, force).await?;
         let _service_lock = ops.acquire_lock(unit, home, Some(cleanup)).await?;
         stop_cleanup_with_ops(unit, cleanup, ops).await
@@ -2096,6 +2102,26 @@ profiles:
         assert!(!ops.events.contains(&"stop_bounded"));
         assert!(!ops.events.contains(&"kill_all_sigkill"));
         assert!(!ops.events.contains(&"disable"));
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_requires_force_before_gate_or_lock() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps::default();
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            false,
+            Some(StopCleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("--cleanup requires --force"));
+        assert!(ops.events.is_empty());
     }
 
     #[tokio::test]
