@@ -116,7 +116,7 @@ export interface DesktopKeepAwakeState {
   readonly active: boolean;
 }
 
-export type DesktopComputerUseFilesystemPluginStatus =
+export type DesktopComputerUsePluginStatus =
   | "disabled"
   | "starting"
   | "running"
@@ -127,14 +127,29 @@ export interface DesktopComputerUseFilesystemPluginState {
   readonly featureEnabled: boolean;
   readonly enabled: boolean;
   readonly allowedDirectories: readonly string[];
-  readonly status: DesktopComputerUseFilesystemPluginStatus;
+  readonly status: DesktopComputerUsePluginStatus;
   readonly lastError: string | null;
   readonly version: string;
   readonly capabilities: readonly string[];
 }
 
+export interface DesktopComputerUseMcpServerState {
+  readonly name: string;
+  readonly transport: "stdio" | "http";
+  readonly enabled: boolean;
+  readonly status: DesktopComputerUsePluginStatus;
+  readonly lastError: string | null;
+  readonly tools: readonly string[];
+}
+
+export interface DesktopComputerUseMcpPluginState {
+  readonly featureEnabled: boolean;
+  readonly servers: readonly DesktopComputerUseMcpServerState[];
+}
+
 export interface DesktopComputerUsePluginsState {
   readonly filesystem: DesktopComputerUseFilesystemPluginState;
+  readonly mcp: DesktopComputerUseMcpPluginState;
 }
 
 export interface DesktopComputerUseState {
