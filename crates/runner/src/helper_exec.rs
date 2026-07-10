@@ -262,6 +262,36 @@ mod tests {
     }
 
     #[test]
+    fn command_output_redaction_preserves_whitespace_between_urls() {
+        let excerpt = format_command_output_excerpt(
+            "stderr",
+            b"first=https://a.example/archive.tar.gz?token=secret\n\tsecond=http://b.example/logs?key=hidden third=https://c.example/blob?sig=private plain=http://d.example/no-query",
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            excerpt,
+            "stderr (captured): first=https://a.example/archive.tar.gz?<redacted>\n\tsecond=http://b.example/logs?<redacted> third=https://c.example/blob?<redacted> plain=http://d.example/no-query"
+        );
+    }
+
+    #[test]
+    fn command_output_redaction_handles_case_insensitive_url_schemes() {
+        let excerpt = format_command_output_excerpt(
+            "stderr",
+            b"first=HtTp://a.example/logs?token=secret second=hTtPs://b.example/archive?sig=hidden",
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(
+            excerpt,
+            "stderr (captured): first=HtTp://a.example/logs?<redacted> second=hTtPs://b.example/archive?<redacted>"
+        );
+    }
+
+    #[test]
     fn termination_label_is_stable_for_logs() {
         assert_eq!(
             helper_exec_termination_label(&exec_result(ExecTermination::Exited { exit_code: 0 })),
