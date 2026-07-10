@@ -21,7 +21,7 @@ export interface GithubIssueComment {
   readonly user: {
     readonly login: string;
     readonly type: string;
-    readonly id?: number;
+    readonly id: number;
   };
   readonly body: string;
   readonly created_at: string;
@@ -35,7 +35,7 @@ export interface GithubIssueDetail {
   readonly created_at?: string;
   readonly updated_at?: string;
   readonly user: {
-    readonly id?: number;
+    readonly id: number;
     readonly login: string;
     readonly type: string;
   };
