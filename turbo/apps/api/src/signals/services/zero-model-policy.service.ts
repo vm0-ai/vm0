@@ -20,6 +20,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
@@ -653,18 +654,39 @@ export const updateOrgModelPolicies$ = command(
           target: [orgModelPolicies.orgId, orgModelPolicies.model],
         });
 
-      await tx.delete(orgModelPolicies).where(
-        and(
-          eq(orgModelPolicies.orgId, params.orgId),
-          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
-          notInArray(
-            orgModelPolicies.model,
-            validation.data.map((policy) => {
-              return policy.model;
-            }),
+      const removedRows = await tx
+        .delete(orgModelPolicies)
+        .where(
+          and(
+            eq(orgModelPolicies.orgId, params.orgId),
+            inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+            notInArray(
+              orgModelPolicies.model,
+              validation.data.map((policy) => {
+                return policy.model;
+              }),
+            ),
           ),
-        ),
-      );
+        )
+        .returning({ model: orgModelPolicies.model });
+
+      const removedModels = removedRows.map((row) => {
+        return row.model;
+      });
+      const defaultPolicy = validation.data.find((policy) => {
+        return policy.isDefault;
+      });
+      if (removedModels.length > 0 && defaultPolicy) {
+        await tx
+          .update(orgMembersMetadata)
+          .set({ selectedModel: defaultPolicy.model, updatedAt: now })
+          .where(
+            and(
+              eq(orgMembersMetadata.orgId, params.orgId),
+              inArray(orgMembersMetadata.selectedModel, removedModels),
+            ),
+          );
+      }
 
       await tx
         .update(orgModelPolicies)
