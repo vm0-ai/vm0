@@ -3,6 +3,8 @@
 import gzip
 import json
 
+import pytest
+
 from usage import (
     extract_openai_responses_usage_from_json,
     extract_openai_responses_usage_with_error_from_json,
@@ -12,15 +14,18 @@ from usage import (
 class TestExtractOpenAIResponsesUsageFromJson:
     """Tests for OpenAI Responses API usage extraction."""
 
-    def test_extracts_model_tokens_and_cached_input(self):
+    def test_extracts_model_tokens_and_cache_details(self):
         body = json.dumps(
             {
                 "id": "resp_123",
-                "model": "gpt-5.5",
+                "model": "gpt-5.6-sol",
                 "usage": {
                     "input_tokens": 100,
                     "output_tokens": 40,
-                    "input_tokens_details": {"cached_tokens": 25},
+                    "input_tokens_details": {
+                        "cached_tokens": 25,
+                        "cache_write_tokens": 30,
+                    },
                     "output_tokens_details": {"reasoning_tokens": 10},
                 },
             }
@@ -29,10 +34,11 @@ class TestExtractOpenAIResponsesUsageFromJson:
         assert result is not None
         assert result == {
             "message_id": "resp_123",
-            "model": "gpt-5.5",
-            "tokens.input": 75,
+            "model": "gpt-5.6-sol",
+            "tokens.input": 45,
             "tokens.output": 40,
             "tokens.cache_read": 25,
+            "tokens.cache_creation": 30,
         }
         assert "reasoning_tokens" not in result
 
@@ -54,7 +60,10 @@ class TestExtractOpenAIResponsesUsageFromJson:
                 "usage": {
                     "input_tokens": -1,
                     "output_tokens": True,
-                    "input_tokens_details": {"cached_tokens": "25"},
+                    "input_tokens_details": {
+                        "cached_tokens": "25",
+                        "cache_write_tokens": 3,
+                    },
                 },
             }
         ).encode()
@@ -72,6 +81,54 @@ class TestExtractOpenAIResponsesUsageFromJson:
             "tokens.input": 10,
         }
         assert "tokens.cache_read" not in result
+
+    def test_cache_write_without_cache_read_is_reportable(self):
+        body = (
+            b'{"id":"resp_cache_write","model":"gpt-5.6-sol",'
+            b'"usage":{"input_tokens":10,'
+            b'"input_tokens_details":{"cache_write_tokens":10}}}'
+        )
+        result = extract_openai_responses_usage_from_json(body, None)
+        assert result == {
+            "message_id": "resp_cache_write",
+            "model": "gpt-5.6-sol",
+            "tokens.input": 0,
+            "tokens.cache_creation": 10,
+        }
+
+    @pytest.mark.parametrize("cache_write_tokens", [-1, True, "25", 1.5])
+    def test_invalid_cache_write_does_not_suppress_valid_input(self, cache_write_tokens: object):
+        body = json.dumps(
+            {
+                "model": "gpt-5.6-sol",
+                "usage": {
+                    "input_tokens": 10,
+                    "input_tokens_details": {
+                        "cached_tokens": 2,
+                        "cache_write_tokens": cache_write_tokens,
+                    },
+                },
+            }
+        ).encode()
+        result = extract_openai_responses_usage_from_json(body, None)
+        assert result == {
+            "model": "gpt-5.6-sol",
+            "tokens.input": 8,
+            "tokens.cache_read": 2,
+        }
+
+    def test_cache_write_tokens_are_clamped_to_input_remaining_after_cache_read(self):
+        body = (
+            b'{"model":"gpt-5.6-sol","usage":{"input_tokens":10,'
+            b'"input_tokens_details":{"cached_tokens":8,"cache_write_tokens":5}}}'
+        )
+        result = extract_openai_responses_usage_from_json(body, None)
+        assert result == {
+            "model": "gpt-5.6-sol",
+            "tokens.input": 0,
+            "tokens.cache_read": 8,
+            "tokens.cache_creation": 2,
+        }
 
     def test_gzip_compressed(self, headers):
         original = (

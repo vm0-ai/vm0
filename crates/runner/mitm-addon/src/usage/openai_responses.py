@@ -29,6 +29,7 @@ from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 from .json_probe import probe_top_level_string_field
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import (
+    MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
@@ -76,6 +77,7 @@ _OPENAI_RESPONSES_USAGE_CATEGORIES = (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
     MODEL_USAGE_CATEGORY_CACHE_READ,
+    MODEL_USAGE_CATEGORY_CACHE_CREATION,
 )
 
 _RESPONSES_RESPONSE_SCALAR_FIELDS = {
@@ -84,6 +86,7 @@ _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("usage", "input_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "output_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=64),
+    ("usage", "input_tokens_details", "cache_write_tokens"): ScalarField("int", max_bytes=64),
 }
 
 _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS = {
@@ -172,21 +175,87 @@ def _has_usage_quantity(values: dict) -> bool:
     return False
 
 
-def _split_input_tokens(
+def _partition_input_tokens(
     input_tokens: object,
     cached_tokens: object,
-) -> tuple[int | None, int | None]:
-    # OpenAI's ``input_tokens`` includes cached tokens. The usage_event ledger
-    # prices uncached input and cached input as separate platform categories,
-    # so split the upstream total before reporting.
+    cache_write_tokens: object,
+) -> tuple[int | None, int | None, int | None]:
+    # OpenAI reports cache reads and writes as details of ``input_tokens``. The
+    # usage-event ledger prices all three categories independently, so partition
+    # the upstream total before reporting to avoid charging any token twice.
     if not _is_usage_quantity(input_tokens):
-        return None, None
+        return None, None, None
 
+    remaining_input_tokens = input_tokens
+    cached_input_tokens = None
     if _is_usage_quantity(cached_tokens):
-        cached_input_tokens = min(cached_tokens, input_tokens)
-        return max(input_tokens - cached_input_tokens, 0), cached_input_tokens
+        cached_input_tokens = min(cached_tokens, remaining_input_tokens)
+        remaining_input_tokens -= cached_input_tokens
 
-    return input_tokens, None
+    cache_creation_tokens = None
+    if _is_usage_quantity(cache_write_tokens):
+        cache_creation_tokens = min(cache_write_tokens, remaining_input_tokens)
+        remaining_input_tokens -= cache_creation_tokens
+
+    return remaining_input_tokens, cached_input_tokens, cache_creation_tokens
+
+
+def _normalized_input_snapshot(values: dict) -> tuple[int, int | None, int | None] | None:
+    ordinary_input_tokens = values.get(MODEL_USAGE_CATEGORY_INPUT)
+    if not _is_usage_quantity(ordinary_input_tokens):
+        return None
+
+    cached_tokens = values.get(MODEL_USAGE_CATEGORY_CACHE_READ)
+    if not _is_usage_quantity(cached_tokens):
+        cached_tokens = None
+
+    cache_write_tokens = values.get(MODEL_USAGE_CATEGORY_CACHE_CREATION)
+    if not _is_usage_quantity(cache_write_tokens):
+        cache_write_tokens = None
+
+    input_tokens = ordinary_input_tokens
+    if cached_tokens is not None:
+        input_tokens += cached_tokens
+    if cache_write_tokens is not None:
+        input_tokens += cache_write_tokens
+    return input_tokens, cached_tokens, cache_write_tokens
+
+
+def _merge_input_partition(target: dict, source: dict) -> None:
+    source_snapshot = _normalized_input_snapshot(source)
+    if source_snapshot is None:
+        return
+
+    merged_raw: dict = {}
+    for snapshot in (_normalized_input_snapshot(target), source_snapshot):
+        if snapshot is None:
+            continue
+        input_tokens, cached_tokens, cache_write_tokens = snapshot
+        _store_quantity(merged_raw, MODEL_USAGE_CATEGORY_INPUT, input_tokens)
+        _store_quantity(merged_raw, MODEL_USAGE_CATEGORY_CACHE_READ, cached_tokens)
+        _store_quantity(
+            merged_raw,
+            MODEL_USAGE_CATEGORY_CACHE_CREATION,
+            cache_write_tokens,
+        )
+
+    ordinary_input_tokens, cached_tokens, cache_write_tokens = _partition_input_tokens(
+        merged_raw.get(MODEL_USAGE_CATEGORY_INPUT),
+        merged_raw.get(MODEL_USAGE_CATEGORY_CACHE_READ),
+        merged_raw.get(MODEL_USAGE_CATEGORY_CACHE_CREATION),
+    )
+    if ordinary_input_tokens is None:
+        return
+
+    target[MODEL_USAGE_CATEGORY_INPUT] = ordinary_input_tokens
+    for category, value in (
+        (MODEL_USAGE_CATEGORY_CACHE_READ, cached_tokens),
+        (MODEL_USAGE_CATEGORY_CACHE_CREATION, cache_write_tokens),
+    ):
+        if value is None:
+            target.pop(category, None)
+        else:
+            target[category] = value
 
 
 def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] = ()) -> None:
@@ -198,9 +267,10 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
 
-    uncached_input_tokens, cached_tokens = _split_input_tokens(
+    uncached_input_tokens, cached_tokens, cache_creation_tokens = _partition_input_tokens(
         values.get((*prefix, "usage", "input_tokens")),
         values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
+        values.get((*prefix, "usage", "input_tokens_details", "cache_write_tokens")),
     )
     _store_quantity(
         target,
@@ -218,6 +288,11 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
         MODEL_USAGE_CATEGORY_CACHE_READ,
         cached_tokens,
     )
+    _store_quantity(
+        target,
+        MODEL_USAGE_CATEGORY_CACHE_CREATION,
+        cache_creation_tokens,
+    )
 
 
 def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
@@ -225,10 +300,11 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
 
     ``response_streaming.py`` uses this for terminal SSE events and
     single-frame WebSocket event JSON, where multiple events may describe the
-    same upstream response. Usage quantities use positive-wins semantics:
-    positive source values replace the accumulator value, while zero values are
-    only stored for categories the accumulator has not seen yet. This preserves
-    real token counts when a later empty event reports zeros.
+    same upstream response. Output usage uses positive-wins semantics directly.
+    Input usage is first reconstructed into total input, cache reads, and cache
+    writes; those raw components use positive-wins semantics before being
+    repartitioned atomically. This preserves the input partition when a later
+    event reports a zero or omits one cache detail.
 
     Metadata follows usage ownership. When the accumulator already has positive
     usage and the source has no positive usage quantity, source metadata is
@@ -239,8 +315,12 @@ def merge_openai_responses_usage_result(target: dict, source: dict) -> None:
 
     target_has_positive_quantity = _has_positive_usage_quantity(target)
     source_has_positive_quantity = _has_positive_usage_quantity(source)
-    for category in _OPENAI_RESPONSES_USAGE_CATEGORIES:
-        _store_quantity(target, category, source.get(category))
+    _merge_input_partition(target, source)
+    _store_quantity(
+        target,
+        MODEL_USAGE_CATEGORY_OUTPUT,
+        source.get(MODEL_USAGE_CATEGORY_OUTPUT),
+    )
 
     if target_has_positive_quantity and not source_has_positive_quantity:
         return
@@ -531,7 +611,8 @@ def extract_openai_responses_usage_from_json(
     parsing fails, the decoded body is empty, or no platform usage categories
     can be extracted. Otherwise returns a dict keyed by platform model usage
     categories such as ``MODEL_USAGE_CATEGORY_INPUT``,
-    ``MODEL_USAGE_CATEGORY_OUTPUT``, and ``MODEL_USAGE_CATEGORY_CACHE_READ``.
+    ``MODEL_USAGE_CATEGORY_OUTPUT``, ``MODEL_USAGE_CATEGORY_CACHE_READ``, and
+    ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
     """
 
     if headers:
@@ -556,9 +637,10 @@ def extract_openai_responses_usage_with_error_from_json(
     platform usage categories can be extracted from valid JSON. Otherwise
     returns a dict keyed by platform model usage categories such as
     ``MODEL_USAGE_CATEGORY_INPUT``, ``MODEL_USAGE_CATEGORY_OUTPUT``, and
-    ``MODEL_USAGE_CATEGORY_CACHE_READ``. OpenAI ``input_tokens`` include cached
-    tokens, so this extractor splits them into uncached input and cache-read
-    categories before reporting.
+    ``MODEL_USAGE_CATEGORY_CACHE_READ`` and ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
+    OpenAI ``input_tokens`` include cache reads and writes, so this extractor
+    partitions them into ordinary input, cache-read, and cache-creation categories
+    before reporting.
     """
 
     if headers:
