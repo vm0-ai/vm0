@@ -299,23 +299,25 @@ function artifactDraftAttachment(item: ArtifactItem): PersistedAttachment {
   };
 }
 
-export const startArtifactChat$ = command(({ get, set }, item: ArtifactItem) => {
-  const entry = set(ensureAgentDraft$, item.agentId);
-  const hasMatchingAttachment = get(entry.draft.attachments$).some(
-    (attachment) => {
-      return (
-        attachment.filename === item.filename &&
-        attachment.contentType === item.contentType &&
-        attachment.size === item.size
-      );
-    },
-  );
+export const startArtifactChat$ = command(
+  ({ get, set }, item: ArtifactItem) => {
+    const entry = set(ensureAgentDraft$, item.agentId);
+    const hasMatchingAttachment = get(entry.draft.attachments$).some(
+      (attachment) => {
+        return (
+          attachment.filename === item.filename &&
+          attachment.contentType === item.contentType &&
+          attachment.size === item.size
+        );
+      },
+    );
 
-  if (!hasMatchingAttachment) {
-    set(entry.draft.restoreAttachments$, [artifactDraftAttachment(item)]);
-  }
+    if (!hasMatchingAttachment) {
+      set(entry.draft.restoreAttachments$, [artifactDraftAttachment(item)]);
+    }
 
-  set(detachedNavigateTo$, ROUTES.agentChat, {
-    pathParams: { agentId: item.agentId },
-  });
-});
+    set(detachedNavigateTo$, ROUTES.agentChat, {
+      pathParams: { agentId: item.agentId },
+    });
+  },
+);
