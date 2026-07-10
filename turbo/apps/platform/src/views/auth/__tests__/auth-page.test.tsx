@@ -185,6 +185,20 @@ describe("app auth pages", () => {
     );
   });
 
+  it("keeps app-hosted auth pages scrollable inside the fixed app root", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    const layout = await screen.findByTestId("app-auth-layout");
+
+    expect(layout).toHaveClass("h-full");
+    expect(layout).toHaveClass("min-h-0");
+    expect(layout).toHaveClass("overflow-y-auto");
+    expect(layout).toHaveClass("overflow-x-hidden");
+    expect(layout).not.toHaveClass("overflow-hidden");
+  });
+
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);
