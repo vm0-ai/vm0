@@ -7494,7 +7494,10 @@ export function ZeroChatComposer({
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
 
   const handleKeyDown = (e: KeyboardEventLike) => {
-    if (window.matchMedia("(pointer: coarse)").matches) {
+    const isTouchOnlyDevice =
+      window.matchMedia("(pointer: coarse)").matches &&
+      !window.matchMedia("(any-pointer: fine)").matches;
+    if (isTouchOnlyDevice) {
       return;
     }
     const send = () => {

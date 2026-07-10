@@ -89,4 +89,20 @@ describe("zero send key", () => {
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     expect(touchTextarea.textContent ?? "").toContain("Touch device draft");
   });
+
+  it("sends with Enter on touch devices with a fine pointer", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)" || query === "(any-pointer: fine)";
+    });
+    const keyboardTextarea = await openComposer("enter");
+
+    await fill(keyboardTextarea, "Send from Magic Keyboard");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Send from Magic Keyboard")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
 });
