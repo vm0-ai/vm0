@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.256.1](https://github.com/vm0-ai/vm0/compare/api-v1.256.0...api-v1.256.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **api:** refresh api release marker comment ([#20858](https://github.com/vm0-ai/vm0/issues/20858)) ([4fbd6cd](https://github.com/vm0-ai/vm0/commit/4fbd6cd24590f716066fd5f3038693152e89edc0))
+
 ## [1.256.0](https://github.com/vm0-ai/vm0/compare/api-v1.255.0...api-v1.256.0) (2026-07-09)
 
 
