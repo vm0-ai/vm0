@@ -99,7 +99,7 @@ impl ApiClient {
 
     /// Wait for the Firecracker API socket to accept connections.
     ///
-    /// Uses inotify to wait for the socket file, then polls GET / until 200.
+    /// Uses inotify to wait for the socket file, then polls GET / until it succeeds.
     pub async fn wait_for_ready(&self, timeout: Duration) -> Result<(), ApiError> {
         let deadline = tokio::time::Instant::now() + timeout;
 
