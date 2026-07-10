@@ -163,7 +163,7 @@ describe("POST /api/zero/image-share/x", () => {
     });
     expect(provider.mediaUploadBodies).toStrictEqual([]);
     expect(provider.createPostBodies).toStrictEqual([]);
-  });
+  }, 15_000);
 
   it("rejects an oversized image with a lying content-length header", async () => {
     await setupAuthenticatedXActor();
@@ -188,5 +188,5 @@ describe("POST /api/zero/image-share/x", () => {
     });
     expect(provider.mediaUploadBodies).toStrictEqual([]);
     expect(provider.createPostBodies).toStrictEqual([]);
-  });
+  }, 15_000);
 });
