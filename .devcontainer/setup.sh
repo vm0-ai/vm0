@@ -46,7 +46,7 @@ fi
 
 sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 sudo service postgresql start 2>/dev/null || true
-if sudo -u postgres psql -d postgres -Atqc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" | grep -qx 1; then
+if sudo -u postgres psql -h /var/run/postgresql -d postgres -Atqc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" | grep -qx 1; then
   echo "✓ pgvector extension available to PostgreSQL"
 else
   echo "ERROR: pgvector extension is not available to PostgreSQL after installing $PGVECTOR_PACKAGE" >&2
