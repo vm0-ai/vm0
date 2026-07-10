@@ -27,6 +27,7 @@ from tests.auth_state_helpers import (
 from tests.connector_diagnostic_helpers import (
     record_connector_diagnostic_requestheaders_context,
     write_connector_diagnostic_capture_registry,
+    write_connector_diagnostic_catalog_cache,
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
@@ -310,6 +311,7 @@ class TestResponseHandler:
     def test_streamed_connector_401_before_request_gets_diagnostic(
         self, tmp_path, real_flow, mitm_ctx
     ):
+        write_connector_diagnostic_catalog_cache(tmp_path)
         reg_path = _write_registry(
             tmp_path,
             vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
@@ -750,6 +752,7 @@ class TestResponseHandler:
     async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
         self, tmp_path, real_flow, mitm_ctx
     ):
+        write_connector_diagnostic_catalog_cache(tmp_path)
         reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
         flow = real_flow(
             with_response=False,

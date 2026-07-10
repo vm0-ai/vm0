@@ -77,6 +77,20 @@ def clear_cache() -> None:
     _cache_state.reset()
 
 
+def configured_catalog_cache_path() -> str | None:
+    """Return the runner-configured builtin catalog cache path."""
+    options = getattr(ctx, "options", None)
+    cache_path = getattr(options, "vm0_builtin_firewall_catalog_cache_path", None)
+    if not isinstance(cache_path, str) or cache_path == "":
+        return None
+    return cache_path
+
+
+def load_configured_catalog_snapshot() -> BuiltinFirewallCatalogSnapshot:
+    """Load the current runner-configured builtin catalog snapshot."""
+    return load_catalog_snapshot(configured_catalog_cache_path())
+
+
 def _path_key(path: Path) -> str:
     return str(path.absolute())
 
@@ -102,7 +116,7 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
 
 
 def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
-    """Load one catalog cache state for a single registry reload."""
+    """Load one trusted catalog snapshot for a consumer pass."""
     if not cache_path:
         return BuiltinFirewallCatalogSnapshot(
             None,
