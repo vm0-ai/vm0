@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.262.1](https://github.com/vm0-ai/vm0/compare/api-v1.262.0...api-v1.262.1) (2026-07-10)
+
+
+### Refactoring
+
+* **api:** require runner redaction metadata ([#21003](https://github.com/vm0-ai/vm0/issues/21003)) ([7cb569c](https://github.com/vm0-ai/vm0/commit/7cb569c87cd97ba8f2414729dd77860ec988c4bb))
+
+
+### Performance Improvements
+
+* **api:** attribute database pool acquisition in query spans ([#21012](https://github.com/vm0-ai/vm0/issues/21012)) ([2ac08f9](https://github.com/vm0-ai/vm0/commit/2ac08f912e22428be8af5d994d2f34c72a3d27ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.1
+    * @vm0/connectors bumped to 1.154.3
+    * @vm0/core bumped to 8.424.4
+    * @vm0/db bumped to 1.109.3
+
 ## [1.262.0](https://github.com/vm0-ai/vm0/compare/api-v1.261.1...api-v1.262.0) (2026-07-10)
 
 

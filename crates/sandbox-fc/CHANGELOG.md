@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.106](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.105...sandbox-fc-v0.37.106) (2026-07-10)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** reduce fresh workspace image writes ([#21004](https://github.com/vm0-ai/vm0/issues/21004)) ([332527c](https://github.com/vm0-ai/vm0/commit/332527c3949074d0a25a154549e3a995925e9738))
+
 ## [0.37.105](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.104...sandbox-fc-v0.37.105) (2026-07-10)
 
 
