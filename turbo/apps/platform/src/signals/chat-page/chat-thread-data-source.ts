@@ -17,6 +17,7 @@ export interface ChatThreadRealtimeHandlers {
   >;
   onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
   onAutomationsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  onWorkflowQueueChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
   onSubscribed$?: Command<Promise<void> | void, [AbortSignal]>;
 }
 
