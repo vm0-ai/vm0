@@ -110,24 +110,24 @@ describe("zero generate website command", () => {
       "cli",
       "website",
       "--prompt",
-      "High contrast launch page",
+      "Kinetic onchain brand studio",
       "--template",
-      "black-slabs",
+      "dot-matrix",
       "--site-slug",
-      "black-slabs-demo",
+      "dot-matrix-demo",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "Selected template: template:black-slabs (Black Slabs)",
+      "Selected template: template:dot-matrix (Dot Matrix)",
     );
     expect(stdout).toContain(
-      "Selected template package: zero resource pull template:black-slabs --dir ./generated/resources",
+      "Selected template package: zero resource pull template:dot-matrix --dir ./generated/resources",
     );
-    expect(stdout).toContain('"id": "template:black-slabs"');
+    expect(stdout).toContain('"id": "template:dot-matrix"');
     expect(stdout).toContain('"type": "tar.gz"');
     expect(stdout).toContain(
-      '"sha256": "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3"',
+      '"sha256": "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2"',
     );
   });
 
