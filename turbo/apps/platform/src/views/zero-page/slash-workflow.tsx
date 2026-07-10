@@ -25,6 +25,10 @@ export function findActiveSlashWorkflowRange(
   value: string,
   caretIndex: number,
 ): SlashWorkflowRange | null {
+  if (caretIndex < 0 || caretIndex > value.length) {
+    return null;
+  }
+
   const beforeCaret = value.slice(0, caretIndex);
   const match = /(?:^|\s)\/([a-z0-9-]*)$/i.exec(beforeCaret);
   if (!match) {
@@ -129,7 +133,7 @@ export function SlashWorkflowMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0"
+      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
       data-testid="slash-workflow-menu"
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">

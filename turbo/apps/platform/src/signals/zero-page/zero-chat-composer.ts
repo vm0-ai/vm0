@@ -54,6 +54,16 @@ export const setSlashWorkflowCaretIndex$ = command(
   },
 );
 
+const internalSlashWorkflowEditorFocused$ = state(false);
+export const slashWorkflowEditorFocused$ = computed((get) => {
+  return get(internalSlashWorkflowEditorFocused$);
+});
+export const setSlashWorkflowEditorFocused$ = command(
+  ({ set }, focused: boolean) => {
+    set(internalSlashWorkflowEditorFocused$, focused);
+  },
+);
+
 const internalSelectedSlashWorkflowIndex$ = state(0);
 export const selectedSlashWorkflowIndex$ = computed((get) => {
   return get(internalSelectedSlashWorkflowIndex$);
