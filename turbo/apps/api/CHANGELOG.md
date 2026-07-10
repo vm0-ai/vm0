@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.258.0](https://github.com/vm0-ai/vm0/compare/api-v1.257.0...api-v1.258.0) (2026-07-10)
+
+
+### Features
+
+* add workflow queue inspection and control api with per-thread realtime signal ([#20895](https://github.com/vm0-ai/vm0/issues/20895)) ([6c02526](https://github.com/vm0-ai/vm0/commit/6c025261b754d16d25c1a88f5e5e8f37bb9a6dc7)), closes [#20876](https://github.com/vm0-ai/vm0/issues/20876)
+* curate default models for new organizations ([#20880](https://github.com/vm0-ai/vm0/issues/20880)) ([c10661e](https://github.com/vm0-ai/vm0/commit/c10661e0a8541f9b1c2e7de8ef7fe46b2d59d4d6))
+* migrate member model preferences to workspace default when org removes a model ([#20884](https://github.com/vm0-ai/vm0/issues/20884)) ([fb3cf31](https://github.com/vm0-ai/vm0/commit/fb3cf31d900504b4f0b592175463d6a157d30ee8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.181.0
+    * @vm0/core bumped to 8.422.1
+    * @vm0/db bumped to 1.108.2
+
 ## [1.257.0](https://github.com/vm0-ai/vm0/compare/api-v1.256.2...api-v1.257.0) (2026-07-10)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.589.1](https://github.com/vm0-ai/vm0/compare/app-v0.589.0...app-v0.589.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* align google slides upload with drive connection ([#20890](https://github.com/vm0-ai/vm0/issues/20890)) ([4023e2c](https://github.com/vm0-ai/vm0/commit/4023e2c3d7b1541a53f72e1bae76cd1b5f757fda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.181.0
+    * @vm0/core bumped to 8.422.1
+
 ## [0.589.0](https://github.com/vm0-ai/vm0/compare/app-v0.588.1...app-v0.589.0) (2026-07-10)
 
 

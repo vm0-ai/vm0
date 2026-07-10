@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.0...guest-agent-v0.50.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** reduce gpt-5.6 sol reasoning effort to xhigh ([#20887](https://github.com/vm0-ai/vm0/issues/20887)) ([005812d](https://github.com/vm0-ai/vm0/commit/005812dff55e96145cf46d43e46a2af572d832bd))
+
 ## [0.50.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.6...guest-agent-v0.50.0) (2026-07-10)
 
 
