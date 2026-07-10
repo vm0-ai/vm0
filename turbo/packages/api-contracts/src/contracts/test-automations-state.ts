@@ -44,6 +44,11 @@ export const testAutomationsStateActionBodySchema = z.discriminatedUnion(
     z.object({
       action: z.literal("read-fake-kms-state"),
     }),
+    z.object({
+      action: z.literal("mutate-runner-job-secret-value-environment-keys"),
+      run_id: z.uuid(),
+      mode: z.enum(["remove", "invalid"]),
+    }),
   ],
 );
 

@@ -16,7 +16,6 @@ import {
 import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
@@ -366,24 +365,10 @@ async function promoteQueuedCandidate(
 }
 
 async function loadQueuedRunnerJobPayload(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly encryptedParams: string | null;
-  },
+  encryptedParams: string | null,
   signal: AbortSignal,
 ): Promise<QueuedRunnerJobPayload | null> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  signal.throwIfAborted();
-  const payload = await decryptQueuedRunnerJobPayload(
-    args.encryptedParams,
-    featureSwitchContext,
-  );
+  const payload = await decryptQueuedRunnerJobPayload(encryptedParams);
   signal.throwIfAborted();
   return payload;
 }
@@ -511,15 +496,7 @@ export const drainOrgQueue$ = command(
     for (const row of queueRows) {
       const payload =
         row.runStatus === "queued"
-          ? await loadQueuedRunnerJobPayload(
-              writeDb,
-              {
-                orgId: args.orgId,
-                userId: row.userId,
-                encryptedParams: row.encryptedParams,
-              },
-              signal,
-            )
+          ? await loadQueuedRunnerJobPayload(row.encryptedParams, signal)
           : null;
 
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {

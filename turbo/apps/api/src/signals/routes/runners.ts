@@ -21,7 +21,6 @@ import {
   loadRunnerRuntimeFirewalls,
 } from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { blobs } from "@vm0/db/schema/blob";
@@ -58,7 +57,6 @@ import {
   networkPolicyRefreshConnectorRefs,
   resolveActiveNetworkPolicyRefreshes,
 } from "../services/zero-user-permission-grants.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   type CompressedSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
@@ -128,11 +126,11 @@ function isResumeSessionHistoryLoadError(
 }
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
+type SecretValueFallbackReason = "missing_field" | "invalid_keys";
 type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
-  | "claim_route_feature_switch_context"
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
   | "claim_route_transition_running"
@@ -146,6 +144,7 @@ interface ClaimRouteTimingRecord {
   readonly spanKind: ClaimRouteTimingSpanKind;
   readonly durationMs: number;
   readonly timestamp: string;
+  readonly fallbackReason?: SecretValueFallbackReason;
 }
 
 class ClaimRouteTimingCollector {
@@ -173,6 +172,23 @@ class ClaimRouteTimingCollector {
     const startedAt = now();
     return operation().finally(() => {
       this.recordElapsed(actionType, spanKind, startedAt);
+    });
+  }
+
+  measureSecretMaterialization<T>(
+    fallbackReason: SecretValueFallbackReason,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = now();
+    return operation().finally(() => {
+      const finishedAt = now();
+      this.records.push({
+        actionType: "claim_route_secret_materialization",
+        spanKind: "top_level",
+        durationMs: Math.max(0, finishedAt - startedAt),
+        timestamp: new Date(finishedAt).toISOString(),
+        fallbackReason,
+      });
     });
   }
 
@@ -209,6 +225,9 @@ class ClaimRouteTimingCollector {
           dimensions: {
             ...dimensions,
             span_kind: record.spanKind,
+            ...(record.fallbackReason
+              ? { fallback_reason: record.fallbackReason }
+              : {}),
           },
         };
       }),
@@ -912,24 +931,72 @@ async function failPoisonQueuedJob(
   });
 }
 
-async function secretValuesForRunner(
+type PreparedSecretValuesResult =
+  | {
+      readonly status: "resolved";
+      readonly secretValues: string[] | null;
+    }
+  | {
+      readonly status: "fallback";
+      readonly reason: SecretValueFallbackReason;
+    };
+
+function preparedSecretValuesForRunner(
   storedContext: StoredExecutionContext,
-  featureSwitchContext: FeatureSwitchContext,
-): Promise<string[] | null> {
-  const secretsMap = await decryptPersistentSecretsMap(
-    storedContext.encryptedSecrets,
-    featureSwitchContext,
-  );
-  if (!secretsMap) {
-    return null;
+): PreparedSecretValuesResult {
+  const keys = storedContext.secretValueEnvironmentKeys;
+  if (keys === undefined) {
+    return { status: "fallback", reason: "missing_field" };
+  }
+  if (keys === null) {
+    return { status: "resolved", secretValues: null };
   }
 
-  const envValues = storedContext.environment
-    ? new Set(Object.values(storedContext.environment))
-    : new Set<string>();
-  return Object.values(secretsMap).filter((value) => {
-    return envValues.has(value);
-  });
+  const secretValues: string[] = [];
+  for (const key of keys) {
+    if (
+      !storedContext.environment ||
+      !Object.hasOwn(storedContext.environment, key)
+    ) {
+      return { status: "fallback", reason: "invalid_keys" };
+    }
+    const value = storedContext.environment[key];
+    if (typeof value !== "string") {
+      return { status: "fallback", reason: "invalid_keys" };
+    }
+    secretValues.push(value);
+  }
+  return { status: "resolved", secretValues };
+}
+
+async function secretValuesForRunner(
+  storedContext: StoredExecutionContext,
+  timing: ClaimRouteTimingCollector,
+): Promise<string[] | null> {
+  const prepared = preparedSecretValuesForRunner(storedContext);
+  if (prepared.status === "resolved") {
+    return prepared.secretValues;
+  }
+
+  return await timing.measureSecretMaterialization(
+    prepared.reason,
+    async () => {
+      const secretsMap = await decryptPersistentSecretsMap(
+        storedContext.encryptedSecrets,
+        {},
+      );
+      if (!secretsMap) {
+        return null;
+      }
+
+      const envValues = storedContext.environment
+        ? new Set(Object.values(storedContext.environment))
+        : new Set<string>();
+      return Object.values(secretsMap).filter((value) => {
+        return envValues.has(value);
+      });
+    },
+  );
 }
 
 async function agentIdForRun(
@@ -1306,24 +1373,9 @@ async function buildClaimResponseBody(args: {
     objectKey: string,
   ) => Promise<string>;
 }): Promise<ExecutionContext> {
-  const featureSwitchContext = await args.timing.measure(
-    "claim_route_feature_switch_context",
-    "top_level",
-    () => {
-      return loadUserFeatureSwitchContext(
-        args.db,
-        args.run.orgId,
-        args.run.userId,
-      );
-    },
-  );
-  args.signal.throwIfAborted();
-  const secretValues = await args.timing.measure(
-    "claim_route_secret_materialization",
-    "top_level",
-    () => {
-      return secretValuesForRunner(args.storedContext, featureSwitchContext);
-    },
+  const secretValues = await secretValuesForRunner(
+    args.storedContext,
+    args.timing,
   );
   args.signal.throwIfAborted();
   return await args.timing.measure(
@@ -1357,8 +1409,12 @@ async function buildClaimResponseBody(args: {
         storedContext: args.storedContext,
       });
       args.signal.throwIfAborted();
+      const {
+        secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
+        ...runnerStoredContext
+      } = args.storedContext;
       return {
-        ...args.storedContext,
+        ...runnerStoredContext,
         runId: args.run.id,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
