@@ -658,6 +658,16 @@ function startArtifactDownloadWithCleanup(params: {
   );
 }
 
+function shouldShowGoogleSlidesUpload(
+  artifactKind: ChatThreadArtifactFile["artifactKind"] | undefined,
+  features: Record<string, boolean | undefined>,
+): boolean {
+  return (
+    artifactKind === "presentation-html" &&
+    (features[FeatureSwitchKey.PresentationGoogleSlidesUpload] ?? false)
+  );
+}
+
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
@@ -680,9 +690,10 @@ export function ArtifactDownloadMenu({
   const open = openKey === menuKey;
   const downloadPending = pendingKey === menuKey;
   const showPresentationPptxDownload = artifactKind === "presentation-html";
-  const showGoogleSlidesUpload =
-    showPresentationPptxDownload &&
-    (features[FeatureSwitchKey.PresentationGoogleSlidesUpload] ?? false);
+  const showGoogleSlidesUpload = shouldShowGoogleSlidesUpload(
+    artifactKind,
+    features,
+  );
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
     filename,
