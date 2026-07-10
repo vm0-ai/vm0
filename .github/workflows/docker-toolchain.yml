@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'docker/toolchain/**'
+      - '.devcontainer/link-agent-skills.sh'
+      - '.devcontainer/setup.sh'
+      - '.devcontainer/test.sh'
       - '.github/workflows/docker-toolchain.yml'
 
 concurrency:
@@ -14,6 +17,15 @@ permissions:
   contents: read
 
 jobs:
+  devcontainer-scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Test devcontainer scripts
+        run: bash .devcontainer/test.sh
+
   toolchain:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"

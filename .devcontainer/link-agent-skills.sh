@@ -22,7 +22,7 @@ elif [ -e "$AGENT_SKILLS_LINK" ]; then
     exit 0
   fi
 
-  if find "$AGENT_SKILLS_LINK" -mindepth 1 -maxdepth 1 ! -type l | grep -q .; then
+  if find "$AGENT_SKILLS_LINK" -mindepth 1 -maxdepth 1 ! -type l -print -quit | grep -q .; then
     echo "Skipping .agents/skills link because it contains non-symlink entries"
     exit 0
   fi
