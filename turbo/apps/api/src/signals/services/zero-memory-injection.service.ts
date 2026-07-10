@@ -21,6 +21,7 @@ interface MemoryScope {
 
 interface ZeroMemoryInjectionParams extends MemoryScope {
   readonly prompt: string;
+  readonly retrievalQuery?: string;
   readonly timing?: ZeroMemoryTimingObserver;
 }
 
@@ -52,6 +53,15 @@ type DocumentEvidence = Extract<
   MemorySearchResult,
   { readonly kind: "document_chunk" }
 >;
+
+export function zeroMemoryRuntimeRetrievalQuery(args: {
+  readonly prompt: string;
+  readonly retrievalQuery?: string;
+}): string {
+  return args.retrievalQuery === undefined
+    ? args.prompt.trim()
+    : args.retrievalQuery.trim();
+}
 
 function kindLabel(kind: MemoryKind): string {
   switch (kind) {
@@ -204,11 +214,30 @@ export async function buildZeroMemoryRuntimeInjection(
   params: ZeroMemoryInjectionParams,
 ): Promise<MemoryInjectionPreviewResponse> {
   const prompt = params.prompt.trim();
+  const retrievalQuery = zeroMemoryRuntimeRetrievalQuery(params);
+  if (retrievalQuery.length === 0) {
+    return {
+      prompt,
+      appendSystemPrompt: "",
+      profile: { static: [], dynamic: [] },
+      queryMemories: [],
+      documentEvidence: [],
+      stats: {
+        injectedCount: 0,
+        omittedCount: 0,
+        characterCount: 0,
+        tokenCount: 0,
+        profileTokenCount: 0,
+        memoryTokenCount: 0,
+        documentTokenCount: 0,
+      },
+    };
+  }
   const [profile, search] = await Promise.all([
     getZeroMemoryProfile(db, {
       orgId: params.orgId,
       userId: params.userId,
-      query: prompt,
+      query: retrievalQuery,
       staticKinds: STATIC_PROFILE_KINDS,
       dynamicKinds: DYNAMIC_PROFILE_KINDS,
       searchKinds: QUERY_MEMORY_KINDS,
@@ -221,7 +250,7 @@ export async function buildZeroMemoryRuntimeInjection(
     searchZeroMemory(db, {
       orgId: params.orgId,
       userId: params.userId,
-      q: prompt,
+      q: retrievalQuery,
       mode: "documents",
       limit: DEFAULT_QUERY_LIMIT,
     }),

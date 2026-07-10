@@ -230,6 +230,7 @@ const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
 ] as const;
 const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
   "memory_runtime_prompt_length_bucket",
+  "memory_runtime_search_query_length_bucket",
   "memory_profile_static_result_count_bucket",
   "memory_profile_dynamic_result_count_bucket",
   "memory_profile_search_result_count_bucket",
@@ -1132,8 +1133,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         memory_runtime_injection_enabled: "true",
         memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "1_256",
         zero_run_origin: "zero_run",
         trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_lexical_candidate_count_bucket: "1",
+        memory_profile_lexical_query_eligible: "true",
       }),
     );
     expect(
@@ -1166,6 +1179,175 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       seeded.memoryId,
       seededMemoryText,
     ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("skips runtime memory lexical search for long noisy zero run prompts", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime long prompt test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const prompt = [
+      "# Current context",
+      "You are autonomously continuing a persistent goal on this web chat thread.",
+      "Everything you output is shown to the user in this thread.",
+      "# Active thread goal",
+      "Investigate the long runtime memory query shape for issue #20818 and keep working until the API path is fast.",
+      "# How to operate",
+      "Make concrete progress, persist progress externally, and continue without asking the user to wait.",
+    ].join("\n");
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "257_1024",
+        memory_runtime_search_query_length_bucket: "257_1024",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_lexical_candidate_count_bucket: "0",
+        memory_profile_lexical_query_eligible: "false",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_semantic_embedding_result: "empty",
+      }),
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+    ]);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      agentId,
+      actor.userId,
+      actor.orgId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("keeps short Unicode runtime memory queries eligible for lexical search", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime Unicode prompt test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const prompt = "\u{10428}".repeat(70);
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "1_256",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_lexical_candidate_count_bucket: "0",
+        memory_profile_lexical_query_eligible: "true",
+      }),
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("reports empty runtime memory search queries after trimming run prompts", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime empty query test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "   ",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
@@ -1209,6 +1391,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         memory_runtime_injection_enabled: "false",
         memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "1_256",
       }),
     );
     expectApiDispatchTimingEventsNotToLeak(
