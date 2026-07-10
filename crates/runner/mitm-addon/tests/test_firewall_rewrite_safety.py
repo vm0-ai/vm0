@@ -347,8 +347,7 @@ class TestAuthBaseUrlRewriteSafety:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
-    async def test_no_rewrite_when_resolved_base_empty_string(self, real_flow, mitm_ctx, tmp_path):
-        """Empty string base from server uses standard auth injection."""
+    async def test_empty_resolved_base_fails_closed(self, real_flow, mitm_ctx, tmp_path):
         flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
             real_flow,
             tmp_path,
@@ -368,12 +367,16 @@ class TestAuthBaseUrlRewriteSafety:
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
         updated_url = urlparse(flow.request.url)
         assert updated_url.scheme == original_url.scheme
         assert updated_url.netloc == original_url.netloc
         assert updated_url.path == original_url.path
         assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
-        assert flow.request.headers["Authorization"] == "Bearer real-token"
-        assert flow.request.query["api_key"] == "resolved-key"
-        assert flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] == ["TOKEN", "API_KEY"]
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert json.loads(flow.response.content)["error"] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata

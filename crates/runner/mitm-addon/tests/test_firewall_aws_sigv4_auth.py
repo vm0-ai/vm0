@@ -492,7 +492,6 @@ async def test_header_sigv4_with_invalid_resolved_access_key_fails_closed(
         mitm_ctx,
         auth_response=aws_auth_response(
             access_key_id="AKID/EXAMPLE",
-            include_session_token=False,
         ),
     )
 

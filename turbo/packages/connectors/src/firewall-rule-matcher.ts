@@ -442,6 +442,7 @@ function isValidAuthConfig(auth: unknown, serviceName: string): boolean {
   if (auth.base !== undefined) {
     if (typeof auth.base !== "string") return false;
     validateAuthBaseUrl(auth.base, serviceName);
+    if (auth.awsSigv4 !== undefined) return false;
   }
   return true;
 }

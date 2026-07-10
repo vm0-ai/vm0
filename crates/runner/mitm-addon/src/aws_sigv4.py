@@ -7,9 +7,8 @@ placeholder SigV4 metadata in either the ``Authorization`` header or presigned
 ``X-Amz-*`` query parameters.
 
 Unsupported, ambiguous, or malformed requests fail closed by raising
-``AwsSigV4SigningError``. The same contract is used by normal firewall auth
-injection in ``auth._sign_flow_request_with_aws_sigv4`` and by ``auth.base``
-forwarding in ``auth._sign_forwarded_request_with_aws_sigv4``.
+``AwsSigV4SigningError``. The contract is used by normal firewall auth
+injection in ``auth._sign_flow_request_with_aws_sigv4``.
 """
 
 from __future__ import annotations

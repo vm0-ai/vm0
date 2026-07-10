@@ -189,7 +189,7 @@ class TestAuthQueryInjection:
         assert "authorization" not in forwarded_header_names
         assert "cookie" not in forwarded_header_names
         assert "x-api-key" not in forwarded_header_names
-        assert ("X-Keep", "client") in req_headers
+        assert "x-keep" not in forwarded_header_names
         assert "api_key" not in flow.request.query
         assert flow.request.query["client"] == "visible"
         assert flow.request.headers["Authorization"] == "Bearer agent"

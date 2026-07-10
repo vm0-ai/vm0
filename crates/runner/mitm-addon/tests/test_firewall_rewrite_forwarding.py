@@ -5,32 +5,14 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 import auth
 import auth_base_forwarder as forwarder
 import flow_metadata_keys as metadata_keys
-from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
-from tests.aws_sigv4_helpers import (
-    DEFAULT_SIGV4_TIMESTAMP,
-    RESOLVED_AWS_SESSION_TOKEN,
-    STS_FORM_BODY,
-    aws_sigv4_authorization,
-    aws_sigv4_presigned_query_path,
-    resolved_aws_sigv4_credentials,
-)
 from tests.firewall_rewrite_helpers import make_forwarding_rewrite_inputs
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
-
-
-def _templated_builtin_auth_header_names() -> list[str]:
-    names: set[str] = set()
-    for firewall in BUILTIN_FIREWALLS.values():
-        for api in firewall.get("apis", []):
-            auth_headers = api.get("auth", {}).get("headers", {})
-            for name, value in auth_headers.items():
-                if isinstance(name, str) and isinstance(value, str) and "${{" in value:
-                    names.add(name)
-    return sorted(names, key=str.lower)
 
 
 def _request_line_parts(upstream) -> tuple[str, str, str]:
@@ -61,8 +43,13 @@ class TestAuthBaseUrlRewriteForwarding:
                 ("X-Repeat", "one"),
                 ("X-Repeat", "two"),
                 ("X-Keep", "client"),
+                ("cOnTeNt-TyPe", "application/json; charset=utf-8"),
             ),
             auth_overrides={
+                "headers": {
+                    "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                    "X-Custom": "${{ secrets.CUSTOM }}",
+                },
                 "query": {"api_key": "${{ secrets.API_KEY }}"},
             },
             token_overrides={
@@ -116,10 +103,14 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.socket.request_header_values("Host") == ["real.example.com"]
         assert upstream.socket.request_header_values("Authorization") == ["Bearer real-token"]
         assert upstream.socket.request_header_values("X-Custom") == ["injected-value"]
-        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
-        assert upstream.socket.request_header_values("X-Keep") == ["client"]
+        assert upstream.socket.request_header_values("X-Repeat") == []
+        assert upstream.socket.request_header_values("X-Keep") == []
         assert upstream.socket.request_header_values("Cookie") == []
         assert upstream.socket.request_header_values("X-Api-Key") == []
+        assert upstream.socket.request_header_values("Content-Type") == [
+            "application/json; charset=utf-8"
+        ]
+        assert "cOnTeNt-TyPe: application/json; charset=utf-8" in upstream.socket.request_lines()
         assert upstream.socket.request_header_values("Content-Length") == [str(len(request_body))]
         assert upstream.socket.request_text().endswith("\r\n\r\n" + request_body.decode("ascii"))
 
@@ -165,6 +156,13 @@ class TestAuthBaseUrlRewriteForwarding:
                 ("Authorization", "Bearer agent"),
                 ("X-Api-Key", "agent-api-key"),
             ),
+            auth_overrides={
+                "headers": {
+                    "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                    "X-Api-Key": "${{ secrets.API_KEY }}",
+                    "X-Custom": "${{ secrets.CUSTOM }}",
+                }
+            },
         )
         token_meta["headers"] = {
             "Authorization": "Bearer real-token",
@@ -185,15 +183,18 @@ class TestAuthBaseUrlRewriteForwarding:
         assert flow.request.headers["X-Api-Key"] == "agent-api-key"
         assert "X-Custom" not in flow.request.headers
 
-    async def test_url_rewrite_strips_client_credentials_without_resolved_headers(
+    async def test_url_rewrite_drops_non_representation_client_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
-        """auth.base forwarding must not leak placeholder-scoped credentials."""
+        """auth.base forwarding does not inherit arbitrary client headers."""
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
             request_headers=headers(
                 ("Host", "firewall-placeholder.vm3.ai"),
+                ("Connection", "Content-Type, Content-Encoding"),
+                ("Content-Type", "application/json"),
+                ("Content-Encoding", "gzip"),
                 ("Authorization", "Bearer agent"),
                 ("authorization", "Bearer lower-agent"),
                 ("AUTHORIZATION", "Bearer upper-agent"),
@@ -201,6 +202,14 @@ class TestAuthBaseUrlRewriteForwarding:
                 ("X-Api-Key", "agent-api-key"),
                 ("X-Auth-Token", "agent-auth-token"),
                 ("Private-Token", "agent-private-token"),
+                ("Accept", "application/json"),
+                ("User-Agent", "agent-client"),
+                ("Reap-Version", "2025-02-14"),
+                ("X-Api-Version", "2025-11-01"),
+                (
+                    "X-Snowflake-Authorization-Token-Type",
+                    "PROGRAMMATIC_ACCESS_TOKEN",
+                ),
                 ("X-Repeat", "one"),
                 ("X-Repeat", "two"),
                 ("X-Keep", "client"),
@@ -214,123 +223,58 @@ class TestAuthBaseUrlRewriteForwarding:
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
+        assert upstream.socket.request_header_values("Connection") == []
         assert upstream.socket.request_header_values("Authorization") == []
         assert upstream.socket.request_header_values("Cookie") == []
         assert upstream.socket.request_header_values("X-Api-Key") == []
         assert upstream.socket.request_header_values("X-Auth-Token") == []
         assert upstream.socket.request_header_values("Private-Token") == []
-        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
-        assert upstream.socket.request_header_values("X-Keep") == ["client"]
+        assert upstream.socket.request_header_values("Accept") == []
+        assert upstream.socket.request_header_values("User-Agent") == []
+        assert upstream.socket.request_header_values("Reap-Version") == []
+        assert upstream.socket.request_header_values("X-Api-Version") == []
+        assert upstream.socket.request_header_values("X-Snowflake-Authorization-Token-Type") == []
+        assert upstream.socket.request_header_values("X-Repeat") == []
+        assert upstream.socket.request_header_values("X-Keep") == []
+        assert upstream.socket.request_header_values("Content-Type") == []
+        assert upstream.socket.request_header_values("Content-Encoding") == []
         request_headers = list(flow.request.headers.items(multi=True))
         assert ("Authorization", "Bearer agent") in request_headers
         assert ("authorization", "Bearer lower-agent") in request_headers
         assert ("AUTHORIZATION", "Bearer upper-agent") in request_headers
         assert flow.request.headers["Cookie"] == "session=agent"
 
-    async def test_url_rewrite_strips_templated_builtin_auth_headers_without_resolved_headers(
+    async def test_url_rewrite_preserves_coded_body_metadata_and_auth_override(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
-        """Client-provided templated builtin auth headers must not cross auth.base rewrites."""
-        auth_header_names = _templated_builtin_auth_header_names()
-        assert auth_header_names
+        """Representation metadata stays ordered and trusted auth can override it."""
+        request_body = b"\x1f\x8b\x08\x00coded-body"
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
+            method="POST",
+            request_body=request_body,
             request_headers=headers(
                 ("Host", "firewall-placeholder.vm3.ai"),
-                *[(name, f"client-{index}") for index, name in enumerate(auth_header_names)],
-                ("X-Keep", "client"),
-            ),
-        )
-        token_meta["headers"] = {}
-        with (
-            fake_forwarder_upstream() as upstream,
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-
-        for name in auth_header_names:
-            assert upstream.socket.request_header_values(name) == []
-        assert upstream.socket.request_header_values("X-Keep") == ["client"]
-
-    async def test_url_rewrite_strips_current_auth_headers_without_resolved_headers(
-        self, headers, real_flow, mitm_ctx, tmp_path
-    ):
-        """Client-provided current auth headers must not cross auth.base rewrites."""
-        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            request_headers=headers(
-                ("Host", "firewall-placeholder.vm3.ai"),
-                ("X-Tenant", "client-tenant"),
-                ("X-Keep", "client"),
-            ),
-            auth_overrides={
-                "headers": {
-                    "X-Tenant": "${{ vars.TENANT }}",
-                },
-            },
-        )
-        token_meta["headers"] = {}
-        with (
-            fake_forwarder_upstream() as upstream,
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-
-        assert upstream.socket.request_header_values("X-Tenant") == []
-        assert upstream.socket.request_header_values("X-Keep") == ["client"]
-
-    async def test_url_rewrite_preserves_client_static_metadata_headers(
-        self, headers, real_flow, mitm_ctx, tmp_path
-    ):
-        """Client-provided non-secret metadata headers should still reach auth.base targets."""
-        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            request_headers=headers(
-                ("Host", "firewall-placeholder.vm3.ai"),
-                ("Reap-Version", "2025-02-14"),
-                ("X-Api-Version", "2025-11-01"),
-                ("X-Snowflake-Authorization-Token-Type", "PROGRAMMATIC_ACCESS_TOKEN"),
-            ),
-        )
-        token_meta["headers"] = {}
-        with (
-            fake_forwarder_upstream() as upstream,
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            mitm_ctx(),
-        ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
-
-        assert upstream.socket.request_header_values("Reap-Version") == ["2025-02-14"]
-        assert upstream.socket.request_header_values("X-Api-Version") == ["2025-11-01"]
-        assert upstream.socket.request_header_values("X-Snowflake-Authorization-Token-Type") == [
-            "PROGRAMMATIC_ACCESS_TOKEN"
-        ]
-
-    async def test_url_rewrite_preserves_duplicate_headers_and_auth_override(
-        self, headers, real_flow, mitm_ctx, tmp_path
-    ):
-        """auth.base forwarding keeps repeated headers unless auth overrides that name."""
-        flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
-            real_flow,
-            tmp_path,
-            request_headers=headers(
-                ("Host", "firewall-placeholder.vm3.ai"),
-                ("Connection", "Authorization, X-Remove"),
+                ("Connection", "X-Remove"),
                 ("X-Remove", "drop"),
                 ("X-Repeat", "one"),
                 ("X-Repeat", "two"),
-                ("Authorization", "Bearer agent"),
-                ("authorization", "Bearer lower-agent"),
-                ("AUTHORIZATION", "Bearer upper-agent"),
-                ("Authorization", "Bearer stale"),
+                ("Content-Encoding", "gzip"),
+                ("content-encoding", "br"),
+                ("Content-Type", "application/client"),
             ),
+            auth_overrides={
+                "headers": {
+                    "content-type": "${{ vars.CONTENT_TYPE }}",
+                    "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                }
+            },
         )
-        token_meta["headers"] = {"Authorization": "Bearer real"}
+        token_meta["headers"] = {
+            "content-type": "application/provider",
+            "Authorization": "Bearer real",
+        }
         with (
             fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -340,13 +284,20 @@ class TestAuthBaseUrlRewriteForwarding:
 
         assert upstream.socket.request_header_values("Connection") == []
         assert upstream.socket.request_header_values("X-Remove") == []
-        assert upstream.socket.request_header_values("X-Repeat") == ["one", "two"]
+        assert upstream.socket.request_header_values("X-Repeat") == []
+        assert upstream.socket.request_header_values("Content-Encoding") == ["gzip", "br"]
+        assert upstream.socket.request_header_values("Content-Type") == ["application/provider"]
         assert upstream.socket.request_header_values("Authorization") == ["Bearer real"]
+        request_lines = upstream.socket.request_lines()
+        assert request_lines.index("Content-Encoding: gzip") < request_lines.index(
+            "content-encoding: br"
+        )
+        assert bytes(upstream.socket.sent).endswith(b"\r\n\r\n" + request_body)
 
     async def test_url_rewrite_filters_client_and_injected_unsafe_headers(
         self, headers, real_flow, mitm_ctx, tmp_path
     ):
-        """Unsafe client and injected headers are stripped without suppressing auth."""
+        """Client and resolved transport-owned headers are stripped."""
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
@@ -365,6 +316,26 @@ class TestAuthBaseUrlRewriteForwarding:
                 ("Authorization", "Bearer agent"),
                 ("X-Keep", "client"),
             ),
+            auth_overrides={
+                "headers": dict.fromkeys(
+                    (
+                        "Connection",
+                        "Keep-Alive",
+                        "Host",
+                        "Content-Length",
+                        "Transfer-Encoding",
+                        "Proxy-Authenticate",
+                        "Proxy-Authorization",
+                        "Proxy-Connection",
+                        "TE",
+                        "Trailer",
+                        "Upgrade",
+                        "Authorization",
+                        "X-Injected",
+                    ),
+                    "${{ secrets.VALUE }}",
+                )
+            },
         )
         token_meta["headers"] = {
             "Connection": "Authorization, X-Injected",
@@ -399,9 +370,9 @@ class TestAuthBaseUrlRewriteForwarding:
         assert upstream.socket.request_header_values("Trailer") == []
         assert upstream.socket.request_header_values("Transfer-Encoding") == []
         assert upstream.socket.request_header_values("Upgrade") == []
-        assert upstream.socket.request_header_values("Authorization") == ["Bearer real"]
-        assert upstream.socket.request_header_values("X-Injected") == ["trusted"]
-        assert upstream.socket.request_header_values("X-Keep") == ["client"]
+        assert upstream.socket.request_header_values("Authorization") == []
+        assert upstream.socket.request_header_values("X-Injected") == []
+        assert upstream.socket.request_header_values("X-Keep") == []
 
     async def test_forward_request_rejects_malformed_injected_header(
         self, real_flow, mitm_ctx, tmp_path
@@ -411,6 +382,12 @@ class TestAuthBaseUrlRewriteForwarding:
             real_flow,
             tmp_path,
             resolved_base="https://discord.com/api/webhooks/123/abc",
+            auth_overrides={
+                "headers": {
+                    "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                    "X-Test": "${{ secrets.TEST }}",
+                }
+            },
         )
         token_meta["headers"] = {
             "Authorization": "Bearer real-token",
@@ -433,43 +410,39 @@ class TestAuthBaseUrlRewriteForwarding:
         body = json.loads(flow.response.content)
         assert body["error"] == "invalid_resolved_auth_header"
 
-    async def test_url_rewrite_signs_rewritten_aws_sigv4_request(
+    @pytest.mark.parametrize(
+        ("content_type", "request_body"),
+        [
+            ("application/json; charset=utf-8", b'{"message":"hello"}'),
+            ("application/x-www-form-urlencoded", b"message=hello+world"),
+            (
+                "multipart/form-data; boundary=vm0-boundary",
+                b"--vm0-boundary\r\nContent-Disposition: form-data; name=message\r\n\r\nhello\r\n"
+                b"--vm0-boundary--\r\n",
+            ),
+        ],
+        ids=["json", "form", "multipart"],
+    )
+    async def test_url_rewrite_preserves_one_exact_content_type(
         self,
         headers,
         real_flow,
         mitm_ctx,
         tmp_path,
+        content_type: str,
+        request_body: bytes,
     ):
-        """auth.base forwarding signs the rewritten upstream URL, not the placeholder."""
-        placeholder_authorization = aws_sigv4_authorization(
-            signed_headers="content-type;host;x-amz-date"
-        )
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
-            resolved_base="https://STS.AMAZONAWS.COM:443/",
             method="POST",
-            request_body=STS_FORM_BODY,
+            request_body=request_body,
             request_headers=headers(
-                ("Host", "firewall-placeholder.vm3.ai"),
-                ("Content-Type", "application/x-www-form-urlencoded"),
-                ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
-                ("Authorization", placeholder_authorization),
-                ("Cookie", "session=agent"),
-                ("X-Api-Key", "agent-api-key"),
-                ("X-Amz-Security-Token", "placeholder-session-token"),
+                ("cOnTeNt-TyPe", content_type),
+                ("X-Drop", "client-metadata"),
             ),
-            auth_overrides={
-                "awsSigv4": {
-                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
-                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                },
-            },
-            token_overrides={
-                "aws_sigv4": resolved_aws_sigv4_credentials(),
-            },
         )
+
         with (
             fake_forwarder_upstream() as upstream,
             patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -477,77 +450,49 @@ class TestAuthBaseUrlRewriteForwarding:
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
 
-        method, request_target, _version = _request_line_parts(upstream)
-        assert method == "POST"
-        assert request_target == "/"
-        authorization = upstream.socket.request_header_values("Authorization")[0]
-        assert upstream.getaddrinfo_calls == [("sts.amazonaws.com", 443)]
-        assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
-        assert "Credential=AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request" in authorization
-        assert (
-            "Signature=1735aaa47d56839a3157c545e28e02eb8fa1526da431e9fc980b7414df9c4f53"
-            in authorization
-        )
-        assert upstream.socket.request_header_values("X-Amz-Security-Token") == [
-            RESOLVED_AWS_SESSION_TOKEN
-        ]
-        assert upstream.socket.request_header_values("Cookie") == []
-        assert upstream.socket.request_header_values("X-Api-Key") == []
-        assert upstream.socket.request_header_values("Content-Length") == ["43"]
-        assert upstream.socket.request_text().endswith(
-            "\r\n\r\nAction=GetCallerIdentity&Version=2011-06-15"
-        )
-        assert flow.request.headers["Authorization"] == placeholder_authorization
+        assert f"cOnTeNt-TyPe: {content_type}" in upstream.socket.request_lines()
+        assert upstream.socket.request_header_values("X-Drop") == []
+        assert bytes(upstream.socket.sent).endswith(b"\r\n\r\n" + request_body)
 
-    async def test_url_rewrite_strips_unrelated_authorization_for_aws_query_sigv4(
+    async def test_duplicate_content_type_returns_400_before_auth_or_forwarding(
         self,
         headers,
         real_flow,
         mitm_ctx,
         tmp_path,
     ):
-        """auth.base query SigV4 ignores unrelated client Authorization headers."""
         flow, allow, vm_info, token_meta = make_forwarding_rewrite_inputs(
             real_flow,
             tmp_path,
-            path=aws_sigv4_presigned_query_path(),
-            resolved_base="https://STS.AMAZONAWS.COM:443/",
-            method="GET",
+            method="POST",
+            request_body=b"body",
             request_headers=headers(
-                ("Host", "firewall-placeholder.vm3.ai"),
-                ("Authorization", "Bearer agent"),
-                ("Cookie", "session=agent"),
-                ("X-Amz-Security-Token", "placeholder-session-token"),
+                ("Content-Type", "application/json"),
+                ("content-type", "text/plain"),
             ),
-            auth_overrides={
-                "awsSigv4": {
-                    "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
-                    "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-                    "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                },
-            },
-            token_overrides={
-                "aws_sigv4": resolved_aws_sigv4_credentials(),
-            },
         )
+        get_headers = AsyncMock(return_value=token_meta)
+        mock_forward = AsyncMock()
+
         with (
-            fake_forwarder_upstream() as upstream,
-            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "get_firewall_headers", get_headers),
+            patch.object(auth, "forward_request", mock_forward),
             mitm_ctx(),
         ):
-            await auth.handle_firewall_request(flow, allow, vm_info)
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
 
-        method, request_target, _version = _request_line_parts(upstream)
-        query = dict(parse_qs(urlparse(request_target).query))
-        assert method == "GET"
-        assert upstream.getaddrinfo_calls == [("sts.amazonaws.com", 443)]
-        assert upstream.socket.request_header_values("Host") == ["sts.amazonaws.com"]
-        assert query["X-Amz-Credential"] == ["AKIDEXAMPLE/20260101/us-east-1/sts/aws4_request"]
-        assert query["X-Amz-Security-Token"] == [RESOLVED_AWS_SESSION_TOKEN]
-        assert query["X-Amz-Signature"] != ["placeholder"]
-        assert upstream.socket.request_header_values("Authorization") == []
-        assert upstream.socket.request_header_values("Cookie") == []
-        assert upstream.socket.request_header_values("X-Amz-Security-Token") == []
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        get_headers.assert_not_called()
+        mock_forward.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 400
+        assert json.loads(flow.response.content) == {
+            "error": "invalid_auth_base_request_headers",
+            "message": "auth.base requests must contain at most one Content-Type header",
+            "permission": allow.name,
+            "base": allow.api_entry["base"],
+        }
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == ("invalid_auth_base_request_headers")
 
     async def test_url_rewrite_sends_raw_body_for_any_method(self, real_flow, mitm_ctx, tmp_path):
         """auth.base forwarding does not drop bodies for non-POST methods."""
@@ -645,6 +590,7 @@ class TestAuthBaseUrlRewriteForwarding:
             tmp_path,
             method="POST",
             request_body=request_body,
+            auth_overrides={"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
             token_overrides={
                 "base": "https://real.example.com/webhook/super-secret-token",
                 "headers": {"Authorization": "Bearer real-token"},
@@ -705,6 +651,7 @@ class TestAuthBaseUrlRewriteForwarding:
             method="POST",
             request_body=b"1234",
             resolved_base="https://real.example.com/webhook/super-secret-token",
+            auth_overrides={"headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"}},
             token_overrides={"headers": {"Authorization": "Bearer real-token"}},
         )
         mock_forward = AsyncMock(side_effect=forwarder.ForwardedRequestTooLargeError())
@@ -786,6 +733,13 @@ class TestAuthBaseUrlRewriteForwarding:
                 ("Host", "firewall-placeholder.vm3.ai"),
                 ("Authorization", "Bearer agent"),
             ),
+            auth_overrides={
+                "headers": {
+                    "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                    "X-Custom": "${{ secrets.CUSTOM }}",
+                },
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
             token_overrides={
                 "headers": {
                     "Authorization": "Bearer real-token",
