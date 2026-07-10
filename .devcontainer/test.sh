@@ -62,10 +62,6 @@ test_pgvector_probe_uses_unix_socket() {
 
   printf '%s\n' \
     '#!/usr/bin/env bash' \
-    "printf 'install ok installed\\n'" \
-    > "$fake_bin/dpkg-query"
-  printf '%s\n' \
-    '#!/usr/bin/env bash' \
     'printf "%s\\n" "$*" >> "$SUDO_CALLS_LOG"' \
     'if [[ "$*" == "-u postgres psql "* ]]; then' \
     "  printf '1\\n'" \
@@ -75,7 +71,7 @@ test_pgvector_probe_uses_unix_socket() {
     '#!/usr/bin/env bash' \
     'exit 0' \
     > "$fake_bin/lefthook"
-  chmod +x "$fake_bin/dpkg-query" "$fake_bin/sudo" "$fake_bin/lefthook"
+  chmod +x "$fake_bin/sudo" "$fake_bin/lefthook"
 
   HOME="$workspace/home" \
     PATH="$fake_bin:$PATH" \
