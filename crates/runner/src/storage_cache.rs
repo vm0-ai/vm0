@@ -1,12 +1,12 @@
 //! Runner-side content-addressed cache for small storage archives.
 //!
-//! Sits between `apply_storage_fingerprint_reuse` and `download_storages` in
-//! `run_in_sandbox`. For each eligible manifest entry, checks a host-local
+//! Sits between storage planning and `download_storages` in `run_in_sandbox`.
+//! For each eligible planned archive, checks a host-local
 //! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
 //! tarball from disk and pushes it into the guest via vsock. On miss, leaves
 //! the original URL for the current guest download and starts a background
-//! cache fill for future runs. Once guest staging succeeds, the entry's
-//! `archive_url` is rewritten to
+//! cache fill for future runs. Once guest staging succeeds, the plan's
+//! archive source is resolved to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
 //! so `guest-download` reads the guest-local staged archive instead of
 //! re-fetching.
@@ -15,8 +15,7 @@
 //! operation, so they do not clobber each other on the guest tmpfs.
 //!
 //! Entries above [`CACHE_MAX_SIZE`], entries without a content key, and
-//! entries already marked `cached = true` (reuse-in-place from
-//! `apply_storage_fingerprint_reuse`) pass through untouched.
+//! reuse/repair actions pass through untouched.
 //! If the probe says an entry is cache-eligible but the full response exceeds
 //! [`CACHE_MAX_SIZE`], the cache fails closed instead of handing the same
 //! inconsistent URL to the guest.
@@ -45,8 +44,8 @@ use tracing::{info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, short_digest, touch_mtime};
+use crate::storage_plan::{ArchiveHandle, StoragePlan};
 use crate::telemetry::{JobTelemetry, SandboxOpRecord, SandboxOpReporter};
-use crate::types::GuestDownloadManifest;
 
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
@@ -108,8 +107,7 @@ fn guest_archive_path(name: &str, version: &str) -> String {
 /// One manifest entry that passed the eligibility filter.
 #[derive(Clone)]
 struct CacheTarget {
-    kind: TargetKind,
-    index: usize,
+    handle: ArchiveHandle,
     name: String,
     version: String,
     archive_url: String,
@@ -211,12 +209,6 @@ struct ProcessedGroupTask {
 }
 
 type ProcessedGroupTaskResult = ProcessedGroupTask;
-
-#[derive(Clone, Copy)]
-enum TargetKind {
-    Storage,
-    Artifact,
-}
 
 enum TargetOutcome {
     Hit,
@@ -599,16 +591,11 @@ async fn stage_joined_processed_group(
     Ok(())
 }
 
-/// Populate the runner-side cache for eligible entries in `manifest`.
+/// Populate the runner-side cache for eligible archive sources in `plan`.
 ///
-/// Mutates `manifest.storages[i].archive_url` / `manifest.artifacts[i].archive_url`
-/// in place, rewriting them to `file://` URLs pointing at guest-local tarballs
-/// staged over vsock.
-///
-/// Invariant: only touches entries where `cached == false`, `archive_url.is_some()`,
-/// and both `vas_storage_name` and `vas_version_id` are non-empty. Entries that
-/// `apply_storage_fingerprint_reuse` marked as reuse-in-place (`archive_url = None`)
-/// are left untouched.
+/// Resolves cache-eligible remote sources to `file://` URLs pointing at
+/// guest-local tarballs staged over vsock. Reuse, repair, empty, instruction,
+/// cleanup, and guest-work semantics remain owned by [`StoragePlan`].
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ForegroundCacheMode {
     HitOrPassthrough,
@@ -635,13 +622,13 @@ impl ForegroundCacheMode {
 }
 
 pub async fn populate_cache(
-    manifest: &mut GuestDownloadManifest,
+    plan: &mut StoragePlan,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
     populate_cache_with_mode(
-        manifest,
+        plan,
         sandbox,
         home,
         telemetry,
@@ -652,46 +639,72 @@ pub async fn populate_cache(
 
 #[cfg(test)]
 async fn populate_cache_passthrough_without_background(
-    manifest: &mut GuestDownloadManifest,
+    manifest: &mut guest_contracts::storage_manifest::Manifest,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
-    populate_cache_with_mode(
-        manifest,
+    let mut plan = StoragePlan::from_guest_manifest_for_cache_test(manifest.clone());
+    let result = populate_cache_with_mode(
+        &mut plan,
         sandbox,
         home,
         telemetry,
         ForegroundCacheMode::HitOrPassthroughWithoutBackgroundFill,
     )
-    .await
+    .await;
+    *manifest = plan.into_guest_manifest();
+    result
 }
 
 #[cfg(test)]
 async fn populate_cache_blocking(
-    manifest: &mut GuestDownloadManifest,
+    manifest: &mut guest_contracts::storage_manifest::Manifest,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
-    populate_cache_with_mode(
-        manifest,
+    let mut plan = StoragePlan::from_guest_manifest_for_cache_test(manifest.clone());
+    let result = populate_cache_with_mode(
+        &mut plan,
         sandbox,
         home,
         telemetry,
         ForegroundCacheMode::BlockingFill,
     )
-    .await
+    .await;
+    *manifest = plan.into_guest_manifest();
+    result
+}
+
+#[cfg(test)]
+async fn populate_cache_for_manifest_test(
+    manifest: &mut guest_contracts::storage_manifest::Manifest,
+    sandbox: &dyn Sandbox,
+    home: &HomePaths,
+    telemetry: &mut JobTelemetry,
+) -> RunnerResult<()> {
+    let mut plan = StoragePlan::from_guest_manifest_for_cache_test(manifest.clone());
+    let result = populate_cache_with_mode(
+        &mut plan,
+        sandbox,
+        home,
+        telemetry,
+        ForegroundCacheMode::HitOrPassthrough,
+    )
+    .await;
+    *manifest = plan.into_guest_manifest();
+    result
 }
 
 async fn populate_cache_with_mode(
-    manifest: &mut GuestDownloadManifest,
+    plan: &mut StoragePlan,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
     mode: ForegroundCacheMode,
 ) -> RunnerResult<()> {
-    let targets = collect_targets(manifest);
+    let targets = collect_targets(plan);
     if targets.is_empty() {
         return Ok(());
     }
@@ -813,7 +826,7 @@ async fn populate_cache_with_mode(
         }
     }
     for (group, outcome) in outcomes {
-        apply_group_outcome(manifest, &group, &outcome, telemetry);
+        apply_group_outcome(plan, &group, &outcome, telemetry);
     }
     Ok(())
 }
@@ -950,47 +963,26 @@ fn group_targets(targets: Vec<CacheTarget>) -> Vec<CacheTargetGroup> {
     groups
 }
 
-fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
-    let mut out = Vec::new();
-    for (i, s) in manifest.storages.iter().enumerate() {
-        if let Some(target) = cache_target_from_entry(
-            TargetKind::Storage,
-            i,
-            s.cached,
-            s.archive_url.as_deref(),
-            &s.vas_storage_name,
-            &s.vas_version_id,
-        ) {
-            out.push(target);
-        }
-    }
-    for (i, a) in manifest.artifacts.iter().enumerate() {
-        if let Some(target) = cache_target_from_entry(
-            TargetKind::Artifact,
-            i,
-            a.cached,
-            a.archive_url.as_deref(),
-            &a.vas_storage_name,
-            &a.vas_version_id,
-        ) {
-            out.push(target);
-        }
-    }
-    out
+fn collect_targets(plan: &StoragePlan) -> Vec<CacheTarget> {
+    plan.cache_candidates()
+        .into_iter()
+        .filter_map(|candidate| {
+            cache_target_from_entry(
+                candidate.handle,
+                &candidate.archive_url,
+                &candidate.name,
+                &candidate.version,
+            )
+        })
+        .collect()
 }
 
 fn cache_target_from_entry(
-    kind: TargetKind,
-    index: usize,
-    cached: bool,
-    archive_url: Option<&str>,
+    handle: ArchiveHandle,
+    archive_url: &str,
     name: &str,
     version: &str,
 ) -> Option<CacheTarget> {
-    if cached {
-        return None;
-    }
-    let archive_url = archive_url?;
     // Empty components would hash to the same fixed digest as every other
     // empty component, collapsing distinct manifest entries into a shared
     // cache slot. Treat them like missing keys: passthrough.
@@ -998,8 +990,7 @@ fn cache_target_from_entry(
         return None;
     }
     Some(CacheTarget {
-        kind,
-        index,
+        handle,
         name: name.to_string(),
         version: version.to_string(),
         archive_url: archive_url.to_string(),
@@ -2115,7 +2106,7 @@ fn staging_dir(final_dir: &Path) -> PathBuf {
 }
 
 fn apply_group_outcome(
-    manifest: &mut GuestDownloadManifest,
+    plan: &mut StoragePlan,
     group: &CacheTargetGroup,
     group_outcome: &GroupOutcome,
     telemetry: &mut JobTelemetry,
@@ -2127,7 +2118,7 @@ fn apply_group_outcome(
         } => match outcome {
             TargetOutcome::Hit => {
                 for target in &group.targets {
-                    apply_outcome(manifest, target, outcome, telemetry);
+                    apply_outcome(plan, target, outcome, telemetry);
                 }
             }
             #[cfg(test)]
@@ -2138,9 +2129,9 @@ fn apply_group_outcome(
                 let hit = TargetOutcome::Hit;
                 for (index, target) in group.targets.iter().enumerate() {
                     if index == *_outcome_target_index {
-                        apply_outcome(manifest, target, outcome, telemetry);
+                        apply_outcome(plan, target, outcome, telemetry);
                     } else {
-                        apply_outcome(manifest, target, &hit, telemetry);
+                        apply_outcome(plan, target, &hit, telemetry);
                     }
                 }
             }
@@ -2150,7 +2141,7 @@ fn apply_group_outcome(
             | TargetOutcome::MissPassthrough { .. }
             | TargetOutcome::LockBusyPassthrough => {
                 for target in &group.targets {
-                    apply_outcome(manifest, target, outcome, telemetry);
+                    apply_outcome(plan, target, outcome, telemetry);
                 }
             }
         },
@@ -2158,26 +2149,26 @@ fn apply_group_outcome(
         GroupOutcome::PerTarget(outcomes) => {
             debug_assert_eq!(group.targets.len(), outcomes.len());
             for (target, outcome) in group.targets.iter().zip(outcomes) {
-                apply_outcome(manifest, target, outcome, telemetry);
+                apply_outcome(plan, target, outcome, telemetry);
             }
         }
     }
 }
 
 fn apply_outcome(
-    manifest: &mut GuestDownloadManifest,
+    plan: &mut StoragePlan,
     target: &CacheTarget,
     outcome: &TargetOutcome,
     telemetry: &mut JobTelemetry,
 ) {
     match outcome {
         TargetOutcome::Hit => {
-            rewrite_url(manifest, target);
+            rewrite_url(plan, target);
             telemetry.record("storage_cache_hit", Duration::ZERO, true, None);
         }
         #[cfg(test)]
         TargetOutcome::Miss { download_duration } => {
-            rewrite_url(manifest, target);
+            rewrite_url(plan, target);
             telemetry.record("storage_cache_miss", Duration::ZERO, true, None);
             telemetry.record("storage_cache_download", *download_duration, true, None);
         }
@@ -2374,65 +2365,32 @@ fn count_bucket(count: usize) -> CountBucket {
     }
 }
 
-/// Rewrite `archive_url` to the guest `file://` stage path.
+/// Resolve a planned archive to the guest `file://` stage path.
 ///
-/// Verifies the entry at `target.index` still has the expected
-/// `(name, version)` before mutating — content-addressed safety against
+/// Verifies the planned entry still has the expected `(name, version, source)`
+/// before mutating — content-addressed safety against
 /// any future parallel mutation at this pipeline stage. A mismatch is not
 /// a hard error (the caller made the right conservative choice) but is
 /// logged so a regression that breaks the invariant is visible.
-fn rewrite_url(manifest: &mut GuestDownloadManifest, target: &CacheTarget) {
+fn rewrite_url(plan: &mut StoragePlan, target: &CacheTarget) {
     let new_url = format!(
         "file://{}",
         guest_archive_path(&target.name, &target.version)
     );
-    let mut applied = false;
-    match target.kind {
-        TargetKind::Storage => {
-            if let Some(entry) = manifest.storages.get_mut(target.index) {
-                applied = rewrite_entry_url(
-                    &mut entry.archive_url,
-                    &entry.vas_storage_name,
-                    &entry.vas_version_id,
-                    target,
-                    new_url,
-                );
-            }
-        }
-        TargetKind::Artifact => {
-            if let Some(entry) = manifest.artifacts.get_mut(target.index) {
-                applied = rewrite_entry_url(
-                    &mut entry.archive_url,
-                    &entry.vas_storage_name,
-                    &entry.vas_version_id,
-                    target,
-                    new_url,
-                );
-            }
-        }
-    }
+    let applied = plan.stage_archive(
+        target.handle,
+        &target.name,
+        &target.version,
+        &target.archive_url,
+        new_url,
+    );
     if !applied {
         warn!(
             name = %target.name,
             version = %target.version,
-            index = target.index,
-            "storage_cache: manifest identity mismatch at rewrite, skipping url swap"
+            "storage_cache: plan identity mismatch at rewrite, skipping source swap"
         );
     }
-}
-
-fn rewrite_entry_url(
-    archive_url: &mut Option<String>,
-    name: &str,
-    version: &str,
-    target: &CacheTarget,
-    new_url: String,
-) -> bool {
-    if name != target.name.as_str() || version != target.version.as_str() {
-        return false;
-    }
-    *archive_url = Some(new_url);
-    true
 }
 
 #[cfg(test)]
@@ -2451,8 +2409,9 @@ mod tests {
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::ids::RunId;
-    use crate::types::{
-        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+    use guest_contracts::storage_manifest::{
+        ArtifactEntry as GuestDownloadArtifactEntry, Manifest as GuestDownloadManifest,
+        StorageEntry as GuestDownloadStorageEntry,
     };
 
     fn new_telemetry() -> JobTelemetry {
@@ -2531,8 +2490,8 @@ mod tests {
                 archive_url: Some(url),
                 cached: false,
                 instructions_target_filename: None,
-                vas_storage_name: name.to_string(),
-                vas_version_id: version.to_string(),
+                vas_storage_name: Some(name.to_string()),
+                vas_version_id: Some(version.to_string()),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -2554,8 +2513,8 @@ mod tests {
                     archive_url: Some(first_url),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: name.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(name.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/duplicate-b".into(),
@@ -2563,8 +2522,8 @@ mod tests {
                     archive_url: Some(second_url),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: name.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(name.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
             ],
             artifacts: Vec::new(),
@@ -2581,9 +2540,9 @@ mod tests {
                 archive_url: Some(url),
                 empty: false,
                 cached: false,
-                vas_storage_name: name.to_string(),
-                vas_storage_id: format!("{name}-id"),
-                vas_version_id: version.to_string(),
+                vas_storage_name: Some(name.to_string()),
+                vas_storage_id: Some(format!("{name}-id")),
+                vas_version_id: Some(version.to_string()),
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
@@ -3129,7 +3088,7 @@ mod tests {
         let original = format!("http://{addr}/archive.tar.gz");
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache_for_manifest_test(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
@@ -3200,8 +3159,7 @@ mod tests {
         let version = "v1";
         let group = CacheTargetGroup {
             targets: vec![CacheTarget {
-                kind: TargetKind::Storage,
-                index: 0,
+                handle: ArchiveHandle::storage(0),
                 name: name.to_string(),
                 version: version.to_string(),
                 archive_url,
@@ -3281,8 +3239,7 @@ mod tests {
             .unwrap();
         let group = CacheTargetGroup {
             targets: vec![CacheTarget {
-                kind: TargetKind::Storage,
-                index: 0,
+                handle: ArchiveHandle::storage(0),
                 name: name.to_string(),
                 version: version.to_string(),
                 archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
@@ -3304,8 +3261,7 @@ mod tests {
         let home = home_at(&temp);
         let group = CacheTargetGroup {
             targets: vec![CacheTarget {
-                kind: TargetKind::Storage,
-                index: 0,
+                handle: ArchiveHandle::storage(0),
                 name: "background-retryable".to_string(),
                 version: "v1".to_string(),
                 archive_url: "http://127.0.0.1:9/archive.tar.gz".to_string(),
@@ -3423,8 +3379,8 @@ mod tests {
                     archive_url: Some(empty_url.clone()),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: empty_name.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(empty_name.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/oversized".into(),
@@ -3432,8 +3388,8 @@ mod tests {
                     archive_url: Some(oversized_url.clone()),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: oversized_name.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(oversized_name.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
             ],
             artifacts: Vec::new(),
@@ -3589,8 +3545,8 @@ mod tests {
                     archive_url: Some("https://r2.example.com/a.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: first_name.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(first_name.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
                 GuestDownloadStorageEntry {
                     mount_path: "/mnt/b".into(),
@@ -3598,8 +3554,8 @@ mod tests {
                     archive_url: Some("https://r2.example.com/b.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: second_name.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(second_name.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
             ],
             artifacts: Vec::new(),
@@ -4493,8 +4449,8 @@ mod tests {
                 archive_url: None,
                 cached: true,
                 instructions_target_filename: None,
-                vas_storage_name: "foo".into(),
-                vas_version_id: "v1".into(),
+                vas_storage_name: Some("foo".into()),
+                vas_version_id: Some("v1".into()),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -4527,8 +4483,8 @@ mod tests {
                 archive_url: Some("https://r2.example.com/legacy.tar.gz".into()),
                 cached: false,
                 instructions_target_filename: None,
-                vas_storage_name: String::new(),
-                vas_version_id: String::new(),
+                vas_storage_name: Some(String::new()),
+                vas_version_id: Some(String::new()),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -4796,9 +4752,9 @@ mod tests {
                 archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                 empty: false,
                 cached: false,
-                vas_storage_name: name.to_string(),
-                vas_storage_id: String::new(),
-                vas_version_id: version.to_string(),
+                vas_storage_name: Some(name.to_string()),
+                vas_storage_id: Some(String::new()),
+                vas_version_id: Some(version.to_string()),
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
@@ -5505,8 +5461,8 @@ mod tests {
                             archive_url: Some(format!("http://{ready_addr}/ready.tar.gz")),
                             cached: false,
                             instructions_target_filename: None,
-                            vas_storage_name: ready_name.to_string(),
-                            vas_version_id: version.to_string(),
+                            vas_storage_name: Some(ready_name.to_string()),
+                            vas_version_id: Some(version.to_string()),
                         },
                         GuestDownloadStorageEntry {
                             mount_path: "/mnt/cold".into(),
@@ -5514,8 +5470,8 @@ mod tests {
                             archive_url: Some(format!("http://{cold_addr}/cold.tar.gz")),
                             cached: false,
                             instructions_target_filename: None,
-                            vas_storage_name: cold_name.to_string(),
-                            vas_version_id: version.to_string(),
+                            vas_storage_name: Some(cold_name.to_string()),
+                            vas_version_id: Some(version.to_string()),
                         },
                     ],
                     artifacts: Vec::new(),
@@ -5742,17 +5698,17 @@ mod tests {
                 archive_url: Some("https://r2.example.com/storage.tar.gz".into()),
                 cached: false,
                 instructions_target_filename: None,
-                vas_storage_name: name.to_string(),
-                vas_version_id: version.to_string(),
+                vas_storage_name: Some(name.to_string()),
+                vas_version_id: Some(version.to_string()),
             }],
             artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/artifact.tar.gz".into()),
                 empty: false,
                 cached: false,
-                vas_storage_name: name.to_string(),
-                vas_storage_id: "storage-id".into(),
-                vas_version_id: version.to_string(),
+                vas_storage_name: Some(name.to_string()),
+                vas_storage_id: Some("storage-id".into()),
+                vas_version_id: Some(version.to_string()),
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
@@ -6185,8 +6141,8 @@ mod tests {
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: name_a.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(name_a.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
                 GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_b}"),
@@ -6194,8 +6150,8 @@ mod tests {
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
                     instructions_target_filename: None,
-                    vas_storage_name: name_b.to_string(),
-                    vas_version_id: version.to_string(),
+                    vas_storage_name: Some(name_b.to_string()),
+                    vas_version_id: Some(version.to_string()),
                 },
             ],
             artifacts: Vec::new(),
@@ -6243,9 +6199,9 @@ mod tests {
                 archive_url: Some(original.clone()),
                 empty: false,
                 cached: false,
-                vas_storage_name: String::new(),
-                vas_storage_id: String::new(),
-                vas_version_id: String::new(),
+                vas_storage_name: Some(String::new()),
+                vas_storage_id: Some(String::new()),
+                vas_version_id: Some(String::new()),
                 missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),

@@ -43,7 +43,7 @@ use super::session_history_download::{
     verify_codex_zstd_session_history_bytes, verify_identity_session_history_bytes,
 };
 use super::session_restore::{MaterializedResumeSession, restore_session};
-use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
+use super::storage::download_storages;
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
@@ -59,8 +59,9 @@ use crate::restored_session_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionFinalMetadataVerification,
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
+use crate::storage_plan::build_storage_plan;
 use crate::telemetry::{JobTelemetry, SessionHistoryTelemetryMetadata};
-use crate::types::{ExecutionContext, GuestDownloadManifest};
+use crate::types::ExecutionContext;
 use crate::workspace_image_cache::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarRepresentation,
 };
@@ -916,41 +917,50 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // 3. Download storage manifest entries (skipping entries unchanged since the previous turn).
     if let Some(manifest) = &context.storage_manifest {
         let runtime_dir = guest_runtime_dir(context.run_id)?;
-        let conversion_t = Instant::now();
-        let guest_manifest = match GuestDownloadManifest::from_storage_manifest_for_run(
-            manifest,
-            runtime_dir.as_str(),
-        ) {
-            Ok(guest_manifest) => guest_manifest,
+        let planning_t = Instant::now();
+        let mut plan = match build_storage_plan(manifest, runtime_dir.as_str(), start.prev_storage)
+        {
+            Ok(plan) => plan,
             Err(error) => {
                 let error_message = error.to_string();
                 telemetry.record(
                     "runner_storage_manifest_apply",
-                    conversion_t.elapsed(),
+                    planning_t.elapsed(),
                     false,
                     Some(&error_message),
                 );
                 return Err(error);
             }
         };
-        let mut effective: GuestDownloadManifest = match start.prev_storage {
-            Some(prev) => {
-                let t = Instant::now();
-                let effective = apply_storage_fingerprint_reuse(&guest_manifest, prev);
-                telemetry.record(
-                    "runner_storage_manifest_fingerprint_reuse",
-                    t.elapsed(),
-                    true,
-                    None,
-                );
-                effective
-            }
-            None => guest_manifest,
-        };
-        // Short-circuit: skip the vsock exec if no downloads, cleanup, or
-        // guest-side instruction normalization remain.
+        if start.prev_storage.is_some() {
+            telemetry.record(
+                "runner_storage_manifest_fingerprint_reuse",
+                planning_t.elapsed(),
+                true,
+                None,
+            );
+        }
+        if plan.reused_entries() > 0 {
+            info!(
+                skipped = plan.reused_entries(),
+                total = plan.entry_count(),
+                "filtered unchanged manifest entries"
+            );
+        }
+        if plan.cleanup_path_count() > 0 {
+            info!(
+                count = plan.cleanup_path_count(),
+                "computed cleanup paths for stale file removal"
+            );
+        }
+        if plan.instruction_cleanup_count() > 0 {
+            info!(
+                count = plan.instruction_cleanup_count(),
+                "computed instruction cleanup entries for stale file removal"
+            );
+        }
         let has_work_t = Instant::now();
-        let has_work = guest_download_has_work(&effective);
+        let has_work = plan.requires_guest_work();
         telemetry.record(
             "runner_storage_manifest_has_work",
             has_work_t.elapsed(),
@@ -962,39 +972,34 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
         let t = Instant::now();
         let result = if has_work {
-            // Populate the runner-side cache first, rewriting eligible entries'
-            // `archive_url` to `file:///tmp/vm0-storage-cache/...` so the guest
-            // reads from its tmpfs instead of hitting R2 per turn.
-            async {
-                let cache_t = Instant::now();
-                let cache_result = crate::storage_cache::populate_cache(
-                    &mut effective,
-                    sandbox,
-                    &config.home,
-                    telemetry,
-                )
-                .await;
-                telemetry.record(
-                    "runner_storage_manifest_cache_populate",
-                    cache_t.elapsed(),
-                    cache_result.is_ok(),
-                    cache_result
-                        .is_err()
-                        .then_some(STORAGE_CACHE_POPULATE_FAILED),
-                );
-                cache_result?;
-
-                let download_t = Instant::now();
-                let download_result = download_storages(sandbox, context, &effective).await;
-                telemetry.record(
-                    "runner_storage_manifest_guest_download",
-                    download_t.elapsed(),
-                    download_result.is_ok(),
-                    download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
-                );
-                download_result
+            let cache_t = Instant::now();
+            let cache_result =
+                crate::storage_cache::populate_cache(&mut plan, sandbox, &config.home, telemetry)
+                    .await;
+            telemetry.record(
+                "runner_storage_manifest_cache_populate",
+                cache_t.elapsed(),
+                cache_result.is_ok(),
+                cache_result
+                    .is_err()
+                    .then_some(STORAGE_CACHE_POPULATE_FAILED),
+            );
+            match cache_result {
+                Ok(()) => {
+                    let guest_manifest = plan.into_guest_manifest();
+                    let download_t = Instant::now();
+                    let download_result =
+                        download_storages(sandbox, context, &guest_manifest).await;
+                    telemetry.record(
+                        "runner_storage_manifest_guest_download",
+                        download_t.elapsed(),
+                        download_result.is_ok(),
+                        download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
+                    );
+                    download_result
+                }
+                Err(error) => Err(error),
             }
-            .await
         } else {
             Ok(())
         };
