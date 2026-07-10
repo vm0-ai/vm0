@@ -1599,6 +1599,14 @@ export {
   type ZeroImageIoInterpretMarksResponse,
 } from "./zero-image-io-interpret-marks";
 export {
+  zeroImageShareXContract,
+  zeroImageShareXRequestSchema,
+  zeroImageShareXResponseSchema,
+  type ZeroImageShareXContract,
+  type ZeroImageShareXRequest,
+  type ZeroImageShareXResponse,
+} from "./zero-image-share-x";
+export {
   zeroBankingContract,
   zeroBankingProviderSchema,
   zeroBankingAccountSchema,
