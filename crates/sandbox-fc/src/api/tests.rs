@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::oneshot;
 
@@ -29,6 +29,19 @@ fn test_rate_limiter(size: u64) -> RateLimiterConfig {
         }),
         ops: None,
     }
+}
+
+fn bind_raw_api() -> (tempfile::TempDir, PathBuf, UnixListener) {
+    let dir = tempfile::tempdir().unwrap();
+    let sock_path = dir.path().join("fc.sock");
+    let listener = UnixListener::bind(&sock_path).unwrap();
+    (dir, sock_path, listener)
+}
+
+async fn accept_mock_request(listener: &UnixListener) -> (UnixStream, MockRequest) {
+    let (mut stream, _) = listener.accept().await.unwrap();
+    let request = read_mock_request(&mut stream).await.unwrap();
+    (stream, request)
 }
 
 async fn run_with_split_response<T, Fut>(
@@ -116,7 +129,7 @@ async fn mock_firecracker_api_drains_captured_requests_without_waiting() {
     assert!(api.drain_requests().is_empty());
 
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     client.patch_balloon(123).await.unwrap();
     client.patch_balloon(456).await.unwrap();
 
@@ -176,7 +189,7 @@ fn api_error_is_retryable_other() {
 async fn wait_for_ready_succeeds_on_200() {
     let mut api = MockFirecrackerApi::repeating(MockResponse::ok());
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.wait_for_ready(Duration::from_secs(2)).await;
     assert!(result.is_ok());
 
@@ -188,7 +201,7 @@ async fn wait_for_ready_succeeds_on_200() {
 async fn wait_for_ready_times_out_on_missing_socket() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("missing.sock");
-    let client = ApiClient::new(&path);
+    let client = ApiClient::new(&path).unwrap();
     let result = client.wait_for_ready(Duration::ZERO).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -199,7 +212,7 @@ async fn wait_for_ready_times_out_on_missing_socket() {
 async fn load_snapshot_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .load_snapshot("/snap/state", "/snap/memory", true)
         .await;
@@ -218,7 +231,7 @@ async fn load_snapshot_succeeds_on_204() {
 async fn load_snapshot_can_leave_vm_paused() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .load_snapshot("/snap/state", "/snap/memory", false)
         .await;
@@ -235,7 +248,7 @@ async fn wait_for_ready_detects_deferred_socket() {
     let (mut api, bind_socket) = MockFirecrackerApi::deferred_repeating(MockResponse::ok());
     let sock_path = api.socket_path().to_path_buf();
     let waiter = tokio::spawn(async move {
-        let client = ApiClient::new(&sock_path);
+        let client = ApiClient::new(&sock_path).unwrap();
         client.wait_for_ready(Duration::from_secs(2)).await
     });
 
@@ -256,7 +269,7 @@ async fn wait_for_ready_retries_until_success() {
         MockResponse::ok(),
     ]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.wait_for_ready(Duration::from_secs(2)).await;
     assert!(result.is_ok());
 
@@ -271,7 +284,7 @@ async fn load_snapshot_error_falls_back_to_raw_body() {
     let mut api =
         MockFirecrackerApi::with_responses([MockResponse::internal_error_raw("plain text error")]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .load_snapshot("/snap/state", "/snap/memory", true)
         .await;
@@ -291,7 +304,7 @@ async fn load_snapshot_returns_error_on_non_204() {
     let mut api =
         MockFirecrackerApi::with_responses([MockResponse::bad_request_fault(fault_message)]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .load_snapshot("/snap/state", "/snap/memory", true)
         .await;
@@ -310,7 +323,7 @@ async fn load_snapshot_returns_error_on_non_204() {
 async fn pause_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.pause().await;
     assert!(result.is_ok());
 
@@ -324,7 +337,7 @@ async fn pause_succeeds_on_204() {
 async fn resume_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.resume().await;
     assert!(result.is_ok());
 
@@ -338,7 +351,7 @@ async fn resume_succeeds_on_204() {
 async fn create_snapshot_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.create_snapshot("/snap/state", "/snap/memory").await;
     assert!(result.is_ok());
 
@@ -355,7 +368,7 @@ async fn pause_returns_error_on_failure() {
     let mut api =
         MockFirecrackerApi::with_responses([MockResponse::bad_request_fault("cannot pause")]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let ApiError::Http { status, body } = client.pause().await.unwrap_err() else {
         panic!("expected Http error");
     };
@@ -370,7 +383,7 @@ async fn pause_returns_error_on_failure() {
 async fn configure_machine_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.configure_machine(2, 256).await;
     assert!(result.is_ok());
 
@@ -385,7 +398,7 @@ async fn configure_machine_succeeds_on_204() {
 async fn configure_boot_source_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .configure_boot_source("/path/to/kernel", "console=ttyS0")
         .await;
@@ -402,7 +415,7 @@ async fn configure_boot_source_succeeds_on_204() {
 async fn configure_drive_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .configure_drive("rootfs", "/path/to/rootfs", true, true, None)
         .await;
@@ -422,7 +435,7 @@ async fn configure_drive_succeeds_on_204() {
 async fn configure_drive_with_rate_limiter_serializes_limiter() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let limiter = RateLimiterConfig {
         bandwidth: Some(crate::config::TokenBucketConfig {
             size: 1024,
@@ -454,7 +467,7 @@ async fn configure_drive_with_rate_limiter_serializes_limiter() {
 async fn patch_drive_rate_limiter_serializes_partial_drive() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let limiter = test_rate_limiter(2048);
 
     let result = client.patch_drive_rate_limiter("rootfs", &limiter).await;
@@ -471,7 +484,7 @@ async fn patch_drive_rate_limiter_serializes_partial_drive() {
 async fn configure_network_interface_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client
         .configure_network_interface("eth0", "02:00:00:00:00:01", "vm0-tap", None, None)
         .await;
@@ -491,7 +504,7 @@ async fn configure_network_interface_succeeds_on_204() {
 async fn configure_network_interface_with_rate_limiters_serializes_limiters() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let rx = test_rate_limiter(4096);
     let tx = test_rate_limiter(8192);
     let result = client
@@ -513,7 +526,7 @@ async fn configure_network_interface_with_rate_limiters_serializes_limiters() {
 async fn patch_network_rate_limiters_serializes_partial_network_interface() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let rx = test_rate_limiter(4096);
     let tx = test_rate_limiter(8192);
 
@@ -532,7 +545,7 @@ async fn patch_network_rate_limiters_serializes_partial_network_interface() {
 async fn configure_vsock_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.configure_vsock(3, "/tmp/vsock.sock").await;
     assert!(result.is_ok());
 
@@ -547,7 +560,7 @@ async fn configure_vsock_succeeds_on_204() {
 async fn start_instance_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.start_instance().await;
     assert!(result.is_ok());
 
@@ -561,7 +574,7 @@ async fn start_instance_succeeds_on_204() {
 async fn patch_balloon_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.patch_balloon(512).await;
     assert!(result.is_ok());
 
@@ -576,7 +589,7 @@ async fn get_balloon_statistics_parses_response() {
     let body = r#"{"target_mib":512,"actual_mib":256,"target_pages":131072,"actual_pages":65536,"free_memory":1073741824,"available_memory":1610612736,"total_memory":2147483648}"#;
     let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body(body)]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let stats = client.get_balloon_statistics().await.unwrap();
     assert_eq!(stats.target_mib, 512);
     assert_eq!(stats.actual_mib, 256);
@@ -598,7 +611,7 @@ async fn get_balloon_statistics_reads_split_response_body() {
     let body = r#"{"target_mib":768,"actual_mib":384,"target_pages":196608,"actual_pages":98304}"#;
     let (result, request) =
         run_with_split_response(MockResponse::ok_body(body), |sock_path| async move {
-            let client = ApiClient::new(&sock_path);
+            let client = ApiClient::new(&sock_path).unwrap();
             client.get_balloon_statistics().await
         })
         .await;
@@ -618,7 +631,7 @@ async fn load_snapshot_error_reads_split_response_body() {
     let (result, request) = run_with_split_response(
         MockResponse::bad_request_fault(fault_message),
         |sock_path| async move {
-            let client = ApiClient::new(&sock_path);
+            let client = ApiClient::new(&sock_path).unwrap();
             client
                 .load_snapshot("/snap/state", "/snap/memory", true)
                 .await
@@ -639,7 +652,7 @@ async fn get_balloon_statistics_handles_minimal_response() {
     let body = r#"{"target_mib":0,"actual_mib":0,"target_pages":0,"actual_pages":0}"#;
     let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body(body)]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let stats = client.get_balloon_statistics().await.unwrap();
     assert_eq!(stats.target_mib, 0);
     assert_eq!(stats.actual_mib, 0);
@@ -654,7 +667,7 @@ async fn get_balloon_statistics_handles_minimal_response() {
 async fn get_balloon_statistics_returns_error_on_malformed_response() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::ok_body("{not json")]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let ApiError::Other(message) = client.get_balloon_statistics().await.unwrap_err() else {
         panic!("expected parse error");
     };
@@ -671,7 +684,7 @@ async fn get_balloon_statistics_returns_error_on_malformed_response() {
 async fn configure_balloon_succeeds_on_204() {
     let mut api = MockFirecrackerApi::with_responses([MockResponse::no_content()]);
     let sock_path = api.socket_path().to_path_buf();
-    let client = ApiClient::new(&sock_path);
+    let client = ApiClient::new(&sock_path).unwrap();
     let result = client.configure_balloon(0, true, 0).await;
     assert!(result.is_ok());
 
@@ -681,6 +694,306 @@ async fn configure_balloon_succeeds_on_204() {
     assert_eq!(body["amount_mib"], 0);
     assert_eq!(body["deflate_on_oom"], true);
     assert_eq!(body["stats_polling_interval_s"], 0);
+}
+
+#[tokio::test]
+async fn oversized_unterminated_response_head_is_rejected_while_held_open() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let (release_tx, release_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        let mut head = b"HTTP/1.1 204 No Content\r\nX-Oversized: ".to_vec();
+        head.resize(640 * 1024, b'a');
+        let _ = stream.write_all(&head).await;
+        let _ = release_rx.await;
+        request
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, client.pause())
+        .await
+        .expect("client did not reject oversized response head");
+    assert!(result.is_err());
+
+    release_tx.send(()).unwrap();
+    let request = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, server)
+        .await
+        .expect("oversized-head server did not stop")
+        .unwrap();
+    assert_request(&request, "PATCH", "/vm");
+}
+
+#[tokio::test]
+async fn balloon_response_rejects_declared_body_over_limit_before_reading_it() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let (release_tx, release_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 65537\r\n\r\n")
+            .await
+            .unwrap();
+        let _ = release_rx.await;
+        request
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, client.get_balloon_statistics())
+        .await
+        .expect("client waited for an oversized declared body");
+    let ApiError::Other(message) = result.unwrap_err() else {
+        panic!("expected body-limit error");
+    };
+    assert!(message.contains("64 KiB limit"), "got: {message}");
+
+    release_tx.send(()).unwrap();
+    let request = server.await.unwrap();
+    assert_request(&request, "GET", "/balloon/statistics");
+}
+
+#[tokio::test]
+async fn balloon_response_rejects_chunked_body_over_limit() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let (release_tx, release_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+            .await
+            .unwrap();
+        let first = vec![b'a'; 32 * 1024];
+        let second = vec![b'b'; 32 * 1024 + 1];
+        stream
+            .write_all(format!("{:X}\r\n", first.len()).as_bytes())
+            .await
+            .unwrap();
+        stream.write_all(&first).await.unwrap();
+        stream.write_all(b"\r\n").await.unwrap();
+        stream
+            .write_all(format!("{:X}\r\n", second.len()).as_bytes())
+            .await
+            .unwrap();
+        let _ = stream.write_all(&second).await;
+        let _ = stream.write_all(b"\r\n").await;
+        let _ = release_rx.await;
+        request
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, client.get_balloon_statistics())
+        .await
+        .expect("client waited after chunked body exceeded the limit");
+    let ApiError::Other(message) = result.unwrap_err() else {
+        panic!("expected body-limit error");
+    };
+    assert!(message.contains("64 KiB limit"), "got: {message}");
+
+    release_tx.send(()).unwrap();
+    let request = server.await.unwrap();
+    assert_request(&request, "GET", "/balloon/statistics");
+}
+
+#[tokio::test]
+async fn oversized_error_body_preserves_status_and_uses_bounded_diagnostic() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let (release_tx, release_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 65537\r\n\r\n")
+            .await
+            .unwrap();
+        let _ = release_rx.await;
+        request
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, client.pause())
+        .await
+        .expect("client waited for an oversized error body");
+    let ApiError::Http { status, body } = result.unwrap_err() else {
+        panic!("expected HTTP error");
+    };
+    assert_eq!(status, 503);
+    assert_eq!(body, "response body exceeds 64 KiB limit");
+
+    release_tx.send(()).unwrap();
+    let request = server.await.unwrap();
+    assert_request(&request, "PATCH", "/vm");
+}
+
+#[tokio::test]
+async fn status_only_success_drops_large_body_and_closes_connection() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let server = tokio::spawn(async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 65537\r\n\r\n")
+            .await
+            .unwrap();
+        let mut byte = [0];
+        let read = stream.read(&mut byte).await.unwrap();
+        (request, read)
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, client.pause())
+        .await
+        .expect("status-only request waited for the response body")
+        .unwrap();
+
+    let (request, read) = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, server)
+        .await
+        .expect("server did not observe the status-only connection closing")
+        .unwrap();
+    assert_eq!(read, 0);
+    assert_request(&request, "PATCH", "/vm");
+}
+
+#[tokio::test]
+async fn redirect_is_returned_without_following_location() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let (done_tx, done_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, first_request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(
+                b"HTTP/1.1 302 Found\r\nLocation: http://localhost/redirected\r\nContent-Length: 0\r\n\r\n",
+            )
+            .await
+            .unwrap();
+
+        let mut requests = vec![first_request];
+        tokio::select! {
+            accepted = listener.accept() => {
+                let (mut stream, _) = accepted.unwrap();
+                requests.push(read_mock_request(&mut stream).await.unwrap());
+                stream.write_all(b"HTTP/1.1 204 No Content\r\n\r\n").await.unwrap();
+            }
+            result = done_rx => {
+                result.unwrap();
+            }
+        }
+        requests
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, client.pause())
+        .await
+        .expect("redirect request did not finish");
+    let _ = done_tx.send(());
+
+    let ApiError::Http { status, .. } = result.unwrap_err() else {
+        panic!("expected redirect HTTP error");
+    };
+    assert_eq!(status, 302);
+    let requests = server.await.unwrap();
+    assert_eq!(requests.len(), 1, "redirect created an extra request");
+    assert_request(&requests[0], "PATCH", "/vm");
+}
+
+#[tokio::test]
+async fn sequential_calls_use_separate_connections() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let server = async move {
+        let (mut first_stream, first_request) = accept_mock_request(&listener).await;
+        first_stream
+            .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+
+        let (mut second_stream, second_request) = accept_mock_request(&listener).await;
+        second_stream
+            .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+        drop(first_stream);
+        (first_request, second_request)
+    };
+    let client = ApiClient::new(&sock_path).unwrap();
+    let calls = async {
+        client.pause().await?;
+        client.resume().await
+    };
+
+    let (result, (first_request, second_request)) =
+        tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, async {
+            tokio::join!(calls, server)
+        })
+        .await
+        .expect("second request reused the first Unix connection");
+    result.unwrap();
+    assert_request(&first_request, "PATCH", "/vm");
+    assert_request(&second_request, "PATCH", "/vm");
+}
+
+#[tokio::test]
+async fn wait_for_ready_deadline_covers_unfinished_error_body() {
+    let (_dir, sock_path, listener) = bind_raw_api();
+    let (release_tx, release_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 1\r\n\r\n")
+            .await
+            .unwrap();
+        let _ = release_rx.await;
+        request
+    });
+
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(
+        MOCK_REQUEST_READ_TIMEOUT,
+        client.wait_for_ready(Duration::from_millis(100)),
+    )
+    .await
+    .expect("readiness ignored its deadline");
+    let ApiError::Other(message) = result.unwrap_err() else {
+        panic!("expected readiness timeout");
+    };
+    assert!(message.contains("timed out"), "got: {message}");
+
+    release_tx.send(()).unwrap();
+    let request = server.await.unwrap();
+    assert_request(&request, "GET", "/");
+}
+
+#[tokio::test]
+async fn wait_for_ready_retries_connection_refused_until_socket_is_rebound() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock_path = dir.path().join("fc.sock");
+    let stale_listener = UnixListener::bind(&sock_path).unwrap();
+    drop(stale_listener);
+
+    let waiter_path = sock_path.clone();
+    let waiter = tokio::spawn(async move {
+        let client = ApiClient::new(&waiter_path).unwrap();
+        client.wait_for_ready(Duration::from_secs(2)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        !waiter.is_finished(),
+        "ConnectionRefused should remain retryable"
+    );
+
+    std::fs::remove_file(&sock_path).unwrap();
+    let listener = UnixListener::bind(&sock_path).unwrap();
+    let server = async move {
+        let (mut stream, request) = accept_mock_request(&listener).await;
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
+        request
+    };
+
+    let (result, request) = tokio::time::timeout(MOCK_REQUEST_READ_TIMEOUT, async {
+        tokio::join!(waiter, server)
+    })
+    .await
+    .expect("readiness did not recover after the socket was rebound");
+    result.unwrap().unwrap();
+    assert_request(&request, "GET", "/");
 }
 
 #[tokio::test]
@@ -699,17 +1012,15 @@ async fn wait_for_ready_fails_fast_on_permission_denied() {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&sock_path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-    let client = ApiClient::new(&sock_path);
-    let start = std::time::Instant::now();
-    let result = client.wait_for_ready(Duration::from_secs(5)).await;
-    let elapsed = start.elapsed();
+    let client = ApiClient::new(&sock_path).unwrap();
+    let result = tokio::time::timeout(
+        MOCK_REQUEST_READ_TIMEOUT,
+        client.wait_for_ready(Duration::from_secs(30)),
+    )
+    .await
+    .expect("PermissionDenied should fail before the readiness deadline");
 
-    // Should fail immediately, not spin for 5 seconds.
     assert!(result.is_err(), "expected error");
-    assert!(
-        elapsed < Duration::from_secs(1),
-        "should fail fast, took {elapsed:?}"
-    );
     let ApiError::Connect(ref io_err) = result.unwrap_err() else {
         panic!("expected Connect error");
     };
