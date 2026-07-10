@@ -695,6 +695,15 @@ export const chatThreadWorkflowNotionPageContentUpdatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowWebhookReceivedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("webhook-received"),
+    eventConfig: webhookReceivedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
@@ -707,6 +716,7 @@ export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowNotionChildPageCreatedTriggerSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema,
   chatThreadWorkflowNotionPageContentUpdatedTriggerSchema,
+  chatThreadWorkflowWebhookReceivedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
