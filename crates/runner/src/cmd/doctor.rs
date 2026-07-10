@@ -2165,48 +2165,6 @@ mod tests {
         assert_eq!(stopped[0].config_info, "/data/stopped.yaml");
     }
 
-    fn make_report(name: &str) -> RunnerReport {
-        let mut live_runner = live_runner_instance(
-            1,
-            PathBuf::from("/data/test.yaml"),
-            PathBuf::from("/data/test"),
-        );
-        live_runner.runner_name = name.into();
-        RunnerReport {
-            live_runner,
-            service_type: ServiceType::Bare,
-            status: None,
-            api_ok: None,
-            proxy_pid: None,
-            dns_pid: None,
-            jobs: vec![],
-            warnings: vec![],
-        }
-    }
-
-    #[test]
-    fn filter_by_name_keeps_matching() {
-        let reports = vec![make_report("pr-100-1"), make_report("pr-200-1")];
-        let name_filter = "pr-100-1";
-        let filtered: Vec<_> = reports
-            .into_iter()
-            .filter(|r| r.live_runner.runner_name == name_filter)
-            .collect();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].live_runner.runner_name, "pr-100-1");
-    }
-
-    #[test]
-    fn filter_by_name_no_match_returns_empty() {
-        let reports = vec![make_report("pr-100-1")];
-        let name_filter = "nonexistent";
-        let filtered: Vec<_> = reports
-            .into_iter()
-            .filter(|r| r.live_runner.runner_name == name_filter)
-            .collect();
-        assert!(filtered.is_empty());
-    }
-
     #[test]
     fn warning_display() {
         let w = Warning::NoFirecrackerForRun {
