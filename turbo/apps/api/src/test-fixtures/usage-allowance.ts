@@ -2,11 +2,10 @@
  * In-process test fixture for `org_usage_allowance_entitlements`.
  *
  * Settlement-focused tests seed entitlements directly so they do not need to
- * repeat the Stripe invoice setup covered by webhook integration tests. This
- * module only upserts the per-org entitlement row. Allowance windows and
- * allocations are deliberately NOT seeded here — production creates those
- * during vm0 run creation and usage-event settlement, and tests must drive
- * them through those paths.
+ * repeat the Stripe invoice setup covered by webhook integration tests. Tests
+ * should still create and consume windows through product paths when those
+ * behaviors matter. Explicit window seeds are reserved for read scenarios
+ * that need pre-existing or historical allowance state.
  */
 import {
   orgUsageAllowanceEntitlements,
