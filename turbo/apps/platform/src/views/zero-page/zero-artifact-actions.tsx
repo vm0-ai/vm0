@@ -690,10 +690,6 @@ export function ArtifactDownloadMenu({
   const open = openKey === menuKey;
   const downloadPending = pendingKey === menuKey;
   const showPresentationPptxDownload = artifactKind === "presentation-html";
-  const showGoogleSlidesUpload = shouldShowGoogleSlidesUpload(
-    artifactKind,
-    features,
-  );
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
     filename,
@@ -784,7 +780,7 @@ export function ArtifactDownloadMenu({
             Download (.pptx)
           </ArtifactDownloadMenuItem>
         )}
-        {showGoogleSlidesUpload && syncTarget && (
+        {shouldShowGoogleSlidesUpload(artifactKind, features) && syncTarget && (
           <GoogleSlidesMenuItem
             closeMenu={closeMenu}
             filename={downloadFilename}
