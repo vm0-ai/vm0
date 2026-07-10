@@ -868,6 +868,7 @@ describe("zero workflows", () => {
     if (!actor.orgId) {
       throw new Error("Expected workflow copy actor to belong to an org");
     }
+    await api.grantProEntitlement(actor, { tier: "team" });
     const featureSwitchActor = {
       userId: actor.userId,
       orgId: actor.orgId,
