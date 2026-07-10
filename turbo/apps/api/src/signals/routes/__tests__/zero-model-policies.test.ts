@@ -9,6 +9,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -385,6 +386,101 @@ describe("GET/PUT /api/zero/model-policies", () => {
         return policy.model === removedModel;
       }),
     ).toBeFalsy();
+  });
+
+  it("migrates member preferences from removed models to the workspace default", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const preferenceClient = setupApp({ context })(
+      zeroUserModelPreferenceContract,
+    );
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    });
+    if (!removedModel) {
+      throw new Error("Default policy seed must include a non-default model");
+    }
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: removedModel },
+      }),
+      [200],
+    );
+
+    const updates = toUpdate(listResponse.body).filter((policy) => {
+      return policy.model !== removedModel;
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const preferenceResponse = await accept(
+      preferenceClient.get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(preferenceResponse.body.selectedModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+  });
+
+  it("keeps member preferences for models still allowed after an update", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const preferenceClient = setupApp({ context })(
+      zeroUserModelPreferenceContract,
+    );
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const keptModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    });
+    const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return (
+        model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL && model !== keptModel
+      );
+    });
+    if (!keptModel || !removedModel) {
+      throw new Error(
+        "Default policy seed must include two non-default models",
+      );
+    }
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: keptModel },
+      }),
+      [200],
+    );
+
+    const updates = toUpdate(listResponse.body).filter((policy) => {
+      return policy.model !== removedModel;
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const preferenceResponse = await accept(
+      preferenceClient.get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(preferenceResponse.body.selectedModel).toBe(keptModel);
   });
 
   it("allows adding a supported model that was not seeded by default", async () => {
