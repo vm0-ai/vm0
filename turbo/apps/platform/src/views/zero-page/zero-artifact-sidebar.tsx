@@ -1,9 +1,4 @@
-import {
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
   IconArrowLeft,
   IconArrowsDiagonal,
@@ -47,11 +42,13 @@ import {
   Button,
   cn,
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -113,15 +110,20 @@ import {
 } from "../../signals/zero-page/zero-image-edit.ts";
 import {
   connectXForImageShare$,
+  createXImageShareCardUrl$,
   postImageShareToX$,
+  setXImageShareCaption$,
+  xImageShareCaption$,
   xImageShareConnectorStatus$,
 } from "../../signals/zero-page/zero-image-share-x.ts";
+import { resolvePlatformEnvironment } from "../../lib/platform-host.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   detach,
   jsonParseOr,
   Reason,
+  tapError,
   withCleanup,
 } from "../../signals/utils.ts";
 import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
@@ -2307,17 +2309,34 @@ function ArtifactImageEditShareMenu({
   disabled,
   grouped = false,
   item,
-  onDownload,
 }: {
   disabled: boolean;
   grouped?: boolean;
   item: EditableImageCanvasItem;
-  onDownload: (item: EditableImageCanvasItem) => void;
 }) {
-  const [xDialogOpen, setXDialogOpen] = useState(false);
+  const pageSignal = useGet(pageSignal$);
+  const xConnectorLoadable = useLoadable(xImageShareConnectorStatus$);
+  const lastXConnector = useLastResolved(xImageShareConnectorStatus$);
+  const [, createXImageShareCardUrl] = useLoadableSet(
+    createXImageShareCardUrl$,
+  );
+  const xConnector =
+    xConnectorLoadable.state === "hasData"
+      ? xConnectorLoadable.data
+      : xConnectorLoadable.state === "loading"
+        ? lastXConnector
+        : null;
+  const xStatusChecking =
+    xConnectorLoadable.state === "loading" && lastXConnector === undefined;
+  const xStatusUnavailable =
+    xConnectorLoadable.state === "hasError" && lastXConnector === undefined;
+  const xConnected =
+    xConnector?.connected && xConnector.connectionStatus === "connected";
+  const canOpenXComposer =
+    !xConnected && !xStatusChecking && !xStatusUnavailable;
 
   return (
-    <>
+    <Dialog>
       <DropdownMenu>
         <ArtifactActionTooltip label="Share" side="top">
           <span className="inline-flex">
@@ -2341,15 +2360,39 @@ function ArtifactImageEditShareMenu({
           </span>
         </ArtifactActionTooltip>
         <DropdownMenuContent align="center" className="w-44">
-          <DropdownMenuItem
-            data-testid="image-edit-share-x"
-            onSelect={() => {
-              setXDialogOpen(true);
-            }}
-          >
-            <IconBrandX size={14} stroke={1.6} />
-            Share to X
-          </DropdownMenuItem>
+          {canOpenXComposer ? (
+            <DropdownMenuItem
+              data-testid="image-edit-share-x"
+              onSelect={() => {
+                detach(
+                  openXComposerForImage(item.src, (imageUrl) => {
+                    return createXImageShareCardUrl(imageUrl, pageSignal);
+                  }),
+                  Reason.DomCallback,
+                  "openXComposerForImage",
+                );
+              }}
+            >
+              <IconBrandX size={14} stroke={1.6} />
+              Share to X
+            </DropdownMenuItem>
+          ) : xStatusChecking ? (
+            <DropdownMenuItem disabled data-testid="image-edit-share-x">
+              <IconLoader2 size={14} stroke={1.6} className="animate-spin" />
+              Checking X
+            </DropdownMenuItem>
+          ) : xStatusUnavailable ? (
+            <DropdownMenuItem disabled data-testid="image-edit-share-x">
+              <IconBrandX size={14} stroke={1.6} />X unavailable
+            </DropdownMenuItem>
+          ) : (
+            <DialogTrigger asChild>
+              <DropdownMenuItem data-testid="image-edit-share-x">
+                <IconBrandX size={14} stroke={1.6} />
+                Share to X
+              </DropdownMenuItem>
+            </DialogTrigger>
+          )}
           <DropdownMenuItem disabled data-testid="image-edit-share-instagram">
             <IconBrandInstagram size={14} stroke={1.6} />
             Share to Instagram
@@ -2362,200 +2405,407 @@ function ArtifactImageEditShareMenu({
           <DropdownMenuItem disabled>Coming soon</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {xDialogOpen ? (
-        <ArtifactImageShareToXDialog
-          item={item}
-          onDownload={onDownload}
-          open={xDialogOpen}
-          onOpenChange={setXDialogOpen}
-        />
-      ) : null}
-    </>
+      <ArtifactImageShareToXDialogContent item={item} />
+    </Dialog>
   );
 }
 
-function xShareIntentUrl(caption: string): string {
-  const params = new URLSearchParams({
-    text: caption.trim() || "Made with Zero",
-  });
+function xShareIntentUrl(shareUrl: string): string {
+  const params = new URLSearchParams({ url: shareUrl });
   return `https://x.com/intent/tweet?${params.toString()}`;
 }
 
-function ArtifactImageShareToXDialog({
+function isXImageShareConnectionBypassEnabled(): boolean {
+  return (
+    import.meta.env.VITE_QA_BYPASS_X_SHARE_CONNECTOR === "true" ||
+    resolvePlatformEnvironment() === "preview"
+  );
+}
+
+async function openXComposerForImage(
+  imageUrl: string,
+  createShareCardUrl: (imageUrl: string) => Promise<string | undefined>,
+): Promise<void> {
+  const composerWindow = window.open("about:blank", "_blank");
+  if (!composerWindow) {
+    toast.error("Couldn't open X composer");
+    return;
+  }
+
+  composerWindow.opener = null;
+  const shareCardUrl = await createShareCardUrl(imageUrl);
+  if (!shareCardUrl) {
+    composerWindow.close();
+    return;
+  }
+
+  composerWindow.location.href = xShareIntentUrl(shareCardUrl);
+}
+
+function xImageShareConnectedStatusText({
+  bypassEnabled,
+  username,
+}: {
+  bypassEnabled: boolean;
+  username: string | null;
+}): string {
+  if (username) {
+    return `Connected as @${username}`;
+  }
+  if (bypassEnabled) {
+    return "QA sharing bypass enabled";
+  }
+  return "X connected";
+}
+
+function xImageShareConnectGuidanceText({
+  connectionStatus,
+  statusChecking,
+}: {
+  connectionStatus: string;
+  statusChecking: boolean;
+}): string {
+  if (statusChecking) {
+    return "Checking your X connection.";
+  }
+  switch (connectionStatus) {
+    case "scope-mismatch": {
+      return "Reconnect X so Zero can post this image.";
+    }
+    case "reconnect-required": {
+      return "Reconnect X before sharing this image.";
+    }
+    default: {
+      return "Connect X once, then share this image from Zero.";
+    }
+  }
+}
+
+type XImageShareDialogMode = "composer" | "connect" | "post";
+
+function xImageShareDialogDescription(mode: XImageShareDialogMode): string {
+  switch (mode) {
+    case "post": {
+      return "Post this image to X with native media.";
+    }
+    case "composer": {
+      return "Open X with a share link.";
+    }
+    case "connect": {
+      return "Connect X to share this edited image from Zero.";
+    }
+  }
+}
+
+function XImageShareStatusBadge({
+  bypassEnabled,
+  username,
+}: {
+  bypassEnabled: boolean;
+  username: string | null;
+}) {
+  return (
+    <div className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      <span>
+        {xImageShareConnectedStatusText({
+          bypassEnabled,
+          username,
+        })}
+      </span>
+    </div>
+  );
+}
+
+function XImageSharePostForm({
+  caption,
+  setCaption,
+  username,
+}: {
+  caption: string;
+  setCaption: (caption: string) => void;
+  username: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <XImageShareStatusBadge bypassEnabled={false} username={username} />
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-foreground">Caption</span>
+        <textarea
+          className="min-h-24 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-sm leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
+          placeholder="Made with Zero"
+          maxLength={280}
+          value={caption}
+          data-testid="image-edit-share-x-caption"
+          onChange={(event) => {
+            setCaption(event.currentTarget.value);
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
+function XImageShareDialogBody({
+  bypassEnabled,
+  caption,
+  connectionStatus,
+  mode,
+  setCaption,
+  statusChecking,
+  username,
+}: {
+  bypassEnabled: boolean;
+  caption: string;
+  connectionStatus: string;
+  mode: XImageShareDialogMode;
+  setCaption: (caption: string) => void;
+  statusChecking: boolean;
+  username: string | null;
+}) {
+  if (mode === "post") {
+    return (
+      <XImageSharePostForm
+        caption={caption}
+        setCaption={setCaption}
+        username={username}
+      />
+    );
+  }
+  if (mode === "composer") {
+    return (
+      <XImageShareStatusBadge
+        bypassEnabled={bypassEnabled}
+        username={username}
+      />
+    );
+  }
+  return (
+    <div className="rounded-lg border border-border/70 bg-gray-50 px-3 py-2 text-sm text-muted-foreground">
+      {xImageShareConnectGuidanceText({
+        connectionStatus,
+        statusChecking,
+      })}
+    </div>
+  );
+}
+
+function XImageShareDialogFooter({
+  connectLabel,
+  connecting,
+  mode,
+  onConnect,
+  onOpenComposer,
+  onPost,
+  posting,
+}: {
+  connectLabel: string;
+  connecting: boolean;
+  mode: XImageShareDialogMode;
+  onConnect: () => Promise<void>;
+  onOpenComposer: () => Promise<void>;
+  onPost: () => Promise<void>;
+  posting: boolean;
+}) {
+  if (mode === "post") {
+    return (
+      <Button
+        type="button"
+        disabled={posting}
+        className="w-full sm:w-auto"
+        onClick={() => {
+          detach(onPost(), Reason.DomCallback, "postImageShareToX");
+        }}
+      >
+        {posting ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        Post to X
+      </Button>
+    );
+  }
+  if (mode === "composer") {
+    return (
+      <DialogClose asChild>
+        <Button
+          type="button"
+          className="w-full sm:w-auto"
+          onClick={() => {
+            detach(
+              onOpenComposer(),
+              Reason.DomCallback,
+              "openXComposerForImage",
+            );
+          }}
+        >
+          <IconExternalLink size={14} stroke={1.6} />
+          Open X composer
+        </Button>
+      </DialogClose>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      disabled={connecting}
+      className="w-full sm:w-auto"
+      onClick={() => {
+        detach(onConnect(), Reason.DomCallback, "connectXForImageShare");
+      }}
+    >
+      {connecting ? <IconLoader2 size={14} className="animate-spin" /> : null}
+      {connectLabel}
+    </Button>
+  );
+}
+
+function ArtifactImageShareToXDialogContent({
   item,
-  onDownload,
-  open,
-  onOpenChange,
 }: {
   item: EditableImageCanvasItem;
-  onDownload: (item: EditableImageCanvasItem) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
 }) {
-  const [caption, setCaption] = useState("");
+  const caption = useGet(xImageShareCaption$);
+  const setCaption = useSet(setXImageShareCaption$);
   const pageSignal = useGet(pageSignal$);
   const xConnectorLoadable = useLoadable(xImageShareConnectorStatus$);
+  const lastXConnector = useLastResolved(xImageShareConnectorStatus$);
   const xConnector =
-    xConnectorLoadable.state === "hasData" ? xConnectorLoadable.data : null;
-  const [postLoadable, postImageShareToX] = useLoadableSet(postImageShareToX$);
+    xConnectorLoadable.state === "hasData"
+      ? xConnectorLoadable.data
+      : xConnectorLoadable.state === "loading"
+        ? lastXConnector
+        : null;
   const [connectLoadable, connectXForImageShare] = useLoadableSet(
     connectXForImageShare$,
   );
-  const posting = postLoadable.state === "loading";
+  const [, createXImageShareCardUrl] = useLoadableSet(
+    createXImageShareCardUrl$,
+  );
+  const [postLoadable, postImageShareToX] = useLoadableSet(postImageShareToX$);
   const connecting = connectLoadable.state === "loading";
-  const busy = posting || connecting;
+  const posting = postLoadable.state === "loading";
+  const xStatusChecking =
+    xConnectorLoadable.state === "loading" && lastXConnector === undefined;
   const connectionStatus = xConnector?.connectionStatus ?? "not-connected";
   const xConnected = xConnector?.connected && connectionStatus === "connected";
+  const xConnectionBypassEnabled = isXImageShareConnectionBypassEnabled();
+  const mode: XImageShareDialogMode = xConnected
+    ? "post"
+    : xConnectionBypassEnabled
+      ? "composer"
+      : "connect";
   const xUsername = xConnector?.connection?.externalUsername ?? null;
   const connectLabel =
     connectionStatus === "not-connected" ? "Connect X" : "Reconnect X";
 
-  const openComposer = () => {
-    window.open(xShareIntentUrl(caption), "_blank", "noopener,noreferrer");
-  };
-
-  const submitPost = async () => {
-    if (!xConnected || posting) {
-      return;
-    }
-    try {
-      const result = await postImageShareToX(
-        {
-          caption: caption.trim() || undefined,
-          imageUrl: item.src,
-        },
-        pageSignal,
-      );
-      toast.success("Posted to X", {
-        action: {
-          label: "View post",
-          onClick: () => {
-            window.open(result.tweetUrl, "_blank", "noopener,noreferrer");
-          },
-        },
-      });
-      onOpenChange(false);
-    } catch {
-      // accept() already shows the API error toast. Keep the draft open.
-    }
-  };
-
-  const connectX = async () => {
-    if (connecting) {
-      return;
-    }
-    try {
-      await connectXForImageShare(pageSignal);
-    } catch {
-      toast.error("Couldn't connect X, try again");
-    }
-  };
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="zero-app sm:max-w-md"
-        data-testid="image-edit-share-x-dialog"
-      >
-        <DialogHeader>
-          <DialogTitle>Share to X</DialogTitle>
-          <DialogDescription>
-            {xConnected
-              ? "Add a caption before posting this image."
-              : "Connect X to post this edited image from Zero."}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            detach(submitPost(), Reason.DomCallback, "shareImageToX");
+    <DialogContent
+      className="zero-app gap-5 overflow-hidden sm:max-w-md"
+      data-testid="image-edit-share-x-dialog"
+    >
+      <DialogHeader>
+        <DialogTitle>Share to X</DialogTitle>
+        <DialogDescription>
+          {xImageShareDialogDescription(mode)}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-4">
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-gray-50">
+          <img
+            src={item.src}
+            alt=""
+            className="max-h-52 w-full object-contain"
+            data-testid="image-edit-share-x-preview"
+          />
+        </div>
+        <XImageShareDialogBody
+          bypassEnabled={xConnectionBypassEnabled}
+          caption={caption}
+          connectionStatus={connectionStatus}
+          mode={mode}
+          setCaption={setCaption}
+          statusChecking={xStatusChecking}
+          username={xUsername}
+        />
+        <DialogFooter className="gap-2 sm:justify-end">
+          <XImageShareDialogFooter
+            connectLabel={connectLabel}
+            connecting={connecting}
+            mode={mode}
+            onConnect={async () => {
+              if (!connecting) {
+                await connectXForImageShare(pageSignal);
+              }
+            }}
+            onOpenComposer={() => {
+              return openXComposerForImage(item.src, (imageUrl) => {
+                return createXImageShareCardUrl(imageUrl, pageSignal);
+              });
+            }}
+            onPost={async () => {
+              if (posting) {
+                return;
+              }
+              const result = await tapError(
+                postImageShareToX(
+                  {
+                    caption: caption.trim() || undefined,
+                    imageUrl: item.src,
+                  },
+                  pageSignal,
+                ),
+                () => {
+                  toast.error("Couldn't post to X, try again");
+                },
+              );
+              if (result) {
+                setCaption("");
+                toast.success("Posted to X", {
+                  action: {
+                    label: "View post",
+                    onClick: () => {
+                      window.open(
+                        result.tweetUrl,
+                        "_blank",
+                        "noopener,noreferrer",
+                      );
+                    },
+                  },
+                });
+              }
+            }}
+            posting={posting}
+          />
+        </DialogFooter>
+      </div>
+    </DialogContent>
+  );
+}
+
+function ArtifactImageEditDeleteButton({
+  item,
+  onDelete,
+}: {
+  item: EditableImageCanvasItem;
+  onDelete: (item: EditableImageCanvasItem) => void;
+}) {
+  return (
+    <ArtifactActionTooltip label="Delete" side="top">
+      <span className="inline-flex">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
+          data-testid="image-edit-delete"
+          aria-label="Delete image"
+          title="Delete"
+          onClick={() => {
+            onDelete(item);
           }}
         >
-          <div className="overflow-hidden rounded-lg border border-border/70 bg-gray-50">
-            <img
-              src={item.src}
-              alt=""
-              className="max-h-56 w-full object-contain"
-              data-testid="image-edit-share-x-preview"
-            />
-          </div>
-          {xConnected ? (
-            <div className="flex flex-col gap-3">
-              <div className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span>
-                  {xUsername ? `Posting as @${xUsername}` : "Posting to X"}
-                </span>
-              </div>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-foreground">
-                  Caption
-                </span>
-                <textarea
-                  className="min-h-24 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-sm leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
-                  placeholder="Made with Zero"
-                  maxLength={280}
-                  value={caption}
-                  data-testid="image-edit-share-x-caption"
-                  onChange={(event) => {
-                    setCaption(event.currentTarget.value);
-                  }}
-                />
-              </label>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border/70 bg-gray-50 px-3 py-2 text-sm text-muted-foreground">
-              {connectionStatus === "scope-mismatch"
-                ? "Reconnect X so Zero can post images."
-                : connectionStatus === "reconnect-required"
-                  ? "Reconnect X before posting images."
-                  : "Connect X once, then post this image from the same window."}
-            </div>
-          )}
-          <DialogFooter className="gap-2 sm:justify-between">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() => {
-                  onDownload(item);
-                }}
-              >
-                Download image
-              </Button>
-              {!xConnected ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={openComposer}
-                >
-                  <IconExternalLink size={14} stroke={1.6} />
-                  Open X composer
-                </Button>
-              ) : null}
-            </div>
-            {xConnected ? (
-              <Button type="submit" disabled={busy}>
-                {posting ? (
-                  <IconLoader2 size={14} className="animate-spin" />
-                ) : null}
-                Post to X
-              </Button>
-            ) : (
-              <Button type="button" disabled={busy} onClick={connectX}>
-                {connecting ? (
-                  <IconLoader2 size={14} className="animate-spin" />
-                ) : null}
-                {connectLabel}
-              </Button>
-            )}
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          <IconTrash size={18} stroke={1.8} />
+        </Button>
+      </span>
+    </ArtifactActionTooltip>
   );
 }
 
@@ -2645,12 +2895,7 @@ function ArtifactImageEditSelectionToolbar({
         role="group"
         aria-label="Image share and download actions"
       >
-        <ArtifactImageEditShareMenu
-          disabled={false}
-          grouped
-          item={item}
-          onDownload={onDownload}
-        />
+        <ArtifactImageEditShareMenu disabled={false} grouped item={item} />
         <span className="h-5 w-px bg-border/70" aria-hidden />
         <ArtifactImageEditToolbarButton
           grouped
@@ -2668,24 +2913,7 @@ function ArtifactImageEditSelectionToolbar({
         item={item}
         onSubmitRegionComments={onSubmitRegionComments}
       />
-      <ArtifactActionTooltip label="Delete" side="top">
-        <span className="inline-flex">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground"
-            data-testid="image-edit-delete"
-            aria-label="Delete image"
-            title="Delete"
-            onClick={() => {
-              onDelete(item);
-            }}
-          >
-            <IconTrash size={18} stroke={1.8} />
-          </Button>
-        </span>
-      </ArtifactActionTooltip>
+      <ArtifactImageEditDeleteButton item={item} onDelete={onDelete} />
     </div>
   );
 }

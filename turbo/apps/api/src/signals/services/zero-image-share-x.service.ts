@@ -1,18 +1,23 @@
 import { command } from "ccstate";
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { ApiErrorKey } from "@vm0/api-contracts/contracts/errors";
 import { refreshXToken } from "@vm0/connectors/auth-providers/connectors/x/oauth";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
+import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { safeJsonParse, safeUrlParse, settle } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
 import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 const X_CONNECTOR_TYPE = "x";
 const X_ACCESS_TOKEN_SECRET_NAME = "X_ACCESS_TOKEN";
@@ -22,17 +27,20 @@ const DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_X_CAPTION = "Made with Zero";
 const ARTIFACTS_PATH_PREFIX = "/artifacts/";
 const CLOUDFLARE_IMAGE_RESIZE_PATH_PREFIX = "/cdn-cgi/image/";
+const X_SHARE_USAGE_KIND = "connector";
+const X_SHARE_USAGE_PROVIDER = "x";
+const X_SHARE_USAGE_CATEGORY = "content.create";
 
 const REQUIRED_X_SCOPES = ["tweet.write", "media.write"] as const;
 
-const X_SUPPORTED_IMAGE_CONTENT_TYPES = new Set([
+const X_SUPPORTED_IMAGE_CONTENT_TYPES = [
   "image/jpeg",
   "image/pjpeg",
   "image/png",
   "image/webp",
   "image/bmp",
   "image/tiff",
-]);
+] as const;
 
 interface XShareSuccess {
   readonly ok: true;
@@ -101,10 +109,8 @@ function parseOAuthScopes(value: string | null): readonly string[] {
   if (!value) {
     return [];
   }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(value);
-  } catch {
+  const raw = safeJsonParse(value);
+  if (raw === undefined) {
     return [];
   }
   const parsed = oauthScopesSchema.safeParse(raw);
@@ -212,21 +218,18 @@ async function refreshAndPersistXAccessToken(args: {
     return xShareError("PROVIDER_UNAVAILABLE", "X sharing is not configured");
   }
 
-  let refreshed: Awaited<ReturnType<typeof refreshXToken>>;
-  try {
-    refreshed = await refreshXToken(
-      clientId,
-      clientSecret,
-      args.refreshToken,
-      args.signal,
-    );
-  } catch {
+  const refreshedResult = await settle(
+    refreshXToken(clientId, clientSecret, args.refreshToken, args.signal),
+    args.signal,
+  );
+  if (!refreshedResult.ok) {
     return xShareError("CONFLICT", "Reconnect X to post images");
   }
+  const refreshed = refreshedResult.value;
 
   const nextRefreshToken = refreshed.refreshToken ?? args.refreshToken;
   const tokenExpiresAt = new Date(
-    Date.now() +
+    now() +
       (refreshed.expiresIn
         ? refreshed.expiresIn * 1000
         : DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS),
@@ -297,7 +300,7 @@ async function resolveXAccessToken(args: {
   const accessTokenCurrent =
     secretValues.accessToken &&
     (tokenExpiresAtMs === 0 ||
-      tokenExpiresAtMs > Date.now() + X_TOKEN_REFRESH_SKEW_MS);
+      tokenExpiresAtMs > now() + X_TOKEN_REFRESH_SKEW_MS);
   if (accessTokenCurrent) {
     return { ok: true, accessToken: secretValues.accessToken };
   }
@@ -320,7 +323,11 @@ function normalizeImageContentType(contentTypeHeader: string | null): string {
 }
 
 function xImageMediaType(contentType: string): string | null {
-  return X_SUPPORTED_IMAGE_CONTENT_TYPES.has(contentType) ? contentType : null;
+  return (X_SUPPORTED_IMAGE_CONTENT_TYPES as readonly string[]).includes(
+    contentType,
+  )
+    ? contentType
+    : null;
 }
 
 function artifactPathFromShareImageUrl(pathname: string): string | null {
@@ -363,10 +370,8 @@ async function fetchShareImage(args: {
     }
   | XShareFailure
 > {
-  let parsed: URL;
-  try {
-    parsed = new URL(args.imageUrl);
-  } catch {
+  const parsed = safeUrlParse(args.imageUrl);
+  if (!parsed) {
     return xShareError("BAD_REQUEST", "Choose an image with a public URL");
   }
 
@@ -374,12 +379,14 @@ async function fetchShareImage(args: {
     return xShareError("BAD_REQUEST", "Choose an image with a public URL");
   }
 
-  let response: Response;
-  try {
-    response = await fetch(parsed, { signal: args.signal });
-  } catch {
+  const responseResult = await settle(
+    fetch(parsed, { signal: args.signal }),
+    args.signal,
+  );
+  if (!responseResult.ok) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
   }
+  const response = responseResult.value;
   args.signal.throwIfAborted();
 
   if (!response.ok) {
@@ -434,9 +441,8 @@ async function xApiJson(args: {
   });
   args.signal.throwIfAborted();
 
-  const body = await response.json().catch(() => {
-    return null;
-  });
+  const bodyResult = await settle(response.json() as Promise<unknown>);
+  const body = bodyResult.ok ? bodyResult.value : null;
   if (!response.ok) {
     throw new Error(`X API returned ${response.status}`);
   }
@@ -487,6 +493,22 @@ async function createXPost(args: {
     },
   });
   return xCreateTweetResponseSchema.parse(body).data.id;
+}
+
+async function recordXPostUsage(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly writeDb: Db;
+}): Promise<void> {
+  await args.writeDb.insert(usageEvent).values({
+    idempotencyKey: randomUUID(),
+    orgId: args.orgId,
+    userId: args.userId,
+    kind: X_SHARE_USAGE_KIND,
+    provider: X_SHARE_USAGE_PROVIDER,
+    category: X_SHARE_USAGE_CATEGORY,
+    quantity: 1,
+  });
 }
 
 export const shareImageToX$ = command(
@@ -542,28 +564,43 @@ export const shareImageToX$ = command(
       return image;
     }
 
-    try {
-      const mediaId = await uploadXImageMedia({
-        accessToken: accessTokenResult.accessToken,
-        image,
-        signal,
-      });
-      const tweetId = await createXPost({
-        accessToken: accessTokenResult.accessToken,
-        caption: args.caption,
-        mediaId,
-        signal,
-      });
-      return {
-        ok: true,
-        tweetId,
-        tweetUrl: `https://x.com/i/web/status/${tweetId}`,
-      };
-    } catch {
+    const postResult = await settle(
+      (async () => {
+        const mediaId = await uploadXImageMedia({
+          accessToken: accessTokenResult.accessToken,
+          image,
+          signal,
+        });
+        const tweetId = await createXPost({
+          accessToken: accessTokenResult.accessToken,
+          caption: args.caption,
+          mediaId,
+          signal,
+        });
+        return {
+          ok: true as const,
+          tweetId,
+          tweetUrl: `https://x.com/i/web/status/${tweetId}`,
+        };
+      })(),
+      signal,
+    );
+    if (!postResult.ok) {
       return xShareError(
         "PROVIDER_UNAVAILABLE",
         "X couldn't publish the post, try again",
       );
     }
+
+    await recordXPostUsage({
+      orgId: args.orgId,
+      userId: args.userId,
+      writeDb,
+    });
+    signal.throwIfAborted();
+    await set(processOrgUsageEvents$, args.orgId, signal);
+    signal.throwIfAborted();
+
+    return postResult.value;
   },
 );

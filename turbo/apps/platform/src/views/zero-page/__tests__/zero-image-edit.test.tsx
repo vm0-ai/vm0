@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   chatThreadByIdContract,
@@ -19,7 +19,11 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -32,6 +36,8 @@ const SOURCE_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/source.png";
 const EDITED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/edited.png";
+const X_SHARE_CARD_URL =
+  "https://cdn.vm7.io/artifacts/test/image-edit/x-share-card.html";
 const LINK_IMAGE_URL = "https://cdn.vm7.io/artifacts/test/image-edit/link.png";
 const IMPORTED_LINK_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/imported-link.png";
@@ -45,6 +51,11 @@ const SOFT_VECTOR_TEMPLATE = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
 if (!SOFT_VECTOR_TEMPLATE) {
   throw new Error("Missing Soft Vector illustration template");
 }
+
+afterEach(() => {
+  vi.stubEnv("VITE_QA_BYPASS_X_SHARE_CONNECTOR", "");
+  window.location.href = "http://localhost/";
+});
 
 function setupChatThread({
   featureSwitches,
@@ -188,6 +199,45 @@ interface MockUploadResult {
   readonly url: string;
 }
 
+interface MockComposerWindow {
+  closed: boolean;
+  location: {
+    href: string;
+  };
+  opener: unknown;
+  close: () => void;
+}
+
+function createMockComposerWindow(): Window & MockComposerWindow {
+  const windowRef: MockComposerWindow = {
+    closed: false,
+    location: { href: "about:blank" },
+    opener: {},
+    close: () => {
+      windowRef.closed = true;
+    },
+  };
+  return windowRef as Window & MockComposerWindow;
+}
+
+function mockXShareCardUpload(cardUrl = X_SHARE_CARD_URL): string[] {
+  const uploadedHtml: string[] = [];
+  context.mocks.api(
+    zeroUploadsContract.htmlDomEditSnapshot,
+    ({ body, respond }) => {
+      uploadedHtml.push(body.html);
+      return respond(200, {
+        id: "x-share-card-upload",
+        filename: body.filename,
+        contentType: "text/html",
+        size: body.html.length,
+        url: cardUrl,
+      });
+    },
+  );
+  return uploadedHtml;
+}
+
 function mockSequentialUploads(results: readonly MockUploadResult[]): void {
   let prepareIndex = 0;
   let completeIndex = 0;
@@ -311,10 +361,15 @@ function xConnectorStatusItem(args?: {
 
 function mockXConnectorStatus(
   args?: Parameters<typeof xConnectorStatusItem>[0],
+  onStatus?: () => Promise<void> | void,
 ): void {
-  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: [xConnectorStatusItem(args)] });
-  });
+  context.mocks.api(
+    zeroConnectorCatalogContract.status,
+    async ({ respond }) => {
+      await onStatus?.();
+      return respond(200, { connectors: [xConnectorStatusItem(args)] });
+    },
+  );
 }
 
 function mockShareImageToX(
@@ -327,6 +382,38 @@ function mockShareImageToX(
       tweetUrl: "https://x.com/i/web/status/1234567890",
     });
   });
+}
+
+function expectXComposerSharesCdnCardUrl(
+  composerUrl: URL,
+  cardUrl = X_SHARE_CARD_URL,
+): void {
+  expect(composerUrl.origin).toBe("https://x.com");
+  expect(composerUrl.pathname).toBe("/intent/tweet");
+  expect(composerUrl.searchParams.get("url")).toBe(cardUrl);
+}
+
+function expectXShareCardHtml(html: string): void {
+  expect(html).toContain(
+    '<meta name="twitter:card" content="summary_large_image">',
+  );
+  expect(html).toContain(
+    `<meta name="twitter:image" content="${SOURCE_IMAGE_URL}">`,
+  );
+  expect(html).toContain(
+    `<meta property="og:image" content="${SOURCE_IMAGE_URL}">`,
+  );
+  expect(html).toContain(`<img src="${SOURCE_IMAGE_URL}"`);
+}
+
+function getButtonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((element) => {
+    return element.textContent === text;
+  });
+  if (!button) {
+    throw new Error(`Missing ${text} button`);
+  }
+  return button;
 }
 
 const MARKED_DATA_URI = "data:image/png;base64,bWFya2Vk";
@@ -1323,8 +1410,11 @@ describe("image editing", () => {
     expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
   });
 
-  it("opens the X connect flow from the image edit share menu", async () => {
+  it("opens X composer from the image edit share menu when X is not connected", async () => {
     const user = userEvent.setup({ delay: null });
+    const openedWindow = createMockComposerWindow();
+    const openMock = context.mocks.browser.open(openedWindow);
+    const uploadedHtml = mockXShareCardUpload();
     mockXConnectorStatus({ connected: false });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
@@ -1335,30 +1425,79 @@ describe("image editing", () => {
     await user.click(screen.getByTestId("image-edit-share-x"));
 
     await waitFor(() => {
+      expect(openMock.calls).toHaveLength(1);
+      expect(uploadedHtml).toHaveLength(1);
+    });
+    const composerCall = openMock.calls[0];
+    if (!composerCall) {
+      throw new Error("Missing X composer window call");
+    }
+    expect(composerCall.url).toBe("about:blank");
+    expect(composerCall.target).toBe("_blank");
+    expect(openedWindow.opener).toBeNull();
+    expectXShareCardHtml(uploadedHtml[0] ?? "");
+    expectXComposerSharesCdnCardUrl(new URL(openedWindow.location.href));
+    expect(screen.queryByTestId("image-edit-share-x-dialog")).toBeNull();
+    expect(
+      screen.queryByTestId("image-edit-share-x-caption"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("posts the image to X with native media when X is connected", async () => {
+    const user = userEvent.setup({ delay: null });
+    let statusLoaded = false;
+    let postedBody: { caption?: string; imageUrl: string } | null = null;
+    mockShareImageToX((body) => {
+      postedBody = body;
+    });
+    mockXConnectorStatus(
+      {
+        connected: true,
+        connectionStatus: "connected",
+        externalUsername: "zero_user",
+      },
+      () => {
+        statusLoaded = true;
+      },
+    );
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await waitFor(() => {
+      expect(statusLoaded).toBeTruthy();
+    });
+    await user.click(screen.getByTestId("image-edit-share"));
+    await user.click(screen.getByTestId("image-edit-share-x"));
+
+    await waitFor(() => {
       expect(
         screen.getByTestId("image-edit-share-x-dialog"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "Connect X" })).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Open X composer" }),
-    ).toBeEnabled();
-    expect(screen.getByTestId("image-edit-share-x-preview")).toHaveAttribute(
-      "src",
-      SOURCE_IMAGE_URL,
+    await user.type(
+      screen.getByTestId("image-edit-share-x-caption"),
+      "Edited with Zero",
     );
+    await user.click(getButtonByText("Post to X"));
+
+    await waitFor(() => {
+      expect(postedBody).toStrictEqual({
+        caption: "Edited with Zero",
+        imageUrl: SOURCE_IMAGE_URL,
+      });
+    });
   });
 
-  it("posts an edited image to X when X is connected", async () => {
+  it("waits for X status before opening the composer for disconnected X", async () => {
     const user = userEvent.setup({ delay: null });
-    let postedBody: { caption?: string; imageUrl: string } | null = null;
-    mockXConnectorStatus({
-      connected: true,
-      connectionStatus: "connected",
-      externalUsername: "zero_user",
-    });
-    mockShareImageToX((body) => {
-      postedBody = body;
+    const openedWindow = createMockComposerWindow();
+    const openMock = context.mocks.browser.open(openedWindow);
+    const uploadedHtml = mockXShareCardUpload();
+    const statusReady = createDeferredPromise<void>(context.signal);
+    mockXConnectorStatus({ connected: false }, () => {
+      return statusReady.promise;
     });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
@@ -1366,20 +1505,87 @@ describe("image editing", () => {
 
     await openSelectedImageEditToolbar(user);
     await user.click(screen.getByTestId("image-edit-share"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Checking X")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("image-edit-share-x")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    statusReady.resolve();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Checking X")).toBeNull();
+    });
     await user.click(screen.getByTestId("image-edit-share-x"));
 
     await waitFor(() => {
-      expect(screen.getByText("Posting as @zero_user")).toBeInTheDocument();
+      expect(openMock.calls).toHaveLength(1);
+      expect(uploadedHtml).toHaveLength(1);
     });
-    await user.type(
-      screen.getByTestId("image-edit-share-x-caption"),
-      "Edited with Zero",
+    const composerCall = openMock.calls[0];
+    if (!composerCall) {
+      throw new Error("Missing X composer window call");
+    }
+    expect(composerCall.url).toBe("about:blank");
+    expect(composerCall.target).toBe("_blank");
+    expect(openedWindow.opener).toBeNull();
+    expectXShareCardHtml(uploadedHtml[0] ?? "");
+    expectXComposerSharesCdnCardUrl(new URL(openedWindow.location.href));
+    expect(screen.queryByTestId("image-edit-share-x-dialog")).toBeNull();
+  });
+
+  it("waits for X status before deciding whether to connect", async () => {
+    const user = userEvent.setup({ delay: null });
+    const statusReady = createDeferredPromise<void>(context.signal);
+    let postedBody: { caption?: string; imageUrl: string } | null = null;
+    mockShareImageToX((body) => {
+      postedBody = body;
+    });
+    mockXConnectorStatus(
+      {
+        connected: true,
+        connectionStatus: "connected",
+        externalUsername: "zero_user",
+      },
+      () => {
+        return statusReady.promise;
+      },
     );
-    await user.click(screen.getByRole("button", { name: "Post to X" }));
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-share"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Checking X")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("image-edit-share-x")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.queryByTestId("image-edit-share-x-dialog")).toBeNull();
+
+    statusReady.resolve();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Checking X")).toBeNull();
+    });
+    await user.click(screen.getByTestId("image-edit-share-x"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-share-x-dialog"),
+      ).toBeInTheDocument();
+    });
+    await user.click(getButtonByText("Post to X"));
 
     await waitFor(() => {
       expect(postedBody).toStrictEqual({
-        caption: "Edited with Zero",
         imageUrl: SOURCE_IMAGE_URL,
       });
     });
