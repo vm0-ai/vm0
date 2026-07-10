@@ -61,12 +61,10 @@ import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { hideAppSkeleton$, startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
-import { setupRealtime$ } from "./realtime.ts";
 import { updatePage$ } from "./react-router.ts";
 import { NotFoundPage } from "../views/not-found-page.tsx";
 
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
-import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { reloadBillingStatus$ } from "./zero-page/billing.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
 
@@ -441,7 +439,6 @@ export const bootstrap$ = command(
     await Promise.all([
       set(setupRoutes$, signal),
       set(startSkeletonCycling$, signal),
-      set(setupRealtime$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
@@ -449,7 +446,6 @@ export const bootstrap$ = command(
       set(setupGlobalKeyboardShortcuts$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
-      set(reloadFeatureSwitch$, signal),
     ]);
 
     signal.throwIfAborted();

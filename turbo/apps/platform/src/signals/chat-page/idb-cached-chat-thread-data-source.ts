@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { clerk$ } from "../auth.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
 import {
   chatIdbReadOr,
   chatIdbWriteBestEffort,
@@ -79,7 +79,6 @@ const warmListMessagesAfter$ = command(
         fetchOptions: { signal },
       }),
       [200, 404],
-      { toast: false },
     );
     signal.throwIfAborted();
     if (result.status === 404) {
@@ -186,19 +185,8 @@ function createListMessagesBefore(
       { threadId: tid, beforeId }: ListMessagesBeforeArgs,
       signal: AbortSignal,
     ) => {
-      const clerk = await get(clerk$);
+      const { userId, orgId } = await get(authenticatedIdentity$);
       signal.throwIfAborted();
-      const userId = clerk.user?.id;
-      const orgId = clerk.organization?.id;
-
-      if (!userId || !orgId) {
-        L.debug("listBefore:noAuth", { threadId: tid, beforeId });
-        return set(
-          remote.listMessagesBefore$,
-          { threadId: tid, beforeId },
-          signal,
-        );
-      }
 
       const stores = getStores(userId, orgId);
       const readStore = stores.readStore;
@@ -281,12 +269,9 @@ function createListMessagesAfter(
         signal,
       );
 
-      const clerk = await get(clerk$);
-      signal.throwIfAborted();
-      const userId = clerk.user?.id;
-      const orgId = clerk.organization?.id;
-
-      if (userId && orgId && result.messages.length > 0) {
+      if (result.messages.length > 0) {
+        const { userId, orgId } = await get(authenticatedIdentity$);
+        signal.throwIfAborted();
         const stores = getStores(userId, orgId);
         // Only cache when the anchor (sinceId) still exists locally.
         // If it doesn't, local state has diverged and writing would create
@@ -321,13 +306,6 @@ function createListMessagesAfter(
           sinceId,
           count: result.messages.length,
         });
-      } else {
-        L.debug("listAfter:skipCache", {
-          threadId: tid,
-          sinceId,
-          hasAuth: Boolean(userId && orgId),
-          count: result.messages.length,
-        });
       }
 
       return result;
@@ -352,15 +330,12 @@ function createGetMessage(
       );
       signal.throwIfAborted();
 
-      const clerk = await get(clerk$);
-      signal.throwIfAborted();
-      const userId = clerk.user?.id;
-      const orgId = clerk.organization?.id;
-
-      if (!userId || !orgId || message === null) {
+      if (message === null) {
         return message;
       }
 
+      const { userId, orgId } = await get(authenticatedIdentity$);
+      signal.throwIfAborted();
       const stores = getStores(userId, orgId);
       await chatIdbWriteBestEffort(
         "cachedDataSource:upsertMessage",
@@ -377,16 +352,8 @@ function createGetMessage(
 
 export const warmLatestChatThreadMessages$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
+    const { userId, orgId } = await get(authenticatedIdentity$);
     signal.throwIfAborted();
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-
-    if (!userId || !orgId) {
-      L.debug("warmLatest:noAuth", { threadId });
-      return;
-    }
-
     const stores = createIdbMessageStores(userId, orgId);
     const latest = await chatIdbReadOr(
       "cachedDataSource:warmReadLatest",
@@ -483,15 +450,7 @@ export function createIdbCachedDataSource(
   }
 
   const initialPage$ = computed(async (get): Promise<InitialPage> => {
-    const clerk = await get(clerk$);
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-
-    if (!userId || !orgId) {
-      L.debug("initialPage:noAuth", { threadId });
-      return get(remote.initialPage$);
-    }
-
+    const { userId, orgId } = await get(authenticatedIdentity$);
     const stores = getStores(userId, orgId);
     const readStore = stores.readStore;
     const cached = await chatIdbReadOr(

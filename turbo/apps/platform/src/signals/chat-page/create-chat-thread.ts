@@ -40,7 +40,7 @@ import {
   reconcileOptimisticChatMessages$,
   type OptimisticChatMessageEntry,
 } from "./optimistic-chat-messages.ts";
-import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
+import type { ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
@@ -546,7 +546,6 @@ function createModelSelection(
       );
       signal.throwIfAborted();
       set(dataSource.reloadThread$);
-      set(reloadChatThreads$);
     },
   );
 
@@ -627,7 +626,6 @@ function createComputerUseHostSelection(
         dirty: false,
       });
       set(dataSource.reloadThread$);
-      set(reloadChatThreads$);
     },
   );
 
@@ -2708,7 +2706,6 @@ function createSendMessage(deps: SendMessageDeps) {
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
-      set(reloadChatThreads$);
     },
   );
 }
@@ -2848,7 +2845,6 @@ function createQueueMessage(deps: QueueMessageDeps) {
       ]);
       signal.throwIfAborted();
 
-      set(reloadChatThreads$);
       L.debug("queueMessage$ done", { threadId });
     },
   );
@@ -3047,7 +3043,6 @@ function createCancelRunWithQueuedRecall({
       }),
     ]);
     signal.throwIfAborted();
-    set(reloadChatThreads$);
   });
 }
 

@@ -9,6 +9,7 @@ import {
   chatThreadMessagesContract,
   chatThreadRenameContract,
   chatThreadsContract,
+  type ChatThreadEvent,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -41,6 +42,7 @@ import {
   createMockWorkflowTrigger,
   setMockWorkflowTriggers,
 } from "../../../mocks/handlers/workflow-triggers-store.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_VIRTUAL_ROW_HEIGHT } from "../../../signals/zero-page/zero-sidebar-state.ts";
@@ -3656,6 +3658,7 @@ describe("chat lifecycle", () => {
     });
     lifecycle.setThreadList([thread]);
     const renameRequest = vi.fn();
+    let persistedRenameEvent: ChatThreadEvent | null = null;
 
     context.mocks.api(chatThreadByIdContract.get, ({ never }) => {
       return never();
@@ -3679,12 +3682,27 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-      return respond(200, { events: [], hasMore: false });
+      return respond(200, {
+        events: persistedRenameEvent ? [persistedRenameEvent] : [],
+        hasMore: false,
+      });
     });
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {
         renameRequest(params.id, body.title);
+        if (!body.eventId) {
+          throw new Error("Expected rename event id");
+        }
+        persistedRenameEvent = {
+          id: body.eventId,
+          kind: "renamed",
+          chatThreadId: EVENT_SOURCED_RENAME_THREAD_ID,
+          agentId: AGENT_ID,
+          title: body.title,
+          selectedModel: null,
+          createdAt: "2026-06-01T00:00:01.000Z",
+        };
         return respond(204);
       },
     );
@@ -3697,6 +3715,7 @@ describe("chat lifecycle", () => {
     const threadRegion = await screen.findByLabelText("Chat thread");
     await waitFor(() => {
       expect(within(threadRegion).getByText(originalTitle)).toBeInTheDocument();
+      expect(document.title).toBe(`${originalTitle} | VM0`);
     });
     expect(
       within(threadRegion).queryByText("Thread detail should stay pending"),
@@ -3718,6 +3737,12 @@ describe("chat lifecycle", () => {
         renamedTitle,
       );
       expect(within(threadRegion).getByText(renamedTitle)).toBeInTheDocument();
+    });
+
+    expect(document.title).toBe(`${originalTitle} | VM0`);
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(document.title).toBe(`${renamedTitle} | VM0`);
     });
   });
 

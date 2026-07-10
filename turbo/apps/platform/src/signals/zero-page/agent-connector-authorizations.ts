@@ -50,9 +50,7 @@ function createAuthorizationsAtom(
     const request = client.get({ params: { id: agentId } });
     const result =
       options.missing === "null"
-        ? await accept(request, [200, 404], {
-            toast: false,
-          })
+        ? await accept(request, [200, 404])
         : await accept(request, [200]);
     if (result.status === 404) {
       return null;

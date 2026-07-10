@@ -1,29 +1,15 @@
 import { command, computed, state } from "ccstate";
 import { setAblyLoop$ } from "./realtime.ts";
 
-const internalReloadChatThreads$ = state(0);
 const internalReloadChatUnreadState$ = state(0);
-
-/**
- * Read-only view of the reload counter. Consumers subscribe to this to
- * re-run their computeds whenever the counter bumps.
- */
-export const reloadChatThreadsCounter$ = computed((get) => {
-  return get(internalReloadChatThreads$);
-});
+const internalReloadChatActiveRunIds$ = state(0);
 
 export const reloadChatUnreadStateCounter$ = computed((get) => {
   return get(internalReloadChatUnreadState$);
 });
 
-/**
- * Bump the sidebar thread-list reload counter. Triggers `chatThreads$`
- * to refetch on the next read.
- */
-export const reloadChatThreads$ = command(({ set }) => {
-  set(internalReloadChatThreads$, (n) => {
-    return n + 1;
-  });
+export const reloadChatActiveRunIdsCounter$ = computed((get) => {
+  return get(internalReloadChatActiveRunIds$);
 });
 
 export const reloadChatUnreadState$ = command(({ set }) => {
@@ -32,11 +18,16 @@ export const reloadChatUnreadState$ = command(({ set }) => {
   });
 });
 
+export const reloadChatActiveRunIds$ = command(({ set }) => {
+  set(internalReloadChatActiveRunIds$, (n) => {
+    return n + 1;
+  });
+});
+
 /**
- * Subscribe to the user-level `threadListChanged` topic and trigger a
- * sidebar reload on every signal. Server publishes this on any mutation
- * that alters the thread list shape (create, delete, new message, run
- * create/update, title update). These changes can also affect unread state.
+ * Subscribe to the user-level `threadListChanged` topic and invalidate active
+ * run and unread snapshots. Event-sourced thread data has its own incremental
+ * subscription.
  *
  * Loop command returns false so it keeps listening until the signal aborts.
  * Isolated in its own file to avoid an import cycle when `route.ts` wires
@@ -45,7 +36,7 @@ export const reloadChatUnreadState$ = command(({ set }) => {
 export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
     const onChanged$ = command(({ set }) => {
-      set(reloadChatThreads$);
+      set(reloadChatActiveRunIds$);
       set(reloadChatUnreadState$);
       return false;
     });

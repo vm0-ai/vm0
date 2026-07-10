@@ -67,7 +67,6 @@ export const uploadPresentationToGoogleSlides$ = command(
         fetchOptions: { signal },
       }),
       [200, 400],
-      { toast: false },
     );
     signal.throwIfAborted();
     if (stagedResult.status === 200) {

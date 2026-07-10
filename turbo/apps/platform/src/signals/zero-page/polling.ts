@@ -129,7 +129,6 @@ function createQueuePosition(runId: string) {
       const result = await accept(
         client.getPosition({ query: { runId } }),
         [200],
-        { toast: false },
       );
       return result.body.position;
     }),

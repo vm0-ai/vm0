@@ -3,11 +3,7 @@ import { onRef } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
-import {
-  currentChatThreadId$,
-  chatThreads$,
-  reloadChatThreads$,
-} from "../agent-chat.ts";
+import { currentChatThreadId$, chatThreads$ } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
   type ChatThreadEvent,
@@ -23,7 +19,7 @@ import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 
-export { chatThreads$, reloadChatThreads$ } from "../agent-chat.ts";
+export { chatThreads$ } from "../agent-chat.ts";
 
 export {
   zeroChatAttachments$,
@@ -109,8 +105,6 @@ export const deleteChatThread$ = command(
         set(navigateToChat$, nextThread.id);
       }
     }
-
-    set(reloadChatThreads$);
   },
 );
 
@@ -147,7 +141,6 @@ export const pinChatThread$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(reloadChatThreads$);
   },
 );
 
@@ -180,7 +173,6 @@ export const unpinChatThread$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(reloadChatThreads$);
   },
 );
 
@@ -231,7 +223,6 @@ export const renameChatThread$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(reloadChatThreads$);
   },
 );
 

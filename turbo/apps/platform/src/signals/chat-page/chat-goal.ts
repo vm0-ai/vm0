@@ -23,7 +23,6 @@ export const activeGoalDialogGoal$ = computed(
     const response = await accept(
       client.getForChatThread({ params: { threadId } }),
       [200],
-      { toast: false },
     );
     return response.body;
   },
