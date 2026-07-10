@@ -129,6 +129,19 @@ describe("formatRunErrorForExternalSurface", () => {
     expect(isGenericRunErrorForDisplay(modelCapacity)).toBe(false);
   });
 
+  it("shows Codex ChatGPT account model support errors verbatim", () => {
+    const unsupportedModel =
+      '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.6-sol\' model is not supported when using Codex with a ChatGPT account."}}';
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: unsupportedModel,
+      }),
+    ).toBe(unsupportedModel);
+    expect(isActionableRunError(unsupportedModel)).toBe(true);
+    expect(isGenericRunErrorForDisplay(unsupportedModel)).toBe(false);
+  });
+
   it("shows Claude Code subscription reconnect guidance for upstream 401s", () => {
     expect(
       formatRunErrorForExternalSurface({
