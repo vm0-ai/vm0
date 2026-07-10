@@ -375,6 +375,32 @@ jobs:
           cd crates
           cargo doc --workspace --all-features --no-deps
 
+      - name: Run ably-subscriber smoke test
+        if: |
+          needs.detect.outputs.ably-subscriber-changed == 'true' ||
+          needs.detect.outputs.ci-changed == 'true'
+        env:
+          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
+        run: |
+          cd crates
+          cargo run -p ably-subscriber --example smoke_test
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    needs: [detect]
+    if: needs.detect.outputs.any-changed == 'true'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
+        with:
+          workspaces: crates -> target
+          shared-key: coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
@@ -390,16 +416,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: crates/lcov.info
           flags: rust
-
-      - name: Run ably-subscriber smoke test
-        if: |
-          needs.detect.outputs.ably-subscriber-changed == 'true' ||
-          needs.detect.outputs.ci-changed == 'true'
-        env:
-          ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
-        run: |
-          cd crates
-          cargo run -p ably-subscriber --example smoke_test
 
   api-contracts-rust-bindings:
     runs-on: ubuntu-latest
@@ -2261,6 +2277,7 @@ jobs:
       - detect-release
       - detect
       - check
+      - coverage
       - api-contracts-rust-bindings
       - python-firewalls
       - mitm-addon-test
@@ -2315,6 +2332,7 @@ jobs:
 
           # May-skip: only run when relevant crates change
           check_result "check" "${{ needs.check.result }}" "true"
+          check_result "coverage" "${{ needs.coverage.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "python-firewalls" "${{ needs.python-firewalls.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
