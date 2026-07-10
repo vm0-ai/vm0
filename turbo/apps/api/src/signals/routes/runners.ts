@@ -89,6 +89,20 @@ const RESUME_SESSION_HISTORY_LOAD_ERROR =
 const RESUME_SESSION_HISTORY_INVALID_ERROR =
   "Runner job has invalid resume session history";
 
+function mergeClaimVars(args: {
+  readonly runVars: Record<string, string> | null;
+  readonly connectorVars: Record<string, string> | null | undefined;
+}): Record<string, string> | null {
+  const merged: Record<string, string> = {};
+  if (args.runVars) {
+    Object.assign(merged, args.runVars);
+  }
+  if (args.connectorVars) {
+    Object.assign(merged, args.connectorVars);
+  }
+  return Object.keys(merged).length > 0 ? merged : null;
+}
+
 interface ClaimFailedSideEffectArgs {
   readonly runId: string;
   readonly userId: string;
@@ -1349,7 +1363,10 @@ async function buildClaimResponseBody(args: {
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
         agentComposeVersionId: args.run.agentComposeVersionId,
-        vars: (args.run.vars as Record<string, string>) ?? null,
+        vars: mergeClaimVars({
+          runVars: (args.run.vars as Record<string, string> | null) ?? null,
+          connectorVars: args.storedContext.vars,
+        }),
         checkpointId: args.run.resumedFromCheckpointId ?? null,
         resumeSession,
         sandboxToken,

@@ -17,6 +17,7 @@ import threading
 import urllib.parse
 from concurrent.futures import Future, InvalidStateError
 from contextlib import suppress
+from functools import cache
 from typing import NamedTuple, Protocol
 
 from mitmproxy import http
@@ -30,6 +31,7 @@ from authority_utils import (
     percent_decode_host,
     raw_authority_host,
 )
+from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from host_normalization import normalize_idna_hostname
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
@@ -128,6 +130,18 @@ _forward_request_active_closeables: set["_Closeable"] = set()
 _forward_request_active_closeables_lock = threading.Lock()
 _https_context: ssl.SSLContext | None = None
 _https_context_lock = threading.Lock()
+
+
+@cache
+def _templated_builtin_auth_header_names() -> frozenset[str]:
+    names: set[str] = set()
+    for firewall in BUILTIN_FIREWALLS.values():
+        for api in firewall.get("apis", []):
+            auth_headers = api.get("auth", {}).get("headers", {})
+            for name, value in auth_headers.items():
+                if isinstance(name, str) and isinstance(value, str) and "${{" in value:
+                    names.add(name.lower())
+    return frozenset(names)
 
 
 class _Closeable(Protocol):
@@ -463,6 +477,7 @@ def forwarded_auth_base_client_header_pairs(
     headers,
     *,
     preserve_aws_sigv4_authorization: bool = False,
+    extra_excluded_names: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Return client headers allowed to cross an auth.base rewrite.
 
@@ -474,10 +489,15 @@ def forwarded_auth_base_client_header_pairs(
     supported AWS SigV4 authorization value.
     """
     pairs = forwarded_request_header_pairs(headers)
+    excluded_names = (
+        _CLIENT_CREDENTIAL_HEADER_NAMES
+        | _templated_builtin_auth_header_names()
+        | extra_excluded_names
+    )
     return [
         (name, value)
         for name, value in pairs
-        if name.lower() not in _CLIENT_CREDENTIAL_HEADER_NAMES
+        if name.lower() not in excluded_names
         or (
             preserve_aws_sigv4_authorization
             and name.lower() == "authorization"

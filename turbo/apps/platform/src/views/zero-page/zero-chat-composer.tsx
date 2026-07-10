@@ -7494,15 +7494,20 @@ export function ZeroChatComposer({
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
 
   const handleKeyDown = (e: KeyboardEventLike) => {
-    if (window.matchMedia("(pointer: coarse)").matches) {
-      return;
-    }
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    const isTouchOnlyDevice =
+      isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
     const send = () => {
       handleSend();
     };
+    if (isTouchOnlyDevice) {
+      processShortcut({ "mod+enter": send }, e);
+      return;
+    }
     processShortcut(
       {
         ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
+        ...(isTouchDevice && sendMode === "enter" ? { "mod+enter": send } : {}),
         escape: () => {
           (e.target as HTMLElement).blur();
         },

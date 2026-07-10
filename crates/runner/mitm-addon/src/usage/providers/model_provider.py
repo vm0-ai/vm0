@@ -36,11 +36,23 @@ from ..idempotency import (
     USAGE_OBSERVATION_NAMESPACE_MODEL,
     derive_usage_idempotency_key,
 )
-from ..model_tokens import MODEL_USAGE_CATEGORIES
+from ..model_tokens import (
+    MODEL_USAGE_CATEGORIES,
+    MODEL_USAGE_CATEGORY_CACHE_CREATION,
+    MODEL_USAGE_CATEGORY_CACHE_READ,
+    MODEL_USAGE_CATEGORY_INPUT,
+)
 from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
+_MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
+    (
+        MODEL_USAGE_CATEGORY_INPUT,
+        MODEL_USAGE_CATEGORY_CACHE_READ,
+        MODEL_USAGE_CATEGORY_CACHE_CREATION,
+    )
+)
 
 
 def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
@@ -135,10 +147,14 @@ def report_model_provider_usage_source(
 
     Unlike flow-terminal reporting, this preserves the source idempotency keys
     in the webhook payload so the platform can dedupe one response source even
-    when a later lifecycle hook sees the same source again. Callers can drop the
-    source from flow metadata after this returns: observable flows carry the
-    canonical ``MODEL_USAGE_PROVIDER``, so zero-usage source model hints do not
-    need to be retained for later same-response-id frames.
+    when a later lifecycle hook sees the same source again. Input, cache-read,
+    and cache-creation events use one bounded atomic admission key so later
+    frames cannot add a second input partition for the same response id. Output
+    remains independently admissible for compatible transports that report it
+    in a later frame. Callers can drop the source from flow metadata after this
+    returns: observable flows carry the canonical ``MODEL_USAGE_PROVIDER``, so
+    zero-usage source model hints do not need to be retained for later
+    same-response-id frames.
     """
     usage_events: list[UsageEvent] = []
     observation_events: list[UsageEvent] = []
@@ -176,9 +192,19 @@ def report_model_provider_usage_source(
         return
 
     if usage_events:
-        _buffer_source_model_provider_usage_events(context, run_id, usage_events)
+        _buffer_source_model_provider_usage_events(
+            context,
+            run_id,
+            source_id,
+            usage_events,
+        )
     if observation_events:
-        _buffer_source_model_provider_usage_observations(context, run_id, observation_events)
+        _buffer_source_model_provider_usage_observations(
+            context,
+            run_id,
+            source_id,
+            observation_events,
+        )
 
 
 def _buffer_model_provider_usage_events(
@@ -223,28 +249,86 @@ def _buffer_model_provider_usage_observations(
 def _buffer_source_model_provider_usage_events(
     context: UsageReportingContext,
     run_id: str,
+    source_id: str,
     events: list[UsageEvent],
 ) -> None:
-    buffer_source_usage_events(
-        context.usage_event_url(),
-        context.sandbox_token,
-        run_id,
-        events,
-        context.proxy_log_path,
-    )
+    input_partition_events, independent_events = _split_model_input_partition_events(events)
+    if input_partition_events:
+        buffer_source_usage_events(
+            context.usage_event_url(),
+            context.sandbox_token,
+            run_id,
+            input_partition_events,
+            context.proxy_log_path,
+            atomic_source_key=_model_input_partition_source_key(
+                USAGE_EVENT_NAMESPACE_MODEL,
+                run_id,
+                source_id,
+            ),
+        )
+    if independent_events:
+        buffer_source_usage_events(
+            context.usage_event_url(),
+            context.sandbox_token,
+            run_id,
+            independent_events,
+            context.proxy_log_path,
+        )
 
 
 def _buffer_source_model_provider_usage_observations(
     context: UsageReportingContext,
     run_id: str,
+    source_id: str,
     events: list[UsageEvent],
 ) -> None:
-    buffer_source_model_usage_observations(
-        context.model_usage_observation_url(),
-        context.sandbox_token,
-        run_id,
-        events,
-        context.proxy_log_path,
+    input_partition_events, independent_events = _split_model_input_partition_events(events)
+    if input_partition_events:
+        buffer_source_model_usage_observations(
+            context.model_usage_observation_url(),
+            context.sandbox_token,
+            run_id,
+            input_partition_events,
+            context.proxy_log_path,
+            atomic_source_key=_model_input_partition_source_key(
+                USAGE_OBSERVATION_NAMESPACE_MODEL,
+                run_id,
+                source_id,
+            ),
+        )
+    if independent_events:
+        buffer_source_model_usage_observations(
+            context.model_usage_observation_url(),
+            context.sandbox_token,
+            run_id,
+            independent_events,
+            context.proxy_log_path,
+        )
+
+
+def _split_model_input_partition_events(
+    events: list[UsageEvent],
+) -> tuple[list[UsageEvent], list[UsageEvent]]:
+    input_partition_events: list[UsageEvent] = []
+    independent_events: list[UsageEvent] = []
+    for event in events:
+        target = (
+            input_partition_events
+            if event["category"] in _MODEL_INPUT_PARTITION_CATEGORIES
+            else independent_events
+        )
+        target.append(event)
+    return input_partition_events, independent_events
+
+
+def _model_input_partition_source_key(
+    namespace: uuid.UUID,
+    run_id: str,
+    source_id: str,
+) -> str:
+    return derive_usage_idempotency_key(
+        namespace,
+        (run_id, source_id, "model_input_partition", "atomic_source"),
     )
 
 

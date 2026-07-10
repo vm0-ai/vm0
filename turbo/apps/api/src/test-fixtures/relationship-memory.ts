@@ -5,6 +5,9 @@
 import {
   memories,
   memoryEdges,
+  memoryContextSpaces,
+  memoryDocumentChunks,
+  memoryDocuments,
   memoryEntities,
   memorySearchEntries,
   type MemoryKind,
@@ -131,6 +134,7 @@ export async function seedLexicalRelationshipMemory(args: {
   readonly text: string;
   readonly confidence?: number;
   readonly lastSeenAt?: Date;
+  readonly query?: string;
 }): Promise<{
   readonly entityId: string;
   readonly memoryId: string;
@@ -164,6 +168,21 @@ export async function seedLexicalRelationshipMemory(args: {
     .returning({ id: memories.id });
   if (!memory) {
     throw new Error("Expected lexical relationship memory fixture memory");
+  }
+
+  if (args.query) {
+    await insertSearchEntryForMemory({
+      db,
+      fixture: args.fixture,
+      entityId: entity.id,
+      memoryId: memory.id,
+      kind: args.kind,
+      memoryText: args.text,
+      displayName: args.displayName,
+      query: args.query,
+      confidence: args.confidence ?? 91,
+      lastSeenAt: args.lastSeenAt ?? new Date("2026-07-05T12:00:00.000Z"),
+    });
   }
 
   return {
@@ -250,4 +269,101 @@ export async function seedGraphExpansionMemories(
     confidence: 91,
     lastSeenAt: seedLastSeenAt,
   });
+}
+
+export async function seedMemoryDocumentChunk(args: {
+  readonly fixture: RelationshipMemoryFixture;
+  readonly title: string;
+  readonly text: string;
+  readonly provider?: "github" | "notion";
+  readonly externalId?: string;
+}): Promise<{
+  readonly contextSpaceId: string;
+  readonly documentId: string;
+  readonly chunkId: string;
+}> {
+  const db = createStore().set(writeDb$);
+  const provider = args.provider ?? "github";
+  const externalId = args.externalId ?? "document-search-fixture";
+  const [contextSpace] = await db
+    .insert(memoryContextSpaces)
+    .values({
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      type: provider === "github" ? "repo" : "project",
+      key: provider === "github" ? "github:vm0-ai/vm0" : "notion:test",
+      displayName: provider === "github" ? "vm0-ai/vm0" : "Notion test",
+      metadata: {
+        provider,
+        externalId: provider === "github" ? "vm0-ai/vm0" : "notion:test",
+      },
+    })
+    .returning({ id: memoryContextSpaces.id });
+  if (!contextSpace) {
+    throw new Error("Expected memory document context space fixture");
+  }
+
+  const occurredAt = new Date("2026-07-03T12:00:00.000Z");
+  const [document] = await db
+    .insert(memoryDocuments)
+    .values({
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      contextSpaceId: contextSpace.id,
+      provider,
+      sourceType: provider === "github" ? "github_issue" : "notion_page",
+      externalId,
+      status: "active",
+      title: args.title,
+      contentHash: "document-search-fixture-content-hash",
+      occurredAt,
+      metadata: {
+        provider,
+        sourceType: provider === "github" ? "github_issue" : "notion_page",
+        externalUrl:
+          provider === "github"
+            ? "https://github.com/vm0-ai/vm0/issues/1"
+            : "https://notion.so/test",
+      },
+    })
+    .returning({ id: memoryDocuments.id });
+  if (!document) {
+    throw new Error("Expected memory document fixture");
+  }
+
+  const [chunk] = await db
+    .insert(memoryDocumentChunks)
+    .values({
+      orgId: args.fixture.orgId,
+      userId: args.fixture.userId,
+      contextSpaceId: contextSpace.id,
+      documentId: document.id,
+      status: "active",
+      chunkIndex: 0,
+      text: args.text,
+      contentHash: "document-search-fixture-chunk-hash",
+      tokenCount: 16,
+      citation: {
+        provider,
+        sourceId: "source-search-fixture",
+        externalId,
+        title: args.title,
+        url:
+          provider === "github"
+            ? "https://github.com/vm0-ai/vm0/issues/1"
+            : "https://notion.so/test",
+        locator: provider === "github" ? "#1" : "test-page",
+        occurredAt: occurredAt.toISOString(),
+      },
+    })
+    .returning({ id: memoryDocumentChunks.id });
+  if (!chunk) {
+    throw new Error("Expected memory document chunk fixture");
+  }
+
+  return {
+    contextSpaceId: contextSpace.id,
+    documentId: document.id,
+    chunkId: chunk.id,
+  };
 }

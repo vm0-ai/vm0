@@ -489,11 +489,11 @@ describe("directed connector authorize page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("nintendo-eshop-catalog");
+        expect(params.type).toBe("stripe");
         expect(body).toStrictEqual({ authMethod: "api" });
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "nintendo-eshop-catalog",
+          type: "stripe",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -517,7 +517,7 @@ describe("directed connector authorize page", () => {
         updateCalls += 1;
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["nintendo-eshop-catalog"],
+          enabledTypes: ["stripe"],
           operation: "add",
         });
         return respond(200, { enabledTypes: body.enabledTypes });
@@ -525,8 +525,8 @@ describe("directed connector authorize page", () => {
     );
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "nintendo-eshop-catalog",
-        label: "Nintendo eShop Catalog",
+        connectorRef: "stripe",
+        label: "Public Stripe",
         authMethods: [
           {
             id: "api",
@@ -542,22 +542,20 @@ describe("directed connector authorize page", () => {
 
     detachedSetupPage({
       context,
-      path: `/connectors/nintendo-eshop-catalog/authorize?agentId=${AGENT_ID}`,
+      path: `/connectors/stripe/authorize?agentId=${AGENT_ID}`,
     });
 
-    await screen.findByText("Zero needs Nintendo eShop Catalog to proceed");
+    await screen.findByText("Zero needs Public Stripe to proceed");
     click(getButtonByText("Authorize Zero"));
 
     await waitFor(() => {
       expect(connectCalls).toBe(1);
       expect(updateCalls).toBe(1);
-      expect(
-        screen.getByText("Nintendo eShop Catalog authorized"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Public Stripe authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("dialog", { name: "Nintendo eShop Catalog" }),
+      screen.queryByRole("dialog", { name: "Public Stripe" }),
     ).not.toBeInTheDocument();
   });
 

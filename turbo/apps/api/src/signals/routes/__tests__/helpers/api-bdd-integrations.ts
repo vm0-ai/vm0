@@ -1118,7 +1118,7 @@ export function createBddIntegrationApi(context: TestContext) {
                 modelProviderId: anthropic.body.provider.id,
               },
               {
-                model: "gpt-5.5",
+                model: "gpt-5.6-sol",
                 isDefault: false,
                 defaultProviderType: "openai-api-key",
                 credentialScope: "org",

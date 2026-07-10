@@ -240,6 +240,7 @@ def standard_success_payload(
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     cached_tokens: int | None = None,
+    cache_write_tokens: int | None = None,
 ) -> bytes:
     resolved_input_tokens = provider_case.input_tokens if input_tokens is None else input_tokens
     resolved_output_tokens = provider_case.output_tokens if output_tokens is None else output_tokens
@@ -248,10 +249,14 @@ def standard_success_payload(
         "input_tokens": resolved_input_tokens,
         "output_tokens": resolved_output_tokens,
     }
-    if provider_case.uses_openai_responses and resolved_cached_tokens is not None:
-        usage_payload["input_tokens_details"] = {
-            "cached_tokens": resolved_cached_tokens,
-        }
+    if provider_case.uses_openai_responses:
+        input_tokens_details: dict[str, int] = {}
+        if resolved_cached_tokens is not None:
+            input_tokens_details["cached_tokens"] = resolved_cached_tokens
+        if cache_write_tokens is not None:
+            input_tokens_details["cache_write_tokens"] = cache_write_tokens
+        if input_tokens_details:
+            usage_payload["input_tokens_details"] = input_tokens_details
     payload: dict[str, object] = {
         "id": provider_case.message_id,
         "model": provider_case.model,
@@ -268,6 +273,7 @@ def expected_model_usage(
     input_tokens: int | None = None,
     output_tokens: int | None = None,
     cached_tokens: int | None = None,
+    cache_write_tokens: int | None = None,
 ) -> dict[str, object]:
     resolved_input_tokens = provider_case.input_tokens if input_tokens is None else input_tokens
     resolved_output_tokens = provider_case.output_tokens if output_tokens is None else output_tokens
@@ -278,17 +284,31 @@ def expected_model_usage(
         "tokens.input": resolved_input_tokens,
         "tokens.output": resolved_output_tokens,
     }
-    if provider_case.uses_openai_responses and resolved_cached_tokens is not None:
-        assert resolved_cached_tokens <= resolved_input_tokens
-        expected["tokens.input"] = resolved_input_tokens - resolved_cached_tokens
-        expected["tokens.cache_read"] = resolved_cached_tokens
+    if provider_case.uses_openai_responses:
+        remaining_input_tokens = resolved_input_tokens
+        if resolved_cached_tokens is not None:
+            assert resolved_cached_tokens <= remaining_input_tokens
+            remaining_input_tokens -= resolved_cached_tokens
+            expected["tokens.cache_read"] = resolved_cached_tokens
+        if cache_write_tokens is not None:
+            assert cache_write_tokens <= remaining_input_tokens
+            remaining_input_tokens -= cache_write_tokens
+            expected["tokens.cache_creation"] = cache_write_tokens
+        expected["tokens.input"] = remaining_input_tokens
     return expected
 
 
-def expected_event_quantities(provider_case: ModelProviderJsonCase) -> dict[str, int]:
+def expected_event_quantities(
+    provider_case: ModelProviderJsonCase,
+    *,
+    cache_write_tokens: int | None = None,
+) -> dict[str, int]:
     return {
         category: quantity
-        for category, quantity in expected_model_usage(provider_case).items()
+        for category, quantity in expected_model_usage(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        ).items()
         if category.startswith("tokens.")
         and isinstance(quantity, int)
         and not isinstance(quantity, bool)

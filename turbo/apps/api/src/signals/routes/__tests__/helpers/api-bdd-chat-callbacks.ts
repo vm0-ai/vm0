@@ -36,6 +36,12 @@ interface StoredS3Object {
   readonly size: number;
 }
 
+interface CapturedS3Put {
+  readonly bucket: string;
+  readonly key: string;
+  readonly contentType: string | null;
+}
+
 interface AuthHeaders {
   readonly authorization?: string;
 }
@@ -68,6 +74,12 @@ function commandInput(command: unknown): Record<string, unknown> {
     return command.input;
   }
   return {};
+}
+
+function commandName(command: unknown): string {
+  return typeof command === "object" && command !== null
+    ? command.constructor.name
+    : "";
 }
 
 /**
@@ -227,8 +239,10 @@ export function createChatCallbacksApi(context: TestContext) {
      */
     acceptChatObjectStorage(): {
       addObject(object: StoredS3Object): void;
+      readonly puts: readonly CapturedS3Put[];
     } {
       const objects: StoredS3Object[] = [];
+      const puts: CapturedS3Put[] = [];
       context.mocks.s3.send.mockImplementation((...args: unknown[]) => {
         const input = commandInput(args[0]);
         const key = typeof input.Key === "string" ? input.Key : "";
@@ -246,6 +260,14 @@ export function createChatCallbacksApi(context: TestContext) {
         }
         const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
         const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
+        if (commandName(args[0]) === "PutObjectCommand") {
+          puts.push({
+            bucket,
+            key,
+            contentType:
+              typeof input.ContentType === "string" ? input.ContentType : null,
+          });
+        }
         if (prefix !== "") {
           const contents = objects
             .filter((object) => {
@@ -266,6 +288,7 @@ export function createChatCallbacksApi(context: TestContext) {
         addObject(object: StoredS3Object): void {
           objects.push(object);
         },
+        puts,
       };
     },
   };

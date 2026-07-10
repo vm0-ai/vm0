@@ -1055,6 +1055,60 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
+    async favoriteArtifact(
+      actor: ApiTestUser,
+      artifactUrl: string,
+    ): Promise<void> {
+      await accept(
+        artifactsClient().favorite({
+          headers: authenticate(context, actor),
+          body: { artifactUrl },
+        }),
+        [204],
+      );
+    },
+
+    async requestFavoriteArtifact(
+      actor: ApiTestUser | null,
+      artifactUrl: string,
+      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        artifactsClient().favorite({
+          headers: authenticate(context, actor),
+          body: { artifactUrl },
+        }),
+        statuses,
+      );
+    },
+
+    async unfavoriteArtifact(
+      actor: ApiTestUser,
+      artifactUrl: string,
+    ): Promise<void> {
+      await accept(
+        artifactsClient().unfavorite({
+          headers: authenticate(context, actor),
+          body: { artifactUrl },
+        }),
+        [204],
+      );
+    },
+
+    async requestUnfavoriteArtifact(
+      actor: ApiTestUser | null,
+      artifactUrl: string,
+      statuses: readonly (204 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        artifactsClient().unfavorite({
+          headers: authenticate(context, actor),
+          body: { artifactUrl },
+        }),
+        statuses,
+      );
+    },
+
     async searchChat(
       actor: ApiTestUser,
       keyword: string,

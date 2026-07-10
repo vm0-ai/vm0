@@ -399,6 +399,11 @@ function createSubscribeRealtime() {
               topic: `chatThreadAutomationsChanged:${threadId}`,
               loopCommand$: handlers.onAutomationsChanged$,
             },
+            {
+              kind: "loop",
+              topic: `chatThreadWorkflowQueueChanged:${threadId}`,
+              loopCommand$: handlers.onWorkflowQueueChanged$,
+            },
           ];
 
           let pendingSubscriptions = subscriptions.length;

@@ -101,13 +101,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
-  [FeatureSwitchKey.NintendoEshopCatalogConnector]: {
-    maintainer: "liangyou@vm0.ai",
-    description: "Enable the Nintendo eShop public catalog connector",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
-  },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Garmin Connect wellness connector",
@@ -156,6 +149,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AwsConnector]: {
     maintainer: "liangyou@vm0.ai",
     description: "Enable the temporary AWS remote login connector",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.NintendoStoreConnector]: {
+    maintainer: "liangyou@vm0.ai",
+    description: "Enable the Nintendo Store connector",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -396,6 +395,26 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ArtifactFavorites]: {
+    maintainer: "bingjie@vm0.ai",
+    description: "Enable favoriting artifacts on the Artifacts page.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ArtifactPreviewImage]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Render a static preview image (screenshot) for HTML/website artifacts on deploy so the artifacts grid shows an image instead of a live iframe.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ArtifactVideoPreview]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Extract a static poster frame for video artifacts (via Cloudflare Media Transformations) so the artifacts grid shows an image instead of loading each video.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.WorkflowTemplateCatalog]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -408,6 +427,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the built-in R2-backed website template picker and generation-template flow.",
     enabled: false,
+  },
+  [FeatureSwitchKey.WorkflowQueue]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Queue workflow trigger events per workflow and run them serially instead of firing concurrent runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowConnectorReadiness]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the manual connector readiness check on workflow settings pages.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
 };
 

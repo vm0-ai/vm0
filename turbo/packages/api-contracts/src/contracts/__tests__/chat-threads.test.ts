@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  artifactFavoriteBodySchema,
   artifactItemSchema,
   artifactsContract,
   artifactsListResponseSchema,
@@ -221,6 +222,14 @@ describe("artifacts contract", () => {
   it("exposes an org-level generated artifacts route", () => {
     expect(artifactsContract.list.method).toBe("GET");
     expect(artifactsContract.list.path).toBe("/api/zero/artifacts");
+    expect(artifactsContract.favorite.method).toBe("POST");
+    expect(artifactsContract.favorite.path).toBe(
+      "/api/zero/artifacts/favorite",
+    );
+    expect(artifactsContract.unfavorite.method).toBe("POST");
+    expect(artifactsContract.unfavorite.path).toBe(
+      "/api/zero/artifacts/unfavorite",
+    );
   });
 
   it("accepts keyset pagination query params", () => {
@@ -244,6 +253,24 @@ describe("artifacts contract", () => {
       contentType: "text/html",
       url: "https://static.vm0.io/artifacts/launch-plan.html",
       createdAt: "2026-07-07T00:00:00.000Z",
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.size).toBe(0);
+  });
+
+  it("accepts favorite state on generated artifact items", () => {
+    const parsed = artifactItemSchema.safeParse({
+      artifactItemId: "run-1:file-1",
+      threadId: "thread-1",
+      runId: "run-1",
+      fileId: "file-1",
+      agentId: "agent-1",
+      filename: "launch-plan.html",
+      contentType: "text/html",
+      url: "https://static.vm0.io/artifacts/launch-plan.html",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      isFavorited: true,
     });
 
     expect(parsed.success).toBe(true);
@@ -294,6 +321,14 @@ describe("artifacts contract", () => {
       artifacts: [],
       truncated: false,
       nextCursor: null,
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts artifact favorite request bodies", () => {
+    const parsed = artifactFavoriteBodySchema.safeParse({
+      artifactUrl: "https://static.vm0.io/artifacts/launch-plan.html",
     });
 
     expect(parsed.success).toBe(true);

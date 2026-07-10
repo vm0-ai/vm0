@@ -25,6 +25,8 @@ use std::os::unix::ffi::OsStrExt;
 /// When set to a non-empty absolute path, this value is used as the run
 /// directory directly instead of deriving one from `HOME` and a run id.
 pub const GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
+/// Fixed fallback path used when a storage manifest exceeds the stdin limit.
+pub const STORAGE_MANIFEST_PATH: &str = "/tmp/storage-manifest.json";
 const DEFAULT_RUNTIME_PARENT: &str = ".vm0/guest-agent/runs";
 #[cfg(unix)]
 const PRIVATE_DIR_MODE: libc::mode_t = 0o700;

@@ -47,3 +47,60 @@ export interface MemorySourceMetadata {
   readonly notionAuthorIds?: readonly string[];
   readonly reason?: string;
 }
+
+export interface MemoryContextSpaceMetadata {
+  readonly provider?: string;
+  readonly externalId?: string;
+  readonly displayName?: string;
+  readonly reason?: string;
+}
+
+export interface MemoryDocumentMetadata {
+  readonly provider?: string;
+  readonly sourceType?: string;
+  readonly externalUrl?: string | null;
+  readonly repository?: string;
+  readonly subjectKind?: "issue" | "pull_request";
+  readonly subjectNumber?: number;
+  readonly pageId?: string;
+  readonly pageUrl?: string | null;
+  readonly workspaceId?: string | null;
+  readonly workspaceName?: string | null;
+  readonly mailboxEmail?: string;
+  readonly threadId?: string | null;
+  readonly messageId?: string | null;
+  readonly direction?: "sent" | "received" | "mixed" | "unknown";
+  readonly channelId?: string;
+  readonly channelType?: string;
+  readonly senderId?: string;
+  readonly reason?: string;
+}
+
+export interface MemoryDocumentChunkCitation {
+  readonly provider: string;
+  readonly sourceId: string;
+  readonly externalId: string;
+  readonly title?: string | null;
+  readonly url?: string | null;
+  readonly locator?: string | null;
+  readonly occurredAt?: string | null;
+}
+
+export interface MemoryTombstoneMetadata {
+  readonly reason?: string;
+  readonly prompt?: string;
+  readonly targetId?: string;
+  readonly targetTitle?: string | null;
+  readonly targetText?: string | null;
+  readonly source?: "direct" | "prompt" | "backfill";
+}
+
+export interface MemoryVersionMetadata {
+  readonly operation?: "create" | "update" | "forget" | "derive";
+  readonly reason?: string;
+  readonly text?: string;
+  readonly kind?: string;
+  readonly confidence?: number;
+  readonly title?: string | null;
+  readonly status?: string;
+}

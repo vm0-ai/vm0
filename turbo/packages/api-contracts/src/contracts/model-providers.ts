@@ -215,18 +215,18 @@ export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
-  "gpt-5.5",
   "claude-opus-4-8",
   "claude-sonnet-5",
-  "claude-sonnet-4-6",
-  "MiniMax-M3",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+  "gpt-5.6-terra" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
-  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+  "gpt-5.6-terra" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -258,6 +258,9 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "glm-5.1": "GLM-5.1",
   "mimo-v2.5": "MiMo-V2.5",
   "hy3-preview": "Hy3 Preview",
+  "gpt-5.6-sol": "GPT 5.6 Sol",
+  "gpt-5.6-terra": "GPT 5.6 Terra",
+  "gpt-5.6-luna": "GPT 5.6 Luna",
   "gpt-5.5": "GPT 5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
@@ -376,6 +379,18 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
   },
+  "gpt-5.6-sol": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
+  "gpt-5.6-terra": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
+  "gpt-5.6-luna": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+  },
   "gpt-5.5": {
     concreteType: "openai-api-key",
     vendor: "openai",
@@ -407,6 +422,12 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
+const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
+  "claude-sonnet-5",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+]);
+
 export function normalizeVm0ModelId(model: string): string {
   return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
 }
@@ -419,7 +440,8 @@ export function isLimitedFree1RestrictedRunModel(
   }
   const normalized = model.trim().toLowerCase();
   const canonicalModel = normalizeVm0ModelId(normalized);
-  if (canonicalModel === LIMITED_FREE1_DEFAULT_RUN_MODEL) {
+  const unprefixedModel = canonicalModel.replace(/^(anthropic|openai)\//, "");
+  if (LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel)) {
     return false;
   }
   const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;
@@ -783,7 +805,14 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
+    models: [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+    ] as string[],
     defaultModel: "gpt-5.5",
   },
   "codex-oauth-token": {
@@ -852,7 +881,14 @@ export const MODEL_PROVIDER_TYPES = {
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
+    models: [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+    ] as string[],
     defaultModel: "gpt-5.5",
   },
   "azure-foundry": {
@@ -1008,6 +1044,9 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "gpt-5.6-sol": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.6-terra": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.6-luna": ["vm0", "openai-api-key", "codex-oauth-token"],
   "gpt-5.5": [
     "vm0",
     "openai-api-key",

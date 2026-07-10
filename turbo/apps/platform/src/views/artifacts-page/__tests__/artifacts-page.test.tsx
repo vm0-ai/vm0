@@ -3,6 +3,7 @@ import {
   artifactsContract,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
@@ -354,6 +355,7 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
     threadTitle: "Launch plan",
     filename: "launch-plan.html",
     contentType: "text/html",
+    size: 9216,
     url: "https://artifacts.example.com/launch-plan.html",
     createdAt: "2026-01-01T00:00:00Z",
     artifactKind: "hosted-site",
@@ -374,9 +376,15 @@ function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
 function setupArtifactsPage({
   scope,
   enabled = true,
+  artifactFavoritesEnabled = false,
+  htmlArtifactCommentEditingEnabled = false,
+  imageEditingEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
+  readonly artifactFavoritesEnabled?: boolean;
+  readonly htmlArtifactCommentEditingEnabled?: boolean;
+  readonly imageEditingEnabled?: boolean;
 }): void {
   detachedSetupPage({
     context,
@@ -391,6 +399,10 @@ function setupArtifactsPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: enabled,
+      [FeatureSwitchKey.ArtifactFavorites]: artifactFavoritesEnabled,
+      [FeatureSwitchKey.HtmlArtifactCommentEditing]:
+        htmlArtifactCommentEditingEnabled,
+      [FeatureSwitchKey.ImageEditing]: imageEditingEnabled,
     },
   });
 }
@@ -422,6 +434,18 @@ async function cachedArtifactIds(scope: TestAuthScope): Promise<string[]> {
   ).readStore.readRecent({ limit: 10_000 });
   return artifacts.map((artifact) => {
     return artifact.artifactItemId;
+  });
+}
+
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
   });
 }
 
@@ -477,10 +501,6 @@ describe("artifacts page", () => {
     const scope = testAuthScope("metadata");
     const createdAt = "2026-01-15T12:00:00Z";
     mockArtifacts([createArtifact({ createdAt })]);
-    const formattedCreatedAt = new Intl.DateTimeFormat("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(createdAt));
 
     setupArtifactsPage({ scope });
 
@@ -496,13 +516,270 @@ describe("artifacts page", () => {
       screen.getByPlaceholderText("Search artifacts..."),
     ).toBeInTheDocument();
     expect(screen.queryByText("text/html")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(`hosted site · ${formattedCreatedAt}`),
-    ).toBeInTheDocument();
+    expect(screen.getByText("hosted site")).toBeInTheDocument();
+    expect(screen.queryByText(/Jan 15/u)).not.toBeInTheDocument();
     expect(screen.getByTitle("launch-plan.html preview")).toHaveStyle({
       height: "1280px",
       width: "1280px",
     });
+  });
+
+  it("renders static preview images while preserving the HTML iframe fallback", async () => {
+    setupTeam();
+    const scope = testAuthScope("preview-image");
+    const previewImageUrl =
+      "https://cdn.vm7.io/artifacts/user/artifact-row/preview-deploy.webp";
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "static-run:file-1",
+        runId: "static-run",
+        filename: "static-preview.html",
+        previewImageUrl,
+      }),
+      createArtifact({
+        artifactItemId: "fallback-run:file-1",
+        runId: "fallback-run",
+        fileId: "fallback-file",
+        filename: "fallback-preview.html",
+        url: "https://artifacts.example.com/fallback-preview.html",
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("static-preview.html");
+    await screen.findByText("fallback-preview.html");
+    const previewImages = Array.from(document.querySelectorAll("img")).filter(
+      (image) => {
+        return image.getAttribute("src") === previewImageUrl;
+      },
+    );
+    expect(previewImages).toHaveLength(1);
+    expect(screen.queryByTitle("static-preview.html preview")).toBeNull();
+    expect(screen.getByTitle("fallback-preview.html preview")).toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/fallback-preview.html",
+    );
+  });
+
+  it("opens previewable artifacts in the lightbox without split view", async () => {
+    setupTeam();
+    const scope = testAuthScope("preview-lightbox");
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "image-run:file-1",
+        runId: "image-run",
+        fileId: "image-file",
+        filename: "launch-image.png",
+        contentType: "image/png",
+        size: 1024,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "site-run:file-1",
+        runId: "site-run",
+        fileId: "site-file",
+        filename: "launch-site.html",
+        url: "https://artifacts.example.com/launch-site.html",
+        size: 9216,
+      }),
+      createArtifact({
+        artifactItemId: "video-run:file-1",
+        runId: "video-run",
+        fileId: "video-file",
+        filename: "launch-video.mp4",
+        contentType: "video/mp4",
+        size: 2048,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "presentation-run:file-1",
+        runId: "presentation-run",
+        fileId: "presentation-file",
+        filename: "launch-slides.html",
+        contentType: "text/html",
+        size: 4096,
+        artifactKind: "presentation-html",
+      }),
+      createArtifact({
+        artifactItemId: "audio-run:file-1",
+        runId: "audio-run",
+        fileId: "audio-file",
+        filename: "launch-audio.mp3",
+        contentType: "audio/mpeg",
+        size: 3072,
+        url: "https://artifacts.example.com/launch-audio.mp3",
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "document-run:file-1",
+        runId: "document-run",
+        fileId: "document-file",
+        filename: "launch-document.pdf",
+        contentType: "application/pdf",
+        size: 5120,
+        url: "https://artifacts.example.com/launch-document.pdf",
+        artifactKind: undefined,
+      }),
+    ]);
+
+    setupArtifactsPage({
+      scope,
+      htmlArtifactCommentEditingEnabled: true,
+      imageEditingEnabled: true,
+    });
+
+    await screen.findByText("launch-image.png");
+    await screen.findByText("launch-video.mp4");
+    expect(screen.getByLabelText("Presentation artifact")).toBeInTheDocument();
+    expect(screen.getByLabelText("HTML artifact")).toBeInTheDocument();
+    expect(screen.getByLabelText("Image artifact")).toBeInTheDocument();
+    expect(screen.getByLabelText("Video artifact")).toBeInTheDocument();
+
+    click(buttonByLabel("Preview launch-image.png"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-image.png preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit image")).toBeNull();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+    expect(screen.queryByText(/1.0 KB/u)).toBeNull();
+    expect(
+      screen.getByRole("img", { name: "launch-image.png" }),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-site.html"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-site.html preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit page")).toBeNull();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+    expect(screen.queryByText(/9.0 KB/u)).toBeNull();
+    expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/launch-site.html",
+    );
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-slides.html"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-slides.html preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit presentation")).toBeNull();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-video.mp4"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-video.mp4 preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+    expect(
+      screen.getByLabelText("Video preview for launch-video.mp4"),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-audio.mp3"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-audio.mp3 preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Audio preview for launch-audio.mp3"),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-document.pdf"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-document.pdf preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId("artifact-dialog-document-frame")
+        .querySelector("iframe"),
+    ).toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/launch-document.pdf#navpanes=0",
+    );
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders video poster images with a play affordance while preserving the video fallback", async () => {
+    setupTeam();
+    const scope = testAuthScope("video-preview-image");
+    const posterUrl = "https://cdn.vm7.io/artifacts/user/video-row/poster.jpg";
+    const fallbackVideoUrl = "https://artifacts.example.com/fallback-video.mp4";
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "poster-run:file-video",
+        runId: "poster-run",
+        fileId: "poster-file",
+        filename: "poster-video.mp4",
+        contentType: "video/mp4",
+        url: "https://artifacts.example.com/poster-video.mp4",
+        artifactKind: undefined,
+        previewImageUrl: posterUrl,
+      }),
+      createArtifact({
+        artifactItemId: "fallback-video-run:file-video",
+        runId: "fallback-video-run",
+        fileId: "fallback-video-file",
+        filename: "fallback-video.mp4",
+        contentType: "video/mp4",
+        url: fallbackVideoUrl,
+        artifactKind: undefined,
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("poster-video.mp4");
+    await screen.findByText("fallback-video.mp4");
+    const posterImages = Array.from(document.querySelectorAll("img")).filter(
+      (image) => {
+        return image.getAttribute("src") === posterUrl;
+      },
+    );
+    expect(posterImages).toHaveLength(1);
+    expect(
+      document.querySelector(".tabler-icon-player-play-filled"),
+    ).toBeInTheDocument();
+    expect(
+      Array.from(document.querySelectorAll("video")).some((video) => {
+        return (
+          video.getAttribute("src") ===
+          "https://artifacts.example.com/poster-video.mp4"
+        );
+      }),
+    ).toBeFalsy();
+    expect(
+      Array.from(document.querySelectorAll("video")).some((video) => {
+        return video.getAttribute("src") === fallbackVideoUrl;
+      }),
+    ).toBeTruthy();
   });
 
   it("filters category, search, and agent locally over the bulk-synced set", async () => {
@@ -616,7 +893,181 @@ describe("artifacts page", () => {
     expect(listCalls).toBe(1);
   });
 
-  it("navigates to the source chat session", async () => {
+  it("favorites artifacts optimistically and filters favorites locally", async () => {
+    setupTeam();
+    const scope = testAuthScope("favorites");
+    const launch = createArtifact({
+      artifactItemId: "favorite-launch:file-1",
+      runId: "favorite-launch",
+      filename: "launch-plan.html",
+      createdAt: "2026-01-03T00:00:00Z",
+      url: "https://artifacts.example.com/launch-plan.html",
+    });
+    const brief = createArtifact({
+      artifactItemId: "favorite-brief:file-1",
+      runId: "favorite-brief",
+      fileId: "favorite-brief-file",
+      filename: "favorite-brief.html",
+      createdAt: "2026-01-02T00:00:00Z",
+      isFavorited: true,
+      url: "https://artifacts.example.com/favorite-brief.html",
+    });
+    const archive = createArtifact({
+      artifactItemId: "favorite-archive:file-1",
+      runId: "favorite-archive",
+      fileId: "favorite-archive-file",
+      filename: "archive.html",
+      createdAt: "2026-01-01T00:00:00Z",
+      url: "https://artifacts.example.com/archive.html",
+    });
+    mockArtifacts([launch, brief, archive]);
+
+    let favoriteBody: { readonly artifactUrl: string } | undefined;
+    context.mocks.api(artifactsContract.favorite, ({ body, respond }) => {
+      favoriteBody = body;
+      return respond(204);
+    });
+
+    let unfavoriteBody: { readonly artifactUrl: string } | undefined;
+    context.mocks.api(artifactsContract.unfavorite, ({ body, respond }) => {
+      unfavoriteBody = body;
+      return respond(204);
+    });
+
+    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+
+    await screen.findByText("launch-plan.html");
+    await screen.findByText("favorite-brief.html");
+    await screen.findByText("archive.html");
+
+    click(buttonByLabel("Add launch-plan.html to favorites"));
+    await waitFor(() => {
+      expect(favoriteBody).toStrictEqual({ artifactUrl: launch.url });
+      expect(
+        buttonByLabel("Remove launch-plan.html from favorites"),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Show favorite artifacts"));
+    await waitFor(() => {
+      expect(screen.getByText("launch-plan.html")).toBeInTheDocument();
+      expect(screen.getByText("favorite-brief.html")).toBeInTheDocument();
+      expect(screen.queryByText("archive.html")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Remove favorite-brief.html from favorites"));
+    await waitFor(() => {
+      expect(unfavoriteBody).toStrictEqual({ artifactUrl: brief.url });
+      expect(screen.queryByText("favorite-brief.html")).not.toBeInTheDocument();
+    });
+  });
+
+  it("preserves a saved draft and references a hosted artifact by URL", async () => {
+    setupTeam();
+    const scope = testAuthScope("ask-artifact");
+    const artifact = createArtifact();
+    mockArtifacts([artifact]);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "Keep this draft",
+        draftAttachments: null,
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("launch-plan.html");
+    click(buttonByLabel("More actions for launch-plan.html"));
+    click(screen.getByText("Ask about it"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
+    });
+    const editor = await findComposerEditor();
+    expect(editor).toHaveTextContent("Keep this draft");
+    expect(editor).toHaveTextContent(artifact.url);
+    expect(screen.queryByLabelText(`Remove ${artifact.filename}`)).toBeNull();
+  });
+
+  it("keeps same-named draft attachments with different stable identities", async () => {
+    setupTeam();
+    const scope = testAuthScope("ask-artifact-identity");
+    const artifact = createArtifact({
+      artifactItemId: "selected-run:selected-file",
+      runId: "selected-run",
+      fileId: "selected-file",
+      filename: "same-name.png",
+      contentType: "image/png",
+      size: 1024,
+      url: "https://artifacts.example.com/selected-file.png",
+      artifactKind: undefined,
+    });
+    mockArtifacts([artifact]);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "Keep both files",
+        draftAttachments: [
+          {
+            id: "existing-file",
+            filename: "same-name.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://artifacts.example.com/existing-file.png",
+          },
+        ],
+      });
+    });
+    const draftPatches: {
+      readonly draftAttachments?:
+        | readonly {
+            readonly id: string;
+            readonly url: string;
+          }[]
+        | null;
+    }[] = [];
+    context.mocks.api(zeroAgentDraftContract.patch, ({ body, respond }) => {
+      draftPatches.push(body);
+      return respond(204);
+    });
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("same-name.png");
+    click(buttonByLabel("More actions for same-name.png"));
+    click(screen.getByText("Ask about it"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
+    });
+    const editor = await findComposerEditor();
+    expect(editor).toHaveTextContent("Keep both files");
+    expect(screen.getAllByLabelText("Remove same-name.png")).toHaveLength(2);
+
+    await fill(editor, "Updated draft");
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "Updated draft",
+        draftAttachments: [
+          {
+            id: "existing-file",
+            filename: "same-name.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://artifacts.example.com/existing-file.png",
+          },
+          {
+            id: artifact.fileId,
+            filename: artifact.filename,
+            contentType: artifact.contentType,
+            size: artifact.size,
+            url: artifact.url,
+          },
+        ],
+      });
+    });
+  });
+
+  it("navigates to the original conversation", async () => {
     setupTeam();
     const scope = testAuthScope("navigate");
     mockArtifacts([createArtifact()]);
@@ -624,7 +1075,11 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await screen.findByText("launch-plan.html");
-    click(buttonByLabel("Open source chat for launch-plan.html"));
+    expect(
+      screen.queryByLabelText("Open source chat for launch-plan.html"),
+    ).toBeNull();
+    click(buttonByLabel("More actions for launch-plan.html"));
+    click(screen.getByText("View creation chat"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${SOURCE_THREAD_ID}`);
@@ -670,6 +1125,36 @@ describe("artifacts page", () => {
       await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
         artifact.artifactItemId,
       ]);
+    });
+  });
+
+  it("normalizes older remote artifacts without a size", async () => {
+    setupTeam();
+    const scope = testAuthScope("remote-size-default");
+    const { size, ...legacyArtifact } = createArtifact({
+      artifactItemId: "legacy-remote-run:file-1",
+      runId: "legacy-remote-run",
+      filename: "legacy-remote.html",
+    });
+    expect(size).toBeGreaterThan(0);
+    context.mocks.api(artifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [legacyArtifact as ArtifactItem],
+        truncated: false,
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("legacy-remote.html");
+    await waitFor(async () => {
+      const db = await openChatIdb(scope.userId, scope.orgId);
+      const cached = await createArtifactItemCacheStores(
+        resolvedChatIdb(db),
+      ).readStore.readRecent({ limit: 10_000 });
+      expect(cached).toHaveLength(1);
+      expect(cached[0]?.size).toBe(0);
     });
   });
 

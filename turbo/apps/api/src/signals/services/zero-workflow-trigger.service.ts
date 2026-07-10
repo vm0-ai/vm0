@@ -31,6 +31,7 @@ import {
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   workflowUserTriggerThreads,
@@ -88,6 +89,7 @@ import {
   ensureWorkflowUserTriggerThread,
   loadWorkflowUserTriggerThreadId,
 } from "./zero-workflow-user-trigger-thread.service";
+import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 
 type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
@@ -158,7 +160,10 @@ type WorkflowTriggerRunNowResult =
       readonly chatThreadId: string;
     }
   | TriggerActionFailure
-  | Exclude<RunWorkflowTriggerResult, { readonly kind: "ok" }>;
+  | Exclude<
+      RunWorkflowTriggerResult,
+      { readonly kind: "ok" } | { readonly kind: "enqueued" }
+    >;
 
 interface CreateEventTriggerWorkflowContext {
   readonly db: Db;
@@ -696,6 +701,23 @@ async function loadTriggerRow(
     )
     .limit(1);
   return row ?? null;
+}
+
+async function loadTriggerOwnerTimezone(
+  db: ReadonlyDb,
+  trigger: TriggerRow,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ timezone: orgMembersMetadata.timezone })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, trigger.orgId),
+        eq(orgMembersMetadata.userId, trigger.ownerUserId),
+      ),
+    )
+    .limit(1);
+  return row?.timezone ?? null;
 }
 
 /**
@@ -2073,6 +2095,8 @@ export const runOwnedWorkflowTriggerNow$ = command(
     }
 
     const currentTime = nowDate();
+    const ownerTimezone = await loadTriggerOwnerTimezone(writeDb, trigger);
+    signal.throwIfAborted();
     const chatThreadId = await writeDb.transaction(async (tx) => {
       return await ensureWorkflowUserTriggerThread(tx, {
         orgId: trigger.orgId,
@@ -2096,6 +2120,16 @@ export const runOwnedWorkflowTriggerNow$ = command(
         },
         apiStartTime: currentTime.getTime(),
         triggerSource: manualTriggerSource(trigger),
+        triggerBrief:
+          buildWorkflowScheduleTriggerBrief({
+            createdAt: currentTime,
+            scheduleType: trigger.scheduleType,
+            cronExpression: trigger.cronExpression,
+            intervalSeconds: trigger.intervalSeconds,
+            atTime: trigger.atTime,
+            triggerTimezone: trigger.timezone,
+            userTimezone: ownerTimezone,
+          }) ?? undefined,
         appendSystemPrompt: manualWorkflowTriggerSystemPrompt(
           target.workflowName,
         ),
@@ -2104,11 +2138,17 @@ export const runOwnedWorkflowTriggerNow$ = command(
           target.agentId,
         ),
         recordLastRunAt: true,
+        // Manual "Run now" is the user's explicit choice to run immediately,
+        // even while the workflow queue is busy.
+        bypassWorkflowQueue: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );
     signal.throwIfAborted();
+    if (result.kind === "enqueued") {
+      throw new Error("Bypassed workflow queue run cannot be enqueued");
+    }
     if (result.kind !== "ok") {
       return result;
     }

@@ -17,6 +17,7 @@ export const RUN_UPLOADED_FILE_SOURCES = [
   "automation",
   "web",
   "slack",
+  "teams",
   "email",
   "telegram",
   "agentphone",
@@ -46,6 +47,7 @@ export const runUploadedFiles = pgTable(
     contentType: text("content_type"),
     sizeBytes: bigint("size_bytes", { mode: "number" }),
     url: text("url"),
+    previewImageUrl: text("preview_image_url"),
     metadata: jsonb("metadata")
       .$type<RunUploadedFileMetadata>()
       .notNull()

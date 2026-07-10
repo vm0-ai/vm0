@@ -1255,7 +1255,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.49.6"
+version = "0.50.2"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1291,7 +1291,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.34"
+version = "0.2.35"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1303,7 +1303,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "libc",
  "serde",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.57"
+version = "0.20.58"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.108"
+version = "0.16.109"
 dependencies = [
  "libc",
  "nix",
@@ -1369,7 +1369,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2443,9 +2443,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.4"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1292b7759ae1cb9ec195452d1390a074f0cd8541ab7a5a8c31cd6db45d4a6ba"
+checksum = "2a0e75113e14dc5acb068cd0786884f214f1312650a3d36d269f5c4f3cdee8a2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2455,9 +2455,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
+checksum = "1f388202e4b80542a0921078cc23b6333bcf1409c1e3f86404cae4766a6131db"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.141.1"
+version = "0.143.5"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.102"
+version = "0.37.104"
 dependencies = [
  "async-trait",
  "base64",
@@ -2817,7 +2817,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.25"
+version = "0.8.26"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3720,7 +3720,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.28"
+version = "0.19.29"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3749,7 +3749,7 @@ version = "0.18.21"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.138"
+version = "0.9.139"
 dependencies = [
  "guest-write-file",
  "libc",

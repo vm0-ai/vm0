@@ -857,14 +857,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const thread = await chat.createThread(actor, {
       agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       title: "limited free model pin",
     });
     for (const selectedModel of [
+      "gpt-5.6-sol",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
-      "claude-sonnet-5",
     ] as const) {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(
         actor,

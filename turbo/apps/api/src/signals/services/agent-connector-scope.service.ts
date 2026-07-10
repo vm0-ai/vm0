@@ -10,7 +10,7 @@ import {
 } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
-import type { Db } from "../external/db";
+import type { ReadonlyDb } from "../external/db";
 
 interface AgentConnectorScope {
   readonly allowedConnectorTypes: readonly ConnectorType[];
@@ -23,7 +23,7 @@ interface ZeroBackedComposeAgent {
 }
 
 async function loadAgentAllowedConnectorTypes(
-  db: Db,
+  db: ReadonlyDb,
   args: {
     readonly userId: string;
     readonly orgId: string;
@@ -48,7 +48,7 @@ async function loadAgentAllowedConnectorTypes(
 }
 
 async function loadAgentAllowedCustomConnectorIds(
-  db: Db,
+  db: ReadonlyDb,
   args: {
     readonly userId: string;
     readonly orgId: string;
@@ -72,7 +72,7 @@ async function loadAgentAllowedCustomConnectorIds(
 }
 
 export async function loadAgentConnectorScope(
-  db: Db,
+  db: ReadonlyDb,
   args: {
     readonly userId: string;
     readonly orgId: string;
@@ -87,7 +87,7 @@ export async function loadAgentConnectorScope(
 }
 
 export async function loadZeroBackedComposeAgent(
-  db: Db,
+  db: ReadonlyDb,
   args: {
     readonly composeId: string;
   },

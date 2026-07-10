@@ -3963,6 +3963,48 @@
       "when": 1783591372546,
       "tag": "0565_eager_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 566,
+      "version": "7",
+      "when": 1783591372547,
+      "tag": "0566_pink_fallen_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 567,
+      "version": "7",
+      "when": 1783607257142,
+      "tag": "0567_amused_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 568,
+      "version": "7",
+      "when": 1783616589371,
+      "tag": "0568_salty_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 569,
+      "version": "7",
+      "when": 1783620539639,
+      "tag": "0569_backfill_gpt_5_6_model_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 570,
+      "version": "7",
+      "when": 1783624128032,
+      "tag": "0570_zippy_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 571,
+      "version": "7",
+      "when": 1783653465946,
+      "tag": "0571_fresh_mindworm",
+      "breakpoints": true
     }
   ]
 }

@@ -50,6 +50,16 @@ function buildZaiKeys(
   });
 }
 
+function buildOpenAiKeys(
+  values: Readonly<Record<string, string | undefined>>,
+): ReturnType<typeof buildVm0ApiKeys> {
+  return buildVm0ApiKeys(readEnvFrom(values), () => {
+    // Suppress expected skip logs for vendors that are not configured in tests.
+  }).filter((key) => {
+    return key.vendor === "openai";
+  });
+}
+
 describe("buildVm0ApiKeys", () => {
   it("falls back to ANTHROPIC_API_KEY for Anthropic dev seed rows", () => {
     const anthropicKeys = buildAnthropicKeys({
@@ -170,6 +180,43 @@ describe("buildVm0ApiKeys", () => {
         }),
       ),
     ).toStrictEqual(new Set(["dev-zai-key"]));
+  });
+
+  it("builds OpenAI dev seed rows for GPT 5.6 models", () => {
+    const openAiKeys = buildOpenAiKeys({
+      DEV_MODEL_OPENAI_KEY: "dev-openai-key",
+      OPENAI_API_KEY: "provider-openai-key",
+    });
+
+    expect(openAiKeys).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          apiKey: "dev-openai-key",
+          label: "dev-seed",
+          model: "gpt-5.6-sol",
+          vendor: "openai",
+        }),
+        expect.objectContaining({
+          apiKey: "dev-openai-key",
+          label: "dev-seed",
+          model: "gpt-5.6-terra",
+          vendor: "openai",
+        }),
+        expect.objectContaining({
+          apiKey: "dev-openai-key",
+          label: "dev-seed",
+          model: "gpt-5.6-luna",
+          vendor: "openai",
+        }),
+      ]),
+    );
+    expect(
+      new Set(
+        openAiKeys.map((key) => {
+          return key.apiKey;
+        }),
+      ),
+    ).toStrictEqual(new Set(["dev-openai-key"]));
   });
 
   it("falls back to DEEPSEEK_API_KEY for DeepSeek dev seed rows", () => {

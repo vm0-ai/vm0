@@ -1,47 +1,66 @@
-//! Production runtime bootstrap should fail fast when API auth is incomplete.
-//!
-//! This test lives in its own binary to isolate process env captured by
-//! `GuestRuntime::from_process_env`.
+//! Production startup should persist post-path bootstrap failures to the run log.
 
 mod common;
 
+use std::process::Command;
+
 #[test]
-fn runtime_bootstrap_requires_api_url_when_api_token_is_set() {
+fn runtime_bootstrap_logs_missing_api_url_to_system_log() {
     let tmp = tempfile::tempdir().unwrap();
     let runtime_dir = tmp.path().join("runtime");
+    let run_payload_file = common::write_run_payload_file_for_test(
+        &runtime_dir,
+        &guest_contracts::env::RunPayload {
+            prompt: "missing api url prompt".to_string(),
+            ..guest_contracts::env::RunPayload::default()
+        },
+    )
+    .unwrap();
 
-    unsafe {
-        common::clear_guest_agent_bootstrap_env_for_test();
-        std::env::set_var(
+    let output = Command::new(env!("CARGO_BIN_EXE_guest-agent"))
+        .env_clear()
+        .env(
             guest_contracts::env::RUN_ID_ENV,
             "guest-runtime-missing-api-url",
-        );
-        std::env::set_var("HOME", tmp.path().join("home"));
-        std::env::set_var(
+        )
+        .env("HOME", tmp.path().join("home"))
+        .env(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
             &runtime_dir,
-        );
-        common::set_run_payload_file_env_for_test(
-            &runtime_dir,
-            &guest_contracts::env::RunPayload {
-                prompt: "missing api url prompt".to_string(),
-                ..guest_contracts::env::RunPayload::default()
-            },
         )
+        .env(guest_contracts::env::RUN_PAYLOAD_FILE_ENV, run_payload_file)
+        .env(guest_contracts::env::API_TOKEN_ENV, "test-token")
+        .env(guest_contracts::env::API_URL_ENV, "")
+        .output()
         .unwrap();
-        std::env::set_var(guest_contracts::env::API_TOKEN_ENV, "test-token");
-        std::env::set_var(guest_contracts::env::API_URL_ENV, "");
-        std::env::remove_var(guest_contracts::env::USER_ENV_FILE_ENV);
-    }
 
-    let error = match guest_agent::run_context::GuestRuntime::from_process_env() {
-        Ok(_) => panic!("missing API URL should fail fast"),
-        Err(error) => error,
-    };
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing API URL should fail startup; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
+    let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        error.contains(guest_contracts::env::API_URL_ENV),
-        "error should identify {}, got: {error}",
+        stderr.contains("Fatal:"),
+        "stderr should be fatal: {stderr}"
+    );
+    assert!(
+        stderr.contains(guest_contracts::env::API_URL_ENV),
+        "stderr should identify {}, got: {stderr}",
+        guest_contracts::env::API_URL_ENV
+    );
+
+    let system_log_path = guest_contracts::runtime_paths::system_log_file(&runtime_dir);
+    let system_log = std::fs::read_to_string(system_log_path).unwrap();
+    assert!(
+        system_log.contains("Fatal:"),
+        "system log should contain the fatal bootstrap diagnostic: {system_log}"
+    );
+    assert!(
+        system_log.contains(guest_contracts::env::API_URL_ENV),
+        "system log should identify {}, got: {system_log}",
         guest_contracts::env::API_URL_ENV
     );
 }

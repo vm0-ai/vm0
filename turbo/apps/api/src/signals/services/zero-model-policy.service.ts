@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
+  DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   MODEL_PROVIDER_TYPES,
@@ -20,6 +21,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
@@ -114,8 +116,16 @@ function modelProviderAllowedForOrgTier(
 }
 
 function getSupportedModelRank(model: string): number {
-  const index = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
-  return index === -1 ? SUPPORTED_RUN_MODELS.length : index;
+  const curatedIndex = DEFAULT_ORG_MODEL_POLICY_MODELS.indexOf(
+    model as (typeof DEFAULT_ORG_MODEL_POLICY_MODELS)[number],
+  );
+  if (curatedIndex !== -1) {
+    return curatedIndex;
+  }
+  const catalogIndex = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
+  return catalogIndex === -1
+    ? DEFAULT_ORG_MODEL_POLICY_MODELS.length + SUPPORTED_RUN_MODELS.length
+    : DEFAULT_ORG_MODEL_POLICY_MODELS.length + catalogIndex;
 }
 
 function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
@@ -126,7 +136,7 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
 
 function isLimitedFreeReplaceableStandardDefaultModel(model: string): boolean {
   // MiniMax-M3 was the previous VM0-managed default; limited-free orgs seeded
-  // before this change still need to converge to the built-in Sonnet 4.6 route.
+  // before this change still need to converge to the current built-in route.
   return (
     model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL || model === "MiniMax-M3"
   );
@@ -653,18 +663,39 @@ export const updateOrgModelPolicies$ = command(
           target: [orgModelPolicies.orgId, orgModelPolicies.model],
         });
 
-      await tx.delete(orgModelPolicies).where(
-        and(
-          eq(orgModelPolicies.orgId, params.orgId),
-          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
-          notInArray(
-            orgModelPolicies.model,
-            validation.data.map((policy) => {
-              return policy.model;
-            }),
+      const removedRows = await tx
+        .delete(orgModelPolicies)
+        .where(
+          and(
+            eq(orgModelPolicies.orgId, params.orgId),
+            inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+            notInArray(
+              orgModelPolicies.model,
+              validation.data.map((policy) => {
+                return policy.model;
+              }),
+            ),
           ),
-        ),
-      );
+        )
+        .returning({ model: orgModelPolicies.model });
+
+      const removedModels = removedRows.map((row) => {
+        return row.model;
+      });
+      const defaultPolicy = validation.data.find((policy) => {
+        return policy.isDefault;
+      });
+      if (removedModels.length > 0 && defaultPolicy) {
+        await tx
+          .update(orgMembersMetadata)
+          .set({ selectedModel: defaultPolicy.model, updatedAt: now })
+          .where(
+            and(
+              eq(orgMembersMetadata.orgId, params.orgId),
+              inArray(orgMembersMetadata.selectedModel, removedModels),
+            ),
+          );
+      }
 
       await tx
         .update(orgModelPolicies)

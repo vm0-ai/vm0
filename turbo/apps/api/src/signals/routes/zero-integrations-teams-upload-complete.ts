@@ -1,0 +1,218 @@
+import { command } from "ccstate";
+import {
+  integrationsTeamsUploadCompleteContract,
+  type TeamsUploadCompleteBody,
+} from "@vm0/api-contracts/contracts/integrations";
+import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
+import { eq } from "drizzle-orm";
+
+import { env } from "../../lib/env";
+import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
+import { inferMimetype } from "../../lib/mimetype";
+import { organizationAuthContext$ } from "../auth/auth-context";
+import { authRoute } from "../auth/auth-route";
+import { bodyResultOf } from "../context/request";
+import { writeDb$, type Db } from "../external/db";
+import { listS3Objects } from "../external/s3";
+import { sendTeamsMessage } from "../external/teams-bot-client";
+import { recordTeamsUploadedFile$ } from "../services/run-uploaded-files.service";
+import type { RouteEntry } from "../route-entry";
+
+interface TeamsInstallation {
+  readonly teamsTenantId: string;
+  readonly serviceUrl: string | null;
+}
+
+interface UploadedFileInfo {
+  readonly key: string;
+  readonly size: number;
+  readonly filename: string;
+  readonly fileUrl: string;
+}
+
+function routeError<Status extends 400 | 401 | 403 | 404 | 502>(
+  status: Status,
+  message: string,
+  code: string,
+) {
+  return { status, body: { error: { message, code } } };
+}
+
+async function loadInstallation(
+  db: Db,
+  orgId: string,
+): Promise<TeamsInstallation | undefined> {
+  const [installation] = await db
+    .select({
+      teamsTenantId: teamsOrgInstallations.teamsTenantId,
+      serviceUrl: teamsOrgInstallations.serviceUrl,
+    })
+    .from(teamsOrgInstallations)
+    .where(eq(teamsOrgInstallations.orgId, orgId))
+    .limit(1);
+  return installation;
+}
+
+function buildTeamsFileText(args: {
+  readonly body: TeamsUploadCompleteBody;
+  readonly file: UploadedFileInfo;
+}): string {
+  const fileLink = `[${args.file.filename}](${args.file.fileUrl})`;
+  return [args.body.text, fileLink]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join("\n\n");
+}
+
+function buildMetadata(args: {
+  readonly body: TeamsUploadCompleteBody;
+  readonly s3Key: string;
+  readonly sourceUrl: string;
+  readonly teamsActivityId: string | undefined;
+}): Record<string, unknown> {
+  return {
+    conversationId: args.body.conversationId,
+    uploadId: args.body.uploadId,
+    s3Key: args.s3Key,
+    sourceUrl: args.sourceUrl,
+    ...(args.body.activityId ? { activityId: args.body.activityId } : {}),
+    ...(args.body.text ? { text: args.body.text } : {}),
+    teamsMessage: args.teamsActivityId
+      ? { activityId: args.teamsActivityId }
+      : {},
+  };
+}
+
+function teamsErrorResponse(
+  result: Extract<
+    Awaited<ReturnType<typeof sendTeamsMessage>>,
+    { readonly kind: "teams-error" }
+  >,
+) {
+  return routeError(
+    result.status >= 500 ? 502 : 400,
+    `Microsoft Teams API error: ${result.error}`,
+    "TEAMS_ERROR",
+  );
+}
+
+const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const runId =
+    "runId" in auth && typeof auth.runId === "string" ? auth.runId : undefined;
+  const bodyResult = await get(
+    bodyResultOf(integrationsTeamsUploadCompleteContract.complete),
+  );
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  const body = bodyResult.data;
+
+  const db = set(writeDb$);
+  const installation = await loadInstallation(db, auth.orgId);
+  signal.throwIfAborted();
+  if (!installation) {
+    return routeError(
+      404,
+      "No Microsoft Teams installation found for this organization",
+      "NOT_FOUND",
+    );
+  }
+  if (!installation.serviceUrl) {
+    return routeError(
+      404,
+      "Microsoft Teams installation has no service URL yet. Send a message to the Teams bot first.",
+      "NOT_FOUND",
+    );
+  }
+
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const prefix = buildArtifactPrefix(auth.userId, body.uploadId);
+  const objects = await get(listS3Objects(bucket, prefix));
+  signal.throwIfAborted();
+  const object = objects[0];
+  if (!object) {
+    return routeError(404, "Uploaded file not found", "NOT_FOUND");
+  }
+
+  const filename = object.key.split("/").pop() ?? body.uploadId;
+  const file: UploadedFileInfo = {
+    key: object.key,
+    size: object.size,
+    filename,
+    fileUrl: buildFileUrl(auth.userId, body.uploadId, filename),
+  };
+  const mimetype = body.contentType ?? inferMimetype(file.filename);
+
+  const result = await sendTeamsMessage({
+    serviceUrl: installation.serviceUrl,
+    conversationId: body.conversationId,
+    activityId: body.activityId,
+    tenantId: installation.teamsTenantId,
+    text: buildTeamsFileText({ body, file }),
+    attachments: [
+      {
+        contentType: mimetype,
+        contentUrl: file.fileUrl,
+        name: file.filename,
+      },
+    ],
+    signal,
+  });
+  signal.throwIfAborted();
+  if (result.kind === "teams-error") {
+    return teamsErrorResponse(result);
+  }
+
+  const externalId =
+    result.activityId ?? `${body.conversationId}:${body.uploadId}`;
+  await set(
+    recordTeamsUploadedFile$,
+    {
+      runId,
+      externalId,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      filename: file.filename,
+      contentType: mimetype,
+      sizeBytes: file.size,
+      url: file.fileUrl,
+      metadata: buildMetadata({
+        body,
+        s3Key: file.key,
+        sourceUrl: file.fileUrl,
+        teamsActivityId: result.activityId,
+      }),
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+
+  return {
+    status: 200 as const,
+    body: {
+      activityId: result.activityId,
+      conversationId: body.conversationId,
+      filename: file.filename,
+      mimetype,
+      size: file.size,
+      url: file.fileUrl,
+    },
+  };
+});
+
+const teamsWriteAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "teams:write",
+} as const;
+
+export const zeroIntegrationsTeamsUploadCompleteRoutes: readonly RouteEntry[] =
+  [
+    {
+      route: integrationsTeamsUploadCompleteContract.complete,
+      handler: authRoute(teamsWriteAuth, complete$),
+    },
+  ];

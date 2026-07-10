@@ -31,9 +31,17 @@ else
   echo "✓ Turbo workspace not found, skipping cache cleanup"
 fi
 
-# Setup PostgreSQL (handled by postgresql feature)
+# PostgreSQL is initialized by the postgresql feature, while pgvector is
+# provided by the vm0-dev image.
+echo "🐘 Checking PostgreSQL pgvector extension..."
 sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 sudo service postgresql start 2>/dev/null || true
+if sudo -u postgres psql -h /var/run/postgresql -d postgres -Atqc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" | grep -qx 1; then
+  echo "✓ pgvector extension available to PostgreSQL"
+else
+  echo "ERROR: pgvector extension is not available to PostgreSQL" >&2
+  exit 1
+fi
 
 # Generate locale for UTF-8 support
 echo "🌐 Setting up locale..."

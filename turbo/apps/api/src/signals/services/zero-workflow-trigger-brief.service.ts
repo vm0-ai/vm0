@@ -40,6 +40,15 @@ function formatClockTime(hour: number, minute: number): string {
   return `${h12}:${pad2(minute)} ${ampm}`;
 }
 
+type WorkflowTriggerDateTimeInput = Date | string | number;
+
+function normalizeWorkflowTriggerDateTime(
+  value: WorkflowTriggerDateTimeInput,
+): Date | null {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
 function formatWorkflowTriggerDateTime(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -293,11 +302,11 @@ function formatCronRule(args: {
 }
 
 export function buildWorkflowScheduleTriggerBrief(args: {
-  readonly createdAt: Date;
+  readonly createdAt: WorkflowTriggerDateTimeInput;
   readonly scheduleType: string | null;
   readonly cronExpression: string | null;
   readonly intervalSeconds: number | null;
-  readonly atTime: Date | null;
+  readonly atTime: WorkflowTriggerDateTimeInput | null;
   readonly triggerTimezone: string | null;
   readonly userTimezone: string | null;
 }): string | null {
@@ -309,7 +318,11 @@ export function buildWorkflowScheduleTriggerBrief(args: {
     args.triggerTimezone !== null && isValidTimeZone(args.triggerTimezone)
       ? args.triggerTimezone
       : timezone;
-  const triggeredAt = formatWorkflowTriggerDateTime(args.createdAt, timezone);
+  const createdAt = normalizeWorkflowTriggerDateTime(args.createdAt);
+  if (createdAt === null) {
+    return null;
+  }
+  const triggeredAt = formatWorkflowTriggerDateTime(createdAt, timezone);
   if (args.scheduleType === "cron") {
     const cronExpression = args.cronExpression?.trim();
     if (!cronExpression) {
@@ -321,7 +334,7 @@ export function buildWorkflowScheduleTriggerBrief(args: {
         cronExpression,
         triggerTimezone,
         displayTimezone: timezone,
-        referenceDate: args.createdAt,
+        referenceDate: createdAt,
       })}`,
     ].join("\n");
   }
@@ -334,9 +347,10 @@ export function buildWorkflowScheduleTriggerBrief(args: {
       `Every ${formatWorkflowIntervalSeconds(args.intervalSeconds)}`,
     ].join("\n");
   }
-  const onceAt = formatWorkflowTriggerDateTime(
-    args.atTime ?? args.createdAt,
-    timezone,
-  );
+  const onceDate =
+    args.atTime === null
+      ? createdAt
+      : (normalizeWorkflowTriggerDateTime(args.atTime) ?? createdAt);
+  const onceAt = formatWorkflowTriggerDateTime(onceDate, timezone);
   return `Once at ${onceAt}`;
 }

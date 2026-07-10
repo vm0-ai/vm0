@@ -40,8 +40,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 29 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(29);
+  it("should have exactly 30 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(30);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -63,6 +63,10 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include telegram read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("telegram:read");
     expect(ZERO_CAPABILITIES).toContain("telegram:write");
+  });
+
+  it("should include teams write capability", () => {
+    expect(ZERO_CAPABILITIES).toContain("teams:write");
   });
 
   it("should include phone read and write capabilities", () => {

@@ -8,7 +8,6 @@ use std::time::Instant;
 
 const LOG_TAG: &str = "sandbox:download";
 const MANIFEST_STDIN_ARG: &str = "--manifest-stdin";
-const LEGACY_MANIFEST_PATH: &str = "/tmp/storage-manifest.json";
 const USAGE: &str = "Usage: guest-download <manifest_path> | --manifest-stdin";
 
 enum ManifestInput {
@@ -78,7 +77,7 @@ fn run(input: ManifestInput) -> bool {
     match input {
         ManifestInput::Path(manifest_path) => run_path(&manifest_path),
         ManifestInput::Stdin => {
-            if !remove_stale_manifest_file(LEGACY_MANIFEST_PATH) {
+            if !remove_stale_manifest_file(runtime_paths::STORAGE_MANIFEST_PATH) {
                 return false;
             }
 
@@ -93,7 +92,7 @@ fn run(input: ManifestInput) -> bool {
 }
 
 fn run_path(manifest_path: &str) -> bool {
-    if manifest_path == LEGACY_MANIFEST_PATH {
+    if manifest_path == runtime_paths::STORAGE_MANIFEST_PATH {
         run_manifest_file_and_remove(manifest_path)
     } else {
         guest_download::run(manifest_path)

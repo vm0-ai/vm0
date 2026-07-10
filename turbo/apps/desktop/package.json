@@ -1,6 +1,6 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.27.1",
+  "version": "0.27.11",
   "private": true,
   "productName": "Zero Computer Use",
   "description": "Zero desktop shell",
@@ -27,7 +27,7 @@
     "@modelcontextprotocol/server-filesystem": "2026.1.14",
     "@sentry/electron": "^7.13.0",
     "@sentry/react": "^10.50.0",
-    "@tabler/icons-react": "^3.36.1",
+    "@tabler/icons-react": "3.44.0",
     "@vm0/api-contracts": "workspace:*",
     "ccstate": "^5.3.0",
     "ccstate-react": "^5.3.0",

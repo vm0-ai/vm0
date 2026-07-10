@@ -1,5 +1,174 @@
 # Changelog
 
+## [9.237.0](https://github.com/vm0-ai/vm0/compare/cli-v9.236.0...cli-v9.237.0) (2026-07-10)
+
+
+### Features
+
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.183.0
+    * @vm0/core bumped to 8.424.1
+
+## [9.236.0](https://github.com/vm0-ai/vm0/compare/cli-v9.235.4...cli-v9.236.0) (2026-07-10)
+
+
+### Features
+
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.182.1
+    * @vm0/core bumped to 8.424.0
+
+## [9.235.4](https://github.com/vm0-ai/vm0/compare/cli-v9.235.3...cli-v9.235.4) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.182.0
+    * @vm0/connectors bumped to 1.154.0
+    * @vm0/core bumped to 8.423.0
+
+## [9.235.3](https://github.com/vm0-ai/vm0/compare/cli-v9.235.2...cli-v9.235.3) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.181.0
+    * @vm0/core bumped to 8.422.1
+
+## [9.235.2](https://github.com/vm0-ai/vm0/compare/cli-v9.235.1...cli-v9.235.2) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.180.0
+    * @vm0/connectors bumped to 1.153.0
+    * @vm0/core bumped to 8.422.0
+
+## [9.235.1](https://github.com/vm0-ai/vm0/compare/cli-v9.235.0...cli-v9.235.1) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.179.0
+    * @vm0/core bumped to 8.421.2
+
+## [9.235.0](https://github.com/vm0-ai/vm0/compare/cli-v9.234.0...cli-v9.235.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.178.0
+    * @vm0/core bumped to 8.421.1
+
+## [9.234.0](https://github.com/vm0-ai/vm0/compare/cli-v9.233.1...cli-v9.234.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.177.0
+    * @vm0/core bumped to 8.421.0
+
+## [9.233.1](https://github.com/vm0-ai/vm0/compare/cli-v9.233.0...cli-v9.233.1) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.176.0
+    * @vm0/connectors bumped to 1.152.0
+    * @vm0/core bumped to 8.420.0
+
+## [9.233.0](https://github.com/vm0-ai/vm0/compare/cli-v9.232.5...cli-v9.233.0) (2026-07-09)
+
+
+### Features
+
+* add notion child page workflow trigger ([#20391](https://github.com/vm0-ai/vm0/issues/20391)) ([e16798b](https://github.com/vm0-ai/vm0/commit/e16798bdef02cd212425fe275c5873a36b6a8ec1))
+* add notion database item workflow trigger ([#20533](https://github.com/vm0-ai/vm0/issues/20533)) ([e4c078c](https://github.com/vm0-ai/vm0/commit/e4c078c3a5da6a9e1684941421ef73223c146393))
+* add notion page content updated workflow trigger ([#20562](https://github.com/vm0-ai/vm0/issues/20562)) ([833395e](https://github.com/vm0-ai/vm0/commit/833395ed1bd75e7e94b5baa1ede1506d3584ecea))
+* add r2-backed website template packages ([#20700](https://github.com/vm0-ai/vm0/issues/20700)) ([2c9c4d4](https://github.com/vm0-ai/vm0/commit/2c9c4d43a96ee11abc8a25268cd8910af1f538de))
+* add relationship memory foundation ([#20077](https://github.com/vm0-ai/vm0/issues/20077)) ([805a79e](https://github.com/vm0-ai/vm0/commit/805a79ed91fc55a6261bf6f7180fa4b3c663af7d))
+* add website template deep-link and cli support ([#20542](https://github.com/vm0-ai/vm0/issues/20542)) ([5d0e5a6](https://github.com/vm0-ai/vm0/commit/5d0e5a638e321b937327d2b02958f4803a67a4f6))
+* add zero chat model switching ([#20566](https://github.com/vm0-ai/vm0/issues/20566)) ([5a996cb](https://github.com/vm0-ai/vm0/commit/5a996cb2d1b8201887831aaf2122f09a636c2dda))
+* add zero memory recall surfaces ([#20630](https://github.com/vm0-ai/vm0/issues/20630)) ([c937665](https://github.com/vm0-ai/vm0/commit/c9376657012a4fefedfabc0a033b53d18c7065cb))
+* **cli:** add notion child page trigger creation ([#20433](https://github.com/vm0-ai/vm0/issues/20433)) ([8862a46](https://github.com/vm0-ai/vm0/commit/8862a46008e69dad6f6a27bf8311ca38e4e3b8b5))
+* **cli:** add zero intro capability guide ([#20697](https://github.com/vm0-ai/vm0/issues/20697)) ([318a9ed](https://github.com/vm0-ai/vm0/commit/318a9ed2e530cc1eac7374feb206919e9710ffac))
+* **cli:** report client request headers ([#20673](https://github.com/vm0-ai/vm0/issues/20673)) ([5b53561](https://github.com/vm0-ai/vm0/commit/5b535614ba0f017eb3f6f80805f6c555b3c2daaa)), closes [#20667](https://github.com/vm0-ai/vm0/issues/20667)
+* **cli:** split image prompt generation modes ([#20580](https://github.com/vm0-ai/vm0/issues/20580)) ([1cb5e06](https://github.com/vm0-ai/vm0/commit/1cb5e06c00ea331d15df5412c994ec8ee934aa91))
+* gate real agent runs in preview ([#20723](https://github.com/vm0-ai/vm0/issues/20723)) ([0e65755](https://github.com/vm0-ai/vm0/commit/0e65755fca6f31440f2a533c13f995619cbe6e5d))
+* route mcp plugin commands and add plugin mcp cli ([#20756](https://github.com/vm0-ai/vm0/issues/20756)) ([89d4e76](https://github.com/vm0-ai/vm0/commit/89d4e76f2eda168c2d9012e93b4f00bb260f2bd4))
+* wire warm cards website template resource ([#20432](https://github.com/vm0-ai/vm0/issues/20432)) ([523b392](https://github.com/vm0-ai/vm0/commit/523b392ed25a36663d77a522fb457f16d9803609))
+
+
+### Bug Fixes
+
+* **cli:** pin npm publisher version ([#20788](https://github.com/vm0-ai/vm0/issues/20788)) ([e4d0813](https://github.com/vm0-ai/vm0/commit/e4d081397961fe0eea1d4623cd9f7db6be721040))
+* **cli:** refresh registry resource release marker ([#20835](https://github.com/vm0-ai/vm0/issues/20835)) ([c445024](https://github.com/vm0-ai/vm0/commit/c44502432d0afd91cc63a213ee0aa79bd730dfd2))
+* refresh website template r2 archives ([#20809](https://github.com/vm0-ai/vm0/issues/20809)) ([8202876](https://github.com/vm0-ai/vm0/commit/820287677c250892fade8b9f298f910675e5ec26))
+* send chat model choices as model ids ([#20639](https://github.com/vm0-ai/vm0/issues/20639)) ([71b30a2](https://github.com/vm0-ai/vm0/commit/71b30a283202188aa4d92659bcf24d63a01d5e26))
+* show gpt 5.5 as the friendly model label ([#20364](https://github.com/vm0-ai/vm0/issues/20364)) ([984a98b](https://github.com/vm0-ai/vm0/commit/984a98bbee7a72674a9b79b60c0b046a1ce865eb))
+* skip template-interpolation references in zero host asset scan ([#20739](https://github.com/vm0-ai/vm0/issues/20739)) ([29af713](https://github.com/vm0-ai/vm0/commit/29af713e85a60e89020a58cbff417e11d2415bc0))
+
+
+### Refactoring
+
+* drop legacy automation tables and read-only automation surfaces ([#20420](https://github.com/vm0-ai/vm0/issues/20420)) ([bfbf99b](https://github.com/vm0-ai/vm0/commit/bfbf99bbe639ec9c9ce67a37b5155e8478f96224))
+* remove presentation design-system selection ([#20371](https://github.com/vm0-ai/vm0/issues/20371)) ([bb56ceb](https://github.com/vm0-ai/vm0/commit/bb56ceb0c43fe57028535ab03cd4911f051aeff0))
+* retire open design presentation templates ([#20097](https://github.com/vm0-ai/vm0/issues/20097)) ([1151041](https://github.com/vm0-ai/vm0/commit/11510410ef166d838ccb5264e1cf5007904b6150))
+* retire the workflow automation feature switch as always-on ([#20357](https://github.com/vm0-ai/vm0/issues/20357)) ([840b415](https://github.com/vm0-ai/vm0/commit/840b41551ab88a25aeeec08f01a18ccd6a5b36ff))
+
+## [9.232.5](https://github.com/vm0-ai/vm0/compare/cli-v9.232.4...cli-v9.232.5) (2026-07-09)
+
+
+### Bug Fixes
+
+* refresh website template r2 archives ([#20809](https://github.com/vm0-ai/vm0/issues/20809)) ([8202876](https://github.com/vm0-ai/vm0/commit/820287677c250892fade8b9f298f910675e5ec26))
+* send chat model choices as model ids ([#20639](https://github.com/vm0-ai/vm0/issues/20639)) ([71b30a2](https://github.com/vm0-ai/vm0/commit/71b30a283202188aa4d92659bcf24d63a01d5e26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.175.0
+    * @vm0/connectors bumped to 1.151.0
+    * @vm0/core bumped to 8.419.0
+
 ## [9.232.4](https://github.com/vm0-ai/vm0/compare/cli-v9.232.3...cli-v9.232.4) (2026-07-09)
 
 

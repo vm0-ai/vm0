@@ -33,6 +33,7 @@ import {
   IconPhoto,
   IconChartLine,
   IconPlayerPlay,
+  IconPlayerPause,
   IconVideo,
   IconCopy,
   IconDeviceDesktop,
@@ -213,6 +214,12 @@ import {
   openHeaderAutomationSidebar$,
   setEditingHeaderWorkflowTriggerId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
+import {
+  clearWorkflowQueue$,
+  setWorkflowQueuePaused$,
+  skipWorkflowQueueEvent$,
+  workflowQueueForThread,
+} from "../../signals/chat-page/workflow-queue.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import {
   closeChatThreadEmojiMenu$,
@@ -391,6 +398,8 @@ export function AutomationMenuButton({
     workflowTriggersLoadable.state === "hasData"
       ? workflowTriggersLoadable.data
       : (lastResolvedTriggers ?? []);
+  const queue = useLastResolved(workflowQueueForThread(threadId));
+  const pendingCount = queue?.pending.length ?? 0;
   const open = openThreadId === threadId;
 
   // Show the opener when the thread has a workflow trigger.
@@ -406,7 +415,7 @@ export function AutomationMenuButton({
           <button
             type="button"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+              "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
@@ -419,6 +428,14 @@ export function AutomationMenuButton({
             }}
           >
             <IconClock size={18} />
+            {pendingCount > 0 ? (
+              <span
+                className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium leading-none text-primary-foreground"
+                data-testid="workflow-queue-badge"
+              >
+                {pendingCount > 99 ? "99+" : pendingCount}
+              </span>
+            ) : null}
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open automations</TooltipContent>
@@ -2284,6 +2301,126 @@ function HeaderGmailLabelTriggerEditForm({
     </form>
   );
 }
+function HeaderWorkflowQueueSection({ threadId }: { threadId: string }) {
+  const queue = useLastResolved(workflowQueueForThread(threadId));
+  const pageSignal = useGet(pageSignal$);
+  const skipEvent = useSet(skipWorkflowQueueEvent$);
+  const clearQueue = useSet(clearWorkflowQueue$);
+  const setPaused = useSet(setWorkflowQueuePaused$);
+
+  if (!queue) {
+    return null;
+  }
+  const paused = queue.pausedAt !== null;
+  if (!queue.running && queue.pending.length === 0 && !paused) {
+    return null;
+  }
+
+  return (
+    <section
+      className="rounded-lg border border-border/60 bg-muted/20 p-3"
+      aria-label="Workflow queue"
+      data-testid="workflow-queue-section"
+    >
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1 text-xs font-medium text-foreground">
+          Queue
+          {queue.pending.length > 0 ? (
+            <span className="ml-1 text-muted-foreground">
+              {queue.pending.length} waiting
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          aria-label={paused ? "Resume queue" : "Pause queue"}
+          onClick={() => {
+            detach(
+              setPaused({ threadId, paused: !paused }, pageSignal),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          {paused ? (
+            <IconPlayerPlay size={13} />
+          ) : (
+            <IconPlayerPause size={13} />
+          )}
+          {paused ? "Resume" : "Pause"}
+        </button>
+        {queue.pending.length > 0 ? (
+          <button
+            type="button"
+            className="inline-flex h-6 items-center rounded-md px-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-destructive"
+            onClick={() => {
+              detach(clearQueue(threadId, pageSignal), Reason.DomCallback);
+            }}
+          >
+            Clear queue ({queue.pending.length})
+          </button>
+        ) : null}
+      </div>
+
+      {paused ? (
+        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+          Queue paused{queue.pauseReason ? `: ${queue.pauseReason}` : ""}. New
+          events keep queueing and run after you resume.
+        </div>
+      ) : null}
+
+      {queue.running ? (
+        <div className="mt-2 flex items-start gap-2 text-xs">
+          <span className="mt-1 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-foreground">
+              {queue.running.triggerBrief ?? "Running trigger event"}
+            </div>
+            <div className="text-muted-foreground">
+              {queue.running.status === "running" ? "Running" : "Starting"}
+              {" · "}
+              {formatHeaderWorkflowTriggerRun(queue.running.createdAt)}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {queue.pending.length > 0 ? (
+        <ul className="mt-2 grid gap-1">
+          {queue.pending.map((event, index) => {
+            return (
+              <li
+                key={event.id}
+                className="flex items-center gap-2 rounded-md px-1 py-0.5 text-xs hover:bg-muted/40"
+              >
+                <span className="w-4 shrink-0 text-right text-muted-foreground">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-foreground">
+                  {event.triggerBrief ?? event.triggerSource}
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {formatHeaderWorkflowTriggerRun(event.createdAt)}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted/60 hover:text-destructive"
+                  aria-label="Skip queued event"
+                  onClick={() => {
+                    detach(skipEvent(event.id, pageSignal), Reason.DomCallback);
+                  }}
+                >
+                  <IconX size={12} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
   const workflowTriggers$ = headerWorkflowTriggersForThread(threadId);
   const workflowTriggersLoadable = useLastLoadable(workflowTriggers$);
@@ -2330,6 +2467,7 @@ function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
           </div>
         ) : (
           <div className="grid gap-6">
+            <HeaderWorkflowQueueSection threadId={threadId} />
             {workflowTriggers.length > 0 ? (
               <div className="grid gap-3">
                 {workflowTriggers.map((trigger) => {

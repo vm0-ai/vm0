@@ -189,6 +189,19 @@ export const apiWorkflowsHandlers = [
     return respond(200, updated);
   }),
 
+  mockApi(
+    zeroWorkflowsDetailContract.connectorReadiness,
+    ({ params, respond }) => {
+      const workflow = mockWorkflows.find((item) => {
+        return item.id === params.workflowId;
+      });
+      if (!workflow) {
+        return respond(404, notFound(params.workflowId));
+      }
+      return respond(200, { connectors: [] });
+    },
+  ),
+
   mockApi(zeroWorkflowsDetailContract.delete, ({ params, respond }) => {
     const index = mockWorkflows.findIndex((item) => {
       return item.id === params.workflowId;

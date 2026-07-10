@@ -1,5 +1,213 @@
 # Changelog
 
+## [1.261.0](https://github.com/vm0-ai/vm0/compare/api-v1.260.0...api-v1.261.0) (2026-07-10)
+
+
+### Features
+
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.0
+    * @vm0/core bumped to 8.424.1
+    * @vm0/db bumped to 1.109.0
+
+## [1.260.0](https://github.com/vm0-ai/vm0/compare/api-v1.259.0...api-v1.260.0) (2026-07-10)
+
+
+### Features
+
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.1
+    * @vm0/core bumped to 8.424.0
+    * @vm0/db bumped to 1.108.4
+
+## [1.259.0](https://github.com/vm0-ai/vm0/compare/api-v1.258.0...api-v1.259.0) (2026-07-10)
+
+
+### Features
+
+* add artifacts page preview lightbox ([#20889](https://github.com/vm0-ai/vm0/issues/20889)) ([9952a50](https://github.com/vm0-ai/vm0/commit/9952a505c82e354ea432e03977e1b43549b7e8a4))
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.0
+    * @vm0/connectors bumped to 1.154.0
+    * @vm0/core bumped to 8.423.0
+    * @vm0/db bumped to 1.108.3
+
+## [1.258.0](https://github.com/vm0-ai/vm0/compare/api-v1.257.0...api-v1.258.0) (2026-07-10)
+
+
+### Features
+
+* add workflow queue inspection and control api with per-thread realtime signal ([#20895](https://github.com/vm0-ai/vm0/issues/20895)) ([6c02526](https://github.com/vm0-ai/vm0/commit/6c025261b754d16d25c1a88f5e5e8f37bb9a6dc7)), closes [#20876](https://github.com/vm0-ai/vm0/issues/20876)
+* curate default models for new organizations ([#20880](https://github.com/vm0-ai/vm0/issues/20880)) ([c10661e](https://github.com/vm0-ai/vm0/commit/c10661e0a8541f9b1c2e7de8ef7fe46b2d59d4d6))
+* migrate member model preferences to workspace default when org removes a model ([#20884](https://github.com/vm0-ai/vm0/issues/20884)) ([fb3cf31](https://github.com/vm0-ai/vm0/commit/fb3cf31d900504b4f0b592175463d6a157d30ee8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.181.0
+    * @vm0/core bumped to 8.422.1
+    * @vm0/db bumped to 1.108.2
+
+## [1.257.0](https://github.com/vm0-ai/vm0/compare/api-v1.256.2...api-v1.257.0) (2026-07-10)
+
+
+### Features
+
+* generate poster-frame previews for video artifacts ([#20831](https://github.com/vm0-ai/vm0/issues/20831)) ([f14a997](https://github.com/vm0-ai/vm0/commit/f14a997e3d3abf8f95066a5869475b20fe959d9c))
+
+
+### Performance Improvements
+
+* reduce goal continuation memory search cost ([#20823](https://github.com/vm0-ai/vm0/issues/20823)) ([3dff6c3](https://github.com/vm0-ai/vm0/commit/3dff6c363fd54055231ea02da03c3cc023c185c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.180.0
+    * @vm0/connectors bumped to 1.153.0
+    * @vm0/core bumped to 8.422.0
+    * @vm0/db bumped to 1.108.1
+
+## [1.256.2](https://github.com/vm0-ai/vm0/compare/api-v1.256.1...api-v1.256.2) (2026-07-10)
+
+
+### Refactoring
+
+* require github user id at the issues api boundary ([#20862](https://github.com/vm0-ai/vm0/issues/20862)) ([ced0b9a](https://github.com/vm0-ai/vm0/commit/ced0b9a8ee06554c2537c9f515e369fa6fdc22b2))
+
+## [1.256.1](https://github.com/vm0-ai/vm0/compare/api-v1.256.0...api-v1.256.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **api:** refresh api release marker comment ([#20858](https://github.com/vm0-ai/vm0/issues/20858)) ([4fbd6cd](https://github.com/vm0-ai/vm0/commit/4fbd6cd24590f716066fd5f3038693152e89edc0))
+
+## [1.256.0](https://github.com/vm0-ai/vm0/compare/api-v1.255.0...api-v1.256.0) (2026-07-09)
+
+
+### Features
+
+* inject connector document rag into zero memory runtime ([#20854](https://github.com/vm0-ai/vm0/issues/20854)) ([d457c9b](https://github.com/vm0-ai/vm0/commit/d457c9b8daaf33dde0c32b46e81baeb66b56f673))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.179.0
+    * @vm0/core bumped to 8.421.2
+    * @vm0/db bumped to 1.108.0
+
+## [1.255.0](https://github.com/vm0-ai/vm0/compare/api-v1.254.0...api-v1.255.0) (2026-07-09)
+
+
+### Features
+
+* add zero memory lifecycle api, cli, and ui surfaces ([#20850](https://github.com/vm0-ai/vm0/issues/20850)) ([7ef3ee0](https://github.com/vm0-ai/vm0/commit/7ef3ee0b50901584644ab1ceed240d5c6cd97dcc))
+
+
+### Bug Fixes
+
+* enable codex subscriptions for gpt 5.6 models ([#20851](https://github.com/vm0-ai/vm0/issues/20851)) ([1dcb103](https://github.com/vm0-ai/vm0/commit/1dcb103fddd113b29a124cbd1de0d24f1da3b8d1))
+
+
+### Refactoring
+
+* reduce fallback slop in webhook firewall auth ([#20852](https://github.com/vm0-ai/vm0/issues/20852)) ([ebf0b09](https://github.com/vm0-ai/vm0/commit/ebf0b09842436d3e33f701bb6d4bb1fa37e34c76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.178.0
+    * @vm0/core bumped to 8.421.1
+    * @vm0/db bumped to 1.107.0
+
+## [1.254.0](https://github.com/vm0-ai/vm0/compare/api-v1.253.0...api-v1.254.0) (2026-07-09)
+
+
+### Features
+
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+* add zero memory document rag substrate ([#20846](https://github.com/vm0-ai/vm0/issues/20846)) ([52f1e35](https://github.com/vm0-ai/vm0/commit/52f1e35b51a72850a5d4a5d0e1cfba89b9382944))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.177.0
+    * @vm0/core bumped to 8.421.0
+    * @vm0/db bumped to 1.106.0
+
+## [1.253.0](https://github.com/vm0-ai/vm0/compare/api-v1.252.0...api-v1.253.0) (2026-07-09)
+
+
+### Features
+
+* add artifact favorite api ([#20837](https://github.com/vm0-ai/vm0/issues/20837)) ([5c935ea](https://github.com/vm0-ai/vm0/commit/5c935eab0bc13098bbf06a7503939722a257b5f5))
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
+
+### Bug Fixes
+
+* allow limited-free billable firewall auth ([#20843](https://github.com/vm0-ai/vm0/issues/20843)) ([ef07fbb](https://github.com/vm0-ai/vm0/commit/ef07fbba1ec3cf8aa820e734c34414aa8f8f2033))
+* **api:** persist workflow schedule run briefs ([#20839](https://github.com/vm0-ai/vm0/issues/20839)) ([5db9855](https://github.com/vm0-ai/vm0/commit/5db98557afa4fbad5f2ebdcaacad658a1bd78b24))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.176.0
+    * @vm0/connectors bumped to 1.152.0
+    * @vm0/core bumped to 8.420.0
+    * @vm0/db bumped to 1.105.0
+
+## [1.252.0](https://github.com/vm0-ai/vm0/compare/api-v1.251.1...api-v1.252.0) (2026-07-09)
+
+
+### Features
+
+* add gated github and notion memory backfills ([#20801](https://github.com/vm0-ai/vm0/issues/20801)) ([a8fb592](https://github.com/vm0-ai/vm0/commit/a8fb59226bcf1f39e47e62e6c76ccbea5226b950))
+* align teams integration with slack parity ([#20544](https://github.com/vm0-ai/vm0/issues/20544)) ([3212311](https://github.com/vm0-ai/vm0/commit/3212311ffeb24690074c3df51fa02e9cc4045275))
+* interpret marked image regions into targeted edits ([#20822](https://github.com/vm0-ai/vm0/issues/20822)) ([62444e3](https://github.com/vm0-ai/vm0/commit/62444e3cb87332aafa869bc413077bbf4626a287))
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.175.0
+    * @vm0/connectors bumped to 1.151.0
+    * @vm0/core bumped to 8.419.0
+    * @vm0/db bumped to 1.104.0
+
 ## [1.251.1](https://github.com/vm0-ai/vm0/compare/api-v1.251.0...api-v1.251.1) (2026-07-09)
 
 

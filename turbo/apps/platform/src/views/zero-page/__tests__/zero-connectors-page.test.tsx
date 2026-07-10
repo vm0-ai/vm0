@@ -1594,9 +1594,9 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "nintendo-eshop-catalog",
-        label: "Nintendo eShop Catalog",
-        description: "Nintendo eShop public catalog",
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe public catalog",
         authMethods: [
           {
             id: "api",
@@ -1616,7 +1616,7 @@ describe("connectors page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
-        expect(params.type).toBe("nintendo-eshop-catalog");
+        expect(params.type).toBe("stripe");
         expect(body.authMethod).toBe("api");
         return respond(200, {
           id: crypto.randomUUID(),
@@ -1637,11 +1637,8 @@ describe("connectors page", () => {
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    await fill(
-      await screen.findByPlaceholderText("Find connectors"),
-      "nintendo",
-    );
-    click(await screen.findByLabelText("Connect Nintendo eShop Catalog"));
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
 
     await waitFor(() => {
       expect(connectCount).toBe(1);

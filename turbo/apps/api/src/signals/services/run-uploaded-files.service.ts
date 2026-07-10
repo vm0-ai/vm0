@@ -52,7 +52,7 @@ function isRunUploadedFileSource(
   });
 }
 
-async function publishArtifactsChangedForRun(
+export async function publishArtifactsChangedForRun(
   writeDb: Db,
   runId: string,
   signal: AbortSignal,
@@ -124,14 +124,14 @@ export const recordHostedSiteArtifact$ = command(
     { set },
     args: RecordHostedSiteArtifactArgs,
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<string | null> => {
     if (!args.runId) {
-      return;
+      return null;
     }
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "web", signal);
 
-    await writeDb
+    const [row] = await writeDb
       .insert(runUploadedFiles)
       .values({
         runId: args.runId,
@@ -177,12 +177,18 @@ export const recordHostedSiteArtifact$ = command(
             entrypoint: args.entrypoint,
             spaFallback: args.spaFallback,
           },
+          // Content changed on redeploy: drop the stale preview so the
+          // deploy-time trigger (or the cron sweep as a fallback) regenerates
+          // it against the new deployment.
+          previewImageUrl: null,
           updatedAt: sql`now()`,
         },
-      });
+      })
+      .returning({ id: runUploadedFiles.id });
     signal.throwIfAborted();
 
     await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+    return row?.id ?? null;
   },
 );
 
@@ -380,6 +386,18 @@ interface RecordSlackUploadedFileArgs {
   readonly metadata: Record<string, unknown>;
 }
 
+interface RecordTeamsUploadedFileArgs {
+  readonly runId: string | undefined;
+  readonly externalId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly url: string;
+  readonly metadata: Record<string, unknown>;
+}
+
 interface RecordAgentPhoneUploadedFileArgs {
   readonly runId: string | undefined;
   readonly externalId: string;
@@ -415,6 +433,55 @@ export const recordGithubUploadedFile$ = command(
     }
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "github", signal);
+
+    await writeDb
+      .insert(runUploadedFiles)
+      .values({
+        runId: args.runId,
+        source,
+        externalId: args.externalId,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: args.filename,
+        contentType: args.contentType,
+        sizeBytes: args.sizeBytes,
+        url: args.url,
+        metadata: args.metadata,
+      })
+      .onConflictDoUpdate({
+        target: [
+          runUploadedFiles.runId,
+          runUploadedFiles.source,
+          runUploadedFiles.externalId,
+        ],
+        set: {
+          userId: args.userId,
+          orgId: args.orgId,
+          filename: args.filename,
+          contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          url: args.url,
+          metadata: args.metadata,
+          updatedAt: sql`now()`,
+        },
+      });
+    signal.throwIfAborted();
+
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+  },
+);
+
+export const recordTeamsUploadedFile$ = command(
+  async (
+    { set },
+    args: RecordTeamsUploadedFileArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!args.runId) {
+      return;
+    }
+    const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "teams", signal);
 
     await writeDb
       .insert(runUploadedFiles)

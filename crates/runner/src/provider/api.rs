@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
@@ -19,7 +20,7 @@ use super::api_direct_candidates::{
     DirectJobCandidate,
 };
 use super::builtin_firewall_catalog::{
-    BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshHandle,
+    BuiltinFirewallCatalog, BuiltinFirewallCatalogRefreshController,
 };
 use super::network_policy_refresh::NetworkPolicyRefreshHandle;
 use super::{
@@ -119,9 +120,10 @@ pub struct ApiProvider {
     /// Supported direct job candidates delivered by Ably notifications.
     direct_candidates: Arc<DirectCandidateInbox>,
     /// Background Ably control-plane task.
-    ably_supervisor: AblySupervisor,
+    ably_supervisor: Mutex<Option<AblySupervisor>>,
+    cancel_tokens: SharedRunCancellationMap,
     network_policy_refresh: NetworkPolicyRefreshHandle,
-    builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle,
+    builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -132,8 +134,8 @@ pub struct BuiltinFirewallCatalogCachePaths {
 }
 
 impl ApiProvider {
-    /// Create a new API-backed provider and start the Ably supervisor.
-    pub async fn new(
+    /// Create a new API-backed provider.
+    pub fn new(
         http: HttpClient,
         token: String,
         group: String,
@@ -144,28 +146,17 @@ impl ApiProvider {
     ) -> Arc<Self> {
         let api = ApiClient::new(http, token);
         let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
-        let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshHandle::start(
+        let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshController::new(
             api.clone(),
             builtin_firewall_catalog_cache_paths.cache_path,
             builtin_firewall_catalog_cache_paths.lock_path,
             cancel.clone(),
-        )
-        .await;
+        );
         let poll_wakeups = Arc::new(PollWakeups::new(false));
         let direct_candidates = DirectCandidateInbox::new(
             DIRECT_CANDIDATE_INBOX_CAPACITY,
             DIRECT_CANDIDATE_STALE_AFTER,
         );
-        let ably_supervisor = AblySupervisor::spawn(AblySupervisorConfig {
-            api: api.clone(),
-            group: group.clone(),
-            profiles: supported_profiles.clone(),
-            poll_wakeups: Arc::clone(&poll_wakeups),
-            direct_candidates: Arc::clone(&direct_candidates),
-            cancel_tokens,
-            network_policy_refresh: network_policy_refresh.clone(),
-            provider_cancel: cancel.clone(),
-        });
 
         Arc::new(Self {
             api,
@@ -173,7 +164,8 @@ impl ApiProvider {
             supported_profiles,
             poll_wakeups,
             direct_candidates,
-            ably_supervisor,
+            ably_supervisor: Mutex::new(None),
+            cancel_tokens,
             network_policy_refresh,
             builtin_firewall_catalog_refresh,
             cancel,
@@ -244,10 +236,41 @@ impl ApiProvider {
             }
         }
     }
+
+    async fn ensure_ably_supervisor_started(&self) {
+        let mut ably_supervisor = self.ably_supervisor.lock().await;
+        if ably_supervisor.is_some() {
+            return;
+        }
+
+        *ably_supervisor = Some(AblySupervisor::spawn(AblySupervisorConfig {
+            api: self.api.clone(),
+            group: self.group.clone(),
+            profiles: self.supported_profiles.clone(),
+            poll_wakeups: Arc::clone(&self.poll_wakeups),
+            direct_candidates: Arc::clone(&self.direct_candidates),
+            cancel_tokens: Arc::clone(&self.cancel_tokens),
+            network_policy_refresh: self.network_policy_refresh.clone(),
+            provider_cancel: self.cancel.clone(),
+        }));
+    }
 }
 
 #[async_trait::async_trait]
 impl JobProvider for ApiProvider {
+    async fn prepare_startup_readiness(&self) -> RunnerResult<()> {
+        self.builtin_firewall_catalog_refresh
+            .prepare_startup_readiness()
+            .await?;
+        if self.cancel.is_cancelled() {
+            return Err(RunnerError::Internal(
+                "provider startup readiness cancelled".to_string(),
+            ));
+        }
+        self.ensure_ably_supervisor_started().await;
+        Ok(())
+    }
+
     async fn discover(&self) -> Option<JobCandidate> {
         loop {
             let due = match self.wait_for_discovery_wakeup().await? {
@@ -400,7 +423,10 @@ impl JobProvider for ApiProvider {
     }
 
     async fn shutdown(&self) {
-        self.ably_supervisor.shutdown().await;
+        let ably_supervisor = self.ably_supervisor.lock().await.take();
+        if let Some(ably_supervisor) = ably_supervisor {
+            ably_supervisor.shutdown().await;
+        }
         self.network_policy_refresh.shutdown().await;
         self.builtin_firewall_catalog_refresh.shutdown().await;
     }
@@ -1251,7 +1277,7 @@ mod tests {
         );
         Arc::new(ApiProvider {
             network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
-            builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshHandle::disabled(),
+            builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
@@ -1260,7 +1286,8 @@ mod tests {
                 DIRECT_CANDIDATE_INBOX_CAPACITY,
                 DIRECT_CANDIDATE_STALE_AFTER,
             ),
-            ably_supervisor: AblySupervisor::disabled(),
+            ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
+            cancel_tokens: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             cancel,
         })
     }

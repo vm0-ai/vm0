@@ -123,6 +123,48 @@ def _patch_shared_base_diagnostic_catalog(
     builtin_connector_diagnostics.reset_cache_for_tests()
 
 
+def _write_fal_catalog_cache(tmp_path) -> str:
+    cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "catalogDigest": (
+                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                ),
+                "catalogVersion": "catalog-test",
+                "updatedAt": "2026-07-07T00:00:00.000Z",
+                "firewalls": {
+                    "fal": {
+                        "name": "fal",
+                        "apis": [
+                            {
+                                "base": "https://fal.run",
+                                "hostPolicy": {
+                                    "kind": "providerOwned",
+                                    "exactHosts": ["fal.run"],
+                                },
+                                "auth": {
+                                    "headers": {"Authorization": "Bearer ${{ secrets.FAL_TOKEN }}"}
+                                },
+                                "permissions": [
+                                    {
+                                        "name": "run",
+                                        "rules": ["POST /fal-ai/{model}"],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                },
+            },
+            sort_keys=True,
+        )
+    )
+    cache_path.chmod(0o600)
+    return str(cache_path)
+
+
 def _assert_shared_base_inactive_diagnostic(flow):
     assert flow.response is not None
     assert flow.response.status_code == 424
@@ -502,6 +544,7 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
 async def test_active_builtin_connector_url_uses_firewall_path(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
+    cache_path = _write_fal_catalog_cache(tmp_path)
     reg_path = _write_registry(
         tmp_path,
         vm_info={
@@ -519,7 +562,11 @@ async def test_active_builtin_connector_url_uses_firewall_path(
     )
 
     with (
-        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        mitm_ctx(
+            registry_path=str(reg_path),
+            api_url="https://api.vm0.ai",
+            builtin_firewall_catalog_cache_path=cache_path,
+        ),
         fake_firewall_headers(),
     ):
         await mitm_addon.request(flow)

@@ -738,13 +738,6 @@ body {
   margin-bottom: 8px;
 }
 
-.zero-chat-bubble-user .wmde-markdown {
-  /* Pull the ASCII space after a leading emoji closer so the emoji doesn't
-     read as detached from the rest of the user-typed text. word-spacing only
-     affects space-separated runs; CJK characters are unaffected. */
-  word-spacing: -0.15em;
-}
-
 .wmde-markdown h1,
 .wmde-markdown h2,
 .wmde-markdown h3,

@@ -9,6 +9,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -167,7 +168,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("lists model policy controls without a feature switch", async () => {
+  it("returns the seeded workspace default model", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
 
@@ -183,7 +184,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
   });
 
-  it("lists seeded curated models and the explicit default when enabled", async () => {
+  it("lists seeded curated models and the explicit default", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
 
@@ -387,6 +388,101 @@ describe("GET/PUT /api/zero/model-policies", () => {
     ).toBeFalsy();
   });
 
+  it("migrates member preferences from removed models to the workspace default", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const preferenceClient = setupApp({ context })(
+      zeroUserModelPreferenceContract,
+    );
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    });
+    if (!removedModel) {
+      throw new Error("Default policy seed must include a non-default model");
+    }
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: removedModel },
+      }),
+      [200],
+    );
+
+    const updates = toUpdate(listResponse.body).filter((policy) => {
+      return policy.model !== removedModel;
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const preferenceResponse = await accept(
+      preferenceClient.get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(preferenceResponse.body.selectedModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+  });
+
+  it("keeps member preferences for models still allowed after an update", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const preferenceClient = setupApp({ context })(
+      zeroUserModelPreferenceContract,
+    );
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const keptModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    });
+    const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return (
+        model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL && model !== keptModel
+      );
+    });
+    if (!keptModel || !removedModel) {
+      throw new Error(
+        "Default policy seed must include two non-default models",
+      );
+    }
+    await accept(
+      preferenceClient.update({
+        headers: authHeaders(),
+        body: { selectedModel: keptModel },
+      }),
+      [200],
+    );
+
+    const updates = toUpdate(listResponse.body).filter((policy) => {
+      return policy.model !== removedModel;
+    });
+    await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const preferenceResponse = await accept(
+      preferenceClient.get({ headers: authHeaders() }),
+      [200],
+    );
+    expect(preferenceResponse.body.selectedModel).toBe(keptModel);
+  });
+
   it("allows adding a supported model that was not seeded by default", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
@@ -414,12 +510,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual([
       "claude-fable-5",
-      "gpt-5.5",
       "claude-opus-4-8",
-      "claude-opus-4-6",
       "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "MiniMax-M3",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "claude-opus-4-6",
     ]);
   });
 
@@ -479,21 +575,26 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "MiniMax-M3") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
-        modelProviderId: openRouterProviderId,
-      };
+    const allowedPolicy = toUpdate(listResponse.body).find((policy) => {
+      return policy.model === "claude-sonnet-5";
     });
+    if (!allowedPolicy) {
+      throw new Error("Expected the Sonnet 5 policy to be available");
+    }
 
     const response = await client.update({
       headers: authHeaders(),
-      body: { policies: updates },
+      body: {
+        policies: [
+          {
+            ...allowedPolicy,
+            isDefault: true,
+            defaultProviderType: "openrouter-api-key",
+            credentialScope: "org",
+            modelProviderId: openRouterProviderId,
+          },
+        ],
+      },
     });
 
     expect(response.status).toBe(402);
@@ -577,6 +678,123 @@ describe("GET/PUT /api/zero/model-policies", () => {
       defaultProviderType: "zai-api-key",
       credentialScope: "org",
       modelProviderId: zaiProviderId,
+      routeStatus: "valid",
+    });
+  });
+
+  it("allows compatible GPT 5.6 OpenAI org provider routes", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const openAiProviderId = await createOrgProvider(fixture, "openai-api-key");
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "gpt-5.6-sol") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "openai-api-key" as const,
+        credentialScope: "org" as const,
+        modelProviderId: openAiProviderId,
+      };
+    });
+
+    const response = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+    const sol = response.body.policies.find((policy) => {
+      return policy.model === "gpt-5.6-sol";
+    });
+
+    expect(sol).toMatchObject({
+      defaultProviderType: "openai-api-key",
+      credentialScope: "org",
+      modelProviderId: openAiProviderId,
+      routeStatus: "valid",
+    });
+  });
+
+  it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
+    "rejects unsupported GPT 5.6 %s provider routes",
+    async (providerType) => {
+      const fixture = await seedFixture();
+      useSession(fixture);
+      const providerId = await createOrgProvider(fixture, providerType);
+      const client = apiClient();
+      const listResponse = await accept(
+        client.list({ headers: authHeaders() }),
+        [200],
+      );
+      const updates = toUpdate(listResponse.body).map((policy) => {
+        if (policy.model !== "gpt-5.6-sol") {
+          return policy;
+        }
+        return {
+          ...policy,
+          defaultProviderType: providerType,
+          credentialScope: "org" as const,
+          modelProviderId: providerId,
+        };
+      });
+
+      const response = await client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toStrictEqual({
+        error: {
+          message: `Model "gpt-5.6-sol" is not supported by provider "${providerType}"`,
+          code: "BAD_REQUEST",
+        },
+      });
+    },
+  );
+
+  it("allows GPT 5.6 Codex OAuth member routes", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "gpt-5.6-sol") {
+        return policy;
+      }
+      return {
+        ...policy,
+        defaultProviderType: "codex-oauth-token" as const,
+        credentialScope: "member" as const,
+        modelProviderId: null,
+      };
+    });
+
+    const response = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+
+    const sol = response.body.policies.find((policy) => {
+      return policy.model === "gpt-5.6-sol";
+    });
+    expect(sol).toMatchObject({
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
       routeStatus: "valid",
     });
   });

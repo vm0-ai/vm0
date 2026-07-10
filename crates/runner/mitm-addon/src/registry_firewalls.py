@@ -1,18 +1,14 @@
 """Registry VM firewall entry resolution."""
 
 import copy
-from contextlib import suppress
 from dataclasses import dataclass
-
-from mitmproxy import ctx
 
 import builtin_base_url
 import builtin_firewall_cache
 import builtin_host_policy
-from generated.builtin_firewalls import BUILTIN_FIREWALLS
 
 BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
-BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity | tuple[str, str, str]
+BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity
 BuiltinFirewallCatalogSnapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot
 BuiltinFirewallCoreCacheKey = tuple[
     str,
@@ -60,22 +56,14 @@ class _ResolvedBuiltinFirewallEntry:
     cache_key: BuiltinFirewallCoreCacheKey
 
 
-_bundled_fallback_warnings: set[
-    tuple[
-        str,
-        str,
-        str | None,
-        BuiltinFirewallCatalogFileKey | None,
-        str | None,
-        str | None,
-    ]
-] = set()
-
-
 def reset_cache_for_tests() -> None:
     """Reset builtin firewall resolver cache state between tests."""
-    builtin_firewall_cache.reset_cache_for_tests()
-    _bundled_fallback_warnings.clear()
+    clear_catalog_cache()
+
+
+def clear_catalog_cache() -> None:
+    """Drop the cached builtin firewall catalog snapshot."""
+    builtin_firewall_cache.clear_cache()
 
 
 def catalog_file_key(
@@ -124,67 +112,26 @@ def _resolution_error(error: Exception) -> FirewallEntryResolutionError:
 def _catalog_source_for_name(
     raw_name: str,
     catalog_snapshot: BuiltinFirewallCatalogSnapshot,
-) -> tuple[dict | None, BuiltinFirewallCatalogIdentity]:
+) -> tuple[dict, BuiltinFirewallCatalogIdentity]:
     cached_catalog = catalog_snapshot.catalog
-    if cached_catalog is not None:
-        catalog_firewall = cached_catalog.firewalls.get(raw_name)
-        if catalog_firewall is not None:
-            return catalog_firewall, cached_catalog.identity
-        fallback_reason = "cache_missing_firewall"
-    else:
-        fallback_reason = catalog_snapshot.fallback_reason or "cache_unavailable"
-
-    catalog_firewall = BUILTIN_FIREWALLS.get(raw_name)
-    if catalog_firewall is not None:
-        _warn_bundled_fallback(
-            raw_name=raw_name,
-            reason=fallback_reason,
-            catalog_snapshot=catalog_snapshot,
+    if cached_catalog is None:
+        reason = catalog_snapshot.unavailable_reason or "cache_unavailable"
+        if catalog_snapshot.cache_path is None:
+            raise FirewallEntryResolutionError(
+                f'builtin firewall "{raw_name}" catalog cache unavailable: {reason}'
+            )
+        raise FirewallEntryResolutionError(
+            f'builtin firewall "{raw_name}" catalog cache unavailable: '
+            f"{reason} ({catalog_snapshot.cache_path})"
         )
-    return catalog_firewall, ("bundled", raw_name, str(id(catalog_firewall)))
-
-
-def _warn_bundled_fallback(
-    *,
-    raw_name: str,
-    reason: str,
-    catalog_snapshot: BuiltinFirewallCatalogSnapshot,
-) -> None:
-    cached_catalog = catalog_snapshot.catalog
-    catalog_digest = None
-    catalog_version = None
-    if cached_catalog is not None:
+    catalog_firewall = cached_catalog.firewalls.get(raw_name)
+    if catalog_firewall is None:
         _, catalog_digest, catalog_version, _ = cached_catalog.identity
-    warning_file_key = None if cached_catalog is not None else catalog_snapshot.dependency_file_key
-
-    warning_key = (
-        raw_name,
-        reason,
-        catalog_snapshot.cache_path,
-        warning_file_key,
-        catalog_digest,
-        catalog_version,
-    )
-    if warning_key in _bundled_fallback_warnings:
-        return
-    _bundled_fallback_warnings.add(warning_key)
-
-    fields = [
-        "Using bundled builtin firewall fallback",
-        f"reason={reason}",
-        f"firewall_name={raw_name}",
-    ]
-    if catalog_snapshot.cache_path is not None:
-        fields.append(f"cache_path={catalog_snapshot.cache_path}")
-    if catalog_digest is not None:
-        fields.append(f"catalog_digest={catalog_digest}")
-    if catalog_version is not None:
-        fields.append(f"catalog_version={catalog_version}")
-    if warning_file_key is not None:
-        fields.append(f"cache_file_key={warning_file_key!r}")
-
-    with suppress(Exception):
-        ctx.log.warn(" ".join(fields))
+        raise FirewallEntryResolutionError(
+            f'builtin firewall "{raw_name}" missing from catalog cache '
+            f"(catalog_digest={catalog_digest}, catalog_version={catalog_version})"
+        )
+    return catalog_firewall, cached_catalog.identity
 
 
 def _resolve_builtin_firewall_entry(
@@ -197,8 +144,6 @@ def _resolve_builtin_firewall_entry(
         raise FirewallEntryResolutionError("builtin firewall entry name must be a non-empty string")
 
     catalog_firewall, catalog_identity = _catalog_source_for_name(raw_name, catalog_snapshot)
-    if catalog_firewall is None:
-        raise FirewallEntryResolutionError(f'unknown builtin firewall "{raw_name}"')
 
     firewall, raw_apis = _copy_builtin_firewall_shell(
         firewall_name=raw_name,

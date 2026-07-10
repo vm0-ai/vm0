@@ -35,6 +35,10 @@ import {
 } from "../external/s3";
 import { nowDate } from "../external/time";
 import { safeJsonParse } from "../utils";
+import {
+  scheduleArtifactPreviewRender$,
+  type RenderArtifactPreviewArgs,
+} from "./artifact-preview.service";
 import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
 
 const PUT_URL_TTL_SECONDS = 3600;
@@ -1831,6 +1835,24 @@ function buildManifest(args: {
   };
 }
 
+function artifactPreviewArgs(
+  deployment: HostedDeploymentRow,
+  artifactRowId: string | null,
+): RenderArtifactPreviewArgs | null {
+  if (!artifactRowId || !deployment.runId) {
+    return null;
+  }
+  return {
+    id: artifactRowId,
+    runId: deployment.runId,
+    userId: deployment.userId,
+    orgId: deployment.orgId,
+    url: deployment.url,
+    contentType: "text/html",
+    deploymentId: deployment.id,
+  };
+}
+
 function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
   const artifactKind = deployment.manifest.artifactKind ?? "hosted-site";
   return {
@@ -2150,12 +2172,20 @@ export const completeHostedSiteDeployment$ = command(
     );
     signal.throwIfAborted();
 
-    await set(
+    const artifactRowId = await set(
       recordHostedSiteArtifact$,
       hostedSiteArtifactArgs(deployment),
       signal,
     );
     signal.throwIfAborted();
+
+    // Fast path: render the artifact preview as soon as the deploy is recorded.
+    // Detached via waitUntil so it survives the response; on failure the row's
+    // previewImageUrl stays NULL and the cron sweep regenerates it.
+    set(
+      scheduleArtifactPreviewRender$,
+      artifactPreviewArgs(deployment, artifactRowId),
+    );
 
     return {
       status: "ok",
@@ -2324,6 +2354,7 @@ const redeployHostedSiteIndexHtml$ = command(
       {
         orgId: args.orgId,
         userId: args.userId,
+        runId: activeDeployment.runId ?? undefined,
         body: {
           site: site.slug,
           artifactKind: args.artifactKind,

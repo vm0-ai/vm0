@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.143.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.4...runner-rs-v0.143.5) (2026-07-10)
+
+## [0.143.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.3...runner-rs-v0.143.4) (2026-07-10)
+
+
+### Refactoring
+
+* **runner:** introduce explicit storage plan and guest wire contract ([#20912](https://github.com/vm0-ai/vm0/issues/20912)) ([07f275c](https://github.com/vm0-ai/vm0/commit/07f275c8e04a9dcd6148f7d3075258b683e4ba2e))
+
+## [0.143.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.2...runner-rs-v0.143.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* **runner:** bill openai cache write tokens ([#20874](https://github.com/vm0-ai/vm0/issues/20874)) ([884f74e](https://github.com/vm0-ai/vm0/commit/884f74e0428e2ab46d11f227114824f616c2f985))
+
+## [0.143.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.1...runner-rs-v0.143.2) (2026-07-10)
+
+
+### Refactoring
+
+* remove bundled builtin firewall fallback ([#20820](https://github.com/vm0-ai/vm0/issues/20820)) ([2d1d645](https://github.com/vm0-ai/vm0/commit/2d1d64573699169211736e3a9b91947ebb05d1e3))
+
+## [0.143.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.0...runner-rs-v0.143.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **runner:** add template rebuild marker comment to force image rebuild ([#20863](https://github.com/vm0-ai/vm0/issues/20863)) ([db1f989](https://github.com/vm0-ai/vm0/commit/db1f989ce2e49469a7bc21456a837070396b31d5))
+
+## [0.143.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.142.0...runner-rs-v0.143.0) (2026-07-09)
+
+
+### Features
+
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
+## [0.142.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.1...runner-rs-v0.142.0) (2026-07-09)
+
+
+### Features
+
+* **runner:** add service unit-state command ([#20816](https://github.com/vm0-ai/vm0/issues/20816)) ([224fd38](https://github.com/vm0-ai/vm0/commit/224fd387ac0b55913a3247e0cb727ab940d1af74))
+
+
+### Performance Improvements
+
+* **runner:** reduce direct candidate claim delay ([#20826](https://github.com/vm0-ai/vm0/issues/20826)) ([1991b80](https://github.com/vm0-ai/vm0/commit/1991b80d3ee9f0d6a7ce8f7ae156e5defac912ba))
+
 ## [0.141.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.141.0...runner-rs-v0.141.1) (2026-07-09)
 
 

@@ -10,6 +10,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
+  IconPin,
   IconPinnedOff,
   IconChecks,
 } from "@tabler/icons-react";
@@ -58,11 +59,13 @@ import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 function PinnedAgentSideDecorator({
   agentId,
   isDefaultAgent,
+  isPinned,
   isPrimarySelected,
   hasUnread,
 }: {
   agentId: string;
   isDefaultAgent: boolean;
+  isPinned: boolean;
   isPrimarySelected: boolean;
   hasUnread: boolean;
 }) {
@@ -77,6 +80,13 @@ function PinnedAgentSideDecorator({
   function unpinAgent() {
     detach(
       saveAgentPinned({ agentId, pinned: false }, pageSignal),
+      Reason.DomCallback,
+    );
+  }
+
+  function pinAgent() {
+    detach(
+      saveAgentPinned({ agentId, pinned: true }, pageSignal),
       Reason.DomCallback,
     );
   }
@@ -102,12 +112,19 @@ function PinnedAgentSideDecorator({
       : []),
     ...(!isDefaultAgent
       ? [
-          {
-            label: "Unpin",
-            disabled: savingPinned,
-            icon: <IconPinnedOff size={16} stroke={2} />,
-            onSelect: unpinAgent,
-          },
+          isPinned
+            ? {
+                label: "Unpin",
+                disabled: savingPinned,
+                icon: <IconPinnedOff size={16} stroke={2} />,
+                onSelect: unpinAgent,
+              }
+            : {
+                label: "Pin to sidebar",
+                disabled: savingPinned,
+                icon: <IconPin size={16} stroke={2} />,
+                onSelect: pinAgent,
+              },
         ]
       : []),
   ];
@@ -171,6 +188,7 @@ export function PinnedAgentListSection() {
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const pinnedAgentsLoadable = useLastLoadable(pinnedAgents$);
+  const subagents = useLastResolved(subagents$) ?? [];
   const features = useGet(featureSwitch$);
   const agentUnreadIndicatorsEnabled =
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
@@ -180,6 +198,20 @@ export function PinnedAgentListSection() {
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
   const defaultAgentId = useLastResolved(defaultAgentId$);
+  const pinnedAgents =
+    pinnedAgentsLoadable.state === "hasData" ? pinnedAgentsLoadable.data : [];
+  const pinnedAgentIds = new Set(
+    pinnedAgents.map((agent) => {
+      return agent.id;
+    }),
+  );
+  const unreadOnlyAgents =
+    agentUnreadIndicatorsEnabled && unreadAgentIds
+      ? subagents.filter((agent) => {
+          return unreadAgentIds.has(agent.id) && !pinnedAgentIds.has(agent.id);
+        })
+      : [];
+  const displayedPinnedAgents = [...pinnedAgents, ...unreadOnlyAgents];
 
   return (
     <div className="shrink-0">
@@ -236,17 +268,19 @@ export function PinnedAgentListSection() {
             </>
           )}
           {pinnedAgentsLoadable.state === "hasData" &&
-            pinnedAgentsLoadable.data.map((agent) => {
+            displayedPinnedAgents.map((agent) => {
               const selectedAgentId =
                 routeAgentId ?? (routeThreadId ? null : sidebarAgentId);
               const isPrimarySelected =
                 isChatRoute(activeRoute) && selectedAgentId === agent.id;
               const isFromChat = sidebarAgentId === agent.id;
+              const isPinned = pinnedAgentIds.has(agent.id);
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
               const isDefaultAgent = agent.id === defaultAgentId;
               const hasUnreadIndicator =
                 agentUnreadIndicatorsEnabled && hasUnread;
-              const hasSideActions = !isDefaultAgent || hasUnreadIndicator;
+              const hasSideActions =
+                hasUnreadIndicator || (!isDefaultAgent && isPinned);
               return (
                 <div
                   key={agent.id}
@@ -279,6 +313,7 @@ export function PinnedAgentListSection() {
                     <PinnedAgentSideDecorator
                       agentId={agent.id}
                       isDefaultAgent={isDefaultAgent}
+                      isPinned={isPinned}
                       isPrimarySelected={isPrimarySelected}
                       hasUnread={hasUnreadIndicator}
                     />

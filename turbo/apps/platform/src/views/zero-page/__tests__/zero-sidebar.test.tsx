@@ -1884,6 +1884,9 @@ describe("zero sidebar", () => {
       return current;
     });
     const researchSidebarRow = agentRowByName(nav, "Research Agent");
+    const supportSidebarRow = await waitFor(() => {
+      return agentRowByName(nav, "Support Agent");
+    });
     await waitFor(() => {
       expect(
         within(researchSidebarRow).getByLabelText("Unread"),
@@ -1894,7 +1897,16 @@ describe("zero sidebar", () => {
       expect(
         within(researchSidebarRow).queryByLabelText("Unpin"),
       ).not.toBeInTheDocument();
+      expect(
+        within(supportSidebarRow).getByLabelText("Unread"),
+      ).toBeInTheDocument();
     });
+
+    click(within(supportSidebarRow).getByLabelText("Open agent menu"));
+    expect(menuItemByText("Mark all read")).toBeInTheDocument();
+    expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
+    expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
 
     click(within(researchSidebarRow).getByLabelText("Open agent menu"));
     expect(menuItemByText("Unpin")).toBeInTheDocument();
@@ -1955,6 +1967,9 @@ describe("zero sidebar", () => {
       expect(
         within(researchSidebarRow).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();
+      expect(
+        within(supportSidebarRow).getByLabelText("Unread"),
+      ).toBeInTheDocument();
       expect(
         within(researchDialogRow).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();

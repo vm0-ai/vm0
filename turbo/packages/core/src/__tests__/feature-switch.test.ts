@@ -122,9 +122,7 @@ describe("getAllFeatureStates", () => {
     const staffOrgStates = getAllFeatureStates({
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
-    expect(staffOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
-      true,
-    );
+    expect(staffOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
@@ -145,13 +143,14 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(otherOrgStates[FeatureSwitchKey.NintendoEshopCatalogConnector]).toBe(
-      false,
-    );
+    expect(otherOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,
@@ -176,6 +175,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -212,10 +214,14 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ComposerUploadPopover,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.WorkflowConnectorReadiness,
+    );
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
+        [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });

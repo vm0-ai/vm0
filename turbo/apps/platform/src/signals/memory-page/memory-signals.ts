@@ -1,13 +1,27 @@
 import { command, computed, state } from "ccstate";
 import {
   zeroMemoryContract,
+  type MemoryCreateRequest,
   type MemoryDetailResponse,
+  type MemoryDocumentListResponse,
+  type MemoryForgetByPromptRequest,
+  type MemoryForgetRequest,
+  type MemoryForgetResponse,
+  type MemoryHistoryResponse,
   type MemoryInjectionPreviewResponse,
+  type MemoryKind,
+  type MemoryLifecycleMemory,
+  type MemoryListResponse,
+  type MemoryProfileListResponse,
   type MemoryRecallItemKind,
   type MemoryRecallResponse,
+  type MemorySearchMode,
+  type MemorySearchResponse,
   type MemorySourceDetailResponse,
   type MemorySourceListResponse,
   type MemorySourceProvider,
+  type MemoryTombstoneListResponse,
+  type MemoryUpdateRequest,
   type GithubMemoryBackfillRequest,
   type GithubMemoryConfigureRequest,
   type GithubMemoryContributorsResponse,
@@ -47,6 +61,10 @@ export type MemoryRelationshipFilter =
 export type MemorySourceProviderFilter = "all" | MemorySourceProvider;
 
 export type MemoryRecallKindFilter = "all" | MemoryRecallItemKind;
+export type MemoryKindFilter = "all" | MemoryKind;
+export type MemoryLifecycleStatusFilter = "active" | "archived";
+export type MemoryDocumentStatusFilter = "active" | "archived" | "deleted";
+export type MemorySearchProviderFilter = "all" | MemorySourceProvider;
 
 type GithubMemoryRepositoryResource =
   GithubMemoryRepositoriesResponse["repositories"][number];
@@ -66,6 +84,8 @@ export interface GithubMemoryRepositoryDraft {
 
 export type MemoryTab =
   | "updates"
+  | "search"
+  | "lifecycle"
   | "injection"
   | "recall"
   | "relationships"
@@ -214,6 +234,35 @@ const internalSubmittedMemoryRecallQuery$ = state("");
 const internalMemoryRecallKindFilter$ = state<MemoryRecallKindFilter>("all");
 const internalMemoryRecallLimit$ = state(10);
 const internalMemoryRecallReload$ = state(0);
+const internalMemorySearchQuery$ = state("");
+const internalSubmittedMemorySearchQuery$ = state("");
+const internalMemorySearchMode$ = state<MemorySearchMode>("hybrid");
+const internalMemorySearchProviderFilter$ =
+  state<MemorySearchProviderFilter>("all");
+const internalMemorySearchLimit$ = state(10);
+const internalMemorySearchReload$ = state(0);
+const internalMemoryLifecycleStatusFilter$ =
+  state<MemoryLifecycleStatusFilter>("active");
+const internalMemoryLifecycleKindFilter$ = state<MemoryKindFilter>("all");
+const internalMemoryLifecycleReload$ = state(0);
+const internalMemoryDocumentStatusFilter$ =
+  state<MemoryDocumentStatusFilter>("active");
+const internalMemoryDocumentProviderFilter$ =
+  state<MemorySourceProviderFilter>("all");
+const internalMemoryDocumentsReload$ = state(0);
+const internalMemoryTombstonesReload$ = state(0);
+const internalMemoryProfilesReload$ = state(0);
+const internalMemoryCreateText$ = state("");
+const internalMemoryCreateKind$ = state<MemoryKind>("key_fact");
+const internalMemoryCreateEntity$ = state("");
+const internalMemoryForgetPrompt$ = state("");
+const internalMemoryForgetTarget$ =
+  state<MemoryForgetByPromptRequest["targetKind"]>("all");
+const internalSelectedMemoryHistoryTarget$ = state<{
+  readonly targetKind: "memory" | "document" | "profile";
+  readonly targetId: string;
+} | null>(null);
+const internalMemoryHistoryReload$ = state(0);
 const internalMemoryInjectionPrompt$ = state("");
 const internalSubmittedMemoryInjectionPrompt$ = state("");
 const internalMemoryInjectionReload$ = state(0);
@@ -258,6 +307,158 @@ export const memoryRecallLimit$ = computed((get) => {
 export const setMemoryRecallLimit$ = command(({ set }, limit: number) => {
   set(internalMemoryRecallLimit$, limit);
 });
+
+export const memorySearchQuery$ = computed((get) => {
+  return get(internalMemorySearchQuery$);
+});
+
+export const setMemorySearchQuery$ = command(({ set }, query: string) => {
+  set(internalMemorySearchQuery$, query);
+});
+
+export const submittedMemorySearchQuery$ = computed((get) => {
+  return get(internalSubmittedMemorySearchQuery$);
+});
+
+export const submitMemorySearch$ = command(({ get, set }) => {
+  const query = get(internalMemorySearchQuery$).trim();
+  const previousQuery = get(internalSubmittedMemorySearchQuery$).trim();
+  set(internalSubmittedMemorySearchQuery$, query);
+  if (query === previousQuery) {
+    set(internalMemorySearchReload$, (current) => {
+      return current + 1;
+    });
+  }
+});
+
+export const memorySearchMode$ = computed((get) => {
+  return get(internalMemorySearchMode$);
+});
+
+export const setMemorySearchMode$ = command(
+  ({ set }, mode: MemorySearchMode) => {
+    set(internalMemorySearchMode$, mode);
+  },
+);
+
+export const memorySearchProviderFilter$ = computed((get) => {
+  return get(internalMemorySearchProviderFilter$);
+});
+
+export const setMemorySearchProviderFilter$ = command(
+  ({ set }, provider: MemorySearchProviderFilter) => {
+    set(internalMemorySearchProviderFilter$, provider);
+  },
+);
+
+export const memorySearchLimit$ = computed((get) => {
+  return get(internalMemorySearchLimit$);
+});
+
+export const setMemorySearchLimit$ = command(({ set }, limit: number) => {
+  set(internalMemorySearchLimit$, limit);
+});
+
+export const memoryLifecycleStatusFilter$ = computed((get) => {
+  return get(internalMemoryLifecycleStatusFilter$);
+});
+
+export const setMemoryLifecycleStatusFilter$ = command(
+  ({ set }, status: MemoryLifecycleStatusFilter) => {
+    set(internalMemoryLifecycleStatusFilter$, status);
+  },
+);
+
+export const memoryLifecycleKindFilter$ = computed((get) => {
+  return get(internalMemoryLifecycleKindFilter$);
+});
+
+export const setMemoryLifecycleKindFilter$ = command(
+  ({ set }, kind: MemoryKindFilter) => {
+    set(internalMemoryLifecycleKindFilter$, kind);
+  },
+);
+
+export const memoryDocumentStatusFilter$ = computed((get) => {
+  return get(internalMemoryDocumentStatusFilter$);
+});
+
+export const setMemoryDocumentStatusFilter$ = command(
+  ({ set }, status: MemoryDocumentStatusFilter) => {
+    set(internalMemoryDocumentStatusFilter$, status);
+  },
+);
+
+export const memoryDocumentProviderFilter$ = computed((get) => {
+  return get(internalMemoryDocumentProviderFilter$);
+});
+
+export const setMemoryDocumentProviderFilter$ = command(
+  ({ set }, provider: MemorySourceProviderFilter) => {
+    set(internalMemoryDocumentProviderFilter$, provider);
+  },
+);
+
+export const memoryCreateText$ = computed((get) => {
+  return get(internalMemoryCreateText$);
+});
+
+export const setMemoryCreateText$ = command(({ set }, text: string) => {
+  set(internalMemoryCreateText$, text);
+});
+
+export const memoryCreateKind$ = computed((get) => {
+  return get(internalMemoryCreateKind$);
+});
+
+export const setMemoryCreateKind$ = command(({ set }, kind: MemoryKind) => {
+  set(internalMemoryCreateKind$, kind);
+});
+
+export const memoryCreateEntity$ = computed((get) => {
+  return get(internalMemoryCreateEntity$);
+});
+
+export const setMemoryCreateEntity$ = command(({ set }, entity: string) => {
+  set(internalMemoryCreateEntity$, entity);
+});
+
+export const memoryForgetPrompt$ = computed((get) => {
+  return get(internalMemoryForgetPrompt$);
+});
+
+export const setMemoryForgetPrompt$ = command(({ set }, prompt: string) => {
+  set(internalMemoryForgetPrompt$, prompt);
+});
+
+export const memoryForgetTarget$ = computed((get) => {
+  return get(internalMemoryForgetTarget$);
+});
+
+export const setMemoryForgetTarget$ = command(
+  ({ set }, target: MemoryForgetByPromptRequest["targetKind"]) => {
+    set(internalMemoryForgetTarget$, target);
+  },
+);
+
+export const selectedMemoryHistoryTarget$ = computed((get) => {
+  return get(internalSelectedMemoryHistoryTarget$);
+});
+
+export const setSelectedMemoryHistoryTarget$ = command(
+  (
+    { set },
+    target: {
+      readonly targetKind: "memory" | "document" | "profile";
+      readonly targetId: string;
+    } | null,
+  ) => {
+    set(internalSelectedMemoryHistoryTarget$, target);
+    set(internalMemoryHistoryReload$, (current) => {
+      return current + 1;
+    });
+  },
+);
 
 export const memoryInjectionPrompt$ = computed((get) => {
   return get(internalMemoryInjectionPrompt$);
@@ -860,6 +1061,255 @@ export const memoryRecallResults$ = computed(
       }),
       [200],
     );
+    return result.body;
+  },
+);
+
+export const memorySearchResults$ = computed(
+  async (get): Promise<MemorySearchResponse | null> => {
+    get(internalMemorySearchReload$);
+    const query = get(submittedMemorySearchQuery$).trim();
+    if (query.length === 0) {
+      return null;
+    }
+
+    const provider = get(memorySearchProviderFilter$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.search({
+        query: {
+          q: query,
+          mode: get(memorySearchMode$),
+          provider: provider === "all" ? undefined : provider,
+          limit: get(memorySearchLimit$),
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryLifecycleList$ = computed(
+  async (get): Promise<MemoryListResponse> => {
+    get(internalMemoryLifecycleReload$);
+    const kind = get(memoryLifecycleKindFilter$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.memories({
+        query: {
+          status: get(memoryLifecycleStatusFilter$),
+          kind: kind === "all" ? undefined : kind,
+          limit: 50,
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryDocuments$ = computed(
+  async (get): Promise<MemoryDocumentListResponse> => {
+    get(internalMemoryDocumentsReload$);
+    const provider = get(memoryDocumentProviderFilter$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.documents({
+        query: {
+          status: get(memoryDocumentStatusFilter$),
+          provider: provider === "all" ? undefined : provider,
+          limit: 50,
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryForgotten$ = computed(
+  async (get): Promise<MemoryTombstoneListResponse> => {
+    get(internalMemoryTombstonesReload$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.forgotten({ query: { limit: 50 } }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const memoryProfiles$ = computed(
+  async (get): Promise<MemoryProfileListResponse> => {
+    get(internalMemoryProfilesReload$);
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.profiles({ query: { limit: 50 } }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const selectedMemoryHistory$ = computed(
+  async (get): Promise<MemoryHistoryResponse | null> => {
+    get(internalMemoryHistoryReload$);
+    const target = get(selectedMemoryHistoryTarget$);
+    if (!target) {
+      return null;
+    }
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.history({
+        query: {
+          targetKind: target.targetKind,
+          targetId: target.targetId,
+          limit: 20,
+        },
+      }),
+      [200],
+    );
+    return result.body;
+  },
+);
+
+export const createMemoryLifecycleMemory$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const text = get(memoryCreateText$).trim();
+    if (text.length === 0) {
+      return;
+    }
+    const entity = get(memoryCreateEntity$).trim();
+    const body: MemoryCreateRequest = {
+      text,
+      kind: get(memoryCreateKind$),
+      confidence: 90,
+      entityDisplayName: entity.length > 0 ? entity : undefined,
+    };
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.createMemory({ body, fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Memory created");
+    set(internalMemoryCreateText$, "");
+    set(internalMemoryCreateEntity$, "");
+    set(internalMemoryLifecycleReload$, (current) => {
+      return current + 1;
+    });
+  },
+);
+
+export const updateLifecycleMemory$ = command(
+  async (
+    { get, set },
+    memory: MemoryLifecycleMemory,
+    patch: MemoryUpdateRequest,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.updateMemory({
+        params: { memoryId: memory.id },
+        body: patch,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Memory updated");
+    set(internalMemoryLifecycleReload$, (current) => {
+      return current + 1;
+    });
+    set(internalMemoryHistoryReload$, (current) => {
+      return current + 1;
+    });
+  },
+);
+
+export const forgetLifecycleMemory$ = command(
+  async (
+    { get, set },
+    memory: MemoryLifecycleMemory,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const body: MemoryForgetRequest = { reason: "Forgotten from memory page" };
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.forgetMemory({
+        params: { memoryId: memory.id },
+        body,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Memory forgotten");
+    set(internalMemoryLifecycleReload$, (current) => {
+      return current + 1;
+    });
+    set(internalMemoryTombstonesReload$, (current) => {
+      return current + 1;
+    });
+  },
+);
+
+export const forgetLifecycleDocument$ = command(
+  async (
+    { get, set },
+    documentId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroMemoryContract);
+    await accept(
+      client.forgetDocument({
+        params: { documentId },
+        body: { reason: "Forgotten from memory page" },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success("Document forgotten");
+    set(internalMemoryDocumentsReload$, (current) => {
+      return current + 1;
+    });
+    set(internalMemoryTombstonesReload$, (current) => {
+      return current + 1;
+    });
+  },
+);
+
+export const forgetMemoryByPrompt$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<MemoryForgetResponse> => {
+    const prompt = get(memoryForgetPrompt$).trim();
+    const client = get(zeroClient$)(zeroMemoryContract);
+    const result = await accept(
+      client.forgetPrompt({
+        body: {
+          prompt,
+          targetKind: get(memoryForgetTarget$),
+          limit: 5,
+          reason: "Prompt forget from memory page",
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(`Forgot ${result.body.forgotten.length} matching records`);
+    set(internalMemoryForgetPrompt$, "");
+    set(internalMemoryLifecycleReload$, (current) => {
+      return current + 1;
+    });
+    set(internalMemoryDocumentsReload$, (current) => {
+      return current + 1;
+    });
+    set(internalMemoryTombstonesReload$, (current) => {
+      return current + 1;
+    });
     return result.body;
   },
 );

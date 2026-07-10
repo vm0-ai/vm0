@@ -31,6 +31,33 @@ const teamsGraphIdentitySchema = z
   .object({
     id: z.string().nullable().optional(),
     displayName: z.string().nullable().optional(),
+    userPrincipalName: z.string().nullable().optional(),
+    mail: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const teamsGraphAttachmentSchema = z
+  .object({
+    id: z.string().nullable().optional(),
+    contentType: z.string().nullable().optional(),
+    contentUrl: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    content: z.unknown().optional(),
+  })
+  .passthrough();
+
+const teamsGraphMentionSchema = z
+  .object({
+    id: z.number().optional(),
+    mentionText: z.string().nullable().optional(),
+    mentioned: z
+      .object({
+        user: teamsGraphIdentitySchema.nullable().optional(),
+        application: teamsGraphIdentitySchema.nullable().optional(),
+        device: teamsGraphIdentitySchema.nullable().optional(),
+      })
+      .nullable()
+      .optional(),
   })
   .passthrough();
 
@@ -54,12 +81,23 @@ const teamsGraphMessageSchema = z
       })
       .nullable()
       .optional(),
+    attachments: z.array(teamsGraphAttachmentSchema).optional(),
+    mentions: z.array(teamsGraphMentionSchema).optional(),
   })
   .passthrough();
 
 const teamsGraphMessagesResponseSchema = z
   .object({
     value: z.array(teamsGraphMessageSchema),
+  })
+  .passthrough();
+
+const teamsGraphUserSchema = z
+  .object({
+    id: z.string().optional(),
+    displayName: z.string().nullable().optional(),
+    userPrincipalName: z.string().nullable().optional(),
+    mail: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -87,65 +125,45 @@ type FetchTeamsGraphMessagesResult =
   | { readonly kind: "ok"; readonly messages: readonly TeamsGraphMessage[] }
   | TeamsApiErrorResult;
 
+type FetchTeamsFileResult =
+  | { readonly kind: "ok"; readonly response: Response }
+  | TeamsApiErrorResult;
+
 export type TeamsGraphMessage = z.infer<typeof teamsGraphMessageSchema>;
+export type TeamsGraphAttachment = z.infer<typeof teamsGraphAttachmentSchema>;
+
+export interface TeamsGraphUserInfo {
+  readonly id: string;
+  readonly displayName: string | null;
+  readonly userPrincipalName: string | null;
+}
 
 interface TeamsBotCredentials {
   readonly appId: string;
   readonly appPassword: string;
 }
 
-interface TeamsAdaptiveCardTextBlock {
-  readonly type: "TextBlock";
-  readonly text: string;
-  readonly wrap?: boolean;
-}
-
-interface TeamsAdaptiveCardChoice {
-  readonly title: string;
-  readonly value: string;
-}
-
-interface TeamsAdaptiveCardChoiceSetInput {
-  readonly type: "Input.ChoiceSet";
-  readonly id: string;
-  readonly label?: string;
-  readonly style?: "compact" | "expanded";
-  readonly isMultiSelect?: false;
-  readonly value?: string;
-  readonly choices: readonly TeamsAdaptiveCardChoice[];
-}
-
-type TeamsAdaptiveCardBodyElement =
-  | TeamsAdaptiveCardTextBlock
-  | TeamsAdaptiveCardChoiceSetInput;
-
-interface TeamsAdaptiveCardOpenUrlAction {
-  readonly type: "Action.OpenUrl";
-  readonly title: string;
-  readonly url: string;
-}
-
-interface TeamsAdaptiveCardSubmitAction {
-  readonly type: "Action.Submit";
-  readonly title: string;
-  readonly data?: Readonly<Record<string, string>>;
-}
-
-type TeamsAdaptiveCardAction =
-  | TeamsAdaptiveCardOpenUrlAction
-  | TeamsAdaptiveCardSubmitAction;
-
 export interface TeamsAdaptiveCard {
   readonly type: "AdaptiveCard";
-  readonly version: "1.4";
-  readonly body: readonly TeamsAdaptiveCardBodyElement[];
-  readonly actions?: readonly TeamsAdaptiveCardAction[];
+  readonly version: string;
+  readonly body?: readonly Readonly<Record<string, unknown>>[];
+  readonly actions?: readonly Readonly<Record<string, unknown>>[];
 }
 
-interface TeamsActivityAttachment {
+interface TeamsAdaptiveCardAttachment {
   readonly contentType: "application/vnd.microsoft.card.adaptive";
   readonly content: TeamsAdaptiveCard;
 }
+
+interface TeamsFileAttachment {
+  readonly contentType: string;
+  readonly contentUrl?: string;
+  readonly name?: string;
+}
+
+type TeamsActivityAttachment =
+  | TeamsAdaptiveCardAttachment
+  | TeamsFileAttachment;
 
 interface TeamsActivityBody {
   readonly type: "message" | "typing";
@@ -362,6 +380,25 @@ function teamsGraphChannelMessageUrl(args: {
   return url.toString();
 }
 
+function teamsGraphUserUrl(userId: string): string {
+  const url = new URL(
+    `${MICROSOFT_GRAPH_BASE_URL}/users/${encodeURIComponent(userId)}`,
+  );
+  url.searchParams.set("$select", "id,displayName,userPrincipalName,mail");
+  return url.toString();
+}
+
+function shouldAuthorizeTeamsFileDownload(url: string): boolean {
+  const parsed = safeUrlParse(url);
+  if (!parsed) {
+    return false;
+  }
+  return (
+    parsed.hostname.toLowerCase().endsWith(".trafficmanager.net") &&
+    parsed.pathname.includes("/v3/attachments/")
+  );
+}
+
 async function fetchTeamsGraphJson<T>(args: {
   readonly tenantId: string;
   readonly url: string;
@@ -405,6 +442,104 @@ async function fetchTeamsGraphJson<T>(args: {
     return teamsApiError(502, "Invalid Microsoft Graph response");
   }
   return { kind: "ok", data: parsed.data };
+}
+
+export async function fetchTeamsFile(args: {
+  readonly tenantId: string;
+  readonly url: string;
+  readonly signal: AbortSignal;
+}): Promise<FetchTeamsFileResult> {
+  const headers: Record<string, string> = {
+    accept: "application/octet-stream",
+  };
+
+  if (shouldAuthorizeTeamsFileDownload(args.url)) {
+    const accessToken = await fetchTeamsBotAccessToken({
+      tenantId: args.tenantId,
+      signal: args.signal,
+    });
+    if (accessToken.kind === "teams-error") {
+      return accessToken;
+    }
+    headers.authorization = `Bearer ${accessToken.accessToken}`;
+  }
+
+  const responseResult = await settle(
+    fetch(args.url, {
+      method: "GET",
+      headers,
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  if (!responseResult.ok) {
+    return teamsApiError(502, networkErrorMessage(responseResult.error));
+  }
+
+  return { kind: "ok", response: responseResult.value };
+}
+
+export async function fetchTeamsUsers(args: {
+  readonly tenantId: string;
+  readonly userIds: readonly string[];
+  readonly signal: AbortSignal;
+}): Promise<
+  | {
+      readonly kind: "ok";
+      readonly users: ReadonlyMap<string, TeamsGraphUserInfo>;
+    }
+  | TeamsApiErrorResult
+> {
+  const accessToken = await fetchTeamsGraphAccessToken({
+    tenantId: args.tenantId,
+    signal: args.signal,
+  });
+  if (accessToken.kind === "teams-error") {
+    return accessToken;
+  }
+
+  const users = new Map<string, TeamsGraphUserInfo>();
+  for (const userId of [...new Set(args.userIds)].slice(0, 20)) {
+    const responseResult = await settle(
+      fetch(teamsGraphUserUrl(userId), {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${accessToken.accessToken}`,
+        },
+        signal: args.signal,
+      }),
+      args.signal,
+    );
+    if (!responseResult.ok) {
+      return teamsApiError(502, networkErrorMessage(responseResult.error));
+    }
+
+    const response = responseResult.value;
+    const responseText = await response.text();
+    args.signal.throwIfAborted();
+    if (response.status === 404) {
+      continue;
+    }
+    if (!response.ok) {
+      return teamsApiError(
+        response.status,
+        responseText || `Microsoft Graph API returned HTTP ${response.status}`,
+      );
+    }
+
+    const parsed = teamsGraphUserSchema.safeParse(safeJsonParse(responseText));
+    if (!parsed.success || !parsed.data.id) {
+      continue;
+    }
+    users.set(parsed.data.id, {
+      id: parsed.data.id,
+      displayName: parsed.data.displayName ?? null,
+      userPrincipalName:
+        parsed.data.userPrincipalName ?? parsed.data.mail ?? null,
+    });
+  }
+
+  return { kind: "ok", users };
 }
 
 async function postTeamsActivity(args: {
@@ -611,6 +746,39 @@ export function sendTeamsMessageReply(args: {
   readonly card?: TeamsAdaptiveCard;
   readonly signal: AbortSignal;
 }): Promise<SendTeamsActivityResult> {
+  return sendTeamsMessage({
+    serviceUrl: args.serviceUrl,
+    conversationId: args.conversationId,
+    activityId: args.activityId,
+    tenantId: args.tenantId,
+    text: args.text,
+    card: args.card,
+    signal: args.signal,
+  });
+}
+
+export function sendTeamsMessage(args: {
+  readonly serviceUrl: string;
+  readonly conversationId: string;
+  readonly activityId?: string;
+  readonly tenantId: string;
+  readonly text: string;
+  readonly card?: TeamsAdaptiveCard;
+  readonly attachments?: readonly TeamsActivityAttachment[];
+  readonly signal: AbortSignal;
+}): Promise<SendTeamsActivityResult> {
+  const attachments: readonly TeamsActivityAttachment[] = [
+    ...(args.card
+      ? [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive" as const,
+            content: args.card,
+          },
+        ]
+      : []),
+    ...(args.attachments ?? []),
+  ];
+
   return postTeamsActivity({
     serviceUrl: args.serviceUrl,
     conversationId: args.conversationId,
@@ -623,16 +791,7 @@ export function sendTeamsMessageReply(args: {
         ? { summary: args.text }
         : { text: args.text, textFormat: "markdown" }),
       replyToId: args.activityId,
-      ...(args.card
-        ? {
-            attachments: [
-              {
-                contentType: "application/vnd.microsoft.card.adaptive",
-                content: args.card,
-              },
-            ],
-          }
-        : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
       channelData: {
         tenant: { id: args.tenantId },
       },

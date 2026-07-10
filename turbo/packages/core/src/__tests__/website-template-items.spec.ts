@@ -14,7 +14,9 @@ const EXPECTED_WEBSITE_TEMPLATE_IDS = [
   "website-template:black-slabs",
   "website-template:blueprint-grid",
   "website-template:coastal-hotel",
+  "website-template:dot-matrix",
   "website-template:frame-stack",
+  "website-template:frosted-scatter",
   "website-template:gallery-wall",
   "website-template:glass-bloom",
   "website-template:serif-stack",
@@ -29,8 +31,12 @@ const EXPECTED_WEBSITE_TEMPLATE_SHA256: Record<string, string> = {
     "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
   "coastal-hotel":
     "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
+  "dot-matrix":
+    "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
   "frame-stack":
     "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
+  "frosted-scatter":
+    "7ad1c3b16b7beeb82e1a2f39a1fe7fff168592fb06e7b5fedf3c2450e1412f43",
   "gallery-wall":
     "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
   "glass-bloom":
@@ -73,7 +79,7 @@ describe("website template items", () => {
         /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+\.html$/u,
       );
       expect(item.previewImageUrl).toMatch(
-        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-480x270\.webp$/u,
+        /^https:\/\/static\.vm0\.io\/vm0\/artifact-templates\/website\/.+-preview-(?:480x270|960x540)\.webp$/u,
       );
       expect(item.previewUrl).not.toContain("drive.google.com");
       expect(item.previewUrl).not.toContain("docs.google.com");

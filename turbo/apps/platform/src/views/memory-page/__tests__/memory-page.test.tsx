@@ -813,12 +813,65 @@ function memoryInjectionPreviewResponse(
         sources: [],
       },
     ],
+    documentEvidence: [],
     stats: {
       injectedCount: 1,
       omittedCount: 0,
       characterCount: 292,
+      tokenCount: 64,
+      profileTokenCount: 0,
+      memoryTokenCount: 64,
+      documentTokenCount: 0,
     },
   };
+}
+
+function lifecycleMemoryRecord() {
+  return {
+    id: "00000000-0000-4000-8000-000000000901",
+    kind: "key_fact",
+    status: "active",
+    text: "Use concise launch summaries.",
+    confidence: 92,
+    sourceCount: 0,
+    lastSeenAt: "2026-07-05T12:00:00.000Z",
+    createdAt: "2026-07-05T12:00:00.000Z",
+    updatedAt: "2026-07-05T12:00:00.000Z",
+    contextSpace: {
+      id: "00000000-0000-4000-8000-000000000902",
+      type: "user",
+      key: "user:00000000-0000-4000-8000-000000000001",
+      displayName: "User memory",
+    },
+    entity: {
+      id: "00000000-0000-4000-8000-000000000903",
+      type: "organization",
+      displayName: "Direct memories",
+    },
+  } as const;
+}
+
+function memoryDocumentRecord() {
+  return {
+    id: "00000000-0000-4000-8000-000000000904",
+    status: "active",
+    title: "Security review plan",
+    provider: "github",
+    sourceType: "github_issue",
+    externalId: "github-source-1",
+    contentHash: "document-hash-1",
+    occurredAt: "2026-07-02T12:00:00.000Z",
+    createdAt: "2026-07-02T12:00:00.000Z",
+    updatedAt: "2026-07-02T12:00:00.000Z",
+    chunkCount: 2,
+    contextSpace: {
+      id: "00000000-0000-4000-8000-000000000905",
+      type: "repo",
+      key: "github:vm0-ai/vm0",
+      displayName: "vm0-ai/vm0",
+    },
+    citationUrl: "https://github.com/vm0-ai/vm0/issues/1",
+  } as const;
 }
 
 function relationshipRecord(
@@ -964,6 +1017,16 @@ describe("memory page", () => {
     expect(
       queryAllByRoleFast("tab").some((tab) => {
         return tab.textContent?.trim() === "Recall";
+      }),
+    ).toBeFalsy();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Search";
+      }),
+    ).toBeFalsy();
+    expect(
+      queryAllByRoleFast("tab").some((tab) => {
+        return tab.textContent?.trim() === "Lifecycle";
       }),
     ).toBeFalsy();
     expect(
@@ -1124,6 +1187,144 @@ describe("memory page", () => {
       screen.getByText("notion-source-1:preference:rollout"),
     ).toBeInTheDocument();
     expect(recallQueries).toStrictEqual(["security review"]);
+  });
+
+  it("searches document RAG and shows lifecycle controls", async () => {
+    context.mocks.api(zeroMemoryActivityContract.get, ({ query, respond }) => {
+      expect(query.limit).toBe(7);
+      return respond(200, memoryActivityPage(query.cursor));
+    });
+    context.mocks.api(zeroMemoryContract.get, ({ respond }) => {
+      return respond(200, memoryDetailResponse());
+    });
+    context.mocks.api(zeroMemoryContract.search, ({ query, respond }) => {
+      expect(query.q).toBe("security review");
+      expect(query.mode).toBe("hybrid");
+      return respond(200, {
+        query: query.q,
+        mode: query.mode,
+        results: [
+          {
+            kind: "document_chunk",
+            id: "00000000-0000-4000-8000-000000000906",
+            documentId: memoryDocumentRecord().id,
+            chunkId: "00000000-0000-4000-8000-000000000907",
+            title: "Security review plan",
+            text: "The security review plan covers data retention controls.",
+            score: 0.92,
+            provider: "github",
+            sourceType: "github_issue",
+            externalId: "github-source-1",
+            occurredAt: "2026-07-02T12:00:00.000Z",
+            contextSpace: memoryDocumentRecord().contextSpace,
+            citation: {
+              provider: "github",
+              sourceId: "00000000-0000-4000-8000-000000000908",
+              externalId: "github-source-1",
+              title: "Security review plan",
+              url: "https://github.com/vm0-ai/vm0/issues/1",
+              locator: "#1",
+              occurredAt: "2026-07-02T12:00:00.000Z",
+            },
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroMemoryContract.memories, ({ respond }) => {
+      return respond(200, {
+        memories: [lifecycleMemoryRecord()],
+        pagination: {
+          page: 1,
+          pageSize: 50,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+        },
+      });
+    });
+    context.mocks.api(zeroMemoryContract.documents, ({ respond }) => {
+      return respond(200, {
+        documents: [memoryDocumentRecord()],
+        pagination: {
+          page: 1,
+          pageSize: 50,
+          total: 1,
+          totalPages: 1,
+          hasMore: false,
+        },
+      });
+    });
+    context.mocks.api(zeroMemoryContract.profiles, ({ respond }) => {
+      return respond(200, {
+        profiles: [
+          {
+            id: "00000000-0000-4000-8000-000000000909",
+            section: "Communication",
+            content: "Prefers concise launch summaries.",
+            sourceMemoryCount: 1,
+            entity: lifecycleMemoryRecord().entity,
+            contextSpace: lifecycleMemoryRecord().contextSpace,
+            createdAt: "2026-07-05T12:00:00.000Z",
+            updatedAt: "2026-07-05T12:00:00.000Z",
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroMemoryContract.forgotten, ({ respond }) => {
+      return respond(200, {
+        forgotten: [
+          {
+            id: "00000000-0000-4000-8000-000000000910",
+            targetKind: "memory",
+            fingerprint: "memory:00000000-0000-4000-8000-000000000900",
+            reason: "cleanup",
+            prompt: null,
+            targetId: "00000000-0000-4000-8000-000000000900",
+            targetTitle: null,
+            targetText: "Old launch-summary wording",
+            contextSpace: lifecycleMemoryRecord().contextSpace,
+            createdAt: "2026-07-05T12:05:00.000Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: {
+        [FeatureSwitchKey.MemoryViewer]: true,
+        [FeatureSwitchKey.RelationshipMemory]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("launch preferences")).toBeInTheDocument();
+    });
+
+    click(getTabByText("Search"));
+    await fill(
+      screen.getByPlaceholderText("Search memories and source documents"),
+      "security review",
+    );
+    click(getNonTabButtonWithText("Search"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Security review plan")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Citation")).toBeInTheDocument();
+    expect(screen.getByText(/data retention controls/u)).toBeInTheDocument();
+
+    click(getTabByText("Lifecycle"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Use concise launch summaries."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Security review plan")).toBeInTheDocument();
+    expect(screen.getByText("Communication")).toBeInTheDocument();
+    expect(screen.getByText("Old launch-summary wording")).toBeInTheDocument();
   });
 
   it("previews runtime memory injection when the sub-switch is enabled", async () => {

@@ -116,6 +116,7 @@ class UsageEventBuffer:
         include_kind: bool = True,
         log_type: str = "usage_event",
         preserve_source_idempotency: bool = False,
+        atomic_source_key: str | None = None,
     ) -> int:
         """Add source usage events and flush if the buffer exceeds a bound."""
         flush_now = False
@@ -131,6 +132,7 @@ class UsageEventBuffer:
                 include_kind=include_kind,
                 log_type=log_type,
                 preserve_source_idempotency=preserve_source_idempotency,
+                atomic_source_key=atomic_source_key,
             )
             if accepted_count == 0:
                 return 0

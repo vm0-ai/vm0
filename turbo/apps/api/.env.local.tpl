@@ -32,6 +32,7 @@ VERCEL_TOKEN=op://Development/vercel/VERCEL_TOKEN
 
 # Required: Object Storage (Cloudflare R2)
 CF_ACCOUNT_ID=op://Development/cloudflare/CF_ACCOUNT_ID
+CLOUDFLARE_BROWSER_RENDERING_API_TOKEN=op://Development/cloudflare/CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
 R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
 R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY

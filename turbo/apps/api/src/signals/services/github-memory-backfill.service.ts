@@ -754,7 +754,7 @@ function issueLikeForRecorder(issue: GithubIssueDetail) {
     updated_at: issue.updated_at,
     labels: issue.labels ?? [],
     user: {
-      id: issue.user.id ?? 0,
+      id: issue.user.id,
       login: issue.user.login,
       type: issue.user.type,
     },
@@ -767,7 +767,7 @@ function commentLikeForRecorder(comment: GithubIssueComment) {
     body: comment.body,
     created_at: comment.created_at,
     user: {
-      id: comment.user.id ?? 0,
+      id: comment.user.id,
       login: comment.user.login,
       type: comment.user.type,
     },
@@ -799,7 +799,7 @@ async function recordBackfillIssue(args: {
     repository: { full_name: args.repository.fullName },
     installation: { id: Number(args.installation.remoteInstallationId) },
     sender: {
-      id: args.issue.user.id ?? 0,
+      id: args.issue.user.id,
       login: args.issue.user.login,
       type: args.issue.user.type,
     },
@@ -858,7 +858,7 @@ async function recordBackfillComments(args: {
       repository: { full_name: args.repository.fullName },
       installation: { id: Number(args.installation.remoteInstallationId) },
       sender: {
-        id: comment.user.id ?? 0,
+        id: comment.user.id,
         login: comment.user.login,
         type: comment.user.type,
       },

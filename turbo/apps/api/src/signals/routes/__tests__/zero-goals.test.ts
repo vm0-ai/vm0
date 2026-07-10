@@ -1,7 +1,9 @@
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
+import { sql } from "drizzle-orm";
 
+import { db } from "../../../lib/db";
 import { mockOptionalEnv } from "../../../lib/env";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -262,6 +264,178 @@ describe("zero goals", () => {
       objectiveBrief: "Ship goals",
       status: "active",
     });
+  });
+
+  it("truncates long Unicode objective briefs without splitting codepoints", async () => {
+    const fixture = await seedGoalApiFixture();
+    const chat = createChatFilesBddApi(context);
+    const rareLetter = "\u{10400}";
+    const objective = rareLetter.repeat(200);
+    const expectedBrief = `${rareLetter.repeat(137)}...`;
+    const created = await createGoal(fixture, objective);
+
+    expect(created.body).toStrictEqual({
+      objective,
+      objectiveBrief: expectedBrief,
+      status: "active",
+    });
+    for (const char of created.body.objectiveBrief) {
+      expect(char === rareLetter || char === ".").toBeTruthy();
+    }
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadMessages(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: expectedBrief,
+        },
+      }),
+    );
+  });
+
+  it("keeps Unicode objective briefs at the codepoint limit untruncated", async () => {
+    const fixture = await seedGoalApiFixture();
+    const rareLetter = "\u{10400}";
+    const objective = rareLetter.repeat(140);
+    const created = await createGoal(fixture, objective);
+
+    expect(created.body).toStrictEqual({
+      objective,
+      objectiveBrief: objective,
+      status: "active",
+    });
+  });
+
+  it("keeps markdown-only goal objective briefs non-empty", async () => {
+    const fixture = await seedGoalApiFixture();
+    const chat = createChatFilesBddApi(context);
+    const created = await createGoal(fixture, "---");
+
+    expect(created.body).toStrictEqual({
+      objective: "---",
+      objectiveBrief: "---",
+      status: "active",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadMessages(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        goalEvent: {
+          type: "state",
+          status: "active",
+          objectiveBrief: "---",
+        },
+      }),
+    );
+  });
+
+  it("normalizes invalid legacy goal marker JSON", async () => {
+    const fixture = await seedGoalApiFixture();
+    const chat = createChatFilesBddApi(context);
+    await createGoal(fixture, "ship goals");
+
+    // This bad persisted shape cannot be produced through the public API, but
+    // older or manually repaired jsonb rows can still be read by the messages
+    // endpoint.
+    const updated = await db().execute(sql`
+      UPDATE chat_messages
+      SET
+        goal_event = '{"type":"state","status":"active","objectiveBrief":123}'::jsonb,
+        goal_snapshot = '{"objectiveBrief":{"bad":true}}'::jsonb
+      WHERE chat_thread_id = ${fixture.threadId}
+        AND goal_event IS NOT NULL
+    `);
+    expect(updated.rowCount).toBe(1);
+    const inserted = await db().execute(sql`
+      INSERT INTO chat_messages (
+        chat_thread_id,
+        role,
+        goal_event,
+        goal_snapshot
+      )
+      VALUES (
+        ${fixture.threadId},
+        'assistant',
+        '{"type":"state","status":"unknown","objectiveBrief":"bad"}'::jsonb,
+        '{"objectiveBrief":{"bad":true}}'::jsonb
+      )
+    `);
+    expect(inserted.rowCount).toBe(1);
+    const insertedMissingSnapshotBrief = await db().execute(sql`
+      INSERT INTO chat_messages (
+        chat_thread_id,
+        role,
+        content,
+        goal_snapshot
+      )
+      VALUES (
+        ${fixture.threadId},
+        'user',
+        'legacy snapshot without objective brief',
+        '{"bad":true}'::jsonb
+      )
+    `);
+    expect(insertedMissingSnapshotBrief.rowCount).toBe(1);
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const messages = await chat.listThreadMessages(
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "org:member",
+        email: "goal-user@example.com",
+      },
+      fixture.threadId,
+    );
+
+    const legacyMessages = messages.messages.filter((message) => {
+      return message.goalSnapshot?.objectiveBrief === "Untitled goal";
+    });
+    expect(legacyMessages).toHaveLength(2);
+    expect(
+      legacyMessages.some((message) => {
+        return (
+          message.goalEvent?.type === "state" &&
+          message.goalEvent.status === "active" &&
+          message.goalEvent.objectiveBrief === "Untitled goal"
+        );
+      }),
+    ).toBeTruthy();
+    expect(
+      legacyMessages.some((message) => {
+        return message.goalEvent === undefined;
+      }),
+    ).toBeTruthy();
+    const missingSnapshotBriefMessage = messages.messages.find((message) => {
+      return message.content === "legacy snapshot without objective brief";
+    });
+    expect(missingSnapshotBriefMessage).toStrictEqual(
+      expect.objectContaining({
+        role: "user",
+      }),
+    );
+    expect(missingSnapshotBriefMessage?.goalSnapshot).toBeUndefined();
   });
 
   it("clears the current goal and writes a cleared marker", async () => {

@@ -77,6 +77,7 @@ import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroWorkflowSchema from "./schema/zero-workflow";
+import * as zeroWorkflowQueueSchema from "./schema/zero-workflow-queue";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
@@ -91,6 +92,7 @@ import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-s
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as htmlArtifactEditDraftSchema from "./schema/html-artifact-edit-draft";
+import * as userArtifactFavoriteSchema from "./schema/user-artifact-favorite";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
 import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
@@ -182,6 +184,7 @@ export const schema = {
   ...runUploadedFileSchema,
   ...vm0ApiKeySchema,
   ...zeroWorkflowSchema,
+  ...zeroWorkflowQueueSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,
@@ -196,6 +199,7 @@ export const schema = {
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,
   ...htmlArtifactEditDraftSchema,
+  ...userArtifactFavoriteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
   ...memoryChangeSummarySchema,

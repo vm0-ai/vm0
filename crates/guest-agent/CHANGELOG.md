@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.50.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.1...guest-agent-v0.50.2) (2026-07-10)
+
+
+### Refactoring
+
+* **guest-agent:** clarify runtime bootstrap contract ([#20927](https://github.com/vm0-ai/vm0/issues/20927)) ([e4121b6](https://github.com/vm0-ai/vm0/commit/e4121b6a5ea0b4002abb0f5fad0a48add7d646d9))
+
+## [0.50.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.0...guest-agent-v0.50.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** reduce gpt-5.6 sol reasoning effort to xhigh ([#20887](https://github.com/vm0-ai/vm0/issues/20887)) ([005812d](https://github.com/vm0-ai/vm0/commit/005812dff55e96145cf46d43e46a2af572d832bd))
+
+## [0.50.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.6...guest-agent-v0.50.0) (2026-07-10)
+
+
+### Features
+
+* run gpt-5.6 sol with ultra reasoning by default ([#20869](https://github.com/vm0-ai/vm0/issues/20869)) ([6f0a851](https://github.com/vm0-ai/vm0/commit/6f0a85112091fe2dc6c6ff24b252396f59b0af24))
+
 ## [0.49.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.5...guest-agent-v0.49.6) (2026-07-09)
 
 ## [0.49.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.49.4...guest-agent-v0.49.5) (2026-07-09)

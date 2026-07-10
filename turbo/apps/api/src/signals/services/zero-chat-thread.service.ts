@@ -38,8 +38,10 @@ import {
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,
@@ -69,6 +71,7 @@ import {
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
+import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 
@@ -132,7 +135,9 @@ type ArtifactListSqlRow = Record<string, unknown> & {
   readonly external_id: string;
   readonly filename: string | null;
   readonly content_type: string | null;
+  readonly size_bytes: number | string | null;
   readonly url: string;
+  readonly preview_image_url: string | null;
   readonly metadata: unknown;
   readonly created_at: Date | string;
   readonly thread_id: string;
@@ -140,6 +145,7 @@ type ArtifactListSqlRow = Record<string, unknown> & {
   readonly agent_id: string;
   readonly agent_name: string | null;
   readonly agent_avatar_url: string | null;
+  readonly is_favorited: boolean;
 };
 
 type ChatSearchMessageRow = {
@@ -346,7 +352,7 @@ const messageColumns = {
       ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`,
+  )`.mapWith(zeroWorkflowTriggers.atTime),
   workflowTriggerTimezone: sql<string | null>`(
     SELECT "zero_workflow_triggers"."timezone"
     FROM "zero_runs"
@@ -570,6 +576,52 @@ function workflowSnapshotFromRow(
   };
 }
 
+function recordFromJson(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function goalEventFromRow(event: unknown): ChatMessageGoalEvent | undefined {
+  const record = recordFromJson(event);
+  if (!record) {
+    return undefined;
+  }
+  if (record.type === "cleared") {
+    return { type: "cleared" };
+  }
+  if (record.type !== "state") {
+    return undefined;
+  }
+  if (record.status === "active") {
+    return {
+      type: "state",
+      status: "active",
+      objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
+    };
+  }
+  if (
+    record.status === "paused" ||
+    record.status === "blocked" ||
+    record.status === "complete"
+  ) {
+    return { type: "state", status: record.status };
+  }
+  return undefined;
+}
+
+function goalSnapshotFromRow(
+  snapshot: unknown,
+): ChatMessageGoalSnapshot | undefined {
+  const record = recordFromJson(snapshot);
+  if (!record || !("objectiveBrief" in record)) {
+    return undefined;
+  }
+  return {
+    objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
+  };
+}
+
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
@@ -589,8 +641,8 @@ function toPagedMessage(
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
-      goalEvent: row.goalEvent ?? undefined,
-      goalSnapshot: row.goalSnapshot ?? undefined,
+      goalEvent: goalEventFromRow(row.goalEvent),
+      goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,
@@ -960,6 +1012,30 @@ function generatedArtifactCondition(): SQL {
   )`;
 }
 
+function generatedArtifactVisibilityConditions(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): SQL[] {
+  return [
+    sql`${agentRuns.orgId} = ${args.orgId}`,
+    sql`${chatThreads.userId} = ${args.userId}`,
+    sql`${agentComposes.orgId} = ${args.orgId}`,
+    sql`${runUploadedFiles.url} IS NOT NULL`,
+    generatedArtifactCondition(),
+    sql`(
+      NOT EXISTS (
+        SELECT 1
+        FROM ${runUploadedFiles} hosted_files
+        WHERE hosted_files.run_id = ${runUploadedFiles.runId}
+          AND (
+            hosted_files.metadata->>'artifactKind' IN ('hosted-site', 'presentation-html')
+          )
+      )
+      OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+    )`,
+  ];
+}
+
 function artifactRowCreatedAt(row: ArtifactListSqlRow): Date {
   return row.created_at instanceof Date
     ? row.created_at
@@ -980,8 +1056,13 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     threadTitle: row.thread_title,
     filename,
     contentType: row.content_type ?? inferMimetype(filename),
+    size: Number(row.size_bytes ?? 0),
     url: row.url,
     createdAt: artifactRowCreatedAt(row).toISOString(),
+    ...(row.preview_image_url
+      ? { previewImageUrl: row.preview_image_url }
+      : {}),
+    isFavorited: row.is_favorited,
     ...(artifactKind ? { artifactKind } : {}),
   };
 }
@@ -1021,6 +1102,12 @@ interface ZeroArtifactsResult {
   readonly nextCursor: string | null;
 }
 
+interface ArtifactFavoriteArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly artifactUrl: string;
+}
+
 export const zeroArtifacts$ = command(
   async (
     { set },
@@ -1040,24 +1127,7 @@ export const zeroArtifacts$ = command(
     const keysetClause = cursor
       ? sql`WHERE (created_at, row_id) < (${cursor.createdAt}::timestamptz, ${cursor.rowId}::uuid)`
       : sql``;
-    const conditions: SQL[] = [
-      sql`${agentRuns.orgId} = ${args.orgId}`,
-      sql`${chatThreads.userId} = ${args.userId}`,
-      sql`${agentComposes.orgId} = ${args.orgId}`,
-      sql`${runUploadedFiles.url} IS NOT NULL`,
-      generatedArtifactCondition(),
-      sql`(
-        NOT EXISTS (
-          SELECT 1
-          FROM ${runUploadedFiles} hosted_files
-          WHERE hosted_files.run_id = ${runUploadedFiles.runId}
-            AND (
-              hosted_files.metadata->>'artifactKind' IN ('hosted-site', 'presentation-html')
-            )
-        )
-        OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
-      )`,
-    ];
+    const conditions = generatedArtifactVisibilityConditions(args);
 
     const rows = await db.execute<ArtifactListSqlRow>(sql`
       WITH scoped_artifacts AS (
@@ -1067,7 +1137,9 @@ export const zeroArtifacts$ = command(
           ${runUploadedFiles.externalId} AS external_id,
           ${runUploadedFiles.filename} AS filename,
           ${runUploadedFiles.contentType} AS content_type,
+          ${runUploadedFiles.sizeBytes} AS size_bytes,
           ${runUploadedFiles.url} AS url,
+          ${runUploadedFiles.previewImageUrl} AS preview_image_url,
           ${runUploadedFiles.metadata} AS metadata,
           ${runUploadedFiles.createdAt} AS created_at,
           ${chatThreads.id} AS thread_id,
@@ -1102,8 +1174,14 @@ export const zeroArtifacts$ = command(
         FROM scoped_artifacts
         ORDER BY url, created_at DESC, row_id DESC
       )
-      SELECT *
+      SELECT
+        deduped_artifacts.*,
+        (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
       FROM deduped_artifacts
+      LEFT JOIN ${userArtifactFavorites}
+        ON ${userArtifactFavorites.orgId} = ${args.orgId}
+        AND ${userArtifactFavorites.userId} = ${args.userId}
+        AND ${userArtifactFavorites.artifactUrl} = deduped_artifacts.url
       ${keysetClause}
       ORDER BY created_at DESC, row_id DESC
       LIMIT ${limit + 1}
@@ -1127,6 +1205,94 @@ export const zeroArtifacts$ = command(
       truncated: hasMore,
       nextCursor,
     };
+  },
+);
+
+async function generatedArtifactUrlIsVisible(
+  db: Db,
+  args: ArtifactFavoriteArgs,
+): Promise<boolean> {
+  const conditions = [
+    ...generatedArtifactVisibilityConditions(args),
+    sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
+  ];
+  const result = await db.execute<{ readonly visible: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM ${runUploadedFiles}
+      INNER JOIN ${agentRuns}
+        ON ${agentRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${zeroRuns}
+        ON ${zeroRuns.id} = ${runUploadedFiles.runId}
+      INNER JOIN ${chatThreads}
+        ON ${chatThreads.id} = COALESCE(
+          ${zeroRuns.chatThreadId},
+          (
+            SELECT ${chatMessages.chatThreadId}
+            FROM ${chatMessages}
+            WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+            ORDER BY ${chatMessages.createdAt} ASC
+            LIMIT 1
+          )
+        )
+      INNER JOIN ${agentComposes}
+        ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+      WHERE ${sql.join(conditions, sql` AND `)}
+      LIMIT 1
+    ) AS visible
+  `);
+  return result.rows[0]?.visible === true;
+}
+
+export const favoriteArtifact$ = command(
+  async (
+    { set },
+    args: ArtifactFavoriteArgs,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const db = set(writeDb$);
+    const visible = await generatedArtifactUrlIsVisible(db, args);
+    signal.throwIfAborted();
+    if (!visible) {
+      return false;
+    }
+
+    await db
+      .insert(userArtifactFavorites)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        artifactUrl: args.artifactUrl,
+      })
+      .onConflictDoNothing({
+        target: [
+          userArtifactFavorites.orgId,
+          userArtifactFavorites.userId,
+          userArtifactFavorites.artifactUrl,
+        ],
+      });
+    signal.throwIfAborted();
+    return true;
+  },
+);
+
+export const unfavoriteArtifact$ = command(
+  async (
+    { set },
+    args: ArtifactFavoriteArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db
+      .delete(userArtifactFavorites)
+      .where(
+        and(
+          eq(userArtifactFavorites.orgId, args.orgId),
+          eq(userArtifactFavorites.userId, args.userId),
+          eq(userArtifactFavorites.artifactUrl, args.artifactUrl),
+        ),
+      );
+    signal.throwIfAborted();
   },
 );
 

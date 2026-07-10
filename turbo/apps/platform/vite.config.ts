@@ -176,6 +176,13 @@ export default defineConfig({
       output: {
         // Stable generated firewall chunk URLs must also keep stable import contracts.
         minifyInternalExports: false,
+        // Open-source project: compress and strip whitespace, but keep
+        // original identifiers readable (no name mangling).
+        minify: {
+          compress: true,
+          mangle: false,
+          codegen: true,
+        },
         chunkFileNames(chunkInfo) {
           return (
             stableGeneratedFirewallChunkFileName(chunkInfo.name) ??

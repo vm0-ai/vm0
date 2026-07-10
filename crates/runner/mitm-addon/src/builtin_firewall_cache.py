@@ -44,7 +44,7 @@ class BuiltinFirewallCatalogSnapshot:
     dependency_file_key: CatalogFileKey | None
     catalog: BuiltinFirewallCatalog | None
     cache_path: str | None = None
-    fallback_reason: str | None = None
+    unavailable_reason: str | None = None
 
 
 @dataclass
@@ -68,6 +68,11 @@ _cache_state = _CatalogCacheState()
 
 def reset_cache_for_tests() -> None:
     """Reset builtin firewall catalog cache state between tests."""
+    clear_cache()
+
+
+def clear_cache() -> None:
+    """Drop the in-process builtin firewall catalog cache."""
     _cache_state.reset()
 
 
@@ -101,7 +106,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
         return BuiltinFirewallCatalogSnapshot(
             None,
             None,
-            fallback_reason="cache_path_missing",
+            unavailable_reason="cache_path_missing",
         )
 
     path = Path(cache_path)
@@ -116,7 +121,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
             None,
             None,
             cache_path=path_key,
-            fallback_reason=_open_error_fallback_reason(exc),
+            unavailable_reason=_open_error_unavailable_reason(exc),
         )
 
     try:
@@ -128,7 +133,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
                 key,
                 None,
                 cache_path=path_key,
-                fallback_reason=state.failed_reason or "cache_invalid",
+                unavailable_reason=state.failed_reason or "cache_invalid",
             )
         try:
             catalog = _read_catalog(fd, path, st.st_size, key)
@@ -142,7 +147,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
                 key,
                 None,
                 cache_path=path_key,
-                fallback_reason=state.failed_reason,
+                unavailable_reason=state.failed_reason,
             )
     finally:
         os.close(fd)
@@ -154,7 +159,7 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
     return BuiltinFirewallCatalogSnapshot(key, catalog, cache_path=path_key)
 
 
-def _open_error_fallback_reason(exc: OSError) -> str:
+def _open_error_unavailable_reason(exc: OSError) -> str:
     if isinstance(exc, _CatalogCacheOpenError):
         return exc.reason
     if isinstance(exc, FileNotFoundError):

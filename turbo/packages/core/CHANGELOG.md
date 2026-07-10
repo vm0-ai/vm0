@@ -1,5 +1,137 @@
 # Changelog
 
+## [8.424.1](https://github.com/vm0-ai/vm0/compare/core-v8.424.0...core-v8.424.1) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.0
+
+## [8.424.0](https://github.com/vm0-ai/vm0/compare/core-v8.423.0...core-v8.424.0) (2026-07-10)
+
+
+### Features
+
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.1
+
+## [8.423.0](https://github.com/vm0-ai/vm0/compare/core-v8.422.1...core-v8.423.0) (2026-07-10)
+
+
+### Features
+
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.0
+    * @vm0/connectors bumped to 1.154.0
+
+## [8.422.1](https://github.com/vm0-ai/vm0/compare/core-v8.422.0...core-v8.422.1) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.181.0
+
+## [8.422.0](https://github.com/vm0-ai/vm0/compare/core-v8.421.2...core-v8.422.0) (2026-07-10)
+
+
+### Features
+
+* generate poster-frame previews for video artifacts ([#20831](https://github.com/vm0-ai/vm0/issues/20831)) ([f14a997](https://github.com/vm0-ai/vm0/commit/f14a997e3d3abf8f95066a5869475b20fe959d9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.180.0
+    * @vm0/connectors bumped to 1.153.0
+
+## [8.421.2](https://github.com/vm0-ai/vm0/compare/core-v8.421.1...core-v8.421.2) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.179.0
+
+## [8.421.1](https://github.com/vm0-ai/vm0/compare/core-v8.421.0...core-v8.421.1) (2026-07-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.178.0
+
+## [8.421.0](https://github.com/vm0-ai/vm0/compare/core-v8.420.0...core-v8.421.0) (2026-07-09)
+
+
+### Features
+
+* add gpt-5.6 model support ([#20841](https://github.com/vm0-ai/vm0/issues/20841)) ([70d551f](https://github.com/vm0-ai/vm0/commit/70d551f731976130af4a640d571ac2aa2708e100))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.177.0
+
+## [8.420.0](https://github.com/vm0-ai/vm0/compare/core-v8.419.0...core-v8.420.0) (2026-07-09)
+
+
+### Features
+
+* add artifact favorite api ([#20837](https://github.com/vm0-ai/vm0/issues/20837)) ([5c935ea](https://github.com/vm0-ai/vm0/commit/5c935eab0bc13098bbf06a7503939722a257b5f5))
+* add artifact favorite controls ([#20838](https://github.com/vm0-ai/vm0/issues/20838)) ([c7c0bee](https://github.com/vm0-ai/vm0/commit/c7c0bee953d6268e572bfa254a6cdd7bcef86774))
+* add nintendo store connector ([#20768](https://github.com/vm0-ai/vm0/issues/20768)) ([a84b0e0](https://github.com/vm0-ai/vm0/commit/a84b0e04ba6382380a6b81331aed372d2abe1149))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.176.0
+    * @vm0/connectors bumped to 1.152.0
+
+## [8.419.0](https://github.com/vm0-ai/vm0/compare/core-v8.418.2...core-v8.419.0) (2026-07-09)
+
+
+### Features
+
+* render static preview images for html/website artifacts ([#20814](https://github.com/vm0-ai/vm0/issues/20814)) ([3b52479](https://github.com/vm0-ai/vm0/commit/3b52479f8c12e00c55b536a4c279809a75ec80ec))
+
+
+### Bug Fixes
+
+* refresh website template r2 archives ([#20809](https://github.com/vm0-ai/vm0/issues/20809)) ([8202876](https://github.com/vm0-ai/vm0/commit/820287677c250892fade8b9f298f910675e5ec26))
+* send chat model choices as model ids ([#20639](https://github.com/vm0-ai/vm0/issues/20639)) ([71b30a2](https://github.com/vm0-ai/vm0/commit/71b30a283202188aa4d92659bcf24d63a01d5e26))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.175.0
+    * @vm0/connectors bumped to 1.151.0
+
 ## [8.418.2](https://github.com/vm0-ai/vm0/compare/core-v8.418.1...core-v8.418.2) (2026-07-09)
 
 

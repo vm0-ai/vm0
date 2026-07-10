@@ -20,10 +20,47 @@ const memorySourceProviderSchema = z.enum([
   "github",
   "notion",
 ]);
+const memorySourceTypeSchema = z.enum([
+  "gmail_message",
+  "slack_message",
+  "github_issue",
+  "github_pull_request",
+  "github_issue_comment",
+  "notion_page",
+  "notion_page_event",
+]);
 const memoryRecallItemKindSchema = z.enum([
   "key_fact",
   "preference",
   "open_loop",
+]);
+const memoryKindSchema = z.enum([
+  "key_fact",
+  "preference",
+  "open_loop",
+  "role",
+  "project",
+  "communication_style",
+  "recent_context",
+]);
+const memoryStatusSchema = z.enum(["active", "archived"]);
+const memoryDocumentStatusSchema = z.enum(["active", "archived", "deleted"]);
+const memorySearchModeSchema = z.enum(["hybrid", "memories", "documents"]);
+const memoryContextSpaceTypeSchema = z.enum([
+  "user",
+  "org",
+  "project",
+  "repo",
+  "customer",
+  "agent",
+  "workflow",
+]);
+const memoryVersionTargetKindSchema = z.enum(["memory", "document", "profile"]);
+const memoryTombstoneTargetKindSchema = z.enum([
+  "memory",
+  "document",
+  "document_chunk",
+  "profile",
 ]);
 const memoryInjectionItemKindSchema = z.enum([
   "key_fact",
@@ -98,15 +135,7 @@ const memorySourceMetadataSchema = memorySourceCompactMetadataSchema
 const memorySourceBaseSchema = z.object({
   id: z.string().uuid(),
   provider: memorySourceProviderSchema,
-  sourceType: z.enum([
-    "gmail_message",
-    "slack_message",
-    "github_issue",
-    "github_pull_request",
-    "github_issue_comment",
-    "notion_page",
-    "notion_page_event",
-  ]),
+  sourceType: memorySourceTypeSchema,
   title: z.string().nullable(),
   occurredAt: z.string().nullable(),
   createdAt: z.string(),
@@ -170,6 +199,217 @@ export const memoryContextResponseSchema = z.object({
   memories: z.array(memoryRecallItemSchema),
 });
 
+const memoryDocumentSearchCitationSchema = z.object({
+  provider: memorySourceProviderSchema,
+  sourceId: z.string(),
+  externalId: z.string(),
+  title: z.string().nullable(),
+  url: z.string().nullable(),
+  locator: z.string().nullable(),
+  occurredAt: z.string().nullable(),
+});
+
+const memoryDocumentSearchResultSchema = z.object({
+  kind: z.literal("document_chunk"),
+  id: z.string().uuid(),
+  documentId: z.string().uuid(),
+  chunkId: z.string().uuid(),
+  title: z.string().nullable(),
+  text: z.string(),
+  score: z.number(),
+  provider: memorySourceProviderSchema,
+  sourceType: memorySourceTypeSchema,
+  externalId: z.string(),
+  occurredAt: z.string().nullable(),
+  contextSpace: z.object({
+    id: z.string().uuid(),
+    type: memoryContextSpaceTypeSchema,
+    key: z.string(),
+    displayName: z.string(),
+  }),
+  citation: memoryDocumentSearchCitationSchema,
+});
+
+const memorySearchMemoryResultSchema = z.object({
+  kind: z.literal("memory"),
+  id: z.string().uuid(),
+  score: z.number(),
+  memory: memoryRecallItemSchema,
+});
+
+export const memorySearchResponseSchema = z.object({
+  query: z.string(),
+  mode: memorySearchModeSchema,
+  results: z.array(
+    z.discriminatedUnion("kind", [
+      memorySearchMemoryResultSchema,
+      memoryDocumentSearchResultSchema,
+    ]),
+  ),
+});
+
+const memoryContextSpaceSchema = z.object({
+  id: z.string().uuid(),
+  type: memoryContextSpaceTypeSchema,
+  key: z.string(),
+  displayName: z.string(),
+});
+
+const memoryContextSpaceInputSchema = z.object({
+  type: memoryContextSpaceTypeSchema,
+  key: z.string().min(1).max(512),
+  displayName: z.string().min(1).max(300),
+});
+
+const memoryLifecycleEntitySchema = z.object({
+  id: z.string().uuid().nullable(),
+  type: z.enum(["person", "organization", "project", "channel"]).nullable(),
+  displayName: z.string().nullable(),
+});
+
+const memoryLifecycleMemorySchema = z.object({
+  id: z.string().uuid(),
+  kind: memoryKindSchema,
+  status: memoryStatusSchema,
+  text: z.string(),
+  confidence: z.number().int().min(0).max(100),
+  sourceCount: z.number().int().nonnegative(),
+  lastSeenAt: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  contextSpace: memoryContextSpaceSchema.nullable(),
+  entity: memoryLifecycleEntitySchema,
+});
+
+export const memoryListResponseSchema = z.object({
+  memories: z.array(memoryLifecycleMemorySchema),
+  pagination: z.object({
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    total: z.number().int().nonnegative(),
+    totalPages: z.number().int().positive(),
+    hasMore: z.boolean(),
+  }),
+});
+
+export const memoryCreateRequestSchema = z.object({
+  text: z.string().min(1).max(4000),
+  kind: memoryKindSchema.default("key_fact"),
+  confidence: z.number().int().min(0).max(100).default(90),
+  contextSpace: memoryContextSpaceInputSchema.optional(),
+  entityDisplayName: z.string().min(1).max(300).optional(),
+});
+
+export const memoryUpdateRequestSchema = z.object({
+  text: z.string().min(1).max(4000).optional(),
+  kind: memoryKindSchema.optional(),
+  confidence: z.number().int().min(0).max(100).optional(),
+  contextSpace: memoryContextSpaceInputSchema.optional(),
+  entityDisplayName: z.string().min(1).max(300).optional(),
+});
+
+export const memoryLifecycleMemoryResponseSchema = z.object({
+  memory: memoryLifecycleMemorySchema,
+});
+
+export const memoryForgetRequestSchema = z.object({
+  reason: z.string().min(1).max(500).optional(),
+});
+
+const memoryForgetTargetKindSchema = z.enum(["all", "memories", "documents"]);
+
+export const memoryForgetByPromptRequestSchema = z.object({
+  prompt: z.string().min(1).max(500),
+  targetKind: memoryForgetTargetKindSchema.default("all"),
+  provider: memorySourceProviderSchema.optional(),
+  limit: z.number().int().min(1).max(10).default(5),
+  reason: z.string().min(1).max(500).optional(),
+});
+
+const memoryTombstoneSchema = z.object({
+  id: z.string().uuid(),
+  targetKind: memoryTombstoneTargetKindSchema,
+  fingerprint: z.string(),
+  reason: z.string().nullable(),
+  prompt: z.string().nullable(),
+  targetId: z.string().nullable(),
+  targetTitle: z.string().nullable(),
+  targetText: z.string().nullable(),
+  contextSpace: memoryContextSpaceSchema.nullable(),
+  createdAt: z.string(),
+});
+
+export const memoryForgetResponseSchema = z.object({
+  forgotten: z.array(memoryTombstoneSchema),
+});
+
+export const memoryTombstoneListResponseSchema = z.object({
+  forgotten: z.array(memoryTombstoneSchema),
+});
+
+const memoryVersionSchema = z.object({
+  id: z.string().uuid(),
+  targetKind: memoryVersionTargetKindSchema,
+  targetId: z.string().uuid(),
+  version: z.number().int().positive(),
+  contentHash: z.string(),
+  operation: z.enum(["create", "update", "forget", "derive"]).nullable(),
+  reason: z.string().nullable(),
+  text: z.string().nullable(),
+  title: z.string().nullable(),
+  status: z.string().nullable(),
+  confidence: z.number().int().min(0).max(100).nullable(),
+  kind: z.string().nullable(),
+  contextSpace: memoryContextSpaceSchema.nullable(),
+  createdAt: z.string(),
+});
+
+export const memoryHistoryResponseSchema = z.object({
+  history: z.array(memoryVersionSchema),
+});
+
+const memoryDocumentListItemSchema = z.object({
+  id: z.string().uuid(),
+  status: memoryDocumentStatusSchema,
+  title: z.string().nullable(),
+  provider: memorySourceProviderSchema,
+  sourceType: memorySourceTypeSchema,
+  externalId: z.string(),
+  contentHash: z.string(),
+  occurredAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  chunkCount: z.number().int().nonnegative(),
+  contextSpace: memoryContextSpaceSchema,
+  citationUrl: z.string().nullable(),
+});
+
+export const memoryDocumentListResponseSchema = z.object({
+  documents: z.array(memoryDocumentListItemSchema),
+  pagination: z.object({
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+    total: z.number().int().nonnegative(),
+    totalPages: z.number().int().positive(),
+    hasMore: z.boolean(),
+  }),
+});
+
+const memoryProfileListItemSchema = z.object({
+  id: z.string().uuid(),
+  section: z.string(),
+  content: z.string(),
+  sourceMemoryCount: z.number().int().nonnegative(),
+  entity: memoryLifecycleEntitySchema,
+  contextSpace: memoryContextSpaceSchema.nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const memoryProfileListResponseSchema = z.object({
+  profiles: z.array(memoryProfileListItemSchema),
+});
+
 const memoryInjectionItemSchema = z.object({
   id: z.string().uuid(),
   kind: memoryInjectionItemKindSchema,
@@ -196,10 +436,15 @@ export const memoryInjectionPreviewResponseSchema = z.object({
     dynamic: z.array(memoryInjectionItemSchema),
   }),
   queryMemories: z.array(memoryInjectionItemSchema),
+  documentEvidence: z.array(memoryDocumentSearchResultSchema),
   stats: z.object({
     injectedCount: z.number().int().nonnegative(),
     omittedCount: z.number().int().nonnegative(),
     characterCount: z.number().int().nonnegative(),
+    tokenCount: z.number().int().nonnegative(),
+    profileTokenCount: z.number().int().nonnegative(),
+    memoryTokenCount: z.number().int().nonnegative(),
+    documentTokenCount: z.number().int().nonnegative(),
   }),
 });
 
@@ -382,6 +627,29 @@ export type MemoryRecallItemKind = z.infer<typeof memoryRecallItemKindSchema>;
 export type MemoryRecallItem = z.infer<typeof memoryRecallItemSchema>;
 export type MemoryRecallResponse = z.infer<typeof memoryRecallResponseSchema>;
 export type MemoryContextResponse = z.infer<typeof memoryContextResponseSchema>;
+export type MemoryKind = z.infer<typeof memoryKindSchema>;
+export type MemorySearchMode = z.infer<typeof memorySearchModeSchema>;
+export type MemorySearchResponse = z.infer<typeof memorySearchResponseSchema>;
+export type MemorySearchResult = MemorySearchResponse["results"][number];
+export type MemoryListResponse = z.infer<typeof memoryListResponseSchema>;
+export type MemoryLifecycleMemory = z.infer<typeof memoryLifecycleMemorySchema>;
+export type MemoryCreateRequest = z.infer<typeof memoryCreateRequestSchema>;
+export type MemoryUpdateRequest = z.infer<typeof memoryUpdateRequestSchema>;
+export type MemoryForgetRequest = z.infer<typeof memoryForgetRequestSchema>;
+export type MemoryForgetByPromptRequest = z.infer<
+  typeof memoryForgetByPromptRequestSchema
+>;
+export type MemoryForgetResponse = z.infer<typeof memoryForgetResponseSchema>;
+export type MemoryHistoryResponse = z.infer<typeof memoryHistoryResponseSchema>;
+export type MemoryTombstoneListResponse = z.infer<
+  typeof memoryTombstoneListResponseSchema
+>;
+export type MemoryDocumentListResponse = z.infer<
+  typeof memoryDocumentListResponseSchema
+>;
+export type MemoryProfileListResponse = z.infer<
+  typeof memoryProfileListResponseSchema
+>;
 export type MemoryInjectionItemKind = z.infer<
   typeof memoryInjectionItemKindSchema
 >;
@@ -393,6 +661,7 @@ export type MemoryInjectionPreviewResponse = z.infer<
   typeof memoryInjectionPreviewResponseSchema
 >;
 export type MemorySourceProvider = z.infer<typeof memorySourceProviderSchema>;
+export type MemorySourceType = z.infer<typeof memorySourceTypeSchema>;
 export type MemorySourceListResponse = z.infer<
   typeof memorySourceListResponseSchema
 >;
@@ -461,6 +730,199 @@ export const zeroMemoryContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Recall structured memories for the current user",
+  },
+  search: {
+    method: "GET",
+    path: "/api/zero/memory/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      q: z.string().min(1).max(300),
+      mode: memorySearchModeSchema.default("hybrid"),
+      provider: memorySourceProviderSchema.optional(),
+      sourceType: memorySourceTypeSchema.optional(),
+      contextSpaceType: memoryContextSpaceTypeSchema.optional(),
+      contextSpaceKey: z.string().min(1).max(512).optional(),
+      memoryKind: memoryKindSchema.optional(),
+      occurredAfter: z.string().datetime().optional(),
+      occurredBefore: z.string().datetime().optional(),
+      limit: z.coerce.number().int().min(1).max(25).default(10),
+    }),
+    responses: {
+      200: memorySearchResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary:
+      "Search structured memories and document chunks for the current user",
+  },
+  memories: {
+    method: "GET",
+    path: "/api/zero/memory/memories",
+    headers: authHeadersSchema,
+    query: z.object({
+      status: memoryStatusSchema.default("active"),
+      kind: memoryKindSchema.optional(),
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: memoryListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List lifecycle-aware structured memories",
+  },
+  createMemory: {
+    method: "POST",
+    path: "/api/zero/memory/memories",
+    headers: authHeadersSchema,
+    body: memoryCreateRequestSchema,
+    responses: {
+      200: memoryLifecycleMemoryResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Create a direct structured memory",
+  },
+  updateMemory: {
+    method: "PATCH",
+    path: "/api/zero/memory/memories/:memoryId",
+    pathParams: z.object({
+      memoryId: z.string().uuid(),
+    }),
+    headers: authHeadersSchema,
+    body: memoryUpdateRequestSchema,
+    responses: {
+      200: memoryLifecycleMemoryResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Update a structured memory and record a new version",
+  },
+  forgetMemory: {
+    method: "POST",
+    path: "/api/zero/memory/memories/:memoryId/forget",
+    pathParams: z.object({
+      memoryId: z.string().uuid(),
+    }),
+    headers: authHeadersSchema,
+    body: memoryForgetRequestSchema,
+    responses: {
+      200: memoryForgetResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Forget a structured memory and record a tombstone",
+  },
+  documents: {
+    method: "GET",
+    path: "/api/zero/memory/documents",
+    headers: authHeadersSchema,
+    query: z.object({
+      status: memoryDocumentStatusSchema.default("active"),
+      provider: memorySourceProviderSchema.optional(),
+      page: z.coerce.number().int().positive().default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: memoryDocumentListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List indexed memory documents",
+  },
+  forgetDocument: {
+    method: "POST",
+    path: "/api/zero/memory/documents/:documentId/forget",
+    pathParams: z.object({
+      documentId: z.string().uuid(),
+    }),
+    headers: authHeadersSchema,
+    body: memoryForgetRequestSchema,
+    responses: {
+      200: memoryForgetResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Forget a memory document and record a tombstone",
+  },
+  forgetPrompt: {
+    method: "POST",
+    path: "/api/zero/memory/forget",
+    headers: authHeadersSchema,
+    body: memoryForgetByPromptRequestSchema,
+    responses: {
+      200: memoryForgetResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Forget memories or documents matching a prompt",
+  },
+  history: {
+    method: "GET",
+    path: "/api/zero/memory/history",
+    headers: authHeadersSchema,
+    query: z.object({
+      targetKind: memoryVersionTargetKindSchema,
+      targetId: z.string().uuid(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: memoryHistoryResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List memory, document, or profile version history",
+  },
+  forgotten: {
+    method: "GET",
+    path: "/api/zero/memory/forgotten",
+    headers: authHeadersSchema,
+    query: z.object({
+      targetKind: memoryTombstoneTargetKindSchema.optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: memoryTombstoneListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List forgotten memory tombstones",
+  },
+  profiles: {
+    method: "GET",
+    path: "/api/zero/memory/profiles",
+    headers: authHeadersSchema,
+    query: z.object({
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    }),
+    responses: {
+      200: memoryProfileListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "List derived memory profiles",
   },
   context: {
     method: "GET",

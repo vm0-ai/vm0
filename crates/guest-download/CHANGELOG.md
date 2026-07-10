@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.58](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.57...guest-download-v0.20.58) (2026-07-10)
+
+
+### Refactoring
+
+* **runner:** introduce explicit storage plan and guest wire contract ([#20912](https://github.com/vm0-ai/vm0/issues/20912)) ([07f275c](https://github.com/vm0-ai/vm0/commit/07f275c8e04a9dcd6148f7d3075258b683e4ba2e))
+
 ## [0.20.57](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.56...guest-download-v0.20.57) (2026-07-09)
 
 ## [0.20.56](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.55...guest-download-v0.20.56) (2026-07-08)

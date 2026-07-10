@@ -42,7 +42,10 @@ import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.se
 import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { buildZeroMemoryRuntimeInjection } from "./zero-memory-injection.service";
+import {
+  buildZeroMemoryRuntimeInjection,
+  zeroMemoryRuntimeRetrievalQuery,
+} from "./zero-memory-injection.service";
 import {
   measureZeroMemoryTiming,
   type ZeroMemoryTimingObserver,
@@ -158,6 +161,7 @@ interface CreateZeroRunCommandArgs {
   readonly apiStartTime: number;
   readonly triggerSource?: TriggerSource;
   readonly appendSystemPrompt?: string;
+  readonly memoryRuntimeRetrievalQuery?: string;
   readonly userInfoExtras?: Pick<
     UserInfo,
     | "slackDisplayName"
@@ -269,7 +273,7 @@ function buildIntegrationToolsPrompt(
     case "web": {
       return [
         "- Web chat files: use `zero web download-file -h` when a web chat message includes a `[Web file]` block. `zero web upload-file -h` can share a local file back to the web chat user when file delivery is needed.",
-        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub, Microsoft Teams, and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message`, `zero teams message`, or `zero email message` commands.",
+        "- Cross-integration messages from web chat: if the user explicitly asks you to send or post through another integration, use the integration CLI and ask for the destination when it is missing. Microsoft Teams: `zero teams message send --help` for conversations and thread replies. Telegram: `zero telegram bot list` to choose the bot, then `zero telegram message send --help` for chats, replies, and forum topics. AgentPhone/SMS: `zero phone message --help`. GitHub and email do not currently have dedicated Zero message-send commands, so do not invent `zero github message` or `zero email message` commands.",
         ...localFileContextLines,
       ];
     }
@@ -281,7 +285,7 @@ function buildIntegrationToolsPrompt(
     }
     case "teams": {
       return [
-        "- Microsoft Teams messaging and files: normal replies are automatically sent to the originating conversation, so extra messaging commands are only for explicit additional delivery targets. Do not use Slack or Telegram commands for Microsoft Teams delivery.",
+        "- Microsoft Teams messaging and files: use `zero teams --help`. Normal replies are automatically sent to the originating conversation, so Teams commands are for different conversations, thread replies, or explicit extra messages/files. Use `zero teams message send -h` for extra messages, `zero teams download-file -h` for `[Teams file]` blocks, and `zero teams upload-file -h` when file delivery is needed. Do not use Slack or Telegram commands for Microsoft Teams delivery.",
         ...localFileContextLines,
       ];
     }
@@ -521,6 +525,15 @@ function zeroRunTimingDimensions(args: {
 const ZERO_MEMORY_TIMING_ACTION_TYPES = {
   runtime_injection:
     "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+  document_search: "api_dispatch_pre_create_zero_memory_document_search",
+  document_search_lexical:
+    "api_dispatch_pre_create_zero_memory_document_search_lexical",
+  document_search_semantic_embedding:
+    "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+  document_search_semantic_query:
+    "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+  document_search_hydrate:
+    "api_dispatch_pre_create_zero_memory_document_search_hydrate",
   profile_static: "api_dispatch_pre_create_zero_memory_profile_static",
   profile_dynamic: "api_dispatch_pre_create_zero_memory_profile_dynamic",
   profile_search: "api_dispatch_pre_create_zero_memory_profile_search",
@@ -687,9 +700,11 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly orgId: string;
     readonly userId: string;
     readonly prompt: string;
+    readonly retrievalQuery?: string;
     readonly timing?: ZeroMemoryTimingObserver;
   },
 ): Promise<string | undefined> {
+  const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
   return await measureZeroMemoryTiming(
     args.timing,
     "runtime_injection",
@@ -701,6 +716,9 @@ async function loadMemoryRuntimeAppendSystemPrompt(
         orgId: args.orgId,
         userId: args.userId,
         prompt: args.prompt,
+        ...(args.retrievalQuery !== undefined
+          ? { retrievalQuery: args.retrievalQuery }
+          : {}),
         timing: args.timing,
       });
       return result.appendSystemPrompt || undefined;
@@ -710,6 +728,8 @@ async function loadMemoryRuntimeAppendSystemPrompt(
       memory_runtime_prompt_length_bucket: zeroMemoryPromptLengthBucket(
         args.prompt,
       ),
+      memory_runtime_search_query_length_bucket:
+        zeroMemoryPromptLengthBucket(searchQuery),
     },
   );
 }
@@ -919,6 +939,9 @@ async function buildZeroCreateAgentRunArgs(args: {
       orgId: command.auth.orgId,
       userId: command.auth.userId,
       prompt: command.body.prompt,
+      ...(command.memoryRuntimeRetrievalQuery !== undefined
+        ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
+        : {}),
       timing: memoryTiming,
     });
   return {

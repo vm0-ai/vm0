@@ -19,6 +19,7 @@ import type { RouteEntry } from "./route-entry";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
+import { cronArtifactPreviewRoutes } from "./routes/cron-artifact-preview";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
 import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat-thread-snapshots";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
@@ -141,6 +142,7 @@ import { zeroMeModelProvidersUpsertRoutes } from "./routes/zero-me-model-provide
 import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowTriggersRoutes } from "./routes/zero-workflow-triggers";
+import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
 import { zeroIntegrationsPhoneDownloadFileRoutes } from "./routes/zero-integrations-phone-download-file";
@@ -154,6 +156,10 @@ import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
+import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
+import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
+import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
+import { zeroIntegrationsTeamsUploadInitRoutes } from "./routes/zero-integrations-teams-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
 import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integrations-telegram-message";
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-integrations-telegram-upload-complete";
@@ -254,6 +260,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
+  ...cronArtifactPreviewRoutes,
   ...cronSummarizeMemoryRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
@@ -341,6 +348,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowTriggersRoutes,
+  ...zeroWorkflowQueueRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,
   ...zeroSlackConnectRoutes,
@@ -364,6 +372,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsSlackMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
+  ...zeroIntegrationsTeamsDownloadFileRoutes,
+  ...zeroIntegrationsTeamsMessageRoutes,
+  ...zeroIntegrationsTeamsUploadCompleteRoutes,
+  ...zeroIntegrationsTeamsUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
   ...zeroSteamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,

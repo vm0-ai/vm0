@@ -62,6 +62,20 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     target: "website",
   },
   {
+    id: "website-template:dot-matrix",
+    slug: "dot-matrix",
+    title: "Dot Matrix",
+    description:
+      "Kinetic website template with LED dot-matrix imagery, an oversized organic wordmark, numbered service indexing, and scrolling tag marquees.",
+    templateId: "template:dot-matrix",
+    resourceId: "template:dot-matrix",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/dot-matrix-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/dot-matrix-preview-960x540.webp`,
+    sourcePath: "dot-matrix",
+    target: "website",
+  },
+  {
     id: "website-template:frame-stack",
     slug: "frame-stack",
     title: "Frame Stack",
@@ -73,6 +87,20 @@ export const WEBSITE_TEMPLATE_ITEMS: readonly WebsiteTemplateItem[] = [
     previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frame-stack-example.html`,
     previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frame-stack-preview-480x270.webp`,
     sourcePath: "frame-stack",
+    target: "website",
+  },
+  {
+    id: "website-template:frosted-scatter",
+    slug: "frosted-scatter",
+    title: "Frosted Scatter",
+    description:
+      "Frosted-glass website template with scattered parallax photography, a flashlight grid cursor, line-by-line copy, and oversized numeric storytelling.",
+    templateId: "template:frosted-scatter",
+    resourceId: "template:frosted-scatter",
+    previewKind: "iframe",
+    previewUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frosted-scatter-example.html`,
+    previewImageUrl: `${WEBSITE_TEMPLATE_PREVIEW_BASE_URL}/frosted-scatter-preview-960x540.webp`,
+    sourcePath: "frosted-scatter",
     target: "website",
   },
   {

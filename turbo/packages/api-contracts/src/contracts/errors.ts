@@ -32,6 +32,10 @@ export const ApiError = {
     status: 503 as const,
     code: "PROVIDER_UNAVAILABLE",
   },
+  CONNECTOR_READINESS_TIMEOUT: {
+    status: 503 as const,
+    code: "CONNECTOR_READINESS_TIMEOUT",
+  },
   PROVIDER_DELETED: {
     status: 422 as const,
     code: "PROVIDER_DELETED",
@@ -181,6 +185,7 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Invalid signature in thinking block",
   "Run cancelled",
   "Selected model is at capacity. Please try a different model.",
+  "model is not supported when using Codex with a ChatGPT account",
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).
   // Codex: "You've hit your usage limit …"

@@ -15,6 +15,7 @@ import {
   type NotionDatabaseItemCreatedEventCreateConfig,
   type NotionPageContentUpdatedEventCreateConfig,
   type ZeroWorkflowDetailResponse,
+  type ZeroWorkflowConnectorReadinessResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
@@ -24,7 +25,7 @@ import {
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
 import {
@@ -41,6 +42,7 @@ import {
 } from "../route-paths.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
+import { onRejection } from "../utils.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -219,6 +221,27 @@ const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
 const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
 );
+type WorkflowConnectorReadinessState =
+  | {
+      readonly workflowId: string;
+      readonly requestId: string;
+      readonly status: "pending";
+    }
+  | {
+      readonly workflowId: string;
+      readonly requestId: string;
+      readonly status: "error";
+      readonly errorKind: "input-too-long" | "timeout" | "retry";
+    }
+  | {
+      readonly workflowId: string;
+      readonly requestId: string;
+      readonly status: "success";
+      readonly response: ZeroWorkflowConnectorReadinessResponse;
+    };
+
+const internalWorkflowConnectorReadiness$ =
+  state<WorkflowConnectorReadinessState | null>(null);
 
 export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
@@ -358,6 +381,10 @@ export const workflowMetadataPatch$ = computed((get) => {
   return get(internalWorkflowMetadataPatch$);
 });
 
+export const workflowConnectorReadiness$ = computed((get) => {
+  return get(internalWorkflowConnectorReadiness$);
+});
+
 export const patchWorkflowMetadataForm$ = command(
   (
     { set },
@@ -393,6 +420,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalEditingGithubLabelActors$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
+  set(internalWorkflowConnectorReadiness$, null);
 });
 
 export const workflowDetailActiveTab$ = computed((get) => {
@@ -590,6 +618,7 @@ export const reloadWorkflows$ = command(({ set }) => {
   set(internalWorkflowReload$, (prev) => {
     return prev + 1;
   });
+  set(internalWorkflowConnectorReadiness$, null);
 });
 
 /**
@@ -709,6 +738,58 @@ function createWorkflowDetailFactory(): (
 }
 
 export const workflowDetail = createWorkflowDetailFactory();
+
+export const checkWorkflowConnectorReadiness$ = command(
+  async ({ get, set }, workflowId: string, signal: AbortSignal) => {
+    const requestId = crypto.randomUUID();
+    set(internalWorkflowConnectorReadiness$, {
+      workflowId,
+      requestId,
+      status: "pending",
+    });
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const result = await onRejection(
+      accept(
+        client.connectorReadiness({
+          params: { workflowId },
+          fetchOptions: { signal },
+        }),
+        [200],
+        { toast: false },
+      ),
+      (error) => {
+        if (
+          !signal.aborted &&
+          get(internalWorkflowConnectorReadiness$)?.requestId === requestId
+        ) {
+          set(internalWorkflowConnectorReadiness$, {
+            workflowId,
+            requestId,
+            status: "error",
+            errorKind:
+              error instanceof ApiError &&
+              (error.status === 413 || error.code === "PAYLOAD_TOO_LARGE")
+                ? "input-too-long"
+                : error instanceof ApiError &&
+                    error.code === "CONNECTOR_READINESS_TIMEOUT"
+                  ? "timeout"
+                  : "retry",
+          });
+        }
+      },
+    );
+    signal.throwIfAborted();
+    if (get(internalWorkflowConnectorReadiness$)?.requestId !== requestId) {
+      return;
+    }
+    set(internalWorkflowConnectorReadiness$, {
+      workflowId,
+      requestId,
+      status: "success",
+      response: result.body,
+    });
+  },
+);
 
 export const updateWorkflow$ = command(
   async (

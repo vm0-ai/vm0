@@ -170,6 +170,14 @@ export {
   completeTelegramFileUpload,
 } from "./domains/integrations-telegram";
 
+// Domain modules - Integrations Teams
+export {
+  sendTeamsMessage,
+  initTeamsFileUpload,
+  completeTeamsFileUpload,
+  downloadTeamsFile,
+} from "./domains/integrations-teams";
+
 // Domain modules - Integrations GitHub
 export {
   downloadGithubFile,
@@ -206,7 +214,19 @@ export {
 } from "./domains/zero-relationships";
 
 // Domain modules - Zero Memory
-export { recallZeroMemory, getZeroMemoryContext } from "./domains/zero-memory";
+export {
+  createZeroMemory,
+  forgetZeroMemory,
+  forgetZeroMemoryByPrompt,
+  getZeroMemoryContext,
+  listZeroMemory,
+  listZeroMemoryDocuments,
+  listZeroMemoryForgotten,
+  listZeroMemoryHistory,
+  recallZeroMemory,
+  searchZeroMemory,
+  updateZeroMemory,
+} from "./domains/zero-memory";
 
 // Domain modules - Logs
 export {

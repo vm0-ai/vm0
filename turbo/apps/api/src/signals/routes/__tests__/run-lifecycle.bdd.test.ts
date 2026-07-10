@@ -7,6 +7,7 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
@@ -26,7 +27,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
+import {
+  seedLexicalRelationshipMemory,
+  seedMemoryDocumentChunk,
+} from "../../../test-fixtures/relationship-memory";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
@@ -215,6 +219,13 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
 const API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
 ] as const;
+const API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_memory_document_search",
+  "api_dispatch_pre_create_zero_memory_document_search_lexical",
+  "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+  "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+  "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+] as const;
 const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_memory_profile_static",
   "api_dispatch_pre_create_zero_memory_profile_dynamic",
@@ -230,6 +241,12 @@ const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
 ] as const;
 const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
   "memory_runtime_prompt_length_bucket",
+  "memory_runtime_search_query_length_bucket",
+  "memory_document_search_result_count_bucket",
+  "memory_document_lexical_candidate_count_bucket",
+  "memory_document_semantic_candidate_count_bucket",
+  "memory_document_hydration_candidate_count_bucket",
+  "memory_document_hydrated_result_count_bucket",
   "memory_profile_static_result_count_bucket",
   "memory_profile_dynamic_result_count_bucket",
   "memory_profile_search_result_count_bucket",
@@ -1068,6 +1085,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     const prompt = "security review answer";
     const seededMemoryText = "Send the security review answer to the customer.";
+    const documentTitle = "Security review answer playbook";
+    const documentText =
+      "Use the security review answer from the cited runbook.";
+    const documentExternalId = "runtime-document-timing-fixture";
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
@@ -1082,6 +1103,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "preference",
       text: seededMemoryText,
     });
+    const seededDocument = await seedMemoryDocumentChunk({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      title: documentTitle,
+      text: documentText,
+      externalId: documentExternalId,
+    });
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
 
     const created = await api.createRun(actor, {
       agentId,
@@ -1092,6 +1120,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const zeroMemoryActionTypes = new Set<string>([
       ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
       ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
     ]);
     const memoryTimingEvents = timingEvents.filter((event) => {
@@ -1104,25 +1133,31 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    const expectedProfileActionTypes =
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES.filter((actionType) => {
-        return (
-          actionType !==
-          "api_dispatch_pre_create_zero_memory_profile_search_semantic_query"
-        );
-      });
-    expectApiDispatchActions(timingEvents, expectedProfileActionTypes);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
     expectApiDispatchEventsSpanKind(
       timingEvents,
       [
         ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-        ...expectedProfileActionTypes,
+        ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+        ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
       ],
       "nested",
     );
-    expectNoApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
-    ]);
+    for (const event of memoryTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          zero_run_origin: "zero_run",
+          trigger_source: "web",
+        }),
+      );
+    }
 
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
@@ -1132,8 +1167,20 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         memory_runtime_injection_enabled: "true",
         memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "1_256",
         zero_run_origin: "zero_run",
         trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_lexical_candidate_count_bucket: "1",
+        memory_profile_lexical_query_eligible: "true",
       }),
     );
     expect(
@@ -1153,7 +1200,60 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_semantic_embedding_result: "empty",
+        memory_profile_semantic_embedding_result: "present",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_search_result_count_bucket: "1",
+        zero_run_origin: "zero_run",
+        trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_lexical_candidate_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_semantic_embedding_result: "present",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_semantic_candidate_count_bucket: "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_hydration_candidate_count_bucket: "1",
+        memory_document_hydrated_result_count_bucket: "1",
       }),
     );
     expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
@@ -1165,6 +1265,232 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       seeded.entityId,
       seeded.memoryId,
       seededMemoryText,
+      documentTitle,
+      documentText,
+      documentExternalId,
+      seededDocument.contextSpaceId,
+      seededDocument.documentId,
+      seededDocument.chunkId,
+      "vm0-ai/vm0",
+      "source-search-fixture",
+      "https://github.com/vm0-ai/vm0/issues/1",
+      "#1",
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("skips runtime memory lexical search for long noisy zero run prompts", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime long prompt test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const prompt = [
+      "# Current context",
+      "You are autonomously continuing a persistent goal on this web chat thread.",
+      "Everything you output is shown to the user in this thread.",
+      "# Active thread goal",
+      "Investigate the long runtime memory query shape for issue #20818 and keep working until the API path is fast.",
+      "# How to operate",
+      "Make concrete progress, persist progress externally, and continue without asking the user to wait.",
+    ].join("\n");
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "257_1024",
+        memory_runtime_search_query_length_bucket: "257_1024",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_lexical_candidate_count_bucket: "0",
+        memory_profile_lexical_query_eligible: "false",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_semantic_embedding_result: "empty",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_semantic_embedding_result: "empty",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_search_result_count_bucket: "0",
+        span_kind: "nested",
+        zero_run_origin: "zero_run",
+        trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_lexical_candidate_count_bucket: "0",
+        span_kind: "nested",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_hydration_candidate_count_bucket: "0",
+        memory_document_hydrated_result_count_bucket: "0",
+        span_kind: "nested",
+      }),
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+      "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+    ]);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      agentId,
+      actor.userId,
+      actor.orgId,
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("keeps short Unicode runtime memory queries eligible for lexical search", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime Unicode prompt test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const prompt = "\u{10428}".repeat(70);
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "1_256",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_profile_lexical_candidate_count_bucket: "0",
+        memory_profile_lexical_query_eligible: "true",
+      }),
+    );
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("reports empty runtime memory search queries after trimming run prompts", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Memory runtime empty query test requires an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt: "   ",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const timingEvents = apiDispatchTimingEventsForRun(created.runId);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_runtime_injection_enabled: "true",
+        memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
@@ -1197,10 +1523,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
-    );
+    expectNoApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
       "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
@@ -1209,6 +1535,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect.objectContaining({
         memory_runtime_injection_enabled: "false",
         memory_runtime_prompt_length_bucket: "1_256",
+        memory_runtime_search_query_length_bucket: "1_256",
       }),
     );
     expectApiDispatchTimingEventsNotToLeak(
@@ -3104,6 +3431,78 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
+  it("defaults limited-free runs to Terra, allows Luna, and rejects Sol", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected limited-free bootstrap agent");
+    }
+    const agentId = onboarding.defaultAgentId;
+    await expect(api.readBillingStatus(actor)).resolves.toMatchObject({
+      tier: "limited-free-1",
+      credits: 3000,
+      onboardingPaymentPending: false,
+    });
+    const modelPolicies = await misc.listModelPolicies(actor);
+    expect(modelPolicies.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(
+      modelPolicies.policies.find((policy) => {
+        return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+      }),
+    ).toMatchObject({ isDefault: true });
+
+    for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+      await seedVm0ManagedModelKey(model);
+      const sent = await chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          prompt: `limited-free ${model} run`,
+          model,
+        },
+        [201],
+      );
+      if (sent.status !== 201 || sent.body.runId === null) {
+        throw new Error(`Expected ${model} to create a run`);
+      }
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(sent.body.runId);
+      expect(claim.cliAgentType).toBe("codex");
+      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.modelUsageProvider).toBe(model);
+      await api.requestCancelRun(actor, sent.body.runId, [200]);
+    }
+
+    const solThreadId = randomUUID();
+    const sol = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        clientThreadId: solThreadId,
+        prompt: "limited-free Sol run",
+        model: "gpt-5.6-sol",
+      },
+      [402],
+    );
+    expectApiError(sol.body);
+    expect(sol.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    await chat.requestReadThread(actor, solThreadId, [404]);
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(0);
+    expect(queue.body.concurrency.active).toBe(0);
+  });
+
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
     const api = createRunsAutomationsApi(context);
     const selectedModel = await seedVm0ManagedDefaultModelKey();
@@ -3133,6 +3532,59 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("claims vm0 GPT 5.6 runs with the selected OpenAI runtime model", async () => {
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = "gpt-5.6-sol";
+    await seedVm0ManagedModelKey(selectedModel);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 built-in GPT 5.6 model provider",
+        model: selectedModel,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the GPT 5.6 chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderPlaceholder(
+        "openai-api-key",
+        "OPENAI_API_KEY",
+      ),
+      OPENAI_MODEL: selectedModel,
+    });
+    expect(claim.environment).not.toHaveProperty("OPENAI_BASE_URL");
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:openai-api-key");
+    expect(claim.billableFirewalls).toContain("model-provider:openai-api-key");
+    expect(claim.modelUsageProvider).toBe(selectedModel);
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {
@@ -4204,6 +4656,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
     );
     expect(hostClaim.environment?.GITLAB_HOST).toBe("gitlab.example.com");
+    expect(hostClaim.vars).toMatchObject({
+      GITLAB_HOST: "gitlab.example.com",
+    });
 
     await api.requestCancelRun(actor, withoutHost.runId, [200]);
     await api.requestCancelRun(actor, withHost.runId, [200]);
@@ -5656,10 +6111,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero developer-support --help",
       "zero maps --help",
       "zero slack message send --help",
+      "zero teams message send --help",
       "zero telegram bot list",
       "zero telegram message send --help",
       "zero phone message --help",
-      "do not invent `zero github message`, `zero teams message`, or `zero email message` commands",
+      "do not invent `zero github message` or `zero email message` commands",
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }

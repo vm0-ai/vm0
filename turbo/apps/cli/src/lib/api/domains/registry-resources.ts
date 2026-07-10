@@ -3,6 +3,7 @@ import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/r
 
 import { getClientConfig, handleError } from "../core/client-factory";
 
+// Keep registry resource downloads in the CLI release lifecycle.
 export async function getRegistryResourceDownload(query: {
   id: string;
 }): Promise<{

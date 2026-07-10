@@ -1410,6 +1410,14 @@ describe("CHAT-02: admission without spendable credits", () => {
     const agent = await bdd.createAgent(actor, {
       displayName: "Pro-suspend chat agent",
     });
+    if (!actor.orgId) {
+      throw new Error("Expected pro-suspend chat actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 0,
+    });
     await api.updateOrgModelPolicies(actor, [
       {
         model: "claude-sonnet-4-6",
@@ -1419,14 +1427,6 @@ describe("CHAT-02: admission without spendable credits", () => {
         modelProviderId: null,
       },
     ]);
-    if (!actor.orgId) {
-      throw new Error("Expected pro-suspend chat actor to have an org");
-    }
-    await seedOrgMetadata({
-      orgId: actor.orgId,
-      tier: "pro-suspend",
-      credits: 0,
-    });
 
     const clientMessageId = randomUUID();
     const sendBody: ChatRunSendBody = {

@@ -48,8 +48,8 @@ class _UsageBufferState:
         self._flush_sequence = 0
         self._buckets: dict[_DestinationKey, dict[_AggregateKey, _AggregateBucket]] = {}
         self._source_events: dict[_DestinationKey, list[_BufferedSourceEvent]] = {}
-        # Keep source keys across flushes so aggregate idempotency does not
-        # turn response/error duplicates into distinct server-side rows.
+        # Keep source and atomic admission keys across flushes so lifecycle
+        # duplicates do not become distinct server-side rows.
         self._seen_source_keys: OrderedDict[str, None] = OrderedDict()
         self._source_event_count = 0
         self._active_enqueue_count = 0
@@ -77,7 +77,15 @@ class _UsageBufferState:
         include_kind: bool,
         log_type: str,
         preserve_source_idempotency: bool,
+        atomic_source_key: str | None,
     ) -> int:
+        if atomic_source_key is not None:
+            events = tuple(events)
+            if atomic_source_key in self._seen_source_keys or any(
+                event["idempotencyKey"] in self._seen_source_keys for event in events
+            ):
+                return 0
+
         buckets: dict[_AggregateKey, _AggregateBucket] | None = None
         source_events: list[_BufferedSourceEvent] | None = None
         destination = _DestinationKey(
@@ -112,6 +120,10 @@ class _UsageBufferState:
                 bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
+        # Keep the admission key newer than its member keys so its bounded LRU
+        # lifetime covers the entire group.
+        if atomic_source_key is not None and accepted_count > 0:
+            self._seen_source_keys[atomic_source_key] = None
         self._evict_source_keys()
         return accepted_count
 
