@@ -18,13 +18,13 @@ if [ -L "$AGENT_SKILLS_LINK" ]; then
   ln -sfn "$LINK_TARGET" "$AGENT_SKILLS_LINK"
 elif [ -e "$AGENT_SKILLS_LINK" ]; then
   if [ ! -d "$AGENT_SKILLS_LINK" ]; then
-    echo "Refusing to replace non-directory: $AGENT_SKILLS_LINK" >&2
-    exit 1
+    echo "Skipping .agents/skills link because a non-directory entry already exists"
+    exit 0
   fi
 
   if find "$AGENT_SKILLS_LINK" -mindepth 1 -maxdepth 1 ! -type l | grep -q .; then
-    echo "Refusing to replace .agents/skills because it contains non-symlink entries" >&2
-    exit 1
+    echo "Skipping .agents/skills link because it contains non-symlink entries"
+    exit 0
   fi
 
   find "$AGENT_SKILLS_LINK" -mindepth 1 -maxdepth 1 -type l -exec rm {} +
