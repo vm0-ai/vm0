@@ -15,7 +15,8 @@ mod plan;
 mod source;
 
 use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
-use manifest::{Manifest, ManifestLoadError};
+use guest_contracts::storage_manifest::Manifest;
+use manifest::ManifestLoadError;
 use plan::{EmptyArtifactPreparation, RunPlan};
 use std::fs;
 use std::time::Instant;
@@ -25,7 +26,7 @@ const LOG_TAG: &str = "sandbox:download";
 /// Run the download process for the given manifest file.
 /// Returns `true` if all downloads succeeded, `false` otherwise.
 pub fn run(manifest_path: &str) -> bool {
-    let manifest = match Manifest::load(manifest_path) {
+    let manifest = match manifest::load(manifest_path) {
         Ok(manifest) => manifest,
         Err(ManifestLoadError::Read(e)) => {
             log_error!(LOG_TAG, "Failed to read manifest: {e}");
@@ -43,7 +44,7 @@ pub fn run(manifest_path: &str) -> bool {
 /// Run the download process for a manifest supplied as JSON bytes.
 /// Returns `true` if all downloads succeeded, `false` otherwise.
 pub fn run_manifest_bytes(manifest_json: &[u8]) -> bool {
-    let manifest = match Manifest::parse(manifest_json) {
+    let manifest = match manifest::parse(manifest_json) {
         Ok(manifest) => manifest,
         Err(e) => {
             log_error!(LOG_TAG, "Failed to parse manifest: {e}");
