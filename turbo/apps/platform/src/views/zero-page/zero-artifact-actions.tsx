@@ -23,7 +23,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import {
   OAUTH_WEB_API_BASE,
   zeroClient$,
@@ -42,9 +42,8 @@ import {
   startArtifactDownload$,
 } from "../../signals/zero-page/zero-artifact-actions.ts";
 import {
-  type ArtifactGoogleDriveSyncFile,
   syncArtifactFileToGoogleDrive,
-  waitForGoogleDriveAndSyncArtifacts$,
+  waitForGoogleDriveAuthorization$,
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import { uploadPresentationToGoogleSlides$ } from "../../signals/chat-page/artifact-google-slides-upload.ts";
 import {
@@ -98,14 +97,12 @@ function artifactDownloadFilename(
     : filename;
 }
 
-type WaitForGoogleDriveAndSyncArtifactsFn = (
-  params: {
-    readonly agentId: string;
-    readonly threadId: string;
-    readonly files: readonly ArtifactGoogleDriveSyncFile[];
-  },
+type WaitForGoogleDriveAuthorizationFn = (
+  params: { readonly agentId: string },
   signal: AbortSignal,
 ) => Promise<unknown>;
+
+type GoogleDriveReadyRun = () => Promise<void>;
 
 export type ArtifactDownloadSyncTarget = {
   readonly agentId: string | null | undefined;
@@ -134,14 +131,38 @@ function isPlainPrimaryLinkClick(
   );
 }
 
-function startGoogleDriveConnectAndSync(params: {
+function runWhenGoogleDriveReady(params: {
+  agentId: string | null | undefined;
+  pageSignal: AbortSignal;
+  run: GoogleDriveReadyRun;
+  waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
+  description: string;
+}): void {
+  if (!params.agentId) {
+    toast.error("Agent is still loading");
+    return;
+  }
+  const agentId = params.agentId;
+  detach(
+    (async () => {
+      await params.waitForGoogleDriveAuthorization(
+        { agentId },
+        params.pageSignal,
+      );
+      await params.run();
+    })(),
+    Reason.DomCallback,
+    params.description,
+  );
+}
+
+function startGoogleDriveConnectAndRun(params: {
   agentId: string | null | undefined;
   createClient: ZeroClientFactory;
-  file: ArtifactGoogleDriveSyncFile;
   pageSignal: AbortSignal;
-  threadId: string;
-  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
-  onSyncComplete: () => void;
+  run: GoogleDriveReadyRun;
+  waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
+  description: string;
 }): void {
   if (!params.agentId) {
     toast.error("Agent is still loading");
@@ -156,7 +177,6 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Failed to open Google Drive connection page");
     return;
   }
-  const agentId = params.agentId;
   detach(
     (async () => {
       const client = params.createClient(zeroConnectorOauthStartContract, {
@@ -176,67 +196,23 @@ function startGoogleDriveConnectAndSync(params: {
     Reason.DomCallback,
     "artifact google drive oauth start",
   );
-  detach(
-    (async () => {
-      await params.waitForGoogleDriveAndSyncArtifacts(
-        {
-          agentId,
-          threadId: params.threadId,
-          files: [params.file],
-        },
-        params.pageSignal,
-      );
-      params.onSyncComplete();
-    })(),
-    Reason.DomCallback,
-    "artifact google drive connect sync",
-  );
+  runWhenGoogleDriveReady({
+    agentId: params.agentId,
+    pageSignal: params.pageSignal,
+    run: params.run,
+    waitForGoogleDriveAuthorization: params.waitForGoogleDriveAuthorization,
+    description: params.description,
+  });
 }
 
-function syncArtifactToGoogleDriveAndRefresh(params: {
-  sync: Promise<boolean>;
-  onSyncSuccess: () => void;
-}): void {
-  detach(
-    (async () => {
-      const success = await params.sync;
-      if (success) {
-        params.onSyncSuccess();
-      }
-    })(),
-    Reason.DomCallback,
-    "artifact google drive sync",
-  );
-}
-
-function authorizeGoogleDriveAndSyncArtifacts(params: {
+function authorizeGoogleDriveAndRun(params: {
   agentId: string | null | undefined;
-  file: ArtifactGoogleDriveSyncFile;
   pageSignal: AbortSignal;
-  threadId: string;
-  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
-  onSyncComplete: () => void;
+  run: GoogleDriveReadyRun;
+  waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
+  description: string;
 }): void {
-  if (!params.agentId) {
-    toast.error("Agent is still loading");
-    return;
-  }
-  const agentId = params.agentId;
-  detach(
-    (async () => {
-      await params.waitForGoogleDriveAndSyncArtifacts(
-        {
-          agentId,
-          threadId: params.threadId,
-          files: [params.file],
-        },
-        params.pageSignal,
-      );
-      params.onSyncComplete();
-    })(),
-    Reason.DomCallback,
-    "artifact google drive authorize sync",
-  );
+  runWhenGoogleDriveReady(params);
 }
 
 async function downloadPresentationPptx(params: {
@@ -260,38 +236,37 @@ type UploadPresentationSlidesFn = (
   signal: AbortSignal,
 ) => Promise<{ readonly webViewLink: string | null }>;
 
-function uploadPresentationToGoogleSlides(params: {
+async function uploadPresentationToGoogleSlides(params: {
   filename: string;
   pageSignal: AbortSignal;
   threadId: string;
   upload: UploadPresentationSlidesFn;
   url: string;
-}): void {
+}): Promise<void> {
   const toastId = toast.loading("Uploading to Google Slides...");
-  detach(
-    tapError(
-      (async () => {
-        const built = await buildPresentationHtmlPptxBlobFromUrl({
-          filename: params.filename,
-          signal: params.pageSignal,
-          url: params.url,
-        });
-        await params.upload(
-          {
-            threadId: params.threadId,
-            filename: built.filename,
-            blob: built.blob,
-          },
-          params.pageSignal,
-        );
-        toast.success("Uploaded to Google Slides", { id: toastId });
-      })(),
-      () => {
-        toast.dismiss(toastId);
-      },
-    ),
-    Reason.DomCallback,
-    "presentation google slides upload",
+  await tapError(
+    (async () => {
+      const built = await buildPresentationHtmlPptxBlobFromUrl({
+        filename: params.filename,
+        signal: params.pageSignal,
+        url: params.url,
+      });
+      await params.upload(
+        {
+          threadId: params.threadId,
+          filename: built.filename,
+          blob: built.blob,
+        },
+        params.pageSignal,
+      );
+      toast.success("Uploaded to Google Slides", { id: toastId });
+    })(),
+    (error) => {
+      toast.dismiss(toastId);
+      if (!(error instanceof ApiError)) {
+        toast.error("Failed to upload to Google Slides");
+      }
+    },
   );
 }
 
@@ -390,13 +365,9 @@ function ArtifactDownloadMenuItem({
   );
 }
 
-function GoogleDriveMenuItem({
-  closeMenu,
-  syncTarget,
-}: {
-  closeMenu: () => void;
-  syncTarget?: ArtifactDownloadSyncTarget;
-}) {
+function useGoogleDriveAvailability(
+  syncTarget: ArtifactDownloadSyncTarget | undefined,
+) {
   const connectorListLoadable = useLoadable(connectors$);
   const lastConnectorList = useLastResolved(connectors$);
   const connectorList =
@@ -405,7 +376,6 @@ function GoogleDriveMenuItem({
       : connectorListLoadable.state === "loading"
         ? lastConnectorList
         : undefined;
-  const connectorListLoaded = connectorList !== undefined;
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
       return (
@@ -413,12 +383,27 @@ function GoogleDriveMenuItem({
         connector.connectionStatus === "connected"
       );
     }) ?? false;
-  const googleDriveReady =
-    googleDriveConnected && syncTarget?.disconnected !== true;
+
+  return {
+    connectorListLoaded: connectorList !== undefined,
+    googleDriveConnected,
+    googleDriveReady: googleDriveConnected && syncTarget?.disconnected !== true,
+  };
+}
+
+function GoogleDriveMenuItem({
+  closeMenu,
+  syncTarget,
+}: {
+  closeMenu: () => void;
+  syncTarget?: ArtifactDownloadSyncTarget;
+}) {
+  const { connectorListLoaded, googleDriveConnected, googleDriveReady } =
+    useGoogleDriveAvailability(syncTarget);
   const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
-  const waitForGoogleDriveAndSyncArtifacts = useSet(
-    waitForGoogleDriveAndSyncArtifacts$,
+  const waitForGoogleDriveAuthorization = useSet(
+    waitForGoogleDriveAuthorization$,
   );
 
   if (!syncTarget) {
@@ -455,44 +440,40 @@ function GoogleDriveMenuItem({
 
   const syncOrConnect = () => {
     closeMenu();
-    const file = {
-      runId: syncTarget.runId,
-      fileId: syncTarget.fileId,
-      filename: syncTarget.filename,
+    const run = async () => {
+      const success = await syncArtifactFileToGoogleDrive({
+        createClient,
+        threadId: syncTarget.threadId,
+        runId: syncTarget.runId,
+        fileId: syncTarget.fileId,
+        filename: syncTarget.filename,
+        signal: pageSignal,
+      });
+      if (success) {
+        syncTarget.onSyncSuccess();
+      }
     };
     if (googleDriveReady) {
-      syncArtifactToGoogleDriveAndRefresh({
-        sync: syncArtifactFileToGoogleDrive({
-          createClient,
-          threadId: syncTarget.threadId,
-          runId: syncTarget.runId,
-          fileId: syncTarget.fileId,
-          filename: syncTarget.filename,
-          signal: pageSignal,
-        }),
-        onSyncSuccess: syncTarget.onSyncSuccess,
-      });
+      detach(run(), Reason.DomCallback, "artifact google drive sync");
       return;
     }
     if (googleDriveConnected) {
-      authorizeGoogleDriveAndSyncArtifacts({
+      authorizeGoogleDriveAndRun({
         agentId: syncTarget.agentId,
-        file,
         pageSignal,
-        threadId: syncTarget.threadId,
-        waitForGoogleDriveAndSyncArtifacts,
-        onSyncComplete: syncTarget.onSyncSuccess,
+        run,
+        waitForGoogleDriveAuthorization,
+        description: "artifact google drive authorize sync",
       });
       return;
     }
-    startGoogleDriveConnectAndSync({
+    startGoogleDriveConnectAndRun({
       agentId: syncTarget.agentId,
       createClient,
-      file,
       pageSignal,
-      threadId: syncTarget.threadId,
-      waitForGoogleDriveAndSyncArtifacts,
-      onSyncComplete: syncTarget.onSyncSuccess,
+      run,
+      waitForGoogleDriveAuthorization,
+      description: "artifact google drive connect sync",
     });
   };
 
@@ -525,31 +506,76 @@ function GoogleDriveMenuItem({
 function GoogleSlidesMenuItem({
   closeMenu,
   filename,
+  syncTarget,
   threadId,
   url,
 }: {
   closeMenu: () => void;
   filename: string;
+  syncTarget: ArtifactDownloadSyncTarget;
   threadId: string;
   url: string;
 }) {
+  const { connectorListLoaded, googleDriveConnected, googleDriveReady } =
+    useGoogleDriveAvailability(syncTarget);
+  const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
   const upload = useSet(uploadPresentationToGoogleSlides$);
+  const waitForGoogleDriveAuthorization = useSet(
+    waitForGoogleDriveAuthorization$,
+  );
+  const run = () => {
+    return uploadPresentationToGoogleSlides({
+      filename,
+      pageSignal,
+      threadId,
+      upload,
+      url,
+    });
+  };
+
+  if (!connectorListLoaded) {
+    return (
+      <ArtifactDownloadMenuItem disabled>
+        <IconPresentation size={14} stroke={1.5} />
+        Connect Google Drive
+      </ArtifactDownloadMenuItem>
+    );
+  }
+
+  const connectOrUpload = () => {
+    closeMenu();
+    if (googleDriveReady) {
+      detach(run(), Reason.DomCallback, "presentation google slides upload");
+      return;
+    }
+    if (googleDriveConnected) {
+      authorizeGoogleDriveAndRun({
+        agentId: syncTarget.agentId,
+        pageSignal,
+        run,
+        waitForGoogleDriveAuthorization,
+        description: "presentation google slides authorize upload",
+      });
+      return;
+    }
+    startGoogleDriveConnectAndRun({
+      agentId: syncTarget.agentId,
+      createClient,
+      pageSignal,
+      run,
+      waitForGoogleDriveAuthorization,
+      description: "presentation google slides connect upload",
+    });
+  };
+
+  const label = googleDriveReady
+    ? "Upload to Google Slides"
+    : "Connect Google Drive";
   return (
-    <ArtifactDownloadMenuItem
-      onClick={() => {
-        closeMenu();
-        uploadPresentationToGoogleSlides({
-          filename,
-          pageSignal,
-          threadId,
-          upload,
-          url,
-        });
-      }}
-    >
+    <ArtifactDownloadMenuItem onClick={connectOrUpload}>
       <IconPresentation size={14} stroke={1.5} />
-      Upload to Google Slides
+      {label}
     </ArtifactDownloadMenuItem>
   );
 }
@@ -723,6 +749,7 @@ export function ArtifactDownloadMenu({
           <GoogleSlidesMenuItem
             closeMenu={closeMenu}
             filename={downloadFilename}
+            syncTarget={syncTarget}
             threadId={syncTarget.threadId}
             url={url}
           />

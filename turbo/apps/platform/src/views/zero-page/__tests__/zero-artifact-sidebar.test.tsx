@@ -2116,6 +2116,35 @@ describe("zero artifact sidebar", () => {
     }
   });
 
+  it("requires Google Drive connection before uploading a presentation to Google Slides", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      const connectActions = queryAllByRoleFast("menuitem").filter(
+        (element) => {
+          return element.textContent?.trim() === "Connect Google Drive";
+        },
+      );
+      expect(connectActions).toHaveLength(2);
+      expect(
+        queryAllByRoleFast("menuitem").find((element) => {
+          return element.textContent?.trim() === "Upload to Google Slides";
+        }),
+      ).toBeUndefined();
+    });
+  });
+
   it("preserves deck-level slide backgrounds for editable PPTX export", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/dog-world.html";
     const downloads = captureDownloads(context.signal);

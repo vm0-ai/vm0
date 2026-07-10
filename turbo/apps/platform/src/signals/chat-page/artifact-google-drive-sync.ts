@@ -165,14 +165,14 @@ async function authorizeGoogleDriveForAgent(params: {
   params.signal.throwIfAborted();
 }
 
-export const waitForGoogleDriveAndSyncArtifacts$ = command(
+export const waitForGoogleDriveAuthorization$ = command(
   async (
-    { set },
-    params: ArtifactGoogleDriveSyncFilesParams & { readonly agentId: string },
+    { get, set },
+    params: { readonly agentId: string },
     signal: AbortSignal,
-  ) => {
-    const syncWhenConnected$ = command(
-      async ({ get, set }, sig: AbortSignal) => {
+  ): Promise<void> => {
+    const authorizeWhenConnected$ = command(
+      async ({ get, set }, sig: AbortSignal): Promise<boolean> => {
         set(reloadConnectors$);
         const { connectors } = await get(connectors$);
         sig.throwIfAborted();
@@ -186,11 +186,10 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
           return false;
         }
 
-        const createClient = get(zeroClient$);
         await withCleanup(
           authorizeGoogleDriveForAgent({
             agentId: params.agentId,
-            createClient,
+            createClient: get(zeroClient$),
             signal: sig,
           }),
           () => {
@@ -198,25 +197,39 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
           },
         );
         sig.throwIfAborted();
-
-        await syncArtifactFilesToGoogleDrive({
-          createClient,
-          threadId: params.threadId,
-          files: params.files,
-          signal: sig,
-        });
         return true;
       },
     );
 
-    if (await set(syncWhenConnected$, signal)) {
+    if (await set(authorizeWhenConnected$, signal)) {
       return;
     }
     signal.throwIfAborted();
     await set(
       setAblyLoop$,
-      { topic: "connector:changed", loopCommand$: syncWhenConnected$ },
+      { topic: "connector:changed", loopCommand$: authorizeWhenConnected$ },
       signal,
     );
+  },
+);
+
+export const waitForGoogleDriveAndSyncArtifacts$ = command(
+  async (
+    { get, set },
+    params: ArtifactGoogleDriveSyncFilesParams & { readonly agentId: string },
+    signal: AbortSignal,
+  ) => {
+    await set(
+      waitForGoogleDriveAuthorization$,
+      { agentId: params.agentId },
+      signal,
+    );
+    signal.throwIfAborted();
+    await syncArtifactFilesToGoogleDrive({
+      createClient: get(zeroClient$),
+      threadId: params.threadId,
+      files: params.files,
+      signal,
+    });
   },
 );
