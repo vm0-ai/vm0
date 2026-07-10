@@ -1,8 +1,7 @@
 import { command } from "ccstate";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
 const PPTX_MIME_TYPE =
@@ -75,12 +74,7 @@ export const uploadPresentationToGoogleSlides$ = command(
       return stagedResult.body;
     }
     if (stagedResult.body.error.message !== "No presentation file provided") {
-      toast.error(stagedResult.body.error.message);
-      throw new ApiError(
-        stagedResult.body.error.message,
-        stagedResult.body.error.code,
-        stagedResult.status,
-      );
+      return await accept(Promise.resolve(stagedResult), [200]);
     }
 
     // Rollout compatibility with API revisions before staged Slides uploads.
