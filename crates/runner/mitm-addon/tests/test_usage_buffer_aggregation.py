@@ -112,6 +112,132 @@ def test_source_preserving_usage_buffer_keeps_source_idempotency_keys(tmp_path):
     }
 
 
+def test_source_preserving_atomic_group_rejects_repeated_group_key(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [],
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 0
+    )
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                event(source_key="source-input", quantity=10),
+                event(
+                    source_key="source-cache-read",
+                    category="tokens.cache_read",
+                    quantity=4,
+                ),
+            ],
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 2
+    )
+    assert (
+        usage.buffer_source_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                event(
+                    source_key="source-cache-creation",
+                    category="tokens.cache_creation",
+                    quantity=3,
+                )
+            ],
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 0
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload == {
+        "runId": "run-1",
+        "events": [
+            {
+                "idempotencyKey": "source-input",
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 10,
+            },
+            {
+                "idempotencyKey": "source-cache-read",
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.cache_read",
+                "quantity": 4,
+            },
+        ],
+    }
+
+
+def test_source_preserving_atomic_group_rejects_when_member_key_was_seen(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    url = "https://api.test/api/webhooks/agent/usage-event"
+
+    assert (
+        usage.buffer_source_usage_events(
+            url,
+            "token-a",
+            "run-1",
+            [event(source_key="source-input", quantity=10)],
+            proxy_log_path,
+        )
+        == 1
+    )
+    assert (
+        usage.buffer_source_usage_events(
+            url,
+            "token-a",
+            "run-1",
+            [
+                event(source_key="source-input", quantity=20),
+                event(
+                    source_key="source-cache-read",
+                    category="tokens.cache_read",
+                    quantity=8,
+                ),
+            ],
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 0
+    )
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    enqueue.assert_called_once()
+    assert enqueue.last_call.payload == {
+        "runId": "run-1",
+        "events": [
+            {
+                "idempotencyKey": "source-input",
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 10,
+            }
+        ],
+    }
+
+
 def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)

@@ -563,6 +563,7 @@ def test_merge_cache_creation_positive_usage_owns_metadata():
         {
             "message_id": "resp_2",
             "model": "gpt-5.6-sol",
+            "tokens.input": 0,
             "tokens.cache_creation": 7,
         },
     )
@@ -570,6 +571,7 @@ def test_merge_cache_creation_positive_usage_owns_metadata():
     assert target == {
         "message_id": "resp_2",
         "model": "gpt-5.6-sol",
+        "tokens.input": 0,
         "tokens.output": 10,
         "tokens.cache_creation": 7,
     }

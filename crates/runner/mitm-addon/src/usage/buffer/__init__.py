@@ -122,8 +122,15 @@ def buffer_source_usage_events(
     run_id: str,
     events: Iterable[UsageEvent],
     proxy_log_path: str,
+    *,
+    atomic_source_key: str | None = None,
 ) -> int:
-    """Buffer source events without replacing their idempotency keys."""
+    """Buffer source events without replacing their idempotency keys.
+
+    When ``atomic_source_key`` is provided, the batch is admitted only when the
+    group key and every member event key are new to the bounded source-key set.
+    The internal group key is not included in the webhook payload.
+    """
     return _usage_event_buffer.buffer_usage_events(
         url,
         sandbox_token,
@@ -131,6 +138,7 @@ def buffer_source_usage_events(
         events,
         proxy_log_path,
         preserve_source_idempotency=True,
+        atomic_source_key=atomic_source_key,
     )
 
 
@@ -140,8 +148,10 @@ def buffer_source_model_usage_observations(
     run_id: str,
     events: Iterable[UsageEvent],
     proxy_log_path: str,
+    *,
+    atomic_source_key: str | None = None,
 ) -> int:
-    """Buffer model usage observations without replacing their source keys."""
+    """Buffer source observations, optionally admitting the batch atomically."""
     return _usage_event_buffer.buffer_usage_events(
         url,
         sandbox_token,
@@ -152,6 +162,7 @@ def buffer_source_model_usage_observations(
         include_kind=False,
         log_type="model_usage_observation",
         preserve_source_idempotency=True,
+        atomic_source_key=atomic_source_key,
     )
 
 

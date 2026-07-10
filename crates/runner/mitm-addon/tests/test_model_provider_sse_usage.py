@@ -1,6 +1,7 @@
 """Tests for model-provider SSE usage reporting paths."""
 
 import gzip
+import json
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -416,3 +417,81 @@ class TestModelProviderSseUsage:
         for key in idempotency_by_category.values():
             uuid.UUID(key)
         assert {event["provider"] for event in events} == {"gpt-5.5"}
+
+    @pytest.mark.parametrize(
+        "later_cache_write_tokens",
+        [0, None],
+        ids=["zero", "omitted"],
+    )
+    def test_full_pipeline_model_sse_raw_snapshots_preserve_input_partition(
+        self,
+        tmp_path,
+        real_flow,
+        later_cache_write_tokens,
+    ):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+        later_input_details = {"cached_tokens": 20}
+        if later_cache_write_tokens is not None:
+            later_input_details["cache_write_tokens"] = later_cache_write_tokens
+        first_snapshot = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_sse_partition",
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 0,
+                    "input_tokens_details": {
+                        "cached_tokens": 20,
+                        "cache_write_tokens": 30,
+                    },
+                },
+            },
+        }
+        later_snapshot = {
+            "type": "response.done",
+            "response": {
+                "id": "resp_sse_partition",
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 40,
+                    "input_tokens_details": later_input_details,
+                },
+            },
+        }
+        response_stream(flow)(
+            b"event: response.completed\n"
+            + b"data: "
+            + json.dumps(first_snapshot).encode()
+            + b"\n\n"
+            + b"event: response.done\n"
+            + b"data: "
+            + json.dumps(later_snapshot).encode()
+            + b"\n\n"
+        )
+
+        webhook = self._run_response(flow)
+
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert len(events) == len(by_category) == 4
+        assert by_category == {
+            "tokens.input": 50,
+            "tokens.output": 40,
+            "tokens.cache_read": 20,
+            "tokens.cache_creation": 30,
+        }
+        assert (
+            by_category["tokens.input"]
+            + by_category["tokens.cache_read"]
+            + by_category["tokens.cache_creation"]
+            == 100
+        )
+        observation_events = webhook.model_usage_observation_events()
+        observations_by_category = {
+            event["category"]: event["quantity"] for event in observation_events
+        }
+        assert len(observation_events) == len(observations_by_category) == 4
+        assert observations_by_category == by_category
