@@ -22,6 +22,23 @@ const MAX_X_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const X_MEDIA_UPLOAD_URL = "https://api.x.com/2/media/upload";
 const X_CREATE_POST_URL = "https://api.x.com/2/tweets";
 
+class OversizedImageChunk extends Uint8Array {
+  override get byteLength(): number {
+    return MAX_X_IMAGE_SIZE_BYTES + 1;
+  }
+}
+
+function oversizedImageBody(): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      // Keep the integration test fast while exercising the response-stream
+      // byte counter independently of Content-Length.
+      controller.enqueue(new OversizedImageChunk(1));
+      controller.close();
+    },
+  });
+}
+
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
@@ -32,6 +49,7 @@ function client() {
 
 function mockXImageShareProvider(options?: {
   readonly contentLength?: string | null;
+  readonly imageBody?: BodyInit;
   readonly imageBytes?: Uint8Array;
 }): {
   readonly mediaUploadBodies: unknown[];
@@ -40,6 +58,7 @@ function mockXImageShareProvider(options?: {
   const mediaUploadBodies: unknown[] = [];
   const createPostBodies: unknown[] = [];
   const imageBytes = options?.imageBytes ?? new Uint8Array(IMAGE_BYTES);
+  const imageBody = options?.imageBody ?? imageBytes;
   const contentLength =
     options?.contentLength === undefined
       ? String(imageBytes.byteLength)
@@ -47,7 +66,7 @@ function mockXImageShareProvider(options?: {
 
   server.use(
     http.get(IMAGE_URL, () => {
-      return new HttpResponse(imageBytes, {
+      return new HttpResponse(imageBody, {
         headers: {
           ...(contentLength === null
             ? {}
@@ -144,7 +163,7 @@ describe("POST /api/zero/image-share/x", () => {
     await setupAuthenticatedXActor();
     const provider = mockXImageShareProvider({
       contentLength: null,
-      imageBytes: new Uint8Array(MAX_X_IMAGE_SIZE_BYTES + 1),
+      imageBody: oversizedImageBody(),
     });
 
     const response = await accept(
@@ -163,13 +182,13 @@ describe("POST /api/zero/image-share/x", () => {
     });
     expect(provider.mediaUploadBodies).toStrictEqual([]);
     expect(provider.createPostBodies).toStrictEqual([]);
-  }, 60_000);
+  });
 
   it("rejects an oversized image with a lying content-length header", async () => {
     await setupAuthenticatedXActor();
     const provider = mockXImageShareProvider({
       contentLength: "1",
-      imageBytes: new Uint8Array(MAX_X_IMAGE_SIZE_BYTES + 1),
+      imageBody: oversizedImageBody(),
     });
 
     const response = await accept(
@@ -188,5 +207,5 @@ describe("POST /api/zero/image-share/x", () => {
     });
     expect(provider.mediaUploadBodies).toStrictEqual([]);
     expect(provider.createPostBodies).toStrictEqual([]);
-  }, 60_000);
+  });
 });
