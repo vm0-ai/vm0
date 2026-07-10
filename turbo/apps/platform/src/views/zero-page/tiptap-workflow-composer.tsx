@@ -336,10 +336,11 @@ function slashCaretPosition(
 }
 
 function slashCaretRect(caret: SlashCaretPosition): DOMRect {
-  const viewport = window.visualViewport;
-  const left = caret.left + (viewport?.offsetLeft ?? 0);
-  const top = caret.top + (viewport?.offsetTop ?? 0);
-  return new DOMRect(left, top, 0, caret.height);
+  // coordsAtPos already returns viewport coordinates. Radix uses Floating UI's
+  // fixed strategy, which applies WebKit's visual-viewport offset itself when
+  // the virtual element has a contextElement. Adding it here as well moves the
+  // anchor twice when the iOS keyboard is open.
+  return new DOMRect(caret.left, caret.top, 0, caret.height);
 }
 
 function slashCaretVirtualRef(

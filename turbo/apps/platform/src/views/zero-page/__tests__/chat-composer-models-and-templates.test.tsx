@@ -877,6 +877,11 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
+    const root = document.createElement("div");
+    root.id = "root";
+    root.style.padding = "44px 6px 8px 10px";
+    document.body.append(root);
+    const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle");
     const editor = await findComposerEditor();
     await user.click(editor);
     await user.keyboard("/");
@@ -890,6 +895,8 @@ describe("chat composer models", () => {
     // cross-browser placement), so it lives outside the composer element.
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
     expect(slashWorkflowMenu).toBeInTheDocument();
+    expect(getComputedStyleSpy).toHaveBeenCalledWith(root);
+    root.remove();
     expect(slashWorkflowMenu).toHaveClass(
       "h-[min(16rem,var(--radix-popover-content-available-height))]",
       "md:h-[min(20rem,var(--radix-popover-content-available-height))]",
