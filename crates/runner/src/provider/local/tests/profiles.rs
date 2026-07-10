@@ -15,7 +15,7 @@ async fn discover_returns_profile_from_job() {
 }
 
 #[tokio::test]
-async fn discover_defaults_profile_when_missing() {
+async fn discover_and_claim_defaults_profile_when_missing() {
     let dir = tempfile::tempdir().unwrap();
     let cancel = CancellationToken::new();
     let provider = default_provider(dir.path(), cancel, empty_cancel_tokens());
@@ -32,6 +32,7 @@ async fn discover_defaults_profile_when_missing() {
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.run_id(), job_id);
     assert_eq!(candidate.profile_name(), crate::profile::DEFAULT_PROFILE);
+    assert!(provider.claim(candidate).await.is_some());
 }
 
 #[tokio::test]
