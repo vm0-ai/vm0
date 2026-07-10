@@ -395,6 +395,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ArtifactFavorites]: {
+    maintainer: "bingjie@vm0.ai",
+    description: "Enable favoriting artifacts on the Artifacts page.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ArtifactPreviewImage]: {
     maintainer: "bingjie@vm0.ai",
     description:
@@ -402,9 +408,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ArtifactFavorites]: {
+  [FeatureSwitchKey.ArtifactVideoPreview]: {
     maintainer: "bingjie@vm0.ai",
-    description: "Enable favoriting artifacts on the Artifacts page.",
+    description:
+      "Extract a static poster frame for video artifacts (via Cloudflare Media Transformations) so the artifacts grid shows an image instead of loading each video.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

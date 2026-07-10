@@ -15,12 +15,14 @@ export const testArtifactPreviewStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("mark-preview-cron-eligible"),
       run_id: z.string(),
       url: z.string(),
+      generated_by: z.string().optional(),
     }),
   ],
 );
 
 export const testArtifactPreviewStateActionResponseSchema = z.object({
   ok: z.literal(true),
+  ids: z.array(z.string()).optional(),
   updated: z.number().optional(),
 });
 

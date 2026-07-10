@@ -36,6 +36,11 @@ const PREVIEW_VIEWPORT = {
 const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
 
+// Videos are immutable, so a fixed poster key (no versioning) is fine. The
+// Cloudflare Media Transformations frame endpoint only outputs jpg/png.
+const VIDEO_POSTER_FILENAME = "poster.jpg";
+const VIDEO_POSTER_CONTENT_TYPE = "image/jpeg";
+
 interface PreviewCandidateCursor {
   readonly createdAt: Date;
   readonly id: string;
@@ -48,6 +53,9 @@ export interface RenderArtifactPreviewArgs {
   readonly userId: string;
   readonly orgId: string | null;
   readonly url: string;
+  // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
+  // Browser Rendering page screenshot.
+  readonly contentType: string | null;
   // Versions the preview key so each deployment gets a fresh, CDN-cache-busting
   // URL instead of overwriting a stale object at a fixed key.
   readonly deploymentId: string | null;
@@ -60,11 +68,42 @@ function previewImageFilename(deploymentId: string | null): string {
   return `${base}.${PREVIEW_IMAGE_EXTENSION}`;
 }
 
+function isVideoContentType(contentType: string | null): boolean {
+  return contentType?.startsWith("video/") ?? false;
+}
+
+// The switch that gates this artifact's preview: video posters and HTML
+// screenshots roll out independently.
+function previewFeatureSwitchKey(contentType: string | null): FeatureSwitchKey {
+  return isVideoContentType(contentType)
+    ? FeatureSwitchKey.ArtifactVideoPreview
+    : FeatureSwitchKey.ArtifactPreviewImage;
+}
+
+// Extract a poster frame from a video via Cloudflare Media Transformations.
+// This is a public transform URL on the artifacts CDN (no auth), the video
+// sibling of the `/cdn-cgi/image/` resizing already used for images.
+async function extractVideoPoster(
+  videoUrl: string,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  const base = env("PUBLIC_ARTIFACTS_BASE_URL").replace(/\/+$/, "");
+  const transformUrl = `${base}/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoUrl}`;
+  const response = await fetch(transformUrl, { signal });
+  if (!response.ok) {
+    throw new Error(
+      `media frame extraction failed (${response.status}): ${await response.text()}`,
+    );
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function isArtifactPreviewEnabledForOwner(
   db: ReadonlyDb,
   args: {
     readonly orgId: string | null;
     readonly userId: string;
+    readonly switchKey: FeatureSwitchKey;
   },
 ): Promise<boolean> {
   const featureCtx = await loadUserFeatureSwitchContext(
@@ -72,14 +111,16 @@ async function isArtifactPreviewEnabledForOwner(
     args.orgId ?? "",
     args.userId,
   );
-  return isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx);
+  return isFeatureEnabled(args.switchKey, featureCtx);
 }
 
 function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   const conditions = [
     isNull(runUploadedFiles.previewImageUrl),
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    sql`${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')`,
+    // HTML/website artifacts (by artifactKind) or generated video artifacts.
+    // Ordinary user-uploaded videos are not artifacts and should not be swept.
+    sql`(${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html') OR (jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string' AND ${runUploadedFiles.contentType} LIKE 'video/%'))`,
     // Grace window: skip rows touched in the last 2 minutes so the deploy-time
     // fast path can finish first. The cron only picks up rows it demonstrably
     // failed on, plus pre-feature backfill (already old), avoiding a duplicate
@@ -149,31 +190,43 @@ const renderAndStoreArtifactPreview$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     // Resolve the switch against the artifact owner's context including their
-    // per-user Lab overrides, so a user can opt in without a code change.
+    // per-user Lab overrides, so a user can opt in without a code change. Video
+    // posters gate on a separate switch from HTML screenshots.
     const featureCtx = await get(
       userFeatureSwitchContext(args.orgId ?? "", args.userId),
     );
     signal.throwIfAborted();
-    if (!isFeatureEnabled(FeatureSwitchKey.ArtifactPreviewImage, featureCtx)) {
+    if (
+      !isFeatureEnabled(previewFeatureSwitchKey(args.contentType), featureCtx)
+    ) {
       return false;
     }
 
-    const token = env("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN");
-    if (!token) {
-      return false;
+    let image: Buffer;
+    let filename: string;
+    let contentType: string;
+    if (isVideoContentType(args.contentType)) {
+      image = await extractVideoPoster(args.url, signal);
+      filename = VIDEO_POSTER_FILENAME;
+      contentType = VIDEO_POSTER_CONTENT_TYPE;
+    } else {
+      const token = env("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN");
+      if (!token) {
+        return false;
+      }
+      image = await renderArtifactScreenshot(token, args.url, signal);
+      filename = previewImageFilename(args.deploymentId);
+      contentType = PREVIEW_IMAGE_CONTENT_TYPE;
     }
-
-    const image = await renderArtifactScreenshot(token, args.url, signal);
     signal.throwIfAborted();
 
-    const filename = previewImageFilename(args.deploymentId);
     const key = buildArtifactKey(args.userId, args.id, filename);
     await get(
       putS3Object(
         env("R2_USER_ARTIFACTS_BUCKET_NAME"),
         key,
         image,
-        PREVIEW_IMAGE_CONTENT_TYPE,
+        contentType,
       ),
     );
     signal.throwIfAborted();
@@ -210,19 +263,14 @@ export const scheduleArtifactPreviewRender$ = command(
 );
 
 /**
- * Backfill / retry sweep: render previews for HTML/website artifacts that still
- * have none (never rendered, or the deploy-time trigger failed / was cut off).
- * Best-effort per artifact — a failure leaves the row's `previewImageUrl` NULL
- * so it retries next sweep and the frontend falls back to the live iframe.
- * No-op when the browser-rendering token is unset. Returns the count generated.
+ * Backfill / retry sweep: render previews for HTML/website and video artifacts
+ * that still have none (never rendered, or the deploy-time trigger failed / was
+ * cut off). Best-effort per artifact — a failure leaves the row's
+ * `previewImageUrl` NULL so it retries next sweep and the frontend falls back to
+ * the live iframe/video. Returns the count generated.
  */
 export const generateArtifactPreviews$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {
-    const token = env("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN");
-    if (!token) {
-      return 0;
-    }
-
     const db = set(writeDb$);
     let generated = 0;
     let cursor: PreviewCandidateCursor | undefined;
@@ -236,6 +284,7 @@ export const generateArtifactPreviews$ = command(
           userId: runUploadedFiles.userId,
           orgId: runUploadedFiles.orgId,
           url: runUploadedFiles.url,
+          contentType: runUploadedFiles.contentType,
           createdAt: runUploadedFiles.createdAt,
           deploymentId: sql<
             string | null
@@ -256,12 +305,16 @@ export const generateArtifactPreviews$ = command(
           continue;
         }
 
-        const featureKey = `${row.orgId ?? ""}:${row.userId}`;
+        // Gate on the switch matching this artifact's kind (video/HTML roll out
+        // independently), cached per owner + switch.
+        const switchKey = previewFeatureSwitchKey(row.contentType);
+        const featureKey = `${row.orgId ?? ""}:${row.userId}:${switchKey}`;
         let enabled = ownerFeatureEnabled.get(featureKey);
         if (enabled === undefined) {
           enabled = await isArtifactPreviewEnabledForOwner(db, {
             orgId: row.orgId,
             userId: row.userId,
+            switchKey,
           });
           ownerFeatureEnabled.set(featureKey, enabled);
           signal.throwIfAborted();
@@ -279,6 +332,7 @@ export const generateArtifactPreviews$ = command(
               userId: row.userId,
               orgId: row.orgId,
               url: row.url,
+              contentType: row.contentType,
               deploymentId: row.deploymentId,
             },
             signal,
