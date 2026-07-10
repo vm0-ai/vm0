@@ -34,7 +34,7 @@ export const firewallAwsSigv4AuthSchema = z
 const firewallAuthSchema = z
   .object({
     headers: z.record(z.string(), z.string()).optional(),
-    base: z.string().optional(),
+    base: z.string().min(1).optional(),
     query: z.record(z.string(), z.string()).optional(),
     awsSigv4: firewallAwsSigv4AuthSchema.optional(),
   })
@@ -54,6 +54,13 @@ const firewallAuthSchema = z
         code: "custom",
         path: ["query"],
         message: "auth.query cannot be combined with auth.awsSigv4",
+      });
+    }
+    if (auth.base !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["base"],
+        message: "auth.base cannot be combined with auth.awsSigv4",
       });
     }
   });

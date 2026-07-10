@@ -732,7 +732,7 @@ pub struct FirewallAuth {
     #[serde(default)]
     pub headers: std::collections::HashMap<String, String>,
     /// Optional base URL template for URL rewriting (e.g. webhook-url connectors).
-    /// When set, the proxy rewrites the request URL instead of injecting headers.
+    /// When set, the proxy rewrites the request URL before applying resolved auth.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
     /// Optional query parameters with secret/var templates for query-param auth.
@@ -753,6 +753,9 @@ impl FirewallAuth {
             return Ok(());
         };
         aws_sigv4.validate_for_cache()?;
+        if self.base.is_some() {
+            return Err("auth.base cannot be combined with auth.awsSigv4".to_string());
+        }
         if !self.headers.is_empty() {
             return Err("auth.headers cannot be combined with auth.awsSigv4".to_string());
         }

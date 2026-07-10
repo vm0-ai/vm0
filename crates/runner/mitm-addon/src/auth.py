@@ -21,6 +21,7 @@ from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
     AuthBaseForwardingSaturatedError,
     ForwardedRequestTooLargeError,
+    InvalidAuthBaseRequestHeadersError,
     InvalidResolvedAuthHeaderError,
     forward_request,
     forwarded_auth_base_client_header_pairs,
@@ -256,14 +257,6 @@ def _merge_auth_headers(
     ] + auth_pairs
 
 
-def _auth_config_header_names(allow: matching.FirewallAllow) -> frozenset[str]:
-    auth_config = allow.api_entry.get("auth", {})
-    auth_headers = auth_config.get("headers") if isinstance(auth_config, dict) else None
-    if not isinstance(auth_headers, dict):
-        return frozenset()
-    return frozenset(name.lower() for name in auth_headers if isinstance(name, str))
-
-
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
     flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
     flow.metadata[metadata_keys.AUTH_RESOLVED_SECRETS] = token_meta.get("resolved_secrets", [])
@@ -365,23 +358,6 @@ def _sign_flow_request_with_aws_sigv4(
     flow.request.url = signed_url
     flow.request.headers = http.Headers(
         [(name.encode(), value.encode()) for name, value in signed_headers]
-    )
-
-
-def _sign_forwarded_request_with_aws_sigv4(
-    *,
-    method: str,
-    url: str,
-    headers: list[tuple[str, str]],
-    body: bytes | None,
-    credentials: AwsSigV4Credentials,
-) -> tuple[str, list[tuple[str, str]]]:
-    return sign_request(
-        method=method,
-        url=url,
-        headers=headers,
-        body=body,
-        credentials=credentials,
     )
 
 
@@ -761,9 +737,9 @@ async def _apply_url_rewrite(
     *,
     allow: matching.FirewallAllow,
     resolved_base: str,
+    client_representation_headers: list[tuple[str, str]],
     headers: dict[str, str],
     resolved_query: dict | None,
-    aws_sigv4: AwsSigV4Credentials | None,
     firewall_base: str,
     proxy_log_path: str,
 ) -> FirewallAuthHandlingResult:
@@ -783,36 +759,10 @@ async def _apply_url_rewrite(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    # Filter untrusted client headers before adding trusted auth headers, so
-    # placeholder-scoped credentials cannot cross the auth.base rewrite.
-    # Repeated request headers are preserved; resolved auth headers
-    # intentionally replace any client-supplied value with the same name.
-    client_headers = forwarded_auth_base_client_header_pairs(
-        flow.request.headers,
-        preserve_aws_sigv4_authorization=aws_sigv4 is not None,
-        extra_excluded_names=_auth_config_header_names(allow),
-    )
-    req_headers = _merge_auth_headers(client_headers, headers)
+    # These client pairs were selected before auth resolution. Trusted resolved
+    # auth is applied only after that fresh-request boundary is established.
+    req_headers = _merge_auth_headers(client_representation_headers, headers)
     req_body = flow.request.raw_content if flow.request.raw_content is not None else None
-    if aws_sigv4 is not None:
-        try:
-            new_url, req_headers = _sign_forwarded_request_with_aws_sigv4(
-                method=flow.request.method,
-                url=new_url,
-                headers=req_headers,
-                body=req_body,
-                credentials=aws_sigv4,
-            )
-        except AwsSigV4SigningError as e:
-            _set_matched_firewall_failure_response(
-                flow,
-                status=502,
-                action="ALLOW",
-                error_code="aws_sigv4_auth_failed",
-                message=str(e),
-                permission=allow.name,
-            )
-            return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     try:
         admission = take_forward_request_admission_from_flow(flow)
@@ -864,28 +814,38 @@ async def _apply_url_rewrite(
 async def _apply_resolved_firewall_auth(
     flow: http.HTTPFlow,
     *,
-    allow: matching.FirewallAllow,
+    context: _FirewallAuthContext,
     token_meta: dict,
-    firewall_base: str,
-    proxy_log_path: str,
+    auth_base_client_headers: list[tuple[str, str]] | None,
 ) -> FirewallAuthHandlingResult:
     """Apply resolved firewall auth and return request ownership outcome."""
     headers = token_meta["headers"]
     resolved_query = token_meta.get("query")
-    resolved_base = token_meta.get("base")
-    aws_sigv4 = token_meta.get("aws_sigv4")
 
     try:
-        if resolved_base:
+        if context.auth_request.auth_base is not None:
+            resolved_base = token_meta.get("base")
+            if not isinstance(resolved_base, str) or not resolved_base:
+                return _set_firewall_auth_resolution_failure(
+                    flow,
+                    context,
+                    ValueError("resolved auth base is missing"),
+                )
+            if auth_base_client_headers is None:
+                return _set_firewall_auth_resolution_failure(
+                    flow,
+                    context,
+                    ValueError("auth.base client request headers are unavailable"),
+                )
             return await _apply_url_rewrite(
                 flow,
-                allow=allow,
+                allow=context.allow,
                 resolved_base=resolved_base,
+                client_representation_headers=auth_base_client_headers,
                 headers=headers,
                 resolved_query=resolved_query,
-                aws_sigv4=aws_sigv4,
-                firewall_base=firewall_base,
-                proxy_log_path=proxy_log_path,
+                firewall_base=context.firewall_base,
+                proxy_log_path=context.proxy_log_path,
             )
 
         release_forward_request_admission_from_flow(flow)
@@ -897,14 +857,21 @@ async def _apply_resolved_firewall_auth(
     except InvalidResolvedAuthHeaderError as e:
         _set_invalid_resolved_auth_header_response(
             flow,
-            allow=allow,
-            proxy_log_path=proxy_log_path,
-            firewall_base=firewall_base,
+            allow=context.allow,
+            proxy_log_path=context.proxy_log_path,
+            firewall_base=context.firewall_base,
             error=e,
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    if aws_sigv4 is not None:
+    if context.auth_request.auth_aws_sigv4 is not None:
+        aws_sigv4 = token_meta.get("aws_sigv4")
+        if not isinstance(aws_sigv4, AwsSigV4Credentials):
+            return _set_firewall_auth_resolution_failure(
+                flow,
+                context,
+                ValueError("resolved AWS SigV4 credentials are missing"),
+            )
         try:
             _sign_flow_request_with_aws_sigv4(flow, aws_sigv4)
         except AwsSigV4SigningError as e:
@@ -914,7 +881,7 @@ async def _apply_resolved_firewall_auth(
                 action="ALLOW",
                 error_code="aws_sigv4_auth_failed",
                 message=str(e),
-                permission=allow.name,
+                permission=context.allow.name,
             )
             return FirewallAuthHandlingResult.LOCAL_RESPONSE
     return FirewallAuthHandlingResult.CONTINUE_UPSTREAM
@@ -960,6 +927,34 @@ async def handle_firewall_request(
         if preflight_result is not None:
             return _finish_firewall_auth_result(flow, preflight_result)
 
+        auth_base_client_headers: list[tuple[str, str]] | None = None
+        if context.auth_request.auth_base is not None:
+            try:
+                auth_base_client_headers = forwarded_auth_base_client_header_pairs(
+                    flow.request.headers
+                )
+            except InvalidAuthBaseRequestHeadersError as exc:
+                log_proxy_entry(
+                    context.proxy_log_path,
+                    "warn",
+                    "Invalid auth.base request headers",
+                    type="firewall",
+                    firewall_base=context.firewall_base,
+                    error_type=type(exc).__name__,
+                )
+                _set_matched_firewall_failure_response(
+                    flow,
+                    status=400,
+                    action="ALLOW",
+                    error_code="invalid_auth_base_request_headers",
+                    message=str(exc),
+                    permission=context.allow.name,
+                )
+                return _finish_firewall_auth_result(
+                    flow,
+                    FirewallAuthHandlingResult.LOCAL_RESPONSE,
+                )
+
         if _firewall_auth_context_needs_resolution(context):
             try:
                 token_meta = await get_firewall_headers(
@@ -976,10 +971,9 @@ async def handle_firewall_request(
 
         auth_result = await _apply_resolved_firewall_auth(
             flow,
-            allow=context.allow,
+            context=context,
             token_meta=token_meta,
-            firewall_base=context.firewall_base,
-            proxy_log_path=context.proxy_log_path,
+            auth_base_client_headers=auth_base_client_headers,
         )
         if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
             return _finish_firewall_auth_result(flow, auth_result)

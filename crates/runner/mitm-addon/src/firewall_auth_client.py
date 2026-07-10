@@ -228,7 +228,10 @@ def _parse_optional_aws_sigv4_credentials(
     )
 
 
-def _parse_firewall_auth_success(decoded: object) -> FirewallAuthSuccess:
+def _parse_firewall_auth_success(
+    decoded: object,
+    request: FirewallAuthRequest,
+) -> FirewallAuthSuccess:
     if not isinstance(decoded, dict):
         raise _malformed_firewall_auth_success("response must be an object")
 
@@ -236,16 +239,36 @@ def _parse_firewall_auth_success(decoded: object) -> FirewallAuthSuccess:
     if "headers" not in decoded_map:
         raise _malformed_firewall_auth_success("headers is required")
 
-    base = decoded_map.get("base")
-    if base is not None and not isinstance(base, str):
-        raise _malformed_firewall_auth_success("base must be a string")
-
     headers = _parse_string_map(decoded_map["headers"], "headers")
     resolved_secrets = _parse_optional_string_list(decoded_map, "resolvedSecrets")
     refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
     refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
+    base = _parse_optional_string(decoded_map, "base")
     query = _parse_optional_string_map(decoded_map, "query")
     aws_sigv4 = _parse_optional_aws_sigv4_credentials(decoded_map)
+
+    if set(headers) != set(request.auth_headers):
+        raise _malformed_firewall_auth_success(
+            "headers must match the configured auth header names"
+        )
+    if set(query or {}) != set(request.auth_query or {}):
+        raise _malformed_firewall_auth_success("query must match the configured auth query names")
+    if (base is not None) != (request.auth_base is not None):
+        raise _malformed_firewall_auth_success("base presence must match the configured auth base")
+    if (aws_sigv4 is not None) != (request.auth_aws_sigv4 is not None):
+        raise _malformed_firewall_auth_success(
+            "awsSigv4 presence must match the configured auth mode"
+        )
+    request_session_token_present = (
+        request.auth_aws_sigv4 is not None
+        and request.auth_aws_sigv4.get("sessionToken") is not None
+    )
+    response_session_token_present = aws_sigv4 is not None and aws_sigv4.session_token is not None
+    if response_session_token_present != request_session_token_present:
+        raise _malformed_firewall_auth_success(
+            "awsSigv4.sessionToken presence must match the configured auth mode"
+        )
+
     payload = FirewallAuthPayload(
         headers=headers,
         resolved_secrets=resolved_secrets,
@@ -279,7 +302,7 @@ def _fetch_firewall_headers_sync(
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             decoded: object = json.loads(_read_firewall_auth_response_body(resp))
-            return _parse_firewall_auth_success(decoded)
+            return _parse_firewall_auth_success(decoded, request)
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; `with e` closes on every exit
         # path to avoid FD exhaustion under sustained cache-miss load (#10475).

@@ -518,6 +518,129 @@ mod tests {
         }
     }
 
+    fn catalog_with_auth(auth: serde_json::Value) -> BuiltinFirewallCatalog {
+        let mut catalog = catalog("auth-strategy");
+        catalog.firewalls.get_mut("auth-strategy").unwrap().apis[0].auth =
+            serde_json::from_value(auth).unwrap();
+        catalog
+    }
+
+    #[test]
+    fn validates_auth_strategy_combinations_at_catalog_boundary() {
+        let aws_sigv4 = serde_json::json!({
+            "accessKeyId": "access-key",
+            "secretAccessKey": "secret-key"
+        });
+        let valid = [
+            (
+                "direct headers",
+                serde_json::json!({"headers": {"Authorization": "token"}}),
+            ),
+            (
+                "direct query",
+                serde_json::json!({"query": {"api_key": "token"}}),
+            ),
+            (
+                "direct headers and query",
+                serde_json::json!({
+                    "headers": {"Authorization": "token"},
+                    "query": {"api_key": "token"}
+                }),
+            ),
+            (
+                "base only",
+                serde_json::json!({"base": "https://hooks.example.com/secret"}),
+            ),
+            (
+                "base and headers",
+                serde_json::json!({
+                    "base": "https://hooks.example.com/secret",
+                    "headers": {"Authorization": "token"}
+                }),
+            ),
+            (
+                "base and query",
+                serde_json::json!({
+                    "base": "https://hooks.example.com/secret",
+                    "query": {"api_key": "token"}
+                }),
+            ),
+            (
+                "base, headers, and query",
+                serde_json::json!({
+                    "base": "https://hooks.example.com/secret",
+                    "headers": {"Authorization": "token"},
+                    "query": {"api_key": "token"}
+                }),
+            ),
+            (
+                "base with empty maps",
+                serde_json::json!({
+                    "base": "https://hooks.example.com/secret",
+                    "headers": {},
+                    "query": {}
+                }),
+            ),
+            ("SigV4", serde_json::json!({"awsSigv4": aws_sigv4.clone()})),
+            (
+                "SigV4 with empty maps",
+                serde_json::json!({
+                    "headers": {},
+                    "query": {},
+                    "awsSigv4": aws_sigv4.clone()
+                }),
+            ),
+        ];
+
+        for (name, auth) in valid {
+            catalog_with_auth(auth)
+                .validate_for_api_response()
+                .unwrap_or_else(|error| panic!("{name} should be valid: {error}"));
+        }
+
+        let invalid = [
+            (
+                "empty base",
+                serde_json::json!({"base": ""}),
+                "auth.base must be non-empty",
+            ),
+            (
+                "SigV4 and headers",
+                serde_json::json!({
+                    "headers": {"Authorization": "token"},
+                    "awsSigv4": aws_sigv4.clone()
+                }),
+                "auth.headers cannot be combined",
+            ),
+            (
+                "SigV4 and query",
+                serde_json::json!({
+                    "query": {"api_key": "token"},
+                    "awsSigv4": aws_sigv4.clone()
+                }),
+                "auth.query cannot be combined",
+            ),
+            (
+                "SigV4 and base",
+                serde_json::json!({
+                    "base": "https://hooks.example.com/secret",
+                    "awsSigv4": aws_sigv4
+                }),
+                "auth.base cannot be combined",
+            ),
+        ];
+
+        for (name, auth, expected) in invalid {
+            let error = catalog_with_auth(auth)
+                .validate_for_api_response()
+                .unwrap_err();
+            assert!(
+                error.contains(expected),
+                "{name}: unexpected error: {error}"
+            );
+        }
+    }
+
     #[tokio::test(start_paused = true)]
     async fn initial_refresh_retries_after_failure() {
         let attempts = Arc::new(AtomicUsize::new(0));

@@ -365,6 +365,52 @@ describe("firewall metadata generator", () => {
   );
 
   it(
+    "rejects auth.base with SigV4 at the generated source boundary",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://api.github.com",',
+          "      auth: {",
+          '        base: "https://hooks.example.com/secret",',
+          "        awsSigv4: {",
+          '          accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",',
+          '          secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",',
+          "        },",
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow("auth.base cannot be combined with auth.awsSigv4");
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "requires host policy for credentialed whole-host dynamic bases",
     async () => {
       await loadGeneratedConnectorFirewallSource("github", {

@@ -368,6 +368,8 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
             return False
         if raw_auth.get("query"):
             return False
+        if "base" in raw_auth:
+            return False
     if "base" in raw_auth and not isinstance(raw_auth["base"], str):
         return False
     return "base" not in raw_auth or _static_auth_base_is_valid(raw_auth["base"])
