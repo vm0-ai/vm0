@@ -1150,6 +1150,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ],
       "nested",
     );
+    for (const event of memoryTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          zero_run_origin: "zero_run",
+          trigger_source: "web",
+        }),
+      );
+    }
 
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
@@ -1263,6 +1271,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       seededDocument.contextSpaceId,
       seededDocument.documentId,
       seededDocument.chunkId,
+      "vm0-ai/vm0",
       "source-search-fixture",
       "https://github.com/vm0-ai/vm0/issues/1",
       "#1",
