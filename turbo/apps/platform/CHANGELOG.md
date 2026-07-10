@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.588.1](https://github.com/vm0-ai/vm0/compare/app-v0.588.0...app-v0.588.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* restore inter-word spacing in user chat message bubbles ([#20865](https://github.com/vm0-ai/vm0/issues/20865)) ([e74f2a3](https://github.com/vm0-ai/vm0/commit/e74f2a3056c7307404980899ab32cda133f2c7ec))
+
 ## [0.588.0](https://github.com/vm0-ai/vm0/compare/app-v0.587.0...app-v0.588.0) (2026-07-09)
 
 
