@@ -5,6 +5,7 @@ import {
 import { sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 
 /**
  * Goal state is published into the chat thread as assistant control messages so
@@ -31,7 +32,11 @@ export async function appendGoalEventMarker(
 }
 
 export function activeGoalEvent(objectiveBrief: string): ChatMessageGoalEvent {
-  return { type: "state", status: "active", objectiveBrief };
+  return {
+    type: "state",
+    status: "active",
+    objectiveBrief: nonEmptyGoalObjectiveBrief(objectiveBrief),
+  };
 }
 
 export function hiddenGoalStateEvent(
