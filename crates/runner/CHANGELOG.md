@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.143.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.7...runner-rs-v0.143.8) (2026-07-10)
+
+
+### Bug Fixes
+
+* reject unsafe firewall base paths ([#20973](https://github.com/vm0-ai/vm0/issues/20973)) ([1e21453](https://github.com/vm0-ai/vm0/commit/1e214530b5e89891da46cb562ac49283f995d7fe))
+
+
+### Refactoring
+
+* source connector diagnostics from server catalog cache ([#21005](https://github.com/vm0-ai/vm0/issues/21005)) ([84fbf6b](https://github.com/vm0-ai/vm0/commit/84fbf6b84d8d4242e5dae73dc58e33b9f3e2fb51))
+
 ## [0.143.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.6...runner-rs-v0.143.7) (2026-07-10)
 
 
