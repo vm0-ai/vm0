@@ -1313,7 +1313,7 @@ jobs:
           echo "  HTTPS go: ok"
           echo "PASS: HTTPS through proxy"
 
-          # Test 8: verify DNS resolution works inside sandbox
+          # Test 9: verify DNS resolution works inside sandbox
           # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
           echo "--- Test: DNS resolution ---"
           OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- getent hosts localhost 2>&1) \
