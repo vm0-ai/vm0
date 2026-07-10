@@ -123,7 +123,7 @@ fn unchanged_instructions_normalize_in_place() {
 }
 
 #[test]
-fn changed_instructions_use_staging_and_instruction_cleanup() {
+fn fresh_and_changed_instructions_share_staging_but_not_cleanup() {
     let manifest = manifest(
         vec![storage(
             "/home/user/.claude",
@@ -141,38 +141,61 @@ fn changed_instructions_use_staging_and_instruction_cleanup() {
         artifacts: HashMap::new(),
     };
 
-    let plan = build_storage_plan(&manifest, "/run/test", Some(&previous)).unwrap();
+    let fresh = build_storage_plan(&manifest, "/run/test", None).unwrap();
+    let changed = build_storage_plan(&manifest, "/run/test", Some(&previous)).unwrap();
 
     assert!(matches!(
-        plan.storages[0].action,
+        fresh.storages[0].action,
         StorageAction::DownloadAndNormalize { .. }
     ));
-    assert!(plan.cleanup_paths.is_empty());
-    assert_eq!(plan.instruction_cleanups.len(), 1);
+    assert!(fresh.cleanup_paths.is_empty());
+    assert!(fresh.instruction_cleanups.is_empty());
+    assert!(matches!(
+        changed.storages[0].action,
+        StorageAction::DownloadAndNormalize { .. }
+    ));
+    assert!(changed.cleanup_paths.is_empty());
+    assert_eq!(changed.instruction_cleanups.len(), 1);
     assert_eq!(
-        plan.instruction_cleanups[0].mount_path,
+        changed.instruction_cleanups[0].mount_path,
         "/home/user/.claude"
     );
     assert_eq!(
-        plan.instruction_cleanups[0].target_filename.as_deref(),
+        changed.instruction_cleanups[0].target_filename.as_deref(),
         Some("CLAUDE.md")
     );
 }
 
 #[test]
-fn changed_and_tainted_entries_use_replacement_actions() {
+fn changed_storage_name_or_version_requires_replacement() {
+    let manifest = manifest(vec![storage("/data", "data", "v2", None)], Vec::new());
+
+    for previous_fingerprint in [
+        StorageFingerprint::new("old-name", "v2"),
+        StorageFingerprint::new("data", "v1"),
+    ] {
+        let previous = StorageFingerprints {
+            storages: HashMap::from([("/data".into(), previous_fingerprint)]),
+            artifacts: HashMap::new(),
+        };
+        let plan = build_storage_plan(&manifest, "/run", Some(&previous)).unwrap();
+
+        assert!(matches!(
+            plan.storages[0].action,
+            StorageAction::Download { .. }
+        ));
+        assert_eq!(plan.cleanup_paths, ["/data"]);
+    }
+}
+
+#[test]
+fn tainted_storage_and_changed_artifact_use_replacement_actions() {
     let manifest = manifest(
-        vec![
-            storage("/changed", "changed", "v2", None),
-            storage("/tainted", "tainted", "v1", None),
-        ],
+        vec![storage("/tainted", "tainted", "v1", None)],
         vec![artifact("/artifact", "artifact", "v2", false)],
     );
     let previous = StorageFingerprints {
-        storages: HashMap::from([
-            ("/changed".into(), StorageFingerprint::new("changed", "v1")),
-            ("/tainted".into(), StorageFingerprint::tainted()),
-        ]),
+        storages: HashMap::from([("/tainted".into(), StorageFingerprint::tainted())]),
         artifacts: HashMap::from([(
             "/artifact".into(),
             StorageFingerprint::new("artifact", "v1"),
@@ -195,10 +218,7 @@ fn changed_and_tainted_entries_use_replacement_actions() {
         plan.artifacts[0].action,
         ArtifactAction::Download { .. }
     ));
-    assert_eq!(
-        cleanup_paths,
-        HashSet::from(["/changed", "/tainted", "/artifact"])
-    );
+    assert_eq!(cleanup_paths, HashSet::from(["/tainted", "/artifact"]));
 }
 
 #[test]
