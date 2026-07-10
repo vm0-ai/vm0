@@ -1,6 +1,6 @@
 use crate::download::{DownloadTask, classify_download_task_kind};
 use crate::instructions::{InstructionCleanup, InstructionNormalization};
-use crate::manifest::{Manifest, ManifestEntry};
+use crate::manifest::{ArtifactEntry, Manifest, StorageEntry};
 use std::path::Path;
 
 pub(crate) struct RunPlan {
@@ -24,6 +24,39 @@ enum ManifestEntryKind {
     Artifact,
 }
 
+struct EntryLabel<'a> {
+    mount_path: &'a str,
+    storage_name: Option<&'a str>,
+    version_id: Option<&'a str>,
+    cached: bool,
+    missing_root_policy: Option<&'a str>,
+    archive_url: &'a str,
+}
+
+impl<'a> EntryLabel<'a> {
+    fn storage(entry: &'a StorageEntry, archive_url: &'a str) -> Self {
+        Self {
+            mount_path: &entry.mount_path,
+            storage_name: entry.vas_storage_name.as_deref(),
+            version_id: entry.vas_version_id.as_deref(),
+            cached: entry.cached,
+            missing_root_policy: None,
+            archive_url,
+        }
+    }
+
+    fn artifact(entry: &'a ArtifactEntry, archive_url: &'a str) -> Self {
+        Self {
+            mount_path: &entry.mount_path,
+            storage_name: entry.vas_storage_name.as_deref(),
+            version_id: entry.vas_version_id.as_deref(),
+            cached: entry.cached,
+            missing_root_policy: entry.missing_root_policy.as_deref(),
+            archive_url,
+        }
+    }
+}
+
 impl ManifestEntryKind {
     fn label_prefix(self) -> &'static str {
         match self {
@@ -41,14 +74,6 @@ impl ManifestEntryKind {
 
     fn include_missing_root_policy(self) -> bool {
         matches!(self, Self::Artifact)
-    }
-
-    fn skip_cached_existing_root(self) -> bool {
-        matches!(self, Self::Artifact)
-    }
-
-    fn uses_extract_path(self, entry: &ManifestEntry) -> bool {
-        matches!(self, Self::Storage) && entry.instructions_target_filename.is_some()
     }
 }
 
@@ -108,19 +133,11 @@ impl RunPlan {
         let mut download_tasks = Vec::new();
 
         // Storages: 404 is fatal.
-        append_download_tasks(
-            &mut download_tasks,
-            &manifest.storages,
-            ManifestEntryKind::Storage,
-        );
+        append_storage_download_tasks(&mut download_tasks, &manifest.storages);
 
         // Artifacts with archives must download successfully; explicit empty
         // artifacts are prepared separately below and do not create tasks.
-        append_download_tasks(
-            &mut download_tasks,
-            &manifest.artifacts,
-            ManifestEntryKind::Artifact,
-        );
+        append_artifact_download_tasks(&mut download_tasks, &manifest.artifacts);
         let empty_artifacts = manifest
             .artifacts
             .iter()
@@ -148,35 +165,67 @@ fn is_valid_url(url: &Option<String>) -> bool {
     matches!(url, Some(u) if u != "null")
 }
 
-fn append_download_tasks(
-    tasks: &mut Vec<DownloadTask>,
-    entries: &[ManifestEntry],
-    kind: ManifestEntryKind,
-) {
+fn append_storage_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[StorageEntry]) {
     for (idx, entry) in entries.iter().enumerate() {
-        if matches!(kind, ManifestEntryKind::Artifact) && entry.empty {
+        if !is_valid_url(&entry.archive_url) {
             continue;
         }
-        if should_download_entry(entry, kind)
-            && let Some(url) = entry.archive_url.clone()
-        {
-            let download_mount_path = download_mount_path(entry, kind);
-            let task_kind = classify_download_task_kind(
-                download_mount_path,
-                entry.instructions_target_filename.as_deref(),
-            );
-            tasks.push(DownloadTask::new_with_kind(
-                format_entry_label(entry, kind, idx + 1, &url),
-                kind.op_name(),
-                url,
-                download_mount_path.to_string(),
-                task_kind,
-            ));
-        }
+        let Some(url) = entry.archive_url.as_ref() else {
+            continue;
+        };
+        let download_mount_path = if entry.instructions_target_filename.is_some() {
+            entry
+                .extract_path
+                .as_deref()
+                .unwrap_or(entry.mount_path.as_str())
+        } else {
+            entry.mount_path.as_str()
+        };
+        let task_kind = classify_download_task_kind(
+            download_mount_path,
+            entry.instructions_target_filename.as_deref(),
+        );
+        tasks.push(DownloadTask::new_with_kind(
+            format_entry_label(
+                ManifestEntryKind::Storage,
+                idx + 1,
+                EntryLabel::storage(entry, url),
+            ),
+            ManifestEntryKind::Storage.op_name(),
+            url.clone(),
+            download_mount_path.to_string(),
+            task_kind,
+        ));
     }
 }
 
-fn format_empty_artifact_label(entry: &ManifestEntry, index: usize) -> String {
+fn append_artifact_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[ArtifactEntry]) {
+    for (idx, entry) in entries.iter().enumerate() {
+        if entry.empty || entry.cached && Path::new(&entry.mount_path).is_dir() {
+            continue;
+        }
+        if !is_valid_url(&entry.archive_url) {
+            continue;
+        }
+        let Some(url) = entry.archive_url.as_ref() else {
+            continue;
+        };
+        let task_kind = classify_download_task_kind(&entry.mount_path, None);
+        tasks.push(DownloadTask::new_with_kind(
+            format_entry_label(
+                ManifestEntryKind::Artifact,
+                idx + 1,
+                EntryLabel::artifact(entry, url),
+            ),
+            ManifestEntryKind::Artifact.op_name(),
+            url.clone(),
+            entry.mount_path.clone(),
+            task_kind,
+        ));
+    }
+}
+
+fn format_empty_artifact_label(entry: &ArtifactEntry, index: usize) -> String {
     let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
     let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
     let missing_root_policy = entry.missing_root_policy.as_deref().unwrap_or("fail");
@@ -186,43 +235,18 @@ fn format_empty_artifact_label(entry: &ManifestEntry, index: usize) -> String {
     )
 }
 
-fn download_mount_path(entry: &ManifestEntry, kind: ManifestEntryKind) -> &str {
-    if kind.uses_extract_path(entry) {
-        entry
-            .extract_path
-            .as_deref()
-            .unwrap_or(entry.mount_path.as_str())
-    } else {
-        entry.mount_path.as_str()
-    }
-}
-
-fn should_download_entry(entry: &ManifestEntry, kind: ManifestEntryKind) -> bool {
-    if !is_valid_url(&entry.archive_url) {
-        return false;
-    }
-    if !kind.skip_cached_existing_root() || !entry.cached {
-        return true;
-    }
-    !Path::new(&entry.mount_path).is_dir()
-}
-
-fn format_entry_label(
-    entry: &ManifestEntry,
-    kind: ManifestEntryKind,
-    index: usize,
-    archive_url: &str,
-) -> String {
-    let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
-    let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
-    let url_scheme = archive_url
+fn format_entry_label(kind: ManifestEntryKind, index: usize, entry: EntryLabel<'_>) -> String {
+    let storage_name = entry.storage_name.unwrap_or("unknown");
+    let version_id = entry.version_id.unwrap_or("unknown");
+    let url_scheme = entry
+        .archive_url
         .split_once("://")
         .map(|(scheme, _)| scheme)
         .unwrap_or("unknown");
     let missing_root_policy = if kind.include_missing_root_policy() {
         format!(
             " missingRootPolicy={}",
-            entry.missing_root_policy.as_deref().unwrap_or("fail")
+            entry.missing_root_policy.unwrap_or("fail")
         )
     } else {
         String::new()
@@ -594,14 +618,13 @@ mod tests {
         let mount_path = mount.to_string_lossy().into_owned();
         let manifest = Manifest {
             storages: vec![],
-            artifacts: vec![ManifestEntry {
+            artifacts: vec![ArtifactEntry {
                 mount_path: mount_path.clone(),
-                extract_path: None,
                 archive_url: Some("https://s3/artifact.tar.gz".into()),
-                instructions_target_filename: None,
                 cached: true,
                 empty: false,
                 vas_storage_name: Some("artifact".into()),
+                vas_storage_id: None,
                 vas_version_id: Some("artifact-v1".into()),
                 missing_root_policy: None,
             }],
@@ -622,16 +645,14 @@ mod tests {
         fs::create_dir_all(&mount).unwrap();
         let mount_path = mount.to_string_lossy().into_owned();
         let manifest = Manifest {
-            storages: vec![ManifestEntry {
+            storages: vec![StorageEntry {
                 mount_path: mount_path.clone(),
                 extract_path: None,
                 archive_url: Some("https://s3/storage.tar.gz".into()),
                 instructions_target_filename: None,
                 cached: true,
-                empty: false,
                 vas_storage_name: Some("storage".into()),
                 vas_version_id: Some("storage-v1".into()),
-                missing_root_policy: None,
             }],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -664,14 +685,13 @@ mod tests {
             .into_owned();
         let manifest = Manifest {
             storages: vec![],
-            artifacts: vec![ManifestEntry {
+            artifacts: vec![ArtifactEntry {
                 mount_path: mount_path.clone(),
-                extract_path: None,
                 archive_url: Some("https://s3/artifact.tar.gz".into()),
-                instructions_target_filename: None,
                 cached: true,
                 empty: false,
                 vas_storage_name: Some("artifact".into()),
+                vas_storage_id: None,
                 vas_version_id: Some("artifact-v1".into()),
                 missing_root_policy: None,
             }],

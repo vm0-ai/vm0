@@ -99,7 +99,7 @@ pub fn touch_mtime(dir: &Path) {
 
 /// Guest paths (must match rootfs layout).
 pub mod guest {
-    pub const STORAGE_MANIFEST: &str = "/tmp/storage-manifest.json";
+    pub const STORAGE_MANIFEST: &str = guest_contracts::runtime_paths::STORAGE_MANIFEST_PATH;
     pub const DOWNLOAD_BIN: &str = "/usr/local/bin/guest-download";
     pub const RUN_AGENT: &str = "/usr/local/bin/guest-agent";
 }

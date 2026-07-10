@@ -11,3 +11,4 @@ pub mod env;
 pub mod exec_limits;
 pub mod runtime_paths;
 pub mod session_history_identity;
+pub mod storage_manifest;
