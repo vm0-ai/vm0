@@ -51,10 +51,13 @@ describe("platform entrypoint safe area behavior", () => {
   it("suppresses the bottom safe-area inset only while the keyboard is open", () => {
     const globalCss = readGlobalCss();
 
+    expect(globalCss).toMatch(/--sat:\s*env\(safe-area-inset-top,\s*0px\);/);
+    expect(globalCss).toMatch(/--sar:\s*env\(safe-area-inset-right,\s*0px\);/);
     expect(globalCss).toMatch(
       /--sab-raw:\s*env\(safe-area-inset-bottom,\s*0px\);/,
     );
     expect(globalCss).toMatch(/--sab:\s*var\(--sab-raw\);/);
+    expect(globalCss).toMatch(/--sal:\s*env\(safe-area-inset-left,\s*0px\);/);
     expect(globalCss).toMatch(
       /:root\[data-keyboard-open="true"\]\s*{\s*--sab:\s*0px;\s*}/,
     );
@@ -76,7 +79,16 @@ describe("platform entrypoint safe area behavior", () => {
       /#root\s*{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
     );
     expect(globalCss).toMatch(
-      /\.zero-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*max-height:\s*var\(--zero-viewport-height\);[\s\S]*overflow:\s*hidden;/,
+      /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
+    );
+    expect(globalCss).toMatch(
+      /\.zero-viewport-shell\s*{[\s\S]*height:\s*100%;[\s\S]*max-height:\s*100%;[\s\S]*overflow:\s*hidden;/,
+    );
+    expect(globalCss).toMatch(
+      /\.zero-fixed-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
+    );
+    expect(globalCss).toMatch(
+      /\.zero-mobile-fixed-safe-area\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
     );
   });
 

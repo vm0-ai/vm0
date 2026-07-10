@@ -9,7 +9,7 @@ export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
   void error;
 
   return (
-    <div className="flex h-screen items-center justify-center bg-white">
+    <div className="flex h-full items-center justify-center bg-white">
       <div className="flex flex-col items-center">
         <div className="mt-12">
           <div className="w-80 text-center text-base font-semibold text-gray-900">
