@@ -193,7 +193,10 @@ class TestModelProviderWebSocketUsage:
                         "usage": {
                             "input_tokens": 50,
                             "output_tokens": 20,
-                            "input_tokens_details": {"cached_tokens": 10},
+                            "input_tokens_details": {
+                                "cached_tokens": 10,
+                                "cache_write_tokens": 15,
+                            },
                         },
                     },
                 }
@@ -204,12 +207,14 @@ class TestModelProviderWebSocketUsage:
 
         events = webhook.usage_events()
         by_category = _sum_quantities_by_category(events)
+        assert len(events) == len(by_category)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _model_websocket_usage_sources(flow) == {}
         assert by_category == {
-            "tokens.input": 40,
+            "tokens.input": 25,
             "tokens.output": 20,
             "tokens.cache_read": 10,
+            "tokens.cache_creation": 15,
         }
 
     def test_model_websocket_missing_context_releases_positive_source(

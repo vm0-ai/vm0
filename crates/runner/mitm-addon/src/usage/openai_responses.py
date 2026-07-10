@@ -29,6 +29,7 @@ from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT
 from .json_probe import probe_top_level_string_field
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import (
+    MODEL_USAGE_CATEGORY_CACHE_CREATION,
     MODEL_USAGE_CATEGORY_CACHE_READ,
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
@@ -76,6 +77,7 @@ _OPENAI_RESPONSES_USAGE_CATEGORIES = (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
     MODEL_USAGE_CATEGORY_CACHE_READ,
+    MODEL_USAGE_CATEGORY_CACHE_CREATION,
 )
 
 _RESPONSES_RESPONSE_SCALAR_FIELDS = {
@@ -84,6 +86,7 @@ _RESPONSES_RESPONSE_SCALAR_FIELDS = {
     ("usage", "input_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "output_tokens"): ScalarField("int", max_bytes=64),
     ("usage", "input_tokens_details", "cached_tokens"): ScalarField("int", max_bytes=64),
+    ("usage", "input_tokens_details", "cache_write_tokens"): ScalarField("int", max_bytes=64),
 }
 
 _RESPONSES_SSE_RESPONSE_SCALAR_FIELDS = {
@@ -172,21 +175,29 @@ def _has_usage_quantity(values: dict) -> bool:
     return False
 
 
-def _split_input_tokens(
+def _partition_input_tokens(
     input_tokens: object,
     cached_tokens: object,
-) -> tuple[int | None, int | None]:
-    # OpenAI's ``input_tokens`` includes cached tokens. The usage_event ledger
-    # prices uncached input and cached input as separate platform categories,
-    # so split the upstream total before reporting.
+    cache_write_tokens: object,
+) -> tuple[int | None, int | None, int | None]:
+    # OpenAI reports cache reads and writes as details of ``input_tokens``. The
+    # usage-event ledger prices all three categories independently, so partition
+    # the upstream total before reporting to avoid charging any token twice.
     if not _is_usage_quantity(input_tokens):
-        return None, None
+        return None, None, None
 
+    remaining_input_tokens = input_tokens
+    cached_input_tokens = None
     if _is_usage_quantity(cached_tokens):
-        cached_input_tokens = min(cached_tokens, input_tokens)
-        return max(input_tokens - cached_input_tokens, 0), cached_input_tokens
+        cached_input_tokens = min(cached_tokens, remaining_input_tokens)
+        remaining_input_tokens -= cached_input_tokens
 
-    return input_tokens, None
+    cache_creation_tokens = None
+    if _is_usage_quantity(cache_write_tokens):
+        cache_creation_tokens = min(cache_write_tokens, remaining_input_tokens)
+        remaining_input_tokens -= cache_creation_tokens
+
+    return remaining_input_tokens, cached_input_tokens, cache_creation_tokens
 
 
 def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] = ()) -> None:
@@ -198,9 +209,10 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
     if isinstance(message_id, str) and message_id:
         target["message_id"] = message_id
 
-    uncached_input_tokens, cached_tokens = _split_input_tokens(
+    uncached_input_tokens, cached_tokens, cache_creation_tokens = _partition_input_tokens(
         values.get((*prefix, "usage", "input_tokens")),
         values.get((*prefix, "usage", "input_tokens_details", "cached_tokens")),
+        values.get((*prefix, "usage", "input_tokens_details", "cache_write_tokens")),
     )
     _store_quantity(
         target,
@@ -217,6 +229,11 @@ def _store_response_values(values: dict, target: dict, prefix: tuple[str, ...] =
         target,
         MODEL_USAGE_CATEGORY_CACHE_READ,
         cached_tokens,
+    )
+    _store_quantity(
+        target,
+        MODEL_USAGE_CATEGORY_CACHE_CREATION,
+        cache_creation_tokens,
     )
 
 
@@ -531,7 +548,8 @@ def extract_openai_responses_usage_from_json(
     parsing fails, the decoded body is empty, or no platform usage categories
     can be extracted. Otherwise returns a dict keyed by platform model usage
     categories such as ``MODEL_USAGE_CATEGORY_INPUT``,
-    ``MODEL_USAGE_CATEGORY_OUTPUT``, and ``MODEL_USAGE_CATEGORY_CACHE_READ``.
+    ``MODEL_USAGE_CATEGORY_OUTPUT``, ``MODEL_USAGE_CATEGORY_CACHE_READ``, and
+    ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
     """
 
     if headers:
@@ -556,9 +574,10 @@ def extract_openai_responses_usage_with_error_from_json(
     platform usage categories can be extracted from valid JSON. Otherwise
     returns a dict keyed by platform model usage categories such as
     ``MODEL_USAGE_CATEGORY_INPUT``, ``MODEL_USAGE_CATEGORY_OUTPUT``, and
-    ``MODEL_USAGE_CATEGORY_CACHE_READ``. OpenAI ``input_tokens`` include cached
-    tokens, so this extractor splits them into uncached input and cache-read
-    categories before reporting.
+    ``MODEL_USAGE_CATEGORY_CACHE_READ`` and ``MODEL_USAGE_CATEGORY_CACHE_CREATION``.
+    OpenAI ``input_tokens`` include cache reads and writes, so this extractor
+    partitions them into ordinary input, cache-read, and cache-creation categories
+    before reporting.
     """
 
     if headers:

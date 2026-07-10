@@ -109,17 +109,20 @@ class TestModelProviderSseUsage:
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5",'
             b'"usage":{"input_tokens":50,"output_tokens":20,'
-            b'"input_tokens_details":{"cached_tokens":10}}}}'
+            b'"input_tokens_details":{"cached_tokens":10,'
+            b'"cache_write_tokens":15}}}}'
         )
 
         webhook = self._run_response(flow)
 
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
+        assert len(events) == len(by_category)
         assert by_category == {
-            "tokens.input": 40,
+            "tokens.input": 25,
             "tokens.output": 20,
             "tokens.cache_read": 10,
+            "tokens.cache_creation": 15,
         }
 
     def test_full_pipeline_model_sse_reports_response_incomplete_usage(self, tmp_path, real_flow):

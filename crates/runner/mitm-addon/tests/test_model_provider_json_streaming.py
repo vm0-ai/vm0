@@ -120,7 +120,11 @@ class TestModelProviderJsonStreaming:
             provider_case,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
-        payload = standard_success_payload(provider_case)
+        cache_write_tokens = 15 if provider_case.uses_openai_responses else None
+        payload = standard_success_payload(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        )
         compressed = gzip.compress(payload)
         flow.response = tutils.tresp(
             status_code=200,
@@ -135,16 +139,24 @@ class TestModelProviderJsonStreaming:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected_usage = expected_model_usage(provider_case)
+        expected_usage = expected_model_usage(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        )
         assert extracted["message_id"] == expected_usage["message_id"]
         assert extracted["model"] == expected_usage["model"]
         assert extracted["tokens.input"] == expected_usage["tokens.input"]
         assert extracted["tokens.output"] == expected_usage["tokens.output"]
         if provider_case.uses_openai_responses:
             assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
+            assert extracted["tokens.cache_creation"] == expected_usage["tokens.cache_creation"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == expected_event_quantities(provider_case)
+        assert len(events) == len(by_category)
+        assert by_category == expected_event_quantities(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        )
 
     def test_full_pipeline_small_zstd_model_json_uses_bounded_fallback(
         self,

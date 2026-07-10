@@ -68,8 +68,12 @@ class TestModelProviderJsonFallback:
     def test_openai_non_streaming_json_fallback(self, tmp_path, real_flow):
         """Legacy JSON fallback should use OpenAI Responses mapping."""
         provider_case = OPENAI_RESPONSES_CASE
+        cache_write_tokens = 15
         flow = model_provider_flow(real_flow, tmp_path, provider_case)
-        body = standard_success_payload(provider_case)
+        body = standard_success_payload(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        )
         set_response_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -81,15 +85,23 @@ class TestModelProviderJsonFallback:
         webhook = run_response(flow, self._usage_webhook_api)
 
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
-        expected = expected_model_usage(provider_case)
+        expected = expected_model_usage(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        )
         assert extracted["message_id"] == expected["message_id"]
         assert extracted["model"] == expected["model"]
         assert extracted["tokens.input"] == expected["tokens.input"]
         assert extracted["tokens.output"] == expected["tokens.output"]
         assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
+        assert extracted["tokens.cache_creation"] == expected["tokens.cache_creation"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == expected_event_quantities(provider_case)
+        assert len(events) == len(by_category)
+        assert by_category == expected_event_quantities(
+            provider_case,
+            cache_write_tokens=cache_write_tokens,
+        )
 
     def test_anthropic_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """Legacy JSON fallback parse failures should be observable."""
