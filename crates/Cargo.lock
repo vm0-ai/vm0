@@ -2798,6 +2798,7 @@ dependencies = [
  "libc",
  "nbd-cow",
  "nix",
+ "reqwest",
  "sandbox",
  "serde",
  "serde_json",
