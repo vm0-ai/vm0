@@ -140,10 +140,10 @@ describe("model-first canonical catalog", () => {
   it("identifies models blocked on limited-free-1", () => {
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-terra")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("gpt-5.6-luna")).toBe(true);
-    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-luna")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-terra")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("gpt-5.6-luna")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-luna")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.5")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.4")).toBe(true);
@@ -158,14 +158,14 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-opus-4.8")).toBe(
       true,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(true);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-5")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-5")).toBe(
-      true,
+      false,
     );
-    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("claude-sonnet-4-6")).toBe(true);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.6"),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isLimitedFree1RestrictedRunModel("anthropic/claude-sonnet-4.5"),
     ).toBe(true);
@@ -438,16 +438,14 @@ describe("model-first canonical catalog", () => {
   it("builds the default org policy seed from the workspace defaults", () => {
     expect(DEFAULT_ORG_MODEL_POLICY_MODELS).toEqual([
       "claude-fable-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
-      "claude-opus-4-8",
-      "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "MiniMax-M3",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("gpt-5.6-sol");
-    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("claude-sonnet-4-6");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("gpt-5.6-terra");
+    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("claude-sonnet-5");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {

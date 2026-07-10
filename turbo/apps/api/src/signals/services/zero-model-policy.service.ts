@@ -126,7 +126,7 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
 
 function isLimitedFreeReplaceableStandardDefaultModel(model: string): boolean {
   // MiniMax-M3 was the previous VM0-managed default; limited-free orgs seeded
-  // before this change still need to converge to the built-in Sonnet 4.6 route.
+  // before this change still need to converge to the current built-in route.
   return (
     model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL || model === "MiniMax-M3"
   );

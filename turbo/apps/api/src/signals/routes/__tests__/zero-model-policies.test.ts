@@ -414,14 +414,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual([
       "claude-fable-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
-      "claude-opus-4-8",
       "claude-opus-4-6",
-      "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "MiniMax-M3",
     ]);
   });
 
