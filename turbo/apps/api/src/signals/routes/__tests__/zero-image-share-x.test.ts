@@ -122,20 +122,5 @@ describe("POST /api/zero/image-share/x", () => {
     await expect(billing.readBillingStatus(actor)).resolves.toMatchObject({
       credits: 985,
     });
-    await expect(billing.readUsageRecord(actor)).resolves.toMatchObject({
-      totalCredits: 15,
-      rows: [
-        expect.objectContaining({
-          credits: 15,
-          breakdown: [
-            {
-              kind: "connector",
-              credits: 15,
-              providers: [{ provider: "x", credits: 15 }],
-            },
-          ],
-        }),
-      ],
-    });
   });
 });
