@@ -73,6 +73,26 @@ describe("auth tokens", () => {
     });
   });
 
+  it("ignores unknown zero capabilities while preserving known capabilities", () => {
+    const nowSeconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: "user_zero",
+      orgId: "org_zero",
+      runId: "run_zero",
+      capabilities: ["file:read", "future:read", "file:write"],
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
+
+    expect(verifyZeroToken(token)).toStrictEqual({
+      userId: "user_zero",
+      orgId: "org_zero",
+      runId: "run_zero",
+      capabilities: ["file:read", "file:write"],
+    });
+  });
+
   it("rejects expired tokens and mismatched scopes", () => {
     const nowSeconds = currentSecond();
     const expiredToken = signPatJwtForTests({

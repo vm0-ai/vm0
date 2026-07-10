@@ -46,14 +46,16 @@ const sandboxTokenPayloadSchema = jwtBaseSchema.extend({
   orgId: z.string().min(1),
 });
 
-const zeroCapabilitySchema = z.custom<ZeroCapability>((value) => {
-  return (
-    typeof value === "string" &&
-    ZERO_CAPABILITIES.some((capability) => {
-      return capability === value;
-    })
-  );
-});
+// Capability names are open-ended at the token boundary so tokens issued by a
+// newer API remain valid on an older API. Unknown names are discarded after
+// parsing and therefore cannot grant permissions.
+const zeroCapabilitySchema = z.string().min(1);
+
+function isZeroCapability(value: string): value is ZeroCapability {
+  return ZERO_CAPABILITIES.some((capability) => {
+    return capability === value;
+  });
+}
 
 const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("zero"),
@@ -190,7 +192,7 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     userId: parsed.data.userId,
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
-    capabilities: parsed.data.capabilities,
+    capabilities: parsed.data.capabilities.filter(isZeroCapability),
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
