@@ -8,6 +8,7 @@ import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
@@ -66,7 +67,7 @@ async function loadDequeueTarget(
  * fire are consumed and skipped; a run-creation failure restores the event to
  * the queue head and pauses the queue so the backlog is preserved.
  */
-const drainWorkflowQueueForThread$ = command(
+export const drainWorkflowQueueForThread$ = command(
   async (
     { set },
     args: { readonly chatThreadId: string },
@@ -88,6 +89,11 @@ const drainWorkflowQueueForThread$ = command(
           eventId: event.id,
           triggerId: event.triggerId,
         });
+        await publishChatThreadWorkflowQueueChangedSafely(
+          event.userId,
+          event.chatThreadId,
+        );
+        signal.throwIfAborted();
         continue;
       }
 
@@ -131,6 +137,11 @@ const drainWorkflowQueueForThread$ = command(
       signal.throwIfAborted();
 
       if (result.kind === "ok" || result.kind === "enqueued") {
+        await publishChatThreadWorkflowQueueChangedSafely(
+          event.userId,
+          event.chatThreadId,
+        );
+        signal.throwIfAborted();
         return;
       }
       if (result.kind === "conflict") {
@@ -153,6 +164,11 @@ const drainWorkflowQueueForThread$ = command(
         chatThreadId: event.chatThreadId,
         code: result.response.body.error.code,
       });
+      await publishChatThreadWorkflowQueueChangedSafely(
+        event.userId,
+        event.chatThreadId,
+      );
+      signal.throwIfAborted();
       return;
     }
   },

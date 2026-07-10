@@ -8,6 +8,7 @@ import { command, type Computed } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
+import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
@@ -419,7 +420,15 @@ async function enqueueWorkflowTriggerEventIfBusy(input: {
     },
   });
   signal.throwIfAborted();
-  return admission === "enqueued";
+  if (admission === "enqueued") {
+    await publishChatThreadWorkflowQueueChangedSafely(
+      trigger.ownerUserId,
+      chatThreadId,
+    );
+    signal.throwIfAborted();
+    return true;
+  }
+  return false;
 }
 
 async function recordWorkflowTriggerRunStart(input: {
