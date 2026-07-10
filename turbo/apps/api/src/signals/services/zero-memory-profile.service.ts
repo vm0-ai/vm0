@@ -245,11 +245,22 @@ function tokenMatchScore(values: readonly (string | null)[], query: string) {
   return matched / tokens.length;
 }
 
+function hasMoreThanCharacters(value: string, maxCharacters: number): boolean {
+  let characterCount = 0;
+  for (const _character of value) {
+    characterCount += 1;
+    if (characterCount > maxCharacters) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isLexicalQueryEligible(normalizedQuery: string): boolean {
   if (!normalizedQuery) {
     return false;
   }
-  if (normalizedQuery.length > LEXICAL_QUERY_MAX_CHARACTERS) {
+  if (hasMoreThanCharacters(normalizedQuery, LEXICAL_QUERY_MAX_CHARACTERS)) {
     return false;
   }
   if (/\r|\n/.test(normalizedQuery)) {
