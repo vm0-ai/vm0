@@ -27,7 +27,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
+import {
+  seedLexicalRelationshipMemory,
+  seedMemoryDocumentChunk,
+} from "../../../test-fixtures/relationship-memory";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
@@ -216,6 +219,13 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
 const API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
 ] as const;
+const API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_memory_document_search",
+  "api_dispatch_pre_create_zero_memory_document_search_lexical",
+  "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+  "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+  "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+] as const;
 const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_memory_profile_static",
   "api_dispatch_pre_create_zero_memory_profile_dynamic",
@@ -232,6 +242,11 @@ const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
 const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
   "memory_runtime_prompt_length_bucket",
   "memory_runtime_search_query_length_bucket",
+  "memory_document_search_result_count_bucket",
+  "memory_document_lexical_candidate_count_bucket",
+  "memory_document_semantic_candidate_count_bucket",
+  "memory_document_hydration_candidate_count_bucket",
+  "memory_document_hydrated_result_count_bucket",
   "memory_profile_static_result_count_bucket",
   "memory_profile_dynamic_result_count_bucket",
   "memory_profile_search_result_count_bucket",
@@ -1070,6 +1085,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     const prompt = "security review answer";
     const seededMemoryText = "Send the security review answer to the customer.";
+    const documentTitle = "Security review answer playbook";
+    const documentText =
+      "Use the security review answer from the cited runbook.";
+    const documentExternalId = "runtime-document-timing-fixture";
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
@@ -1084,6 +1103,13 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "preference",
       text: seededMemoryText,
     });
+    const seededDocument = await seedMemoryDocumentChunk({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      title: documentTitle,
+      text: documentText,
+      externalId: documentExternalId,
+    });
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
 
     const created = await api.createRun(actor, {
       agentId,
@@ -1094,6 +1120,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const zeroMemoryActionTypes = new Set<string>([
       ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
       ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
     ]);
     const memoryTimingEvents = timingEvents.filter((event) => {
@@ -1106,25 +1133,23 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    const expectedProfileActionTypes =
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES.filter((actionType) => {
-        return (
-          actionType !==
-          "api_dispatch_pre_create_zero_memory_profile_search_semantic_query"
-        );
-      });
-    expectApiDispatchActions(timingEvents, expectedProfileActionTypes);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
     expectApiDispatchEventsSpanKind(
       timingEvents,
       [
         ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-        ...expectedProfileActionTypes,
+        ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+        ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
       ],
       "nested",
     );
-    expectNoApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
-    ]);
 
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
@@ -1167,7 +1192,60 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_semantic_embedding_result: "empty",
+        memory_profile_semantic_embedding_result: "present",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_search_result_count_bucket: "1",
+        zero_run_origin: "zero_run",
+        trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_lexical_candidate_count_bucket: "1",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_semantic_embedding_result: "present",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_semantic_candidate_count_bucket: "0",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_hydration_candidate_count_bucket: "1",
+        memory_document_hydrated_result_count_bucket: "1",
       }),
     );
     expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
@@ -1179,6 +1257,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       seeded.entityId,
       seeded.memoryId,
       seededMemoryText,
+      documentTitle,
+      documentText,
+      documentExternalId,
+      seededDocument.contextSpaceId,
+      seededDocument.documentId,
+      seededDocument.chunkId,
+      "source-search-fixture",
+      "https://github.com/vm0-ai/vm0/issues/1",
+      "#1",
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
@@ -1248,8 +1335,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_profile_semantic_embedding_result: "empty",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_semantic_embedding_result: "empty",
+      }),
+    );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+      "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
     ]);
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
@@ -1345,10 +1443,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_runtime_search_query_length_bucket: "0",
       }),
     );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
-    );
+    expectNoApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
@@ -1380,10 +1478,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
-    );
+    expectNoApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
       "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",

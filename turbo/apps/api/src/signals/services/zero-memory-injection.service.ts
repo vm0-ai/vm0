@@ -253,6 +253,7 @@ export async function buildZeroMemoryRuntimeInjection(
       q: retrievalQuery,
       mode: "documents",
       limit: DEFAULT_QUERY_LIMIT,
+      timing: params.timing,
     }),
   ]);
 
