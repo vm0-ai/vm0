@@ -325,17 +325,12 @@ fn firecracker_found_for_sandbox(
 
 struct RunnerReport {
     live_runner: LiveRunnerInstance,
-    name: Option<String>,
-    base_dir: Option<PathBuf>,
-    pid: u32,
-    config_path: PathBuf,
-    subcommand: String,
     service_type: ServiceType,
     status: Option<StatusInfo>,
     api_ok: Option<bool>,
     proxy_pid: Option<u32>,
     dns_pid: Option<u32>,
-    jobs: Vec<JobReport>,
+    jobs: Vec<JobStatus>,
     warnings: Vec<Warning>,
 }
 
@@ -359,14 +354,10 @@ struct InstalledService {
     config_path: Option<PathBuf>,
 }
 
-/// One row in the per-runner jobs table. The inner `JobStatus` variant
-/// carries whichever identifier is meaningful for that row — `run_id`
-/// for tracked runs, `sandbox_id` for orphan firecrackers — so the two
-/// cannot be confused by downstream formatting.
-struct JobReport {
-    status: JobStatus,
-}
-
+/// One row in the per-runner jobs table. Each variant carries whichever
+/// identifier is meaningful for that row — `run_id` for tracked runs,
+/// `sandbox_id` for orphan firecrackers — so downstream formatting cannot
+/// confuse the two.
 enum JobStatus {
     /// Active run with a matching firecracker process.
     Running { run_id: String, pid: u32 },
@@ -417,9 +408,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // When --name is set, run orphan firecracker detection scoped to that
     // runner. Orphan mitmproxy and namespace are skipped (no
     // runner-identifying info on orphaned processes).
-    let mut global_warnings: Vec<Warning> = if args.name.is_none() {
-        detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
-    } else {
+    let mut global_warnings: Vec<Warning> = if let Some(name_filter) = args.name.as_deref() {
         // Scoped detection: orphan firecracker for the named runner.
         // Orphan mitmproxy, namespace, and NBD devices are skipped because
         // they lack per-runner attribution — report them only in global mode
@@ -429,10 +418,10 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         // Orphan firecracker: scope by base_dir match.
         let named_base_dir = reports
             .iter()
-            .find(|r| r.name.as_deref() == args.name.as_deref())
-            .and_then(|r| r.base_dir.clone());
+            .find(|r| r.live_runner.runner_name == name_filter)
+            .map(|r| r.live_runner.base_dir.clone());
         if let Some(base_dir) = named_base_dir {
-            let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
+            let runner_pids: Vec<u32> = reports.iter().map(|r| r.live_runner.pid).collect();
             warnings.extend(
                 detect_orphan_firecrackers(&discovered.firecrackers, &runner_pids, Some(&base_dir))
                     .await,
@@ -440,13 +429,15 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         }
 
         warnings
+    } else {
+        detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     };
 
     // Filter reports by name after global detection (which needs full list)
     let mut reports = if let Some(ref name_filter) = args.name {
         reports
             .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
+            .filter(|r| r.live_runner.runner_name.as_str() == name_filter.as_str())
             .collect()
     } else {
         reports
@@ -564,7 +555,6 @@ async fn build_runner_report(
 
     // Load config (best-effort)
     let config = load_config_lenient(&runner.config_path).await;
-    let name = Some(runner.runner_name.clone());
 
     // Detect service type
     let service_type = detect_service_type(runner.pid, installed).await;
@@ -645,11 +635,6 @@ async fn build_runner_report(
 
     RunnerReport {
         live_runner: runner.clone(),
-        name,
-        base_dir: Some(runner.base_dir.clone()),
-        pid: runner.pid,
-        config_path: runner.config_path.clone(),
-        subcommand: runner.subcommand.clone(),
         service_type,
         status,
         api_ok,
@@ -895,7 +880,7 @@ fn correlate_jobs(
     status: &StatusInfo,
     base_dir: &Path,
     fc_procs: &[process::FirecrackerProcessInfo],
-) -> (Vec<JobReport>, Vec<Warning>) {
+) -> (Vec<JobStatus>, Vec<Warning>) {
     let mut jobs = Vec::new();
     let mut warnings = Vec::new();
 
@@ -946,9 +931,7 @@ fn correlate_jobs(
                 }
             }
         };
-        jobs.push(JobReport {
-            status: status_variant,
-        });
+        jobs.push(status_variant);
     }
 
     // Known sandboxes = active + idle. FCs with sandbox_ids outside this set
@@ -968,10 +951,8 @@ fn correlate_jobs(
                 sandbox_id: fc.sandbox_id.clone(),
                 base_dir: base_dir.to_path_buf(),
             });
-            jobs.push(JobReport {
-                status: JobStatus::NotInStatus {
-                    sandbox_id: fc.sandbox_id.clone(),
-                },
+            jobs.push(JobStatus::NotInStatus {
+                sandbox_id: fc.sandbox_id.clone(),
             });
         }
     }
@@ -990,7 +971,7 @@ async fn detect_global_orphans(
 ) -> Vec<Warning> {
     let mut warnings = Vec::new();
 
-    let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
+    let runner_pids: Vec<u32> = reports.iter().map(|r| r.live_runner.pid).collect();
 
     // Orphan firecracker processes (all runners)
     warnings.extend(detect_orphan_firecrackers(fc_procs, &runner_pids, None).await);
@@ -1144,9 +1125,9 @@ fn print_report(
         println!(
             "[{}] {} (PID {}) [{}]",
             i + 1,
-            r.config_path.display(),
-            r.pid,
-            r.subcommand,
+            r.live_runner.config_path.display(),
+            r.live_runner.pid,
+            r.live_runner.subcommand,
         );
 
         // Service type
@@ -1192,7 +1173,7 @@ fn print_report(
                 .iter()
                 .filter(|j| {
                     matches!(
-                        j.status,
+                        j,
                         JobStatus::Running { .. }
                             | JobStatus::Preparing { .. }
                             | JobStatus::NoProcess { .. }
@@ -1201,7 +1182,7 @@ fn print_report(
                 .count();
             println!("    Jobs:    {active_count} active");
             for job in &r.jobs {
-                match &job.status {
+                match job {
                     JobStatus::Running { run_id, pid } => {
                         println!("      - run {run_id} -> PID {pid}");
                     }
@@ -1508,7 +1489,7 @@ mod tests {
         assert_eq!(jobs.len(), 2);
         assert!(warnings.is_empty());
         assert!(matches!(
-            jobs.first().unwrap().status,
+            jobs.first().unwrap(),
             JobStatus::Running { pid: 100, .. }
         ));
     }
@@ -1522,7 +1503,7 @@ mod tests {
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
         assert!(warnings.is_empty(), "reused sandbox must not warn");
-        let JobStatus::Running { run_id, pid } = &jobs.first().unwrap().status else {
+        let JobStatus::Running { run_id, pid } = jobs.first().unwrap() else {
             panic!("expected Running");
         };
         assert_eq!(
@@ -1551,10 +1532,7 @@ mod tests {
         let fc: Vec<process::FirecrackerProcessInfo> = vec![];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
         assert_eq!(jobs.len(), 1);
-        assert!(matches!(
-            jobs.first().unwrap().status,
-            JobStatus::NoProcess { .. }
-        ));
+        assert!(matches!(jobs.first().unwrap(), JobStatus::NoProcess { .. }));
         assert_eq!(warnings.len(), 1);
         let msg = warnings[0].to_string();
         assert!(msg.contains("no firecracker"), "{msg}");
@@ -1579,10 +1557,7 @@ mod tests {
 
         assert_eq!(jobs.len(), 1);
         assert!(warnings.is_empty());
-        assert!(matches!(
-            jobs.first().unwrap().status,
-            JobStatus::Preparing { .. }
-        ));
+        assert!(matches!(jobs.first().unwrap(), JobStatus::Preparing { .. }));
     }
 
     #[test]
@@ -1604,7 +1579,7 @@ mod tests {
 
         assert_eq!(jobs.len(), 1);
         assert!(matches!(
-            jobs.first().unwrap().status,
+            jobs.first().unwrap(),
             JobStatus::Preparing { pid: None, .. }
         ));
         assert_eq!(warnings.len(), 1);
@@ -1631,7 +1606,7 @@ mod tests {
 
         assert_eq!(jobs.len(), 1);
         assert!(warnings.is_empty());
-        let JobStatus::Preparing { run_id, pid } = &jobs.first().unwrap().status else {
+        let JobStatus::Preparing { run_id, pid } = jobs.first().unwrap() else {
             panic!("expected preparing job");
         };
         assert_eq!(run_id, "run-prep");
@@ -1656,7 +1631,7 @@ mod tests {
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
 
         assert_eq!(jobs.len(), 1);
-        let JobStatus::Preparing { run_id, pid } = &jobs.first().unwrap().status else {
+        let JobStatus::Preparing { run_id, pid } = jobs.first().unwrap() else {
             panic!("expected preparing job");
         };
         assert_eq!(run_id, "run-stale-with-fc");
@@ -1685,7 +1660,7 @@ mod tests {
 
         assert_eq!(jobs.len(), 1);
         assert!(matches!(
-            jobs.first().unwrap().status,
+            jobs.first().unwrap(),
             JobStatus::Preparing { pid: None, .. }
         ));
         assert_eq!(warnings.len(), 1);
@@ -1712,9 +1687,9 @@ mod tests {
         // in the distinction so future refactors can't quietly regress.
         let orphan_row = jobs
             .iter()
-            .find(|j| matches!(j.status, JobStatus::NotInStatus { .. }))
+            .find(|j| matches!(j, JobStatus::NotInStatus { .. }))
             .expect("orphan row missing");
-        let JobStatus::NotInStatus { sandbox_id } = &orphan_row.status else {
+        let JobStatus::NotInStatus { sandbox_id } = orphan_row else {
             panic!("orphan row must be NotInStatus");
         };
         assert_eq!(sandbox_id, "sandbox-orphan");
@@ -2176,11 +2151,6 @@ mod tests {
                 PathBuf::from("/data/active.yaml"),
                 PathBuf::from("/data/active"),
             ),
-            name: None,
-            base_dir: None,
-            pid: 1,
-            config_path: PathBuf::from("/data/active.yaml"),
-            subcommand: "start".into(),
             service_type: ServiceType::Installed("vm0-runner-active".into()),
             status: None,
             api_ok: None,
@@ -2195,18 +2165,15 @@ mod tests {
         assert_eq!(stopped[0].config_info, "/data/stopped.yaml");
     }
 
-    fn make_report(name: Option<&str>) -> RunnerReport {
+    fn make_report(name: &str) -> RunnerReport {
+        let mut live_runner = live_runner_instance(
+            1,
+            PathBuf::from("/data/test.yaml"),
+            PathBuf::from("/data/test"),
+        );
+        live_runner.runner_name = name.into();
         RunnerReport {
-            live_runner: live_runner_instance(
-                1,
-                PathBuf::from("/data/test.yaml"),
-                PathBuf::from("/data/test"),
-            ),
-            name: name.map(String::from),
-            base_dir: None,
-            pid: 1,
-            config_path: PathBuf::from("/data/test.yaml"),
-            subcommand: "start".into(),
+            live_runner,
             service_type: ServiceType::Bare,
             status: None,
             api_ok: None,
@@ -2219,27 +2186,23 @@ mod tests {
 
     #[test]
     fn filter_by_name_keeps_matching() {
-        let reports = vec![
-            make_report(Some("pr-100-1")),
-            make_report(Some("pr-200-1")),
-            make_report(None),
-        ];
+        let reports = vec![make_report("pr-100-1"), make_report("pr-200-1")];
         let name_filter = "pr-100-1";
         let filtered: Vec<_> = reports
             .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter))
+            .filter(|r| r.live_runner.runner_name == name_filter)
             .collect();
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].name.as_deref(), Some("pr-100-1"));
+        assert_eq!(filtered[0].live_runner.runner_name, "pr-100-1");
     }
 
     #[test]
     fn filter_by_name_no_match_returns_empty() {
-        let reports = vec![make_report(Some("pr-100-1")), make_report(None)];
+        let reports = vec![make_report("pr-100-1")];
         let name_filter = "nonexistent";
         let filtered: Vec<_> = reports
             .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter))
+            .filter(|r| r.live_runner.runner_name == name_filter)
             .collect();
         assert!(filtered.is_empty());
     }
@@ -2430,7 +2393,6 @@ mod tests {
             fixture.base_dir.clone(),
         );
         let report = build_runner_report(&runner, &[], &mitm_procs, &dns_procs, &[]).await;
-        assert!(report.base_dir.is_some(), "test config should load");
         assert!(report.status.is_some(), "test status should load");
         report
     }
@@ -2483,11 +2445,6 @@ mod tests {
         );
         let mut reports = vec![RunnerReport {
             live_runner: runner.clone(),
-            name: Some(runner.runner_name.clone()),
-            base_dir: Some(base_dir.clone()),
-            pid: runner.pid,
-            config_path: runner.config_path.clone(),
-            subcommand: "start".into(),
             service_type: ServiceType::Bare,
             status: None,
             api_ok: None,
@@ -2543,11 +2500,6 @@ mod tests {
             .unwrap();
         let mut reports = vec![RunnerReport {
             live_runner: runner.clone(),
-            name: Some(runner.runner_name.clone()),
-            base_dir: Some(base_dir.clone()),
-            pid: runner.pid,
-            config_path: runner.config_path.clone(),
-            subcommand: "start".into(),
             service_type: ServiceType::Bare,
             status: None,
             api_ok: None,
@@ -2598,11 +2550,6 @@ mod tests {
         .unwrap();
         let mut reports = vec![RunnerReport {
             live_runner: runner.clone(),
-            name: Some(runner.runner_name.clone()),
-            base_dir: Some(base_dir.clone()),
-            pid: runner.pid,
-            config_path: runner.config_path.clone(),
-            subcommand: "start".into(),
             service_type: ServiceType::Bare,
             status: None,
             api_ok: None,
@@ -2651,11 +2598,14 @@ mod tests {
 
         let report = build_runner_report(&runner, &[], &[], &[], &[]).await;
 
-        assert_eq!(report.name.as_deref(), Some("test-runner"));
-        assert_eq!(report.base_dir.as_deref(), Some(base_dir.as_path()));
-        assert_eq!(report.config_path, dir.path().join("missing-runner.yaml"));
-        assert_eq!(report.pid, std::process::id());
-        assert_eq!(report.subcommand, "start");
+        assert_eq!(report.live_runner.runner_name, "test-runner");
+        assert_eq!(report.live_runner.base_dir, base_dir);
+        assert_eq!(
+            report.live_runner.config_path,
+            dir.path().join("missing-runner.yaml")
+        );
+        assert_eq!(report.live_runner.pid, std::process::id());
+        assert_eq!(report.live_runner.subcommand, "start");
         assert!(report.status.is_some());
         assert_eq!(report.api_ok, None);
     }
@@ -2672,7 +2622,7 @@ mod tests {
 
         let report = build_runner_report(&runner, &[], &[], &[], &[]).await;
 
-        assert_eq!(report.subcommand, "benchmark");
+        assert_eq!(report.live_runner.subcommand, "benchmark");
     }
 
     #[tokio::test]
