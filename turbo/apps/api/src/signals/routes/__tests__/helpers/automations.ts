@@ -113,3 +113,15 @@ export async function readAutomationsFakeKmsDecryptCallCount(
   const response = await postAction(context, { action: "read-fake-kms-state" });
   return response.decrypt_call_count ?? 0;
 }
+
+export async function mutateRunnerJobSecretValueEnvironmentKeys(
+  context: TestContext,
+  runId: string,
+  mode: "remove" | "invalid",
+): Promise<void> {
+  await postAction(context, {
+    action: "mutate-runner-job-secret-value-environment-keys",
+    run_id: runId,
+    mode,
+  });
+}

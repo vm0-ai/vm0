@@ -862,7 +862,10 @@ impl FirecrackerSandbox {
     }
 
     /// Start using a fresh boot with `--config-file --api-sock`.
-    async fn start_fresh(&mut self, runtime_cancel: CancellationToken) -> sandbox::Result<()> {
+    async fn start_fresh(
+        &mut self,
+        runtime_cancel: CancellationToken,
+    ) -> sandbox::Result<ApiClient> {
         let config = self.build_config()?;
         let config_json =
             serde_json::to_string_pretty(&config).map_err(|e| SandboxError::Start {
@@ -908,7 +911,9 @@ impl FirecrackerSandbox {
         ));
 
         // Wait for API socket readiness so the balloon controller can connect.
-        let client = ApiClient::new(&api_sock);
+        let client = ApiClient::new(&api_sock).map_err(|e| SandboxError::Start {
+            message: format!("create API client: {e}"),
+        })?;
         tokio::select! {
             result = client.wait_for_ready(API_READY_TIMEOUT) => {
                 result.map_err(|e| {
@@ -934,14 +939,14 @@ impl FirecrackerSandbox {
         }
 
         info!(id = %self.id, "firecracker started (fresh boot)");
-        Ok(())
+        Ok(client)
     }
 
     /// Start from a snapshot using `--api-sock` and bind mounts.
     async fn start_from_snapshot(
         &mut self,
         runtime_cancel: CancellationToken,
-    ) -> sandbox::Result<()> {
+    ) -> sandbox::Result<ApiClient> {
         let snapshot =
             self.factory_config
                 .snapshot
@@ -1039,7 +1044,9 @@ impl FirecrackerSandbox {
 
         // Wait for Firecracker API to be ready, but bail early if the
         // process crashes before the socket appears.
-        let client = ApiClient::new(&api_sock);
+        let client = ApiClient::new(&api_sock).map_err(|e| SandboxError::Start {
+            message: format!("create API client: {e}"),
+        })?;
         tokio::select! {
             result = client.wait_for_ready(API_READY_TIMEOUT) => {
                 result.map_err(|e| {
@@ -1076,7 +1083,7 @@ impl FirecrackerSandbox {
         .await?;
 
         info!(id = %self.id, "snapshot loaded and resumed");
-        Ok(())
+        Ok(client)
     }
 }
 
@@ -1492,11 +1499,14 @@ impl Sandbox for FirecrackerSandbox {
             self.start_fresh(runtime_cancel.clone()).await
         };
 
-        if let Err(e) = start_result {
-            abort_and_join(vsock_task).await;
-            self.runtime.kill_process().await;
-            return Err(e);
-        }
+        let client = match start_result {
+            Ok(client) => client,
+            Err(e) => {
+                abort_and_join(vsock_task).await;
+                self.runtime.kill_process().await;
+                return Err(e);
+            }
+        };
 
         // Wait for guest to connect via vsock.
         let vsock_guest = tokio::select! {
@@ -1573,7 +1583,7 @@ impl Sandbox for FirecrackerSandbox {
 
         // Spawn balloon controller to reclaim unused guest memory.
         self.runtime.set_balloon(balloon::spawn(
-            self.sock_paths.api_sock().to_owned(),
+            client,
             self.config.resources.memory_mb,
             self.state_tx.subscribe(),
         ));
@@ -2784,7 +2794,7 @@ fn log_balloon_settle_timeout(
 /// [`BALLOON_SETTLE_TIMEOUT`] (partial inflation is better than none).
 /// Errors from stats fetching are non-fatal — we log and
 /// proceed to pause.
-async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str) {
+async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) {
     let deadline = tokio::time::Instant::now() + BALLOON_SETTLE_TIMEOUT;
     let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
     let mut summary = BalloonSettleSummary::new(target_mib);
@@ -2934,7 +2944,10 @@ async fn park_inner(
     }
 
     let target = memory_mb.saturating_sub(balloon::MIN_GUEST_MIB);
-    let client = ApiClient::new(api_sock);
+    let client = ApiClient::new(api_sock).map_err(|e| SandboxError::IdleTransition {
+        transition: SandboxIdleTransition::Park,
+        message: format!("create API client: {e}"),
+    })?;
 
     if target > 0 {
         // Stop the reactive controller so we're the sole writer to /balloon.
@@ -3020,7 +3033,10 @@ async fn unpark_inner(
     // already running. Within unpark_inner this only happens if a prior
     // partial unpark (resume OK, deflate failed) already resumed the VM.
     // Treat as success to preserve the trait's retry contract.
-    let client = ApiClient::new(api_sock);
+    let client = ApiClient::new(api_sock).map_err(|e| SandboxError::IdleTransition {
+        transition: SandboxIdleTransition::Unpark,
+        message: format!("create API client: {e}"),
+    })?;
     match client.resume().await {
         Ok(()) => {}
         Err(ApiError::Http { status: 400, .. }) => {
@@ -3066,7 +3082,7 @@ async fn unpark_inner(
                 message: format!("balloon deflate: {e}"),
             })?;
 
-        *balloon_controller = Some(balloon::spawn(api_sock.to_path_buf(), memory_mb, state_rx));
+        *balloon_controller = Some(balloon::spawn(client, memory_mb, state_rx));
     }
 
     *is_parked = false;

@@ -3548,7 +3548,7 @@ fn balloon_statistics(target_mib: u32, actual_mib: u32) -> BalloonStatistics {
     }
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
     let target_mib = 4096 - balloon::MIN_GUEST_MIB;
     let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
@@ -3559,7 +3559,7 @@ async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
         ))]),
     )
     .await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     let (_, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "near-target")).await;
@@ -3585,7 +3585,7 @@ async fn wait_for_balloon_near_target_logs_summary_without_timeout() {
     assert_event_field(event, "actual_delta_mib", "Some(0)");
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
@@ -3595,7 +3595,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
         ))]),
     )
     .await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     let (_, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "stalled")).await;
@@ -3617,7 +3617,7 @@ async fn wait_for_balloon_timeout_logs_actual_stalled_reason() {
     assert_event_field(event, "reason", "actual_stalled");
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let stats = MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
@@ -3626,7 +3626,7 @@ async fn wait_for_balloon_accepts_pressure_limited_partial_reclaim() {
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
     )
     .await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     let (_, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "pressure-limited")).await;
@@ -3711,7 +3711,7 @@ fn pressure_limited_reclaim_ignores_free_memory_when_available_memory_is_missing
     );
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
@@ -3721,7 +3721,7 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
         ))]),
     )
     .await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     let (_, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "stale-target")).await;
@@ -3736,7 +3736,7 @@ async fn wait_for_balloon_timeout_logs_target_not_observed_reason() {
     assert_event_field(event, "reason", "target_not_observed");
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let (sock, _reqs, _dir) = spawn_mock_fc_api_with_stats(
@@ -3747,7 +3747,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
         )]),
     )
     .await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     let (_, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "slow-stats")).await;
@@ -3763,7 +3763,7 @@ async fn wait_for_balloon_stats_poll_is_bounded_by_settle_timeout() {
     assert_event_field(event, "deficit_mib", "None");
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let stats = MockBalloonStats::new(target_mib, 900).with_memory(mib(32), mib(0), mib(2048));
@@ -3772,7 +3772,7 @@ async fn wait_for_balloon_timeout_logs_severe_deficit_and_memory_stats() {
         std::collections::VecDeque::from([MockBalloonStatsReply::Ok(stats)]),
     )
     .await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     let (_, events) =
         capture_async_log_events(wait_for_balloon(&client, target_mib, "severe")).await;
@@ -3830,7 +3830,7 @@ async fn park_pauses_when_balloon_stats_are_unavailable() {
 async fn snapshot_restore_with_limiters_loads_paused_patches_then_resumes() {
     let (sock, reqs, _dir) =
         spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 204, 204]), None).await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
     let rate_limits = test_rate_limits();
 
     load_snapshot_and_apply_rate_limits(&client, "/snap/state", "/snap/memory", Some(&rate_limits))
@@ -3880,7 +3880,7 @@ async fn snapshot_restore_with_limiters_loads_paused_patches_then_resumes() {
 #[tokio::test]
 async fn snapshot_restore_without_limiters_loads_and_resumes_without_patching() {
     let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
 
     load_snapshot_and_apply_rate_limits(&client, "/snap/state", "/snap/memory", None)
         .await
@@ -3897,7 +3897,7 @@ async fn snapshot_restore_without_limiters_loads_and_resumes_without_patching() 
 async fn snapshot_restore_limiter_patch_failure_does_not_resume() {
     let (sock, reqs, _dir) =
         spawn_mock_fc_api(std::collections::VecDeque::from(vec![500]), None).await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
     let rate_limits = test_rate_limits();
 
     let err = load_snapshot_and_apply_rate_limits(
@@ -3925,7 +3925,7 @@ async fn snapshot_restore_limiter_patch_failure_does_not_resume() {
 async fn snapshot_restore_workspace_limiter_patch_failure_does_not_resume() {
     let (sock, reqs, _dir) =
         spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
     let rate_limits = test_rate_limits();
 
     let err = load_snapshot_and_apply_rate_limits(
@@ -3960,7 +3960,7 @@ async fn snapshot_restore_workspace_limiter_patch_failure_does_not_resume() {
 async fn snapshot_restore_network_limiter_patch_failure_does_not_resume() {
     let (sock, reqs, _dir) =
         spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 204, 500]), None).await;
-    let client = ApiClient::new(&sock);
+    let client = ApiClient::new(&sock).unwrap();
     let rate_limits = test_rate_limits();
 
     let err = load_snapshot_and_apply_rate_limits(
@@ -4589,11 +4589,11 @@ async fn unpark_retry_after_partial_failure_resumes_idempotently() {
     }
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn park_waits_for_balloon_before_pause() {
-    // Mock returns actual_mib = 0 initially, then 1536 after we advance
-    // time past the first poll interval. Using `start_paused = true` for
-    // deterministic timing — no wall-clock dependencies.
+    // Mock returns actual_mib = 0 initially, then 1536 before the next
+    // poll interval. This uses the real clock because
+    // the API boundary uses a real Unix socket.
     let balloon_actual = Arc::new(AtomicU32::new(0));
     let (sock, reqs, _dir) = spawn_mock_fc_api(
         std::collections::VecDeque::new(),
@@ -4601,11 +4601,10 @@ async fn park_waits_for_balloon_before_pause() {
     )
     .await;
 
-    // After the first poll sees actual=0 and sleeps 500ms, the auto-advance
-    // fires. Set actual to target so the second poll succeeds.
+    // Set actual to target before the second 500ms poll.
     let actual_clone = Arc::clone(&balloon_actual);
     tokio::spawn(async move {
-        // Wait for one poll cycle (the 500ms sleep auto-advances).
+        // Let the first stats request complete before changing the value.
         tokio::time::sleep(Duration::from_millis(250)).await;
         actual_clone.store(1536, Ordering::Relaxed);
     });
@@ -4638,7 +4637,7 @@ async fn park_waits_for_balloon_before_pause() {
     assert!(ps[1].body.contains("Paused"));
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn park_pauses_when_balloon_is_within_settle_tolerance() {
     // Production samples have shown 4 GiB VMs often settling with a
     // low-hundreds MiB residual while the guest reports little available
@@ -4676,7 +4675,7 @@ async fn park_pauses_when_balloon_is_within_settle_tolerance() {
     assert!(ps[1].body.contains("Paused"));
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn park_pauses_when_balloon_deficit_equals_settle_tolerance() {
     let target_mib = 4096 - balloon::MIN_GUEST_MIB;
     let balloon_actual = Arc::new(AtomicU32::new(
@@ -4719,7 +4718,7 @@ async fn park_pauses_when_balloon_deficit_equals_settle_tolerance() {
     assert!(ps[1].body.contains("Paused"));
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
     let target_mib = 2048 - balloon::MIN_GUEST_MIB;
     let stats = MockBalloonStats::new(target_mib, 1250).with_memory(mib(64), mib(128), mib(2048));
@@ -4768,12 +4767,10 @@ async fn park_pauses_when_balloon_reclaim_is_pressure_limited() {
     assert!(ps[1].body.contains("Paused"));
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn park_pauses_after_balloon_settle_timeout() {
     // Balloon never reaches target — wait_for_balloon must time out
-    // and proceed to pause anyway. With `start_paused = true`, tokio
-    // auto-advances simulated time when all tasks await timers, so
-    // the timeout completes instantly in wall-clock time.
+    // and proceed to pause anyway.
     let balloon_actual = Arc::new(AtomicU32::new(0)); // stuck at 0
     let (sock, reqs, _dir) = spawn_mock_fc_api(
         std::collections::VecDeque::new(),

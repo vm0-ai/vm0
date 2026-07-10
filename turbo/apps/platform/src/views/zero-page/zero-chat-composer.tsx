@@ -1010,42 +1010,6 @@ function selectedIllustrationTemplateItem(
   });
 }
 
-function formatPresentationRunbookKind(templateId: string): string {
-  const label = templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function presentationTemplateMatchesSearch(
-  item: PresentationTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [
-    item.title,
-    item.templateId,
-    formatPresentationRunbookKind(item.templateId),
-  ].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
-}
-
-function illustrationTemplateMatchesSearch(
-  item: IllustrationTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [item.title, item.illustrationStyleId].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
-}
-
 function isSelectedVideoTemplate(
   item: VideoTemplateItem,
   value: GenerationTemplateRequest | undefined,
@@ -1072,24 +1036,6 @@ function selectedVideoTemplateItem(
     return undefined;
   }
   return findVideoTemplateItem(value.selection.stylePresetId);
-}
-
-function videoTemplateMatchesSearch(
-  item: VideoTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [
-    item.title,
-    item.id,
-    item.slug,
-    item.description,
-    item.sourcePath,
-  ].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
 }
 
 function isSelectedWorkflowTemplate(
@@ -1164,24 +1110,8 @@ function selectedWebsiteTemplateItem(
   return findWebsiteTemplateItem(value.selection.websiteTemplateId);
 }
 
-function websiteTemplateMatchesSearch(
-  item: WebsiteTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [
-    item.title,
-    item.id,
-    item.slug,
-    item.description,
-    item.resourceId,
-    item.sourcePath,
-    item.templateId,
-  ].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
+function websiteTemplateCardImageUrl(item: WebsiteTemplateItem): string {
+  return r2ImageTransformUrl(item.previewImageUrl, TEMPLATE_CARD_PREVIEW_SIZE);
 }
 
 function playVideoTemplatePreview(video: HTMLVideoElement | null): void {
@@ -1389,6 +1319,7 @@ function WebsiteTemplateCard({
   onSelect: (item: WebsiteTemplateItem) => void;
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
+  const previewImageUrl = websiteTemplateCardImageUrl(item);
   const preview = () => {
     onPreview(item);
   };
@@ -1415,9 +1346,10 @@ function WebsiteTemplateCard({
         <img
           alt={`${item.title} website template preview`}
           title={`${item.title} website template preview`}
-          src={item.previewImageUrl}
-          loading="lazy"
+          src={previewImageUrl}
+          loading="eager"
           decoding="async"
+          fetchPriority="high"
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
@@ -1853,6 +1785,14 @@ function videoPreviewImageUrlsForItems(
   });
 }
 
+function websitePreviewImageUrlsForItems(
+  items: readonly WebsiteTemplateItem[],
+): string[] {
+  return items.map((item) => {
+    return websiteTemplateCardImageUrl(item);
+  });
+}
+
 function initialTemplatePreviewImageUrlsForCategory({
   category,
   hasPptTab,
@@ -1884,7 +1824,7 @@ function initialTemplatePreviewImageUrlsForCategory({
     return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
   }
   if (category === "website" && hasWebsiteTab) {
-    return [];
+    return websitePreviewImageUrlsForItems(WEBSITE_TEMPLATE_ITEMS);
   }
   return [];
 }
@@ -4819,20 +4759,10 @@ function TemplatePickerDialog({
       ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto"
       : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
-  const filteredPptItems = presentationItems.filter((item) => {
-    return presentationTemplateMatchesSearch(item, search);
-  });
-  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
-    (item) => {
-      return illustrationTemplateMatchesSearch(item, search);
-    },
-  );
-  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
-    return videoTemplateMatchesSearch(item, search);
-  });
-  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS.filter((item) => {
-    return websiteTemplateMatchesSearch(item, search);
-  });
+  const filteredPptItems = presentationItems;
+  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
+  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
+  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
   // The persona catalog rolls out behind a feature switch, and a persona pill
   // filters the grid, ideation-gallery style. resolveWorkflowCatalog() keeps
   // that branching out of this component to stay under the complexity budget.
@@ -4856,55 +4786,31 @@ function TemplatePickerDialog({
     hasWorkflowTab,
   });
 
-  const filteredIllustrationItemsForSearch = (value: string) => {
-    return ILLUSTRATION_TEMPLATE_ITEMS.filter((item) => {
-      return illustrationTemplateMatchesSearch(item, value);
-    });
-  };
-
-  const filteredPresentationItemsForSearch = (value: string) => {
-    return presentationItems.filter((item) => {
-      return presentationTemplateMatchesSearch(item, value);
-    });
-  };
-
-  const filteredVideoItemsForSearch = (value: string) => {
-    return VIDEO_TEMPLATE_ITEMS.filter((item) => {
-      return videoTemplateMatchesSearch(item, value);
-    });
-  };
-
-  const previewImageUrlsForCategory = (
-    targetCategory: string,
-    query: string,
-  ) => {
+  const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
       return presentationPreviewImageUrlsForItems(
-        filteredPresentationItemsForSearch(query),
+        presentationItems,
         cardThemeIdBySlug,
       );
     }
     if (targetCategory === "illustration" && hasIllustrationTab) {
       return illustrationPreviewImageUrlsForItems({
-        items: filteredIllustrationItemsForSearch(query),
+        items: ILLUSTRATION_TEMPLATE_ITEMS,
         variantIndexBySlug: illustrationVariantIndex,
       });
     }
     if (targetCategory === "video" && hasVideoTab) {
-      return videoPreviewImageUrlsForItems(filteredVideoItemsForSearch(query));
+      return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
     }
     if (targetCategory === "website" && hasWebsiteTab) {
-      return [];
+      return websitePreviewImageUrlsForItems(WEBSITE_TEMPLATE_ITEMS);
     }
     return [];
   };
 
-  const prewarmTemplatePreviewsForCategory = (
-    targetCategory: string,
-    query = search,
-  ) => {
+  const prewarmTemplatePreviewsForCategory = (targetCategory: string) => {
     prewarmTemplatePreviewImages(
-      previewImageUrlsForCategory(targetCategory, query),
+      previewImageUrlsForCategory(targetCategory),
       templatePreviewPrewarmImageCountForCategory(targetCategory),
     );
   };
@@ -5048,7 +4954,7 @@ function TemplatePickerDialog({
   const handleSearchChange = (value: string) => {
     setSearch(value);
     if (!isPreviewing) {
-      prewarmTemplatePreviewsForCategory(selectedCategory, value);
+      prewarmTemplatePreviewsForCategory(selectedCategory);
     }
   };
 
@@ -5099,7 +5005,7 @@ function TemplatePickerDialog({
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
               <DialogTitle>Create with template</DialogTitle>
             </DialogHeader>
-            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-center sm:justify-between">
               <TemplatePickerTabs
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
@@ -5109,22 +5015,33 @@ function TemplatePickerDialog({
                 hasWorkflowTab={hasWorkflowTab}
                 onChange={handleCategoryChange}
               />
-              <div className="w-full pb-3 sm:w-64">
-                <div className="relative">
-                  <IconSearch
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    stroke={1.8}
-                  />
-                  <Input
-                    aria-label="Search templates"
-                    className="h-8 pl-9 text-sm"
-                    value={search}
-                    onChange={(event) => {
-                      handleSearchChange(event.target.value);
-                    }}
-                    placeholder="Search templates"
-                  />
-                </div>
+              <div
+                className={cn(
+                  "pb-3 pt-2 sm:w-64",
+                  selectedCategory === "workflow"
+                    ? "w-full"
+                    : "hidden sm:block",
+                )}
+              >
+                {selectedCategory === "workflow" ? (
+                  <div className="relative">
+                    <IconSearch
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                      stroke={1.8}
+                    />
+                    <Input
+                      aria-label="Search connectors"
+                      className="h-8 pl-9 text-sm"
+                      value={search}
+                      onChange={(event) => {
+                        handleSearchChange(event.target.value);
+                      }}
+                      placeholder="Search connector..."
+                    />
+                  </div>
+                ) : (
+                  <div aria-hidden="true" className="h-8" />
+                )}
               </div>
             </div>
             <TemplatePickerCategoryContent

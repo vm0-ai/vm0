@@ -16,7 +16,7 @@ pub(super) const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount -- "$4" 2>/dev/nul
 pub(super) const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 pub(super) async fn load_snapshot_and_apply_rate_limits(
-    client: &ApiClient<'_>,
+    client: &ApiClient,
     snapshot_path: &str,
     memory_path: &str,
     rate_limits: Option<&FirecrackerDeviceRateLimits>,

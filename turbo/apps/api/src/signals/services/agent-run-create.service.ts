@@ -4782,23 +4782,36 @@ async function buildStoredExecutionContext(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
+  const environment = {
+    ...expandEnvironment({
+      content: args.resolved.content,
+      vars: args.body.vars,
+      secrets: executionSecrets.secrets,
+      additionalEnvironment: args.modelProvider?.environment,
+      environmentSecretPlaceholders: permissions?.environmentSecretPlaceholders,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+      connectorVars: args.connectorContext.vars,
+    }),
+    ...args.extraEnvironment,
+  };
+  const environmentKeyByValue = new Map<string, string>();
+  for (const [key, value] of Object.entries(environment)) {
+    if (!environmentKeyByValue.has(value)) {
+      environmentKeyByValue.set(value, key);
+    }
+  }
+  const secretValueEnvironmentKeys = executionSecrets.secrets
+    ? secretValues.flatMap((value) => {
+        const key = environmentKeyByValue.get(value);
+        return key === undefined ? [] : [key];
+      })
+    : null;
 
   return {
     context: {
       storageManifest: args.storageManifest,
-      environment: {
-        ...expandEnvironment({
-          content: args.resolved.content,
-          vars: args.body.vars,
-          secrets: executionSecrets.secrets,
-          additionalEnvironment: args.modelProvider?.environment,
-          environmentSecretPlaceholders:
-            permissions?.environmentSecretPlaceholders,
-          storedConnectorEnvironment: args.connectorContext.storedEnvironment,
-          connectorVars: args.connectorContext.vars,
-        }),
-        ...args.extraEnvironment,
-      },
+      environment,
+      secretValueEnvironmentKeys,
       vars: args.connectorContext.vars ?? null,
       resumeSession: args.resolved.resumeSession ?? null,
       encryptedSecrets: await encryptPersistentSecretsMap(
