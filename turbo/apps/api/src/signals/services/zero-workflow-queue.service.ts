@@ -11,7 +11,7 @@ import { zeroWorkflowQueueEvents } from "@vm0/db/schema/zero-workflow-queue";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import type { Db } from "../external/db";
+import type { Db, ReadonlyDb } from "../external/db";
 import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
@@ -361,4 +361,190 @@ export async function pendingWorkflowQueueThreadIds(
   return rows.map((row) => {
     return row.chatThreadId;
   });
+}
+
+export interface WorkflowQueueThreadRow {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly workflowId: string;
+  readonly queuePausedAt: Date | null;
+  readonly pauseReason: string | null;
+}
+
+/**
+ * Resolve the caller-owned workflow-queue key for a chat thread. Null when
+ * the thread has no workflow queue or belongs to another org/user.
+ */
+export async function loadWorkflowQueueThread(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<WorkflowQueueThreadRow | null> {
+  const [row] = await db
+    .select({
+      orgId: workflowUserTriggerThreads.orgId,
+      userId: workflowUserTriggerThreads.userId,
+      workflowId: workflowUserTriggerThreads.workflowId,
+      queuePausedAt: workflowUserTriggerThreads.queuePausedAt,
+      pauseReason: workflowUserTriggerThreads.pauseReason,
+    })
+    .from(workflowUserTriggerThreads)
+    .where(
+      and(
+        eq(workflowUserTriggerThreads.chatThreadId, args.threadId),
+        eq(workflowUserTriggerThreads.orgId, args.orgId),
+        eq(workflowUserTriggerThreads.userId, args.userId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+interface WorkflowQueueRunningRun {
+  readonly runId: string;
+  readonly status: string;
+  readonly triggerBrief: string | null;
+  readonly createdAt: Date;
+}
+
+interface PendingWorkflowQueueEvent {
+  readonly id: string;
+  readonly triggerId: string;
+  readonly triggerSource: string;
+  readonly triggerBrief: string | null;
+  readonly createdAt: Date;
+}
+
+export async function loadRunningWorkflowThreadRun(
+  db: ReadonlyDb,
+  threadId: string,
+): Promise<WorkflowQueueRunningRun | null> {
+  const [run] = await db
+    .select({
+      runId: zeroRuns.id,
+      status: agentRuns.status,
+      triggerBrief: zeroRuns.triggerBrief,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .orderBy(asc(agentRuns.createdAt))
+    .limit(1);
+  return run ?? null;
+}
+
+export async function listPendingWorkflowQueueEvents(
+  db: ReadonlyDb,
+  key: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workflowId: string;
+  },
+): Promise<readonly PendingWorkflowQueueEvent[]> {
+  return await db
+    .select({
+      id: zeroWorkflowQueueEvents.id,
+      triggerId: zeroWorkflowQueueEvents.triggerId,
+      triggerSource: zeroWorkflowQueueEvents.triggerSource,
+      triggerBrief: zeroWorkflowQueueEvents.triggerBrief,
+      createdAt: zeroWorkflowQueueEvents.createdAt,
+    })
+    .from(zeroWorkflowQueueEvents)
+    .where(
+      and(
+        eq(zeroWorkflowQueueEvents.orgId, key.orgId),
+        eq(zeroWorkflowQueueEvents.userId, key.userId),
+        eq(zeroWorkflowQueueEvents.workflowId, key.workflowId),
+      ),
+    )
+    .orderBy(
+      asc(zeroWorkflowQueueEvents.createdAt),
+      asc(zeroWorkflowQueueEvents.id),
+    );
+}
+
+/**
+ * Delete one pending event owned by the caller. Returns its chat thread id
+ * for the realtime signal, or null when no such event exists.
+ */
+export async function deleteWorkflowQueueEventById(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly eventId: string;
+  },
+): Promise<{ readonly chatThreadId: string } | null> {
+  const [deleted] = await db
+    .delete(zeroWorkflowQueueEvents)
+    .where(
+      and(
+        eq(zeroWorkflowQueueEvents.id, args.eventId),
+        eq(zeroWorkflowQueueEvents.orgId, args.orgId),
+        eq(zeroWorkflowQueueEvents.userId, args.userId),
+      ),
+    )
+    .returning({ chatThreadId: zeroWorkflowQueueEvents.chatThreadId });
+  return deleted ?? null;
+}
+
+export async function clearWorkflowQueueEvents(
+  db: Db,
+  key: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workflowId: string;
+  },
+): Promise<void> {
+  await db
+    .delete(zeroWorkflowQueueEvents)
+    .where(
+      and(
+        eq(zeroWorkflowQueueEvents.orgId, key.orgId),
+        eq(zeroWorkflowQueueEvents.userId, key.userId),
+        eq(zeroWorkflowQueueEvents.workflowId, key.workflowId),
+      ),
+    );
+}
+
+/**
+ * Manual pause/resume. Pause freezes consumption while intake continues;
+ * resume clears both the pause timestamp and any stored reason.
+ */
+export async function setWorkflowQueuePause(
+  db: Db,
+  key: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly workflowId: string;
+  },
+  pause: {
+    readonly pausedAt: Date;
+    readonly pauseReason: string | null;
+  } | null,
+  updatedAt: Date,
+): Promise<void> {
+  await db
+    .update(workflowUserTriggerThreads)
+    .set({
+      queuePausedAt: pause?.pausedAt ?? null,
+      pauseReason: pause?.pauseReason ?? null,
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(workflowUserTriggerThreads.orgId, key.orgId),
+        eq(workflowUserTriggerThreads.userId, key.userId),
+        eq(workflowUserTriggerThreads.workflowId, key.workflowId),
+      ),
+    );
 }
