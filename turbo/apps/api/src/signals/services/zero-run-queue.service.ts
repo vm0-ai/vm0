@@ -364,15 +364,6 @@ async function promoteQueuedCandidate(
   });
 }
 
-async function loadQueuedRunnerJobPayload(
-  encryptedParams: string | null,
-  signal: AbortSignal,
-): Promise<QueuedRunnerJobPayload | null> {
-  const payload = await decryptQueuedRunnerJobPayload(encryptedParams);
-  signal.throwIfAborted();
-  return payload;
-}
-
 async function publishRemovedStaleQueueSideEffects(
   orgId: string,
 ): Promise<void> {
@@ -496,8 +487,9 @@ export const drainOrgQueue$ = command(
     for (const row of queueRows) {
       const payload =
         row.runStatus === "queued"
-          ? await loadQueuedRunnerJobPayload(row.encryptedParams, signal)
+          ? await decryptQueuedRunnerJobPayload(row.encryptedParams)
           : null;
+      signal.throwIfAborted();
 
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
