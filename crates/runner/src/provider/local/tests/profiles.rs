@@ -51,7 +51,7 @@ async fn unsupported_profile_partition_is_not_discovered_or_claimed() {
 }
 
 #[tokio::test]
-async fn provider_for_non_default_profile_discovers_that_partition() {
+async fn provider_for_non_default_profile_discovers_and_claims_that_partition() {
     let dir = tempfile::tempdir().unwrap();
     let provider = provider_with_profiles(
         dir.path(),
@@ -66,6 +66,7 @@ async fn provider_for_non_default_profile_discovers_that_partition() {
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.run_id(), job_id);
     assert_eq!(candidate.profile_name(), "vm0/large");
+    assert!(provider.claim(candidate).await.is_some());
 }
 
 #[test]
