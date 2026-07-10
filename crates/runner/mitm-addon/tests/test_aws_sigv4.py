@@ -5,25 +5,30 @@ import urllib.parse
 import pytest
 
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
+from tests.aws_sigv4_helpers import (
+    DEFAULT_SIGV4_TIMESTAMP,
+    STS_HOST,
+    aws_credential_scope,
+    aws_sigv4_authorization,
+    aws_sigv4_presigned_url,
+    signer_test_credentials,
+)
 
 _INVALID_UNICODE = "\ud800"
 
 
 def _credentials() -> AwsSigV4Credentials:
-    return AwsSigV4Credentials("AKIDEXAMPLE", "secret")
+    return signer_test_credentials()
 
 
 def _header_auth_headers() -> list[tuple[str, str]]:
     return [
         (
             "Authorization",
-            "AWS4-HMAC-SHA256 "
-            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
-            "SignedHeaders=host;x-amz-date, "
-            "Signature=placeholder",
+            aws_sigv4_authorization(),
         ),
-        ("X-Amz-Date", "20260101T000000Z"),
-        ("Host", "sts.amazonaws.com"),
+        ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+        ("Host", STS_HOST),
     ]
 
 
@@ -31,14 +36,11 @@ def _header_auth_headers_with_content_hash(value: str) -> list[tuple[str, str]]:
     return [
         (
             "Authorization",
-            "AWS4-HMAC-SHA256 "
-            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
-            "SignedHeaders=host;x-amz-content-sha256;x-amz-date, "
-            "Signature=placeholder",
+            aws_sigv4_authorization(signed_headers="host;x-amz-content-sha256;x-amz-date"),
         ),
-        ("X-Amz-Date", "20260101T000000Z"),
+        ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
         ("X-Amz-Content-Sha256", value),
-        ("Host", "sts.amazonaws.com"),
+        ("Host", STS_HOST),
     ]
 
 
@@ -46,31 +48,16 @@ def _header_auth_headers_with_signed_test_header(value: str) -> list[tuple[str, 
     return [
         (
             "Authorization",
-            "AWS4-HMAC-SHA256 "
-            "Credential=PLACEHOLDER/20260101/us-east-1/sts/aws4_request, "
-            "SignedHeaders=host;x-amz-date;x-test, "
-            "Signature=placeholder",
+            aws_sigv4_authorization(signed_headers="host;x-amz-date;x-test"),
         ),
-        ("X-Amz-Date", "20260101T000000Z"),
-        ("Host", "sts.amazonaws.com"),
+        ("X-Amz-Date", DEFAULT_SIGV4_TIMESTAMP),
+        ("Host", STS_HOST),
         ("X-Test", value),
     ]
 
 
 def _presigned_url(host: str) -> str:
-    placeholder_credential = urllib.parse.quote(
-        "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
-        safe="",
-    )
-    return (
-        f"https://{host}/?Action=GetCallerIdentity&Version=2011-06-15"
-        "&X-Amz-Algorithm=AWS4-HMAC-SHA256"
-        f"&X-Amz-Credential={placeholder_credential}"
-        "&X-Amz-Date=20260101T000000Z"
-        "&X-Amz-Expires=60"
-        "&X-Amz-SignedHeaders=host"
-        "&X-Amz-Signature=placeholder"
-    )
+    return aws_sigv4_presigned_url(host)
 
 
 def test_header_auth_malformed_url_raises_signing_error() -> None:
@@ -108,10 +95,7 @@ def test_presigned_query_malformed_url_raises_signing_error() -> None:
 
 def test_presigned_query_double_encoded_credential_raises_signing_error() -> None:
     double_encoded_credential = urllib.parse.quote(
-        urllib.parse.quote(
-            "PLACEHOLDER/20260101/us-east-1/sts/aws4_request",
-            safe="",
-        ),
+        urllib.parse.quote(aws_credential_scope(), safe=""),
         safe="",
     )
     url = (
