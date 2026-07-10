@@ -143,7 +143,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "template:frame-stack":
     "efbf1788c8b084aa12b7cd48f7a3bf5fc9964d1e6115edbd9124f8cacfbfb3ca",
   "template:frosted-scatter":
-    "f23092f727e7a8a20d586e80a6f6cc0ff27d51f2fee3356a7d8ab97c3539c3b9",
+    "c4507fd54d252dc905df36d99f23ab65a4d41185b78e62515ff3eb3d87a381a4",
   "template:gallery-wall":
     "9e81cd8b35f9f6374440cd3a4a8fc214db4a137962797df69bde46248c4e75f3",
   "template:glass-bloom":
