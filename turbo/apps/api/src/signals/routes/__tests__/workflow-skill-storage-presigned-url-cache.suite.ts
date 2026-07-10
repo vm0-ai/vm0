@@ -536,27 +536,28 @@ describe("workflow skill storage presigned URL cache", () => {
         },
       });
 
-      // A second tick refreshes the two active rows left by the bounded first
-      // batch. The inactive fresh row is never touched.
-      await expect
-        .poll(async () => {
-          await accept(cronClient().refresh({ headers: cronHeaders() }), [200]);
-          const rows = await readCacheRowsByObjectKeyPrefix(prefix);
-          return {
-            total: rows.length,
-            refreshed: rows.filter((row) => {
-              return row.presigned_url.includes("?sig=");
-            }).length,
-            inactiveFreshUrl: rows.find((row) => {
-              return row.storage_version_id === inactiveFreshVersionId;
-            })?.presigned_url,
-          };
-        })
-        .toStrictEqual({
-          total: 6,
-          refreshed: 5,
-          inactiveFreshUrl: "https://r2.example.com/inactive-fresh-old",
-        });
+      const secondTick = await accept(
+        cronClient().refresh({ headers: cronHeaders() }),
+        [200],
+      );
+      expect(secondTick.body.workflowSkill).toStrictEqual({
+        due: 2,
+        refreshed: 2,
+        pruned: 0,
+      });
+
+      const rows = await readCacheRowsByObjectKeyPrefix(prefix);
+      expect(rows).toHaveLength(6);
+      expect(
+        rows.filter((row) => {
+          return row.presigned_url.includes("?sig=");
+        }),
+      ).toHaveLength(5);
+      expect(
+        rows.find((row) => {
+          return row.storage_version_id === inactiveFreshVersionId;
+        })?.presigned_url,
+      ).toBe("https://r2.example.com/inactive-fresh-old");
     });
   });
 });
