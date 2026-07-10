@@ -1675,6 +1675,10 @@ describe("zero attachment chips", () => {
 
     await user.click(screen.getByLabelText("Enter fullscreen"));
     expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    expect(screen.getByTestId("attachment-lightbox-panel")).toHaveClass(
+      "pt-[var(--sat)]",
+      "pb-[var(--sab)]",
+    );
 
     await user.click(screen.getByLabelText("Next image artifact"));
     await waitFor(() => {
@@ -1825,12 +1829,20 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("attachment-lightbox-panel")).toHaveClass(
+      "pt-[var(--sat)]",
+      "pb-[var(--sab)]",
+    );
 
     click(screen.getByLabelText("Exit fullscreen"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("attachment-lightbox-panel")).not.toHaveClass(
+      "pt-[var(--sat)]",
+      "pb-[var(--sab)]",
+    );
 
     click(screen.getByLabelText("Open in split view"));
 
