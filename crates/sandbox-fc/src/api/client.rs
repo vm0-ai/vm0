@@ -21,7 +21,7 @@ pub enum ApiError {
     /// HTTP client construction, protocol, or response-body failure.
     #[error("HTTP transport: {0}")]
     Transport(#[source] reqwest::Error),
-    /// Other failure (I/O during request, timeout, setup).
+    /// Other failure (readiness setup, timeout, serialization, parsing, or size limits).
     #[error("{0}")]
     Other(String),
 }
