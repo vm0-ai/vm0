@@ -141,7 +141,9 @@ describe("model-first canonical catalog", () => {
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-sol")).toBe(true);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-terra")).toBe(false);
-    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-terra")).toBe(false);
+    expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-terra")).toBe(
+      false,
+    );
     expect(isLimitedFree1RestrictedRunModel("gpt-5.6-luna")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("openai/gpt-5.6-luna")).toBe(false);
     expect(isLimitedFree1RestrictedRunModel("gpt-5.5")).toBe(true);
