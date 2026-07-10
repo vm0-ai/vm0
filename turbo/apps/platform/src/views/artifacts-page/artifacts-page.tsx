@@ -938,7 +938,9 @@ export function ArtifactsPage() {
             onLoadMore={loadMore}
             onOpenChat={openChat}
             onOpenPreview={openArtifactPreview}
-            onStartChat={startChat}
+            onStartChat={(item) => {
+              detach(startChat(item, pageSignal), Reason.DomCallback);
+            }}
             onToggleFavorite={(item) => {
               detach(toggleFavorite(item, pageSignal), Reason.DomCallback);
             }}

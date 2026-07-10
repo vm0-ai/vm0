@@ -128,6 +128,10 @@ function indexKey(indexName: string, item: ArtifactItem): IDBValidKey | null {
 class MemoryArtifactDb {
   private readonly rows = new Map<string, ArtifactItem>();
 
+  seedLegacyItem(item: Omit<ArtifactItem, "size">): void {
+    this.rows.set(item.artifactItemId, item as ArtifactItem);
+  }
+
   get db(): IDBPDatabase {
     return {
       transaction: () => {
@@ -254,6 +258,17 @@ describe("artifact item IndexedDB cache reads", () => {
     await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
       second,
       first,
+    ]);
+  });
+
+  it("normalizes legacy cached artifact items without a size", async () => {
+    const { db, stores } = setupStores();
+    const { size, ...legacy } = artifact(1);
+    expect(size).toBeGreaterThan(0);
+    db.seedLegacyItem(legacy);
+
+    await expect(stores.readStore.readRecent()).resolves.toStrictEqual([
+      { ...legacy, size: 0 },
     ]);
   });
 

@@ -3,6 +3,7 @@ import {
   artifactsContract,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
@@ -436,6 +437,18 @@ async function cachedArtifactIds(scope: TestAuthScope): Promise<string[]> {
   });
 }
 
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
 function queryLinkByText(text: string): HTMLElement | undefined {
   return queryAllByRoleFast("link").find((link) => {
     return link.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -588,6 +601,26 @@ describe("artifacts page", () => {
         size: 4096,
         artifactKind: "presentation-html",
       }),
+      createArtifact({
+        artifactItemId: "audio-run:file-1",
+        runId: "audio-run",
+        fileId: "audio-file",
+        filename: "launch-audio.mp3",
+        contentType: "audio/mpeg",
+        size: 3072,
+        url: "https://artifacts.example.com/launch-audio.mp3",
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "document-run:file-1",
+        runId: "document-run",
+        fileId: "document-file",
+        filename: "launch-document.pdf",
+        contentType: "application/pdf",
+        size: 5120,
+        url: "https://artifacts.example.com/launch-document.pdf",
+        artifactKind: undefined,
+      }),
     ]);
 
     setupArtifactsPage({
@@ -656,6 +689,37 @@ describe("artifacts page", () => {
     expect(
       screen.getByLabelText("Video preview for launch-video.mp4"),
     ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-audio.mp3"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-audio.mp3 preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Audio preview for launch-audio.mp3"),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-document.pdf"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-document.pdf preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen
+        .getByTestId("artifact-dialog-document-frame")
+        .querySelector("iframe"),
+    ).toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/launch-document.pdf#navpanes=0",
+    );
 
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
@@ -898,10 +962,17 @@ describe("artifacts page", () => {
     });
   });
 
-  it("starts a new chat draft for an artifact", async () => {
+  it("preserves a saved draft and references a hosted artifact by URL", async () => {
     setupTeam();
     const scope = testAuthScope("ask-artifact");
-    mockArtifacts([createArtifact()]);
+    const artifact = createArtifact();
+    mockArtifacts([artifact]);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "Keep this draft",
+        draftAttachments: null,
+      });
+    });
 
     setupArtifactsPage({ scope });
 
@@ -911,6 +982,88 @@ describe("artifacts page", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
+    });
+    const editor = await findComposerEditor();
+    expect(editor).toHaveTextContent("Keep this draft");
+    expect(editor).toHaveTextContent(artifact.url);
+    expect(screen.queryByLabelText(`Remove ${artifact.filename}`)).toBeNull();
+  });
+
+  it("keeps same-named draft attachments with different stable identities", async () => {
+    setupTeam();
+    const scope = testAuthScope("ask-artifact-identity");
+    const artifact = createArtifact({
+      artifactItemId: "selected-run:selected-file",
+      runId: "selected-run",
+      fileId: "selected-file",
+      filename: "same-name.png",
+      contentType: "image/png",
+      size: 1024,
+      url: "https://artifacts.example.com/selected-file.png",
+      artifactKind: undefined,
+    });
+    mockArtifacts([artifact]);
+    context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: "Keep both files",
+        draftAttachments: [
+          {
+            id: "existing-file",
+            filename: "same-name.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://artifacts.example.com/existing-file.png",
+          },
+        ],
+      });
+    });
+    const draftPatches: {
+      readonly draftAttachments?:
+        | readonly {
+            readonly id: string;
+            readonly url: string;
+          }[]
+        | null;
+    }[] = [];
+    context.mocks.api(zeroAgentDraftContract.patch, ({ body, respond }) => {
+      draftPatches.push(body);
+      return respond(204);
+    });
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("same-name.png");
+    click(buttonByLabel("More actions for same-name.png"));
+    click(screen.getByText("Ask about it"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
+    });
+    const editor = await findComposerEditor();
+    expect(editor).toHaveTextContent("Keep both files");
+    expect(screen.getAllByLabelText("Remove same-name.png")).toHaveLength(2);
+
+    await fill(editor, "Updated draft");
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftContent: "Updated draft",
+        draftAttachments: [
+          {
+            id: "existing-file",
+            filename: "same-name.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://artifacts.example.com/existing-file.png",
+          },
+          {
+            id: artifact.fileId,
+            filename: artifact.filename,
+            contentType: artifact.contentType,
+            size: artifact.size,
+            url: artifact.url,
+          },
+        ],
+      });
     });
   });
 
@@ -972,6 +1125,36 @@ describe("artifacts page", () => {
       await expect(cachedArtifactIds(scope)).resolves.toStrictEqual([
         artifact.artifactItemId,
       ]);
+    });
+  });
+
+  it("normalizes older remote artifacts without a size", async () => {
+    setupTeam();
+    const scope = testAuthScope("remote-size-default");
+    const { size, ...legacyArtifact } = createArtifact({
+      artifactItemId: "legacy-remote-run:file-1",
+      runId: "legacy-remote-run",
+      filename: "legacy-remote.html",
+    });
+    expect(size).toBeGreaterThan(0);
+    context.mocks.api(artifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [legacyArtifact as ArtifactItem],
+        truncated: false,
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("legacy-remote.html");
+    await waitFor(async () => {
+      const db = await openChatIdb(scope.userId, scope.orgId);
+      const cached = await createArtifactItemCacheStores(
+        resolvedChatIdb(db),
+      ).readStore.readRecent({ limit: 10_000 });
+      expect(cached).toHaveLength(1);
+      expect(cached[0]?.size).toBe(0);
     });
   });
 
