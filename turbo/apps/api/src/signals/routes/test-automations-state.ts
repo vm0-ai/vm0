@@ -12,8 +12,9 @@ import {
 import { command } from "ccstate";
 import { testAutomationsStateContract } from "@vm0/api-contracts/contracts/test-automations-state";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 import { bodyResultOf } from "../context/request";
@@ -141,6 +142,28 @@ async function deleteVm0ManagedDefaultModelKey(
   signal.throwIfAborted();
 }
 
+async function mutateRunnerJobSecretValueEnvironmentKeys(
+  db: Db,
+  runId: string,
+  mode: "remove" | "invalid",
+  signal: AbortSignal,
+): Promise<void> {
+  const executionContext =
+    mode === "remove"
+      ? sql`${runnerJobQueue.executionContext} - 'secretValueEnvironmentKeys'`
+      : sql`jsonb_set(
+          ${runnerJobQueue.executionContext},
+          '{secretValueEnvironmentKeys}',
+          '["__missing_secret_value_environment_key__"]'::jsonb,
+          true
+        )`;
+  await db
+    .update(runnerJobQueue)
+    .set({ executionContext })
+    .where(eq(runnerJobQueue.runId, runId));
+  signal.throwIfAborted();
+}
+
 const postAutomationsStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -225,6 +248,15 @@ const postAutomationsStateAction$ = command(
             decrypt_call_count: fakeKmsDecryptCallCount.get(),
           },
         };
+      }
+      case "mutate-runner-job-secret-value-environment-keys": {
+        await mutateRunnerJobSecretValueEnvironmentKeys(
+          db,
+          body.run_id,
+          body.mode,
+          signal,
+        );
+        return { status: 200 as const, body: { ok: true as const } };
       }
     }
   },

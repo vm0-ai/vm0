@@ -57,6 +57,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
+  mutateRunnerJobSecretValueEnvironmentKeys,
   readAutomationComposeHeadVersion,
   readAutomationsFakeKmsDecryptCallCount,
   resetAutomationsFakeKms,
@@ -98,10 +99,12 @@ const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
   "claim_route_lookup_authorization",
   "claim_route_context_parse",
-  "claim_route_feature_switch_context",
-  "claim_route_secret_materialization",
   "claim_route_response_assembly",
   "claim_route_transition_running",
+] as const;
+const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
+  "claim_route_feature_switch_context",
+  "claim_route_secret_materialization",
 ] as const;
 const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
   "claim_route_transition_lock_run",
@@ -389,6 +392,8 @@ const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
   "environment",
   "execution_context",
   "stored_context",
+  "secret_value_environment_keys",
+  "secretValueEnvironmentKeys",
   "sandbox_token",
   "sandboxToken",
   "presigned_url",
@@ -2832,6 +2837,10 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
 
     const first = await api.createRun(actor, {
       agentId,
@@ -2864,9 +2873,20 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    const decryptCountBeforeClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
     expect(thirdClaim.prompt).toBe("queued run three");
+    const zeroToken = thirdClaim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the promoted claim to expose the zero token");
+    }
+    expect(thirdClaim.secretValues).toContain(zeroToken);
+    expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeClaim,
+    );
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
@@ -4999,20 +5019,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("resolves compose secret references into direct run environments", async () => {
+  it("restores prepared masking values from direct run environments", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
-
-    await authOrg.setSecret(actor, {
-      name: "SHARED_TOKEN",
-      value: "user-shared-secret",
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
     });
     const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -5022,7 +5040,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
           framework: "claude-code",
           environment: {
             ANTHROPIC_API_KEY: "bdd-inline-key",
-            EXTERNAL_TOKEN: `\${{ secrets.SHARED_TOKEN }}`,
+            FIRST_TOKEN: `\${{ secrets.FIRST_TOKEN }}`,
+            SECOND_TOKEN: `\${{ secrets.SECOND_TOKEN }}`,
           },
         },
       },
@@ -5030,17 +5049,114 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
-      prompt: "resolve referenced secrets",
+      prompt: "restore prepared masking values",
+      secrets: {
+        FIRST_TOKEN: "first-secret-value",
+        SECOND_TOKEN: "second-secret-value",
+        REPEATED_TOKEN: "first-secret-value",
+        UNUSED_TOKEN: "unused-secret-value",
+      },
     });
+    const decryptCountBeforeClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
     const claim = await api.claimRunnerJob(run.runId);
-    expect(claim.environment?.EXTERNAL_TOKEN).toBe("user-shared-secret");
-    expect(claim.secretValues).toContain("user-shared-secret");
+    expect(claim.environment?.FIRST_TOKEN).toBe("first-secret-value");
+    expect(claim.environment?.SECOND_TOKEN).toBe("second-secret-value");
+    expect(claim.secretValues).toStrictEqual([
+      "first-secret-value",
+      "second-secret-value",
+      "first-secret-value",
+    ]);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeClaim,
+    );
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const claimActionTypes = new Set(
+      claimRouteTimingEventsForRun(run.runId).map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES) {
+      expect(claimActionTypes).not.toContain(actionType);
+    }
     expect(claim.firewalls ?? []).toStrictEqual([]);
     expect(claim.networkPolicies ?? {}).toStrictEqual({});
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("falls back completely for legacy and invalid masking metadata", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+    const composeName = `bdd-secret-fallback-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            FIRST_TOKEN: `\${{ secrets.FIRST_TOKEN }}`,
+            SECOND_TOKEN: `\${{ secrets.SECOND_TOKEN }}`,
+          },
+        },
+      },
+    });
+
+    for (const mode of ["remove", "invalid"] as const) {
+      const run = await api.createDirectRun(actor, {
+        agentComposeId: compose.composeId,
+        prompt: `materialize ${mode} masking metadata`,
+        secrets: {
+          FIRST_TOKEN: "first-fallback-secret",
+          SECOND_TOKEN: "second-fallback-secret",
+        },
+      });
+      await mutateRunnerJobSecretValueEnvironmentKeys(context, run.runId, mode);
+      const decryptCountBeforeClaim =
+        await readAutomationsFakeKmsDecryptCallCount(context);
+
+      const claim = await api.claimRunnerJob(run.runId);
+
+      expect(claim.secretValues).toStrictEqual([
+        "first-fallback-secret",
+        "second-fallback-secret",
+      ]);
+      await expect(
+        readAutomationsFakeKmsDecryptCallCount(context),
+      ).resolves.toBe(decryptCountBeforeClaim + 1);
+      expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+      const materializationEvent = singleSandboxOperationEvent(
+        claimRouteTimingEventsForRun(run.runId),
+        "claim_route_secret_materialization",
+      );
+      expect(materializationEvent).toStrictEqual(
+        expect.objectContaining({
+          fallback_reason: mode === "remove" ? "missing_field" : "invalid_keys",
+          span_kind: "top_level",
+        }),
+      );
+      expect(
+        claimRouteTimingEventsForRun(run.runId).some((event) => {
+          return event.op_type === "claim_route_feature_switch_context";
+        }),
+      ).toBeFalsy();
+
+      await api.requestCancelRun(actor, run.runId, [200]);
+    }
   });
 });
 
@@ -5099,6 +5215,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `Bearer \${{ secrets.${secretKey} }}`,
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
+    expect(claim.secretValues).not.toContain("custom-secret-value");
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -6395,6 +6512,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     for (const actionType of CLAIM_ROUTE_TIMING_ACTION_TYPES) {
       expect(observedClaimRouteActionTypes).toContain(actionType);
     }
+    for (const actionType of CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES) {
+      expect(observedClaimRouteActionTypes).not.toContain(actionType);
+    }
     for (const actionType of CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES) {
       const events = claimRouteTimingEvents.filter((event) => {
         return event.op_type === actionType;
@@ -6434,6 +6554,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
       expect(["top_level", "nested"]).toContain(event.span_kind);
+      expect(event).not.toHaveProperty("fallback_reason");
       for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
         expect(event).not.toHaveProperty(forbiddenKey);
       }
@@ -6749,6 +6870,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
 
     // A plain compose carries inline environment values but no body, model
     // provider, or connector secrets, so no encrypted secrets map is stored
@@ -6770,13 +6895,34 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(run.status).toBe("pending");
 
+    const decryptCountBeforeNullClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.secretValues).toBeNull();
     expect(claim.prompt).toBe("claim without stored secrets");
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeNullClaim,
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+
+    const emptyRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "claim without matching environment secrets",
+      secrets: { UNUSED_TOKEN: "unused-secret-value" },
+    });
+    const decryptCountBeforeEmptyClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
+    const emptyClaim = await api.claimRunnerJob(emptyRun.runId);
+    expect(emptyClaim.secretValues).toStrictEqual([]);
+    expect(emptyClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeEmptyClaim,
+    );
+    await api.requestCancelRun(actor, emptyRun.runId, [200]);
 
     // A compose pinned to a non-vm0 runner group fails dispatch at creation.
     const foreignName = `bdd-foreign-${randomUUID().slice(0, 8)}`;
