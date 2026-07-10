@@ -16,6 +16,7 @@ from tests.connector_diagnostic_helpers import (
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.request_handler_helpers import _vm_without_firewalls, _write_registry
+from tests.requestheaders_helpers import await_requestheaders_result
 
 
 def _catalog_firewall(
@@ -196,14 +197,16 @@ def _shared_catalog(inactive_name: str, inactive_token: str) -> dict[str, dict]:
     return {"active-shared": active, inactive_name: inactive}
 
 
-def _builtin_shared_registry(tmp_path):
+def _builtin_shared_registry(tmp_path, *, capture_network_bodies: bool = False):
     return _write_registry(
         tmp_path,
         vm_info={
             "runId": "run-shared",
             "sandboxToken": "sandbox-shared",
+            "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+            "captureNetworkBodies": capture_network_bodies,
             "firewalls": [{"kind": "builtin", "name": "active-shared"}],
             "networkPolicies": {
                 "active-shared": {
@@ -271,6 +274,66 @@ async def test_registry_classification_from_a_cannot_race_into_diagnostic_b(
     assert current_snapshot.catalog_identity is not None
     assert current_snapshot.catalog_identity[2] == "catalog-b"
     assert _response_connector(second_flow) == "inactive-b"
+
+
+async def test_stream_safe_firewall_request_commit_pins_classification_catalog(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    cache_path = write_connector_diagnostic_catalog_cache(
+        tmp_path,
+        firewalls=_shared_catalog("inactive-a", "INACTIVE_A_TOKEN"),
+        version="catalog-a",
+    )
+    registry_path = _builtin_shared_registry(tmp_path, capture_network_bodies=True)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/unowned",
+        method="POST",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ),
+        fake_firewall_headers(headers={"Authorization": "Bearer active"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        write_connector_diagnostic_catalog_cache(
+            tmp_path,
+            firewalls=_shared_catalog("inactive-b", "INACTIVE_B_TOKEN"),
+            digest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            version="catalog-b",
+        )
+
+        await mitm_addon.request(flow)
+
+        pinned_snapshots = [
+            value
+            for value in flow.metadata.values()
+            if isinstance(value, builtin_connector_diagnostics.DiagnosticCatalogSnapshot)
+        ]
+        current_snapshot = builtin_connector_diagnostics.load_diagnostic_snapshot()
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer active"
+    assert len(pinned_snapshots) == 1
+    assert pinned_snapshots[0].catalog_identity is not None
+    assert pinned_snapshots[0].catalog_identity[2] == "catalog-a"
+    assert current_snapshot.catalog_identity is not None
+    assert current_snapshot.catalog_identity[2] == "catalog-b"
 
 
 async def test_unavailable_flow_stays_unavailable_after_cache_recovers(

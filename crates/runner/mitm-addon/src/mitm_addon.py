@@ -1072,8 +1072,6 @@ async def request(flow: http.HTTPFlow) -> None:
                 terminal_usage.release_tracked_flow(flow)
                 _block_public_destination_denied(flow, public_destination_denial)
                 return
-            if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
-                return
             if connector_diagnostics.maybe_make_firewall_allow_local_response(
                 flow,
                 classification,
@@ -1081,6 +1079,8 @@ async def request(flow: http.HTTPFlow) -> None:
             ):
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
+                return
+            if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
                 return
             if _firewall_allow_injects_ordinary_upstream_credentials(
                 allow
