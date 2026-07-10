@@ -1,6 +1,8 @@
 import { command } from "ccstate";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { accept } from "../../lib/accept.ts";
+import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
 const PPTX_MIME_TYPE =
@@ -13,10 +15,11 @@ interface GoogleSlidesUploadResult {
 }
 
 /**
- * Upload a client-generated presentation PPTX blob to the backend, which
- * forwards it to the user's Google Drive as a native Google Slides deck. The
- * blob is generated in the view (browser-only DOM work) and passed in here so
- * this command stays a pure HTTP call.
+ * Upload a client-generated presentation PPTX blob directly to artifact
+ * storage, then ask the backend to forward the staged file to the user's
+ * Google Drive as a native Google Slides deck. The blob is generated in the
+ * view (browser-only DOM work) and passed in here so this command stays a pure
+ * HTTP flow.
  */
 export const uploadPresentationToGoogleSlides$ = command(
   async (
@@ -28,16 +31,69 @@ export const uploadPresentationToGoogleSlides$ = command(
     },
     signal: AbortSignal,
   ): Promise<GoogleSlidesUploadResult> => {
-    const formData = new FormData();
-    formData.append(
+    const createClient = get(zeroClient$);
+    const prepared = await accept(
+      createClient(zeroUploadsContract).prepare({
+        body: {
+          filename: params.filename,
+          contentType: PPTX_MIME_TYPE,
+          size: params.blob.size,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    const uploaded = await fetch(prepared.body.uploadUrl, {
+      method: "PUT",
+      body: params.blob,
+      headers: { "content-type": prepared.body.contentType },
+      signal,
+    });
+    signal.throwIfAborted();
+    if (!uploaded.ok) {
+      throw new Error(
+        `artifact storage returned ${String(uploaded.status)} ${uploaded.statusText}`,
+      );
+    }
+
+    const client = createClient(chatThreadArtifactsContract);
+    const stagedFormData = new FormData();
+    stagedFormData.append("uploadId", prepared.body.id);
+    const stagedResult = await accept(
+      client.uploadGoogleSlides({
+        params: { threadId: params.threadId },
+        body: stagedFormData,
+        fetchOptions: { signal },
+      }),
+      [200, 400],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (stagedResult.status === 200) {
+      return stagedResult.body;
+    }
+    if (stagedResult.body.error.message !== "No presentation file provided") {
+      toast.error(stagedResult.body.error.message);
+      throw new ApiError(
+        stagedResult.body.error.message,
+        stagedResult.body.error.code,
+        stagedResult.status,
+      );
+    }
+
+    // Rollout compatibility with API revisions before staged Slides uploads.
+    // Remove after this API revision is the minimum supported backend.
+    const inlineFormData = new FormData();
+    inlineFormData.append(
       "file",
       new File([params.blob], params.filename, { type: PPTX_MIME_TYPE }),
     );
-    const client = get(zeroClient$)(chatThreadArtifactsContract);
     const result = await accept(
       client.uploadGoogleSlides({
         params: { threadId: params.threadId },
-        body: formData,
+        body: inlineFormData,
         fetchOptions: { signal },
       }),
       [200],

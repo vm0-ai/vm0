@@ -32,6 +32,7 @@ type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
 
 interface StoredS3Object {
   readonly bucket: string;
+  readonly body?: Uint8Array;
   readonly key: string;
   readonly size: number;
 }
@@ -80,6 +81,56 @@ function commandName(command: unknown): string {
   return typeof command === "object" && command !== null
     ? command.constructor.name
     : "";
+}
+
+function storedS3ObjectResponse(
+  objects: readonly StoredS3Object[],
+  bucket: string,
+  key: string,
+) {
+  const object = objects.find((candidate) => {
+    return candidate.bucket === bucket && candidate.key === key;
+  });
+  const body =
+    object?.body ?? (object ? new Uint8Array(object.size) : undefined);
+  return {
+    ContentLength: object?.size,
+    Body: body
+      ? {
+          async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+            yield body;
+          },
+        }
+      : undefined,
+  };
+}
+
+function deleteStoredS3Objects(
+  objects: StoredS3Object[],
+  deletedKeys: string[],
+  bucket: string,
+  input: Record<string, unknown>,
+): void {
+  const deletion = isRecord(input.Delete) ? input.Delete : {};
+  const deletionObjects = Array.isArray(deletion.Objects)
+    ? deletion.Objects
+    : [];
+  for (const deletionObject of deletionObjects) {
+    if (!isRecord(deletionObject)) {
+      continue;
+    }
+    const deletionKey = deletionObject.Key;
+    if (typeof deletionKey !== "string") {
+      continue;
+    }
+    deletedKeys.push(deletionKey);
+    const index = objects.findIndex((candidate) => {
+      return candidate.bucket === bucket && candidate.key === deletionKey;
+    });
+    if (index !== -1) {
+      objects.splice(index, 1);
+    }
+  }
 }
 
 /**
@@ -239,9 +290,11 @@ export function createChatCallbacksApi(context: TestContext) {
      */
     acceptChatObjectStorage(): {
       addObject(object: StoredS3Object): void;
+      readonly deletedKeys: readonly string[];
       readonly puts: readonly CapturedS3Put[];
     } {
       const objects: StoredS3Object[] = [];
+      const deletedKeys: string[] = [];
       const puts: CapturedS3Put[] = [];
       context.mocks.s3.send.mockImplementation((...args: unknown[]) => {
         const input = commandInput(args[0]);
@@ -260,13 +313,21 @@ export function createChatCallbacksApi(context: TestContext) {
         }
         const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
         const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
-        if (commandName(args[0]) === "PutObjectCommand") {
+        const name = commandName(args[0]);
+        if (name === "PutObjectCommand") {
           puts.push({
             bucket,
             key,
             contentType:
               typeof input.ContentType === "string" ? input.ContentType : null,
           });
+        }
+        if (name === "GetObjectCommand") {
+          return Promise.resolve(storedS3ObjectResponse(objects, bucket, key));
+        }
+        if (name === "DeleteObjectsCommand") {
+          deleteStoredS3Objects(objects, deletedKeys, bucket, input);
+          return Promise.resolve({});
         }
         if (prefix !== "") {
           const contents = objects
@@ -288,6 +349,7 @@ export function createChatCallbacksApi(context: TestContext) {
         addObject(object: StoredS3Object): void {
           objects.push(object);
         },
+        deletedKeys,
         puts,
       };
     },
