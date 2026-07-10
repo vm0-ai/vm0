@@ -237,7 +237,11 @@ describe("zero scrape command", () => {
     );
 
     await expect(async () => {
-      await zeroScrapeCommand.parseAsync(["node", "cli", "https://example.com"]);
+      await zeroScrapeCommand.parseAsync([
+        "node",
+        "cli",
+        "https://example.com",
+      ]);
     }).rejects.toThrow("process.exit called");
 
     expect(errorOutput()).toContain("502: Firecrawl rejected this scrape");

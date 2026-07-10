@@ -7,6 +7,7 @@ import { command } from "ccstate";
 
 import type { AuthContext } from "../../types/auth";
 import { env } from "../../lib/env";
+import { requestSignal$ } from "../context/hono";
 import {
   safeAsync,
   safeJsonParse,
@@ -25,7 +26,8 @@ import {
 const PROVIDER = "firecrawl";
 const USAGE_KIND = "scrape";
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
-const FIRECRAWL_TIMEOUT_MS = 30_000;
+const FIRECRAWL_PROVIDER_TIMEOUT_MS = 25_000;
+const FIRECRAWL_TRANSPORT_TIMEOUT_MS = 30_000;
 const MAX_FIRECRAWL_RESPONSE_BYTES = 5 * 1024 * 1024;
 const MAX_MARKDOWN_CHARS = 1_000_000;
 const MAX_LINKS = 5000;
@@ -150,6 +152,7 @@ interface CompleteScrapeAfterProviderArgs {
   readonly request: ZeroScrapeRequest;
   readonly requestedUrl: URL;
   readonly recordUsage: () => Promise<number>;
+  readonly signal: AbortSignal;
 }
 
 function errorBody(message: string, code: string) {
@@ -328,6 +331,7 @@ async function fetchFirecrawlScrape(
   apiKey: string,
   request: ZeroScrapeRequest,
   targetUrl: URL,
+  signal: AbortSignal,
 ): Promise<FirecrawlBodyResult> {
   const result = await safeAsync(async (): Promise<FirecrawlResponseResult> => {
     const response = await fetch(FIRECRAWL_SCRAPE_URL, {
@@ -342,9 +346,14 @@ async function fetchFirecrawlScrape(
         parsers: [],
         proxy: firecrawlProxy(request.mode),
         skipTlsVerification: false,
+        maxAge: 0,
         storeInCache: false,
+        timeout: FIRECRAWL_PROVIDER_TIMEOUT_MS,
       }),
-      signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS),
+      signal: AbortSignal.any([
+        signal,
+        AbortSignal.timeout(FIRECRAWL_TRANSPORT_TIMEOUT_MS),
+      ]),
     });
 
     const readResult = await readResponseBody(response);
@@ -451,9 +460,9 @@ function metadataFinalUrl(
     return undefined;
   }
   return (
+    optionalString(metadata, "url") ??
     optionalString(metadata, "sourceURL") ??
-    optionalString(metadata, "sourceUrl") ??
-    optionalString(metadata, "url")
+    optionalString(metadata, "sourceUrl")
   );
 }
 
@@ -521,8 +530,7 @@ function standardSuccessBody(
         ...base,
         format: "markdown",
         mode: "standard",
-        billingCategory:
-          SCRAPE_MODE_CONFIG.standard.billingCategories.markdown,
+        billingCategory: SCRAPE_MODE_CONFIG.standard.billingCategories.markdown,
         result: normalized.result,
       };
     }
@@ -548,8 +556,7 @@ function enhancedSuccessBody(
         ...base,
         format: "markdown",
         mode: "enhanced",
-        billingCategory:
-          SCRAPE_MODE_CONFIG.enhanced.billingCategories.markdown,
+        billingCategory: SCRAPE_MODE_CONFIG.enhanced.billingCategories.markdown,
         result: normalized.result,
       };
     }
@@ -637,6 +644,7 @@ async function completeScrapeAfterProvider(
     args.apiKey,
     args.request,
     args.requestedUrl,
+    args.signal,
   );
 
   return await completeScrapeSuccess({
@@ -658,7 +666,7 @@ function isScrapeErrorResponse(value: unknown): value is ScrapeErrorResponse {
 
 export const zeroScrape$ = command(
   async (
-    { set },
+    { get, set },
     args: AuthedScrapeArgs,
     signal: AbortSignal,
   ): Promise<ZeroScrapeCommandResponse> => {
@@ -669,9 +677,11 @@ export const zeroScrape$ = command(
         "NOT_CONFIGURED",
       );
     }
+    const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
+    requestSignal.throwIfAborted();
 
     const target = await validateScrapeTargetUrl(args.body.url);
-    signal.throwIfAborted();
+    requestSignal.throwIfAborted();
     if (typeof target === "string") {
       return badRequest(targetPolicyMessage(target), "INVALID_SCRAPE_TARGET");
     }
@@ -688,18 +698,19 @@ export const zeroScrape$ = command(
         },
         label: "Zero Scrape",
       },
-      signal,
+      requestSignal,
     );
     if (creditError) {
       return creditError;
     }
-    signal.throwIfAborted();
+    requestSignal.throwIfAborted();
 
     const runId = runIdForUsage(args.auth);
     return completeScrapeAfterProvider({
       apiKey,
       request: args.body,
       requestedUrl: target.url,
+      signal: requestSignal,
       recordUsage: () => {
         return set(
           recordManagedUsage$,
@@ -716,7 +727,7 @@ export const zeroScrape$ = command(
             },
             label: "scrape",
           },
-          signal,
+          requestSignal,
         );
       },
     });

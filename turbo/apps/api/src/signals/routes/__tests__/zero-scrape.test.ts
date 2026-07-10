@@ -46,6 +46,11 @@ interface AuthHeaders {
   readonly authorization?: string;
 }
 
+interface RawScrapeRequestOptions {
+  readonly instanceSignal?: AbortSignal;
+  readonly requestSignal?: AbortSignal;
+}
+
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
 }
@@ -66,30 +71,32 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
   return authHeaders(actor);
 }
 
-function client(signal?: AbortSignal) {
+function client() {
   return setupAppWithRoutes({
     context,
     routes: scrapeRoutes,
-    ...(signal ? { signal } : {}),
   });
 }
 
-function rawScrapeRequest(
+async function rawScrapeRequest(
   actor: ApiTestUser | null,
   body: ZeroScrapeRequest,
+  options: RawScrapeRequestOptions = {},
 ): Promise<Response> {
   const app = createAppWithRoutes({
-    signal: context.signal,
+    signal: options.instanceSignal ?? context.signal,
     routes: scrapeRoutes,
   });
-  return app.request("/api/zero/scrape", {
+  const request = new Request("http://api.test/api/zero/scrape", {
     method: "POST",
     headers: {
       ...authenticate(actor),
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
+    ...(options.requestSignal ? { signal: options.requestSignal } : {}),
   });
+  return await app.request(request);
 }
 
 async function setupOnboarding(actor: ApiTestUser): Promise<void> {
@@ -439,7 +446,9 @@ describe("zero scrape route", () => {
       parsers: [],
       proxy: "basic",
       skipTlsVerification: false,
+      maxAge: 0,
       storeInCache: false,
+      timeout: 25_000,
     });
     expect(response.body).toMatchObject({
       requestedUrl: "https://example.com/page",
@@ -457,7 +466,7 @@ describe("zero scrape route", () => {
     expect(beforeCredits - afterCredits).toBe(4);
   });
 
-  it("records usage when the request aborts after Firecrawl succeeds", async () => {
+  it("does not record usage when the request aborts after Firecrawl succeeds", async () => {
     const actor = await scrapeEnabledActor();
     const controller = new AbortController();
     const abortError = new Error("client disconnected after provider success");
@@ -467,6 +476,7 @@ describe("zero scrape route", () => {
     await seedScrapePricing();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
+    let providerCompleted = false;
     context.mocks.dns.lookupOverrides.set("final.example.test", () => {
       controller.abort(abortError);
       return [{ address: "93.184.216.35", family: 4 }];
@@ -474,42 +484,86 @@ describe("zero scrape route", () => {
 
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
+        providerCompleted = true;
         return HttpResponse.json({
           success: true,
           data: {
             markdown: "# Example page",
             metadata: {
-              sourceURL: "https://final.example.test/page",
+              url: "https://final.example.test/page",
             },
           },
         });
       }),
     );
 
-    const response = await accept(
-      client(controller.signal)(zeroScrapeContract).scrape({
-        headers: authenticate(actor),
-        body: {
-          url: "https://example.com/page",
-          format: "markdown",
-          mode: "standard",
-        },
-      }),
-      [200],
+    const response = await rawScrapeRequest(
+      actor,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { requestSignal: controller.signal },
     );
     const afterCredits = await credits(actor);
 
-    expect(response.body.finalUrl).toBe("https://final.example.test/page");
-    expect(beforeCredits - afterCredits).toBe(4);
+    expect(response.status).toBe(500);
+    expect(providerCompleted).toBeTruthy();
+    expect(afterCredits).toBe(beforeCredits);
   });
 
-  it("records usage when the request aborts while Firecrawl is in flight", async () => {
+  it("does not start Firecrawl when the request aborts before provider launch", async () => {
+    const actor = await scrapeEnabledActor();
+    const controller = new AbortController();
+    const abortError = new Error("client disconnected before provider launch");
+    abortError.name = "AbortError";
+    let firecrawlRequests = 0;
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    context.mocks.dns.lookupOverrides.set("example.com", () => {
+      controller.abort(abortError);
+      return [{ address: "93.184.216.34", family: 4 }];
+    });
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        firecrawlRequests += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: { url: "https://example.com/page" },
+          },
+        });
+      }),
+    );
+
+    const response = await rawScrapeRequest(
+      actor,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { requestSignal: controller.signal },
+    );
+    const afterCredits = await credits(actor);
+
+    expect(response.status).toBe(500);
+    expect(firecrawlRequests).toBe(0);
+    expect(afterCredits).toBe(beforeCredits);
+  });
+
+  it("cancels Firecrawl when the request aborts while it is in flight", async () => {
     const actor = await scrapeEnabledActor();
     const controller = new AbortController();
     const abortError = new Error("client disconnected during provider work");
     abortError.name = "AbortError";
     const providerStarted = createDeferredPromise<void>(context.signal);
     const providerResponse = createDeferredPromise<void>(context.signal);
+    let providerSignalAborted = false;
     allowExampleDotCom();
     configureProvider();
     await seedScrapePricing();
@@ -517,42 +571,82 @@ describe("zero scrape route", () => {
     const beforeCredits = await credits(actor);
 
     server.use(
-      http.post(FIRECRAWL_SCRAPE_URL, async () => {
+      http.post(FIRECRAWL_SCRAPE_URL, async ({ request }) => {
         providerStarted.resolve(undefined);
         controller.abort(abortError);
+        providerSignalAborted = request.signal.aborted;
         await providerResponse.promise;
         return HttpResponse.json({
           success: true,
           data: {
             markdown: "# Example page",
             metadata: {
-              sourceURL: "https://example.com/page",
+              url: "https://example.com/page",
             },
           },
         });
       }),
     );
 
-    const responsePromise = accept(
-      client(controller.signal)(zeroScrapeContract).scrape({
-        headers: authenticate(actor),
-        body: {
-          url: "https://example.com/page",
-          format: "markdown",
-          mode: "standard",
-        },
-      }),
-      [200],
+    const responsePromise = rawScrapeRequest(
+      actor,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { requestSignal: controller.signal },
     );
     await providerStarted.promise;
     providerResponse.resolve(undefined);
     const response = await responsePromise;
     const afterCredits = await credits(actor);
 
-    expect(response.body.result).toStrictEqual({
-      markdown: "# Example page",
-    });
-    expect(beforeCredits - afterCredits).toBe(4);
+    expect(response.status).toBe(500);
+    expect(providerSignalAborted).toBeTruthy();
+    expect(afterCredits).toBe(beforeCredits);
+  });
+
+  it("stops in-flight Firecrawl work when the instance lifecycle aborts", async () => {
+    const actor = await scrapeEnabledActor();
+    const controller = new AbortController();
+    const abortError = new Error("function instance terminated");
+    abortError.name = "AbortError";
+    let providerSignalAborted = false;
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, ({ request }) => {
+        controller.abort(abortError);
+        providerSignalAborted = request.signal.aborted;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            markdown: "# Example page",
+            metadata: { url: "https://example.com/page" },
+          },
+        });
+      }),
+    );
+
+    const response = await rawScrapeRequest(
+      actor,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { instanceSignal: controller.signal },
+    );
+    const afterCredits = await credits(actor);
+
+    expect(response.status).toBe(500);
+    expect(providerSignalAborted).toBeTruthy();
+    expect(afterCredits).toBe(beforeCredits);
   });
 
   it("records both concurrent same-org scrape requests", async () => {
@@ -720,7 +814,8 @@ describe("zero scrape route", () => {
             links: ["https://example.com/a", "https://example.com/b"],
             metadata: {
               title: "Example page",
-              sourceURL: "https://example.com/final",
+              sourceURL: "https://example.com/page",
+              url: "https://example.com/final",
               statusCode: 200,
             },
           },
@@ -747,7 +842,9 @@ describe("zero scrape route", () => {
       parsers: [],
       proxy: "enhanced",
       skipTlsVerification: false,
+      maxAge: 0,
       storeInCache: false,
+      timeout: 25_000,
     });
     expect(authorization).toBe("Bearer test-firecrawl-token");
     expect(response.body).toMatchObject({
@@ -770,7 +867,7 @@ describe("zero scrape route", () => {
     expect(beforeCredits - afterCredits).toBe(20);
   });
 
-  it("rejects unsafe final URLs without recording usage", async () => {
+  it("rejects unsafe final URLs when the source URL is public", async () => {
     const actor = await scrapeEnabledActor();
     allowExampleDotCom();
     configureProvider();
@@ -783,7 +880,10 @@ describe("zero scrape route", () => {
           success: true,
           data: {
             markdown: "# Internal redirect",
-            metadata: { sourceURL: "http://127.0.0.1/secret" },
+            metadata: {
+              sourceURL: "https://example.com/page",
+              url: "http://127.0.0.1/secret",
+            },
           },
         });
       }),
