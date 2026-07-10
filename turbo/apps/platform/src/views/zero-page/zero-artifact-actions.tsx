@@ -642,6 +642,22 @@ function setArtifactDownloadMenuOpen(params: {
   params.closeMenu();
 }
 
+function startArtifactDownloadWithCleanup(params: {
+  readonly closeMenu: () => void;
+  readonly description: string;
+  readonly download: Promise<void>;
+  readonly finish: () => void;
+  readonly start: () => void;
+}): void {
+  params.closeMenu();
+  params.start();
+  detach(
+    withCleanup(params.download, params.finish),
+    Reason.DomCallback,
+    params.description,
+  );
+}
+
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
@@ -672,17 +688,6 @@ export function ArtifactDownloadMenu({
     filename,
     url,
   );
-  const startDownload = (download: Promise<void>, description: string) => {
-    closeMenu();
-    startArtifactDownload(menuKey);
-    detach(
-      withCleanup(download, () => {
-        finishArtifactDownload(menuKey);
-      }),
-      Reason.DomCallback,
-      description,
-    );
-  };
   return (
     <Popover
       modal={false}
@@ -732,10 +737,17 @@ export function ArtifactDownloadMenu({
       >
         <ArtifactDownloadMenuItem
           onClick={() => {
-            startDownload(
-              downloadAttachmentUrl(url, pageSignal, downloadFilename),
-              "artifact download",
-            );
+            startArtifactDownloadWithCleanup({
+              closeMenu,
+              description: "artifact download",
+              download: downloadAttachmentUrl(
+                url,
+                pageSignal,
+                downloadFilename,
+              ),
+              finish: () => finishArtifactDownload(menuKey),
+              start: () => startArtifactDownload(menuKey),
+            });
           }}
         >
           <IconDownload size={14} stroke={1.5} />
@@ -744,14 +756,17 @@ export function ArtifactDownloadMenu({
         {showPresentationPptxDownload && (
           <ArtifactDownloadMenuItem
             onClick={() => {
-              startDownload(
-                downloadPresentationPptx({
+              startArtifactDownloadWithCleanup({
+                closeMenu,
+                description: "presentation html pptx download",
+                download: downloadPresentationPptx({
                   filename: downloadFilename,
                   signal: pageSignal,
                   url,
                 }),
-                "presentation html pptx download",
-              );
+                finish: () => finishArtifactDownload(menuKey),
+                start: () => startArtifactDownload(menuKey),
+              });
             }}
           >
             <IconDownload size={14} stroke={1.5} />
