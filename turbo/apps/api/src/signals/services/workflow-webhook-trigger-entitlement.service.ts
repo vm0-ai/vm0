@@ -14,7 +14,7 @@ export const WORKFLOW_WEBHOOK_TRIGGER_ELIGIBLE_TIERS = [
   "custom",
 ] as const;
 
-export function workflowWebhookTriggerTierEligible(
+function workflowWebhookTriggerTierEligible(
   tier: string | null | undefined,
 ): boolean {
   return tier === "team" || tier === "custom";
