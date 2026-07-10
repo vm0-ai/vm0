@@ -52,12 +52,13 @@
 }
 
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
-   styles across WebKit versions, including iOS 26+ standalone PWA mode.
-   Use var(--sat) / var(--sab) in components instead of env() directly. */
+   styles across WebKit versions, including iOS 26+ standalone PWA mode. */
 :root {
   --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
   --sab-raw: env(safe-area-inset-bottom, 0px);
   --sab: var(--sab-raw);
+  --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
   --zero-desktop-titlebar-height: 48px;
 }
@@ -104,10 +105,12 @@ body {
 }
 
 .zero-viewport-shell {
+  box-sizing: border-box;
   height: var(--zero-viewport-height);
   min-height: var(--zero-viewport-height);
   max-height: var(--zero-viewport-height);
   overflow: hidden;
+  padding: var(--sat) var(--sar) var(--sab) var(--sal);
 }
 
 @media (display-mode: standalone) {
@@ -116,8 +119,17 @@ body {
   }
 }
 
+@media (max-width: 767px) {
+  /* Fixed mobile surfaces escape the padded page shell, so they own the same
+     content boundary while their background still covers the viewport. */
+  .zero-mobile-fixed-safe-area {
+    box-sizing: border-box;
+    padding: var(--sat) var(--sar) var(--sab) var(--sal);
+  }
+}
+
 .zero-sidebar-header {
-  padding-top: calc(0.375rem + var(--sat));
+  padding-top: 0.375rem;
 }
 
 .zero-desktop-titlebar-drag-region {

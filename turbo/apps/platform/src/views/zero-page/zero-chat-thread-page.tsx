@@ -1161,7 +1161,7 @@ const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
 );
 
 const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
-  "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
+  "zero-viewport-shell fixed inset-0 z-[100] flex min-h-0 flex-col bg-background";
 
 function ChatImagePreviewLink({
   alt,
@@ -4430,8 +4430,7 @@ function ChatThreadComposer({
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 bg-[hsl(var(--background))]"
-      style={{ paddingBottom: "max(0.5rem, var(--sab))" }}
+      className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">

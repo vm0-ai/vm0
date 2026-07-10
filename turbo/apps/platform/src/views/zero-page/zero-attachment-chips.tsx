@@ -1249,7 +1249,7 @@ function ArtifactPreviewDialogContent({
           visible ? "translate-y-0" : "translate-y-2"
         } ${
           fullscreen
-            ? "zero-viewport-shell w-dvw rounded-none pt-[var(--sat)] pb-[var(--sab)]"
+            ? "zero-viewport-shell w-dvw rounded-none"
             : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl"
         }`}
         data-testid="attachment-lightbox-panel"
