@@ -167,7 +167,7 @@ async function authorizeGoogleDriveForAgent(params: {
 
 export const waitForGoogleDriveAuthorization$ = command(
   async (
-    { get, set },
+    { set },
     params: { readonly agentId: string },
     signal: AbortSignal,
   ): Promise<void> => {

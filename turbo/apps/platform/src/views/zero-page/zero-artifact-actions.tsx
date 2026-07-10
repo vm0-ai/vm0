@@ -629,6 +629,19 @@ function ArtifactDownloadTrigger({
   );
 }
 
+function setArtifactDownloadMenuOpen(params: {
+  readonly closeMenu: () => void;
+  readonly nextOpen: boolean;
+  readonly openMenu: (key: string) => void;
+  readonly menuKey: string;
+}): void {
+  if (params.nextOpen) {
+    params.openMenu(params.menuKey);
+    return;
+  }
+  params.closeMenu();
+}
+
 export function ArtifactDownloadMenu({
   align = "end",
   ariaLabel = "Download options",
@@ -676,11 +689,12 @@ export function ArtifactDownloadMenu({
       modal={false}
       open={open}
       onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          openMenu(menuKey);
-          return;
-        }
-        closeMenu();
+        setArtifactDownloadMenuOpen({
+          closeMenu,
+          menuKey,
+          nextOpen,
+          openMenu,
+        });
       }}
     >
       <ArtifactActionTooltip label={ariaLabel}>
