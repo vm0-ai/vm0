@@ -11,6 +11,7 @@ from mitmproxy import ctx
 
 import builtin_host_policy
 import matching
+from path_security import has_unsafe_path, has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
@@ -320,6 +321,15 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
         raise BuiltinFirewallCatalogCacheError(
             f'catalog cache firewall "{firewall_name}" api base has invalid syntax'
         )
+    if template_syntax_target is not None:
+        if template_syntax_target.startswith("template/"):
+            known_path = template_syntax_target.removeprefix("template")
+        else:
+            known_path = ""
+        if has_unsafe_url_path(template_syntax_target) or has_unsafe_path(known_path):
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" api base has unsafe path'
+            )
     if (
         template_syntax_target is not None
         and ("{" in template_syntax_target or "}" in template_syntax_target)

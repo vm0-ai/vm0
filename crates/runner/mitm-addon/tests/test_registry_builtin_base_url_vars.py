@@ -736,6 +736,32 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "https://strapi.example.test?next=/../",
+            "https://strapi.example.test#next=/../",
+        ],
+    )
+    def test_builtin_base_url_does_not_treat_query_or_fragment_as_path(self, tmp_path, value):
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-strapi",
+            name="strapi",
+            base_url_vars={"STRAPI_BASE_URL": value},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
+
     def test_builtin_base_url_prefix_preserves_fixed_path_suffix(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
@@ -789,7 +815,10 @@ class TestRegistryBuiltinBaseUrlVars:
         assert not isinstance(state, registry.RegistryUnavailable)
         invalid_vm = state.invalid_vms["10.200.0.1"]
         assert invalid_vm.reason == "invalid_firewalls"
-        assert 'base URL variable "N8N_BASE_URL"' in invalid_vm.message
+        assert (
+            'base URL variable "N8N_BASE_URL" must not contain unsafe path segments '
+            "before a fixed path suffix"
+        ) in invalid_vm.message
 
     def test_builtin_base_url_prefix_rejects_encoded_path_dot_segments(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -808,7 +837,10 @@ class TestRegistryBuiltinBaseUrlVars:
         assert not isinstance(state, registry.RegistryUnavailable)
         invalid_vm = state.invalid_vms["10.200.0.1"]
         assert invalid_vm.reason == "invalid_firewalls"
-        assert 'base URL variable "N8N_BASE_URL"' in invalid_vm.message
+        assert (
+            'base URL variable "N8N_BASE_URL" must not contain unsafe path segments '
+            "before a fixed path suffix"
+        ) in invalid_vm.message
 
     def test_builtin_path_segment_var_accepts_fixed_suffix(self, tmp_path):
         install_test_builtin_firewall(
