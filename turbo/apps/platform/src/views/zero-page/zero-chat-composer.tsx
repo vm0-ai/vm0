@@ -5018,7 +5018,9 @@ function TemplatePickerDialog({
               <div
                 className={cn(
                   "pb-3 pt-2 sm:w-64",
-                  selectedCategory === "workflow" ? "w-full" : "hidden sm:block",
+                  selectedCategory === "workflow"
+                    ? "w-full"
+                    : "hidden sm:block",
                 )}
               >
                 {selectedCategory === "workflow" ? (
