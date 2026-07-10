@@ -681,6 +681,7 @@ export const zeroScrape$ = command(
     requestSignal.throwIfAborted();
 
     const target = await validateScrapeTargetUrl(args.body.url);
+    signal.throwIfAborted();
     requestSignal.throwIfAborted();
     if (typeof target === "string") {
       return badRequest(targetPolicyMessage(target), "INVALID_SCRAPE_TARGET");
@@ -700,10 +701,11 @@ export const zeroScrape$ = command(
       },
       requestSignal,
     );
+    signal.throwIfAborted();
+    requestSignal.throwIfAborted();
     if (creditError) {
       return creditError;
     }
-    requestSignal.throwIfAborted();
 
     const runId = runIdForUsage(args.auth);
     return completeScrapeAfterProvider({
