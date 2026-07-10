@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.237.3](https://github.com/vm0-ai/vm0/compare/cli-v9.237.2...cli-v9.237.3) (2026-07-10)
+
+
+### Refactoring
+
+* reduce fallback slop in codex event usage parsing ([#21018](https://github.com/vm0-ai/vm0/issues/21018)) ([4acc00d](https://github.com/vm0-ai/vm0/commit/4acc00da2f74d96138bb1b3759d3d4af7a5c4658))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.184.1
+    * @vm0/connectors bumped to 1.154.3
+    * @vm0/core bumped to 8.424.4
+
 ## [9.237.2](https://github.com/vm0-ai/vm0/compare/cli-v9.237.1...cli-v9.237.2) (2026-07-10)
 
 
