@@ -14,7 +14,7 @@ use super::http;
 pub enum ApiError {
     /// Failed to connect to the Unix domain socket.
     #[error("connect: {0}")]
-    Connect(std::io::Error),
+    Connect(#[source] std::io::Error),
     /// Firecracker returned a non-2xx HTTP response.
     #[error("HTTP {status}: {body}")]
     Http { status: u16, body: String },

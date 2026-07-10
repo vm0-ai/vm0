@@ -158,6 +158,24 @@ fn api_error_is_not_retryable_permission_denied() {
     assert!(!err.is_retryable());
 }
 
+#[tokio::test]
+async fn connect_error_preserves_io_kind_and_transport_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket_path = dir.path().join("missing.sock");
+    let client = ApiClient::new(&socket_path).unwrap();
+
+    let error = client.pause().await.unwrap_err();
+    let source = std::error::Error::source(&error).expect("missing I/O error source");
+    let io_error = source
+        .downcast_ref::<std::io::Error>()
+        .expect("connect source is not an I/O error");
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
+    assert!(
+        std::error::Error::source(io_error).is_some(),
+        "missing Reqwest transport source"
+    );
+}
+
 #[test]
 fn api_error_is_retryable_http_server_error() {
     let err = ApiError::Http {
