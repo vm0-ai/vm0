@@ -126,7 +126,7 @@ function isResumeSessionHistoryLoadError(
 }
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
-type SecretValueFallbackReason = "missing_field" | "invalid_keys";
+type SecretValueFallbackReason = "invalid_keys";
 type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
@@ -945,9 +945,6 @@ function preparedSecretValuesForRunner(
   storedContext: StoredExecutionContext,
 ): PreparedSecretValuesResult {
   const keys = storedContext.secretValueEnvironmentKeys;
-  if (keys === undefined) {
-    return { status: "fallback", reason: "missing_field" };
-  }
   if (keys === null) {
     return { status: "resolved", secretValues: null };
   }

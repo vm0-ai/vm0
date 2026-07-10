@@ -361,10 +361,10 @@ export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   // API-only references used to reconstruct runner masking values from the
-  // stored environment. Missing means legacy/stripped data, null means no
-  // persistent secret map, and array order/repetition follows secret-map values.
+  // stored environment. Null means no persistent secret map, and array
+  // order/repetition follows secret-map values.
   // This field must not be included in the runner-facing ExecutionContext.
-  secretValueEnvironmentKeys: z.array(z.string()).nullable().optional(),
+  secretValueEnvironmentKeys: z.array(z.string()).nullable(),
   // Connector-owned runtime vars used by proxy/firewall template resolution.
   // User-provided run vars stay in agent_runs.vars and are merged at claim time.
   vars: z.record(z.string(), z.string()).nullable().optional(),
