@@ -144,6 +144,7 @@ import {
   setWorkflowDemoteConfirmOpen$,
   setWorkflowTriggerPickerCategory$,
   setWorkflowTriggerPickerOpen$,
+  setWorkflowWebhookUpgradeDialogOpen$,
   workflowCopyForm$,
   workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
@@ -169,6 +170,7 @@ import {
 } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
+import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import {
   connectGithubInstallation$,
   githubIntegrationData$,
@@ -209,6 +211,7 @@ import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { TriggerListIcon } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
@@ -578,20 +581,35 @@ function WorkflowTabNav({
 
 function TriggerCreateAction() {
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
+  const setWebhookUpgradeDialogOpen = useSet(
+    setWorkflowWebhookUpgradeDialogOpen$,
+  );
   const features = useGet(featureSwitch$);
+  const billing = useLastResolved(billingStatusAsync$);
   const workflowWebhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
+  const webhookTierEligible =
+    billing === undefined ||
+    billing.tier === "team" ||
+    billing.tier === "custom";
   const notionWorkflowTriggersEnabled =
     features[FeatureSwitchKey.NotionWorkflowTriggers] ?? false;
 
   return (
     <TriggerCreateMenu
-      onSelect={setCreateDialog}
+      onSelect={(kind) => {
+        if (kind === "webhook" && !webhookTierEligible) {
+          setWebhookUpgradeDialogOpen(true);
+          return;
+        }
+        setCreateDialog(kind);
+      }}
       githubLabelTriggersEnabled
       googleCalendarTriggersEnabled
       googleMeetTriggersEnabled
       notionWorkflowTriggersEnabled={notionWorkflowTriggersEnabled}
       webhookTriggersEnabled={workflowWebhookTriggersEnabled}
+      webhookTierEligible={webhookTierEligible}
     />
   );
 }
@@ -2782,6 +2800,7 @@ type TriggerCreateOption = {
   readonly title: string;
   readonly description: string;
   readonly icon: typeof IconClock;
+  readonly badge?: string;
 };
 
 type TriggerCreateCategory = {
@@ -2794,9 +2813,11 @@ type TriggerCreateCategory = {
 function buildIntegrationTriggerOptions({
   githubLabelTriggersEnabled,
   webhookTriggersEnabled,
+  webhookTierEligible,
 }: {
   readonly githubLabelTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
+  readonly webhookTierEligible: boolean;
 }): TriggerCreateOption[] {
   const integrationOptions: TriggerCreateOption[] = [];
   if (githubLabelTriggersEnabled) {
@@ -2813,6 +2834,7 @@ function buildIntegrationTriggerOptions({
       title: "Webhook",
       description: "Run this workflow from a signed POST.",
       icon: IconLink,
+      ...(webhookTierEligible ? {} : { badge: "Team" }),
     });
   }
   return integrationOptions;
@@ -2863,12 +2885,14 @@ function buildTriggerCreateCategories({
   googleMeetTriggersEnabled,
   notionWorkflowTriggersEnabled,
   webhookTriggersEnabled,
+  webhookTierEligible,
 }: {
   readonly githubLabelTriggersEnabled: boolean;
   readonly googleCalendarTriggersEnabled: boolean;
   readonly googleMeetTriggersEnabled: boolean;
   readonly notionWorkflowTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
+  readonly webhookTierEligible: boolean;
 }): readonly TriggerCreateCategory[] {
   const calendarOptions: TriggerCreateOption[] = [];
   if (googleCalendarTriggersEnabled) {
@@ -2905,6 +2929,7 @@ function buildTriggerCreateCategories({
   const integrationOptions = buildIntegrationTriggerOptions({
     githubLabelTriggersEnabled,
     webhookTriggersEnabled,
+    webhookTierEligible,
   });
   const notionOptions = buildNotionTriggerOptions(
     notionWorkflowTriggersEnabled,
@@ -3036,6 +3061,11 @@ function TriggerCreateOptionCard({
       </span>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-semibold">{option.title}</span>
+        {option.badge ? (
+          <span className="mt-0.5 w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+            {option.badge}
+          </span>
+        ) : null}
         <span className="text-xs text-muted-foreground">
           {option.description}
         </span>
@@ -3051,6 +3081,7 @@ function TriggerCreateMenu({
   googleMeetTriggersEnabled,
   notionWorkflowTriggersEnabled,
   webhookTriggersEnabled,
+  webhookTierEligible,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
   readonly githubLabelTriggersEnabled: boolean;
@@ -3058,6 +3089,7 @@ function TriggerCreateMenu({
   readonly googleMeetTriggersEnabled: boolean;
   readonly notionWorkflowTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
+  readonly webhookTierEligible: boolean;
 }) {
   const open = useGet(workflowTriggerPickerOpen$);
   const setOpen = useSet(setWorkflowTriggerPickerOpen$);
@@ -3069,6 +3101,7 @@ function TriggerCreateMenu({
     googleMeetTriggersEnabled,
     notionWorkflowTriggersEnabled,
     webhookTriggersEnabled,
+    webhookTierEligible,
   });
   const activeCategory =
     categories.find((category) => {
@@ -3404,6 +3437,7 @@ function WorkflowTriggerCreateDialogs({
           setCreateDialog(open ? "webhook" : null);
         }}
       />
+      <WorkflowWebhookUpgradeDialog />
     </>
   );
 }
@@ -5034,7 +5068,9 @@ function CreateWebhookTriggerDialog({
                     { workflowId },
                     pageSignal,
                   );
-                  setCreatedTrigger(trigger);
+                  if (trigger) {
+                    setCreatedTrigger(trigger);
+                  }
                 })(),
                 Reason.DomCallback,
               );
@@ -5405,6 +5441,12 @@ function TriggerRow({
 function workflowTriggerSubtitle(
   trigger: ZeroWorkflowTriggerSummary,
 ): string | null {
+  if (
+    isWebhookWorkflowTrigger(trigger) &&
+    trigger.disabledReason === "paid_plan_required"
+  ) {
+    return "Disabled — paid plan required";
+  }
   const matchSummary = workflowTriggerSummary(trigger);
   if (matchSummary) {
     return matchSummary;

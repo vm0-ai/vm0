@@ -5,7 +5,12 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$ } from "../external/db";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  notFound,
+  teamRequired,
+} from "../../lib/error";
 import {
   loadVisibleWorkflowById,
   type WorkflowMember,
@@ -65,6 +70,9 @@ function triggerErrorResponse(
     }
     case "conflict": {
       return conflict(result.message);
+    }
+    case "team-required": {
+      return teamRequired(result.message);
     }
     case "bad-request": {
       return badRequestMessage(result.message);

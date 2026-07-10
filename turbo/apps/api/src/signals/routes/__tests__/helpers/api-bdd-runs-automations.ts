@@ -288,6 +288,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     async grantProEntitlement(
       actor: ApiTestUser,
       options: {
+        readonly tier?: "pro" | "team";
         readonly periodEndUnix?: number;
         readonly subscriptionMetadata?: Record<string, string>;
         readonly cancelAtUnix?: number | null;
@@ -303,6 +304,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       mockEnv("ATOM_GRANT_PRICE", "price_bdd_atom_grant");
       mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
+      const tier = options.tier ?? "pro";
 
       await accept(
         runsAutomationApp(context)(onboardingSetupContract).setup({
@@ -329,7 +331,15 @@ export function createRunsAutomationsApi(context: TestContext) {
         schedule: null,
         trial_end: null,
         metadata: options.subscriptionMetadata ?? {},
-        items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        items: {
+          data: [
+            {
+              price: {
+                id: tier === "team" ? "price_bdd_team" : "price_bdd_pro",
+              },
+            },
+          ],
+        },
       });
       const invoicePaidEvent = {
         type: "invoice.paid",
@@ -371,9 +381,9 @@ export function createRunsAutomationsApi(context: TestContext) {
         }),
         [200],
       );
-      if (billingStatus.body.tier !== "pro") {
+      if (billingStatus.body.tier !== tier) {
         throw new Error(
-          `Entitlement grant did not reach pro tier: ${billingStatus.body.tier}`,
+          `Entitlement grant did not reach ${tier} tier: ${billingStatus.body.tier}`,
         );
       }
       return { customerId, subscriptionId, invoiceId };

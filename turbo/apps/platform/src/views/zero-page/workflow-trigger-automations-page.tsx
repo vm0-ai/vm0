@@ -175,6 +175,13 @@ export function humanReadableTriggerRuleLabel(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
 ): string {
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "webhook-received" &&
+    trigger.disabledReason === "paid_plan_required"
+  ) {
+    return "Disabled — paid plan required";
+  }
   if (trigger.kind === "schedule") {
     const schedule = trigger.schedule;
     if (schedule.type === "loop") {
