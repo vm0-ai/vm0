@@ -1117,25 +1117,33 @@ jobs:
           [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
           echo "Found sandbox: $SANDBOX_ID"
 
-          # Test 1: basic exec
+          # Test 1: privilege boundary
+          echo "--- Test: privilege boundary ---"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- id -u)
+          [ "$OUTPUT" = "1000" ] || fail "ordinary exec expected UID 1000, got: $OUTPUT"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- id -u)
+          [ "$OUTPUT" = "0" ] || fail "privileged exec expected UID 0, got: $OUTPUT"
+          echo "PASS: privilege boundary"
+
+          # Test 2: basic exec
           echo "--- Test: basic exec ---"
           OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo hello-from-exec)
           echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
           echo "PASS: basic exec"
 
-          # Test 2: exit code propagation
+          # Test 3: exit code propagation
           echo "--- Test: exit code propagation ---"
           sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- false && fail "expected non-zero exit"
           echo "PASS: exit code propagation"
 
-          # Test 3: prefix matching
+          # Test 4: prefix matching
           echo "--- Test: prefix matching ---"
           PREFIX=$(echo "$SANDBOX_ID" | cut -c1-8)
           OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$PREFIX" -- hostname)
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
-          # Test 4: argv boundary preservation — regression guard for #9019.
+          # Test 5: argv boundary preservation — regression guard for #9019.
           # NOTE: each assertion relies on the surrounding bash (this
           # heredoc, running on the metal runner) to tokenise quoted
           # arguments and pass them to runner as separate argv entries.
@@ -1179,7 +1187,7 @@ jobs:
           [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
           echo "PASS: argv boundary preservation"
 
-          # Test 5: verify pre-installed language runtimes and databases
+          # Test 6: verify pre-installed language runtimes and databases
           echo "--- Test: runtime availability ---"
           for cmd in \
             "node --version" \
@@ -1242,7 +1250,7 @@ jobs:
           echo "  PostgreSQL start/stop: ok"
           echo "PASS: runtime availability"
 
-          # Test 6: verify /etc/environment is loaded for both user and root
+          # Test 7: verify /etc/environment is loaded for both user and root
           # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
           echo "--- Test: environment variables ---"
           EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -1273,7 +1281,7 @@ jobs:
           check_env "root" "--sudo"
           echo "PASS: environment variables"
 
-          # Test 7: verify HTTPS works through proxy for each runtime
+          # Test 8: verify HTTPS works through proxy for each runtime
           # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
           echo "--- Test: HTTPS through proxy ---"
           TLS_URL="https://www.vm0.ai"
