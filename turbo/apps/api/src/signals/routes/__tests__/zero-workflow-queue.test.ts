@@ -234,7 +234,7 @@ describe("workflow queue", () => {
     // without creating runs.
     expectAcceptedWithoutRun(await postWorkflowWebhook(trigger, "second"));
     expectAcceptedWithoutRun(await postWorkflowWebhook(trigger, "third"));
-    expect(await workflowRunIds(trigger.threadId)).toStrictEqual([firstRunId]);
+    await expect(workflowRunIds(trigger.threadId)).resolves.toStrictEqual([firstRunId]);
 
     // Completing the run drains exactly one event into the next run.
     await completeRunThroughSandbox(scenario, firstRunId);
@@ -247,7 +247,7 @@ describe("workflow queue", () => {
 
     // The queue is empty: completing the last run creates nothing new.
     await completeRunThroughSandbox(scenario, afterSecond[2]!);
-    expect(await workflowRunIds(trigger.threadId)).toHaveLength(3);
+    await expect(workflowRunIds(trigger.threadId)).resolves.toHaveLength(3);
   });
 
   it("keeps the current concurrent behavior when the switch is off", async () => {
@@ -256,7 +256,7 @@ describe("workflow queue", () => {
 
     expectAcceptedRunId(await postWorkflowWebhook(trigger, "first"));
     expectAcceptedRunId(await postWorkflowWebhook(trigger, "second"));
-    expect(await workflowRunIds(trigger.threadId)).toHaveLength(2);
+    await expect(workflowRunIds(trigger.threadId)).resolves.toHaveLength(2);
   });
 
   it("coalesces schedule ticks: at most one pending tick per trigger", async () => {
@@ -315,7 +315,7 @@ describe("workflow queue", () => {
 
     // Only the single coalesced tick ran; nothing else is queued.
     await completeRunThroughSandbox(scenario, afterBusy[1]!);
-    expect(await workflowRunIds(webhookTrigger.threadId)).toHaveLength(2);
+    await expect(workflowRunIds(webhookTrigger.threadId)).resolves.toHaveLength(2);
   });
 
   it("drains queued user chat messages before workflow events", async () => {
@@ -356,7 +356,7 @@ describe("workflow queue", () => {
 
     // Terminal run: the user message drains first, the workflow event waits.
     await completeRunThroughSandbox(scenario, firstRunId);
-    expect(await workflowRunIds(trigger.threadId)).toHaveLength(1);
+    await expect(workflowRunIds(trigger.threadId)).resolves.toHaveLength(1);
     const messages = await wf.readThreadMessages(trigger.threadId);
     const userMessage = messages.find((message) => {
       return (
@@ -370,6 +370,6 @@ describe("workflow queue", () => {
 
     // The workflow event drains only after the user's run finishes.
     await completeRunThroughSandbox(scenario, userMessage.runId);
-    expect(await workflowRunIds(trigger.threadId)).toHaveLength(2);
+    await expect(workflowRunIds(trigger.threadId)).resolves.toHaveLength(2);
   });
 });
