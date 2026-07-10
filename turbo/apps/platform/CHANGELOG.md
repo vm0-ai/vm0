@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.590.2](https://github.com/vm0-ai/vm0/compare/app-v0.590.1...app-v0.590.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* enable send shortcuts with iPad keyboards ([#20950](https://github.com/vm0-ai/vm0/issues/20950)) ([973c1be](https://github.com/vm0-ai/vm0/commit/973c1be264f1eae71b6305a5e31754a6738bd696))
+
 ## [0.590.1](https://github.com/vm0-ai/vm0/compare/app-v0.590.0...app-v0.590.1) (2026-07-10)
 
 
