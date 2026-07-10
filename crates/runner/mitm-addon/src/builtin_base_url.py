@@ -5,7 +5,7 @@ import urllib.parse
 
 import matching
 from authority_utils import percent_decode_host
-from path_security import has_unsafe_path
+from path_security import has_unsafe_path, has_unsafe_url_path
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 _BASE_URL_VAR_PATTERN = re.compile(r"\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
@@ -402,11 +402,11 @@ def resolve_base_url_template(
     resolved_parts.append(base[last_index:])
     resolved = "".join(resolved_parts)
     if not matching.firewall_base_config_is_valid(resolved):
+        if has_unsafe_url_path(resolved):
+            raise BuiltinBaseUrlResolutionError(
+                f'builtin firewall "{firewall_name}" resolved base URL has unsafe path segments'
+            )
         raise BuiltinBaseUrlResolutionError(
             f'builtin firewall "{firewall_name}" resolved base URL is invalid'
-        )
-    if has_unsafe_path(urllib.parse.urlsplit(resolved).path):
-        raise BuiltinBaseUrlResolutionError(
-            f'builtin firewall "{firewall_name}" resolved base URL has unsafe path segments'
         )
     return resolved

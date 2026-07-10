@@ -427,6 +427,17 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     if raw_syntax_target.contains('#') {
         return Err("base URL must not contain fragment".to_string());
     }
+    let raw_path = if template_syntax_target.is_some() && !raw_syntax_target.contains("://") {
+        raw_syntax_target
+            .strip_prefix("template")
+            .filter(|suffix| suffix.starts_with('/'))
+            .unwrap_or("")
+    } else {
+        raw_url_path(raw_syntax_target)
+    };
+    if path_has_unsafe_segments_for_cache(raw_path) {
+        return Err("base URL must not contain unsafe path".to_string());
+    }
     if template_syntax_target.is_some() {
         if (raw_syntax_target.contains('{') || raw_syntax_target.contains('}'))
             && raw_syntax_target.contains("://")

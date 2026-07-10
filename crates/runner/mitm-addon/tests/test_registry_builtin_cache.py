@@ -593,6 +593,24 @@ class TestRegistryBuiltinCache:
         firewall["apis"][0]["base"] = "not-a-url"
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
 
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://api.example.com/a/../admin",
+            "https://api.example.com/%252e%252e/admin",
+            "https://api.example.com/..;version=1/admin",
+            "https://api.example.com/%255cadmin",
+            "https://api.example.com/v1/../{org}",
+            "https://${{ vars.TENANT }}.example.com/v1/../items",
+            "${{ vars.API_BASE_URL }}/v1/%2e%2e/items",
+        ],
+    )
+    def test_unsafe_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx, base):
+        firewall = _cache_firewall("fallback", base)
+        firewall["apis"][0].pop("hostPolicy")
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
     def test_malformed_parameterized_base_runner_catalog_cache_fails_closed(
         self, tmp_path, mitm_ctx
     ):

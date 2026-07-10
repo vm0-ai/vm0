@@ -401,6 +401,96 @@
       "name": "duplicate path parameter name is invalid",
       "base": "https://api.example.com/{org}/{org}",
       "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "dotted path segment name is valid",
+      "base": "https://api.example.com/v1/a..b",
+      "expectedValid": true
+    },
+    {
+      "category": "path-safety",
+      "name": "well-known path segment is valid",
+      "base": "https://api.example.com/.well-known",
+      "expectedValid": true
+    },
+    {
+      "category": "path-safety",
+      "name": "ordinary matrix path segment is valid",
+      "base": "https://api.example.com/callback;version=1",
+      "expectedValid": true
+    },
+    {
+      "category": "path-safety",
+      "name": "encoded slash path data is valid",
+      "base": "https://api.example.com/work%2fflows",
+      "expectedValid": true
+    },
+    {
+      "category": "path-safety",
+      "name": "literal parent path segment is invalid",
+      "base": "https://api.example.com/a/../admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "literal current path segment is invalid",
+      "base": "https://api.example.com/a/./admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "encoded parent path segment is invalid",
+      "base": "https://api.example.com/%2e%2e/admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "repeatedly encoded parent path segment is invalid",
+      "base": "https://api.example.com/%252e%252e/admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "matrix parent path segment is invalid",
+      "base": "https://api.example.com/..;version=1/admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "encoded backslash path is invalid",
+      "base": "https://api.example.com/%5cadmin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "repeatedly encoded backslash path is invalid",
+      "base": "https://api.example.com/%255cadmin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "malformed path percent encoding is invalid",
+      "base": "https://api.example.com/%zz/admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "percent-encoded invalid utf8 path is invalid",
+      "base": "https://api.example.com/%ff/admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "compatibility parent path segment is invalid",
+      "base": "https://api.example.com/\uff0e\uff0e/admin",
+      "expectedValid": false
+    },
+    {
+      "category": "path-safety",
+      "name": "parameterized base with parent path segment is invalid",
+      "base": "https://api.example.com/v1/../{org}",
+      "expectedValid": false
     }
   ]
 }

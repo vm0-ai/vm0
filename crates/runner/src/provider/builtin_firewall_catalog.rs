@@ -641,6 +641,17 @@ mod tests {
         }
     }
 
+    fn catalog_with_base(base: &str) -> BuiltinFirewallCatalog {
+        let mut value = catalog("github");
+        value
+            .firewalls
+            .get_mut("github")
+            .expect("catalog should contain github")
+            .apis[0]
+            .base = base.to_string();
+        value
+    }
+
     #[tokio::test(start_paused = true)]
     async fn initial_refresh_retries_after_failure() {
         let attempts = Arc::new(AtomicUsize::new(0));
@@ -1045,6 +1056,82 @@ mod tests {
             cache.firewalls["github"].apis[0].base,
             "https://${{ vars.TENANT }}.example.com"
         );
+    }
+
+    #[tokio::test]
+    async fn write_catalog_cache_accepts_safe_base_paths() {
+        for base in [
+            "https://api.example.com/v1/a..b",
+            "https://api.example.com/.well-known",
+            "https://api.example.com/callback;version=1",
+            "https://api.example.com/work%2fflows",
+            "https://api.example.com/v1/{org}",
+            "https://${{ vars.TENANT }}.example.com/v1/items",
+            "${{ vars.API_BASE_URL }}/v1/items",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+            write_catalog_cache(&cache_path, &lock_path, catalog_with_base(base))
+                .await
+                .unwrap();
+
+            let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+            assert_eq!(cache.firewalls["github"].apis[0].base, base);
+        }
+    }
+
+    #[tokio::test]
+    async fn unsafe_base_catalogs_never_publish() {
+        for base in [
+            "https://api.example.com/a/../admin",
+            "https://api.example.com/a/./admin",
+            "https://api.example.com/%2e%2e/admin",
+            "https://api.example.com/%252e%252e/admin",
+            "https://api.example.com/..;version=1/admin",
+            "https://api.example.com/%5cadmin",
+            "https://api.example.com/%zz/admin",
+            "https://api.example.com/%ff/admin",
+            "https://api.example.com/．．/admin",
+            "https://api.example.com/v1/../{org}",
+            "https://${{ vars.TENANT }}.example.com/v1/../items",
+            "${{ vars.API_BASE_URL }}/v1/%2e%2e/items",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+            let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+
+            let initial_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(base))
+                    .await
+                    .unwrap_err();
+            assert!(
+                initial_error
+                    .to_string()
+                    .contains("base URL must not contain unsafe path"),
+                "unexpected error for {base:?}: {initial_error}"
+            );
+            assert!(!cache_path.exists(), "unsafe base {base:?} was published");
+
+            write_catalog_cache(&cache_path, &lock_path, catalog("github"))
+                .await
+                .unwrap();
+            let before = tokio::fs::read_to_string(&cache_path).await.unwrap();
+
+            let refresh_error =
+                write_catalog_cache(&cache_path, &lock_path, catalog_with_base(base))
+                    .await
+                    .unwrap_err();
+            assert!(
+                refresh_error
+                    .to_string()
+                    .contains("base URL must not contain unsafe path"),
+                "unexpected error for {base:?}: {refresh_error}"
+            );
+            let after = tokio::fs::read_to_string(&cache_path).await.unwrap();
+            assert_eq!(after, before, "unsafe base {base:?} replaced the cache");
+        }
     }
 
     #[tokio::test]

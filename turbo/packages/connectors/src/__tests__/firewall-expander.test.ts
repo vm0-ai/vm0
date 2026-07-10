@@ -66,6 +66,23 @@ describe("firewall expander helpers", () => {
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
 
+  it("collectAndValidatePermissions rejects unsafe firewall base paths", () => {
+    const config: FirewallConfig = {
+      name: "unsafe-base",
+      apis: [
+        {
+          base: "https://api.example.com/v1/../admin",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /items"] }],
+        },
+      ],
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(config);
+    }).toThrow("must not contain unsafe path segments");
+  });
+
   it("collectAndValidatePermissions validates static base URL host policies", () => {
     const config = (
       base: string,
@@ -690,6 +707,33 @@ describe("validateBaseUrl", () => {
         "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
         "zendesk",
       );
+    }).not.toThrow();
+  });
+
+  it("should reject unsafe fixed paths in template base URLs", () => {
+    expect(() => {
+      return validateBaseUrl(
+        "https://${{ vars.API_HOST }}/v1/../admin",
+        "templated",
+      );
+    }).toThrow("must not contain unsafe path segments");
+    expect(() => {
+      return validateBaseUrl(
+        "${{ vars.API_BASE_URL }}/v1/%2e%2e/admin",
+        "templated",
+      );
+    }).toThrow("must not contain unsafe path segments");
+  });
+
+  it("should allow safe fixed paths in unresolved template base URLs", () => {
+    expect(() => {
+      return validateBaseUrl(
+        "https://${{ vars.API_HOST }}/v1/items",
+        "templated",
+      );
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("${{ vars.API_BASE_URL }}/v1/items", "templated");
     }).not.toThrow();
   });
 
