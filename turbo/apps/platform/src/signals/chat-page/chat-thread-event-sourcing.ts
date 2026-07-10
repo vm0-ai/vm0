@@ -10,12 +10,15 @@ import type {
   InitClientReturn,
 } from "@vm0/api-contracts/contracts/trpc-contract";
 import { accept } from "../../lib/accept.ts";
+import { activeRoute$ } from "../active-route.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
+import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { logger } from "../log.ts";
 import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { pathParams$ } from "../route.ts";
 import { replayChatThreadEvents } from "./chat-thread-event-replay.ts";
 
 const L = logger("ChatThreadEventSourcing");
@@ -246,6 +249,7 @@ const hydrateChatThreadEventState$ = command(
       snapshot: state.snapshot?.chatThreads ?? [],
       events: state.events,
     });
+    await set(syncCurrentChatThreadDocumentTitle$);
     return { state, store: storeContext.stores };
   },
 );
@@ -278,6 +282,7 @@ export const syncEventDrivenChatThreads$ = command(
       snapshot: update.state.snapshot?.chatThreads ?? [],
       events: update.state.events,
     });
+    await set(syncCurrentChatThreadDocumentTitle$);
   },
 );
 
@@ -376,6 +381,21 @@ export function threadMeta(threadId: string) {
     return (await get(chatThreadMetaMap$)).get(threadId) ?? null;
   });
 }
+
+/** Synchronize the active primary chat tab title after committed thread data changes. */
+const syncCurrentChatThreadDocumentTitle$ = command(async ({ get, set }) => {
+  if (get(activeRoute$) !== "chat") {
+    return;
+  }
+  const threadId = get(pathParams$)?.threadId;
+  if (typeof threadId !== "string") {
+    return;
+  }
+  const meta = await get(threadMeta(threadId));
+  if (meta) {
+    set(updateDocumentTitle$, meta.title ?? "New chat");
+  }
+});
 
 export const registerOptimisticChatThreadEvent$ = command(
   ({ set }, event: ChatThreadEvent) => {
