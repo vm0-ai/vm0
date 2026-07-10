@@ -5087,7 +5087,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("falls back completely for legacy and invalid masking metadata", async () => {
+  it("rejects missing masking metadata but falls back completely for invalid keys", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
@@ -5116,47 +5116,83 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    for (const mode of ["remove", "invalid"] as const) {
-      const run = await api.createDirectRun(actor, {
-        agentComposeId: compose.composeId,
-        prompt: `materialize ${mode} masking metadata`,
-        secrets: {
-          FIRST_TOKEN: "first-fallback-secret",
-          SECOND_TOKEN: "second-fallback-secret",
-        },
-      });
-      await mutateRunnerJobSecretValueEnvironmentKeys(context, run.runId, mode);
-      const decryptCountBeforeClaim =
-        await readAutomationsFakeKmsDecryptCallCount(context);
+    const missingRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "reject missing masking metadata",
+      secrets: {
+        FIRST_TOKEN: "first-missing-secret",
+        SECOND_TOKEN: "second-missing-secret",
+      },
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      missingRun.runId,
+      "remove",
+    );
+    const decryptCountBeforeMissingClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
 
-      const claim = await api.claimRunnerJob(run.runId);
+    const missingClaim = await api.requestClaimRunnerJob(
+      true,
+      missingRun.runId,
+      [400],
+    );
+    expectApiError(missingClaim.body);
+    expect(missingClaim.body.error.message).toBe(
+      "Job missing execution context",
+    );
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeMissingClaim,
+    );
+    const failedMissingRun = await api.readRun(actor, missingRun.runId);
+    expect(failedMissingRun.status).toBe("failed");
+    expect(failedMissingRun.error).toBe(
+      "Runner job missing valid execution context",
+    );
 
-      expect(claim.secretValues).toStrictEqual([
-        "first-fallback-secret",
-        "second-fallback-secret",
-      ]);
-      await expect(
-        readAutomationsFakeKmsDecryptCallCount(context),
-      ).resolves.toBe(decryptCountBeforeClaim + 1);
-      expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
-      const materializationEvent = singleSandboxOperationEvent(
-        claimRouteTimingEventsForRun(run.runId),
-        "claim_route_secret_materialization",
-      );
-      expect(materializationEvent).toStrictEqual(
-        expect.objectContaining({
-          fallback_reason: mode === "remove" ? "missing_field" : "invalid_keys",
-          span_kind: "top_level",
-        }),
-      );
-      expect(
-        claimRouteTimingEventsForRun(run.runId).some((event) => {
-          return event.op_type === "claim_route_feature_switch_context";
-        }),
-      ).toBeFalsy();
+    const invalidRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "materialize invalid masking metadata",
+      secrets: {
+        FIRST_TOKEN: "first-fallback-secret",
+        SECOND_TOKEN: "second-fallback-secret",
+      },
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      invalidRun.runId,
+      "invalid",
+    );
+    const decryptCountBeforeInvalidClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
 
-      await api.requestCancelRun(actor, run.runId, [200]);
-    }
+    const claim = await api.claimRunnerJob(invalidRun.runId);
+
+    expect(claim.secretValues).toStrictEqual([
+      "first-fallback-secret",
+      "second-fallback-secret",
+    ]);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeInvalidClaim + 1,
+    );
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const materializationEvent = singleSandboxOperationEvent(
+      claimRouteTimingEventsForRun(invalidRun.runId),
+      "claim_route_secret_materialization",
+    );
+    expect(materializationEvent).toStrictEqual(
+      expect.objectContaining({
+        fallback_reason: "invalid_keys",
+        span_kind: "top_level",
+      }),
+    );
+    expect(
+      claimRouteTimingEventsForRun(invalidRun.runId).some((event) => {
+        return event.op_type === "claim_route_feature_switch_context";
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, invalidRun.runId, [200]);
   });
 });
 
