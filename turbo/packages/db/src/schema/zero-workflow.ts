@@ -116,6 +116,11 @@ export const workflowUserTriggerThreads = pgTable(
       },
       { onDelete: "set null" },
     ),
+    // Workflow-queue pause state: while set, trigger events keep enqueueing
+    // but are not consumed. `pauseReason` is user-visible (set on manual
+    // pause or automatically when dequeued run creation fails).
+    queuePausedAt: timestamp("queue_paused_at"),
+    pauseReason: text("pause_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

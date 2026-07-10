@@ -18,6 +18,7 @@ import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
 import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { drainWorkflowQueueForRun$ } from "./zero-workflow-queue-drain.service";
 
 type WebhookCompleteBody = z.infer<
   typeof webhookCompleteContract.complete.body
@@ -409,6 +410,17 @@ export const dispatchCompleteSideEffects$ = command(
         L.error("Failed to drain org queue", {
           runId: input.runId,
           orgId: input.orgId,
+          error,
+        });
+      },
+    );
+    signal.throwIfAborted();
+
+    await tapError(
+      set(drainWorkflowQueueForRun$, { runId: input.runId }, signal),
+      (error) => {
+        L.error("Failed to drain workflow queue", {
+          runId: input.runId,
           error,
         });
       },

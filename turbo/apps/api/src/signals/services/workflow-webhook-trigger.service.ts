@@ -429,7 +429,7 @@ type DispatchWorkflowWebhookResult =
   | {
       readonly kind: "ok";
       readonly duplicate: false;
-      readonly runId: string;
+      readonly runId: string | null;
     }
   | { readonly kind: "ok"; readonly duplicate: true }
   | { readonly kind: "not_found" }
@@ -489,7 +489,9 @@ async function recordWebhookDeliveryDispatched(
   args: {
     readonly deliveryId: string;
     readonly triggerId: string;
-    readonly runId: string;
+    // Null when the event was accepted into the workflow queue; the run id is
+    // not known until the event is dequeued.
+    readonly runId: string | null;
     readonly currentTime: Date;
   },
 ): Promise<void> {
@@ -777,20 +779,21 @@ export const dispatchWorkflowWebhook$ = command(
       signal.throwIfAborted();
       return workflowWebhookRunError();
     }
-    if (startResult.kind !== "ok") {
+    if (startResult.kind !== "ok" && startResult.kind !== "enqueued") {
       await deleteWebhookDelivery(db, delivery.id);
       signal.throwIfAborted();
       return workflowWebhookRunError();
     }
 
+    const runId = startResult.kind === "ok" ? startResult.runId : null;
     await recordWebhookDeliveryDispatched(db, {
       deliveryId: delivery.id,
       triggerId: prepared.row.trigger.id,
-      runId: startResult.runId,
+      runId,
       currentTime: prepared.currentTime,
     });
     signal.throwIfAborted();
 
-    return { kind: "ok", duplicate: false, runId: startResult.runId };
+    return { kind: "ok", duplicate: false, runId };
   },
 );
