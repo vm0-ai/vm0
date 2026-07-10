@@ -12,6 +12,7 @@ import type {
   NotionPageContentUpdatedEventCreateConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
+  ZeroWorkflowConnectorReadinessEntry,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
   ZeroWorkflowScheduleType,
@@ -23,6 +24,7 @@ import {
   IconBrandGithub,
   IconBrandNotion,
   IconCalendarTime,
+  IconCircleCheck,
   IconChevronDown,
   IconClock,
   IconCopy,
@@ -45,6 +47,8 @@ import {
   IconUpload,
   IconDotsVertical,
   IconEye,
+  IconExternalLink,
+  IconPlugConnected,
   IconVideo,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -83,6 +87,7 @@ import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
+  checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
   createWorkflowGithubLabelAppliedTrigger$,
   createWorkflowGoogleCalendarEventTrigger$,
@@ -153,11 +158,15 @@ import {
   type WorkflowTriggerCreateDialog,
   type NotionPageContentUpdatedScopeMode,
   workflowMetadataPatch$,
+  workflowConnectorReadiness$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
+import {
+  detachedNavigateTo$,
+  generateRouterPath,
+} from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import {
@@ -199,6 +208,7 @@ import {
 import { WorkflowHoverContent } from "./workflows-page.tsx";
 import { TriggerListIcon } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
@@ -658,10 +668,26 @@ function WorkflowInfoTab({
 }) {
   const actionDialog = useGet(workflowActionDialog$);
   const setActionDialog = useSet(setWorkflowActionDialog$);
+  const features = useGet(featureSwitch$);
+  const metadataPatch = useGet(workflowMetadataPatch$);
+  const fileDraft = useGet(workflowFileDraft$);
+  const connectorReadinessEnabled =
+    features[FeatureSwitchKey.WorkflowConnectorReadiness] ?? false;
+  const hasUnsavedReadinessInputs = hasUnsavedConnectorReadinessInputs(
+    detail,
+    metadataPatch,
+    fileDraft,
+  );
 
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
       <WorkflowMetadataForm detail={detail} />
+      {connectorReadinessEnabled ? (
+        <WorkflowConnectorReadiness
+          detail={detail}
+          hasUnsavedInputs={hasUnsavedReadinessInputs}
+        />
+      ) : null}
       <div className="zero-card overflow-hidden">
         <div className="p-4 sm:p-5">
           <InlineSettingsRow
@@ -730,6 +756,358 @@ function WorkflowInfoTab({
         }}
       />
     </div>
+  );
+}
+
+function hasUnsavedConnectorReadinessInputs(
+  detail: ZeroWorkflowDetailResponse,
+  metadataPatch: {
+    readonly workflowId: string;
+    readonly displayName?: string;
+    readonly name?: string;
+    readonly description?: string;
+  } | null,
+  fileDraft: {
+    readonly workflowId: string;
+    readonly filePath: string | null;
+    readonly sourceContent: string;
+    readonly content: string;
+  } | null,
+): boolean {
+  const metadataDefaults = workflowMetadataDefaults(detail);
+  const metadataValues =
+    metadataPatch?.workflowId === detail.id
+      ? { ...metadataDefaults, ...metadataPatch }
+      : metadataDefaults;
+  const metadataDirty =
+    metadataValues.name !== metadataDefaults.name ||
+    metadataValues.description !== metadataDefaults.description;
+  const instruction = detail.instruction ?? "";
+  const instructionDirty =
+    fileDraft?.workflowId === detail.id &&
+    fileDraft.filePath === null &&
+    fileDraft.sourceContent === instruction &&
+    fileDraft.content !== instruction;
+  return metadataDirty || instructionDirty;
+}
+
+const CONNECTOR_READINESS_STATUS_GROUP: Readonly<
+  Record<ZeroWorkflowConnectorReadinessEntry["status"], number>
+> = Object.freeze({
+  "reconnect-required": 0,
+  "scope-mismatch": 0,
+  "not-connected": 0,
+  "not-enabled-for-agent": 0,
+  unavailable: 1,
+  connected: 2,
+});
+
+function sortConnectorReadinessEntries(
+  entries: readonly ZeroWorkflowConnectorReadinessEntry[],
+): ZeroWorkflowConnectorReadinessEntry[] {
+  return [...entries].sort((left, right) => {
+    const groupOrder =
+      CONNECTOR_READINESS_STATUS_GROUP[left.status] -
+      CONNECTOR_READINESS_STATUS_GROUP[right.status];
+    if (groupOrder !== 0) {
+      return groupOrder;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
+function connectorReadinessStatus(
+  status: ZeroWorkflowConnectorReadinessEntry["status"],
+): {
+  readonly label: string;
+  readonly dotClassName: string;
+  readonly textClassName: string;
+} {
+  switch (status) {
+    case "reconnect-required": {
+      return {
+        label: "Reconnect required",
+        dotClassName: "bg-amber-500",
+        textClassName: "text-amber-600 dark:text-amber-400",
+      };
+    }
+    case "scope-mismatch": {
+      return {
+        label: "Update permissions",
+        dotClassName: "bg-amber-500",
+        textClassName: "text-amber-600 dark:text-amber-400",
+      };
+    }
+    case "not-connected": {
+      return {
+        label: "Not connected",
+        dotClassName: "bg-amber-500",
+        textClassName: "text-amber-600 dark:text-amber-400",
+      };
+    }
+    case "not-enabled-for-agent": {
+      return {
+        label: "Not enabled for this agent",
+        dotClassName: "bg-amber-500",
+        textClassName: "text-amber-600 dark:text-amber-400",
+      };
+    }
+    case "unavailable": {
+      return {
+        label: "Currently unavailable",
+        dotClassName: "bg-gray-400",
+        textClassName: "text-muted-foreground",
+      };
+    }
+    case "connected": {
+      return {
+        label: "Connected",
+        dotClassName: "bg-emerald-500",
+        textClassName: "text-emerald-600 dark:text-emerald-400",
+      };
+    }
+  }
+}
+
+function connectorReadinessAction(
+  entry: ZeroWorkflowConnectorReadinessEntry,
+  agentId: string,
+): { readonly label: string; readonly href: string } | null {
+  const query = new URLSearchParams({ agentId }).toString();
+  switch (entry.status) {
+    case "reconnect-required": {
+      return {
+        label: "Reconnect",
+        href: `${generateRouterPath(ROUTES.directedConnect, {
+          type: entry.connectorRef,
+        })}?${query}`,
+      };
+    }
+    case "scope-mismatch": {
+      return {
+        label: "Review permissions",
+        href: `${generateRouterPath(ROUTES.directedConnect, {
+          type: entry.connectorRef,
+        })}?${query}`,
+      };
+    }
+    case "not-connected": {
+      return {
+        label: "Connect",
+        href: `${generateRouterPath(ROUTES.directedConnect, {
+          type: entry.connectorRef,
+        })}?${query}`,
+      };
+    }
+    case "not-enabled-for-agent": {
+      return {
+        label: "Enable for agent",
+        href: `${generateRouterPath(ROUTES.directedAuthorize, {
+          type: entry.connectorRef,
+        })}?${query}`,
+      };
+    }
+    case "connected":
+    case "unavailable": {
+      return null;
+    }
+  }
+}
+
+function connectorReadinessErrorMessage(
+  errorKind: "input-too-long" | "timeout" | "retry",
+): string {
+  switch (errorKind) {
+    case "input-too-long": {
+      return "This workflow is too long to check. Keep the name, description, and instructions within 100,000 characters.";
+    }
+    case "timeout": {
+      return "The connector check timed out. Try again.";
+    }
+    case "retry": {
+      return "We couldn't check connectors. Try again.";
+    }
+  }
+}
+
+function WorkflowConnectorReadiness({
+  detail,
+  hasUnsavedInputs,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+  readonly hasUnsavedInputs: boolean;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const readinessState = useGet(workflowConnectorReadiness$);
+  const [, checkReadiness] = useLoadableSet(checkWorkflowConnectorReadiness$);
+  const currentState =
+    readinessState?.workflowId === detail.id ? readinessState : null;
+  const checking = currentState?.status === "pending";
+  const failed = currentState?.status === "error";
+  const errorMessage =
+    currentState?.status === "error"
+      ? connectorReadinessErrorMessage(currentState.errorKind)
+      : null;
+  const response =
+    currentState?.status === "success" ? currentState.response : null;
+  const entries = response
+    ? sortConnectorReadinessEntries(response.connectors)
+    : null;
+  const checkLabel = checking
+    ? "Checking..."
+    : response || failed
+      ? "Check again"
+      : "Check connectors";
+
+  return (
+    <section
+      className="zero-card overflow-hidden"
+      aria-label="Connector readiness"
+    >
+      <div className="p-4 sm:p-5">
+        <InlineSettingsRow
+          label="Connector readiness"
+          description="See which built-in connectors this workflow may need and whether they're ready."
+          alignControls="center"
+        >
+          <div className="flex w-full flex-col items-start gap-2 sm:items-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 rounded-lg"
+              disabled={checking || hasUnsavedInputs}
+              onClick={() => {
+                detach(
+                  checkReadiness(detail.id, pageSignal),
+                  Reason.DomCallback,
+                  "check workflow connector readiness",
+                );
+              }}
+            >
+              {checking ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : (
+                <IconPlugConnected size={14} stroke={1.5} />
+              )}
+              {checkLabel}
+            </Button>
+            {hasUnsavedInputs ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Save your changes before checking connectors.
+              </p>
+            ) : null}
+          </div>
+        </InlineSettingsRow>
+      </div>
+      {errorMessage ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 border-t border-border/50 px-4 py-3 text-sm text-destructive sm:px-5"
+        >
+          <IconAlertTriangle
+            size={16}
+            stroke={1.5}
+            className="mt-0.5 shrink-0"
+          />
+          <p>{errorMessage}</p>
+        </div>
+      ) : null}
+      {entries ? (
+        entries.length > 0 ? (
+          <ul
+            className="divide-y divide-border/50 border-t border-border/50"
+            aria-live="polite"
+          >
+            {entries.map((entry) => {
+              return (
+                <WorkflowConnectorReadinessRow
+                  key={entry.connectorRef}
+                  entry={entry}
+                  agentId={detail.agentId}
+                />
+              );
+            })}
+          </ul>
+        ) : (
+          <div
+            className="flex items-center gap-2 border-t border-border/50 px-4 py-4 text-sm text-muted-foreground sm:px-5"
+            aria-live="polite"
+          >
+            <IconCircleCheck
+              size={16}
+              stroke={1.5}
+              className="shrink-0 text-emerald-500"
+            />
+            No required connectors detected
+          </div>
+        )
+      ) : null}
+    </section>
+  );
+}
+
+function WorkflowConnectorReadinessRow({
+  entry,
+  agentId,
+}: {
+  readonly entry: ZeroWorkflowConnectorReadinessEntry;
+  readonly agentId: string;
+}) {
+  const status = connectorReadinessStatus(entry.status);
+  const action = connectorReadinessAction(entry, agentId);
+
+  return (
+    <li className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50">
+          <ConnectorIcon type={entry.connectorRef} size={18} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">
+            {entry.label}
+          </p>
+          <p className="mt-1 text-xs leading-snug text-muted-foreground">
+            {entry.reason}
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center justify-between gap-3 pl-11 sm:justify-end sm:pl-0">
+        <span
+          className={cn(
+            "flex items-center gap-2 whitespace-nowrap text-xs",
+            status.textClassName,
+          )}
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              status.dotClassName,
+            )}
+            aria-hidden="true"
+          />
+          {status.label}
+        </span>
+        {action ? (
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-8 gap-1.5 rounded-lg"
+          >
+            <a
+              href={action.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${action.label} ${entry.label}`}
+            >
+              {action.label}
+              <IconExternalLink size={13} stroke={1.5} />
+            </a>
+          </Button>
+        ) : null}
+      </div>
+    </li>
   );
 }
 

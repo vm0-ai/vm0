@@ -7,6 +7,7 @@ import {
   googleMeetTranscriptGeneratedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  zeroWorkflowConnectorReadinessResponseSchema,
   zeroWorkflowUpdateRequestSchema,
   zeroWorkflowTriggerCreateRequestSchema,
 } from "../zero-workflows";
@@ -219,5 +220,47 @@ describe("workflow update contract", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("workflow connector readiness contract", () => {
+  it("accepts all readiness states without limiting the connector count", () => {
+    const entries = [
+      { connectorRef: "github", status: "connected" },
+      { connectorRef: "gmail", status: "not-connected" },
+      { connectorRef: "notion", status: "scope-mismatch" },
+      { connectorRef: "slack", status: "reconnect-required" },
+      { connectorRef: "linear", status: "not-enabled-for-agent" },
+      { connectorRef: "google-drive", status: "unavailable" },
+    ] as const;
+
+    const parsed = zeroWorkflowConnectorReadinessResponseSchema.parse({
+      connectors: entries.map((entry, index) => {
+        return {
+          connectorRef: entry.connectorRef,
+          label: `Connector ${index}`,
+          reason: "The workflow uses this service.",
+          status: entry.status,
+        };
+      }),
+    });
+
+    expect(parsed.connectors).toHaveLength(entries.length);
+  });
+
+  it("rejects unknown readiness states and extra fields", () => {
+    expect(
+      zeroWorkflowConnectorReadinessResponseSchema.safeParse({
+        connectors: [
+          {
+            connectorRef: "github",
+            label: "GitHub",
+            reason: "The workflow reads issues.",
+            status: "unknown",
+            confidence: 0.9,
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

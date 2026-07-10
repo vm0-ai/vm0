@@ -143,6 +143,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -172,6 +175,9 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -208,10 +214,14 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ComposerUploadPopover,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.WorkflowConnectorReadiness,
+    );
 
     expect(
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
+        [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({ [FeatureSwitchKey.Dummy]: false });

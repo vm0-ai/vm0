@@ -9,14 +9,18 @@ import {
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
 import {
   createBddApi,
   type ApiTestUser,
   type ApiTestUserOptions,
 } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -28,6 +32,9 @@ const chat = createChatFilesBddApi(context);
 createMiscRoutesApi(context);
 const mocks = createZeroRouteMocks(context);
 const api = createRunsAutomationsApi(context);
+const connectorApi = createConnectorBddApi(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 function user(options: ApiTestUserOptions = {}): ApiTestUser {
   return bdd.user(options);
@@ -44,6 +51,29 @@ function collectionClient() {
 
 function detailClient() {
   return setupApp({ context })(zeroWorkflowsDetailContract);
+}
+
+function mockConnectorReadinessModel(
+  detected: readonly {
+    readonly connectorRef: string;
+    readonly reason: string;
+  }[],
+): void {
+  mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+  server.use(
+    http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              content: JSON.stringify({ connectors: detected }),
+            },
+          },
+        ],
+      });
+    }),
+  );
 }
 
 function visibilityClient() {
@@ -161,6 +191,152 @@ function expectZeroPreCreateSource(runId: string, source: string): void {
 }
 
 describe("zero workflows", () => {
+  it("lets any public workflow viewer detect connector readiness", async () => {
+    const owner = user({ orgId: STAFF_ORG_ID });
+    const viewer = user({
+      orgId: STAFF_ORG_ID,
+      orgRole: "org:member",
+    });
+    const agent = await createAgent(owner, {
+      displayName: "Readiness Agent",
+      visibility: "public",
+    });
+    const workflow = await createWorkflow(owner, {
+      agentId: agent.agentId,
+      name: `readiness-${randomUUID().slice(0, 8)}`,
+      visibility: "public",
+      instruction: "Read GitLab projects and Runtime jobs.",
+      description: "Coordinate engineering work.",
+    });
+
+    await connectorApi.connectManualGrant(viewer, "runtime", "api-token", {
+      RUNTIME_API_KEY: "runtime-readiness-test",
+    });
+    await connectorApi.connectManualGrant(viewer, "gitlab", "api-token", {
+      GITLAB_TOKEN: "gitlab-readiness-test",
+    });
+    await api.enableAgentConnectors(viewer, agent.agentId, ["gitlab"]);
+
+    mockConnectorReadinessModel([
+      {
+        connectorRef: "gmail",
+        reason: "The workflow reads Gmail messages.",
+      },
+      {
+        connectorRef: "runtime",
+        reason: "The workflow reads Runtime jobs.",
+      },
+      {
+        connectorRef: "gitlab",
+        reason: "The workflow reads GitLab projects.",
+      },
+    ]);
+
+    const response = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(viewer),
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+
+    expect(response.body.connectors).toStrictEqual([
+      {
+        connectorRef: "gmail",
+        label: "Gmail",
+        reason: "The workflow reads Gmail messages.",
+        status: "not-connected",
+      },
+      {
+        connectorRef: "runtime",
+        label: "Runtime",
+        reason: "The workflow reads Runtime jobs.",
+        status: "not-enabled-for-agent",
+      },
+      {
+        connectorRef: "gitlab",
+        label: "GitLab",
+        reason: "The workflow reads GitLab projects.",
+        status: "connected",
+      },
+    ]);
+  });
+
+  it("rejects readiness checks when the feature switch is disabled", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, { visibility: "private" });
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `readiness-disabled-${randomUUID().slice(0, 8)}`,
+      instruction: "Read GitHub issues.",
+    });
+
+    const response = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns payload too large before calling the model", async () => {
+    const actor = user({ orgId: STAFF_ORG_ID });
+    const agent = await createAgent(actor, { visibility: "private" });
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `readiness-large-${randomUUID().slice(0, 8)}`,
+      instruction: "x".repeat(100_000),
+    });
+
+    const response = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [413],
+    );
+
+    expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("fails the whole readiness check when any model ref is unavailable", async () => {
+    const actor = user({ orgId: STAFF_ORG_ID });
+    const agent = await createAgent(actor, { visibility: "private" });
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `readiness-invalid-${randomUUID().slice(0, 8)}`,
+      instruction: "Read an external service.",
+    });
+    mockConnectorReadinessModel([
+      {
+        connectorRef: "gmail",
+        reason: "The workflow reads Gmail messages.",
+      },
+      {
+        connectorRef: "box",
+        reason: "The workflow reads Box files.",
+      },
+    ]);
+
+    const response = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [503],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "PROVIDER_UNAVAILABLE",
+        message: "Connector readiness check failed. Please retry.",
+      },
+    });
+  });
+
   it("creates private workflows by default and hides them from other org members", async () => {
     const owner = user();
     const otherMember = user({ orgId: owner.orgId, orgRole: "org:member" });

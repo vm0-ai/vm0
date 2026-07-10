@@ -32,6 +32,10 @@ export const ApiError = {
     status: 503 as const,
     code: "PROVIDER_UNAVAILABLE",
   },
+  CONNECTOR_READINESS_TIMEOUT: {
+    status: 503 as const,
+    code: "CONNECTOR_READINESS_TIMEOUT",
+  },
   PROVIDER_DELETED: {
     status: 422 as const,
     code: "PROVIDER_DELETED",
