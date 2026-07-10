@@ -2,6 +2,10 @@ import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
 
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getVm0Vendor,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   zeroWorkflowTriggersContract,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -41,8 +45,8 @@ const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
-const GMAIL_WORKSPACE_MODEL = "MiniMax-M3";
-const GMAIL_WORKSPACE_MODEL_VENDOR = "minimax";
+const GMAIL_WORKSPACE_MODEL = DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+const GMAIL_WORKSPACE_MODEL_VENDOR = getVm0Vendor(GMAIL_WORKSPACE_MODEL);
 const GOOGLE_OIDC_CERT_KID = "gmail-pubsub-test-key";
 const googleOidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const googleOidcPublicKeyPem = googleOidcKeyPair.publicKey.export({

@@ -7,6 +7,7 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
   type ModelProviderType,
@@ -3285,6 +3286,78 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     );
     expectApiError(rejected.body);
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("defaults limited-free runs to Terra, allows Luna, and rejects Sol", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const misc = createMiscRoutesApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected limited-free bootstrap agent");
+    }
+    const agentId = onboarding.defaultAgentId;
+    await expect(api.readBillingStatus(actor)).resolves.toMatchObject({
+      tier: "limited-free-1",
+      credits: 3000,
+      onboardingPaymentPending: false,
+    });
+    const modelPolicies = await misc.listModelPolicies(actor);
+    expect(modelPolicies.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(
+      modelPolicies.policies.find((policy) => {
+        return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+      }),
+    ).toMatchObject({ isDefault: true });
+
+    for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+      await seedVm0ManagedModelKey(model);
+      const sent = await chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          prompt: `limited-free ${model} run`,
+          model,
+        },
+        [201],
+      );
+      if (sent.status !== 201 || sent.body.runId === null) {
+        throw new Error(`Expected ${model} to create a run`);
+      }
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(sent.body.runId);
+      expect(claim.cliAgentType).toBe("codex");
+      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.modelUsageProvider).toBe(model);
+      await api.requestCancelRun(actor, sent.body.runId, [200]);
+    }
+
+    const solThreadId = randomUUID();
+    const sol = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        clientThreadId: solThreadId,
+        prompt: "limited-free Sol run",
+        model: "gpt-5.6-sol",
+      },
+      [402],
+    );
+    expectApiError(sol.body);
+    expect(sol.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    await chat.requestReadThread(actor, solThreadId, [404]);
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(0);
+    expect(queue.body.concurrency.active).toBe(0);
   });
 
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
