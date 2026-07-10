@@ -525,6 +525,15 @@ function zeroRunTimingDimensions(args: {
 const ZERO_MEMORY_TIMING_ACTION_TYPES = {
   runtime_injection:
     "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+  document_search: "api_dispatch_pre_create_zero_memory_document_search",
+  document_search_lexical:
+    "api_dispatch_pre_create_zero_memory_document_search_lexical",
+  document_search_semantic_embedding:
+    "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+  document_search_semantic_query:
+    "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+  document_search_hydrate:
+    "api_dispatch_pre_create_zero_memory_document_search_hydrate",
   profile_static: "api_dispatch_pre_create_zero_memory_profile_static",
   profile_dynamic: "api_dispatch_pre_create_zero_memory_profile_dynamic",
   profile_search: "api_dispatch_pre_create_zero_memory_profile_search",

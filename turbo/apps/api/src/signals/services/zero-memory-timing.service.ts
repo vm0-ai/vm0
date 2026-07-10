@@ -1,5 +1,10 @@
 export type ZeroMemoryTimingStage =
   | "runtime_injection"
+  | "document_search"
+  | "document_search_lexical"
+  | "document_search_semantic_embedding"
+  | "document_search_semantic_query"
+  | "document_search_hydrate"
   | "profile_static"
   | "profile_dynamic"
   | "profile_search"
