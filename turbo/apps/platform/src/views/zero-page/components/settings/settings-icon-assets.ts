@@ -268,6 +268,8 @@ const SETTINGS_ICON_ASSET_PATHS = {
   neon: "views/zero-page/components/settings/icons/neon-2b1aaef0b2de.svg",
   netdata: "views/zero-page/components/settings/icons/netdata-df49d68a3ecd.svg",
   netter: "views/zero-page/components/settings/icons/netter-4c7de538303c.svg",
+  "nintendo-switch-parental-controls":
+    "views/zero-page/components/settings/icons/nintendo-switch-parental-controls-da75b53905d6.svg",
   "nintendo-store":
     "views/zero-page/components/settings/icons/nintendo-store-f3c8ad8b8d85.svg",
   notion: "views/zero-page/components/settings/icons/notion-beeb509915a9.svg",

@@ -193,6 +193,7 @@ const CONNECTOR_ICON_COLORFUL = {
   n8n: true,
   neon: true,
   netdata: true,
+  "nintendo-switch-parental-controls": true,
   "nintendo-store": true,
   nyne: true,
   openweather: true,

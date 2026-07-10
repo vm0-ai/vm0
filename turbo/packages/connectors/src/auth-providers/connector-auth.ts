@@ -27,7 +27,7 @@ import {
   getConnectorAuthMethodOpenIdAuthGrantConfig,
   getConnectorAuthMethodExternalCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
-  isStaticConfidentialConnectorAuthClient,
+  isStaticConnectorAuthClient,
   parseConnectorDeviceAuthStartOptions,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClientForMethod,
@@ -92,6 +92,7 @@ import { mercuryProvider } from "./connectors/mercury/provider";
 import { microsoft365Provider } from "./connectors/microsoft-365/provider";
 import { mondayProvider } from "./connectors/monday/provider";
 import { neonProvider } from "./connectors/neon/provider";
+import { nintendoSwitchParentalControlsProvider } from "./connectors/nintendo-switch-parental-controls/provider";
 import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
@@ -503,6 +504,28 @@ function externalCodeRefreshProviderEntry<
   });
 }
 
+function externalCodeRefreshTokenRevokeProviderEntry<
+  Type extends ExternalCodeGrantConnectorType &
+    RefreshTokenAccessConnectorType &
+    TokenRevokeConnectorType,
+  Method extends ConnectorExternalCodeGrantAuthMethodId<Type> &
+    ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token"> &
+    ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke">,
+>(
+  type: Type,
+  authMethod: Method,
+  provider: ExternalCodeConnectorAuthProvider<Type, Method> & {
+    readonly access: RefreshTokenAccessProvider<Type, Method>;
+    readonly revoke: TokenRevokeProvider<Type, Method>;
+  },
+): RuntimeAuthProviderRegistration<Type, Method> {
+  return connectorAuthProviderRegistryEntry(type, authMethod, {
+    grant: provider.grant,
+    access: provider.access,
+    revoke: provider.revoke,
+  });
+}
+
 function refreshProviderEntry<
   Type extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token"> &
@@ -592,6 +615,7 @@ async function revokeTokenRevokeConnectorAccessToken<
   readonly type: T;
   readonly authMethod: Method;
   readonly readEnv: ConnectorEnvReader;
+  readonly signal: AbortSignal;
   readonly loadInputs: () =>
     | ConnectorRevokeInputValues<T, Method>
     | Promise<ConnectorRevokeInputValues<T, Method>>;
@@ -603,13 +627,14 @@ async function revokeTokenRevokeConnectorAccessToken<
     args.authMethod,
     args.readEnv,
   );
-  if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
+  if (!authClient || !isStaticConnectorAuthClient(authClient)) {
     return { status: "unsupported" };
   }
 
   await revoke.revokeToken({
     authClient,
     inputs: await args.loadInputs(),
+    signal: args.signal,
   });
   return { status: "revoked" };
 }
@@ -686,6 +711,11 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     "nintendo-store",
     "api",
     nintendoStoreProvider,
+  ),
+  externalCodeRefreshTokenRevokeProviderEntry(
+    "nintendo-switch-parental-controls",
+    "api",
+    nintendoSwitchParentalControlsProvider,
   ),
   authCodeRefreshProviderEntry("notion", "oauth", notionProvider),
   authCodeRefreshProviderEntry(
@@ -1216,6 +1246,7 @@ export async function revokeConnectorAuthMethodAccessToken(args: {
   readonly type: ConnectorType;
   readonly authMethod: string;
   readonly readEnv: ConnectorEnvReader;
+  readonly signal: AbortSignal;
   readonly loadInputs: () =>
     | Readonly<Record<string, string>>
     | Promise<Readonly<Record<string, string>>>;
@@ -1241,6 +1272,7 @@ export async function revokeConnectorAuthMethodAccessToken(args: {
     type: tokenRevokeAuthMethodRef.type,
     authMethod: tokenRevokeAuthMethodRef.authMethod,
     readEnv: args.readEnv,
+    signal: args.signal,
     loadInputs: args.loadInputs,
   });
 }

@@ -282,7 +282,10 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
 }): Promise<void> {
   let postCommitAbort = args.postCommitAbort;
   if (args.pendingTokenRevoke) {
-    await revokePendingConnectorToken({ pending: args.pendingTokenRevoke });
+    await revokePendingConnectorToken({
+      pending: args.pendingTokenRevoke,
+      signal: args.signal,
+    });
     if (args.signal.aborted) {
       postCommitAbort ??= args.signal.reason;
     }
@@ -708,6 +711,7 @@ function resolveTokenRevokeMethodRef(args: {
 
 async function revokePendingConnectorToken(args: {
   readonly pending: PendingConnectorTokenRevoke;
+  readonly signal: AbortSignal;
 }): Promise<void> {
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
@@ -715,6 +719,7 @@ async function revokePendingConnectorToken(args: {
       type: args.pending.type,
       authMethod: args.pending.authMethod,
       readEnv: optionalEnv,
+      signal: args.signal,
       loadInputs: () => {
         return decryptConnectorRevokeInputs({
           encryptedInputs: args.pending.encryptedInputs,

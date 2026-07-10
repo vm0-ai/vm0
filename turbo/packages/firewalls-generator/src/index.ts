@@ -155,6 +155,7 @@ import { generate as generateN8n } from "./n8n";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNetdata } from "./netdata";
 import { generate as generateNintendoStore } from "./nintendo-store";
+import { generate as generateNintendoSwitchParentalControls } from "./nintendo-switch-parental-controls";
 import { generate as generateNotion } from "./notion";
 import { generate as generateNovita } from "./novita";
 import { generate as generateNyne } from "./nyne";
@@ -435,6 +436,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   neon: generateNeon,
   netdata: generateNetdata,
   "nintendo-store": generateNintendoStore,
+  "nintendo-switch-parental-controls": generateNintendoSwitchParentalControls,
   notion: generateNotion,
   novita: generateNovita,
   onyx: generateOnyx,

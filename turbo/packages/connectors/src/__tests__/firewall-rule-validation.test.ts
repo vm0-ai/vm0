@@ -42,6 +42,8 @@ const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
   "outlook-calendar[0] https://graph.microsoft.com <-> outlook-mail[0] https://graph.microsoft.com",
   // Railway account/workspace and project tokens hit the same public API origin.
   "railway[0] https://backboard.railway.com <-> railway-project[0] https://backboard.railway.com",
+  // Nintendo apps share the Nintendo Account profile endpoint but use separate app tokens.
+  "nintendo-store[0] https://api.accounts.nintendo.com <-> nintendo-switch-parental-controls[0] https://api.accounts.nintendo.com",
 ]);
 
 function firewallWithPermissionName(name: string): FirewallConfig {

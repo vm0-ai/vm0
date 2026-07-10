@@ -209,6 +209,7 @@ describe("connector/providers/youtube", () => {
         inputs: {
           refreshToken: "youtube-refresh-token",
         },
+        signal: testRefreshSignal(),
       });
 
       expect(new URLSearchParams(requestBody).get("token")).toBe(

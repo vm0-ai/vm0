@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 import type {
   ExternalCodeConnectorAuthProvider,
   RefreshTokenAccessProvider,
@@ -12,21 +10,11 @@ import {
   fetchNintendoStoreLocale,
   nintendoStoreAccountId,
   nintendoStoreUserInfo,
+  parseNintendoStoreProviderState,
   parseNintendoStoreSessionTokenCode,
 } from "./api";
 
 const NINTENDO_STORE_EXTERNAL_CODE_EXPIRES_IN_SECONDS = 10 * 60;
-
-const nintendoStoreProviderStateSchema = z.object({
-  version: z.literal(1),
-  state: z.string().min(1).max(128),
-  codeVerifier: z.string().min(43).max(128),
-});
-
-function parseNintendoStoreProviderState(providerState: string) {
-  const parsed: unknown = JSON.parse(providerState);
-  return nintendoStoreProviderStateSchema.parse(parsed);
-}
 
 function createNintendoStoreExternalCodeGrantProvider(): ExternalCodeConnectorAuthProvider<
   "nintendo-store",

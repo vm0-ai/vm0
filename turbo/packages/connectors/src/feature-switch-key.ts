@@ -26,6 +26,7 @@ export enum FeatureSwitchKey {
   OutlookCalendarConnector = "outlookCalendarConnector",
   TikTokAdsConnector = "tiktokAdsConnector",
   AwsConnector = "awsConnector",
+  NintendoSwitchParentalControlsConnector = "nintendoSwitchParentalControlsConnector",
   NintendoStoreConnector = "nintendoStoreConnector",
   PosthogConnector = "posthogConnector",
   MailchimpConnector = "mailchimpConnector",
