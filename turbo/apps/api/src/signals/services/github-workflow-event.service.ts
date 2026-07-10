@@ -506,7 +506,7 @@ const startGithubWorkflowRun$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return result.kind === "ok" ? "ok" : "error";
+    return result.kind === "ok" || result.kind === "enqueued" ? "ok" : "error";
   },
 );
 

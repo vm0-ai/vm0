@@ -20,7 +20,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cleanupExpiredQueueEntries$,
@@ -28,6 +28,7 @@ import {
   drainStaleQueues$,
   type QueuedRunMaintenanceTimeout,
 } from "./zero-run-queue.service";
+import { drainStaleWorkflowQueues$ } from "./zero-workflow-queue-drain.service";
 import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
 
 const L = logger("CronCleanupSandboxes");
@@ -558,6 +559,10 @@ export const cleanupSandboxes$ = command(
       await cleanupExpiredCustomConnectorAuthRefsSafely(db, signal);
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
+    signal.throwIfAborted();
+    await tapError(set(drainStaleWorkflowQueues$, signal), (error) => {
+      L.error("Failed to drain stale workflow queues", { error });
+    });
     signal.throwIfAborted();
     const queuedTerminalRuns = [
       ...expiredQueueResult.timedOutRuns,

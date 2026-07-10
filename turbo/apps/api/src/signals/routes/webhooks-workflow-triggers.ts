@@ -61,7 +61,9 @@ const postWorkflowTriggerWebhook$ = command(
         return Response.json({
           success: true,
           duplicate: result.duplicate,
-          ...(result.duplicate ? {} : { runId: result.runId }),
+          ...(result.duplicate || result.runId === null
+            ? {}
+            : { runId: result.runId }),
         });
       }
       case "not_found": {

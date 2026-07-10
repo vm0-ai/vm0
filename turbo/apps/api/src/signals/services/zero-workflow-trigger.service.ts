@@ -160,7 +160,10 @@ type WorkflowTriggerRunNowResult =
       readonly chatThreadId: string;
     }
   | TriggerActionFailure
-  | Exclude<RunWorkflowTriggerResult, { readonly kind: "ok" }>;
+  | Exclude<
+      RunWorkflowTriggerResult,
+      { readonly kind: "ok" } | { readonly kind: "enqueued" }
+    >;
 
 interface CreateEventTriggerWorkflowContext {
   readonly db: Db;
@@ -2135,11 +2138,17 @@ export const runOwnedWorkflowTriggerNow$ = command(
           target.agentId,
         ),
         recordLastRunAt: true,
+        // Manual "Run now" is the user's explicit choice to run immediately,
+        // even while the workflow queue is busy.
+        bypassWorkflowQueue: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
       signal,
     );
     signal.throwIfAborted();
+    if (result.kind === "enqueued") {
+      throw new Error("Bypassed workflow queue run cannot be enqueued");
+    }
     if (result.kind !== "ok") {
       return result;
     }
