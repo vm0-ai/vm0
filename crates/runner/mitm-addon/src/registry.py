@@ -56,6 +56,7 @@ class _RegistrySnapshot:
     invalid_vms: dict[str, InvalidVmEntry]
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
+    builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
     loaded_key: _RegistryCacheKey | None
 
 
@@ -71,7 +72,7 @@ RegistryState = _RegistrySnapshot | RegistryUnavailable
 
 
 def _empty_snapshot() -> _RegistrySnapshot:
-    return _RegistrySnapshot({}, {}, {}, {}, None)
+    return _RegistrySnapshot({}, {}, {}, {}, None, None)
 
 
 @dataclass
@@ -213,11 +214,7 @@ def _compile_firewalls_with_builtin_cache(
 
 
 def _builtin_firewall_catalog_cache_path() -> str | None:
-    options = getattr(ctx, "options", None)
-    cache_path = getattr(options, "vm0_builtin_firewall_catalog_cache_path", None)
-    if not isinstance(cache_path, str) or cache_path == "":
-        return None
-    return cache_path
+    return registry_firewalls.configured_catalog_cache_path()
 
 
 def _registry_file_key_matches_snapshot_without_catalog_dependency(
@@ -240,7 +237,7 @@ def _classify_registry_vms(
     dict[str, InvalidVmEntry],
     dict[str, tuple[registry_firewalls.BuiltinFirewallCoreCacheKey | None, ...]],
     bool,
-    registry_firewalls.BuiltinFirewallCatalogFileKey | None,
+    registry_firewalls.BuiltinFirewallCatalogSnapshot | None,
 ]:
     new_registry: dict = {}
     invalid_vms: dict[str, InvalidVmEntry] = {}
@@ -330,11 +327,7 @@ def _classify_registry_vms(
         invalid_vms,
         builtin_cache_keys_by_client_ip,
         uses_builtin_catalog_dependency,
-        (
-            builtin_catalog_snapshot.dependency_file_key
-            if builtin_catalog_snapshot is not None
-            else None
-        ),
+        builtin_catalog_snapshot,
     )
 
 
@@ -393,7 +386,6 @@ def _mark_unavailable(
         evict_all_cache_keys()
     state.snapshot = _empty_snapshot()
     state.builtin_firewall_core_cache.clear()
-    registry_firewalls.clear_catalog_cache()
     state.unavailable = RegistryUnavailable(reason, message)
     return state.unavailable
 
@@ -446,7 +438,6 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.unavailable = None
             state.stat_error_logged = False
             state.read_error_key = None
-            registry_firewalls.clear_catalog_cache()
             return state.snapshot
         if key == state.failed_key:
             return state.unavailable or _mark_unavailable(
@@ -478,18 +469,20 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         builtin_cache_keys,
         uses_builtin_catalog_dependency,
-        builtin_catalog_dependency_file_key,
+        builtin_catalog_snapshot,
     ) = _classify_registry_vms(
         raw_registry,
         builtin_firewall_catalog_cache_path=builtin_catalog_cache_path,
     )
     loaded_builtin_catalog_file_key = (
-        builtin_catalog_dependency_file_key
+        (
+            builtin_catalog_snapshot.dependency_file_key
+            if builtin_catalog_snapshot is not None
+            else None
+        )
         if uses_builtin_catalog_dependency
         else _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
     )
-    if not uses_builtin_catalog_dependency:
-        registry_firewalls.clear_catalog_cache()
     loaded_key = (
         path_key,
         st.st_dev,
@@ -515,6 +508,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
         invalid_vms,
         new_compiled_registry,
         new_compiled_policy_registry,
+        builtin_catalog_snapshot if uses_builtin_catalog_dependency else None,
         loaded_key,
     )
     state.unavailable = None

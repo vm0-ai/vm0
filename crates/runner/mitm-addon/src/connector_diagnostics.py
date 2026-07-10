@@ -29,6 +29,7 @@ REQUEST_HEADERS_PROBE_METADATA_KEYS = (
 
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
+_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT = "_connector_diagnostic_catalog_snapshot"
 _CONNECTOR_DIAGNOSTIC_LOOKUP_DONE = "_connector_diagnostic_lookup_done"
 _CONNECTOR_DIAGNOSTIC_CANDIDATE = "_connector_diagnostic_candidate"
 _CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
@@ -118,6 +119,7 @@ def record_allow_context(
     flow.metadata[_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES] = tuple(
         sorted(_active_firewall_names(vm_info))
     )
+    _pin_diagnostic_snapshot(flow, classification)
 
 
 def maybe_make_local_response(
@@ -152,6 +154,8 @@ def maybe_make_local_response(
 def maybe_make_firewall_allow_local_response(
     flow: http.HTTPFlow,
     classification: request_classification.RequestClassification,
+    *,
+    commit: bool,
 ) -> bool:
     if classification.kind != "firewall_allow":
         return False
@@ -167,7 +171,11 @@ def maybe_make_firewall_allow_local_response(
     if not original_url:
         return False
 
+    diagnostic_snapshot = _select_diagnostic_snapshot(flow, classification)
+    if commit:
+        flow.metadata[_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT] = diagnostic_snapshot
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        diagnostic_snapshot,
         original_url,
         flow.request.method,
         active_firewall_names=_active_firewall_names(vm_info),
@@ -181,6 +189,7 @@ def maybe_make_firewall_allow_local_response(
     if _request_has_auth_material(flow, candidate, original_url):
         return False
 
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT] = diagnostic_snapshot
     flow_metadata.start_request_timing(flow.metadata)
     _set_failure_metadata(flow, candidate)
     flow.metadata[_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON] = resolution.reason
@@ -285,7 +294,17 @@ def maybe_make_error_response(
     )
 
 
-def release_response_stream_state(flow: http.HTTPFlow) -> None:
+def release_flow_state(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_ELIGIBLE, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_CANDIDATE, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_REASON, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_CANDIDATES, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_OWNERSHIP_HINT_STATUS, None)
     stream_callback = flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT, None)
@@ -356,6 +375,37 @@ def _cached_candidate_from_flow(
     return None
 
 
+def _diagnostic_snapshot_from_flow(
+    flow: http.HTTPFlow,
+) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot | None:
+    snapshot = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT)
+    if isinstance(snapshot, builtin_connector_diagnostics.DiagnosticCatalogSnapshot):
+        return snapshot
+    return None
+
+
+def _select_diagnostic_snapshot(
+    flow: http.HTTPFlow,
+    classification: request_classification.RequestClassification | None = None,
+) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot:
+    pinned = _diagnostic_snapshot_from_flow(flow)
+    if pinned is not None:
+        return pinned
+    preferred = (
+        classification.builtin_firewall_catalog_snapshot if classification is not None else None
+    )
+    return builtin_connector_diagnostics.load_diagnostic_snapshot(preferred)
+
+
+def _pin_diagnostic_snapshot(
+    flow: http.HTTPFlow,
+    classification: request_classification.RequestClassification | None = None,
+) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot:
+    snapshot = _select_diagnostic_snapshot(flow, classification)
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT] = snapshot
+    return snapshot
+
+
 def _resolve_candidate(
     flow: http.HTTPFlow,
     *,
@@ -376,8 +426,12 @@ def _resolve_candidate(
     if _is_browser_diagnostic_skip(flow):
         return None
 
+    diagnostic_snapshot = _diagnostic_snapshot_from_flow(flow)
+    if diagnostic_snapshot is None:
+        return None
     flow.metadata[_CONNECTOR_DIAGNOSTIC_LOOKUP_DONE] = True
     candidate = builtin_connector_diagnostics.find_candidate(
+        diagnostic_snapshot,
         original_url,
         flow.request.method,
         active_firewall_names=set(

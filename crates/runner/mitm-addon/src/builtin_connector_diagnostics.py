@@ -1,17 +1,17 @@
 """Diagnostic-only matching for unavailable built-in connector URLs."""
 
+import re
 from dataclasses import dataclass
 from typing import Final
 
+import builtin_firewall_cache
 import matching
-from generated.builtin_firewalls.diagnostics import (
-    CONNECTOR_DIAGNOSTIC_FIREWALLS,
-    MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS,
-)
 
 _DYNAMIC_BASE_MARKERS: Final = ("{", "}")
 _DIAGNOSTIC_ANY_PERMISSION: Final = "__connector_diagnostic_any__"
 _DIAGNOSTIC_ANY_RULES: Final = ("ANY /", "ANY /{path+}")
+_MODEL_PROVIDER_PREFIX: Final = "model-provider:"
+_REFERENCE_NAME_PATTERN: Final = re.compile(r"\b(?:secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)")
 _SHARED_BASE_MIN_CANDIDATES: Final = 2
 
 
@@ -55,28 +55,62 @@ class _DiagnosticCatalog:
 
 
 @dataclass(frozen=True)
+class DiagnosticCatalogProjection:
+    connector_firewalls: tuple[dict, ...]
+    model_provider_exclusions: tuple[dict, ...]
+    shared_base_keys: frozenset[str]
+
+
+@dataclass(frozen=True)
+class DiagnosticCatalogSnapshot:
+    dependency_file_key: builtin_firewall_cache.CatalogFileKey | None
+    catalog_identity: builtin_firewall_cache.CatalogIdentity | None
+    catalog: _DiagnosticCatalog | None
+    cache_path: str | None
+    unavailable_reason: str | None
+
+
+@dataclass(frozen=True)
 class _OwnershipMatch:
     candidate: ConnectorDiagnosticCandidate
     route_specific: bool
 
 
-_catalog: _DiagnosticCatalog | None = None
+_current_snapshot: DiagnosticCatalogSnapshot | None = None
 
 
 def reset_cache_for_tests() -> None:
-    global _catalog
-    _catalog = None
+    global _current_snapshot
+    _current_snapshot = None
+
+
+def load_diagnostic_snapshot(
+    preferred_catalog_snapshot: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot | None = None,
+) -> DiagnosticCatalogSnapshot:
+    """Load one diagnostic snapshot without moving current state backward."""
+    current_raw_snapshot = builtin_firewall_cache.load_configured_catalog_snapshot()
+    # Publish the actual current state first. A stale registry classification
+    # may still use its preferred snapshot flow-locally, but cannot reinstall it
+    # as the process-wide current generation.
+    current_snapshot = _current_diagnostic_snapshot(current_raw_snapshot)
+    if preferred_catalog_snapshot is None or _raw_snapshots_match(
+        preferred_catalog_snapshot,
+        current_raw_snapshot,
+    ):
+        return current_snapshot
+    return _compile_diagnostic_snapshot(preferred_catalog_snapshot)
 
 
 def find_candidate(
+    diagnostic_snapshot: DiagnosticCatalogSnapshot,
     url: str,
     method: str,
     *,
     active_firewall_names: set[str],
 ) -> ConnectorDiagnosticCandidate | None:
     """Classify a URL against static built-in connector bases without enforcing it."""
-    catalog = _diagnostic_catalog()
-    if catalog.compiled_connector_firewalls is None:
+    catalog = diagnostic_snapshot.catalog
+    if catalog is None or catalog.compiled_connector_firewalls is None:
         return None
 
     # Model-provider firewalls are never diagnostic candidates. They are kept as
@@ -130,6 +164,7 @@ def _find_shared_base_candidate(
 
 
 def resolve_shared_base_ownership(
+    diagnostic_snapshot: DiagnosticCatalogSnapshot,
     url: str,
     method: str,
     *,
@@ -144,7 +179,9 @@ def resolve_shared_base_ownership(
     outcomes are represented with ``candidate=None`` so callers can keep normal
     auth injection behavior.
     """
-    catalog = _diagnostic_catalog()
+    catalog = diagnostic_snapshot.catalog
+    if catalog is None:
+        return None
     if _matches_model_provider_exclusion(url, method, catalog):
         return None
 
@@ -282,21 +319,85 @@ def _candidate_from_match(
     )
 
 
-def _diagnostic_catalog() -> _DiagnosticCatalog:
-    global _catalog
-    if _catalog is not None:
-        return _catalog
+def _current_diagnostic_snapshot(
+    raw_snapshot: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
+) -> DiagnosticCatalogSnapshot:
+    global _current_snapshot
+    if _current_snapshot is not None and _compiled_snapshot_matches_raw(
+        _current_snapshot,
+        raw_snapshot,
+    ):
+        return _current_snapshot
+    _current_snapshot = _compile_diagnostic_snapshot(raw_snapshot)
+    return _current_snapshot
 
+
+def _compile_diagnostic_snapshot(
+    raw_snapshot: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
+) -> DiagnosticCatalogSnapshot:
+    raw_catalog = raw_snapshot.catalog
+    if raw_catalog is None:
+        return DiagnosticCatalogSnapshot(
+            dependency_file_key=raw_snapshot.dependency_file_key,
+            catalog_identity=None,
+            catalog=None,
+            cache_path=raw_snapshot.cache_path,
+            unavailable_reason=raw_snapshot.unavailable_reason or "cache_unavailable",
+        )
+    return DiagnosticCatalogSnapshot(
+        dependency_file_key=raw_snapshot.dependency_file_key,
+        catalog_identity=raw_catalog.identity,
+        catalog=_compile_diagnostic_catalog(raw_catalog.firewalls),
+        cache_path=raw_snapshot.cache_path,
+        unavailable_reason=None,
+    )
+
+
+def _compiled_snapshot_matches_raw(
+    compiled_snapshot: DiagnosticCatalogSnapshot,
+    raw_snapshot: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
+) -> bool:
+    raw_catalog = raw_snapshot.catalog
+    return (
+        compiled_snapshot.dependency_file_key == raw_snapshot.dependency_file_key
+        and compiled_snapshot.catalog_identity
+        == (raw_catalog.identity if raw_catalog is not None else None)
+        and compiled_snapshot.cache_path == raw_snapshot.cache_path
+        and compiled_snapshot.unavailable_reason
+        == (
+            None
+            if raw_catalog is not None
+            else raw_snapshot.unavailable_reason or "cache_unavailable"
+        )
+    )
+
+
+def _raw_snapshots_match(
+    left: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
+    right: builtin_firewall_cache.BuiltinFirewallCatalogSnapshot,
+) -> bool:
+    left_catalog = left.catalog
+    right_catalog = right.catalog
+    return (
+        left.dependency_file_key == right.dependency_file_key
+        and (left_catalog.identity if left_catalog is not None else None)
+        == (right_catalog.identity if right_catalog is not None else None)
+        and left.cache_path == right.cache_path
+        and left.unavailable_reason == right.unavailable_reason
+    )
+
+
+def _compile_diagnostic_catalog(firewalls: dict[str, dict]) -> _DiagnosticCatalog:
+    projection = project_diagnostic_catalog(firewalls)
     connector_firewalls: list[dict] = []
     connector_matchers: list[_DiagnosticConnectorMatcher] = []
-    shared_route_aware_base_keys = _shared_route_aware_base_keys(CONNECTOR_DIAGNOSTIC_FIREWALLS)
-    for firewall in CONNECTOR_DIAGNOSTIC_FIREWALLS:
-        diagnostic_firewall = _diagnostic_firewall_from_manifest(firewall)
+    for firewall in projection.connector_firewalls:
+        diagnostic_firewall = _diagnostic_firewall_from_projection(firewall)
         if diagnostic_firewall is not None:
             connector_firewalls.append(diagnostic_firewall)
-        route_aware_firewall = _route_aware_diagnostic_firewall_from_manifest(
+        route_aware_firewall = _route_aware_diagnostic_firewall_from_projection(
             firewall,
-            shared_base_keys=shared_route_aware_base_keys,
+            shared_base_keys=projection.shared_base_keys,
         )
         if route_aware_firewall is not None:
             connector_matchers.append(
@@ -313,12 +414,12 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
             )
 
     model_provider_exclusions: list[dict] = []
-    for firewall in MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS:
-        model_provider_exclusion = _model_provider_exclusion_firewall_from_manifest(firewall)
+    for firewall in projection.model_provider_exclusions:
+        model_provider_exclusion = _model_provider_exclusion_firewall_from_projection(firewall)
         if model_provider_exclusion is not None:
             model_provider_exclusions.append(model_provider_exclusion)
 
-    _catalog = _DiagnosticCatalog(
+    return _DiagnosticCatalog(
         compiled_connector_firewalls=matching.compile_firewalls(connector_firewalls),
         compiled_network_policies=matching.compile_network_policies(
             _matching_network_policies(connector_firewalls)
@@ -329,7 +430,6 @@ def _diagnostic_catalog() -> _DiagnosticCatalog:
             _matching_network_policies(model_provider_exclusions)
         ),
     )
-    return _catalog
 
 
 def _matches_model_provider_exclusion(
@@ -346,15 +446,37 @@ def _matches_model_provider_exclusion(
     return isinstance(match, matching.FirewallAllow)
 
 
-def _manifest_str_tuple(value: object) -> tuple[str, ...]:
-    if not isinstance(value, (list, tuple)):
+def _diagnostic_reference_names(value: object) -> tuple[str, ...]:
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def visit(nested: object) -> None:
+        if isinstance(nested, str):
+            for match in _REFERENCE_NAME_PATTERN.finditer(nested):
+                name = match.group(1)
+                if name not in seen:
+                    seen.add(name)
+                    names.append(name)
+            return
+        if isinstance(nested, list):
+            for item in nested:
+                visit(item)
+            return
+        if isinstance(nested, dict):
+            for key in sorted(nested):
+                visit(nested[key])
+
+    visit(value)
+    return tuple(names)
+
+
+def _auth_mapping_names(auth: dict, key: str) -> tuple[str, ...]:
+    raw_mapping = auth.get(key)
+    if raw_mapping is None:
         return ()
-    result: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            return ()
-        result.append(item)
-    return tuple(result)
+    if not isinstance(raw_mapping, dict):
+        raise TypeError(f"validated catalog auth.{key} must be an object")
+    return tuple(sorted(raw_mapping))
 
 
 def _diagnostic_static_base_key(raw_base: str) -> str | None:
@@ -363,28 +485,22 @@ def _diagnostic_static_base_key(raw_base: str) -> str | None:
     return matching.static_firewall_base_config_key(raw_base)
 
 
-def _shared_route_aware_base_keys(firewalls: object) -> frozenset[str]:
-    if not isinstance(firewalls, (list, tuple)):
-        return frozenset()
+def _shared_route_aware_base_keys(firewalls: dict[str, dict]) -> frozenset[str]:
     connector_names_by_base: dict[str, set[str]] = {}
-    for firewall in firewalls:
-        if not isinstance(firewall, dict):
+    for name in sorted(firewalls):
+        if name.startswith(_MODEL_PROVIDER_PREFIX):
             continue
-        raw_name = firewall.get("name")
-        raw_apis = firewall.get("apis")
-        if not isinstance(raw_name, str) or raw_name == "" or not isinstance(raw_apis, list):
-            continue
+        _, raw_apis = _catalog_firewall_fields(firewalls[name])
         for api in raw_apis:
-            if not isinstance(api, dict):
-                continue
             raw_base = api.get("base")
-            if not isinstance(raw_base, str) or not _manifest_str_tuple(api.get("envNames")):
-                continue
+            auth = api.get("auth")
+            if not isinstance(raw_base, str) or not isinstance(auth, dict):
+                raise TypeError("validated catalog API base/auth shape changed")
             base_key = _diagnostic_static_base_key(raw_base)
-            if base_key is None:
+            if base_key is None or not _diagnostic_reference_names(auth):
                 continue
             connector_names = connector_names_by_base.setdefault(base_key, set())
-            connector_names.add(raw_name)
+            connector_names.add(name)
     return frozenset(
         base_key
         for base_key, connector_names in connector_names_by_base.items()
@@ -409,19 +525,101 @@ def _firewall_base_authorities(firewall: dict) -> frozenset[str]:
     return frozenset(authorities)
 
 
-def _diagnostic_firewall_from_manifest(firewall: object) -> dict | None:
-    if not isinstance(firewall, dict):
-        return None
+def _catalog_firewall_fields(firewall: dict) -> tuple[str, list[dict]]:
     raw_name = firewall.get("name")
-    if not isinstance(raw_name, str) or raw_name == "":
-        return None
     raw_apis = firewall.get("apis")
-    if not isinstance(raw_apis, list):
+    if not isinstance(raw_name, str) or raw_name == "" or not isinstance(raw_apis, list):
+        raise TypeError("validated catalog firewall shape changed")
+    if not all(isinstance(api, dict) for api in raw_apis):
+        raise TypeError("validated catalog firewall API shape changed")
+    return raw_name, raw_apis
+
+
+def project_diagnostic_catalog(firewalls: dict[str, dict]) -> DiagnosticCatalogProjection:
+    shared_base_keys = _shared_route_aware_base_keys(firewalls)
+    connector_firewalls: list[dict] = []
+    model_provider_exclusions: list[dict] = []
+    for name in sorted(firewalls):
+        firewall = firewalls[name]
+        raw_name, raw_apis = _catalog_firewall_fields(firewall)
+        projected_apis: list[dict] = []
+        if name.startswith(_MODEL_PROVIDER_PREFIX):
+            for api in raw_apis:
+                projected_api = _project_model_provider_api(api)
+                if projected_api is not None:
+                    projected_apis.append(projected_api)
+            if projected_apis:
+                model_provider_exclusions.append({"name": raw_name, "apis": projected_apis})
+            continue
+
+        for api in raw_apis:
+            projected_api = _project_connector_api(api, shared_base_keys=shared_base_keys)
+            if projected_api is not None:
+                projected_apis.append(projected_api)
+        if projected_apis:
+            connector_firewalls.append({"name": raw_name, "apis": projected_apis})
+
+    return DiagnosticCatalogProjection(
+        connector_firewalls=tuple(connector_firewalls),
+        model_provider_exclusions=tuple(model_provider_exclusions),
+        shared_base_keys=shared_base_keys,
+    )
+
+
+def _project_connector_api(
+    api: dict,
+    *,
+    shared_base_keys: frozenset[str],
+) -> dict | None:
+    raw_base = api.get("base")
+    auth = api.get("auth")
+    if not isinstance(raw_base, str) or not isinstance(auth, dict):
+        raise TypeError("validated catalog API base/auth shape changed")
+    base_key = _diagnostic_static_base_key(raw_base)
+    if base_key is None:
         return None
+
+    env_names = _diagnostic_reference_names(auth)
+    if not env_names:
+        return None
+
+    projected = {
+        "base": raw_base,
+        "envNames": list(env_names),
+        "authHeaderNames": list(_auth_mapping_names(auth, "headers")),
+        "authQueryParamNames": list(_auth_mapping_names(auth, "query")),
+    }
+    if base_key in shared_base_keys:
+        permissions = _catalog_permissions(api.get("permissions"))
+        if permissions:
+            projected["permissions"] = permissions
+    return projected
+
+
+def _project_model_provider_api(api: dict) -> dict | None:
+    raw_base = api.get("base")
+    if not isinstance(raw_base, str):
+        raise TypeError("validated catalog API base shape changed")
+    if _diagnostic_static_base_key(raw_base) is None:
+        return None
+    return {
+        "base": raw_base,
+        "permissions": _catalog_permissions(api.get("permissions")),
+    }
+
+
+def _projection_str_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise TypeError("diagnostic projection string-list shape changed")
+    return tuple(value)
+
+
+def _diagnostic_firewall_from_projection(firewall: dict) -> dict | None:
+    raw_name, raw_apis = _catalog_firewall_fields(firewall)
 
     apis: list[dict] = []
     for api in raw_apis:
-        diagnostic_api = _diagnostic_api_from_manifest(api)
+        diagnostic_api = _diagnostic_api_from_projection(api)
         if diagnostic_api is not None:
             apis.append(diagnostic_api)
 
@@ -430,23 +628,16 @@ def _diagnostic_firewall_from_manifest(firewall: object) -> dict | None:
     return {"name": raw_name, "apis": apis}
 
 
-def _route_aware_diagnostic_firewall_from_manifest(
-    firewall: object,
+def _route_aware_diagnostic_firewall_from_projection(
+    firewall: dict,
     *,
     shared_base_keys: frozenset[str],
 ) -> dict | None:
-    if not isinstance(firewall, dict):
-        return None
-    raw_name = firewall.get("name")
-    if not isinstance(raw_name, str) or raw_name == "":
-        return None
-    raw_apis = firewall.get("apis")
-    if not isinstance(raw_apis, list):
-        return None
+    raw_name, raw_apis = _catalog_firewall_fields(firewall)
 
     apis: list[dict] = []
     for api in raw_apis:
-        diagnostic_api = _route_aware_diagnostic_api_from_manifest(
+        diagnostic_api = _route_aware_diagnostic_api_from_projection(
             api,
             shared_base_keys=shared_base_keys,
         )
@@ -458,19 +649,12 @@ def _route_aware_diagnostic_firewall_from_manifest(
     return {"name": raw_name, "apis": apis}
 
 
-def _model_provider_exclusion_firewall_from_manifest(firewall: object) -> dict | None:
-    if not isinstance(firewall, dict):
-        return None
-    raw_name = firewall.get("name")
-    if not isinstance(raw_name, str) or raw_name == "":
-        return None
-    raw_apis = firewall.get("apis")
-    if not isinstance(raw_apis, list):
-        return None
+def _model_provider_exclusion_firewall_from_projection(firewall: dict) -> dict | None:
+    raw_name, raw_apis = _catalog_firewall_fields(firewall)
 
     apis: list[dict] = []
     for api in raw_apis:
-        exclusion_api = _model_provider_exclusion_api_from_manifest(api)
+        exclusion_api = _model_provider_exclusion_api_from_projection(api)
         if exclusion_api is not None:
             apis.append(exclusion_api)
 
@@ -479,65 +663,47 @@ def _model_provider_exclusion_firewall_from_manifest(firewall: object) -> dict |
     return {"name": raw_name, "apis": apis}
 
 
-def _diagnostic_api_from_manifest(api: object) -> dict | None:
-    if not isinstance(api, dict):
-        return None
+def _diagnostic_api_from_projection(api: dict) -> dict | None:
     raw_base = api.get("base")
-    if not isinstance(raw_base, str) or _has_dynamic_base_marker(raw_base):
-        return None
-    if not matching.firewall_base_config_is_valid(raw_base):
-        return None
-
-    env_names = _manifest_str_tuple(api.get("envNames"))
-    if not env_names:
-        return None
+    if not isinstance(raw_base, str):
+        raise TypeError("diagnostic projection base shape changed")
 
     return {
         "base": raw_base,
         "auth": {},
         "permissions": _base_match_permissions(),
-        "_diagnostic_env_names": env_names,
-        "_diagnostic_auth_header_names": _manifest_str_tuple(api.get("authHeaderNames")),
-        "_diagnostic_auth_query_param_names": _manifest_str_tuple(api.get("authQueryParamNames")),
+        "_diagnostic_env_names": _projection_str_tuple(api.get("envNames")),
+        "_diagnostic_auth_header_names": _projection_str_tuple(api.get("authHeaderNames")),
+        "_diagnostic_auth_query_param_names": _projection_str_tuple(api.get("authQueryParamNames")),
     }
 
 
-def _route_aware_diagnostic_api_from_manifest(
-    api: object,
+def _route_aware_diagnostic_api_from_projection(
+    api: dict,
     *,
     shared_base_keys: frozenset[str],
 ) -> dict | None:
-    if not isinstance(api, dict):
-        return None
     raw_base = api.get("base")
     if not isinstance(raw_base, str):
-        return None
+        raise TypeError("diagnostic projection base shape changed")
     base_key = _diagnostic_static_base_key(raw_base)
     if base_key is None or base_key not in shared_base_keys:
-        return None
-
-    env_names = _manifest_str_tuple(api.get("envNames"))
-    if not env_names:
         return None
 
     return {
         "base": raw_base,
         "auth": {},
-        "permissions": _manifest_permissions(api.get("permissions")),
-        "_diagnostic_env_names": env_names,
-        "_diagnostic_auth_header_names": _manifest_str_tuple(api.get("authHeaderNames")),
-        "_diagnostic_auth_query_param_names": _manifest_str_tuple(api.get("authQueryParamNames")),
+        "permissions": _catalog_permissions(api.get("permissions")),
+        "_diagnostic_env_names": _projection_str_tuple(api.get("envNames")),
+        "_diagnostic_auth_header_names": _projection_str_tuple(api.get("authHeaderNames")),
+        "_diagnostic_auth_query_param_names": _projection_str_tuple(api.get("authQueryParamNames")),
     }
 
 
-def _model_provider_exclusion_api_from_manifest(api: object) -> dict | None:
-    if not isinstance(api, dict):
-        return None
+def _model_provider_exclusion_api_from_projection(api: dict) -> dict | None:
     raw_base = api.get("base")
-    if not isinstance(raw_base, str) or _has_dynamic_base_marker(raw_base):
-        return None
-    if not matching.firewall_base_config_is_valid(raw_base):
-        return None
+    if not isinstance(raw_base, str):
+        raise TypeError("diagnostic projection base shape changed")
 
     return {
         "base": raw_base,
@@ -546,38 +712,31 @@ def _model_provider_exclusion_api_from_manifest(api: object) -> dict | None:
     }
 
 
-def _manifest_permissions(raw_permissions: object) -> list[dict]:
-    if not isinstance(raw_permissions, (list, tuple)):
+def _catalog_permissions(raw_permissions: object) -> list[dict]:
+    if raw_permissions is None:
         return []
+    if not isinstance(raw_permissions, list):
+        raise TypeError("validated catalog permissions shape changed")
     permissions: list[dict] = []
     for permission in raw_permissions:
         if not isinstance(permission, dict):
-            return []
+            raise TypeError("validated catalog permission shape changed")
         name = permission.get("name")
         rules = permission.get("rules")
         if not isinstance(name, str) or not isinstance(rules, list):
-            return []
+            raise TypeError("validated catalog permission fields changed")
         rule_values: list[str] = []
         for rule in rules:
             if not isinstance(rule, str):
-                return []
+                raise TypeError("validated catalog permission rule shape changed")
             rule_values.append(rule)
         permissions.append({"name": name, "rules": rule_values})
     return permissions
 
 
 def _diagnostic_permissions(raw_permissions: object) -> list[dict]:
-    if isinstance(raw_permissions, (list, tuple)) and raw_permissions:
-        permissions: list[dict] = []
-        for permission in raw_permissions:
-            if isinstance(permission, dict):
-                name = permission.get("name")
-                rules = permission.get("rules")
-                if isinstance(name, str) and isinstance(rules, list):
-                    permissions.append({"name": name, "rules": rules})
-        if permissions:
-            return permissions
-    return _base_match_permissions()
+    permissions = _catalog_permissions(raw_permissions)
+    return permissions or _base_match_permissions()
 
 
 def _base_match_permissions() -> list[dict]:
