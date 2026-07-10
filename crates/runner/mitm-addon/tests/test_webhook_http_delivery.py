@@ -29,13 +29,12 @@ from tests.webhook_test_helpers import (
 )
 
 
-def _flush_model_usage(flow, *, run_id: str = "run-1") -> None:
+def _report_and_flush_model_usage(flow, *, run_id: str = "run-1") -> None:
     usage.report_model_provider_usage(flow, run_id)
     usage.flush_usage_events(trigger="test")
-    usage.webhook.usage_executor.shutdown(wait=True)
 
 
-def test_does_not_follow_redirects(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_does_not_follow_redirects(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
 
     with usage_webhook_api() as webhook:
@@ -43,7 +42,7 @@ def test_does_not_follow_redirects(tmp_path, real_flow, fresh_usage_executor, us
             302,
             headers=(("Location", webhook.url("/redirected")),),
         )
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert [request.path for request in webhook.requests] == ["/api/webhooks/agent/usage-event"]
     log_entries = read_jsonl_entries_after_flush(
@@ -85,7 +84,7 @@ def test_rejects_invalid_url_before_open(tmp_path, sync_usage_executor):
     )
 
 
-def test_closes_http_error_response(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_closes_http_error_response(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
 
     with (
@@ -95,13 +94,13 @@ def test_closes_http_error_response(tmp_path, real_flow, fresh_usage_executor, u
     ):
         webhook.queue_response(500)
         webhook.queue_response(500)
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 2
     assert close_mock.call_count == 2
 
 
-def test_succeeds_on_first_attempt(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_succeeds_on_first_attempt(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
         "model": "claude-sonnet-4-6",
@@ -109,7 +108,7 @@ def test_succeeds_on_first_attempt(tmp_path, real_flow, fresh_usage_executor, us
     }
 
     with usage_webhook_api() as webhook:
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 1
     request = webhook.requests[0]
@@ -153,19 +152,19 @@ def test_succeeds_on_first_attempt(tmp_path, real_flow, fresh_usage_executor, us
         )
 
 
-def test_adds_vercel_bypass_header(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_adds_vercel_bypass_header(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
 
     with (
         patch.object(platform_api, "VERCEL_BYPASS", "bypass-secret"),
         usage_webhook_api() as webhook,
     ):
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.requests[0].header("x-vercel-protection-bypass") == "bypass-secret"
 
 
-def test_retries_on_failure(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_retries_on_failure(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
 
     with (
@@ -174,13 +173,13 @@ def test_retries_on_failure(tmp_path, real_flow, fresh_usage_executor, usage_web
     ):
         webhook.queue_response(500)
         webhook.queue_response(204)
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 2
     mock_sleep.assert_called_once_with(0.5)
 
 
-def test_gives_up_after_retry_budget(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_gives_up_after_retry_budget(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
@@ -190,7 +189,7 @@ def test_gives_up_after_retry_budget(tmp_path, real_flow, fresh_usage_executor, 
     ):
         webhook.queue_response(500)
         webhook.queue_response(500)
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 2
     assert jsonl_exists_after_flush(proxy_log)
@@ -289,7 +288,7 @@ def test_retry_success_logs_body_free_payload_summary_with_colliding_fields(
         )
 
 
-def test_http_429_is_retryable(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_http_429_is_retryable(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
@@ -299,7 +298,7 @@ def test_http_429_is_retryable(tmp_path, real_flow, fresh_usage_executor, usage_
     ):
         webhook.queue_response(429)
         webhook.queue_response(429)
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 2
     mock_sleep.assert_called_once_with(0.5)
@@ -385,13 +384,13 @@ def test_retry_failure_sanitizes_sensitive_webhook_url_in_message_and_error(
         assert_sensitive_webhook_url_parts_absent(entry)
 
 
-def test_http_400_is_permanent(tmp_path, real_flow, fresh_usage_executor, usage_webhook_api):
+def test_http_400_is_permanent(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
     proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
     with usage_webhook_api() as webhook:
         webhook.queue_response(400)
-        _flush_model_usage(flow)
+        _report_and_flush_model_usage(flow)
 
     assert webhook.request_count == 1
     entries = [entry for entry in read_jsonl_entries_after_flush(proxy_log) if "attempt" in entry]
