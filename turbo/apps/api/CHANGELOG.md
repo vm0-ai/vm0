@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.260.0](https://github.com/vm0-ai/vm0/compare/api-v1.259.0...api-v1.260.0) (2026-07-10)
+
+
+### Features
+
+* add dot matrix and frosted scatter website templates ([#20944](https://github.com/vm0-ai/vm0/issues/20944)) ([ab6471c](https://github.com/vm0-ai/vm0/commit/ab6471c0eace009cad8aa87c99f9b1f830a4ade3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.1
+    * @vm0/core bumped to 8.424.0
+    * @vm0/db bumped to 1.108.4
+
 ## [1.259.0](https://github.com/vm0-ai/vm0/compare/api-v1.258.0...api-v1.259.0) (2026-07-10)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.104](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.103...sandbox-fc-v0.37.104) (2026-07-10)
+
+
+### Refactoring
+
+* **sandbox-fc:** move sandbox tests to external module ([#20947](https://github.com/vm0-ai/vm0/issues/20947)) ([2eb47f1](https://github.com/vm0-ai/vm0/commit/2eb47f1ea994c85fd1bc8aa34ef2478bc59f1c27))
+
 ## [0.37.103](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.102...sandbox-fc-v0.37.103) (2026-07-10)
 
 ## [0.37.102](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.101...sandbox-fc-v0.37.102) (2026-07-09)
