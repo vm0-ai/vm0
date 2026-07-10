@@ -2013,12 +2013,13 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
 
   it("uploads a presentation to Google Slides behind a feature flag", async () => {
     const { actor } = await entitledChatActor("Slides upload agent");
+    const objectStore = chatCallbacks.acceptChatObjectStorage();
     const orgId = actor.orgId;
     if (!orgId) {
       throw new Error("entitled actor is missing an organization");
     }
     const threadId = randomUUID();
-    const pptx = {
+    const legacyPptx = {
       name: "deck.pptx",
       bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04]),
     };
@@ -2027,7 +2028,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     const gated = await chat.requestUploadThreadArtifactGoogleSlides(
       actor,
       threadId,
-      pptx,
+      legacyPptx,
       [403],
     );
     expectApiError(gated.body);
@@ -2043,7 +2044,7 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
     const noDrive = await chat.requestUploadThreadArtifactGoogleSlides(
       actor,
       threadId,
-      pptx,
+      legacyPptx,
       [400],
     );
     expectApiError(noDrive.body);
@@ -2063,23 +2064,88 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       state: stateFromAuthorizationUrl(start.authorizationUrl),
     });
 
-    // Drive converts the uploaded PPTX into a native Google Slides deck.
-    const uploadRecorder = mockGoogleDriveSlidesUpload();
-    const uploaded = await chat.requestUploadThreadArtifactGoogleSlides(
-      actor,
-      threadId,
-      pptx,
-      [200],
+    const missingUpload =
+      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
+        actor,
+        threadId,
+        randomUUID(),
+        [404],
+      );
+    expectApiError(missingUpload.body);
+    expect(missingUpload.body.error.message).toBe(
+      "Presentation upload not found",
     );
+
+    const oversizedUploadId = randomUUID();
+    objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: `artifacts/${encodeURIComponent(actor.userId)}/${oversizedUploadId}/too-large.pptx`,
+      size: 100 * 1024 * 1024 + 1,
+    });
+    const oversized =
+      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
+        actor,
+        threadId,
+        oversizedUploadId,
+        [400],
+      );
+    expectApiError(oversized.body);
+    expect(oversized.body.error.message).toBe(
+      "Presentation file is too large (max 100 MB)",
+    );
+
+    // A PPTX larger than Vercel's request-body limit is staged in R2, then
+    // Drive converts it into a native Google Slides deck via resumable upload.
+    const stagedPptx = new Uint8Array(5 * 1024 * 1024);
+    stagedPptx.set([0x50, 0x4b, 0x03, 0x04]);
+    const prepared = await chat.prepareUpload(actor, {
+      filename: "large-deck.pptx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      size: stagedPptx.byteLength,
+    });
+    const stagedKey = `artifacts/${encodeURIComponent(actor.userId)}/${prepared.id}/large-deck.pptx`;
+    objectStore.addObject({
+      bucket: "test-user-artifacts",
+      body: stagedPptx,
+      key: stagedKey,
+      size: stagedPptx.byteLength,
+    });
+    const uploadRecorder = mockGoogleDriveSlidesUpload();
+    const uploaded =
+      await chat.requestUploadThreadArtifactGoogleSlidesFromUpload(
+        actor,
+        threadId,
+        prepared.id,
+        [200],
+      );
     expect(uploaded.body).toStrictEqual({
       id: "slides-file-1",
       name: "deck",
       webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
     });
-    expect(uploadRecorder.uploadBodies).toHaveLength(1);
-    expect(uploadRecorder.uploadBodies[0]).toContain(
+    expect(uploadRecorder.metadataBodies[0]).toContain(
       "application/vnd.google-apps.presentation",
     );
+    expect(uploadRecorder.uploadBodies[0]).toHaveLength(stagedPptx.byteLength);
+    expect(uploadRecorder.uploadBodies[0]?.slice(0, 4)).toStrictEqual(
+      stagedPptx.slice(0, 4),
+    );
+    expect(objectStore.deletedKeys).toContain(stagedKey);
+
+    // Old browser bundles can still send the PPTX inline during deployment.
+    const legacyUploaded = await chat.requestUploadThreadArtifactGoogleSlides(
+      actor,
+      threadId,
+      legacyPptx,
+      [200],
+    );
+    expect(legacyUploaded.body).toStrictEqual({
+      id: "slides-file-1",
+      name: "deck",
+      webViewLink: "https://docs.google.com/presentation/d/slides-file-1/edit",
+    });
+    expect(uploadRecorder.uploadBodies[1]).toStrictEqual(legacyPptx.bytes);
   }, 120_000);
 
   it("dedupes artifact urls and filters hosted-site runs", async () => {

@@ -394,22 +394,27 @@ interface GoogleDriveSlidesUploadOptions {
 }
 
 interface GoogleDriveSlidesUploadRecorder {
-  /** Raw multipart bodies of every POST to the Drive resumable/multipart upload. */
-  readonly uploadBodies: string[];
+  /** Metadata bodies used to initiate Drive resumable uploads. */
+  readonly metadataBodies: string[];
+  /** PPTX bodies sent to Drive resumable upload sessions. */
+  readonly uploadBodies: Uint8Array[];
 }
 
 /**
  * Google Drive boundary for the "upload PPTX as native Google Slides" flow:
  * folder lookups always miss (forcing creation), folder creation succeeds, and
- * the multipart upload records its body and answers with the converted Slides
- * file. The recorded body lets tests assert the Google Slides conversion
- * mimeType was requested.
+ * the resumable upload records metadata plus PPTX bytes before answering with
+ * the converted Slides file.
  */
 export function mockGoogleDriveSlidesUpload(
   options: GoogleDriveSlidesUploadOptions = {},
 ): GoogleDriveSlidesUploadRecorder {
-  const recorder: GoogleDriveSlidesUploadRecorder = { uploadBodies: [] };
+  const recorder: GoogleDriveSlidesUploadRecorder = {
+    metadataBodies: [],
+    uploadBodies: [],
+  };
   let folderCounter = 0;
+  const resumableUploadUrl = `${GOOGLE_DRIVE_UPLOAD_URL}?uploadType=resumable&upload_id=slides-upload-1`;
 
   server.use(
     http.get(GOOGLE_DRIVE_FILES_URL, () => {
@@ -424,7 +429,14 @@ export function mockGoogleDriveSlidesUpload(
       });
     }),
     http.post(GOOGLE_DRIVE_UPLOAD_URL, async ({ request }) => {
-      recorder.uploadBodies.push(await request.text());
+      recorder.metadataBodies.push(await request.text());
+      return new HttpResponse(null, {
+        status: 200,
+        headers: { Location: resumableUploadUrl },
+      });
+    }),
+    http.put(GOOGLE_DRIVE_UPLOAD_URL, async ({ request }) => {
+      recorder.uploadBodies.push(new Uint8Array(await request.arrayBuffer()));
       const status = options.uploadStatus ?? 200;
       if (status !== 200) {
         return new HttpResponse(null, { status });

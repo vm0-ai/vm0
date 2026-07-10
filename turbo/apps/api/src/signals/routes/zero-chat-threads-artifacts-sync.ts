@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { z } from "zod";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -65,6 +66,38 @@ function googleSlidesUploadDisabled() {
   };
 }
 
+const presentationUploadIdSchema = z.string().uuid();
+
+type GoogleSlidesUploadSource =
+  | { readonly type: "staged"; readonly uploadId: string }
+  | {
+      readonly type: "inline";
+      readonly filename: string;
+      readonly pptx: Buffer;
+    };
+
+async function googleSlidesUploadSource(
+  formData: FormData,
+): Promise<GoogleSlidesUploadSource | ReturnType<typeof badRequestMessage>> {
+  const uploadId = formData.get("uploadId");
+  if (typeof uploadId === "string") {
+    const parsed = presentationUploadIdSchema.safeParse(uploadId);
+    return parsed.success
+      ? { type: "staged", uploadId: parsed.data }
+      : badRequestMessage("Invalid presentation upload ID");
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return badRequestMessage("No presentation file provided");
+  }
+  return {
+    type: "inline",
+    filename: file.name,
+    pptx: Buffer.from(await file.arrayBuffer()),
+  };
+}
+
 const uploadGoogleSlidesInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -88,13 +121,11 @@ const uploadGoogleSlidesInner$ = command(
     const request = get(request$);
     const formData = await request.raw.formData();
     signal.throwIfAborted();
-
-    const file = formData.get("file");
-    if (!(file instanceof File)) {
-      return badRequestMessage("No presentation file provided");
-    }
-    const pptx = Buffer.from(await file.arrayBuffer());
+    const source = await googleSlidesUploadSource(formData);
     signal.throwIfAborted();
+    if ("status" in source) {
+      return source;
+    }
 
     const result = await set(
       uploadPresentationToGoogleSlides$,
@@ -102,14 +133,16 @@ const uploadGoogleSlidesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         threadId: params.threadId,
-        filename: file.name,
-        pptx,
+        source,
       },
       signal,
     );
     signal.throwIfAborted();
 
     if (isBadRequestResponse(result)) {
+      return result;
+    }
+    if (isNotFoundResponse(result)) {
       return result;
     }
     return result;
