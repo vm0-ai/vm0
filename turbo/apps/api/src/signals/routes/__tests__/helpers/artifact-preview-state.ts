@@ -45,15 +45,22 @@ export async function markHostedArtifactEligibleForPreviewCron(
     readonly runId: string;
     readonly url: string;
   },
-): Promise<void> {
+  options: { readonly generatedBy?: string } = {},
+): Promise<string> {
   const body = await postArtifactPreviewState(context, {
     action: "mark-preview-cron-eligible",
     run_id: artifact.runId,
     url: artifact.url,
+    ...(options.generatedBy ? { generated_by: options.generatedBy } : {}),
   });
   if (body.updated !== 1) {
     throw new Error(
       `Expected one artifact preview state row update, received ${body.updated ?? 0}`,
     );
   }
+  const [id] = body.ids ?? [];
+  if (!id) {
+    throw new Error("Expected artifact preview state action to return row id");
+  }
+  return id;
 }

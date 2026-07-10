@@ -4,10 +4,11 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
+import { publishChatThreadWorkflowQueueChangedSafely } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
@@ -24,6 +25,11 @@ import {
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import {
+  admitWorkflowTriggerEvent,
+  workflowQueueEnabledForOwner,
+} from "./zero-workflow-queue.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 
 export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
@@ -49,10 +55,15 @@ type RunErrorResponse = {
 
 export type RunWorkflowTriggerResult =
   | { readonly kind: "ok"; readonly runId: string }
+  // The event was accepted into the workflow queue instead of starting a run.
+  | { readonly kind: "enqueued" }
   | { readonly kind: "conflict"; readonly message: string }
   | { readonly kind: "run_error"; readonly response: RunErrorResponse };
 
-export type RunFailure = Exclude<RunWorkflowTriggerResult, { kind: "ok" }>;
+export type RunFailure = Exclude<
+  RunWorkflowTriggerResult,
+  { kind: "ok" } | { kind: "enqueued" }
+>;
 type ActivePreviousRunPolicy = "block" | "allow";
 
 interface InternalRunCallbackInput {
@@ -81,6 +92,9 @@ export interface RunWorkflowTriggerNowArgs {
   readonly appendSystemPrompt?: string;
   readonly callbacks?: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
+  // Set by the queue drain (and manual "Run now"): skip workflow-queue
+  // admission and always create the run.
+  readonly bypassWorkflowQueue?: boolean;
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -360,15 +374,128 @@ async function buildTimedWorkflowTriggerRunInput(args: {
   );
 }
 
+/**
+ * Workflow-queue admission: with the switch on, an event fired while the
+ * workflow is busy (or its queue is paused/non-empty) is persisted as a queue
+ * event instead of creating a run. Returns true when the event was enqueued.
+ */
+type ComputedGetter = <T>(computedValue: Computed<T>) => T;
+
+async function enqueueWorkflowTriggerEventIfBusy(input: {
+  readonly get: ComputedGetter;
+  readonly db: Db;
+  readonly args: RunWorkflowTriggerNowArgs;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const { get, db, args, signal } = input;
+  const { trigger, chatThreadId } = args.due;
+  if (args.bypassWorkflowQueue === true) {
+    return false;
+  }
+  const overrides = await get(
+    userFeatureSwitchOverrides(trigger.orgId, trigger.ownerUserId),
+  );
+  signal.throwIfAborted();
+  if (
+    !workflowQueueEnabledForOwner({
+      orgId: trigger.orgId,
+      userId: trigger.ownerUserId,
+      overrides,
+    })
+  ) {
+    return false;
+  }
+  const admission = await admitWorkflowTriggerEvent(db, {
+    trigger,
+    chatThreadId,
+    triggerSource: args.triggerSource ?? "workflow-schedule",
+    triggerBrief: args.triggerBrief,
+    params: {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      callbacks: args.callbacks,
+      recordLastRunId: args.recordLastRunId,
+      recordLastRunAt: args.recordLastRunAt,
+    },
+  });
+  signal.throwIfAborted();
+  if (admission === "enqueued") {
+    await publishChatThreadWorkflowQueueChangedSafely(
+      trigger.ownerUserId,
+      chatThreadId,
+    );
+    signal.throwIfAborted();
+    return true;
+  }
+  return false;
+}
+
+async function recordWorkflowTriggerRunStart(input: {
+  readonly db: Db;
+  readonly args: RunWorkflowTriggerNowArgs;
+  readonly runId: string;
+  readonly runStatus: string;
+  readonly prompt: string;
+  readonly modelPin: ModelFirstPin;
+  readonly effectiveModelProvider: string | null | undefined;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const { db, args, runId, signal } = input;
+  const { trigger, chatThreadId } = args.due;
+  await postAutomationUserMessage({
+    db,
+    threadId: chatThreadId,
+    userId: trigger.ownerUserId,
+    runId,
+    prompt: input.prompt,
+    appendQueueMarker: input.runStatus === "queued",
+    runGroupId: trigger.id,
+  });
+  signal.throwIfAborted();
+
+  await db
+    .update(zeroRuns)
+    .set({
+      modelProvider: input.effectiveModelProvider,
+      modelProviderId: input.modelPin.modelProviderId,
+      modelProviderCredentialScope: input.modelPin.modelProviderCredentialScope,
+      selectedModel: input.modelPin.selectedModel,
+    })
+    .where(eq(zeroRuns.id, runId));
+  signal.throwIfAborted();
+
+  await db
+    .update(zeroWorkflowTriggers)
+    .set({
+      ...(args.recordLastRunId === false ? {} : { lastRunId: runId }),
+      ...(args.recordLastRunAt ? { lastRunAt: nowDate() } : {}),
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflowTriggers.id, trigger.id));
+  signal.throwIfAborted();
+}
+
 export const runWorkflowTriggerNow$ = command(
   async (
-    { set },
+    { get, set },
     args: RunWorkflowTriggerNowArgs,
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
     const { trigger, agentId, workflowName, chatThreadId } = args.due;
     const timing = workflowTriggerTiming(args);
+
+    const enqueued = await enqueueWorkflowTriggerEventIfBusy({
+      get,
+      db,
+      args,
+      signal,
+    });
+    if (enqueued) {
+      return { kind: "enqueued" };
+    }
+
     const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
       db,
       trigger,
@@ -457,39 +584,16 @@ export const runWorkflowTriggerNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    await postAutomationUserMessage({
+    await recordWorkflowTriggerRunStart({
       db,
-      threadId: chatThreadId,
-      userId: trigger.ownerUserId,
+      args,
       runId: result.body.runId,
+      runStatus: result.body.status,
       prompt: runInput.prompt,
-      appendQueueMarker: result.body.status === "queued",
-      runGroupId: trigger.id,
+      modelPin,
+      effectiveModelProvider,
+      signal,
     });
-    signal.throwIfAborted();
-
-    await db
-      .update(zeroRuns)
-      .set({
-        modelProvider: effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, result.body.runId));
-    signal.throwIfAborted();
-
-    await db
-      .update(zeroWorkflowTriggers)
-      .set({
-        ...(args.recordLastRunId === false
-          ? {}
-          : { lastRunId: result.body.runId }),
-        ...(args.recordLastRunAt ? { lastRunAt: nowDate() } : {}),
-        updatedAt: nowDate(),
-      })
-      .where(eq(zeroWorkflowTriggers.id, trigger.id));
-    signal.throwIfAborted();
 
     return { kind: "ok", runId: result.body.runId };
   },

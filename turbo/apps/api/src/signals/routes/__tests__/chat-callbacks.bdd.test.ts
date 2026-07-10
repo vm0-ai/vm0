@@ -8,6 +8,7 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -18,6 +19,10 @@ import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
+import {
+  seedLexicalRelationshipMemory,
+  seedSemanticRecallMemory,
+} from "../../../test-fixtures/relationship-memory";
 import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
@@ -1160,7 +1165,19 @@ describe("CHAT-02: completed chat callback", () => {
   it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await startChatRun(actor, {
@@ -1168,12 +1185,16 @@ describe("CHAT-02: completed chat callback", () => {
       prompt: "finish before goal continuation",
     });
     const goalBrief = "Keep making autonomous progress";
+    const noisySeparator = "!".repeat(1100);
     const goalObjective = `${goalBrief}
 
-Detailed goal procedure:
-- Inspect the current external state before deciding completion.
-- Persist progress outside the sandbox.
-- Complete the goal only after auditing every requirement.`;
+${noisySeparator}
+
+Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
+    await seedSemanticRecallMemory(
+      { orgId: actor.orgId, userId: actor.userId },
+      "Keep making autonomous progress Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and ACME-42 https://acme.example.com/treasury before marking done.",
+    );
     await createGoalForRun(actor, first.runId, goalObjective);
 
     chatCallbacks.mockChatOutputEvents([
@@ -1212,9 +1233,378 @@ Detailed goal procedure:
     expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
       "# Active thread goal",
     );
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      "# How to operate",
+    );
+    expect(goalContext.body.appendSystemPrompt ?? "").toContain(
+      "The user prefers JPM IJTXX Treasury allocation.",
+    );
 
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("truncates goal runtime memory queries without splitting Unicode codepoints", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before unicode goal continuation",
+    });
+    const goalBrief = "Preserve Unicode query boundaries";
+    const rareLetterPrefix = "\u{10400}".repeat(1100);
+    const goalObjective = `${goalBrief}
+
+${rareLetterPrefix}
+
+Continue after the long Unicode prefix.`;
+    const expectedMemoryQuery = [
+      ...`${goalBrief} ${rareLetterPrefix} Continue after the long Unicode prefix.`,
+    ]
+      .slice(0, 1024)
+      .join("")
+      .trimEnd();
+    await seedSemanticRecallMemory(
+      { orgId: actor.orgId, userId: actor.userId },
+      expectedMemoryQuery,
+    );
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before unicode goal continuation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalBrief);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalBrief);
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected unicode goal continuation run id");
+    }
+    const goalContext = await waitForRunContext(actor, goalContinuation.runId);
+    expect(goalContext.body.prompt).toContain(goalObjective);
+    expect(goalContext.body.appendSystemPrompt ?? "").toContain(
+      "The user prefers JPM IJTXX Treasury allocation.",
+    );
+
+    await api.requestCancelRun(actor, goalContinuation.runId, [200]);
+    await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("does not broad-load runtime memory when a goal has no searchable text", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const broadMemoryText =
+      "The user keeps unrelated placeholder plans named Untitled goal.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Broad Memory",
+      kind: "preference",
+      text: broadMemoryText,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before empty-text goal continuation",
+    });
+    const goalObjective = "   ";
+    const goalBrief = "Untitled goal";
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before empty-text goal continuation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalBrief);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalBrief);
+    });
+    expect(goalContinuation?.goalSnapshot).toStrictEqual({
+      objectiveBrief: goalBrief,
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected empty-text goal continuation run id");
+    }
+    const goalRunId = goalContinuation.runId;
+    const goalContext = await waitForRunContext(actor, goalRunId);
+    expect(goalContext.body.prompt).toContain("# Active thread goal");
+    expect(goalContext.body.prompt).toContain(goalBrief);
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      broadMemoryText,
+    );
+    await expect
+      .poll(() => {
+        return sandboxOperationEventsForRun(goalRunId).map((event) => {
+          return event.op_type;
+        });
+      })
+      .toContain(
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      );
+    const timingEvents = sandboxOperationEventsForRun(goalRunId);
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expect(
+      timingEvents.filter((event) => {
+        return (
+          typeof event.op_type === "string" &&
+          event.op_type.startsWith(
+            "api_dispatch_pre_create_zero_memory_profile_",
+          )
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await waitForRunStatus(actor, goalRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("does not broad-load runtime memory when a goal only has the default placeholder text", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const broadMemoryText =
+      "The user keeps unrelated placeholder plans named Untitled goal.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Broad Placeholder Memory",
+      kind: "preference",
+      text: broadMemoryText,
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before default-placeholder goal continuation",
+    });
+    const goalObjective = "untitled goal.";
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(
+        0,
+        "completed before default-placeholder goal continuation",
+      ),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalObjective);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalObjective);
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected default-placeholder goal continuation run id");
+    }
+    const goalRunId = goalContinuation.runId;
+    const goalContext = await waitForRunContext(actor, goalRunId);
+    expect(goalContext.body.prompt).toContain("# Active thread goal");
+    expect(goalContext.body.prompt).toContain(goalObjective);
+    expect(goalContext.body.appendSystemPrompt ?? "").not.toContain(
+      broadMemoryText,
+    );
+    await expect
+      .poll(() => {
+        return sandboxOperationEventsForRun(goalRunId).map((event) => {
+          return event.op_type;
+        });
+      })
+      .toContain(
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      );
+    const timingEvents = sandboxOperationEventsForRun(goalRunId);
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expect(
+      timingEvents.filter((event) => {
+        return (
+          typeof event.op_type === "string" &&
+          event.op_type.startsWith(
+            "api_dispatch_pre_create_zero_memory_profile_",
+          )
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await waitForRunStatus(actor, goalRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("does not search runtime memory for punctuation-only goal continuations", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal continuation");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await updateFeatureSwitchesForUser(
+      context,
+      { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before punctuation-only goal continuation",
+    });
+    const goalObjective = "!!!";
+    await createGoalForRun(actor, first.runId, goalObjective);
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before punctuation-only goal continuation"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return isGoalContinuationUserMessage(message, goalObjective);
+        });
+      },
+    );
+    const goalContinuation = userMessages(messages.messages).find((message) => {
+      return isGoalContinuationUserMessage(message, goalObjective);
+    });
+    if (!goalContinuation?.runId) {
+      throw new Error("Expected punctuation-only goal continuation run id");
+    }
+    const goalRunId = goalContinuation.runId;
+    const goalContext = await waitForRunContext(actor, goalRunId);
+    expect(goalContext.body.prompt).toContain("# Active thread goal");
+    expect(goalContext.body.prompt).toContain(goalObjective);
+    await expect
+      .poll(() => {
+        return sandboxOperationEventsForRun(goalRunId).map((event) => {
+          return event.op_type;
+        });
+      })
+      .toContain(
+        "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+      );
+    const timingEvents = sandboxOperationEventsForRun(goalRunId);
+    expect(timingEvents).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+        memory_runtime_search_query_length_bucket: "0",
+      }),
+    );
+    expect(
+      timingEvents.filter((event) => {
+        return (
+          typeof event.op_type === "string" &&
+          event.op_type.startsWith(
+            "api_dispatch_pre_create_zero_memory_profile_",
+          )
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, goalRunId, [200]);
+    await waitForRunStatus(actor, goalRunId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
 

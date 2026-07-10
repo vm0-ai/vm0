@@ -6,7 +6,7 @@ import {
   zeroWorkflowTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { and, eq, lte } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -21,6 +21,8 @@ import {
   type RunFailure,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowQueueEnabledForOwner } from "./zero-workflow-queue.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
@@ -277,8 +279,43 @@ async function dueWorkflowTriggerRows(
  * the workflow skill (via the agent's attachment) and carries the recurrence
  * completion callback.
  */
+type ComputedGetter = <T>(computedValue: Computed<T>) => T;
+
+/**
+ * Legacy skip-if-busy gate. With the workflow queue enabled the tick enqueues
+ * behind the active run instead of being skipped, so the lastRunId check only
+ * applies when the switch is off.
+ */
+async function shouldSkipBusyTrigger(input: {
+  readonly get: ComputedGetter;
+  readonly db: Db;
+  readonly trigger: TriggerRow;
+  readonly signal: AbortSignal;
+}): Promise<boolean> {
+  const { get, db, trigger, signal } = input;
+  const overrides = await get(
+    userFeatureSwitchOverrides(trigger.orgId, trigger.ownerUserId),
+  );
+  signal.throwIfAborted();
+  const queueEnabled = workflowQueueEnabledForOwner({
+    orgId: trigger.orgId,
+    userId: trigger.ownerUserId,
+    overrides,
+  });
+  if (queueEnabled || !trigger.lastRunId) {
+    return false;
+  }
+  const [lastRun] = await db
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, trigger.lastRunId))
+    .limit(1);
+  signal.throwIfAborted();
+  return lastRun !== undefined && isActivePreviousRunStatus(lastRun.status);
+}
+
 export const executeDueWorkflowTriggers$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ExecuteResult> => {
+  async ({ get, set }, signal: AbortSignal): Promise<ExecuteResult> => {
     const db = set(writeDb$);
     const currentTime = nowDate();
 
@@ -328,17 +365,11 @@ export const executeDueWorkflowTriggers$ = command(
         continue;
       }
 
-      if (row.trigger.lastRunId) {
-        const [lastRun] = await db
-          .select({ status: agentRuns.status })
-          .from(agentRuns)
-          .where(eq(agentRuns.id, row.trigger.lastRunId))
-          .limit(1);
-        signal.throwIfAborted();
-        if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
-          skipped++;
-          continue;
-        }
+      if (
+        await shouldSkipBusyTrigger({ get, db, trigger: row.trigger, signal })
+      ) {
+        skipped++;
+        continue;
       }
 
       const claimed = await claimTrigger(db, row.trigger, currentTime);
@@ -392,6 +423,10 @@ export const executeDueWorkflowTriggers$ = command(
         continue;
       }
       const result = runResult.value;
+      if (result.kind === "enqueued") {
+        executed++;
+        continue;
+      }
       if (result.kind !== "ok") {
         await recordPreRunFailure(db, claimed, result, signal);
         skipped++;

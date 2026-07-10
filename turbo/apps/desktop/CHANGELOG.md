@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.7](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.6...desktop-v0.27.7) (2026-07-10)
+
+
+### Bug Fixes
+
+* align tabler icons dependency version ([#20873](https://github.com/vm0-ai/vm0/issues/20873)) ([6a03e46](https://github.com/vm0-ai/vm0/commit/6a03e466daaa50e6b5cad01534b73b9dd1e5e8b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.180.0
+
 ## [0.27.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.5...desktop-v0.27.6) (2026-07-09)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.422.0](https://github.com/vm0-ai/vm0/compare/core-v8.421.2...core-v8.422.0) (2026-07-10)
+
+
+### Features
+
+* generate poster-frame previews for video artifacts ([#20831](https://github.com/vm0-ai/vm0/issues/20831)) ([f14a997](https://github.com/vm0-ai/vm0/commit/f14a997e3d3abf8f95066a5869475b20fe959d9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.180.0
+    * @vm0/connectors bumped to 1.153.0
+
 ## [8.421.2](https://github.com/vm0-ai/vm0/compare/core-v8.421.1...core-v8.421.2) (2026-07-09)
 
 

@@ -663,6 +663,61 @@ describe("artifacts page", () => {
     });
   });
 
+  it("renders video poster images with a play affordance while preserving the video fallback", async () => {
+    setupTeam();
+    const scope = testAuthScope("video-preview-image");
+    const posterUrl = "https://cdn.vm7.io/artifacts/user/video-row/poster.jpg";
+    const fallbackVideoUrl = "https://artifacts.example.com/fallback-video.mp4";
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "poster-run:file-video",
+        runId: "poster-run",
+        fileId: "poster-file",
+        filename: "poster-video.mp4",
+        contentType: "video/mp4",
+        url: "https://artifacts.example.com/poster-video.mp4",
+        artifactKind: undefined,
+        previewImageUrl: posterUrl,
+      }),
+      createArtifact({
+        artifactItemId: "fallback-video-run:file-video",
+        runId: "fallback-video-run",
+        fileId: "fallback-video-file",
+        filename: "fallback-video.mp4",
+        contentType: "video/mp4",
+        url: fallbackVideoUrl,
+        artifactKind: undefined,
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("poster-video.mp4");
+    await screen.findByText("fallback-video.mp4");
+    const posterImages = Array.from(document.querySelectorAll("img")).filter(
+      (image) => {
+        return image.getAttribute("src") === posterUrl;
+      },
+    );
+    expect(posterImages).toHaveLength(1);
+    expect(
+      document.querySelector(".tabler-icon-player-play-filled"),
+    ).toBeInTheDocument();
+    expect(
+      Array.from(document.querySelectorAll("video")).some((video) => {
+        return (
+          video.getAttribute("src") ===
+          "https://artifacts.example.com/poster-video.mp4"
+        );
+      }),
+    ).toBeFalsy();
+    expect(
+      Array.from(document.querySelectorAll("video")).some((video) => {
+        return video.getAttribute("src") === fallbackVideoUrl;
+      }),
+    ).toBeTruthy();
+  });
+
   it("filters category, search, and agent locally over the bulk-synced set", async () => {
     setupTeam();
     const scope = testAuthScope("filters");

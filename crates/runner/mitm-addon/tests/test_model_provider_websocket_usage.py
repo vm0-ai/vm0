@@ -193,7 +193,10 @@ class TestModelProviderWebSocketUsage:
                         "usage": {
                             "input_tokens": 50,
                             "output_tokens": 20,
-                            "input_tokens_details": {"cached_tokens": 10},
+                            "input_tokens_details": {
+                                "cached_tokens": 10,
+                                "cache_write_tokens": 15,
+                            },
                         },
                     },
                 }
@@ -204,12 +207,14 @@ class TestModelProviderWebSocketUsage:
 
         events = webhook.usage_events()
         by_category = _sum_quantities_by_category(events)
+        assert len(events) == len(by_category)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert _model_websocket_usage_sources(flow) == {}
         assert by_category == {
-            "tokens.input": 40,
+            "tokens.input": 25,
             "tokens.output": 20,
             "tokens.cache_read": 10,
+            "tokens.cache_creation": 15,
         }
 
     def test_model_websocket_missing_context_releases_positive_source(
@@ -411,6 +416,66 @@ class TestModelProviderWebSocketUsage:
             "tokens.input": 20,
             "tokens.output": 12,
         }
+
+    def test_model_websocket_late_same_id_snapshot_does_not_mix_input_partition(
+        self, tmp_path, real_flow
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "id": "resp_ws_partition",
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 0,
+                            "input_tokens_details": {"cached_tokens": 20},
+                        },
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "id": "resp_ws_partition",
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 40,
+                            "input_tokens_details": {
+                                "cached_tokens": 20,
+                                "cache_write_tokens": 30,
+                            },
+                        },
+                    },
+                }
+            ).encode(),
+        )
+
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert len(events) == len(by_category) == 3
+        assert len({event["idempotencyKey"] for event in events}) == 3
+        assert by_category == {
+            "tokens.input": 80,
+            "tokens.output": 40,
+            "tokens.cache_read": 20,
+        }
+        observation_events = webhook.model_usage_observation_events()
+        observations_by_category = {
+            event["category"]: event["quantity"] for event in observation_events
+        }
+        assert len(observation_events) == len(observations_by_category) == 3
+        assert len({event["idempotencyKey"] for event in observation_events}) == 3
+        assert observations_by_category == by_category
+        assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
+        assert _model_websocket_usage_sources(flow) == {}
 
     def test_model_websocket_zero_frame_model_is_used_by_later_positive_frame(
         self, tmp_path, real_flow
@@ -723,6 +788,79 @@ class TestModelProviderWebSocketUsage:
             "tokens.input": 17,
             "tokens.output": 5,
         }
+
+    @pytest.mark.parametrize(
+        "later_cache_write_tokens",
+        [0, None],
+        ids=["zero", "omitted"],
+    )
+    def test_model_websocket_missing_id_raw_snapshots_preserve_input_partition(
+        self,
+        tmp_path,
+        real_flow,
+        later_cache_write_tokens,
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+        later_input_details = {"cached_tokens": 20}
+        if later_cache_write_tokens is not None:
+            later_input_details["cache_write_tokens"] = later_cache_write_tokens
+
+        webhook = self._run_websocket_messages_and_end(
+            flow,
+            json.dumps(
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 0,
+                            "input_tokens_details": {
+                                "cached_tokens": 20,
+                                "cache_write_tokens": 30,
+                            },
+                        },
+                    },
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "type": "response.done",
+                    "response": {
+                        "model": "gpt-5.5",
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 40,
+                            "input_tokens_details": later_input_details,
+                        },
+                    },
+                }
+            ).encode(),
+        )
+
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert len(events) == len(by_category) == 4
+        assert by_category == {
+            "tokens.input": 50,
+            "tokens.output": 40,
+            "tokens.cache_read": 20,
+            "tokens.cache_creation": 30,
+        }
+        assert (
+            by_category["tokens.input"]
+            + by_category["tokens.cache_read"]
+            + by_category["tokens.cache_creation"]
+            == 100
+        )
+        observation_events = webhook.model_usage_observation_events()
+        observations_by_category = {
+            event["category"]: event["quantity"] for event in observation_events
+        }
+        assert len(observation_events) == len(observations_by_category) == 4
+        assert observations_by_category == by_category
+        assert _model_websocket_usage_sources(flow) == {}
 
     async def test_model_websocket_response_keeps_usage_flow_tracked_until_end(
         self,

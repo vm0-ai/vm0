@@ -71,6 +71,7 @@ import {
 import { normalizeRecommendedFollowups } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
+import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 
@@ -575,6 +576,52 @@ function workflowSnapshotFromRow(
   };
 }
 
+function recordFromJson(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function goalEventFromRow(event: unknown): ChatMessageGoalEvent | undefined {
+  const record = recordFromJson(event);
+  if (!record) {
+    return undefined;
+  }
+  if (record.type === "cleared") {
+    return { type: "cleared" };
+  }
+  if (record.type !== "state") {
+    return undefined;
+  }
+  if (record.status === "active") {
+    return {
+      type: "state",
+      status: "active",
+      objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
+    };
+  }
+  if (
+    record.status === "paused" ||
+    record.status === "blocked" ||
+    record.status === "complete"
+  ) {
+    return { type: "state", status: record.status };
+  }
+  return undefined;
+}
+
+function goalSnapshotFromRow(
+  snapshot: unknown,
+): ChatMessageGoalSnapshot | undefined {
+  const record = recordFromJson(snapshot);
+  if (!record || !("objectiveBrief" in record)) {
+    return undefined;
+  }
+  return {
+    objectiveBrief: goalObjectiveBriefFromJson(record.objectiveBrief),
+  };
+}
+
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
@@ -594,8 +641,8 @@ function toPagedMessage(
       isGoalRun: row.isGoalRun || undefined,
       usage: normalizeUsagePayload(row.usagePayload),
       runEventId: row.runEventId ?? undefined,
-      goalEvent: row.goalEvent ?? undefined,
-      goalSnapshot: row.goalSnapshot ?? undefined,
+      goalEvent: goalEventFromRow(row.goalEvent),
+      goalSnapshot: goalSnapshotFromRow(row.goalSnapshot),
       revokesMessageId: row.revokesMessageId ?? undefined,
       interruptsRunId: row.interruptsRunId ?? undefined,
       error: row.error ?? undefined,

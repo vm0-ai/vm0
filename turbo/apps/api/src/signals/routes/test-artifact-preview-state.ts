@@ -4,7 +4,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-artifact-preview-state";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { command } from "ccstate";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -34,21 +34,37 @@ type ArtifactPreviewStateActionHandler = (
 
 const actionHandlers = {
   async "mark-preview-cron-eligible"(db, body, signal) {
+    const metadataPatch = body.generated_by
+      ? {
+          metadata: sql`${runUploadedFiles.metadata} || ${JSON.stringify({
+            generatedBy: body.generated_by,
+          })}::jsonb`,
+        }
+      : {};
     const rows = await db
       .update(runUploadedFiles)
       .set({
+        ...metadataPatch,
         previewImageUrl: null,
         updatedAt: sql`now() - interval '3 minutes'`,
       })
       .where(
         and(
           eq(runUploadedFiles.runId, body.run_id),
-          eq(runUploadedFiles.externalId, body.url),
+          or(
+            eq(runUploadedFiles.externalId, body.url),
+            eq(runUploadedFiles.url, body.url),
+          ),
         ),
       )
       .returning({ id: runUploadedFiles.id });
     signal.throwIfAborted();
-    return actionOk({ updated: rows.length });
+    return actionOk({
+      ids: rows.map((row) => {
+        return row.id;
+      }),
+      updated: rows.length,
+    });
   },
 } satisfies Record<
   ArtifactPreviewStateAction,

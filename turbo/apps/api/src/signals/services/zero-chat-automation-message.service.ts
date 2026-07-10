@@ -18,6 +18,7 @@ import {
 } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
@@ -158,6 +159,13 @@ export async function postAutomationUserMessage(params: {
   readonly runGroupId?: string;
   readonly goalSnapshot?: ChatMessageGoalSnapshot;
 }): Promise<void> {
+  const goalSnapshot = params.goalSnapshot
+    ? {
+        objectiveBrief: nonEmptyGoalObjectiveBrief(
+          params.goalSnapshot.objectiveBrief,
+        ),
+      }
+    : undefined;
   await params.db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(chatMessages)
@@ -167,7 +175,7 @@ export async function postAutomationUserMessage(params: {
         content: params.prompt,
         runId: params.runId,
         runGroupId: params.runGroupId,
-        goalSnapshot: params.goalSnapshot,
+        goalSnapshot,
       })
       .returning({ createdAt: chatMessages.createdAt });
     if (params.appendQueueMarker) {

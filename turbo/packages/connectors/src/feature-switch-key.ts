@@ -65,8 +65,10 @@ export enum FeatureSwitchKey {
   ImageEditing = "imageEditing",
   PresentationGoogleSlidesUpload = "presentationGoogleSlidesUpload",
   Artifacts = "artifacts",
-  ArtifactPreviewImage = "artifactPreviewImage",
   ArtifactFavorites = "artifactFavorites",
+  ArtifactPreviewImage = "artifactPreviewImage",
+  ArtifactVideoPreview = "artifactVideoPreview",
   WorkflowTemplateCatalog = "workflowTemplateCatalog",
   WebsiteTemplates = "websiteTemplates",
+  WorkflowQueue = "workflowQueue",
 }

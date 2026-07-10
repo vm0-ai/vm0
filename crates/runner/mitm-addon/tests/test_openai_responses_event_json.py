@@ -15,11 +15,14 @@ def test_extracts_usage_from_wrapped_response_completed_event():
             "type": "response.completed",
             "response": {
                 "id": "resp_1",
-                "model": "gpt-5.5",
+                "model": "gpt-5.6-sol",
                 "usage": {
                     "input_tokens": 100,
                     "output_tokens": 40,
-                    "input_tokens_details": {"cached_tokens": 25},
+                    "input_tokens_details": {
+                        "cached_tokens": 25,
+                        "cache_write_tokens": 30,
+                    },
                 },
             },
         }
@@ -27,10 +30,11 @@ def test_extracts_usage_from_wrapped_response_completed_event():
 
     assert extract_openai_responses_usage_from_event_json(body) == {
         "message_id": "resp_1",
-        "model": "gpt-5.5",
-        "tokens.input": 75,
+        "model": "gpt-5.6-sol",
+        "tokens.input": 45,
         "tokens.output": 40,
         "tokens.cache_read": 25,
+        "tokens.cache_creation": 30,
     }
 
 
@@ -136,7 +140,10 @@ def test_extracts_zero_usage_quantities():
                 "usage": {
                     "input_tokens": 0,
                     "output_tokens": 0,
-                    "input_tokens_details": {"cached_tokens": 0},
+                    "input_tokens_details": {
+                        "cached_tokens": 0,
+                        "cache_write_tokens": 0,
+                    },
                 },
             },
         }
@@ -148,6 +155,7 @@ def test_extracts_zero_usage_quantities():
         "tokens.input": 0,
         "tokens.output": 0,
         "tokens.cache_read": 0,
+        "tokens.cache_creation": 0,
     }
 
 
@@ -415,6 +423,7 @@ def test_merge_preserves_positive_quantities_when_source_has_zero():
         "model": "gpt-5.5",
         "tokens.input": 75,
         "tokens.output": 40,
+        "tokens.cache_creation": 30,
     }
 
     merge_openai_responses_usage_result(
@@ -425,6 +434,7 @@ def test_merge_preserves_positive_quantities_when_source_has_zero():
             "tokens.input": 0,
             "tokens.output": 0,
             "tokens.cache_read": 0,
+            "tokens.cache_creation": 0,
         },
     )
 
@@ -434,6 +444,7 @@ def test_merge_preserves_positive_quantities_when_source_has_zero():
         "tokens.input": 75,
         "tokens.output": 40,
         "tokens.cache_read": 0,
+        "tokens.cache_creation": 30,
     }
 
 
@@ -444,6 +455,7 @@ def test_merge_zero_only_source_does_not_relabel_existing_positive_usage():
         "tokens.input": 75,
         "tokens.output": 40,
         "tokens.cache_read": 25,
+        "tokens.cache_creation": 30,
     }
 
     merge_openai_responses_usage_result(
@@ -454,6 +466,7 @@ def test_merge_zero_only_source_does_not_relabel_existing_positive_usage():
             "tokens.input": 0,
             "tokens.output": 0,
             "tokens.cache_read": 0,
+            "tokens.cache_creation": 0,
         },
     )
 
@@ -463,6 +476,7 @@ def test_merge_zero_only_source_does_not_relabel_existing_positive_usage():
         "tokens.input": 75,
         "tokens.output": 40,
         "tokens.cache_read": 25,
+        "tokens.cache_creation": 30,
     }
 
 
@@ -475,6 +489,7 @@ def test_merge_stores_zero_quantities_when_target_is_missing_category():
             "tokens.input": 0,
             "tokens.output": 0,
             "tokens.cache_read": 0,
+            "tokens.cache_creation": 0,
         },
     )
 
@@ -482,6 +497,7 @@ def test_merge_stores_zero_quantities_when_target_is_missing_category():
         "tokens.input": 0,
         "tokens.output": 0,
         "tokens.cache_read": 0,
+        "tokens.cache_creation": 0,
     }
 
 
@@ -514,6 +530,7 @@ def test_merge_allows_positive_corrections_to_lower_quantities():
         "tokens.input": 20,
         "tokens.output": 12,
         "tokens.cache_read": 8,
+        "tokens.cache_creation": 6,
     }
 
     merge_openai_responses_usage_result(
@@ -522,6 +539,7 @@ def test_merge_allows_positive_corrections_to_lower_quantities():
             "tokens.input": 10,
             "tokens.output": 7,
             "tokens.cache_read": 3,
+            "tokens.cache_creation": 2,
         },
     )
 
@@ -529,6 +547,33 @@ def test_merge_allows_positive_corrections_to_lower_quantities():
         "tokens.input": 10,
         "tokens.output": 7,
         "tokens.cache_read": 3,
+        "tokens.cache_creation": 2,
+    }
+
+
+def test_merge_cache_creation_positive_usage_owns_metadata():
+    target = {
+        "message_id": "resp_1",
+        "model": "gpt-5.5",
+        "tokens.output": 10,
+    }
+
+    merge_openai_responses_usage_result(
+        target,
+        {
+            "message_id": "resp_2",
+            "model": "gpt-5.6-sol",
+            "tokens.input": 0,
+            "tokens.cache_creation": 7,
+        },
+    )
+
+    assert target == {
+        "message_id": "resp_2",
+        "model": "gpt-5.6-sol",
+        "tokens.input": 0,
+        "tokens.output": 10,
+        "tokens.cache_creation": 7,
     }
 
 
@@ -539,7 +584,6 @@ def test_merge_ignores_unknown_keys():
         target,
         {
             "tokens.input": 1,
-            "tokens.cache_creation": 99,
             "unknown": "value",
         },
     )
