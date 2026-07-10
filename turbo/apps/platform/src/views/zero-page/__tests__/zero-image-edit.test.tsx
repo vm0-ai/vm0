@@ -11,7 +11,6 @@ import {
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
-import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
@@ -27,9 +26,6 @@ const SOURCE_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/source.png";
 const EDITED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/edited.png";
-const LINK_IMAGE_URL = "https://cdn.vm7.io/artifacts/test/image-edit/link.png";
-const IMPORTED_LINK_IMAGE_URL =
-  "https://cdn.vm7.io/artifacts/test/image-edit/imported-link.png";
 const UPLOADED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/uploaded.png";
 const SECOND_UPLOADED_IMAGE_URL =
@@ -159,18 +155,6 @@ function mockImageEditGeneration(
       createdAt: "2026-03-10T00:00:00Z",
       startedAt: "2026-03-10T00:00:01Z",
       completedAt: "2026-03-10T00:00:02Z",
-    });
-  });
-}
-
-function mockImageLinkImport(importedUrl = IMPORTED_LINK_IMAGE_URL): void {
-  context.mocks.api(zeroUploadsContract.importImage, ({ respond }) => {
-    return respond(200, {
-      id: "imported-image-edit-link",
-      filename: "imported-link.png",
-      contentType: "image/png",
-      size: 128,
-      url: importedUrl,
     });
   });
 }
@@ -365,6 +349,26 @@ function mockInterpretMarks(
       });
     },
   );
+}
+
+function mockElementClientSize(
+  element: HTMLElement,
+  size: { readonly height: number; readonly width: number },
+): void {
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: size.height },
+    clientWidth: { configurable: true, value: size.width },
+  });
+}
+
+function mockImageNaturalSize(
+  image: HTMLImageElement,
+  size: { readonly height: number; readonly width: number },
+): void {
+  Object.defineProperties(image, {
+    naturalHeight: { configurable: true, value: size.height },
+    naturalWidth: { configurable: true, value: size.width },
+  });
 }
 
 async function openImageEditMode(
@@ -597,7 +601,7 @@ describe("image editing", () => {
     expect(
       screen.getByTestId("artifact-sidebar-image-zoom-controls"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("image-edit-upload-menu")).toBeInTheDocument();
+    expect(screen.getByTestId("image-edit-upload-local")).toBeInTheDocument();
     expect(screen.getByTestId("image-edit-select-region")).toHaveAttribute(
       "aria-label",
       "Cancel area selection",
@@ -631,7 +635,7 @@ describe("image editing", () => {
     });
     expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
     expect(screen.queryByTestId("image-edit-region-remove")).toBeNull();
-    expect(screen.getByTestId("image-edit-upload-menu")).toBeInTheDocument();
+    expect(screen.getByTestId("image-edit-upload-local")).toBeInTheDocument();
     expect(screen.queryByTestId("image-edit-region-send")).toBeNull();
 
     const commentInput = screen.getByTestId("image-edit-region-comment-input");
@@ -1107,7 +1111,15 @@ describe("image editing", () => {
   it("shows image edit progress in a toast instead of toolbar spinners", async () => {
     const user = userEvent.setup({ delay: null });
     const prompts: string[] = [];
-    mockImageLinkImport();
+    mockSequentialUploads([
+      {
+        id: "upload-image-edit-progress",
+        filename: "progress.png",
+        contentType: "image/png",
+        size: 128,
+        url: UPLOADED_IMAGE_URL,
+      },
+    ]);
     mockPendingImageEditGeneration((body) => {
       prompts.push(body.prompt ?? "");
     });
@@ -1116,16 +1128,14 @@ describe("image editing", () => {
     });
 
     await openImageEditMode(user);
-    await user.click(screen.getByTestId("image-edit-upload-menu"));
-    await user.type(
-      screen.getByTestId("image-edit-upload-link-input"),
-      LINK_IMAGE_URL,
+    await user.upload(
+      screen.getByTestId("image-edit-upload-input"),
+      new File(["progress"], "progress.png", { type: "image/png" }),
     );
-    await user.click(screen.getByTestId("image-edit-upload-link-add"));
     await waitFor(() => {
       expect(
         screen.getByTestId("artifact-sidebar-body-image-copy"),
-      ).toHaveAttribute("src", IMPORTED_LINK_IMAGE_URL);
+      ).toHaveAttribute("src", UPLOADED_IMAGE_URL);
     });
 
     await user.click(screen.getByTestId("artifact-sidebar-body-image"));
@@ -1165,10 +1175,18 @@ describe("image editing", () => {
     ).toBeNull();
   });
 
-  it("edits linked images through the imported artifact URL", async () => {
+  it("edits uploaded images through the uploaded artifact URL", async () => {
     const user = userEvent.setup({ delay: null });
     let sourceImageUrls: readonly string[] = [];
-    mockImageLinkImport();
+    mockSequentialUploads([
+      {
+        id: "upload-image-edit-source",
+        filename: "source-copy.png",
+        contentType: "image/png",
+        size: 128,
+        url: UPLOADED_IMAGE_URL,
+      },
+    ]);
     mockImageEditGeneration((body) => {
       sourceImageUrls = body.sourceImageUrls ?? [];
     });
@@ -1177,17 +1195,15 @@ describe("image editing", () => {
     });
 
     await openImageEditMode(user);
-    await user.click(screen.getByTestId("image-edit-upload-menu"));
-    await user.type(
-      screen.getByTestId("image-edit-upload-link-input"),
-      LINK_IMAGE_URL,
+    await user.upload(
+      screen.getByTestId("image-edit-upload-input"),
+      new File(["source-copy"], "source-copy.png", { type: "image/png" }),
     );
-    await user.click(screen.getByTestId("image-edit-upload-link-add"));
 
     await waitFor(() => {
       expect(
         screen.getByTestId("artifact-sidebar-body-image-copy"),
-      ).toHaveAttribute("src", IMPORTED_LINK_IMAGE_URL);
+      ).toHaveAttribute("src", UPLOADED_IMAGE_URL);
     });
 
     await user.click(screen.getByTestId("artifact-sidebar-body-image-copy"));
@@ -1197,27 +1213,29 @@ describe("image editing", () => {
     await user.click(screen.getByTestId("image-edit-remove-background"));
 
     await waitFor(() => {
-      expect(sourceImageUrls).toStrictEqual([IMPORTED_LINK_IMAGE_URL]);
+      expect(sourceImageUrls).toStrictEqual([UPLOADED_IMAGE_URL]);
     });
   });
 
-  it("only shows the link add action when a URL is entered", async () => {
+  it("shows only the local image upload control in image edit mode", async () => {
     const user = userEvent.setup({ delay: null });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
 
     await openImageEditMode(user);
-    await user.click(screen.getByTestId("image-edit-upload-menu"));
 
-    expect(screen.getByTestId("image-edit-upload-link-add")).not.toBeVisible();
-
-    const linkInput = screen.getByTestId("image-edit-upload-link-input");
-    await user.type(linkInput, LINK_IMAGE_URL);
-    expect(screen.getByTestId("image-edit-upload-link-add")).toBeVisible();
-
-    await fill(linkInput, " ");
-    expect(screen.getByTestId("image-edit-upload-link-add")).not.toBeVisible();
+    expect(screen.getByTestId("image-edit-upload-local")).toHaveAttribute(
+      "aria-label",
+      "Upload from computer",
+    );
+    expect(screen.getByTestId("image-edit-upload-input")).toHaveAttribute(
+      "multiple",
+    );
+    expect(screen.queryByTestId("image-edit-upload-menu")).toBeNull();
+    expect(screen.queryByTestId("image-edit-upload-popover")).toBeNull();
+    expect(screen.queryByTestId("image-edit-upload-link-input")).toBeNull();
+    expect(screen.queryByTestId("image-edit-upload-link-add")).toBeNull();
   });
 
   it("exposes share targets and delete from the image edit toolbar", async () => {
@@ -1246,9 +1264,8 @@ describe("image editing", () => {
     expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
   });
 
-  it("adds linked and multiple uploaded local images to the edit canvas", async () => {
+  it("adds multiple uploaded local images to the edit canvas", async () => {
     const user = userEvent.setup({ delay: null });
-    mockImageLinkImport();
     mockSequentialUploads([
       {
         id: "upload-image-edit-local",
@@ -1270,19 +1287,6 @@ describe("image editing", () => {
     });
 
     await openImageEditMode(user);
-    await user.click(screen.getByTestId("image-edit-upload-menu"));
-    await user.type(
-      screen.getByTestId("image-edit-upload-link-input"),
-      LINK_IMAGE_URL,
-    );
-    await user.click(screen.getByTestId("image-edit-upload-link-add"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("artifact-sidebar-body-image-copy"),
-      ).toHaveAttribute("src", IMPORTED_LINK_IMAGE_URL);
-    });
-
     expect(screen.getByTestId("image-edit-upload-input")).toHaveAttribute(
       "multiple",
     );
@@ -1297,7 +1301,6 @@ describe("image editing", () => {
         .map((image) => {
           return image.getAttribute("src");
         });
-      expect(copyImageUrls).toContain(IMPORTED_LINK_IMAGE_URL);
       expect(copyImageUrls).toContain(UPLOADED_IMAGE_URL);
       expect(copyImageUrls).toContain(SECOND_UPLOADED_IMAGE_URL);
     });
@@ -1333,6 +1336,61 @@ describe("image editing", () => {
     ).toBe("40px");
   });
 
+  it("opens image edit from the split-view artifact header", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "source.png",
+      );
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Share artifact")).toBeNull();
+    expect(screen.queryByLabelText("Download artifact")).toBeNull();
+  });
+
+  it("fits the initial edit image to the visible canvas area", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "source.png",
+      );
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+    const canvas = await screen.findByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(canvas, { height: 300, width: 400 });
+
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    if (!(image instanceof HTMLImageElement)) {
+      throw new Error("Expected the edit canvas image to be an image element");
+    }
+    mockImageNaturalSize(image, { height: 900, width: 1200 });
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(image).toHaveStyle({ height: "252px", width: "336px" });
+    });
+  });
+
   it("hides the edit action when the feature switch is off", async () => {
     const user = userEvent.setup({ delay: null });
     setupChatThread({});
@@ -1343,6 +1401,7 @@ describe("image editing", () => {
         "source.png",
       );
     });
+    expect(screen.queryByTestId("artifact-sidebar-edit-image")).toBeNull();
 
     await user.click(screen.getByLabelText("Preview source.png"));
     await waitFor(() => {

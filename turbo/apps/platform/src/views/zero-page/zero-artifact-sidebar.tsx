@@ -13,19 +13,18 @@ import {
   IconDots,
   IconEye,
   IconExternalLink,
+  IconFolderPlus,
   IconLoader2,
-  IconLink,
   IconMessageCircle,
   IconPalette,
-  IconPaperclip,
   IconPencil,
   IconPointer2,
-  IconPlus,
   IconSend2,
   IconShare,
   IconSparkles,
   IconTrash,
   IconUpload,
+  IconWand,
   IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
@@ -97,8 +96,8 @@ import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-
 import {
   artifactImageEditMode$,
   closeArtifactImageEdit$,
-  importEditableImageCanvasImageUrl$,
   imageEditUploading$,
+  openArtifactImageEdit$,
   type ImageEditRegionComment,
   type ImageEditRegion,
   runImageEdit$,
@@ -586,6 +585,7 @@ function ArtifactSidebarContent({
   const closeImageEditMode = useSet(closeArtifactImageEdit$);
   const markHtmlDomEditPending = useSet(markHtmlDomEditPending$);
   const openHtmlCommentMode = useSet(openArtifactHtmlEditMode$);
+  const openImageEditMode = useSet(openArtifactImageEdit$);
   const publishHtmlDomEditPreviewDraft = useSet(
     publishHtmlDomEditPreviewDraft$,
   );
@@ -631,6 +631,19 @@ function ArtifactSidebarContent({
   const imageEditEnabled = Boolean(features?.[FeatureSwitchKey.ImageEditing]);
   const imageEditActive =
     display.kind === "image" && requestedImageEditMode && imageEditEnabled;
+  const editImage =
+    display.kind === "image" && imageEditEnabled && !imageEditActive
+      ? () => {
+          resetZoomableImageCanvasZoom(
+            zoomableArtifactImageKey(
+              "artifact-sidebar",
+              display.url,
+              fullscreen ? "fullscreen" : "sidebar",
+            ),
+          );
+          openImageEditMode({ fullscreen, url: display.url });
+        }
+      : undefined;
 
   const htmlEditState = createHtmlEditState({
     applyPreview: applyHtmlDomEditPreview,
@@ -665,6 +678,7 @@ function ArtifactSidebarContent({
       imageEditActive={imageEditActive}
       imageNavigation={imageNavigation}
       onBack={onBack}
+      onEditImage={editImage}
       openHtmlCommentMode={openHtmlCommentMode}
       openPresentationEditor={openPresentationEditor}
       pageSignal={pageSignal}
@@ -690,6 +704,7 @@ function ArtifactSidebarResolvedContent({
   imageEditActive,
   imageNavigation,
   onBack,
+  onEditImage,
   openHtmlCommentMode,
   openPresentationEditor,
   pageSignal,
@@ -711,6 +726,7 @@ function ArtifactSidebarResolvedContent({
   readonly imageEditActive: boolean;
   readonly imageNavigation?: ArtifactImageNavigationActions;
   readonly onBack?: () => void;
+  readonly onEditImage?: () => void;
   readonly openHtmlCommentMode: () => void;
   readonly openPresentationEditor: (url: string) => void;
   readonly pageSignal: AbortSignal;
@@ -763,6 +779,7 @@ function ArtifactSidebarResolvedContent({
         fullscreen={fullscreen}
         htmlState={htmlHeaderState}
         imageEditActive={imageEditActive}
+        onEditImage={onEditImage}
         onEditPresentation={editPresentation}
         onEditHtml={editHtml}
         onExitHtmlEdit={exitHtmlEdit}
@@ -1159,6 +1176,7 @@ function ArtifactSidebarHeader({
   imageEditActive,
   onBack,
   onEditHtml,
+  onEditImage,
   onEditPresentation,
   onExitHtmlEdit,
   onExitImageEdit,
@@ -1176,6 +1194,7 @@ function ArtifactSidebarHeader({
   imageEditActive: boolean;
   onBack?: () => void;
   onEditHtml?: () => void;
+  onEditImage?: () => void;
   onEditPresentation?: () => void;
   onExitHtmlEdit?: () => void;
   onExitImageEdit?: () => void;
@@ -1217,6 +1236,7 @@ function ArtifactSidebarHeader({
         kind={kind}
         onClose={onClose}
         onEditHtml={onEditHtml}
+        onEditImage={onEditImage}
         onEditPresentation={onEditPresentation}
         onExitHtmlEdit={onExitHtmlEdit}
         onExitImageEdit={onExitImageEdit}
@@ -1238,6 +1258,7 @@ function ArtifactSidebarActions({
   kind,
   onClose,
   onEditHtml,
+  onEditImage,
   onEditPresentation,
   onExitHtmlEdit,
   onExitImageEdit,
@@ -1254,6 +1275,7 @@ function ArtifactSidebarActions({
   kind?: ArtifactKindForBody;
   onClose: () => void;
   onEditHtml?: () => void;
+  onEditImage?: () => void;
   onEditPresentation?: () => void;
   onExitHtmlEdit?: () => void;
   onExitImageEdit?: () => void;
@@ -1263,8 +1285,6 @@ function ArtifactSidebarActions({
   url?: string;
 }) {
   const features = useLastResolved(featureSwitch$);
-  const showPresentationEdit =
-    artifactKind === "presentation-html" && onEditPresentation !== undefined;
   const showHtmlControls =
     kind === "html" &&
     artifactKind === "hosted-site" &&
@@ -1280,26 +1300,15 @@ function ArtifactSidebarActions({
       {url && (
         <>
           {!hideArtifactActions && (
-            <>
-              {kind === "html" && <ArtifactOpenExternalAction url={url} />}
-              <ArtifactShareButton ariaLabel="Share artifact" url={url} />
-              <ArtifactDownloadMenu
-                ariaLabel="Download artifact"
-                artifactKind={artifactKind}
-                filename={title}
-                syncTarget={syncTarget}
-                url={url}
-              />
-              <ArtifactActionSeparator />
-              {showPresentationEdit && (
-                <>
-                  <ArtifactEditPresentationAction
-                    onClick={onEditPresentation}
-                  />
-                  <ArtifactActionSeparator />
-                </>
-              )}
-            </>
+            <ArtifactSidebarPreviewActions
+              artifactKind={artifactKind}
+              kind={kind}
+              onEditImage={onEditImage}
+              onEditPresentation={onEditPresentation}
+              syncTarget={syncTarget}
+              title={title}
+              url={url}
+            />
           )}
           {showHtmlControls && (
             <>
@@ -1327,6 +1336,55 @@ function ArtifactSidebarActions({
   );
 }
 
+function ArtifactSidebarPreviewActions({
+  artifactKind,
+  kind,
+  onEditImage,
+  onEditPresentation,
+  syncTarget,
+  title,
+  url,
+}: {
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  kind?: ArtifactKindForBody;
+  onEditImage?: () => void;
+  onEditPresentation?: () => void;
+  syncTarget?: ArtifactDownloadSyncTarget;
+  title: string;
+  url: string;
+}) {
+  const showPresentationEdit =
+    artifactKind === "presentation-html" && onEditPresentation !== undefined;
+  const showImageEdit = kind === "image" && onEditImage !== undefined;
+
+  return (
+    <>
+      {kind === "html" && <ArtifactOpenExternalAction url={url} />}
+      <ArtifactShareButton ariaLabel="Share artifact" url={url} />
+      <ArtifactDownloadMenu
+        ariaLabel="Download artifact"
+        artifactKind={artifactKind}
+        filename={title}
+        syncTarget={syncTarget}
+        url={url}
+      />
+      <ArtifactActionSeparator />
+      {showPresentationEdit && (
+        <>
+          <ArtifactEditPresentationAction onClick={onEditPresentation} />
+          <ArtifactActionSeparator />
+        </>
+      )}
+      {showImageEdit && (
+        <>
+          <ArtifactEditImageAction onClick={onEditImage} />
+          <ArtifactActionSeparator />
+        </>
+      )}
+    </>
+  );
+}
+
 function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
   return (
     <ArtifactActionTooltip label="Edit presentation">
@@ -1337,6 +1395,22 @@ function ArtifactEditPresentationAction({ onClick }: { onClick: () => void }) {
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
         <IconPencil size={16} stroke={1.5} />
+      </button>
+    </ArtifactActionTooltip>
+  );
+}
+
+function ArtifactEditImageAction({ onClick }: { onClick: () => void }) {
+  return (
+    <ArtifactActionTooltip label="Edit image">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Edit image"
+        data-testid="artifact-sidebar-edit-image"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconWand size={16} stroke={1.5} />
       </button>
     </ArtifactActionTooltip>
   );
@@ -2631,26 +2705,32 @@ function ArtifactImageEditUploadFileControl({
 
   return (
     <>
-      <label
+      <button
+        type="button"
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
+          "absolute left-4 top-4 z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/95 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors",
           disabled
             ? "cursor-not-allowed opacity-45"
             : "cursor-pointer hover:bg-muted hover:text-foreground",
         )}
-        htmlFor="image-edit-upload-input-control"
+        disabled={disabled}
         data-testid="image-edit-upload-local"
         aria-label="Upload from computer"
         title="Upload from computer"
+        onClick={(event) => {
+          const input = event.currentTarget.nextElementSibling;
+          if (input instanceof HTMLInputElement) {
+            input.click();
+          }
+        }}
       >
         {uploading ? (
           <IconLoader2 size={16} className="animate-spin" />
         ) : (
-          <IconPaperclip size={16} stroke={1.6} />
+          <IconFolderPlus size={17} stroke={1.8} />
         )}
-      </label>
+      </button>
       <input
-        id="image-edit-upload-input-control"
         type="file"
         accept={IMAGE_EDIT_UPLOAD_ACCEPT}
         multiple
@@ -2663,155 +2743,19 @@ function ArtifactImageEditUploadFileControl({
   );
 }
 
-function ArtifactImageEditUploadLinkForm({
-  disabled,
-  onSelectLink,
-}: {
-  disabled: boolean;
-  onSelectLink: (url: string) => void;
-}) {
-  const setSubmitVisible = (form: HTMLFormElement | null, visible: boolean) => {
-    const submit = form?.querySelector<HTMLButtonElement>(
-      '[data-testid="image-edit-upload-link-add"]',
-    );
-    if (submit) {
-      submit.hidden = !visible;
-    }
-  };
-  const handleLinkSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const value = String(data.get("imageUrl") ?? "").trim();
-    if (!value) {
-      return;
-    }
-    if (!URL.canParse(value)) {
-      toast.error("Enter a valid image link");
-      return;
-    }
-    onSelectLink(new URL(value).toString());
-    form.reset();
-    setSubmitVisible(form, false);
-  };
-  const handleLinkInput = (event: FormEvent<HTMLInputElement>) => {
-    setSubmitVisible(
-      event.currentTarget.form,
-      event.currentTarget.value.trim().length > 0,
-    );
-  };
-
-  return (
-    <form
-      className="flex h-8 min-w-0 flex-1 items-center gap-1 border-l border-border/70 pl-2"
-      onSubmit={handleLinkSubmit}
-    >
-      <IconLink
-        size={15}
-        stroke={1.7}
-        className="shrink-0 text-muted-foreground"
-      />
-      <input
-        className="h-full min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-45"
-        name="imageUrl"
-        placeholder="Paste link"
-        type="url"
-        disabled={disabled}
-        data-testid="image-edit-upload-link-input"
-        onInput={handleLinkInput}
-      />
-      <Button
-        type="submit"
-        size="icon"
-        variant="ghost"
-        className="h-7 w-7 rounded-md p-0 text-muted-foreground hover:text-foreground"
-        disabled={disabled}
-        hidden
-        data-testid="image-edit-upload-link-add"
-        aria-label="Add image link"
-        title="Add image link"
-      >
-        <IconPlus size={16} stroke={1.8} />
-      </Button>
-    </form>
-  );
-}
-
-function ArtifactImageEditUploadMenu({
-  disabled,
-  onSelectFiles,
-  onSelectLink,
-  uploading,
-}: {
-  disabled: boolean;
-  onSelectFiles: (files: readonly File[]) => void;
-  onSelectLink: (url: string) => void;
-  uploading: boolean;
-}) {
-  return (
-    <Popover modal={false}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-12 w-12 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground disabled:text-muted-foreground/45"
-          disabled={disabled}
-          data-testid="image-edit-upload-menu"
-          aria-label="Upload image"
-          title="Upload image"
-        >
-          {uploading ? (
-            <IconLoader2 size={16} className="animate-spin" />
-          ) : (
-            <IconUpload size={16} stroke={1.8} />
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="center"
-        sideOffset={8}
-        className="z-[10000] w-56 p-1 shadow-lg"
-        data-testid="image-edit-upload-popover"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-        }}
-      >
-        <div className="flex items-center gap-1">
-          <ArtifactImageEditUploadFileControl
-            disabled={disabled}
-            onSelectFiles={onSelectFiles}
-            uploading={uploading}
-          />
-          <ArtifactImageEditUploadLinkForm
-            disabled={disabled}
-            onSelectLink={onSelectLink}
-          />
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function ArtifactImageEditBottomControls({
+function ArtifactImageEditTopLeftControls({
   imageUploading,
   onUploadFiles,
-  onUploadLink,
 }: {
   imageUploading: boolean;
   onUploadFiles: (files: readonly File[]) => void;
-  onUploadLink: (src: string) => void;
 }) {
   return (
-    <div className="absolute bottom-4 left-1/2 z-10 flex w-max -translate-x-1/2 flex-row flex-nowrap items-center justify-center overflow-hidden rounded-full border border-border/70 bg-background/95 shadow-xl backdrop-blur">
-      <ArtifactImageEditUploadMenu
-        disabled={imageUploading}
-        onSelectFiles={onUploadFiles}
-        onSelectLink={onUploadLink}
-        uploading={imageUploading}
-      />
-    </div>
+    <ArtifactImageEditUploadFileControl
+      disabled={imageUploading}
+      onSelectFiles={onUploadFiles}
+      uploading={imageUploading}
+    />
   );
 }
 
@@ -2819,20 +2763,17 @@ function ArtifactImageEditCanvasChrome({
   controls,
   imageUploading,
   onUploadFiles,
-  onUploadLink,
 }: {
   controls: ZoomableImageControls;
   imageUploading: boolean;
   onUploadFiles: (files: readonly File[]) => void;
-  onUploadLink: (src: string) => void;
 }) {
   return (
     <>
       <ArtifactImageZoomControls controls={controls} />
-      <ArtifactImageEditBottomControls
+      <ArtifactImageEditTopLeftControls
         imageUploading={imageUploading}
         onUploadFiles={onUploadFiles}
-        onUploadLink={onUploadLink}
       />
     </>
   );
@@ -2943,7 +2884,6 @@ function useArtifactImageEditActions({
   const clearCanvasRegionSelection = useSet(
     clearEditableImageCanvasRegionSelection$,
   );
-  const importCanvasImageUrl = useSet(importEditableImageCanvasImageUrl$);
   const removeCanvasRegionComment = useSet(
     removeEditableImageCanvasRegionComment$,
   );
@@ -2999,13 +2939,6 @@ function useArtifactImageEditActions({
       "uploadEditableImageCanvasImage",
     );
   };
-  const onUploadLink = (src: string) => {
-    detach(
-      importCanvasImageUrl({ canvasKey, canvasSrc }, src, pageSignal),
-      Reason.DomCallback,
-      "importEditableImageCanvasImageUrl",
-    );
-  };
   const onRegionSelectionToggle = () => {
     if (regionSelectionActive) {
       clearCanvasRegionSelection(canvasKey);
@@ -3050,7 +2983,6 @@ function useArtifactImageEditActions({
     onRegionSelectionToggle,
     onSubmitRegionComments,
     onUploadFiles,
-    onUploadLink,
   };
 }
 
@@ -3151,7 +3083,6 @@ function ArtifactImageEditBody({
                   controls={controls}
                   imageUploading={imageUploading}
                   onUploadFiles={actions.onUploadFiles}
-                  onUploadLink={actions.onUploadLink}
                 />
               );
             }}
