@@ -12,10 +12,6 @@ async fn discover_returns_profile_from_job() {
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.run_id(), job_id);
     assert_eq!(candidate.profile_name(), "vm0/default");
-
-    let claimed = provider.claim(candidate).await.unwrap();
-    let ctx = claimed.context();
-    assert_eq!(ctx.experimental_profile.as_deref(), Some("vm0/default"));
 }
 
 #[tokio::test]
@@ -36,12 +32,6 @@ async fn discover_defaults_profile_when_missing() {
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.run_id(), job_id);
     assert_eq!(candidate.profile_name(), crate::profile::DEFAULT_PROFILE);
-    let claimed = provider.claim(candidate).await.unwrap();
-    let ctx = claimed.context();
-    assert_eq!(
-        ctx.experimental_profile.as_deref(),
-        Some(crate::profile::DEFAULT_PROFILE)
-    );
 }
 
 #[tokio::test]

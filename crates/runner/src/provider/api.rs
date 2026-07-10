@@ -1098,6 +1098,11 @@ mod tests {
 
     use crate::http::HttpClientConfig;
 
+    const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
+        "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
+    );
+    const RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID: &str = "00000000-0000-4000-8000-000000020985";
+
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         ApiClient::new(
             HttpClient::new(HttpClientConfig {
@@ -2460,6 +2465,185 @@ mod tests {
 
         assert_api_error(err, "complete 500 Internal Server Error: complete failed");
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_accepts_shared_current_response_fixture() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(RUNNER_CLAIM_RESPONSE_FIXTURE);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("shared current claim response should decode");
+        let context = claimed.context();
+
+        assert_eq!(context.run_id, run_id);
+        assert_eq!(context.prompt, "Inspect the fixture repository");
+        assert_eq!(
+            context.append_system_prompt.as_deref(),
+            Some("Use the shared contract fixture")
+        );
+        assert_eq!(
+            context.vars.as_ref().unwrap()["FIXTURE_REGION"],
+            "test-region"
+        );
+        assert_eq!(context.storage_manifest.as_ref().unwrap().storages.len(), 1);
+        assert_eq!(context.cli_agent_session_id(), Some("fixture-session-id"));
+        assert_eq!(
+            context.environment.as_ref().unwrap()["FIXTURE_MODEL"],
+            "fixture-model"
+        );
+        assert_eq!(
+            context.secret_values.as_deref(),
+            Some(["fixture-secret-value-not-real".to_string()].as_slice())
+        );
+        assert!(context.local_secret_env_keys.is_none());
+        assert_eq!(
+            context.secret_connector_metadata_map.as_ref().unwrap()["FIXTURE_API_KEY"]
+                .source_user_id
+                .as_deref(),
+            Some("fixture-user-id")
+        );
+        assert_eq!(context.capture_network_bodies, Some(true));
+        assert_eq!(context.user_timezone.as_deref(), Some("UTC"));
+        assert_eq!(
+            context.network_policies.as_ref().unwrap()["model-provider:fixture"].unknown_policy,
+            "deny"
+        );
+        assert_eq!(
+            context.billable_firewalls,
+            ["model-provider:fixture".to_string()]
+        );
+        assert_eq!(
+            context.codex_runtime_config.as_ref().unwrap().provider_id,
+            "fixture_provider"
+        );
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_accepts_previous_minimal_response() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "previous response",
+                    "sandboxToken": "previous-sandbox-token",
+                    "cliAgentType": "claude_code"
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("previous minimal claim response should remain compatible");
+        let context = claimed.context();
+
+        assert_eq!(context.prompt, "previous response");
+        assert!(context.append_system_prompt.is_none());
+        assert!(context.billable_firewalls.is_empty());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_ignores_additive_unknown_top_level_fields() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "response with additive field",
+                    "sandboxToken": "additive-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "futureClaimMetadata": {"version": 2}
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("additive unknown claim fields should be ignored");
+
+        assert_eq!(claimed.context().prompt, "response with additive field");
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_ignores_api_local_secret_env_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "attempt local secret trust",
+                    "sandboxToken": "local-secret-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "localSecretEnvKeys": ["ANTHROPIC_API_KEY"]
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("API local secret metadata should be ignored");
+
+        assert!(claimed.context().local_secret_env_keys.is_none());
+        claim_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]
