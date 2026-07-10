@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.423.0](https://github.com/vm0-ai/vm0/compare/core-v8.422.1...core-v8.423.0) (2026-07-10)
+
+
+### Features
+
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.0
+    * @vm0/connectors bumped to 1.154.0
+
 ## [8.422.1](https://github.com/vm0-ai/vm0/compare/core-v8.422.0...core-v8.422.1) (2026-07-10)
 
 

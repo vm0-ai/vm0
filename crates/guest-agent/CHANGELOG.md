@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.1...guest-agent-v0.50.2) (2026-07-10)
+
+
+### Refactoring
+
+* **guest-agent:** clarify runtime bootstrap contract ([#20927](https://github.com/vm0-ai/vm0/issues/20927)) ([e4121b6](https://github.com/vm0-ai/vm0/commit/e4121b6a5ea0b4002abb0f5fad0a48add7d646d9))
+
 ## [0.50.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.0...guest-agent-v0.50.1) (2026-07-10)
 
 

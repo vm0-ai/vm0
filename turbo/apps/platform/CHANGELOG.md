@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.590.0](https://github.com/vm0-ai/vm0/compare/app-v0.589.1...app-v0.590.0) (2026-07-10)
+
+
+### Features
+
+* add artifacts page preview lightbox ([#20889](https://github.com/vm0-ai/vm0/issues/20889)) ([9952a50](https://github.com/vm0-ai/vm0/commit/9952a505c82e354ea432e03977e1b43549b7e8a4))
+* add manual connector readiness checks to workflow settings ([#20913](https://github.com/vm0-ai/vm0/issues/20913)) ([98d604b](https://github.com/vm0-ai/vm0/commit/98d604b20841ef60e482e207416b03d056c1cb1f))
+* add workflow queue section, badge, and auto-expand to chat thread automations panel ([#20914](https://github.com/vm0-ai/vm0/issues/20914)) ([5dc5773](https://github.com/vm0-ai/vm0/commit/5dc5773cf3a9cc6d9e91fa883285aa0560f69b2a)), closes [#20877](https://github.com/vm0-ai/vm0/issues/20877)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.182.0
+    * @vm0/connectors bumped to 1.154.0
+    * @vm0/core bumped to 8.423.0
+
 ## [0.589.1](https://github.com/vm0-ai/vm0/compare/app-v0.589.0...app-v0.589.1) (2026-07-10)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.3...runner-rs-v0.143.4) (2026-07-10)
+
+
+### Refactoring
+
+* **runner:** introduce explicit storage plan and guest wire contract ([#20912](https://github.com/vm0-ai/vm0/issues/20912)) ([07f275c](https://github.com/vm0-ai/vm0/commit/07f275c8e04a9dcd6148f7d3075258b683e4ba2e))
+
 ## [0.143.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.2...runner-rs-v0.143.3) (2026-07-10)
 
 

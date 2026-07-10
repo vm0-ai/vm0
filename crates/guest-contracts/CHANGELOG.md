@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.7...guest-contracts-v0.3.8) (2026-07-10)
+
+
+### Refactoring
+
+* **runner:** introduce explicit storage plan and guest wire contract ([#20912](https://github.com/vm0-ai/vm0/issues/20912)) ([07f275c](https://github.com/vm0-ai/vm0/commit/07f275c8e04a9dcd6148f7d3075258b683e4ba2e))
+
 ## [0.3.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.6...guest-contracts-v0.3.7) (2026-07-09)
 
 
