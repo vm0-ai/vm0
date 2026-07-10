@@ -1,6 +1,8 @@
 import { command, computed, state } from "ccstate";
 import {
+  artifactItemSchema,
   artifactsContract,
+  type PersistedAttachment,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -19,6 +21,10 @@ import { createArtifactItemCacheStores } from "../external/idb-artifact-item-sto
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { onRejection } from "../utils.ts";
+import {
+  ensureAgentDraft$,
+  loadAgentDraft$,
+} from "../zero-page/agent-draft.ts";
 
 // Page size for the keyset-paginated fetch. The frontend follows `nextCursor`
 // until the whole set is loaded, so this only bounds per-request payload size,
@@ -145,7 +151,11 @@ export const remoteArtifacts$ = computed(
         [200],
         { toast: false },
       );
-      artifacts.push(...result.body.artifacts);
+      artifacts.push(
+        ...result.body.artifacts.map((item) => {
+          return artifactItemSchema.parse(item);
+        }),
+      );
       if (!result.body.nextCursor) {
         break;
       }
@@ -283,6 +293,62 @@ export const navigateToArtifactThread$ = command(
   ({ set }, threadId: string) => {
     set(detachedNavigateTo$, ROUTES.chat, {
       pathParams: { threadId },
+    });
+  },
+);
+
+function artifactDraftAttachment(item: ArtifactItem): PersistedAttachment {
+  return {
+    id: item.fileId,
+    url: item.url,
+    filename: item.filename,
+    contentType: item.contentType,
+    size: item.size,
+  };
+}
+
+export const startArtifactChat$ = command(
+  async (
+    { get, set },
+    item: ArtifactItem,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const entry = set(ensureAgentDraft$, item.agentId);
+    await set(loadAgentDraft$, item.agentId, entry.draft, entry.isNew, signal);
+    signal.throwIfAborted();
+
+    if (
+      item.artifactKind === "hosted-site" ||
+      item.artifactKind === "presentation-html"
+    ) {
+      if (!get(entry.draft.input$).includes(item.url)) {
+        set(
+          entry.draft.appendInput$,
+          `Please review ${item.filename}: ${item.url}`,
+        );
+      }
+    } else {
+      const attachments = get(entry.draft.attachments$);
+      const attachmentInfos = await Promise.allSettled(
+        attachments.map((attachment) => {
+          return get(attachment.fileInfo$);
+        }),
+      );
+      signal.throwIfAborted();
+      const hasMatchingAttachment = attachmentInfos.some((result) => {
+        return (
+          result.status === "fulfilled" &&
+          (result.value?.id === item.fileId || result.value?.url === item.url)
+        );
+      });
+
+      if (!hasMatchingAttachment) {
+        set(entry.draft.restoreAttachments$, [artifactDraftAttachment(item)]);
+      }
+    }
+
+    set(detachedNavigateTo$, ROUTES.agentChat, {
+      pathParams: { agentId: item.agentId },
     });
   },
 );

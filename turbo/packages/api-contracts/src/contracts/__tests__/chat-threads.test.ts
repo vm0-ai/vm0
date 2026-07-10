@@ -256,6 +256,7 @@ describe("artifacts contract", () => {
     });
 
     expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.size).toBe(0);
   });
 
   it("accepts favorite state on generated artifact items", () => {

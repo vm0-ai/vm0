@@ -135,6 +135,7 @@ type ArtifactListSqlRow = Record<string, unknown> & {
   readonly external_id: string;
   readonly filename: string | null;
   readonly content_type: string | null;
+  readonly size_bytes: number | string | null;
   readonly url: string;
   readonly preview_image_url: string | null;
   readonly metadata: unknown;
@@ -1055,6 +1056,7 @@ function toArtifactItem(row: ArtifactListSqlRow): ArtifactItem {
     threadTitle: row.thread_title,
     filename,
     contentType: row.content_type ?? inferMimetype(filename),
+    size: Number(row.size_bytes ?? 0),
     url: row.url,
     createdAt: artifactRowCreatedAt(row).toISOString(),
     ...(row.preview_image_url
@@ -1135,6 +1137,7 @@ export const zeroArtifacts$ = command(
           ${runUploadedFiles.externalId} AS external_id,
           ${runUploadedFiles.filename} AS filename,
           ${runUploadedFiles.contentType} AS content_type,
+          ${runUploadedFiles.sizeBytes} AS size_bytes,
           ${runUploadedFiles.url} AS url,
           ${runUploadedFiles.previewImageUrl} AS preview_image_url,
           ${runUploadedFiles.metadata} AS metadata,

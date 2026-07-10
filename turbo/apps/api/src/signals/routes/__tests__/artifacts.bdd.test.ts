@@ -663,11 +663,12 @@ describe("GET /api/zero/artifacts", () => {
       { id: ordinaryUploadId, contentType: "text/plain" },
       [200],
     );
+    const hostedFile = hostedTextFile("/index.html", "<main>active org</main>");
     const prepared = await chat.prepareHostedSiteWithBearer(bearer, {
       site: `active-org-${randomUUID().slice(0, 8)}`,
       artifactKind: "hosted-site",
       spaFallback: false,
-      files: [hostedTextFile("/index.html", "<main>active org</main>")],
+      files: [hostedFile],
     });
     await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
 
@@ -685,6 +686,7 @@ describe("GET /api/zero/artifacts", () => {
       runId: run.runId,
       fileId: prepared.url,
       url: prepared.url,
+      size: hostedFile.size,
       artifactKind: "hosted-site",
     });
     expect(response.artifacts[0]).not.toHaveProperty("previewImageUrl");
