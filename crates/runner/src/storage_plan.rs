@@ -13,7 +13,7 @@ const CODEX_FRAMEWORK_HOME: &str = "/home/user/.codex";
 const CLAUDE_FRAMEWORK_HOME: &str = "/home/user/.claude";
 const AGENT_INSTRUCTIONS_STORAGE_NAME_PREFIX: &str = "agent-instructions@";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) struct StoragePlan {
     storages: Vec<StoragePlanEntry>,
     artifacts: Vec<ArtifactPlanEntry>,
@@ -22,7 +22,7 @@ pub(crate) struct StoragePlan {
     reused_entries: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 struct StoragePlanEntry {
     mount_path: String,
     extract_path: Option<String>,
@@ -32,7 +32,7 @@ struct StoragePlanEntry {
     action: StorageAction,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum StorageAction {
     Download { source: ArchiveSource },
     ReuseExisting,
@@ -40,24 +40,24 @@ enum StorageAction {
     NormalizeInPlace,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 struct ArtifactPlanEntry {
     mount_path: String,
     vas_storage_name: String,
     vas_storage_id: String,
     vas_version_id: String,
-    missing_root_policy: Option<String>,
+    missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
     action: ArtifactAction,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum ArtifactAction {
     Download { source: ArchiveSource },
     ReuseOrRepair { source: ArchiveSource },
     PrepareEmpty { cached: bool },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum ArchiveSource {
     Remote(String),
     GuestStaged(String),
@@ -78,13 +78,13 @@ impl ArchiveSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 struct InstructionCleanup {
     mount_path: String,
     target_filename: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub(crate) struct ArchiveHandle {
     kind: ArchiveKind,
     index: usize,
@@ -108,13 +108,12 @@ impl ArchiveHandle {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 enum ArchiveKind {
     Storage,
     Artifact,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CacheArchiveCandidate {
     pub(crate) handle: ArchiveHandle,
     pub(crate) name: String,
@@ -224,9 +223,7 @@ pub(crate) fn build_storage_plan(
                 vas_storage_name: artifact.vas_storage_name.clone(),
                 vas_storage_id: artifact.vas_storage_id.clone(),
                 vas_version_id: artifact.vas_version_id.clone(),
-                missing_root_policy: artifact
-                    .missing_root_policy
-                    .map(missing_root_policy_wire_value),
+                missing_root_policy: artifact.missing_root_policy,
                 action,
             })
         })
@@ -417,7 +414,9 @@ impl StoragePlan {
                         vas_storage_name: Some(entry.vas_storage_name),
                         vas_storage_id: Some(entry.vas_storage_id),
                         vas_version_id: Some(entry.vas_version_id),
-                        missing_root_policy: entry.missing_root_policy,
+                        missing_root_policy: entry
+                            .missing_root_policy
+                            .map(missing_root_policy_wire_value),
                     }
                 })
                 .collect(),

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Storage preparation manifest sent from the runner to `guest-download`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     /// Volume storage entries.
@@ -21,7 +21,7 @@ pub struct Manifest {
 }
 
 /// Volume storage entry in the guest storage manifest.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageEntry {
     /// Guest filesystem path where the storage is mounted.
@@ -47,7 +47,7 @@ pub struct StorageEntry {
 }
 
 /// Artifact entry in the guest storage manifest.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactEntry {
     /// Guest filesystem path where the artifact is mounted.
@@ -76,7 +76,7 @@ pub struct ArtifactEntry {
 }
 
 /// Instruction-specific cleanup operation.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstructionCleanupEntry {
     /// Guest filesystem path containing the instruction content.

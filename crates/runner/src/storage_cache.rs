@@ -2498,7 +2498,7 @@ mod tests {
         .unwrap()
     }
 
-    fn manifest_single_storage(url: String, name: &str, version: &str) -> StoragePlan {
+    fn fresh_storage_plan(url: String, name: &str, version: &str) -> StoragePlan {
         plan_from_entries(
             vec![storage_entry(format!("/mnt/{name}"), url, name, version)],
             Vec::new(),
@@ -2506,7 +2506,7 @@ mod tests {
         )
     }
 
-    fn manifest_duplicate_storages(
+    fn fresh_duplicate_storage_plan(
         first_url: String,
         second_url: String,
         name: &str,
@@ -2522,7 +2522,7 @@ mod tests {
         )
     }
 
-    fn manifest_single_artifact(url: String, name: &str, version: &str) -> StoragePlan {
+    fn fresh_artifact_plan(url: String, name: &str, version: &str) -> StoragePlan {
         plan_from_entries(
             Vec::new(),
             vec![artifact_entry(
@@ -2888,7 +2888,7 @@ mod tests {
         std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
 
         // Give populate_cache an R2-looking URL — it should never be called.
-        let mut manifest = manifest_single_storage(
+        let mut manifest = fresh_storage_plan(
             "https://r2.example.com/never-called.tar.gz".to_string(),
             name,
             version,
@@ -2930,7 +2930,7 @@ mod tests {
         let version = "v1";
         write_cached_archive(&home, name, version, &tarball_bytes());
         write_storage_lock(&home, name, version);
-        let mut manifest = manifest_single_storage(
+        let mut manifest = fresh_storage_plan(
             "https://r2.example.com/never-called.tar.gz".into(),
             name,
             version,
@@ -2973,7 +2973,7 @@ mod tests {
         write_cached_archive(&home, name, version, &tarball_bytes());
         let lock_path = home.storage_lock(name, version);
         assert!(!lock_path.exists());
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3018,7 +3018,7 @@ mod tests {
         let name = "guarded-miss";
         let version = "v1";
         let original = format!("http://{addr}/archive.tar.gz");
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3076,7 +3076,7 @@ mod tests {
         let name = "background-miss";
         let version = "v1";
         let original = format!("http://{addr}/archive.tar.gz");
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3276,7 +3276,7 @@ mod tests {
         let lock_path = home.storage_lock(name, version);
         assert!(lock_path.exists());
         assert!(!home.storage_cache_dir(name, version).exists());
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3309,7 +3309,7 @@ mod tests {
         let _other_reader = lock::acquire_shared(lock_path.clone()).await.unwrap();
         assert!(lock_path.exists());
         assert!(!home.storage_cache_dir(name, version).exists());
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3400,7 +3400,7 @@ mod tests {
         let first_url = "https://r2.example.com/first.tar.gz".to_string();
         let second_url = "https://mirror.example.com/second.tar.gz".to_string();
         let mut manifest =
-            manifest_duplicate_storages(first_url.clone(), second_url.clone(), name, version);
+            fresh_duplicate_storage_plan(first_url.clone(), second_url.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3428,7 +3428,7 @@ mod tests {
         let name = "guarded-artifact";
         let version = "v1";
         let original = "https://r2.example.com/artifact.tar.gz".to_string();
-        let mut manifest = manifest_single_artifact(original.clone(), name, version);
+        let mut manifest = fresh_artifact_plan(original.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3459,7 +3459,7 @@ mod tests {
         let _writer = lock::acquire(home.storage_lock(name, version))
             .await
             .unwrap();
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3554,7 +3554,7 @@ mod tests {
         let version = "v1";
         let original = "https://r2.example.com/fail.tar.gz".to_string();
         write_cached_archive(&home, name, version, &tarball_bytes());
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3607,7 +3607,7 @@ mod tests {
         let url = server.url("/archive.tar.gz");
         let name = "seed-skill-bar";
         let version = "v2";
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3659,7 +3659,7 @@ mod tests {
         let (url, handle) = raw_http_sequence_url(responses).await;
         let name = "probe-retry-success";
         let version = "v1";
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3709,7 +3709,7 @@ mod tests {
         let original = server.url("/forbidden.tar.gz");
         let name = "probe-client-error";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3741,7 +3741,7 @@ mod tests {
         let original = "not-a-url".to_string();
         let name = "probe-builder-error";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3776,7 +3776,7 @@ mod tests {
         let (url, handle) = raw_http_sequence_url(responses).await;
         let name = "download-retry-success";
         let version = "v1";
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3812,7 +3812,7 @@ mod tests {
         let (url, handle) = raw_http_sequence_url(responses).await;
         let name = "download-body-retry-success";
         let version = "v1";
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3867,7 +3867,7 @@ mod tests {
         );
         let name = "download-client-error";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3931,7 +3931,7 @@ mod tests {
         );
         let name = "download-retry-exhausted";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3998,7 +3998,7 @@ mod tests {
         let original = server.url("/archive.tar.gz");
         let name = "single-stage-fail";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4054,7 +4054,7 @@ mod tests {
         let original = server.url("/big.tar.gz");
         let name = "user-volume";
         let version = "v9";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4109,7 +4109,7 @@ mod tests {
         let original = server.url("/lying-body.tar.gz");
         let name = "lying-body";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         let err = populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4170,7 +4170,7 @@ mod tests {
         let original = server.url("/empty-body.tar.gz");
         let name = "empty-body";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4221,7 +4221,7 @@ mod tests {
         let original = server.url("/invalid-body.tar.gz");
         let name = "invalid-body";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4277,7 +4277,7 @@ mod tests {
         let original = server.url("/short-body.tar.gz");
         let name = "short-body";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4328,7 +4328,7 @@ mod tests {
         let original = server.url("/long-body.tar.gz");
         let name = "long-body";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4389,7 +4389,7 @@ mod tests {
 
         // Entry without usable vas_storage_name / vas_version_id passes through.
         let mut manifest =
-            manifest_single_storage("https://r2.example.com/legacy.tar.gz".into(), "", "");
+            fresh_storage_plan("https://r2.example.com/legacy.tar.gz".into(), "", "");
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4425,7 +4425,7 @@ mod tests {
         std::fs::write(v1_dir.join("archive.tar.gz"), b"STALE-V1-BYTES").unwrap();
 
         let mut manifest =
-            manifest_single_storage("https://r2.example.com/ignored.tar.gz".into(), name, "v2");
+            fresh_storage_plan("https://r2.example.com/ignored.tar.gz".into(), name, "v2");
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4476,7 +4476,7 @@ mod tests {
             .await;
 
         let url = server.url("/revalidated.tar.gz");
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4538,7 +4538,7 @@ mod tests {
             .await;
 
         let url = server.url("/empty-revalidated.tar.gz");
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4600,7 +4600,7 @@ mod tests {
             .await;
 
         let url = server.url("/should-not-revalidate.tar.gz");
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4645,7 +4645,7 @@ mod tests {
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
 
-        let mut manifest = manifest_single_artifact(
+        let mut manifest = fresh_artifact_plan(
             "https://r2.example.com/ignored.tar.gz".into(),
             name,
             version,
@@ -4682,7 +4682,7 @@ mod tests {
             "{}?X-Amz-Signature=secret&X-Amz-Credential=credential",
             server.url("/broken.tar.gz")
         );
-        let mut manifest = manifest_single_storage(original.clone(), "broken-skill", "v1");
+        let mut manifest = fresh_storage_plan(original.clone(), "broken-skill", "v1");
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4727,7 +4727,7 @@ mod tests {
         let original = format!("{url}?X-Amz-Signature=secret&X-Amz-Credential=credential");
         let name = "transport-retry-exhausted";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4816,7 +4816,7 @@ mod tests {
         let (original, handle) = raw_http_url(response).await;
         let name = "malformed-length";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4871,7 +4871,7 @@ mod tests {
         let original = server.url("/zero-length.tar.gz");
         let name = "zero-length";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4918,7 +4918,7 @@ mod tests {
         let original = server.url("/no-content.tar.gz");
         let name = "no-content";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -5141,7 +5141,7 @@ mod tests {
             let home = home.clone();
             let sandbox = Arc::clone(&sandbox_a);
             tokio::spawn(async move {
-                let mut manifest = manifest_single_storage(
+                let mut manifest = fresh_storage_plan(
                     "https://r2.example.com/ignored-a.tar.gz".to_string(),
                     name,
                     version,
@@ -5166,7 +5166,7 @@ mod tests {
             let home = home.clone();
             let sandbox = Arc::clone(&sandbox_b);
             tokio::spawn(async move {
-                let mut manifest = manifest_single_storage(
+                let mut manifest = fresh_storage_plan(
                     "https://r2.example.com/ignored-b.tar.gz".to_string(),
                     name,
                     version,
@@ -5400,7 +5400,7 @@ mod tests {
             let home = home.clone();
             let sandbox = Arc::clone(&sandbox);
             tokio::spawn(async move {
-                let mut manifest = manifest_duplicate_storages(
+                let mut manifest = fresh_duplicate_storage_plan(
                     "https://r2.example.com/duplicate-a.tar.gz".into(),
                     "https://r2.example.com/duplicate-b.tar.gz".into(),
                     name,
@@ -5481,7 +5481,7 @@ mod tests {
 
         let name = "duplicate-miss";
         let version = "v1";
-        let mut manifest = manifest_duplicate_storages(
+        let mut manifest = fresh_duplicate_storage_plan(
             server.url("/duplicate-a.tar.gz"),
             server.url("/duplicate-b.tar.gz"),
             name,
@@ -5626,7 +5626,7 @@ mod tests {
 
         let name = "probe-fallback";
         let version = "v1";
-        let mut manifest = manifest_duplicate_storages(
+        let mut manifest = fresh_duplicate_storage_plan(
             server.url("/probe-fails.tar.gz"),
             server.url("/probe-succeeds.tar.gz"),
             name,
@@ -5716,7 +5716,7 @@ mod tests {
 
         let name = "download-fallback";
         let version = "v1";
-        let mut manifest = manifest_duplicate_storages(
+        let mut manifest = fresh_duplicate_storage_plan(
             server.url("/invalid-download.tar.gz"),
             server.url("/valid-download.tar.gz"),
             name,
@@ -5803,7 +5803,7 @@ mod tests {
         let original_a = server.url("/probe-fails-a.tar.gz");
         let original_b = server.url("/probe-fails-b.tar.gz");
         let mut manifest =
-            manifest_duplicate_storages(original_a.clone(), original_b.clone(), name, version);
+            fresh_duplicate_storage_plan(original_a.clone(), original_b.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -5891,7 +5891,7 @@ mod tests {
         let original_a = server.url("/empty-download.tar.gz");
         let original_b = server.url("/size-mismatch.tar.gz");
         let mut manifest =
-            manifest_duplicate_storages(original_a.clone(), original_b.clone(), name, version);
+            fresh_duplicate_storage_plan(original_a.clone(), original_b.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -5997,7 +5997,7 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         let original = "https://r2.example.com/nameless.tar.gz".to_string();
-        let mut manifest = manifest_single_artifact(original.clone(), "", "");
+        let mut manifest = fresh_artifact_plan(original.clone(), "", "");
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -6049,8 +6049,8 @@ mod tests {
         let url = server.url("/concurrent.tar.gz");
         let name = "race-skill";
         let version = "v1";
-        let mut manifest_a = manifest_single_storage(url.clone(), name, version);
-        let mut manifest_b = manifest_single_storage(url.clone(), name, version);
+        let mut manifest_a = fresh_storage_plan(url.clone(), name, version);
+        let mut manifest_b = fresh_storage_plan(url.clone(), name, version);
 
         let (res_a, res_b) = tokio::join!(
             populate_cache_blocking(&mut manifest_a, &sandbox_a, &home, &mut telemetry_a),
@@ -6153,7 +6153,7 @@ mod tests {
         let url = server.url("/r2.tar.gz");
         let name = "r2-skill";
         let version = "v1";
-        let mut manifest = manifest_single_storage(url, name, version);
+        let mut manifest = fresh_storage_plan(url, name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -6204,7 +6204,7 @@ mod tests {
         let original = server.url("/nosize.tar.gz");
         let name = "nosize";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -6254,7 +6254,7 @@ mod tests {
         let original = server.url("/wildcard.tar.gz");
         let name = "wildcard";
         let version = "v1";
-        let mut manifest = manifest_single_storage(original.clone(), name, version);
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -6327,7 +6327,7 @@ mod tests {
             let original = server.url(path.as_str());
             let name = format!("garbage-{slug}");
             let version = "v1";
-            let mut manifest = manifest_single_storage(original.clone(), name.as_str(), version);
+            let mut manifest = fresh_storage_plan(original.clone(), name.as_str(), version);
 
             populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
                 .await
