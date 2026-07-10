@@ -253,7 +253,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="zero-app zero-viewport-shell flex w-full bg-background"
+      className="zero-app flex h-full w-full bg-background"
       data-zero-artifact-fullscreen={artifactFullscreen || undefined}
     >
       <OrgManageDialogMount />

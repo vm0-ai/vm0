@@ -338,7 +338,7 @@ export function ExportPage() {
   };
 
   return (
-    <div className="zero-app zero-viewport-shell flex w-full bg-background zero-workspace-bg">
+    <div className="zero-app flex h-full w-full bg-background zero-workspace-bg">
       <main className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-4 py-8">
         <section className="zero-card w-full max-w-[440px] p-5 sm:p-7">
           <div className="mb-6 flex items-center justify-between gap-4">

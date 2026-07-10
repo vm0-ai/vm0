@@ -44,14 +44,16 @@ export const setupRouter = (
   render(
     <StrictMode>
       <StoreProvider value={store}>
-        <ErrorBoundary>
-          <AppSkeletonOverlay />
-          <VM0ClerkProvider>
-            <Router />
-          </VM0ClerkProvider>
-          <InspectLogFileInput />
-          <ForceUpgradeDialog />
-        </ErrorBoundary>
+        <div className="zero-viewport-shell relative w-full">
+          <ErrorBoundary>
+            <AppSkeletonOverlay />
+            <VM0ClerkProvider>
+              <Router />
+            </VM0ClerkProvider>
+            <InspectLogFileInput />
+            <ForceUpgradeDialog />
+          </ErrorBoundary>
+        </div>
         <Toaster
           position="top-center"
           visibleToasts={1}
