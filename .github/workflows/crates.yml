@@ -1119,9 +1119,11 @@ jobs:
 
           # Test 1: privilege boundary
           echo "--- Test: privilege boundary ---"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- id -u)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- id -u) || \
+            fail "ordinary exec failed"
           [ "$OUTPUT" = "1000" ] || fail "ordinary exec expected UID 1000, got: $OUTPUT"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- id -u)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- id -u) || \
+            fail "privileged exec failed"
           [ "$OUTPUT" = "0" ] || fail "privileged exec expected UID 0, got: $OUTPUT"
           echo "PASS: privilege boundary"
 
