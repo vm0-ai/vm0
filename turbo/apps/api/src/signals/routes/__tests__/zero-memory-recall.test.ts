@@ -707,7 +707,7 @@ describe("zero memory lifecycle routes", () => {
     ).toBeTruthy();
   });
 
-  it("forgets matching document evidence by prompt", async () => {
+  it("does not consider legacy document evidence when forgetting by prompt", async () => {
     const fixture = await seedRelationshipFixture();
     const ids = await seedMemoryDocumentChunk({
       fixture,
@@ -730,27 +730,18 @@ describe("zero memory lifecycle routes", () => {
       }),
       [200],
     );
-    expect(forgotten.body.forgotten).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          targetKind: "document",
-          fingerprint: "document:github:github-forget-fixture",
-          targetId: ids.documentId,
-          targetTitle: "Security review plan",
-        }),
-      ]),
-    );
+    expect(forgotten.body.forgotten).toStrictEqual([]);
 
-    const deletedDocuments = await accept(
+    const activeDocuments = await accept(
       memoryClient().documents({
         headers: authHeaders(),
-        query: { status: "deleted", provider: "github", limit: 10 },
+        query: { status: "active", provider: "github", limit: 10 },
       }),
       [200],
     );
-    expect(deletedDocuments.body.documents[0]).toMatchObject({
+    expect(activeDocuments.body.documents[0]).toMatchObject({
       id: ids.documentId,
-      status: "deleted",
+      status: "active",
       externalId: "github-forget-fixture",
     });
 
