@@ -18,7 +18,6 @@ import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/
 import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
@@ -43,12 +42,37 @@ const UPLOADED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/uploaded.png";
 const SECOND_UPLOADED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/uploaded-second.png";
-const SOFT_VECTOR_TEMPLATE = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
-  return item.slug === "soft-vector";
-});
-if (!SOFT_VECTOR_TEMPLATE) {
-  throw new Error("Missing Soft Vector illustration template");
-}
+const STYLE_TRANSFER_TEMPLATES = [
+  "Illustration",
+  "Anime cell",
+  "Watercolor",
+  "Risograph",
+  "Papercut",
+  "Studio production",
+  "Notion",
+  "Ink wash",
+  "Clay",
+] as const;
+const STYLE_TRANSFER_TEMPLATE_TEST_IDS = [
+  "image-edit-style-template-illustration",
+  "image-edit-style-template-anime-cell",
+  "image-edit-style-template-watercolor",
+  "image-edit-style-template-risograph",
+  "image-edit-style-template-papercut",
+  "image-edit-style-template-studio-production",
+  "image-edit-style-template-notion",
+  "image-edit-style-template-ink-wash",
+  "image-edit-style-template-clay",
+] as const;
+const REMOVED_STYLE_TRANSFER_TEMPLATES = [
+  "Warm film",
+  "Soft Vector",
+  "Grain Poster",
+  "Sunlit Gouache",
+  "Editorial",
+  "Neon noir",
+  "Vintage comic",
+] as const;
 
 afterEach(() => {
   vi.stubEnv("VITE_QA_BYPASS_X_SHARE_CONNECTOR", "");
@@ -1236,7 +1260,24 @@ describe("image editing", () => {
     expect(
       within(stylePopover).getByText("Style Transfer"),
     ).toBeInTheDocument();
-    expect(within(stylePopover).getByText("Soft Vector")).toBeInTheDocument();
+    for (const templateName of STYLE_TRANSFER_TEMPLATES) {
+      expect(within(stylePopover).getByText(templateName)).toBeInTheDocument();
+    }
+    expect(
+      Array.from(
+        stylePopover.querySelectorAll(
+          'label[data-testid^="image-edit-style-template-"]',
+        ),
+      ).map((element) => {
+        return element instanceof HTMLElement
+          ? element.dataset.testid
+          : undefined;
+      }),
+    ).toStrictEqual([...STYLE_TRANSFER_TEMPLATE_TEST_IDS]);
+    for (const templateName of REMOVED_STYLE_TRANSFER_TEMPLATES) {
+      expect(within(stylePopover).queryByText(templateName)).toBeNull();
+    }
+    expect(within(stylePopover).queryByText(/Same motif/u)).toBeNull();
     expect(
       within(stylePopover).queryByText("AI styles"),
     ).not.toBeInTheDocument();
@@ -1250,21 +1291,20 @@ describe("image editing", () => {
       within(stylePopover).queryByText("Templates"),
     ).not.toBeInTheDocument();
     expect(
+      screen.getByTestId("image-edit-style-template-preview-ink-wash"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByTestId(
-        "image-edit-style-template-preview-illustration-soft-vector",
+        "image-edit-style-template-preview-studio-production",
       ),
-    ).toHaveAttribute(
-      "src",
-      SOFT_VECTOR_TEMPLATE.cardPreviewImage ??
-        SOFT_VECTOR_TEMPLATE.previewImage,
-    );
+    ).toBeInTheDocument();
     await user.click(
-      screen.getByTestId("image-edit-style-template-illustration-soft-vector"),
+      screen.getByTestId("image-edit-style-template-studio-production"),
     );
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
-      expect(prompts[0]).toContain("Soft Vector illustration template style");
+      expect(prompts[0]).toContain("Polished studio production style");
     });
     await waitFor(() => {
       expect(
@@ -1322,7 +1362,7 @@ describe("image editing", () => {
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
-      expect(prompts[0]).toContain("Warm analog film look");
+      expect(prompts[0]).toContain("Clean vector illustration style");
       expect(
         screen.getByText("Applying style transfer..."),
       ).toBeInTheDocument();
