@@ -54,6 +54,15 @@ type DocumentEvidence = Extract<
   { readonly kind: "document_chunk" }
 >;
 
+export function zeroMemoryRuntimeRetrievalQuery(args: {
+  readonly prompt: string;
+  readonly retrievalQuery?: string;
+}): string {
+  return args.retrievalQuery === undefined
+    ? args.prompt.trim()
+    : args.retrievalQuery.trim();
+}
+
 function kindLabel(kind: MemoryKind): string {
   switch (kind) {
     case "preference": {
@@ -205,8 +214,7 @@ export async function buildZeroMemoryRuntimeInjection(
   params: ZeroMemoryInjectionParams,
 ): Promise<MemoryInjectionPreviewResponse> {
   const prompt = params.prompt.trim();
-  const retrievalQuery =
-    params.retrievalQuery === undefined ? prompt : params.retrievalQuery.trim();
+  const retrievalQuery = zeroMemoryRuntimeRetrievalQuery(params);
   if (retrievalQuery.length === 0) {
     return {
       prompt,

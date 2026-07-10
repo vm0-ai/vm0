@@ -42,7 +42,10 @@ import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.se
 import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { buildZeroMemoryRuntimeInjection } from "./zero-memory-injection.service";
+import {
+  buildZeroMemoryRuntimeInjection,
+  zeroMemoryRuntimeRetrievalQuery,
+} from "./zero-memory-injection.service";
 import {
   measureZeroMemoryTiming,
   type ZeroMemoryTimingObserver,
@@ -692,10 +695,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly timing?: ZeroMemoryTimingObserver;
   },
 ): Promise<string | undefined> {
-  const searchQuery =
-    args.retrievalQuery === undefined
-      ? args.prompt.trim()
-      : args.retrievalQuery.trim();
+  const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
   return await measureZeroMemoryTiming(
     args.timing,
     "runtime_injection",
