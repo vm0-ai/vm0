@@ -249,7 +249,7 @@ const hydrateChatThreadEventState$ = command(
       snapshot: state.snapshot?.chatThreads ?? [],
       events: state.events,
     });
-    await set(syncCurrentChatThreadDocumentTitle$);
+    await set(syncCurrentChatThreadDocumentTitle$, signal);
     return { state, store: storeContext.stores };
   },
 );
@@ -282,7 +282,7 @@ export const syncEventDrivenChatThreads$ = command(
       snapshot: update.state.snapshot?.chatThreads ?? [],
       events: update.state.events,
     });
-    await set(syncCurrentChatThreadDocumentTitle$);
+    await set(syncCurrentChatThreadDocumentTitle$, signal);
   },
 );
 
@@ -383,19 +383,22 @@ export function threadMeta(threadId: string) {
 }
 
 /** Synchronize the active primary chat tab title after committed thread data changes. */
-const syncCurrentChatThreadDocumentTitle$ = command(async ({ get, set }) => {
-  if (get(activeRoute$) !== "chat") {
-    return;
-  }
-  const threadId = get(pathParams$)?.threadId;
-  if (typeof threadId !== "string") {
-    return;
-  }
-  const meta = await get(threadMeta(threadId));
-  if (meta) {
-    set(updateDocumentTitle$, meta.title ?? "New chat");
-  }
-});
+const syncCurrentChatThreadDocumentTitle$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (get(activeRoute$) !== "chat") {
+      return;
+    }
+    const threadId = get(pathParams$)?.threadId;
+    if (typeof threadId !== "string") {
+      return;
+    }
+    const meta = await get(threadMeta(threadId));
+    signal.throwIfAborted();
+    if (meta) {
+      set(updateDocumentTitle$, meta.title ?? "New chat");
+    }
+  },
+);
 
 export const registerOptimisticChatThreadEvent$ = command(
   ({ set }, event: ChatThreadEvent) => {
