@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.0...runner-rs-v0.143.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **runner:** add template rebuild marker comment to force image rebuild ([#20863](https://github.com/vm0-ai/vm0/issues/20863)) ([db1f989](https://github.com/vm0-ai/vm0/commit/db1f989ce2e49469a7bc21456a837070396b31d5))
+
 ## [0.143.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.142.0...runner-rs-v0.143.0) (2026-07-09)
 
 
