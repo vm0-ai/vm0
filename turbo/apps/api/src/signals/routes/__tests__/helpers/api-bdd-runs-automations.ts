@@ -288,6 +288,8 @@ export function createRunsAutomationsApi(context: TestContext) {
     async grantProEntitlement(
       actor: ApiTestUser,
       options: {
+        readonly customerId?: string;
+        readonly subscriptionId?: string;
         readonly tier?: "pro" | "team";
         readonly periodEndUnix?: number;
         readonly subscriptionMetadata?: Record<string, string>;
@@ -315,8 +317,8 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
 
       const suffix = randomUUID().slice(0, 8);
-      const customerId = `cus_bdd_${suffix}`;
-      const subscriptionId = `sub_bdd_${suffix}`;
+      const customerId = options.customerId ?? `cus_bdd_${suffix}`;
+      const subscriptionId = options.subscriptionId ?? `sub_bdd_${suffix}`;
       const invoiceId = `in_bdd_${suffix}`;
       context.mocks.stripe.customers.retrieve.mockResolvedValue({
         id: customerId,
@@ -341,6 +343,9 @@ export function createRunsAutomationsApi(context: TestContext) {
           ],
         },
       });
+      if (tier === "team") {
+        context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+      }
       const invoicePaidEvent = {
         type: "invoice.paid",
         data: {

@@ -91,6 +91,7 @@ interface TriggerScenario {
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly workflowId: string;
+  readonly customerId: string;
   readonly subscriptionId: string;
 }
 
@@ -308,7 +309,9 @@ describe("zero workflow triggers", () => {
   async function setupFixture(
     tier: "pro" | "team" = "pro",
   ): Promise<TriggerScenario> {
-    const { actor, subscriptionId } = await wf.setupWorkflowOrg({ tier });
+    const { actor, customerId, subscriptionId } = await wf.setupWorkflowOrg({
+      tier,
+    });
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped workflow actor");
     }
@@ -327,6 +330,7 @@ describe("zero workflow triggers", () => {
       actor,
       agentId: agent.agentId,
       workflowId,
+      customerId,
       subscriptionId,
     };
   }
@@ -722,7 +726,8 @@ describe("zero workflow triggers", () => {
   });
 
   it("requires Team or Custom after the webhook feature switch is enabled", async () => {
-    const { fixture, actor, workflowId } = await setupFixture();
+    const { fixture, actor, customerId, subscriptionId, workflowId } =
+      await setupFixture();
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
@@ -740,7 +745,11 @@ describe("zero workflow triggers", () => {
       message: "Webhook triggers require a Team or Custom workspace",
     });
 
-    await runs.grantProEntitlement(actor, { tier: "team" });
+    await runs.grantProEntitlement(actor, {
+      customerId,
+      subscriptionId,
+      tier: "team",
+    });
     const teamCreated = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -898,7 +907,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("rejects webhook re-enable for Pro and evaluates the feature switch first", async () => {
-    const { fixture, actor, workflowId, subscriptionId } =
+    const { fixture, actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
     await enableWebhookWorkflowTriggers(fixture);
     const created = await accept(
@@ -925,7 +934,7 @@ describe("zero workflow triggers", () => {
       },
       [200],
     );
-    await runs.grantProEntitlement(actor);
+    await runs.grantProEntitlement(actor, { customerId, subscriptionId });
 
     const teamRequired = await accept(
       triggersClient().enable({
@@ -954,7 +963,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("clears the plan-disabled reason without rotating webhook credentials", async () => {
-    const { fixture, actor, workflowId, subscriptionId } =
+    const { fixture, actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
     await enableWebhookWorkflowTriggers(fixture);
     const created = await accept(
@@ -984,7 +993,11 @@ describe("zero workflow triggers", () => {
       enabled: false,
       disabledReason: "paid_plan_required",
     });
-    await runs.grantProEntitlement(actor, { tier: "team" });
+    await runs.grantProEntitlement(actor, {
+      customerId,
+      subscriptionId,
+      tier: "team",
+    });
 
     const enabled = await accept(
       triggersClient().enable({

@@ -51,7 +51,7 @@ async function setup(
 ): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  const { actor } = await wf.setupWorkflowOrg();
+  const { actor } = await wf.setupWorkflowOrg({ tier: "team" });
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
   }
