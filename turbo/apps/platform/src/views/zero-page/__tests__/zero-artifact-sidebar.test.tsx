@@ -574,7 +574,8 @@ function expectFullscreenSafeAreaClass(
 ): void {
   const className = element.getAttribute("class") ?? "";
   expect(className).toContain(layerClassName);
-  expect(className).toContain("zero-fixed-viewport-shell");
+  expect(className).toContain("pt-[var(--sat)]");
+  expect(className).toContain("pb-[var(--sab)]");
 }
 
 function menuItemByText(text: string): HTMLElement {
