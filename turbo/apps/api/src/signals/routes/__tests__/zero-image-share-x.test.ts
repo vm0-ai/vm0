@@ -18,6 +18,7 @@ const routeMocks = createZeroRouteMocks(context);
 const X_ACCESS_TOKEN = "x-access-token";
 const IMAGE_URL = "https://cdn.vm7.io/artifacts/user-image/share.png";
 const IMAGE_BYTES = [137, 80, 78, 71] as const;
+const MAX_X_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const X_MEDIA_UPLOAD_URL = "https://api.x.com/2/media/upload";
 const X_CREATE_POST_URL = "https://api.x.com/2/tweets";
 
@@ -29,18 +30,28 @@ function client() {
   return setupApp({ context })(zeroImageShareXContract);
 }
 
-function mockXImageShareProvider(): {
+function mockXImageShareProvider(options?: {
+  readonly contentLength?: string | null;
+  readonly imageBytes?: Uint8Array;
+}): {
   readonly mediaUploadBodies: unknown[];
   readonly createPostBodies: unknown[];
 } {
   const mediaUploadBodies: unknown[] = [];
   const createPostBodies: unknown[] = [];
+  const imageBytes = options?.imageBytes ?? new Uint8Array(IMAGE_BYTES);
+  const contentLength =
+    options?.contentLength === undefined
+      ? String(imageBytes.byteLength)
+      : options.contentLength;
 
   server.use(
     http.get(IMAGE_URL, () => {
-      return new HttpResponse(new Uint8Array(IMAGE_BYTES), {
+      return new HttpResponse(imageBytes, {
         headers: {
-          "content-length": String(IMAGE_BYTES.length),
+          ...(contentLength === null
+            ? {}
+            : { "content-length": contentLength }),
           "content-type": "image/png",
         },
       });
@@ -64,15 +75,25 @@ function mockXImageShareProvider(): {
   return { mediaUploadBodies, createPostBodies };
 }
 
+async function setupAuthenticatedXActor() {
+  const bdd = createBddApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected actor to have an org");
+  }
+  routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+  await seedConnectedXConnector({
+    accessToken: X_ACCESS_TOKEN,
+    orgId: actor.orgId,
+    userId: actor.userId,
+  });
+  return { ...actor, orgId: actor.orgId };
+}
+
 describe("POST /api/zero/image-share/x", () => {
   it("posts an image to X and records connector usage billing", async () => {
-    const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);
-    const actor = bdd.user();
-    if (!actor.orgId) {
-      throw new Error("Expected actor to have an org");
-    }
-    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const actor = await setupAuthenticatedXActor();
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 1000 });
     await seedUsagePricingRows([
       {
@@ -83,11 +104,6 @@ describe("POST /api/zero/image-share/x", () => {
         unitSize: 1,
       },
     ]);
-    await seedConnectedXConnector({
-      accessToken: X_ACCESS_TOKEN,
-      orgId: actor.orgId,
-      userId: actor.userId,
-    });
     const provider = mockXImageShareProvider();
 
     const response = await accept(
@@ -122,5 +138,55 @@ describe("POST /api/zero/image-share/x", () => {
     await expect(billing.readBillingStatus(actor)).resolves.toMatchObject({
       credits: 985,
     });
+  });
+
+  it("rejects an oversized image without a content-length header", async () => {
+    await setupAuthenticatedXActor();
+    const provider = mockXImageShareProvider({
+      contentLength: null,
+      imageBytes: new Uint8Array(MAX_X_IMAGE_SIZE_BYTES + 1),
+    });
+
+    const response = await accept(
+      client().post({
+        headers: authHeaders(),
+        body: { imageUrl: IMAGE_URL },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "X supports images up to 5 MB",
+      },
+    });
+    expect(provider.mediaUploadBodies).toStrictEqual([]);
+    expect(provider.createPostBodies).toStrictEqual([]);
+  });
+
+  it("rejects an oversized image with a lying content-length header", async () => {
+    await setupAuthenticatedXActor();
+    const provider = mockXImageShareProvider({
+      contentLength: "1",
+      imageBytes: new Uint8Array(MAX_X_IMAGE_SIZE_BYTES + 1),
+    });
+
+    const response = await accept(
+      client().post({
+        headers: authHeaders(),
+        body: { imageUrl: IMAGE_URL },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message: "X supports images up to 5 MB",
+      },
+    });
+    expect(provider.mediaUploadBodies).toStrictEqual([]);
+    expect(provider.createPostBodies).toStrictEqual([]);
   });
 });

@@ -1429,11 +1429,8 @@ describe("image editing", () => {
     expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
   });
 
-  it("opens X composer from the image edit share menu when X is not connected", async () => {
+  it("opens the X share dialog with a connect action when X is not connected", async () => {
     const user = userEvent.setup({ delay: null });
-    const openedWindow = createMockComposerWindow();
-    const openMock = context.mocks.browser.open(openedWindow);
-    const uploadedHtml = mockXShareCardUpload();
     mockXConnectorStatus({ connected: false });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
@@ -1444,19 +1441,14 @@ describe("image editing", () => {
     await user.click(screen.getByTestId("image-edit-share-x"));
 
     await waitFor(() => {
-      expect(openMock.calls).toHaveLength(1);
-      expect(uploadedHtml).toHaveLength(1);
+      expect(
+        screen.getByTestId("image-edit-share-x-dialog"),
+      ).toBeInTheDocument();
     });
-    const composerCall = openMock.calls[0];
-    if (!composerCall) {
-      throw new Error("Missing X composer window call");
-    }
-    expect(composerCall.url).toBe("about:blank");
-    expect(composerCall.target).toBe("_blank");
-    expect(openedWindow.opener).toBeNull();
-    expectXShareCardHtml(uploadedHtml[0] ?? "");
-    expectXComposerSharesCdnCardUrl(new URL(openedWindow.location.href));
-    expect(screen.queryByTestId("image-edit-share-x-dialog")).toBeNull();
+    expect(screen.getByText("Connect X")).toBeInTheDocument();
+    expect(
+      screen.getByText("Connect X once, then share this image from Zero."),
+    ).toBeInTheDocument();
     expect(
       screen.queryByTestId("image-edit-share-x-caption"),
     ).not.toBeInTheDocument();
@@ -1509,36 +1501,28 @@ describe("image editing", () => {
     });
   });
 
-  it("waits for X status before opening the composer for disconnected X", async () => {
+  it("opens X composer from the share dialog when the QA bypass is enabled", async () => {
     const user = userEvent.setup({ delay: null });
     const openedWindow = createMockComposerWindow();
     const openMock = context.mocks.browser.open(openedWindow);
     const uploadedHtml = mockXShareCardUpload();
-    const statusReady = createDeferredPromise<void>(context.signal);
-    mockXConnectorStatus({ connected: false }, () => {
-      return statusReady.promise;
-    });
+    vi.stubEnv("VITE_QA_BYPASS_X_SHARE_CONNECTOR", "true");
+    mockXConnectorStatus({ connected: false });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
 
     await openSelectedImageEditToolbar(user);
     await user.click(screen.getByTestId("image-edit-share"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Checking X")).toBeInTheDocument();
-    });
-    expect(screen.getByTestId("image-edit-share-x")).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-
-    statusReady.resolve();
-
-    await waitFor(() => {
-      expect(screen.queryByText("Checking X")).toBeNull();
-    });
     await user.click(screen.getByTestId("image-edit-share-x"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("image-edit-share-x-dialog"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("QA sharing bypass enabled")).toBeInTheDocument();
+    await user.click(getButtonByText("Open X composer"));
 
     await waitFor(() => {
       expect(openMock.calls).toHaveLength(1);
@@ -1553,7 +1537,6 @@ describe("image editing", () => {
     expect(openedWindow.opener).toBeNull();
     expectXShareCardHtml(uploadedHtml[0] ?? "");
     expectXComposerSharesCdnCardUrl(new URL(openedWindow.location.href));
-    expect(screen.queryByTestId("image-edit-share-x-dialog")).toBeNull();
   });
 
   it("waits for X status before deciding whether to connect", async () => {

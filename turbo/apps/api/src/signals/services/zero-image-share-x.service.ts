@@ -25,6 +25,8 @@ const X_REFRESH_TOKEN_SECRET_NAME = "X_REFRESH_TOKEN";
 const X_TOKEN_REFRESH_SKEW_MS = 60_000;
 const DEFAULT_X_ACCESS_TOKEN_EXPIRES_IN_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_X_CAPTION = "Made with Zero";
+const MAX_X_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_X_IMAGE_SIZE_LABEL = "5 MB";
 const ARTIFACTS_PATH_PREFIX = "/artifacts/";
 const CLOUDFLARE_IMAGE_RESIZE_PATH_PREFIX = "/cdn-cgi/image/";
 const X_SHARE_USAGE_KIND = "connector";
@@ -359,6 +361,30 @@ function isAllowedShareImageUrl(parsed: URL): boolean {
   return artifactPathFromShareImageUrl(parsed.pathname) !== null;
 }
 
+async function readXImageBytes(
+  response: Response,
+  signal: AbortSignal,
+): Promise<Uint8Array | XShareFailure> {
+  if (!response.body) {
+    return xShareError("BAD_REQUEST", "Couldn't load the image");
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  for await (const chunk of response.body) {
+    signal.throwIfAborted();
+    totalLength += chunk.byteLength;
+    if (totalLength > MAX_X_IMAGE_SIZE_BYTES) {
+      return xShareError(
+        "BAD_REQUEST",
+        `X supports images up to ${MAX_X_IMAGE_SIZE_LABEL}`,
+      );
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function fetchShareImage(args: {
   readonly imageUrl: string;
   readonly signal: AbortSignal;
@@ -404,8 +430,12 @@ async function fetchShareImage(args: {
     );
   }
 
-  const media = Buffer.from(await response.arrayBuffer()).toString("base64");
+  const imageBytes = await readXImageBytes(response, args.signal);
   args.signal.throwIfAborted();
+  if (!(imageBytes instanceof Uint8Array)) {
+    return imageBytes;
+  }
+  const media = Buffer.from(imageBytes).toString("base64");
   if (!media) {
     return xShareError("BAD_REQUEST", "Couldn't load the image");
   }

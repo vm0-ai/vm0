@@ -2388,26 +2388,12 @@ function ArtifactImageEditShareMenu({
   grouped?: boolean;
   item: EditableImageCanvasItem;
 }) {
-  const pageSignal = useGet(pageSignal$);
   const xConnectorLoadable = useLoadable(xImageShareConnectorStatus$);
   const lastXConnector = useLastResolved(xImageShareConnectorStatus$);
-  const [, createXImageShareCardUrl] = useLoadableSet(
-    createXImageShareCardUrl$,
-  );
-  const xConnector =
-    xConnectorLoadable.state === "hasData"
-      ? xConnectorLoadable.data
-      : xConnectorLoadable.state === "loading"
-        ? lastXConnector
-        : null;
   const xStatusChecking =
     xConnectorLoadable.state === "loading" && lastXConnector === undefined;
   const xStatusUnavailable =
     xConnectorLoadable.state === "hasError" && lastXConnector === undefined;
-  const xConnected =
-    xConnector?.connected && xConnector.connectionStatus === "connected";
-  const canOpenXComposer =
-    !xConnected && !xStatusChecking && !xStatusUnavailable;
 
   return (
     <Dialog>
@@ -2434,23 +2420,7 @@ function ArtifactImageEditShareMenu({
           </span>
         </ArtifactActionTooltip>
         <DropdownMenuContent align="center" className="w-44">
-          {canOpenXComposer ? (
-            <DropdownMenuItem
-              data-testid="image-edit-share-x"
-              onSelect={() => {
-                detach(
-                  openXComposerForImage(item.src, (imageUrl) => {
-                    return createXImageShareCardUrl(imageUrl, pageSignal);
-                  }),
-                  Reason.DomCallback,
-                  "openXComposerForImage",
-                );
-              }}
-            >
-              <IconBrandX size={14} stroke={1.6} />
-              Share to X
-            </DropdownMenuItem>
-          ) : xStatusChecking ? (
+          {xStatusChecking ? (
             <DropdownMenuItem disabled data-testid="image-edit-share-x">
               <IconLoader2 size={14} stroke={1.6} className="animate-spin" />
               Checking X
