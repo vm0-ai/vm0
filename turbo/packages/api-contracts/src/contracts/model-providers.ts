@@ -215,20 +215,18 @@ export const VM0_ORG_SLUG = "vm0";
 
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-fable-5",
+  "claude-opus-4-8",
+  "claude-sonnet-5",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
-  "claude-opus-4-8",
-  "claude-sonnet-5",
-  "claude-sonnet-4-6",
-  "MiniMax-M3",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "gpt-5.6-sol" as const satisfies SupportedRunModel;
+  "gpt-5.6-terra" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
-  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+  "gpt-5.6-terra" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -424,6 +422,12 @@ export const VM0_MODEL_ALIAS_TO_MODEL = {
 const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
   VM0_MODEL_ALIAS_TO_MODEL;
 
+const LIMITED_FREE1_ALLOWED_RUN_MODELS: ReadonlySet<string> = new Set([
+  "claude-sonnet-5",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+]);
+
 export function normalizeVm0ModelId(model: string): string {
   return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
 }
@@ -436,7 +440,8 @@ export function isLimitedFree1RestrictedRunModel(
   }
   const normalized = model.trim().toLowerCase();
   const canonicalModel = normalizeVm0ModelId(normalized);
-  if (canonicalModel === LIMITED_FREE1_DEFAULT_RUN_MODEL) {
+  const unprefixedModel = canonicalModel.replace(/^(anthropic|openai)\//, "");
+  if (LIMITED_FREE1_ALLOWED_RUN_MODELS.has(unprefixedModel)) {
     return false;
   }
   const vendor = VM0_MODEL_TO_PROVIDER[canonicalModel]?.vendor;

@@ -510,14 +510,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
       }),
     ).toStrictEqual([
       "claude-fable-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
-      "claude-opus-4-8",
       "claude-opus-4-6",
-      "claude-sonnet-5",
-      "claude-sonnet-4-6",
-      "MiniMax-M3",
     ]);
   });
 
@@ -577,21 +575,26 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "MiniMax-M3") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
-        modelProviderId: openRouterProviderId,
-      };
+    const allowedPolicy = toUpdate(listResponse.body).find((policy) => {
+      return policy.model === "claude-sonnet-5";
     });
+    if (!allowedPolicy) {
+      throw new Error("Expected the Sonnet 5 policy to be available");
+    }
 
     const response = await client.update({
       headers: authHeaders(),
-      body: { policies: updates },
+      body: {
+        policies: [
+          {
+            ...allowedPolicy,
+            isDefault: true,
+            defaultProviderType: "openrouter-api-key",
+            credentialScope: "org",
+            modelProviderId: openRouterProviderId,
+          },
+        ],
+      },
     });
 
     expect(response.status).toBe(402);

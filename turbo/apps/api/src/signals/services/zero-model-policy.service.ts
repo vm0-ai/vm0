@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
+  DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   MODEL_PROVIDER_TYPES,
@@ -115,8 +116,16 @@ function modelProviderAllowedForOrgTier(
 }
 
 function getSupportedModelRank(model: string): number {
-  const index = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
-  return index === -1 ? SUPPORTED_RUN_MODELS.length : index;
+  const curatedIndex = DEFAULT_ORG_MODEL_POLICY_MODELS.indexOf(
+    model as (typeof DEFAULT_ORG_MODEL_POLICY_MODELS)[number],
+  );
+  if (curatedIndex !== -1) {
+    return curatedIndex;
+  }
+  const catalogIndex = SUPPORTED_RUN_MODELS.indexOf(model as SupportedRunModel);
+  return catalogIndex === -1
+    ? DEFAULT_ORG_MODEL_POLICY_MODELS.length + SUPPORTED_RUN_MODELS.length
+    : DEFAULT_ORG_MODEL_POLICY_MODELS.length + catalogIndex;
 }
 
 function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
@@ -127,7 +136,7 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
 
 function isLimitedFreeReplaceableStandardDefaultModel(model: string): boolean {
   // MiniMax-M3 was the previous VM0-managed default; limited-free orgs seeded
-  // before this change still need to converge to the built-in Sonnet 4.6 route.
+  // before this change still need to converge to the current built-in route.
   return (
     model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL || model === "MiniMax-M3"
   );
