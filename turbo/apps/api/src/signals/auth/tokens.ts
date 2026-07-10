@@ -46,22 +46,27 @@ const sandboxTokenPayloadSchema = jwtBaseSchema.extend({
   orgId: z.string().min(1),
 });
 
-// Capability names are open-ended at the token boundary so tokens issued by a
-// newer API remain valid on an older API. Unknown names are discarded after
-// parsing and therefore cannot grant permissions.
-const zeroCapabilitySchema = z.string().min(1);
-
 function isZeroCapability(value: string): value is ZeroCapability {
   return ZERO_CAPABILITIES.some((capability) => {
     return capability === value;
   });
 }
 
+// Capability names are open-ended at the token boundary so tokens issued by a
+// newer API remain valid on an older API. The validated output remains closed
+// to known capabilities so unknown names cannot grant permissions.
+const zeroCapabilitiesSchema = z
+  .array(z.string().min(1))
+  .transform((capabilities) => {
+    return capabilities.filter(isZeroCapability);
+  })
+  .readonly();
+
 const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("zero"),
   runId: z.string().min(1),
   orgId: z.string().min(1),
-  capabilities: z.array(zeroCapabilitySchema).readonly(),
+  capabilities: zeroCapabilitiesSchema,
   computerUseHostId: z.string().uuid().optional(),
 });
 
@@ -76,11 +81,11 @@ const composeJobTokenPayloadSchema = jwtBaseSchema.extend({
   jobId: z.string().min(1),
 });
 
-type JwtPayload =
-  | z.infer<typeof sandboxTokenPayloadSchema>
-  | z.infer<typeof zeroTokenPayloadSchema>
-  | z.infer<typeof cliTokenPayloadSchema>
-  | z.infer<typeof composeJobTokenPayloadSchema>;
+type JwtPayloadInput =
+  | z.input<typeof sandboxTokenPayloadSchema>
+  | z.input<typeof zeroTokenPayloadSchema>
+  | z.input<typeof cliTokenPayloadSchema>
+  | z.input<typeof composeJobTokenPayloadSchema>;
 
 function base64UrlEncode(data: Buffer | string): string {
   const buffer = typeof data === "string" ? Buffer.from(data) : data;
@@ -102,7 +107,7 @@ const getJwtKey = singleton((): Buffer => {
   return deriveJwtKey();
 });
 
-function signJwt(payload: JwtPayload): string {
+function signJwt(payload: JwtPayloadInput): string {
   const header = { alg: "HS256", typ: "JWT" };
   const headerEncoded = base64UrlEncode(JSON.stringify(header));
   const payloadEncoded = base64UrlEncode(JSON.stringify(payload));
@@ -192,7 +197,7 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
     userId: parsed.data.userId,
     runId: parsed.data.runId,
     orgId: parsed.data.orgId,
-    capabilities: parsed.data.capabilities.filter(isZeroCapability),
+    capabilities: parsed.data.capabilities,
     ...(parsed.data.computerUseHostId
       ? { computerUseHostId: parsed.data.computerUseHostId }
       : {}),
@@ -326,7 +331,7 @@ export function generateCliToken(
   return PAT_TOKEN_PREFIX + signJwt(payload);
 }
 
-export function signSandboxJwtForTests(payload: JwtPayload): string {
+export function signSandboxJwtForTests(payload: JwtPayloadInput): string {
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 
