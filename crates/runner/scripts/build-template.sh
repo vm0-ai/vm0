@@ -5,6 +5,8 @@
 # part of the template build-input hash, so any change here automatically
 # invalidates the shared template cache.
 #
+# Rebuild marker: 2026-07-10 — comment-only change to force a template rebuild.
+#
 # Uses debootstrap + chroot instead of Docker to avoid the Docker daemon
 # dependency and eliminate multiple I/O round-trips (tar export, tar extract,
 # cp to ext4 mount). mkfs.ext4 -d populates the ext4 image directly from
