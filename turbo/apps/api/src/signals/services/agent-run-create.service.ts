@@ -4801,7 +4801,7 @@ async function buildStoredExecutionContext(args: {
     }
   }
   const secretValueEnvironmentKeys = executionSecrets.secrets
-    ? Object.values(executionSecrets.secrets).flatMap((value) => {
+    ? secretValues.flatMap((value) => {
         const key = environmentKeyByValue.get(value);
         return key === undefined ? [] : [key];
       })
