@@ -770,7 +770,7 @@ describe("image editing", () => {
 
     expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
     expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
-      "bg-blue-600",
+      "bg-primary",
     );
     expect(
       screen.getByTestId("artifact-sidebar-image-zoom-controls"),
@@ -836,6 +836,8 @@ describe("image editing", () => {
     });
     expect(screen.queryByTestId("image-edit-region-selection")).toBeNull();
     expect(screen.getByTestId("image-edit-region-comment-frame")).toHaveClass(
+      "border-primary/90",
+      "bg-primary/10",
       "border-dashed",
       "opacity-0",
     );
@@ -876,7 +878,7 @@ describe("image editing", () => {
       "Cancel area selection",
     );
     expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
-      "bg-blue-600",
+      "bg-primary",
     );
     expect(screen.getByTestId("image-edit-region-comment-clear")).toHaveClass(
       "opacity-0",
@@ -1110,7 +1112,7 @@ describe("image editing", () => {
       "Cancel area selection",
     );
     expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
-      "bg-blue-600",
+      "bg-primary",
     );
 
     fireEvent.pointerDown(image, { button: 0, clientX: 120, clientY: 140 });
@@ -1903,6 +1905,39 @@ describe("image editing", () => {
     expect(
       screen.getByTestId("artifact-sidebar-body-image-copy"),
     ).toHaveAttribute("src", SOURCE_IMAGE_URL);
+  });
+
+  it("keeps the selected image edit toolbar above higher canvas image layers", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+
+    const canvas = screen.getByTestId("artifact-sidebar-image-edit-canvas");
+    const sourceImage = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.keyDown(canvas, { key: "c", metaKey: true });
+    fireEvent.keyDown(canvas, { key: "v", metaKey: true });
+
+    const copiedImage = await screen.findByTestId(
+      "artifact-sidebar-body-image-copy",
+    );
+    await user.click(sourceImage);
+
+    const toolbarLayer = screen
+      .getByTestId("image-edit-toolbar")
+      .closest(".image-edit-floating-toolbar");
+    if (!(toolbarLayer instanceof HTMLElement)) {
+      throw new Error("Missing image edit toolbar layer");
+    }
+
+    const toolbarZIndex = Number(toolbarLayer.style.zIndex);
+    const sourceImageZIndex = Number(sourceImage.style.zIndex);
+    const copiedImageZIndex = Number(copiedImage.style.zIndex);
+
+    expect(sourceImageZIndex).toBeLessThan(copiedImageZIndex);
+    expect(toolbarZIndex).toBeGreaterThan(copiedImageZIndex);
   });
 
   it("deletes the selected image with the Delete or Backspace key", async () => {

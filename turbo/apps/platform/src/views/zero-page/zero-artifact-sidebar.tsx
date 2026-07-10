@@ -2283,7 +2283,7 @@ function ArtifactImageEditToolbarButton({
               ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground"
               : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground",
             active &&
-              "border-blue-500 bg-blue-600 text-white hover:bg-blue-700 hover:text-white",
+              "border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
           )}
           data-testid={testId}
           aria-label={label}
@@ -2984,7 +2984,7 @@ function ArtifactImageEditRegionSendButton({
     <Button
       type="button"
       size="sm"
-      className="h-9 gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-600/60 disabled:text-white/75"
+      className="h-9 gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:bg-primary/60 disabled:text-primary-foreground/75"
       disabled={imageUploading}
       data-testid="image-edit-region-send"
       aria-label="Send edit instruction"
@@ -3072,7 +3072,7 @@ function ArtifactImageEditRegionComment({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-9 w-9 rounded-full border border-blue-200 bg-background/95 p-0 text-blue-600 shadow-lg backdrop-blur hover:bg-background hover:text-blue-700"
+        className="h-9 w-9 rounded-full border border-primary/20 bg-background/95 p-0 text-primary shadow-lg backdrop-blur hover:bg-background hover:text-primary"
         data-testid="image-edit-region-comment-edit"
         aria-label="Edit region comment"
         title="Edit"
