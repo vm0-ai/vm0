@@ -891,6 +891,10 @@ describe("chat composer models", () => {
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
     expect(slashWorkflowMenu).toBeInTheDocument();
     expect(slashWorkflowMenu).toHaveClass(
+      "max-h-[min(16rem,var(--radix-popover-content-available-height))]",
+      "md:max-h-[min(20rem,var(--radix-popover-content-available-height))]",
+    );
+    expect(slashWorkflowMenu).not.toHaveClass(
       "h-[min(16rem,var(--radix-popover-content-available-height))]",
       "md:h-[min(20rem,var(--radix-popover-content-available-height))]",
     );

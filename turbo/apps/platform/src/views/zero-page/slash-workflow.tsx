@@ -133,7 +133,7 @@ export function SlashWorkflowMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
+      className="flex max-h-[min(16rem,var(--radix-popover-content-available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:max-h-[min(20rem,var(--radix-popover-content-available-height))]"
       data-testid="slash-workflow-menu"
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">
