@@ -20,6 +20,8 @@ import { composerWorkflows$ } from "../../signals/workflows-page/workflows-signa
 import {
   slashWorkflowCaretIndex$,
   setSlashWorkflowCaretIndex$,
+  slashWorkflowEditorFocused$,
+  setSlashWorkflowEditorFocused$,
   selectedSlashWorkflowIndex$,
   setSelectedSlashWorkflowIndex$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
@@ -372,6 +374,15 @@ function SlashCaretAnchor({
   return virtualRef ? <PopoverAnchor virtualRef={virtualRef} /> : null;
 }
 
+function handleSlashPopoverOpenChange(
+  open: boolean,
+  setCaretIndex: (index: number) => void,
+): void {
+  if (!open) {
+    setCaretIndex(-1);
+  }
+}
+
 interface SlashMenuKeyContext {
   readonly suggestions: readonly ComposerSlashWorkflow[];
   readonly selectedIndex: number;
@@ -430,6 +441,7 @@ interface EditorOptionsParams {
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly setSelectedWorkflowIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
+  readonly setEditorFocused: (focused: boolean) => void;
   readonly onEditorKeyDown: (event: KeyboardEvent) => boolean;
 }
 
@@ -473,11 +485,19 @@ function buildEditorOptions(
     onSelectionUpdate: ({ editor }) => {
       params.setCaretIndex(caretStringIndex(editor));
     },
+    onFocus: ({ editor }) => {
+      params.setEditorFocused(true);
+      params.setCaretIndex(caretStringIndex(editor));
+    },
+    onBlur: () => {
+      params.setEditorFocused(false);
+    },
     onCreate: ({ editor }) => {
       params.setInputRef?.(editor.view.dom);
     },
     onDestroy: () => {
       params.setInputRef?.(null);
+      params.setEditorFocused(false);
     },
   };
 }
@@ -519,6 +539,12 @@ interface TiptapWorkflowComposerProps {
   readonly singleLineOnMobile: boolean;
 }
 
+function workflowComposerPlaceholder(sending: boolean | undefined): string {
+  return sending
+    ? "Type your next message…"
+    : "Ask me to automate workflows, manage tasks...";
+}
+
 export function TiptapWorkflowComposer({
   input,
   onInputChange,
@@ -532,6 +558,8 @@ export function TiptapWorkflowComposer({
 }: TiptapWorkflowComposerProps) {
   const caretIndex = useGet(slashWorkflowCaretIndex$);
   const setCaretIndex = useSet(setSlashWorkflowCaretIndex$);
+  const editorFocused = useGet(slashWorkflowEditorFocused$);
+  const setEditorFocused = useSet(setSlashWorkflowEditorFocused$);
   const selectedWorkflowIndex = useGet(selectedSlashWorkflowIndex$);
   const setSelectedWorkflowIndex = useSet(setSelectedSlashWorkflowIndex$);
   const currentAgentId = useLastResolved(currentChatAgentRecordId$);
@@ -555,10 +583,8 @@ export function TiptapWorkflowComposer({
       })
     : [];
   const isLoadingOrgWorkflows = composerWorkflowsLoadable.state === "loading";
-  const showSlashWorkflowMenu = slashRange !== null;
-  const placeholder = sending
-    ? "Type your next message…"
-    : "Ask me to automate workflows, manage tasks...";
+  const showSlashWorkflowMenu = slashRange !== null && editorFocused;
+  const placeholder = workflowComposerPlaceholder(sending);
 
   const editor = useEditor(
     buildEditorOptions({
@@ -571,9 +597,8 @@ export function TiptapWorkflowComposer({
       setInputRef,
       setSelectedWorkflowIndex,
       setCaretIndex,
-      onEditorKeyDown: (event) => {
-        return handleEditorKeyDown(event);
-      },
+      setEditorFocused,
+      onEditorKeyDown: handleEditorKeyDown,
     }),
   );
 
@@ -626,11 +651,14 @@ export function TiptapWorkflowComposer({
   }
 
   return (
-    // Radix Popover (Floating UI) positions the menu cross-browser; the anchor is
-    // a zero-size element pinned to the slash the user typed (viewport coords from
-    // ProseMirror), so the menu opens at the `/` rather than a fixed corner. `open`
-    // is fully controlled by composer state, so Escape/typing close it.
-    <Popover open={showSlashWorkflowMenu}>
+    // The controlled Radix Popover follows a virtual anchor at the typed slash.
+    // Composer focus, Escape, and typing determine its visibility.
+    <Popover
+      open={showSlashWorkflowMenu}
+      onOpenChange={(open) => {
+        handleSlashPopoverOpenChange(open, setCaretIndex);
+      }}
+    >
       <SlashCaretAnchor editor={editor} slashRange={slashRange} />
       <div
         className={`relative ${singleLineOnMobile ? "min-h-[44px] md:min-h-[96px]" : "min-h-[96px]"}`}

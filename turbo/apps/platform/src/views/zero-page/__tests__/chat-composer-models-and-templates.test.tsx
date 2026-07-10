@@ -890,6 +890,15 @@ describe("chat composer models", () => {
     // cross-browser placement), so it lives outside the composer element.
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
     expect(slashWorkflowMenu).toBeInTheDocument();
+    expect(slashWorkflowMenu).toHaveClass(
+      "h-[min(16rem,var(--radix-popover-content-available-height))]",
+      "md:h-[min(20rem,var(--radix-popover-content-available-height))]",
+    );
+    expect(slashWorkflowMenu).not.toHaveClass(
+      "max-h-[min(16rem,var(--radix-popover-content-available-height))]",
+      "md:max-h-[min(20rem,var(--radix-popover-content-available-height))]",
+    );
+    expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 
     await user.keyboard("sales");
 
@@ -911,6 +920,81 @@ describe("chat composer models", () => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("closes the slash workflow menu when focus leaves the composer input", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+    await expect(
+      screen.findByTestId("slash-workflow-menu"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Template"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("slash-workflow-menu"),
+      ).not.toBeInTheDocument();
+    });
+    expect(editor).not.toHaveFocus();
+  });
+
+  it("closes the slash workflow menu with Escape after a non-empty query", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/sales");
+    await expect(
+      screen.findByTestId("slash-workflow-menu"),
+    ).resolves.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("slash-workflow-menu"),
+      ).not.toBeInTheDocument();
+    });
+    expect(editor).toHaveTextContent("/sales");
+    expect(editor).toHaveFocus();
   });
 
   it("does not suggest workflows that are not attached to the current agent", async () => {
