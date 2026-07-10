@@ -24,6 +24,11 @@ import {
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import {
+  admitWorkflowTriggerEvent,
+  workflowQueueEnabledForOwner,
+} from "./zero-workflow-queue.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 
 export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
@@ -49,10 +54,15 @@ type RunErrorResponse = {
 
 export type RunWorkflowTriggerResult =
   | { readonly kind: "ok"; readonly runId: string }
+  // The event was accepted into the workflow queue instead of starting a run.
+  | { readonly kind: "enqueued" }
   | { readonly kind: "conflict"; readonly message: string }
   | { readonly kind: "run_error"; readonly response: RunErrorResponse };
 
-export type RunFailure = Exclude<RunWorkflowTriggerResult, { kind: "ok" }>;
+export type RunFailure = Exclude<
+  RunWorkflowTriggerResult,
+  { kind: "ok" } | { kind: "enqueued" }
+>;
 type ActivePreviousRunPolicy = "block" | "allow";
 
 interface InternalRunCallbackInput {
@@ -81,6 +91,9 @@ export interface RunWorkflowTriggerNowArgs {
   readonly appendSystemPrompt?: string;
   readonly callbacks?: readonly InternalRunCallbackInput[];
   readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
+  // Set by the queue drain (and manual "Run now"): skip workflow-queue
+  // admission and always create the run.
+  readonly bypassWorkflowQueue?: boolean;
   readonly recordLastRunId?: boolean;
   readonly recordLastRunAt?: boolean;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -362,13 +375,47 @@ async function buildTimedWorkflowTriggerRunInput(args: {
 
 export const runWorkflowTriggerNow$ = command(
   async (
-    { set },
+    { get, set },
     args: RunWorkflowTriggerNowArgs,
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
     const { trigger, agentId, workflowName, chatThreadId } = args.due;
     const timing = workflowTriggerTiming(args);
+
+    if (args.bypassWorkflowQueue !== true) {
+      const overrides = await get(
+        userFeatureSwitchOverrides(trigger.orgId, trigger.ownerUserId),
+      );
+      signal.throwIfAborted();
+      if (
+        workflowQueueEnabledForOwner({
+          orgId: trigger.orgId,
+          userId: trigger.ownerUserId,
+          overrides,
+        })
+      ) {
+        const admission = await admitWorkflowTriggerEvent(db, {
+          trigger,
+          chatThreadId,
+          triggerSource: args.triggerSource ?? "workflow-schedule",
+          triggerBrief: args.triggerBrief,
+          params: {
+            version: 1,
+            prompt: args.prompt,
+            appendSystemPrompt: args.appendSystemPrompt,
+            callbacks: args.callbacks,
+            recordLastRunId: args.recordLastRunId,
+            recordLastRunAt: args.recordLastRunAt,
+          },
+        });
+        signal.throwIfAborted();
+        if (admission === "enqueued") {
+          return { kind: "enqueued" };
+        }
+      }
+    }
+
     const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
       db,
       trigger,

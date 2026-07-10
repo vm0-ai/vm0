@@ -2040,7 +2040,10 @@ function buildNotionPageContentUpdatedWorkflowTriggerBrief(args: {
 }
 
 function notionRunFailureMessage(
-  result: Exclude<RunWorkflowTriggerResult, { readonly kind: "ok" }>,
+  result: Exclude<
+    RunWorkflowTriggerResult,
+    { readonly kind: "ok" } | { readonly kind: "enqueued" }
+  >,
 ): string {
   return result.kind === "conflict"
     ? result.message
@@ -2330,7 +2333,7 @@ async function processClaimedNotionChildPagePendingEvent(
     startRun: args.startRun,
   });
   args.signal.throwIfAborted();
-  if (result.kind !== "ok") {
+  if (result.kind !== "ok" && result.kind !== "enqueued") {
     await retryPendingEvent({
       db: args.db,
       pending: args.pending,
@@ -2453,7 +2456,7 @@ async function processClaimedNotionDatabaseItemPendingEvent(
     startRun: args.startRun,
   });
   args.signal.throwIfAborted();
-  if (result.kind !== "ok") {
+  if (result.kind !== "ok" && result.kind !== "enqueued") {
     await retryPendingEvent({
       db: args.db,
       pending: args.pending,
@@ -2615,7 +2618,7 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
     startRun: args.startRun,
   });
   args.signal.throwIfAborted();
-  if (result.kind !== "ok") {
+  if (result.kind !== "ok" && result.kind !== "enqueued") {
     await retryPendingEvent({
       db: args.db,
       pending: args.pending,

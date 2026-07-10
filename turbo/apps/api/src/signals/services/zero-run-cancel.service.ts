@@ -17,6 +17,7 @@ import { tapError } from "../utils";
 import { dispatchRunCallbacks$ } from "./agent-run-callback.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
+import { drainWorkflowQueueForRun$ } from "./zero-workflow-queue-drain.service";
 
 const L = logger("ZeroRunCancel");
 
@@ -232,6 +233,17 @@ export const dispatchCancelSideEffects$ = command(
     // next poll cycle. Queue dispatch (compose loading + sandbox
     // provisioning) lands in Stage 4.
     await set(drainOrgQueue$, { orgId: result.orgId }, signal);
+    signal.throwIfAborted();
+
+    await tapError(
+      set(drainWorkflowQueueForRun$, { runId: result.runId }, signal),
+      (error) => {
+        L.error("Failed to drain workflow queue after cancel", {
+          runId: result.runId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
 
     // Reconcile credits when the cancelled run had been doing

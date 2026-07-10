@@ -3998,6 +3998,13 @@
       "when": 1783624128032,
       "tag": "0570_zippy_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 571,
+      "version": "7",
+      "when": 1783653465946,
+      "tag": "0571_fresh_mindworm",
+      "breakpoints": true
     }
   ]
 }

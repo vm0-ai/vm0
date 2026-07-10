@@ -21,6 +21,8 @@ import {
   type RunFailure,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowQueueEnabledForOwner } from "./zero-workflow-queue.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
@@ -278,7 +280,7 @@ async function dueWorkflowTriggerRows(
  * completion callback.
  */
 export const executeDueWorkflowTriggers$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ExecuteResult> => {
+  async ({ get, set }, signal: AbortSignal): Promise<ExecuteResult> => {
     const db = set(writeDb$);
     const currentTime = nowDate();
 
@@ -328,7 +330,19 @@ export const executeDueWorkflowTriggers$ = command(
         continue;
       }
 
-      if (row.trigger.lastRunId) {
+      // With the workflow queue enabled the tick enqueues behind the active
+      // run instead of being skipped, so the lastRunId gate only applies to
+      // the legacy skip-if-busy behavior.
+      const overrides = await get(
+        userFeatureSwitchOverrides(row.trigger.orgId, row.trigger.ownerUserId),
+      );
+      signal.throwIfAborted();
+      const queueEnabled = workflowQueueEnabledForOwner({
+        orgId: row.trigger.orgId,
+        userId: row.trigger.ownerUserId,
+        overrides,
+      });
+      if (!queueEnabled && row.trigger.lastRunId) {
         const [lastRun] = await db
           .select({ status: agentRuns.status })
           .from(agentRuns)
@@ -392,6 +406,10 @@ export const executeDueWorkflowTriggers$ = command(
         continue;
       }
       const result = runResult.value;
+      if (result.kind === "enqueued") {
+        executed++;
+        continue;
+      }
       if (result.kind !== "ok") {
         await recordPreRunFailure(db, claimed, result, signal);
         skipped++;
