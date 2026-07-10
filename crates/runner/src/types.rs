@@ -993,9 +993,12 @@ fn raw_url_path(value: &str) -> &str {
     let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
         return "";
     };
-    let Some(path_start) = rest.find('/') else {
+    let Some(path_start) = rest.find(['/', '?', '#']) else {
         return "";
     };
+    if !rest[path_start..].starts_with('/') {
+        return "";
+    }
     let path_and_after = &rest[path_start..];
     let path_end = path_and_after
         .find(['?', '#'])
@@ -1254,6 +1257,17 @@ impl SandboxReuseResult {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn raw_url_path_does_not_treat_query_or_fragment_content_as_path() {
+        assert_eq!(raw_url_path("https://api.example.com?next=/../"), "");
+        assert_eq!(raw_url_path("https://api.example.com#next=/../"), "");
+    }
+
+    #[test]
+    fn firewall_auth_base_allows_path_syntax_in_query() {
+        validate_auth_base_for_cache("https://api.example.com?next=/../").unwrap();
+    }
 
     #[test]
     fn poll_response_with_job() {

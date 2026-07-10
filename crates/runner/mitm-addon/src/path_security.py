@@ -25,10 +25,14 @@ def has_unsafe_url_path(url: str) -> bool:
     if scheme_end == -1:
         return False
     after_scheme = url[scheme_end + len("://") :]
-    path_start = after_scheme.find("/")
-    if path_start == -1:
+    component_start = len(after_scheme)
+    for delimiter in ("/", "?", "#"):
+        delimiter_index = after_scheme.find(delimiter)
+        if delimiter_index != -1:
+            component_start = min(component_start, delimiter_index)
+    if component_start == len(after_scheme) or after_scheme[component_start] != "/":
         return False
-    path_and_after = after_scheme[path_start:]
+    path_and_after = after_scheme[component_start:]
     path_end = len(path_and_after)
     for delimiter in ("?", "#"):
         delimiter_index = path_and_after.find(delimiter)

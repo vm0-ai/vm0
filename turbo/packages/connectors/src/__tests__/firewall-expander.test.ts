@@ -691,13 +691,13 @@ describe("validateBaseUrl", () => {
 
   it("should reject URLs with query string", () => {
     expect(() => {
-      return validateBaseUrl("https://api.example.com?key=val", "fw");
+      return validateBaseUrl("https://api.example.com?next=/../", "fw");
     }).toThrow("must not contain query string");
   });
 
   it("should reject URLs with fragment", () => {
     expect(() => {
-      return validateBaseUrl("https://api.example.com#section", "fw");
+      return validateBaseUrl("https://api.example.com#next=/../", "fw");
     }).toThrow("must not contain fragment");
   });
 

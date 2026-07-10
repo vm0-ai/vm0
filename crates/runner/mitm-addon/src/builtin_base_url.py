@@ -148,6 +148,13 @@ def _validate_base_url_prefix_variable(
     name: str,
     value: str,
 ) -> None:
+    if has_unsafe_url_path(value):
+        raise _base_url_variable_error(
+            firewall_name=firewall_name,
+            base=base,
+            name=name,
+            detail="must not contain unsafe path segments before a fixed path suffix",
+        )
     if not matching.firewall_base_config_is_valid(value):
         raise _base_url_variable_error(
             firewall_name=firewall_name,
@@ -162,13 +169,6 @@ def _validate_base_url_prefix_variable(
             base=base,
             name=name,
             detail="must not contain query or fragment before a fixed path suffix",
-        )
-    if has_unsafe_path(parts.path):
-        raise _base_url_variable_error(
-            firewall_name=firewall_name,
-            base=base,
-            name=name,
-            detail="must not contain unsafe path segments before a fixed path suffix",
         )
 
 

@@ -1095,8 +1095,8 @@ function rawPathFromBaseUrl(value: string): string {
   const schemeEnd = value.indexOf("://");
   if (schemeEnd === -1) return "";
   const afterScheme = value.slice(schemeEnd + 3);
-  const pathStart = afterScheme.indexOf("/");
-  if (pathStart === -1) return "";
+  const pathStart = afterScheme.search(/[/?#]/);
+  if (pathStart === -1 || afterScheme[pathStart] !== "/") return "";
   const pathAndAfter = afterScheme.slice(pathStart);
   const pathEnd = pathAndAfter.search(/[?#]/);
   return pathEnd === -1 ? pathAndAfter : pathAndAfter.slice(0, pathEnd);
