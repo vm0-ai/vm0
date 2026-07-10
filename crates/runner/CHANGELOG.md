@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.6...runner-rs-v0.143.7) (2026-07-10)
+
+
+### Refactoring
+
+* enforce fresh auth.base request boundary ([#20970](https://github.com/vm0-ai/vm0/issues/20970)) ([94ba688](https://github.com/vm0-ai/vm0/commit/94ba6881c664bf3804039494f13d00f725169a0c))
+
 ## [0.143.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.5...runner-rs-v0.143.6) (2026-07-10)
 
 ## [0.143.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.4...runner-rs-v0.143.5) (2026-07-10)

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.424.3](https://github.com/vm0-ai/vm0/compare/core-v8.424.2...core-v8.424.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* refresh frosted scatter archive ([#20972](https://github.com/vm0-ai/vm0/issues/20972)) ([518cccc](https://github.com/vm0-ai/vm0/commit/518cccc4d4231a3009319381269eaf19fd8a18a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.0
+    * @vm0/connectors bumped to 1.154.2
+
 ## [8.424.2](https://github.com/vm0-ai/vm0/compare/core-v8.424.1...core-v8.424.2) (2026-07-10)
 
 

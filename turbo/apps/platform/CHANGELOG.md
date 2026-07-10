@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.592.0](https://github.com/vm0-ai/vm0/compare/app-v0.591.1...app-v0.592.0) (2026-07-10)
+
+
+### Features
+
+* **image-editor:** share edited images to x ([#20836](https://github.com/vm0-ai/vm0/issues/20836)) ([fca6111](https://github.com/vm0-ai/vm0/commit/fca611179fda0489a8f92b0edecd5532cbf6ca0d))
+
+
+### Bug Fixes
+
+* centralize mobile safe areas at the root ([#20976](https://github.com/vm0-ai/vm0/issues/20976)) ([115432e](https://github.com/vm0-ai/vm0/commit/115432e73ac9575c4f35d7bf14fd327d8473ac3b))
+* constrain and dismiss the mobile slash workflow menu ([#20978](https://github.com/vm0-ai/vm0/issues/20978)) ([04a5f6e](https://github.com/vm0-ai/vm0/commit/04a5f6ef9bf14dc700d7777652334952125cb7b5))
+* remove play icon from video artifact posters ([#20980](https://github.com/vm0-ai/vm0/issues/20980)) ([2c173fd](https://github.com/vm0-ai/vm0/commit/2c173fd51cacc541ab38b599cd6f36a2ab64b1c1))
+* upload large presentations to google slides ([#20974](https://github.com/vm0-ai/vm0/issues/20974)) ([e4e15e8](https://github.com/vm0-ai/vm0/commit/e4e15e8d99a627fd4c5a0e837e16ba424d78c7d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.0
+    * @vm0/connectors bumped to 1.154.2
+    * @vm0/core bumped to 8.424.3
+
 ## [0.591.1](https://github.com/vm0-ai/vm0/compare/app-v0.591.0...app-v0.591.1) (2026-07-10)
 
 
