@@ -166,7 +166,6 @@ type BddSendMessageBody =
       readonly threadId?: string;
       readonly clientThreadId?: string;
       readonly model?: string;
-      readonly useWorkspaceDefaultModel?: boolean;
       readonly runOptions?: ChatRunOptionsRequest;
       readonly generationTemplate?: GenerationTemplateRequest;
       readonly hasTextContent?: boolean;
@@ -1238,9 +1237,7 @@ export function createChatFilesBddApi(context: TestContext) {
         "prompt" in body
           ? (() => {
               const defaultModel =
-                body.threadId === undefined &&
-                body.model === undefined &&
-                body.useWorkspaceDefaultModel !== true
+                body.threadId === undefined && body.model === undefined
                   ? defaultCreateThreadModel()
                   : undefined;
               const selectedModel = body.model ?? defaultModel;

@@ -3292,6 +3292,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const chat = createChatFilesBddApi(context);
+    const misc = createMiscRoutesApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -3308,30 +3309,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       credits: 3000,
       onboardingPaymentPending: false,
     });
-
-    await seedVm0ManagedModelKey(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
-    const defaultSent = await chat.requestSendMessage(
-      actor,
-      {
-        agentId,
-        prompt: "limited-free default model run",
-        useWorkspaceDefaultModel: true,
-      },
-      [201],
-    );
-    if (defaultSent.status !== 201 || defaultSent.body.runId === null) {
-      throw new Error("Expected the default model to create a run");
-    }
-    await api.heartbeatRunner(runnerGroup);
-    const defaultClaim = await api.claimRunnerJob(defaultSent.body.runId);
-    expect(defaultClaim.cliAgentType).toBe("codex");
-    expect(defaultClaim.environment).toMatchObject({
-      OPENAI_MODEL: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    });
-    expect(defaultClaim.modelUsageProvider).toBe(
+    const modelPolicies = await misc.listModelPolicies(actor);
+    expect(modelPolicies.workspaceDefaultModel).toBe(
       DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     );
-    await api.requestCancelRun(actor, defaultSent.body.runId, [200]);
+    expect(
+      modelPolicies.policies.find((policy) => {
+        return policy.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+      }),
+    ).toMatchObject({ isDefault: true });
 
     for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
       await seedVm0ManagedModelKey(model);
