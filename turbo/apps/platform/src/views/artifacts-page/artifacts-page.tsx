@@ -11,7 +11,6 @@ import {
   IconMessagePlus,
   IconPackage,
   IconPhoto,
-  IconPlayerPlayFilled,
   IconPresentationAnalytics,
   IconSearch,
   IconVideo,
@@ -440,8 +439,7 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   // A pre-rendered static snapshot (page screenshot for HTML/website, poster
   // frame for video) replaces the live iframe/video entirely, so the grid loads
   // a single image. Absent for old / not-yet-rendered / render-failed artifacts,
-  // which fall through to the live preview below. Video posters get a play
-  // affordance so the still reads as a video.
+  // which fall through to the live preview below.
   if (item.previewImageUrl) {
     return (
       <ArtifactPreviewSurface iconKind={iconKind}>
@@ -451,11 +449,6 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
           loading="lazy"
           className="h-full w-full object-cover"
         />
-        {previewKind === "video" && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <IconPlayerPlayFilled className="h-10 w-10 text-white/90 drop-shadow-md" />
-          </div>
-        )}
       </ArtifactPreviewSurface>
     );
   }

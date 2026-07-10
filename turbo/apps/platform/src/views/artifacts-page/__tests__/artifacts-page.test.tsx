@@ -727,7 +727,7 @@ describe("artifacts page", () => {
     });
   });
 
-  it("renders video poster images with a play affordance while preserving the video fallback", async () => {
+  it("renders video poster images without a play affordance while preserving the video fallback", async () => {
     setupTeam();
     const scope = testAuthScope("video-preview-image");
     const posterUrl = "https://cdn.vm7.io/artifacts/user/video-row/poster.jpg";
@@ -766,7 +766,7 @@ describe("artifacts page", () => {
     expect(posterImages).toHaveLength(1);
     expect(
       document.querySelector(".tabler-icon-player-play-filled"),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
       Array.from(document.querySelectorAll("video")).some((video) => {
         return (
