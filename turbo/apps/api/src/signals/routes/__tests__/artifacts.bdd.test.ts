@@ -438,6 +438,7 @@ describe("GET /api/zero/artifacts", () => {
       runId: run.runId,
       fileId: prepared.url,
       url: prepared.url,
+      size: expect.any(Number),
       artifactKind: "hosted-site",
     });
     expect(response.artifacts[0]).not.toHaveProperty("previewImageUrl");

@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import {
   artifactsContract,
+  type PersistedAttachment,
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -19,6 +20,7 @@ import { createArtifactItemCacheStores } from "../external/idb-artifact-item-sto
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { onRejection } from "../utils.ts";
+import { ensureAgentDraft$ } from "../zero-page/agent-draft.ts";
 
 // Page size for the keyset-paginated fetch. The frontend follows `nextCursor`
 // until the whole set is loaded, so this only bounds per-request payload size,
@@ -286,3 +288,34 @@ export const navigateToArtifactThread$ = command(
     });
   },
 );
+
+function artifactDraftAttachment(item: ArtifactItem): PersistedAttachment {
+  return {
+    id: item.fileId,
+    url: item.url,
+    filename: item.filename,
+    contentType: item.contentType,
+    size: item.size,
+  };
+}
+
+export const startArtifactChat$ = command(({ get, set }, item: ArtifactItem) => {
+  const entry = set(ensureAgentDraft$, item.agentId);
+  const hasMatchingAttachment = get(entry.draft.attachments$).some(
+    (attachment) => {
+      return (
+        attachment.filename === item.filename &&
+        attachment.contentType === item.contentType &&
+        attachment.size === item.size
+      );
+    },
+  );
+
+  if (!hasMatchingAttachment) {
+    set(entry.draft.restoreAttachments$, [artifactDraftAttachment(item)]);
+  }
+
+  set(detachedNavigateTo$, ROUTES.agentChat, {
+    pathParams: { agentId: item.agentId },
+  });
+});

@@ -354,6 +354,7 @@ function createArtifact(overrides: Partial<ArtifactItem> = {}): ArtifactItem {
     threadTitle: "Launch plan",
     filename: "launch-plan.html",
     contentType: "text/html",
+    size: 9216,
     url: "https://artifacts.example.com/launch-plan.html",
     createdAt: "2026-01-01T00:00:00Z",
     artifactKind: "hosted-site",
@@ -375,10 +376,14 @@ function setupArtifactsPage({
   scope,
   enabled = true,
   artifactFavoritesEnabled = false,
+  htmlArtifactCommentEditingEnabled = false,
+  imageEditingEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
   readonly artifactFavoritesEnabled?: boolean;
+  readonly htmlArtifactCommentEditingEnabled?: boolean;
+  readonly imageEditingEnabled?: boolean;
 }): void {
   detachedSetupPage({
     context,
@@ -394,6 +399,9 @@ function setupArtifactsPage({
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: enabled,
       [FeatureSwitchKey.ArtifactFavorites]: artifactFavoritesEnabled,
+      [FeatureSwitchKey.HtmlArtifactCommentEditing]:
+        htmlArtifactCommentEditingEnabled,
+      [FeatureSwitchKey.ImageEditing]: imageEditingEnabled,
     },
   });
 }
@@ -480,10 +488,6 @@ describe("artifacts page", () => {
     const scope = testAuthScope("metadata");
     const createdAt = "2026-01-15T12:00:00Z";
     mockArtifacts([createArtifact({ createdAt })]);
-    const formattedCreatedAt = new Intl.DateTimeFormat("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(createdAt));
 
     setupArtifactsPage({ scope });
 
@@ -499,9 +503,8 @@ describe("artifacts page", () => {
       screen.getByPlaceholderText("Search artifacts..."),
     ).toBeInTheDocument();
     expect(screen.queryByText("text/html")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(`hosted site · ${formattedCreatedAt}`),
-    ).toBeInTheDocument();
+    expect(screen.getByText("hosted site")).toBeInTheDocument();
+    expect(screen.queryByText(/Jan 15/u)).not.toBeInTheDocument();
     expect(screen.getByTitle("launch-plan.html preview")).toHaveStyle({
       height: "1280px",
       width: "1280px",
@@ -544,6 +547,120 @@ describe("artifacts page", () => {
       "src",
       "https://artifacts.example.com/fallback-preview.html",
     );
+  });
+
+  it("opens previewable artifacts in the lightbox without split view", async () => {
+    setupTeam();
+    const scope = testAuthScope("preview-lightbox");
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "image-run:file-1",
+        runId: "image-run",
+        fileId: "image-file",
+        filename: "launch-image.png",
+        contentType: "image/png",
+        size: 1024,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "site-run:file-1",
+        runId: "site-run",
+        fileId: "site-file",
+        filename: "launch-site.html",
+        url: "https://artifacts.example.com/launch-site.html",
+        size: 9216,
+      }),
+      createArtifact({
+        artifactItemId: "video-run:file-1",
+        runId: "video-run",
+        fileId: "video-file",
+        filename: "launch-video.mp4",
+        contentType: "video/mp4",
+        size: 2048,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "presentation-run:file-1",
+        runId: "presentation-run",
+        fileId: "presentation-file",
+        filename: "launch-slides.html",
+        contentType: "text/html",
+        size: 4096,
+        artifactKind: "presentation-html",
+      }),
+    ]);
+
+    setupArtifactsPage({
+      scope,
+      htmlArtifactCommentEditingEnabled: true,
+      imageEditingEnabled: true,
+    });
+
+    await screen.findByText("launch-image.png");
+    await screen.findByText("launch-video.mp4");
+    expect(screen.getByLabelText("Presentation artifact")).toBeInTheDocument();
+    expect(screen.getByLabelText("HTML artifact")).toBeInTheDocument();
+    expect(screen.getByLabelText("Image artifact")).toBeInTheDocument();
+    expect(screen.getByLabelText("Video artifact")).toBeInTheDocument();
+
+    click(buttonByLabel("Preview launch-image.png"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-image.png preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit image")).toBeNull();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+    expect(screen.queryByText(/1.0 KB/u)).toBeNull();
+    expect(
+      screen.getByRole("img", { name: "launch-image.png" }),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-site.html"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-site.html preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit page")).toBeNull();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+    expect(screen.queryByText(/9.0 KB/u)).toBeNull();
+    expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+      "src",
+      "https://artifacts.example.com/launch-site.html",
+    );
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-slides.html"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-slides.html preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit presentation")).toBeNull();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(buttonByLabel("Preview launch-video.mp4"));
+    await expect(
+      screen.findByRole("dialog", { name: "launch-video.mp4 preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByLabelText("Open in split view")).toBeNull();
+    expect(
+      screen.getByLabelText("Video preview for launch-video.mp4"),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("filters category, search, and agent locally over the bulk-synced set", async () => {
@@ -726,7 +843,23 @@ describe("artifacts page", () => {
     });
   });
 
-  it("navigates to the source chat session", async () => {
+  it("starts a new chat draft for an artifact", async () => {
+    setupTeam();
+    const scope = testAuthScope("ask-artifact");
+    mockArtifacts([createArtifact()]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("launch-plan.html");
+    click(buttonByLabel("More actions for launch-plan.html"));
+    click(screen.getByText("Ask about it"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${ZERO_AGENT_ID}/chat`);
+    });
+  });
+
+  it("navigates to the original conversation", async () => {
     setupTeam();
     const scope = testAuthScope("navigate");
     mockArtifacts([createArtifact()]);
@@ -734,7 +867,11 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await screen.findByText("launch-plan.html");
-    click(buttonByLabel("Open source chat for launch-plan.html"));
+    expect(
+      screen.queryByLabelText("Open source chat for launch-plan.html"),
+    ).toBeNull();
+    click(buttonByLabel("More actions for launch-plan.html"));
+    click(screen.getByText("View creation chat"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${SOURCE_THREAD_ID}`);

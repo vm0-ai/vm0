@@ -1,13 +1,20 @@
+import type { ReactNode } from "react";
 import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
   IconAlertTriangle,
   IconCarambola,
   IconCarambolaFilled,
+  IconDots,
   IconExternalLink,
-  IconMessageCircle,
+  IconHistory,
+  IconMessagePlus,
   IconPackage,
+  IconPhoto,
+  IconPresentationAnalytics,
   IconSearch,
+  IconVideo,
+  IconWorld,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -18,6 +25,10 @@ import {
 } from "ccstate-react";
 import {
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   Select,
   SelectContent,
@@ -38,6 +49,7 @@ import {
   filterArtifacts,
   growArtifactsWindow$,
   navigateToArtifactThread$,
+  reloadArtifacts$,
   remoteArtifacts$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
@@ -45,13 +57,26 @@ import {
   setArtifactsSearch$,
   setSelectedArtifactsAgentId$,
   setSelectedArtifactsCategory$,
+  startArtifactChat$,
   toggleArtifactFavorite$,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
-import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
+import {
+  classifyChatAttachment,
+  type BodyPreviewKind,
+} from "../../signals/chat-page/parse-body-blocks.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  lightboxUrl$,
+  openAudioLightbox$,
+  openDocumentLightbox$,
+  openImageLightbox$,
+  openVideoLightbox$,
+  type AttachmentArtifactMetadata,
+} from "../../signals/zero-page/zero-attachment-chips.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { AttachmentLightbox } from "../zero-page/zero-attachment-chips.tsx";
 import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
@@ -59,6 +84,7 @@ import {
 import { publicAttachmentUrl } from "../zero-page/zero-attachment-url.ts";
 
 type ArtifactPreviewKind = "image" | "html" | "pdf" | "video" | "file";
+type ArtifactTypeIconKind = "presentation" | "html" | "image" | "video";
 
 const DESKTOP_ARTIFACT_PREVIEW_SIZE = 1280;
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
@@ -84,16 +110,6 @@ const ARTIFACT_CATEGORY_OPTIONS: readonly {
   { ariaLabel: "Show other artifacts", label: "Other", value: "other" },
 ];
 
-function formatArtifactDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
-}
-
 function formatArtifactKind(kind: string | undefined): string | null {
   if (!kind) {
     return null;
@@ -102,20 +118,12 @@ function formatArtifactKind(kind: string | undefined): string | null {
 }
 
 function artifactPreviewKind(item: ArtifactItem): ArtifactPreviewKind {
-  const kind = classifyChatAttachment({
-    filename: item.filename,
-    url: item.url,
-    contentType: item.contentType,
-  });
+  const kind = artifactLightboxKind(item);
 
   if (kind === "image") {
     return "image";
   }
-  if (
-    kind === "html" ||
-    item.artifactKind === "hosted-site" ||
-    item.artifactKind === "presentation-html"
-  ) {
+  if (kind === "html") {
     return "html";
   }
   if (kind === "pdf") {
@@ -125,6 +133,106 @@ function artifactPreviewKind(item: ArtifactItem): ArtifactPreviewKind {
     return "video";
   }
   return "file";
+}
+
+function artifactTypeIconKind(
+  item: ArtifactItem,
+  previewKind: ArtifactPreviewKind,
+): ArtifactTypeIconKind | null {
+  if (item.artifactKind === "presentation-html") {
+    return "presentation";
+  }
+  if (previewKind === "html") {
+    return "html";
+  }
+  if (previewKind === "image") {
+    return "image";
+  }
+  if (previewKind === "video") {
+    return "video";
+  }
+  return null;
+}
+
+function artifactLightboxKind(item: ArtifactItem): BodyPreviewKind {
+  const kind = classifyChatAttachment({
+    filename: item.filename,
+    url: item.url,
+    contentType: item.contentType,
+  });
+
+  if (
+    kind === "html" ||
+    item.artifactKind === "hosted-site" ||
+    item.artifactKind === "presentation-html"
+  ) {
+    return "html";
+  }
+  return kind;
+}
+
+function artifactLightboxMetadata(
+  item: ArtifactItem,
+  onSyncSuccess: () => void,
+): AttachmentArtifactMetadata {
+  return {
+    agentId: item.agentId,
+    artifactKind: item.artifactKind,
+    contentType: item.contentType,
+    createdAt: item.createdAt,
+    fileId: item.fileId,
+    filename: item.filename,
+    googleDriveDisconnected: item.googleDriveSync?.status === "disconnected",
+    googleDriveSynced: item.googleDriveSync?.status === "synced",
+    onSyncSuccess,
+    runId: item.runId,
+    size: item.size,
+    threadId: item.threadId,
+  };
+}
+
+function useOpenArtifactPreview(): (item: ArtifactItem) => void {
+  const reloadArtifacts = useSet(reloadArtifacts$);
+  const openImageLightbox = useSet(openImageLightbox$);
+  const openDocumentLightbox = useSet(openDocumentLightbox$);
+  const openVideoLightbox = useSet(openVideoLightbox$);
+  const openAudioLightbox = useSet(openAudioLightbox$);
+
+  return (item: ArtifactItem) => {
+    const artifact = artifactLightboxMetadata(item, reloadArtifacts);
+    const base = {
+      artifact,
+      editAvailable: false,
+      filename: item.filename,
+      showSizeInSubtitle: false,
+      splitViewAvailable: false,
+      url: item.url,
+    };
+    const kind = artifactLightboxKind(item);
+
+    if (kind === "image") {
+      openImageLightbox(base);
+      return;
+    }
+    if (kind === "video") {
+      openVideoLightbox(base);
+      return;
+    }
+    if (kind === "audio") {
+      openAudioLightbox(base);
+      return;
+    }
+    if (
+      kind === "markdown" ||
+      kind === "text" ||
+      kind === "json" ||
+      kind === "csv" ||
+      kind === "html" ||
+      kind === "pdf"
+    ) {
+      openDocumentLightbox({ ...base, kind });
+    }
+  };
 }
 
 function ArtifactsToolbar({
@@ -254,11 +362,7 @@ function artifactContextLabel({
   readonly item: ArtifactItem;
   readonly kindLabel: string | null;
 }): string {
-  return [kindLabel ?? item.contentType, formatArtifactDate(item.createdAt)]
-    .filter((part) => {
-      return part.length > 0;
-    })
-    .join(" · ");
+  return kindLabel ?? item.contentType;
 }
 
 function DesktopArtifactPreviewFrame({
@@ -286,9 +390,54 @@ function DesktopArtifactPreviewFrame({
     </div>
   );
 }
+
+function ArtifactTypeIcon({
+  kind,
+}: {
+  readonly kind: ArtifactTypeIconKind;
+}) {
+  const icon =
+    kind === "presentation"
+      ? {
+          element: <IconPresentationAnalytics size={16} stroke={1.7} />,
+          label: "Presentation",
+        }
+      : kind === "html"
+        ? { element: <IconWorld size={16} stroke={1.7} />, label: "HTML" }
+        : kind === "image"
+          ? { element: <IconPhoto size={16} stroke={1.7} />, label: "Image" }
+          : { element: <IconVideo size={16} stroke={1.7} />, label: "Video" };
+
+  return (
+    <span
+      aria-label={`${icon.label} artifact`}
+      data-testid={`artifact-card-type-icon-${kind}`}
+      className="pointer-events-none absolute left-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white shadow-sm ring-1 ring-white/15"
+    >
+      {icon.element}
+    </span>
+  );
+}
+
+function ArtifactPreviewSurface({
+  iconKind,
+  children,
+}: {
+  readonly iconKind: ArtifactTypeIconKind | null;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="relative h-full w-full">
+      {children}
+      {iconKind ? <ArtifactTypeIcon kind={iconKind} /> : null}
+    </div>
+  );
+}
+
 function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   const previewUrl = publicAttachmentUrl(item.url);
   const previewKind = artifactPreviewKind(item);
+  const iconKind = artifactTypeIconKind(item, previewKind);
   const title = `${item.filename} preview`;
 
   // A pre-rendered static snapshot (generated at deploy time for HTML/website
@@ -297,52 +446,64 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   // render-failed artifacts, which fall through to the live preview below.
   if (item.previewImageUrl) {
     return (
-      <img
-        src={item.previewImageUrl}
-        alt=""
-        loading="lazy"
-        className="h-full w-full object-cover"
-      />
+      <ArtifactPreviewSurface iconKind={iconKind}>
+        <img
+          src={item.previewImageUrl}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+        />
+      </ArtifactPreviewSurface>
     );
   }
 
   if (previewKind === "image") {
     return (
-      <img
-        src={previewUrl}
-        alt=""
-        loading="lazy"
-        className="h-full w-full object-cover"
-      />
+      <ArtifactPreviewSurface iconKind={iconKind}>
+        <img
+          src={previewUrl}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+        />
+      </ArtifactPreviewSurface>
     );
   }
 
   if (previewKind === "html") {
-    return <DesktopArtifactPreviewFrame src={previewUrl} title={title} />;
+    return (
+      <ArtifactPreviewSurface iconKind={iconKind}>
+        <DesktopArtifactPreviewFrame src={previewUrl} title={title} />
+      </ArtifactPreviewSurface>
+    );
   }
 
   if (previewKind === "pdf") {
     return (
-      <iframe
-        src={`${previewUrl}#navpanes=0`}
-        title={title}
-        loading="lazy"
-        tabIndex={-1}
-        className="pointer-events-none block h-full w-full border-0 bg-background"
-      />
+      <ArtifactPreviewSurface iconKind={iconKind}>
+        <iframe
+          src={`${previewUrl}#navpanes=0`}
+          title={title}
+          loading="lazy"
+          tabIndex={-1}
+          className="pointer-events-none block h-full w-full border-0 bg-background"
+        />
+      </ArtifactPreviewSurface>
     );
   }
 
   if (previewKind === "video") {
     return (
-      <video
-        src={previewUrl}
-        muted
-        playsInline
-        preload="metadata"
-        className="h-full w-full bg-black object-cover"
-        aria-label={title}
-      />
+      <ArtifactPreviewSurface iconKind={iconKind}>
+        <video
+          src={previewUrl}
+          muted
+          playsInline
+          preload="metadata"
+          className="h-full w-full bg-black object-cover"
+          aria-label={title}
+        />
+      </ArtifactPreviewSurface>
     );
   }
 
@@ -369,23 +530,169 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   );
 }
 
+function ArtifactCardActions({
+  favorited,
+  item,
+  previewUrl,
+  showFavoriteAction,
+  onOpenChat,
+  onStartChat,
+  onToggleFavorite,
+}: {
+  readonly favorited: boolean;
+  readonly item: ArtifactItem;
+  readonly previewUrl: string;
+  readonly showFavoriteAction: boolean;
+  readonly onOpenChat: (threadId: string) => void;
+  readonly onStartChat: (item: ArtifactItem) => void;
+  readonly onToggleFavorite: (item: ArtifactItem) => void;
+}) {
+  return (
+    <div
+      className="flex shrink-0 gap-1"
+      onClick={(event) => {
+        event.stopPropagation();
+      }}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      {showFavoriteAction && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className={cn(
+            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
+            favorited && "text-amber-500 hover:text-amber-500",
+          )}
+          aria-label={
+            favorited
+              ? `Remove ${item.filename} from favorites`
+              : `Add ${item.filename} to favorites`
+          }
+          aria-pressed={favorited}
+          title={
+            favorited
+              ? `Remove ${item.filename} from favorites`
+              : `Add ${item.filename} to favorites`
+          }
+          onClick={() => {
+            onToggleFavorite(item);
+          }}
+        >
+          {favorited ? (
+            <IconCarambolaFilled size={14} aria-hidden />
+          ) : (
+            <IconCarambola size={14} stroke={1.7} aria-hidden />
+          )}
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background"
+            aria-label={`More actions for ${item.filename}`}
+            title={`More actions for ${item.filename}`}
+          >
+            <IconDots size={14} stroke={1.7} aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-48"
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <DropdownMenuItem
+            onClick={() => {
+              onStartChat(item);
+            }}
+          >
+            <IconMessagePlus size={14} stroke={1.7} aria-hidden />
+            Ask about it
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              onOpenChat(item.threadId);
+            }}
+          >
+            <IconHistory size={14} stroke={1.7} aria-hidden />
+            View creation chat
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Open preview for ${item.filename}`}
+            >
+              <IconExternalLink size={14} stroke={1.7} aria-hidden />
+              Open a new tab
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 function ArtifactCard({
   item,
   onOpenChat,
+  onOpenPreview,
+  onStartChat,
   onToggleFavorite,
   showFavoriteAction,
 }: {
   readonly item: ArtifactItem;
   readonly onOpenChat: (threadId: string) => void;
+  readonly onOpenPreview: (item: ArtifactItem) => void;
+  readonly onStartChat: (item: ArtifactItem) => void;
   readonly onToggleFavorite: (item: ArtifactItem) => void;
   readonly showFavoriteAction: boolean;
 }) {
   const kindLabel = formatArtifactKind(item.artifactKind);
   const contextLabel = artifactContextLabel({ item, kindLabel });
   const previewUrl = publicAttachmentUrl(item.url);
+  const previewable = artifactLightboxKind(item) !== "file";
   const favorited = item.isFavorited === true;
   return (
-    <article className="group relative mb-3 aspect-square break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20">
+    <article
+      role={previewable ? "button" : undefined}
+      tabIndex={previewable ? 0 : undefined}
+      aria-label={previewable ? `Preview ${item.filename}` : undefined}
+      onClick={
+        previewable
+          ? () => {
+              onOpenPreview(item);
+            }
+          : undefined
+      }
+      onKeyDown={
+        previewable
+          ? (event) => {
+              if (event.key !== "Enter" && event.key !== " ") {
+                return;
+              }
+              event.preventDefault();
+              onOpenPreview(item);
+            }
+          : undefined
+      }
+      className={cn(
+        "group relative mb-3 aspect-square break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
+        previewable &&
+          "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      )}
+    >
       <ArtifactPreview item={item} />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/95 to-transparent p-3 pt-14">
         <div className="flex min-w-0 items-end gap-2">
@@ -397,68 +704,15 @@ function ArtifactCard({
               {contextLabel}
             </p>
           </div>
-          <div className="flex shrink-0 gap-1">
-            {showFavoriteAction && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                className={cn(
-                  "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
-                  favorited && "text-amber-500 hover:text-amber-500",
-                )}
-                aria-label={
-                  favorited
-                    ? `Remove ${item.filename} from favorites`
-                    : `Add ${item.filename} to favorites`
-                }
-                aria-pressed={favorited}
-                title={
-                  favorited
-                    ? `Remove ${item.filename} from favorites`
-                    : `Add ${item.filename} to favorites`
-                }
-                onClick={() => {
-                  onToggleFavorite(item);
-                }}
-              >
-                {favorited ? (
-                  <IconCarambolaFilled size={14} aria-hidden />
-                ) : (
-                  <IconCarambola size={14} stroke={1.7} aria-hidden />
-                )}
-              </Button>
-            )}
-            <Button
-              asChild
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background"
-            >
-              <a
-                href={previewUrl}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={`Open preview for ${item.filename}`}
-                title={`Open preview for ${item.filename}`}
-              >
-                <IconExternalLink size={14} stroke={1.7} aria-hidden />
-              </a>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background"
-              aria-label={`Open source chat for ${item.filename}`}
-              title={`Open source chat for ${item.filename}`}
-              onClick={() => {
-                onOpenChat(item.threadId);
-              }}
-            >
-              <IconMessageCircle size={14} stroke={1.7} aria-hidden />
-            </Button>
-          </div>
+          <ArtifactCardActions
+            favorited={favorited}
+            item={item}
+            previewUrl={previewUrl}
+            showFavoriteAction={showFavoriteAction}
+            onOpenChat={onOpenChat}
+            onStartChat={onStartChat}
+            onToggleFavorite={onToggleFavorite}
+          />
         </div>
       </div>
     </article>
@@ -529,6 +783,8 @@ function ArtifactsList({
   visibleCount,
   onLoadMore,
   onOpenChat,
+  onOpenPreview,
+  onStartChat,
   onToggleFavorite,
   showFavoriteAction,
 }: {
@@ -539,6 +795,8 @@ function ArtifactsList({
   readonly visibleCount: number;
   readonly onLoadMore: () => void;
   readonly onOpenChat: (threadId: string) => void;
+  readonly onOpenPreview: (item: ArtifactItem) => void;
+  readonly onStartChat: (item: ArtifactItem) => void;
   readonly onToggleFavorite: (item: ArtifactItem) => void;
   readonly showFavoriteAction: boolean;
 }) {
@@ -564,6 +822,8 @@ function ArtifactsList({
               key={artifact.artifactItemId}
               item={artifact}
               onOpenChat={onOpenChat}
+              onOpenPreview={onOpenPreview}
+              onStartChat={onStartChat}
               onToggleFavorite={onToggleFavorite}
               showFavoriteAction={showFavoriteAction}
             />
@@ -593,9 +853,12 @@ export function ArtifactsPage() {
   const setFavoritesOnly = useSet(setArtifactsFavoritesOnly$);
   const toggleFavorite = useSet(toggleArtifactFavorite$);
   const openChat = useSet(navigateToArtifactThread$);
+  const startChat = useSet(startArtifactChat$);
   const pageSignal = useGet(pageSignal$);
   const visibleCount = useGet(artifactsWindow$);
   const loadMore = useSet(growArtifactsWindow$);
+  const openArtifactPreview = useOpenArtifactPreview();
+  const lightboxUrl = useGet(lightboxUrl$);
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
   const cachedLoadable = useLastLoadable(cachedArtifacts$);
   const agents = useLastResolved(agents$) ?? [];
@@ -635,6 +898,7 @@ export function ArtifactsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {lightboxUrl && <AttachmentLightbox />}
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
         <div className="mx-auto w-full max-w-[900px]">
           <div className="hidden min-w-0 md:block">
@@ -670,6 +934,8 @@ export function ArtifactsPage() {
             visibleCount={visibleCount}
             onLoadMore={loadMore}
             onOpenChat={openChat}
+            onOpenPreview={openArtifactPreview}
+            onStartChat={startChat}
             onToggleFavorite={(item) => {
               detach(toggleFavorite(item, pageSignal), Reason.DomCallback);
             }}

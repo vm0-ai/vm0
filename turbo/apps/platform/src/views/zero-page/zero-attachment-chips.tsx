@@ -381,7 +381,9 @@ function artifactDialogKindLabel(
   artifact: AttachmentArtifactMetadata | undefined,
 ): string {
   if (artifact) {
-    return artifactTitleSubtitle(preview.kind, artifact);
+    return artifactTitleSubtitle(preview.kind, artifact, {
+      showSize: preview.showSizeInSubtitle ?? true,
+    });
   }
   return artifactFallbackSubtitle(
     preview.kind,
@@ -1093,15 +1095,21 @@ function ArtifactPreviewDialogActions({
     toggleLightboxDialogFullscreen$,
   );
   const features = useGet(featureSwitch$);
+  const editAvailable = preview.editAvailable !== false;
   const showPresentationEdit =
-    preview.kind === "html" && artifact?.artifactKind === "presentation-html";
+    editAvailable &&
+    preview.kind === "html" &&
+    artifact?.artifactKind === "presentation-html";
   const showHtmlEdit =
+    editAvailable &&
     preview.kind === "html" &&
     artifact?.artifactKind === "hosted-site" &&
     Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
   const showImageEdit =
+    editAvailable &&
     preview.kind === "image" &&
     Boolean(features?.[FeatureSwitchKey.ImageEditing]);
+  const showSplitView = preview.splitViewAvailable !== false;
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
       fullscreen,
@@ -1168,7 +1176,9 @@ function ArtifactPreviewDialogActions({
           <ArtifactActionSeparator />
         </>
       )}
-      <ArtifactDialogSplitViewButton onClick={openInSplitView} />
+      {showSplitView && (
+        <ArtifactDialogSplitViewButton onClick={openInSplitView} />
+      )}
       <ArtifactDialogFullscreenButton
         fullscreen={fullscreen}
         onClick={() => {

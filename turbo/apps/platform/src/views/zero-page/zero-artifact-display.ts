@@ -159,13 +159,16 @@ export function artifactFallbackSubtitle(
 export function artifactTitleSubtitle(
   kind: ArtifactDisplayKind,
   meta: ArtifactTitleMetadata,
+  options: { readonly showSize?: boolean } = {},
 ): string {
   const parts = [artifactKindTitle(kind, meta.filename, meta.artifactKind)];
   const format = artifactFormat(meta);
   if (format && parts[0] !== "Hosted site") {
     parts.push(format);
   }
-  parts.push(formatArtifactBytes(meta.size));
+  if (options.showSize ?? true) {
+    parts.push(formatArtifactBytes(meta.size));
+  }
   parts.push(`Generated ${formatArtifactGeneratedTime(meta.createdAt)}`);
   return parts.join(" · ");
 }
