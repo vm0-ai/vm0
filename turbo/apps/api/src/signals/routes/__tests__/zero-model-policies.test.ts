@@ -480,7 +480,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== "MiniMax-M3") {
+      if (policy.model !== LIMITED_FREE1_DEFAULT_RUN_MODEL) {
         return policy;
       }
       return {
