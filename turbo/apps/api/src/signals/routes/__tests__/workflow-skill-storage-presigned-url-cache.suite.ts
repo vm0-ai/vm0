@@ -12,7 +12,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
+import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -23,6 +23,7 @@ const context = testContext();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const WORKFLOW_CACHE_TTL_SECONDS = 2 * 60 * 60;
+const ISOLATED_CACHE_CRON_NOW = Date.parse("2000-01-02T00:00:00.000Z");
 
 interface CacheRow {
   readonly cache_key: string;
@@ -464,26 +465,9 @@ describe("workflow skill storage presigned URL cache", () => {
   });
 
   it("refreshes bounded active cache rows and prunes inactive expired rows from cron", async () => {
+    mockNow(ISOLATED_CACHE_CRON_NOW);
     const prefix = `org_${randomUUID()}/volume/workflow-cache-cron-${randomUUID()}`;
     await withCacheCleanup(prefix, async () => {
-      // The refresh cron sweeps the shared cache table with a bounded
-      // per-tick budget, oldest refresh_after first. Rows left behind by
-      // other tests and earlier runs mature into "due" over time and would
-      // starve this fixture's rows out of every tick, so first tick the cron
-      // until the global backlog is drained.
-      for (let tick = 0; tick < 120; tick += 1) {
-        const drainTick = await accept(
-          cronClient().refresh({ headers: cronHeaders() }),
-          [200],
-        );
-        if (
-          drainTick.body.workflowSkill.due === 0 &&
-          drainTick.body.workflowSkill.pruned === 0
-        ) {
-          break;
-        }
-      }
-
       const now = nowDate();
       const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
       const expiredAt = new Date(now.getTime() - 60 * 60 * 1000);
@@ -538,16 +522,22 @@ describe("workflow skill storage presigned URL cache", () => {
         cronClient().refresh({ headers: cronHeaders() }),
         [200],
       );
-      expect(firstTick.body.success).toBeTruthy();
-      // The per-tick refresh budget is bounded no matter how many rows are
-      // due — the counter is global, so this holds even when concurrently
-      // running files contribute due rows of their own.
-      expect(firstTick.body.workflowSkill.refreshed).toBeLessThanOrEqual(3);
+      expect(firstTick.body).toStrictEqual({
+        success: true,
+        system: expect.objectContaining({
+          due: expect.any(Number),
+          refreshed: expect.any(Number),
+          pruned: expect.any(Number),
+        }),
+        workflowSkill: {
+          due: 3,
+          refreshed: 3,
+          pruned: 2,
+        },
+      });
 
-      // Each tick's budget is shared with other files' due rows, so this
-      // fixture's rows converge over repeated ticks exactly as production
-      // does: active due rows get refreshed, inactive expired rows get
-      // pruned, and the inactive fresh row is never touched.
+      // A second tick refreshes the two active rows left by the bounded first
+      // batch. The inactive fresh row is never touched.
       await expect
         .poll(async () => {
           await accept(cronClient().refresh({ headers: cronHeaders() }), [200]);

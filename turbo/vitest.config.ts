@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     globals: true,
     passWithNoTests: true,
+    env: {
+      TZ: "UTC",
+    },
 
     coverage: {
       provider: "v8",

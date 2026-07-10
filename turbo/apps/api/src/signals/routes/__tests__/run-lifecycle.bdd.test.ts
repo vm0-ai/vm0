@@ -31,7 +31,11 @@ import {
   seedLexicalRelationshipMemory,
   seedMemoryDocumentChunk,
 } from "../../../test-fixtures/relationship-memory";
-import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  deleteUsagePricingRows,
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -7368,6 +7372,24 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     expect(beforeUsage.body.period).not.toBeNull();
     expect(beforeUsage.body.members).toStrictEqual([]);
 
+    const imageProvider = `bdd-member-usage-${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "image",
+        provider: imageProvider,
+        categories: ["output_image.low.standard"],
+      });
+    });
+    await seedUsagePricingRows([
+      {
+        kind: "image",
+        provider: imageProvider,
+        category: "output_image.low.standard",
+        unitPrice: 7,
+        unitSize: 1,
+      },
+    ]);
+
     const member = bdd.user({ orgId: actor.orgId });
     const memberAgent = await bdd.createAgent(member, {
       displayName: "BDD member usage agent",
@@ -7396,7 +7418,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "image",
-            provider: "gpt-image-2",
+            provider: imageProvider,
             category: "output_image.low.standard",
             quantity: 1,
           },
@@ -7412,7 +7434,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "image",
-            provider: "gpt-image-2",
+            provider: imageProvider,
             category: "output_image.low.standard",
             quantity: 2,
           },

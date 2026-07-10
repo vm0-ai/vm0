@@ -572,11 +572,10 @@ describe("known endpoint-scoped firewall bases", () => {
 
     expect(bases).toContain("https://api.xero.com/Connections");
     expect(bases).not.toContain("https://api.xero.com");
-    expect(connectionsApi?.permissions).toEqual([
-      {
-        name: "connections",
-        rules: ["GET /", "DELETE /{id}"],
-      },
-    ]);
+    expect(connectionsApi?.permissions).toHaveLength(1);
+    expect(connectionsApi?.permissions?.[0]).toMatchObject({
+      name: "connections",
+      rules: ["GET /", "DELETE /{id}"],
+    });
   });
 });
