@@ -69,6 +69,9 @@ pub(crate) async fn prepare_workspace_drive_image(
         None => {}
     }
 
+    // Lazy journal initialization is safe only on this fresh path: create
+    // truncates the regular file, and extending it makes the new range read as
+    // zero. Seed images return above and must not use this formatting option.
     let file = tokio::fs::File::create(path)
         .await
         .map_err(|e| SandboxError::Initialization {
@@ -90,7 +93,7 @@ pub(crate) async fn prepare_workspace_drive_image(
     let stage_started = Instant::now();
     let result = command::exec_status_with_timeout(
         "mkfs.ext4",
-        &["-F", "-q", path_str],
+        &["-F", "-q", "-E", "lazy_journal_init=1", path_str],
         Duration::from_secs(60),
     )
     .await
@@ -261,6 +264,7 @@ fn record_stage_result(
 mod tests {
     use super::*;
     use std::io::SeekFrom;
+    use std::process::Command;
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
     #[derive(Default)]
@@ -296,10 +300,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prepare_workspace_drive_image_without_seed_formats_fresh_image() {
+    async fn prepare_workspace_drive_image_without_seed_truncates_and_formats_fresh_image() {
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("nested").join("workspace.ext4");
         let mut observer = RecordingObserver::default();
+
+        tokio::fs::create_dir_all(target.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&target, vec![0xff; 4096]).await.unwrap();
 
         prepare_workspace_drive_image(
             &target,
@@ -319,6 +328,41 @@ mod tests {
         assert_eq!(
             observer.stages,
             vec![WorkspaceDriveImagePrepareStage::FreshFormat]
+        );
+
+        let fsck = Command::new("e2fsck")
+            .args(["-f", "-n"])
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(
+            fsck.status.success(),
+            "e2fsck failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&fsck.stdout),
+            String::from_utf8_lossy(&fsck.stderr)
+        );
+
+        let tune2fs = Command::new("tune2fs")
+            .arg("-l")
+            .arg(&target)
+            .env("LC_ALL", "C")
+            .output()
+            .unwrap();
+        assert!(
+            tune2fs.status.success(),
+            "tune2fs failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&tune2fs.stdout),
+            String::from_utf8_lossy(&tune2fs.stderr)
+        );
+        let tune2fs_stdout = String::from_utf8(tune2fs.stdout).unwrap();
+        let features = tune2fs_stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("Filesystem features:"))
+            .expect("tune2fs output should contain filesystem features");
+        assert!(
+            features
+                .split_whitespace()
+                .any(|feature| feature == "has_journal")
         );
     }
 
