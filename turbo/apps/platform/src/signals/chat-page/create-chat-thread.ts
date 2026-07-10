@@ -19,6 +19,7 @@ import {
 } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
+import { createWorkflowQueueChangedHandler as workflowQueueHandler } from "./workflow-queue.ts";
 import {
   createScrollSignals,
   type PrependScrollCompensationToken,
@@ -2395,6 +2396,7 @@ function createRunTracking({
               onMessageUpdated$,
               onRunChanged$,
               onAutomationsChanged$,
+              onWorkflowQueueChanged$: workflowQueueHandler(threadId),
               onSubscribed$,
             },
           },
