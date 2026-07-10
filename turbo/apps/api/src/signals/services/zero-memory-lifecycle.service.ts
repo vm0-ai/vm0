@@ -352,32 +352,6 @@ async function insertTombstone(
     });
 }
 
-export async function memoryDocumentHasTombstone(
-  db: ReadonlyDb,
-  args: MemoryScope & {
-    readonly provider: MemoryProvider;
-    readonly externalId: string;
-    readonly contentHash: string;
-  },
-): Promise<boolean> {
-  const [row] = await db
-    .select({ id: memoryTombstones.id })
-    .from(memoryTombstones)
-    .where(
-      and(
-        eq(memoryTombstones.orgId, args.orgId),
-        eq(memoryTombstones.userId, args.userId),
-        eq(memoryTombstones.targetKind, "document"),
-        inArray(memoryTombstones.fingerprint, [
-          memoryDocumentIdentityFingerprint(args),
-          memoryDocumentContentFingerprint(args.contentHash),
-        ]),
-      ),
-    )
-    .limit(1);
-  return row !== undefined;
-}
-
 async function listInsertedTombstones(
   db: MemoryLifecycleReadDb,
   args: MemoryScope & { readonly fingerprints: readonly string[] },
