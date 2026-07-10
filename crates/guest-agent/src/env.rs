@@ -1,4 +1,4 @@
-//! Guest-agent startup configuration parsed from environment snapshots.
+//! Guest-agent startup configuration parsed from captured environment values.
 //!
 //! `GuestConfigRaw::from_process_env` is the only process-env capture boundary
 //! in this module. After startup, callers should pass an owned [`GuestConfig`]
@@ -255,7 +255,17 @@ impl GuestConfig {
         Self::from_raw(raw)
     }
 
-    /// Build an owned config from explicit startup values.
+    /// Build an owned config from explicit captured startup values.
+    ///
+    /// This validates and destructively loads the required run-payload file and
+    /// the optional user-env file against the captured runtime directory. Each
+    /// private file is removed after it is read, before parsing and validation
+    /// finish.
+    ///
+    /// # Errors
+    ///
+    /// A referenced private file may already have been removed when this returns
+    /// an error from parsing, validation, or later config materialization.
     pub fn from_raw(raw: GuestConfigRaw) -> Result<Self, String> {
         let payload = load_run_payload_from_raw(&raw)?;
         let user_env = load_user_env_from_raw(&raw)?;

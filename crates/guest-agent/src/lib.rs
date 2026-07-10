@@ -3,7 +3,7 @@
 //! The production runtime model is explicit:
 //! - [`run_context::GuestRuntime::from_process_env`] is the startup boundary
 //!   that captures runner-provided process state.
-//! - [`env::GuestConfigRaw`] is the raw environment snapshot.
+//! - [`env::GuestConfigRaw`] owns captured raw startup values.
 //! - [`env::GuestConfig`] owns immutable run-scoped configuration.
 //! - [`paths::GuestPaths`] owns immutable run-scoped filesystem paths.
 //!
