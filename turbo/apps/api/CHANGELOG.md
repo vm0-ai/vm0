@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.261.1](https://github.com/vm0-ai/vm0/compare/api-v1.261.0...api-v1.261.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* align typescript tests across local and ci ([#20963](https://github.com/vm0-ai/vm0/issues/20963)) ([1613d7f](https://github.com/vm0-ai/vm0/commit/1613d7fe2ccd6a887acec51f9457eb7c045ec6db))
+
+
+### Performance Improvements
+
+* attribute runtime document memory retrieval ([#20952](https://github.com/vm0-ai/vm0/issues/20952)) ([f550e02](https://github.com/vm0-ai/vm0/commit/f550e024ef448c68c49492b10ccb23d616bc5af5))
+* eliminate redundant runner claim secret materialization ([#20968](https://github.com/vm0-ai/vm0/issues/20968)) ([536e238](https://github.com/vm0-ai/vm0/commit/536e238b92833b70e5380ade1edfc8b7ac3cac64))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.1
+    * @vm0/connectors bumped to 1.154.1
+    * @vm0/core bumped to 8.424.2
+    * @vm0/db bumped to 1.109.1
+
 ## [1.261.0](https://github.com/vm0-ai/vm0/compare/api-v1.260.0...api-v1.261.0) (2026-07-10)
 
 

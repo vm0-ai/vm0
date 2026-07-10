@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.591.1](https://github.com/vm0-ai/vm0/compare/app-v0.591.0...app-v0.591.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* improve template picker previews ([#20967](https://github.com/vm0-ai/vm0/issues/20967)) ([19a7b60](https://github.com/vm0-ai/vm0/commit/19a7b60c90cf5602f6ce05b8e988091929696013))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.1
+    * @vm0/connectors bumped to 1.154.1
+    * @vm0/core bumped to 8.424.2
+
 ## [0.591.0](https://github.com/vm0-ai/vm0/compare/app-v0.590.2...app-v0.591.0) (2026-07-10)
 
 
