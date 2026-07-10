@@ -149,6 +149,35 @@ describe("instrumentPgPool", () => {
     expectAcquisition(findSpan(queuedStatement), "queued");
   });
 
+  it("reserves idle and new capacity for earlier synchronous queries", async () => {
+    const pool = createPool({ max: 2 });
+    const warmStatement = "SELECT 104 AS warm_pool";
+    const idleStatement = "SELECT 105 AS burst_idle";
+    const newStatement = "SELECT 106 AS burst_new";
+    const queuedStatement = "SELECT 107 AS burst_queued";
+
+    await pool.query(warmStatement);
+    const idleQuery = pool.query(idleStatement);
+    const newQuery = pool.query(newStatement);
+    const queuedQuery = pool.query(queuedStatement);
+    const waitingCount = pool.waitingCount;
+
+    const [idleResult, newResult, queuedResult] = await Promise.all([
+      idleQuery,
+      newQuery,
+      queuedQuery,
+    ]);
+
+    expect(waitingCount).toBe(3);
+    expect(idleResult.rowCount).toBe(1);
+    expect(newResult.rowCount).toBe(1);
+    expect(queuedResult.rowCount).toBe(1);
+    expectAcquisition(findSpan(warmStatement), "new");
+    expectAcquisition(findSpan(idleStatement), "idle");
+    expectAcquisition(findSpan(newStatement), "new");
+    expectAcquisition(findSpan(queuedStatement), "queued");
+  });
+
   it("keeps concurrent queued measurements on their originating traces", async () => {
     const pool = createPool();
     const heldClient = await pool.connect();

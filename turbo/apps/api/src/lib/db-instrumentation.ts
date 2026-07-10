@@ -47,10 +47,17 @@ function extractSql(args: AnyArgs): string {
 }
 
 function acquisitionPath(pool: Pool): PoolAcquirePath {
-  if (pool.idleCount > 0) {
+  // Idle delivery is deferred to the next tick, so a synchronous burst can
+  // observe the same idle clients before earlier waiters receive them. Treat
+  // waitingCount as the new request's zero-based position and reserve both
+  // idle clients and remaining connection slots for earlier requests.
+  const position = pool.waitingCount;
+  if (position < pool.idleCount) {
     return "idle";
   }
-  if (pool.totalCount < pool.options.max) {
+  const availableClientCount =
+    pool.idleCount + pool.options.max - pool.totalCount;
+  if (position < availableClientCount) {
     return "new";
   }
   return "queued";
