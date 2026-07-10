@@ -46,6 +46,7 @@ import type { ZoomableImageControls } from "./zero-zoomable-image-canvas.tsx";
 
 const IMAGE_ZOOM_STEP = 0.15;
 const MAX_INITIAL_IMAGE_EDGE = 900;
+const IMAGE_VIEWER_PADDING = 24;
 const SELECTED_IMAGE_OUTLINE_WIDTH = 4;
 const SELECTED_IMAGE_HALO_WIDTH = 3;
 const TOOLBAR_OFFSET = 12;
@@ -243,10 +244,26 @@ function nextImageSize(image: HTMLImageElement) {
     return null;
   }
 
-  const scale = Math.min(
-    1,
-    MAX_INITIAL_IMAGE_EDGE / Math.max(naturalWidth, naturalHeight),
+  const root = image.closest<HTMLElement>(
+    "[data-editable-image-canvas-root='true']",
   );
+  const availableWidth =
+    root && root.clientWidth > IMAGE_VIEWER_PADDING * 2
+      ? root.clientWidth - IMAGE_VIEWER_PADDING * 2
+      : 0;
+  const availableHeight =
+    root && root.clientHeight > IMAGE_VIEWER_PADDING * 2
+      ? root.clientHeight - IMAGE_VIEWER_PADDING * 2
+      : 0;
+  const widthScale = availableWidth > 0 ? availableWidth / naturalWidth : 1;
+  const heightScale = availableHeight > 0 ? availableHeight / naturalHeight : 1;
+  const fallbackScale =
+    MAX_INITIAL_IMAGE_EDGE / Math.max(naturalWidth, naturalHeight);
+  const scale =
+    availableWidth > 0 || availableHeight > 0
+      ? Math.min(1, widthScale, heightScale)
+      : Math.min(1, fallbackScale);
+
   return {
     displayHeight: Math.round(naturalHeight * scale),
     displayWidth: Math.round(naturalWidth * scale),

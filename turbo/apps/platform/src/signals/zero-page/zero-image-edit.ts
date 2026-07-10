@@ -158,8 +158,6 @@ type UploadEditableImageCanvasImageArgs = {
   canvasSrc: string;
 };
 
-type ImportEditableImageCanvasImageUrlArgs = UploadEditableImageCanvasImageArgs;
-
 export const openArtifactImageEdit$ = command(
   ({ get, set }, value: OpenArtifactImageEditArgs) => {
     const args =
@@ -347,33 +345,6 @@ async function uploadImageFile({
   signal.throwIfAborted();
 
   return completed.body.url;
-}
-
-async function importImageUrl({
-  createClient,
-  signal,
-  url,
-}: {
-  createClient: ZeroClientFactory;
-  signal: AbortSignal;
-  url: string;
-}) {
-  const client = createClient(zeroUploadsContract);
-  const imported = await accept(
-    client.importImage({
-      body: { url },
-      fetchOptions: { signal },
-    }),
-    [200, 404],
-    { toast: false },
-  );
-  signal.throwIfAborted();
-
-  if (imported.status === 404) {
-    return url;
-  }
-
-  return imported.body.url;
 }
 
 function clampCropCoordinate(value: number, max: number): number {
@@ -833,45 +804,6 @@ export const uploadEditableImageCanvasImage$ = command(
     await withCleanup(
       tapError(run(), () => {
         toast.error("Couldn't upload image, try again");
-      }),
-      () => {
-        set(internalImageEditUploading$, false);
-      },
-    );
-  },
-);
-
-export const importEditableImageCanvasImageUrl$ = command(
-  async (
-    { get, set },
-    args: ImportEditableImageCanvasImageUrlArgs,
-    url: string,
-    parentSignal: AbortSignal,
-  ) => {
-    if (get(internalImageEditUploading$)) {
-      return;
-    }
-
-    const signal = parentSignal;
-    set(internalImageEditUploading$, true);
-
-    const run = async () => {
-      const importedUrl = await importImageUrl({
-        createClient: get(zeroClient$),
-        signal,
-        url,
-      });
-      set(insertEditableImageCanvasItem$, {
-        canvasSrc: args.canvasSrc,
-        key: args.canvasKey,
-        src: importedUrl,
-      });
-      toast.success("Image added");
-    };
-
-    await withCleanup(
-      tapError(run(), () => {
-        toast.error("Couldn't add image link, try again");
       }),
       () => {
         set(internalImageEditUploading$, false);
