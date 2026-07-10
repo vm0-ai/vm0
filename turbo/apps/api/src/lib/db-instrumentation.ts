@@ -47,6 +47,13 @@ function extractSql(args: AnyArgs): string {
 }
 
 function acquisitionPath(pool: Pool): PoolAcquirePath {
+  // With no idle client, pg-pool either starts a connection immediately or
+  // queues solely based on whether the pool is full. This can leapfrog older
+  // waiters while a removed client is still closing.
+  if (pool.idleCount === 0) {
+    return pool.totalCount < pool.options.max ? "new" : "queued";
+  }
+
   // Idle delivery is deferred to the next tick, so a synchronous burst can
   // observe the same idle clients before earlier waiters receive them. Treat
   // waitingCount as the new request's zero-based position and reserve both

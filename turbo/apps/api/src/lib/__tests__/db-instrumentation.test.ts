@@ -178,6 +178,36 @@ describe("instrumentPgPool", () => {
     expectAcquisition(findSpan(queuedStatement), "queued");
   });
 
+  it("classifies replacement connections while older queries remain queued", async () => {
+    const pool = createPool({ max: 2 });
+    const clientA = await pool.connect();
+    const clientB = await pool.connect();
+    const queuedStatementA = "SELECT 108 AS replacement_queue_a";
+    const queuedStatementB = "SELECT 109 AS replacement_queue_b";
+    const replacementStatement = "SELECT 110 AS replacement_new";
+
+    const queuedQueryA = pool.query(queuedStatementA);
+    const queuedQueryB = pool.query(queuedStatementB);
+    clientA.release(new Error("retire test client"));
+
+    expect(pool.totalCount).toBe(1);
+    expect(pool.idleCount).toBe(0);
+    expect(pool.waitingCount).toBe(2);
+    const replacementQuery = pool.query(replacementStatement);
+    clientB.release();
+
+    const [queuedResultA, queuedResultB, replacementResult] = await Promise.all(
+      [queuedQueryA, queuedQueryB, replacementQuery],
+    );
+
+    expect(queuedResultA.rowCount).toBe(1);
+    expect(queuedResultB.rowCount).toBe(1);
+    expect(replacementResult.rowCount).toBe(1);
+    expectAcquisition(findSpan(queuedStatementA), "queued");
+    expectAcquisition(findSpan(queuedStatementB), "queued");
+    expectAcquisition(findSpan(replacementStatement), "new");
+  });
+
   it("keeps concurrent queued measurements on their originating traces", async () => {
     const pool = createPool();
     const heldClient = await pool.connect();
