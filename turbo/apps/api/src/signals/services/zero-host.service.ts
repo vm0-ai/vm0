@@ -1848,6 +1848,7 @@ function artifactPreviewArgs(
     userId: deployment.userId,
     orgId: deployment.orgId,
     url: deployment.url,
+    contentType: "text/html",
     deploymentId: deployment.id,
   };
 }

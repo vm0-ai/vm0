@@ -17,7 +17,7 @@
     "@clerk/clerk-react": "^5.61.8",
     "@sentry/react": "^10.38.0",
     "@sentry/vite-plugin": "^4.9.0",
-    "@tabler/icons-react": "^3.36.1",
+    "@tabler/icons-react": "3.44.0",
     "@tiptap/core": "3.21.0",
     "@tiptap/markdown": "3.23.1",
     "@tiptap/pm": "3.21.0",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.1...runner-rs-v0.143.2) (2026-07-10)
+
+
+### Refactoring
+
+* remove bundled builtin firewall fallback ([#20820](https://github.com/vm0-ai/vm0/issues/20820)) ([2d1d645](https://github.com/vm0-ai/vm0/commit/2d1d64573699169211736e3a9b91947ebb05d1e3))
+
 ## [0.143.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.0...runner-rs-v0.143.1) (2026-07-10)
 
 
