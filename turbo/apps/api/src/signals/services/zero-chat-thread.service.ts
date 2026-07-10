@@ -140,6 +140,7 @@ type ArtifactListSqlRow = Record<string, unknown> & {
   readonly preview_image_url: string | null;
   readonly metadata: unknown;
   readonly created_at: Date | string;
+  readonly cursor_created_at: string;
   readonly thread_id: string;
   readonly thread_title: string | null;
   readonly agent_id: string;
@@ -1125,7 +1126,7 @@ export const zeroArtifacts$ = command(
     // DESC. Pushing it into scoped_artifacts (pre-dedup) would let an older row
     // of an already-emitted url slip past the cursor and re-surface as a dup.
     const keysetClause = cursor
-      ? sql`WHERE (created_at, row_id) < (${cursor.createdAt}::timestamptz, ${cursor.rowId}::uuid)`
+      ? sql`WHERE (deduped_artifacts.created_at, deduped_artifacts.row_id) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.rowId}::uuid)`
       : sql``;
     const conditions = generatedArtifactVisibilityConditions(args);
 
@@ -1176,6 +1177,10 @@ export const zeroArtifacts$ = command(
       )
       SELECT
         deduped_artifacts.*,
+        to_char(
+          deduped_artifacts.created_at,
+          'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+        ) AS cursor_created_at,
         (${userArtifactFavorites.artifactUrl} IS NOT NULL) AS is_favorited
       FROM deduped_artifacts
       LEFT JOIN ${userArtifactFavorites}
@@ -1195,7 +1200,7 @@ export const zeroArtifacts$ = command(
     const nextCursor =
       hasMore && lastRow
         ? encodeArtifactCursor({
-            createdAt: artifactRowCreatedAt(lastRow).toISOString(),
+            createdAt: lastRow.cursor_created_at,
             rowId: lastRow.row_id,
           })
         : null;

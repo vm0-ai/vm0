@@ -18,6 +18,7 @@ import {
 import { createStore } from "ccstate";
 import { and, eq, gt, lte, sql } from "drizzle-orm";
 
+import { timestampWithoutTimeZone } from "../lib/time";
 import { writeDb$ } from "../signals/external/db";
 
 interface UsageAllowanceEntitlementFixtureState {
@@ -131,7 +132,7 @@ export async function cancelUsageAllowanceEntitlementFixture(values: {
   await db
     .update(orgUsageAllowanceWindows)
     .set({
-      expiresAt: sql<Date>`GREATEST(${values.canceledAt}, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
+      expiresAt: sql<Date>`GREATEST(${timestampWithoutTimeZone(values.canceledAt)}::timestamp, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
       updatedAt: values.canceledAt,
     })
     .where(

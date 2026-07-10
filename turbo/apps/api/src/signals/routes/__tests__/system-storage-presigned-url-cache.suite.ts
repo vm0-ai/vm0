@@ -11,14 +11,14 @@ import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core/storage-names";
-import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
+import { GOAL_SKILL_NAME } from "@vm0/core/zero-seed-skills";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
+import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
@@ -27,6 +27,7 @@ import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-p
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
+const ISOLATED_CACHE_CRON_NOW = Date.parse("2000-01-01T00:00:00.000Z");
 
 interface CacheRow {
   readonly cache_key: string;
@@ -267,12 +268,11 @@ function mockUniquePresignedUrls(): void {
   );
 }
 
-function firstSeedSkillStorage() {
-  const skillName = SEED_SKILLS[0];
-  if (!skillName) {
-    throw new Error("Expected at least one seed skill");
-  }
-  const skillRef = resolveSkillRef(skillName);
+function isolatedSystemSkillStorage() {
+  // Goal is mounted on every Zero run but is not rewritten by the
+  // cron-sync-skills test fixture, so its system storage head is stable while
+  // this suite exercises the cache.
+  const skillRef = resolveSkillRef(GOAL_SKILL_NAME);
   const fullPath = skillRef.replace("https://github.com/", "");
   const storageName = getSkillStorageName(fullPath);
   const versionId = randomUUID()
@@ -281,7 +281,7 @@ function firstSeedSkillStorage() {
     .slice(0, 64);
   const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
   const s3Key = `${s3Prefix}/${versionId}`;
-  return { skillName, storageName, versionId, s3Prefix, s3Key };
+  return { storageName, versionId, s3Prefix, s3Key };
 }
 
 function cronClient() {
@@ -306,7 +306,7 @@ describe("system storage presigned URL cache", () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     mockUniquePresignedUrls();
-    const skill = firstSeedSkillStorage();
+    const skill = isolatedSystemSkillStorage();
     await withCacheCleanup(
       {
         objectKeyPrefix: skill.s3Prefix,
@@ -341,9 +341,8 @@ describe("system storage presigned URL cache", () => {
                 return storage.vasStorageName === skill.storageName;
               },
             );
-            expect(firstSkillEntry?.archiveUrl).toContain(skill.versionId);
 
-            // The dev-seeded skill storage is shared platform state, so
+            // The system skill storage is shared platform state, so
             // concurrently running files' claims may hold cache rows under
             // the same prefix — assert this claim's row exists rather than
             // an exact global row count.
@@ -352,7 +351,11 @@ describe("system storage presigned URL cache", () => {
             );
             expect(
               rowsAfterFirst.some((row) => {
-                return row.presigned_url === firstSkillEntry?.archiveUrl;
+                return (
+                  row.presigned_url === firstSkillEntry?.archiveUrl &&
+                  row.storage_version_id === skill.versionId &&
+                  row.object_key.includes(skill.versionId)
+                );
               }),
             ).toBeTruthy();
 
@@ -381,6 +384,7 @@ describe("system storage presigned URL cache", () => {
   });
 
   it("refreshes only a bounded due cache batch from cron", async () => {
+    mockNow(ISOLATED_CACHE_CRON_NOW);
     const prefix = `${SYSTEM_ORG_ID}/volume/cache-cron-${randomUUID()}`;
     await withCacheCleanup(
       {
@@ -443,6 +447,7 @@ describe("system storage presigned URL cache", () => {
   });
 
   it("skips inactive due cache rows in cron", async () => {
+    mockNow(ISOLATED_CACHE_CRON_NOW);
     const prefix = `${SYSTEM_ORG_ID}/volume/cache-inactive-${randomUUID()}`;
     await withCacheCleanup(
       {
@@ -514,6 +519,7 @@ describe("system storage presigned URL cache", () => {
   });
 
   it("prunes inactive expired cache rows from cron", async () => {
+    mockNow(ISOLATED_CACHE_CRON_NOW);
     const prefix = `${SYSTEM_ORG_ID}/volume/cache-prune-${randomUUID()}`;
     await withCacheCleanup(
       {

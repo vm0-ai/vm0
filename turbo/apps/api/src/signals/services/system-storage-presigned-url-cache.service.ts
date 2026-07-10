@@ -6,7 +6,7 @@ import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate, timestampWithoutTimeZone } from "../external/time";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StoragePresignedUrlCacheScope =
@@ -183,11 +183,6 @@ function activeCutoff(issuedAt: Date): Date {
     issuedAt.getTime() -
       SYSTEM_STORAGE_PRESIGNED_URL_ACTIVE_WINDOW_SECONDS * 1000,
   );
-}
-
-function timestampWithoutTimeZone(value: Date): string {
-  // Raw SQL Date params compare as timestamptz; these columns store UTC timestamp.
-  return value.toISOString().replace("T", " ").replace("Z", "");
 }
 
 function storagePresignedUrlCacheScope(
