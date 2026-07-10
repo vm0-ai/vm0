@@ -424,7 +424,9 @@ export const storedExecutionContextSchema = z.object({
 /**
  * Execution context returned when claiming a job.
  *
- * Keep in sync with Rust: crates/runner/src/types.rs → ExecutionContext
+ * This is the canonical producer schema. The runner's `ExecutionContext` is a
+ * tolerant consumer projection and intentionally does not mirror every field.
+ * See `crates/runner/src/types.rs`.
  */
 export const executionContextSchema = z.object({
   runId: z.uuid(),
