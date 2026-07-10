@@ -1354,6 +1354,42 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_document_semantic_embedding_result: "empty",
       }),
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_search_result_count_bucket: "0",
+        span_kind: "nested",
+        zero_run_origin: "zero_run",
+        trigger_source: "web",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_lexical",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_lexical_candidate_count_bucket: "0",
+        span_kind: "nested",
+      }),
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        memory_document_hydration_candidate_count_bucket: "0",
+        memory_document_hydrated_result_count_bucket: "0",
+        span_kind: "nested",
+      }),
+    );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
       "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
