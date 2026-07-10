@@ -6,6 +6,11 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  getAllFeatureStates,
+  isFeatureEnabled,
+} from "@vm0/core/feature-switch";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
@@ -22,8 +27,15 @@ import { and, eq, ne } from "drizzle-orm";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { writeDb$, type Db } from "../external/db";
-import { conflict, notFound } from "../../lib/error";
+import { db$, writeDb$, type Db } from "../external/db";
+import {
+  conflict,
+  connectorReadinessTimeout,
+  notFound,
+  payloadTooLarge,
+  providerUnavailable,
+} from "../../lib/error";
+import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
@@ -34,6 +46,7 @@ import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
 import { ensureWorkflowUserTriggerThread } from "../services/zero-workflow-user-trigger-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
+import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
 import {
   encryptWorkflowWebhookSecret,
@@ -43,6 +56,8 @@ import {
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-trigger.service";
 import { workflowWebhookTriggerCreationEnabledForOwner } from "../services/workflow-webhook-trigger-feature-switch.service";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { settle } from "../utils";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -53,6 +68,8 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
+
+const log = logger("api:zero:workflow-connector-readiness");
 
 const workflowReadAuth = {
   requireOrganization: true,
@@ -447,6 +464,91 @@ const getWorkflowDetailInner$ = computed(async (get) => {
   }
   return { status: 200 as const, body: result };
 });
+
+function isTimeoutError(error: unknown): boolean {
+  return (
+    (error instanceof Error || error instanceof DOMException) &&
+    error.name === "TimeoutError"
+  );
+}
+
+const connectorReadinessInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(
+      pathParamsOf(zeroWorkflowsDetailContract.connectorReadiness),
+    );
+    const overrides = await get(
+      userFeatureSwitchOverrides(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const featureContext = {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    };
+    if (
+      !isFeatureEnabled(
+        FeatureSwitchKey.WorkflowConnectorReadiness,
+        featureContext,
+      )
+    ) {
+      return forbidden("Workflow connector readiness is disabled");
+    }
+
+    const visible = await loadVisibleWorkflowById(get(db$), {
+      orgId: auth.orgId,
+      member: memberFromAuth(auth),
+      workflowId: params.workflowId,
+    });
+    signal.throwIfAborted();
+    if (!visible) {
+      return workflowNotFound(params.workflowId);
+    }
+
+    const detected = await settle(
+      set(
+        detectWorkflowConnectorReadiness$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          agentId: visible.workflow.agentId,
+          workflowId: visible.workflow.id,
+          workflow: {
+            name: visible.workflow.name,
+            description: visible.workflow.description,
+            instruction: visible.workflow.instruction,
+          },
+          featureStates: getAllFeatureStates(featureContext),
+        },
+        signal,
+      ),
+      signal,
+    );
+    if (!detected.ok) {
+      if (isTimeoutError(detected.error)) {
+        return connectorReadinessTimeout(
+          "Connector readiness check timed out. Please retry.",
+        );
+      }
+      log.warn("Workflow connector readiness check failed", {
+        workflowId: visible.workflow.id,
+        error:
+          detected.error instanceof Error
+            ? detected.error.message
+            : String(detected.error),
+      });
+      return providerUnavailable(
+        "Connector readiness check failed. Please retry.",
+      );
+    }
+    const result = detected.value;
+    if (!result.ok) {
+      return payloadTooLarge(result.message);
+    }
+    return { status: 200 as const, body: result.response };
+  },
+);
 
 const updateWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -1251,6 +1353,10 @@ export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowsDetailContract.run,
     handler: authRoute(workflowWriteAuth, runWorkflowInner$),
+  },
+  {
+    route: zeroWorkflowsDetailContract.connectorReadiness,
+    handler: authRoute(workflowReadAuth, connectorReadinessInner$),
   },
   {
     route: zeroWorkflowVisibilityContract.publish,

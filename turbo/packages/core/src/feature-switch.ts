@@ -435,6 +435,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowConnectorReadiness]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the manual connector readiness check on workflow settings pages.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
 };
 
 interface ResolvedHashes {

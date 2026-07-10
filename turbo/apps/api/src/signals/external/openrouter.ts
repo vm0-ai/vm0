@@ -31,6 +31,12 @@ interface OpenRouterResponse {
   }[];
 }
 
+interface OpenRouterGenerateTextOptions {
+  readonly signal?: AbortSignal;
+  readonly responseFormat?: { readonly type: "json_object" };
+  readonly temperature?: number;
+}
+
 /**
  * Whether OpenRouter-backed text generation is available. Callers gate optional
  * LLM enrichment on this so the surrounding feature degrades when the key is
@@ -49,6 +55,7 @@ export async function generateText(
   model: string,
   messages: readonly OpenRouterMessage[],
   maxTokens?: number,
+  options?: OpenRouterGenerateTextOptions,
 ): Promise<string | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
@@ -65,8 +72,12 @@ export async function generateText(
       model,
       messages,
       ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }),
-      temperature: 0.3,
+      ...(options?.responseFormat === undefined
+        ? {}
+        : { response_format: options.responseFormat }),
+      temperature: options?.temperature ?? 0.3,
     }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {

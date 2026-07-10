@@ -30,6 +30,14 @@ export function providerUnavailable(message: string) {
   return httpError(503, "PROVIDER_UNAVAILABLE", message);
 }
 
+export function connectorReadinessTimeout(message: string) {
+  return httpError(503, "CONNECTOR_READINESS_TIMEOUT", message);
+}
+
+export function payloadTooLarge(message: string) {
+  return httpError(413, "PAYLOAD_TOO_LARGE", message);
+}
+
 export function providerDeleted() {
   return httpError(
     422,
