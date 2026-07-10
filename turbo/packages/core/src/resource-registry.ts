@@ -3648,7 +3648,7 @@ const WEBSITE_TEMPLATE_ARCHIVE_SHA256: Record<string, string> = {
   "frame-stack":
     "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
   "frosted-scatter":
-    "7ad1c3b16b7beeb82e1a2f39a1fe7fff168592fb06e7b5fedf3c2450e1412f43",
+    "00e343ace0673ece5903a2b6abbad6bb960c17796e0cfa5cce0bcab7e6bcdd7b",
   "gallery-wall":
     "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
   "glass-bloom":
