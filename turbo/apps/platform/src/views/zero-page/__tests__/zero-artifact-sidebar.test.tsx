@@ -2145,6 +2145,93 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("uploads a presentation to Google Slides after authorizing Google Drive for the agent", async () => {
+    const presentationUrl = "https://deck.sites.vm7.io/quarterly-roadmap.html";
+    const artifactFiles = [
+      artifactFile(presentationUrl, {
+        id: "artifact-quarterly-roadmap",
+        filename: "quarterly-roadmap.html",
+        contentType: "text/html",
+        artifactKind: "presentation-html",
+        googleDriveSync: { status: "disconnected" },
+        size: 1024,
+      }),
+    ];
+    context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.http.get(presentationUrl, () => {
+      return new Response(presentationHtml(), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
+      return new Response(presentationHtml(), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    let agentAuthorized = false;
+    let slidesUploaded = false;
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          enabledTypes: ["google-drive"],
+          operation: "add",
+        });
+        agentAuthorized = true;
+        return respond(200, { enabledTypes: ["google-drive"] });
+      },
+    );
+    context.mocks.http.post(
+      "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
+      async ({ request }) => {
+        expect(agentAuthorized).toBeTruthy();
+        const file = (await request.formData()).get("file");
+        expect(file).toBeInstanceOf(File);
+        slidesUploaded = true;
+        return HttpResponse.json({
+          id: "slides-file-quarterly-roadmap",
+          name: "quarterly-roadmap",
+          webViewLink: null,
+        });
+      },
+    );
+    setupChatThread({
+      artifactFiles,
+      content: `[Quarterly roadmap](${presentationUrl})`,
+      featureSwitches: {
+        [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toBeEnabled();
+    });
+    click(menuItemByText("Connect Google Drive"));
+
+    await waitFor(() => {
+      expect(agentAuthorized).toBeTruthy();
+    });
+    const exportFrame = await waitFor(() => {
+      const frame = document.querySelector(
+        'iframe[title="Presentation PPTX export"]',
+      );
+      expect(frame).toBeInstanceOf(HTMLIFrameElement);
+      return frame as HTMLIFrameElement;
+    });
+    completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+
+    await waitFor(() => {
+      expect(slidesUploaded).toBeTruthy();
+    });
+  });
+
   it("preserves deck-level slide backgrounds for editable PPTX export", async () => {
     const presentationUrl = "https://deck.sites.vm7.io/dog-world.html";
     const downloads = captureDownloads(context.signal);
