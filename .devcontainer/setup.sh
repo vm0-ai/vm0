@@ -31,25 +31,15 @@ else
   echo "✓ Turbo workspace not found, skipping cache cleanup"
 fi
 
-# Setup PostgreSQL (handled by postgresql feature). Migrations create the
-# `vector` extension, so the local server must have the pgvector package.
-POSTGRES_VERSION=17
-PGVECTOR_PACKAGE="postgresql-${POSTGRES_VERSION}-pgvector"
-echo "🐘 Ensuring PostgreSQL pgvector extension package is installed..."
-if dpkg-query -W -f='${Status}' "$PGVECTOR_PACKAGE" 2>/dev/null | grep -q "install ok installed"; then
-  echo "✓ $PGVECTOR_PACKAGE already installed"
-else
-  sudo apt-get update -qq
-  sudo apt-get install -y -qq "$PGVECTOR_PACKAGE"
-  echo "✓ Installed $PGVECTOR_PACKAGE"
-fi
-
+# PostgreSQL is initialized by the postgresql feature, while pgvector is
+# provided by the vm0-dev image.
+echo "🐘 Checking PostgreSQL pgvector extension..."
 sudo chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 sudo service postgresql start 2>/dev/null || true
 if sudo -u postgres psql -h /var/run/postgresql -d postgres -Atqc "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'" | grep -qx 1; then
   echo "✓ pgvector extension available to PostgreSQL"
 else
-  echo "ERROR: pgvector extension is not available to PostgreSQL after installing $PGVECTOR_PACKAGE" >&2
+  echo "ERROR: pgvector extension is not available to PostgreSQL" >&2
   exit 1
 fi
 
