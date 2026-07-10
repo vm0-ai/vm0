@@ -56,9 +56,9 @@ interface AllowanceEntitlementArgs {
 /**
  * An org whose runs can be admitted with the vm0 managed model key. Tier and
  * credit balance are pinned through the org-metadata fixture; the allowance
- * entitlement (when given) comes from the usage-allowance fixture because no
- * product path writes entitlement rows. Everything downstream — window
- * activation, usage events, settlement — runs through product paths.
+ * entitlement (when given) is seeded directly so these tests can focus on
+ * settlement without repeating Stripe invoice setup. Everything downstream —
+ * window activation, usage events, settlement — runs through product paths.
  */
 async function vm0AllowanceActor(args: {
   readonly credits: number;

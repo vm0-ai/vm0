@@ -1,15 +1,12 @@
 /**
  * In-process test fixture for `org_usage_allowance_entitlements`.
  *
- * Usage-allowance entitlements are operator-managed configuration with no
- * product write path: no API route, webhook, or cron inserts into this table
- * (the billing reconcile cron only manages concurrency entitlements), so
- * tests cannot grant an org a usage allowance through any product endpoint.
- * This module is the narrow test-boundary exception for that state: it only
- * upserts the per-org entitlement row. Allowance windows and allocations are
- * deliberately NOT seeded here — production creates those during vm0 run
- * creation and usage-event settlement, and tests must drive them through
- * those paths.
+ * Settlement-focused tests seed entitlements directly so they do not need to
+ * repeat the Stripe invoice setup covered by webhook integration tests. This
+ * module only upserts the per-org entitlement row. Allowance windows and
+ * allocations are deliberately NOT seeded here — production creates those
+ * during vm0 run creation and usage-event settlement, and tests must drive
+ * them through those paths.
  */
 import {
   orgUsageAllowanceEntitlements,
