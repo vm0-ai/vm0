@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { accept } from "../../lib/accept.ts";
-import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { searchParams$ } from "../route.ts";
 import { parseGithubConnectParams } from "./github-connect-params.ts";
@@ -20,11 +19,6 @@ export const githubConnectLinkStatus$ = computed(
     get(internalGithubConnectLinkStatusReload$);
     const parsed = parseGithubConnectParams(get(searchParams$));
     if (!parsed.ok) {
-      return null;
-    }
-
-    const clerk = await get(clerk$);
-    if (!clerk.user) {
       return null;
     }
 

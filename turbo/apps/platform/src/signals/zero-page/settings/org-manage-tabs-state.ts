@@ -370,7 +370,7 @@ export const saveOrgProfile$ = command(
     const org = await get(org$);
     signal.throwIfAborted();
     if (!org) {
-      return;
+      throw new Error("Organization is required to update its profile");
     }
 
     const hasNameChange = input.name !== (org.name ?? "");

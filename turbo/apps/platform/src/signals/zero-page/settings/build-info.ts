@@ -13,7 +13,7 @@ export const backendBuildInfo$ = computed(
   async (get): Promise<BackendBuildInfo> => {
     const createClient = get(zeroClient$);
     const client = createClient(buildInfoContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
 
     return {
       backendCommitSha: result.body.commitSha,

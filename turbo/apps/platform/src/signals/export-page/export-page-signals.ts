@@ -24,7 +24,7 @@ export const userExportStatus$ = computed(
   async (get): Promise<UserExportStatusResponse> => {
     get(statusReload$);
     const client = get(zeroClient$)(userExportContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );
@@ -61,7 +61,6 @@ export const startUserExport$ = command(
         fetchOptions: { signal },
       }),
       [202, 429],
-      { toast: false },
     );
     signal.throwIfAborted();
 

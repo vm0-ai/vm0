@@ -103,9 +103,6 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
   const readSnapshot = vi.fn(() => {
     return Promise.resolve(snapshot);
   });
-  const readLatestEventId = vi.fn(() => {
-    return Promise.resolve(snapshot?.latestEventId ?? null);
-  });
   const readEvents = vi.fn(() => {
     return Promise.resolve(events);
   });
@@ -134,7 +131,6 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
 
   return {
     readSnapshot,
-    readLatestEventId,
     readEvents,
     replaceFromSnapshot,
     upsertEvents,
@@ -152,7 +148,6 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
       snapshot = null;
       events = [];
       readSnapshot.mockClear();
-      readLatestEventId.mockClear();
       readEvents.mockClear();
       replaceFromSnapshot.mockClear();
       upsertEvents.mockClear();
@@ -183,7 +178,6 @@ vi.mock("../../../signals/external/idb-chat-thread-event-store.ts", () => {
       return {
         readStore: {
           readSnapshot: idbThreadEventStoreMock.readSnapshot,
-          readLatestEventId: idbThreadEventStoreMock.readLatestEventId,
           readEvents: idbThreadEventStoreMock.readEvents,
         },
         writeStore: {

@@ -15,7 +15,7 @@ import {
 } from "./artifact-search.ts";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { clerk$ } from "../auth.ts";
+import { authenticatedIdentity$ } from "../auth.ts";
 import { openChatIdb } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
@@ -136,12 +136,7 @@ export const reloadArtifacts$ = command(({ set }) => {
 export const remoteArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
     get(internalArtifactsReload$);
-    const clerk = await get(clerk$);
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (!userId || !orgId) {
-      return { artifacts: [] };
-    }
+    const { userId, orgId } = await get(authenticatedIdentity$);
     const client = get(zeroClient$)(artifactsContract);
     const artifacts: ArtifactItem[] = [];
     let cursor: string | undefined;
@@ -149,7 +144,6 @@ export const remoteArtifacts$ = computed(
       const result = await accept(
         client.list({ query: { limit: ARTIFACTS_PAGE_SIZE, cursor } }),
         [200],
-        { toast: false },
       );
       artifacts.push(
         ...result.body.artifacts.map((item) => {
@@ -172,12 +166,7 @@ export const remoteArtifacts$ = computed(
 // (reads degrade to an empty list), so it is always a safe fallback.
 export const cachedArtifacts$ = computed(
   async (get): Promise<ArtifactsPageData> => {
-    const clerk = await get(clerk$);
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (!userId || !orgId) {
-      return { artifacts: [] };
-    }
+    const { userId, orgId } = await get(authenticatedIdentity$);
     const artifacts = await artifactItemCacheStores(
       userId,
       orgId,
@@ -275,15 +264,11 @@ export const toggleArtifactFavorite$ = command(
     });
     signal.throwIfAborted();
 
-    const clerk = await get(clerk$);
+    const { userId, orgId } = await get(authenticatedIdentity$);
     signal.throwIfAborted();
-    const userId = clerk.user?.id;
-    const orgId = clerk.organization?.id;
-    if (userId && orgId) {
-      await artifactItemCacheStores(userId, orgId).writeStore.upsertItems([
-        { ...item, isFavorited: nextIsFavorited },
-      ]);
-    }
+    await artifactItemCacheStores(userId, orgId).writeStore.upsertItems([
+      { ...item, isFavorited: nextIsFavorited },
+    ]);
     signal.throwIfAborted();
     set(reloadArtifacts$);
   },

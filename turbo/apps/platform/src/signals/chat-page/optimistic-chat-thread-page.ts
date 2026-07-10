@@ -14,11 +14,7 @@ import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/z
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import {
-  chatThreads$,
-  currentChatThreadId$,
-  reloadChatThreads$,
-} from "../agent-chat.ts";
+import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
@@ -171,37 +167,6 @@ function resolveNewThreadModelSelection(
     codexFastModeDefault: args.codexFastModeDefault,
   });
 }
-
-const settleNewThreadSend$ = command(
-  async (
-    { set },
-    args: {
-      readonly clearDraftResult: Promise<void>;
-      readonly createResult: Promise<void>;
-      readonly createClient: ZeroClientFactory;
-      readonly body: ReturnType<typeof newThreadSendBody>;
-    },
-    signal: AbortSignal,
-  ): Promise<SendNewThreadMessageResult> => {
-    await Promise.all([args.clearDraftResult, args.createResult]);
-    signal.throwIfAborted();
-
-    const result = await accept(
-      args.createClient(chatMessagesContract).send({
-        body: args.body,
-        fetchOptions: { signal },
-      }),
-      [201],
-    );
-    signal.throwIfAborted();
-    L.debug("sendNewThreadMessage$ POST chat/messages 201", {
-      threadId: result.body.threadId,
-      runId: result.body.runId,
-    });
-    set(reloadChatThreads$);
-    return { threadId: result.body.threadId, runId: result.body.runId };
-  },
-);
 
 const routeMainChatThread$ = command(({ get, set }, threadId: string) => {
   const next = new URLSearchParams(get(searchParams$));
@@ -493,27 +458,36 @@ const sendNewThreadMessage$ = command(
       L.debug("sendNewThreadMessage$ POST chat-threads 201", { threadId });
       signal.throwIfAborted();
     })();
-    const sendResult = set(
-      settleNewThreadSend$,
-      {
-        clearDraftResult,
-        createResult,
-        createClient,
-        body: newThreadSendBody({
-          agentId,
-          threadId,
-          clientMessageId,
-          prepared,
-          modelSelection: resolvedModelSelection,
-          codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
-          realAgentInPreviewEnabled:
-            get(featureSwitch$)[FeatureSwitchKey.RealAgentInPreview] ?? false,
-          generationTemplate,
-          computerUseHostId,
+    const sendBody = newThreadSendBody({
+      agentId,
+      threadId,
+      clientMessageId,
+      prepared,
+      modelSelection: resolvedModelSelection,
+      codexFastModeEnabled: codexFastModeSwitchEnabled(get(featureSwitch$)),
+      realAgentInPreviewEnabled:
+        get(featureSwitch$)[FeatureSwitchKey.RealAgentInPreview] ?? false,
+      generationTemplate,
+      computerUseHostId,
+    });
+    const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
+      await Promise.all([clearDraftResult, createResult]);
+      signal.throwIfAborted();
+
+      const result = await accept(
+        createClient(chatMessagesContract).send({
+          body: sendBody,
+          fetchOptions: { signal },
         }),
-      },
-      signal,
-    );
+        [201],
+      );
+      signal.throwIfAborted();
+      L.debug("sendNewThreadMessage$ POST chat/messages 201", {
+        threadId: result.body.threadId,
+        runId: result.body.runId,
+      });
+      return { threadId: result.body.threadId, runId: result.body.runId };
+    })();
     return { threadId, sendResult };
   },
 );

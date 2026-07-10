@@ -54,7 +54,6 @@ function createFirewallPermissionMetadataFactory(): (
           params: { connectorRef: key },
         }),
         [200, 404],
-        { toast: false },
       );
       if (result.status === 404) {
         return null;

@@ -426,6 +426,25 @@ export const user$ = computed(async (get) => {
   return clerk.user ?? undefined;
 });
 
+/**
+ * Stable cache ownership for authenticated pages.
+ *
+ * Route setup guarantees both values before page data is loaded. Keeping this
+ * invariant here prevents cache-backed data sources from independently
+ * treating a missing Clerk value as an empty cache or a remote-only mode.
+ */
+export const authenticatedIdentity$ = computed(async (get) => {
+  const clerk = await get(clerk$);
+  if (!clerk.user || !clerk.organization) {
+    throw new Error("Authenticated user and organization are required");
+  }
+  return {
+    userId: clerk.user.id,
+    orgId: clerk.organization.id,
+    email: clerk.user.primaryEmailAddress?.emailAddress,
+  };
+});
+
 export const currentUserInfo$ = computed(async (get) => {
   get(clerkVersion$);
   const clerk = await get(clerk$);
