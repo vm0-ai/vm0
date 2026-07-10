@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.256.2](https://github.com/vm0-ai/vm0/compare/api-v1.256.1...api-v1.256.2) (2026-07-10)
+
+
+### Refactoring
+
+* require github user id at the issues api boundary ([#20862](https://github.com/vm0-ai/vm0/issues/20862)) ([ced0b9a](https://github.com/vm0-ai/vm0/commit/ced0b9a8ee06554c2537c9f515e369fa6fdc22b2))
+
 ## [1.256.1](https://github.com/vm0-ai/vm0/compare/api-v1.256.0...api-v1.256.1) (2026-07-10)
 
 
