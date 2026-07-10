@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.2...runner-rs-v0.143.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* **runner:** bill openai cache write tokens ([#20874](https://github.com/vm0-ai/vm0/issues/20874)) ([884f74e](https://github.com/vm0-ai/vm0/commit/884f74e0428e2ab46d11f227114824f616c2f985))
+
 ## [0.143.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.1...runner-rs-v0.143.2) (2026-07-10)
 
 
