@@ -1161,7 +1161,7 @@ const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
 );
 
 const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
-  "zero-viewport-shell fixed inset-0 z-[100] flex min-h-0 flex-col bg-background";
+  "zero-fixed-viewport-shell fixed inset-0 z-[100] flex min-h-0 flex-col bg-background";
 
 function ChatImagePreviewLink({
   alt,

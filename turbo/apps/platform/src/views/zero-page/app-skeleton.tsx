@@ -65,7 +65,7 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
     <div
       data-testid="app-skeleton"
       aria-hidden={visible ? undefined : true}
-      className={`zero-viewport-shell fixed inset-0 z-50 flex items-center justify-center bg-background ${
+      className={`zero-fixed-viewport-shell fixed inset-0 z-50 flex items-center justify-center bg-background ${
         visible
           ? "opacity-100"
           : "opacity-0 pointer-events-none transition-opacity duration-300"

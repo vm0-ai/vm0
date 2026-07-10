@@ -1676,7 +1676,7 @@ describe("zero attachment chips", () => {
     await user.click(screen.getByLabelText("Enter fullscreen"));
     expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     expect(screen.getByTestId("attachment-lightbox-panel")).toHaveClass(
-      "zero-viewport-shell",
+      "zero-fixed-viewport-shell",
     );
 
     await user.click(screen.getByLabelText("Next image artifact"));
@@ -1829,7 +1829,7 @@ describe("zero attachment chips", () => {
       expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     });
     expect(screen.getByTestId("attachment-lightbox-panel")).toHaveClass(
-      "zero-viewport-shell",
+      "zero-fixed-viewport-shell",
     );
 
     click(screen.getByLabelText("Exit fullscreen"));
@@ -1838,7 +1838,7 @@ describe("zero attachment chips", () => {
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
     expect(screen.getByTestId("attachment-lightbox-panel")).not.toHaveClass(
-      "zero-viewport-shell",
+      "zero-fixed-viewport-shell",
     );
 
     click(screen.getByLabelText("Open in split view"));

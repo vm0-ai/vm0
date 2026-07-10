@@ -14,22 +14,18 @@ function getViewportDirectives(): string[] {
   );
 }
 
-function readPlatformFile(relativePath: string): string {
+function readGlobalCss(): string {
   const candidates = [
-    join(process.cwd(), relativePath),
-    join(process.cwd(), "apps/platform", relativePath),
+    join(process.cwd(), "src/views/css/index.css"),
+    join(process.cwd(), "apps/platform/src/views/css/index.css"),
   ];
   const path = candidates.find((candidate) => {
     return existsSync(candidate);
   });
   if (path === undefined) {
-    throw new Error(`Unable to locate platform file: ${relativePath}`);
+    throw new Error("Unable to locate platform global CSS");
   }
   return readFileSync(path, "utf8");
-}
-
-function readGlobalCss(): string {
-  return readPlatformFile("src/views/css/index.css");
 }
 
 describe("platform entrypoint safe area behavior", () => {
@@ -70,7 +66,6 @@ describe("platform entrypoint safe area behavior", () => {
 
   it("keeps the app shell out of page-level scrolling in standalone PWA mode", () => {
     const globalCss = readGlobalCss();
-    const mainSource = readPlatformFile("src/views/main.tsx");
 
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100dvh;/);
     expect(globalCss).toMatch(/--zero-viewport-height:\s*100lvh;/);
@@ -84,16 +79,16 @@ describe("platform entrypoint safe area behavior", () => {
       /#root\s*{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
     );
     expect(globalCss).toMatch(
-      /\.zero-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*max-height:\s*var\(--zero-viewport-height\);[\s\S]*overflow:\s*hidden;/,
+      /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
     );
     expect(globalCss).toMatch(
-      /\.zero-viewport-shell\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
+      /\.zero-viewport-shell\s*{[\s\S]*height:\s*100%;[\s\S]*max-height:\s*100%;[\s\S]*overflow:\s*hidden;/,
+    );
+    expect(globalCss).toMatch(
+      /\.zero-fixed-viewport-shell\s*{[\s\S]*height:\s*var\(--zero-viewport-height\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
     );
     expect(globalCss).toMatch(
       /\.zero-mobile-fixed-safe-area\s*{[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab\)\s+var\(--sal\);/,
-    );
-    expect(mainSource).toMatch(
-      /<div className="zero-viewport-shell relative w-full">\s*<ErrorBoundary>/,
     );
   });
 

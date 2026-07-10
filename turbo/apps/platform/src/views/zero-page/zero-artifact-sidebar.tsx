@@ -175,7 +175,7 @@ import type { HtmlDomEditDraft } from "./html-dom-edit-types.ts";
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_FULLSCREEN_SHELL_CLASSNAME =
-  "zero-viewport-shell fixed inset-0 flex min-h-0 flex-col bg-background";
+  "zero-fixed-viewport-shell fixed inset-0 flex min-h-0 flex-col bg-background";
 const ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME = "z-[100]";
 const ARTIFACT_FULLSCREEN_EDIT_LAYER_CLASSNAME = "z-[9999]";
 
