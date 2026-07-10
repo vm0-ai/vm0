@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.105](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.104...sandbox-fc-v0.37.105) (2026-07-10)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** replace bespoke firecracker http codec ([#20969](https://github.com/vm0-ai/vm0/issues/20969)) ([a0e7072](https://github.com/vm0-ai/vm0/commit/a0e7072ff052a3b7219177601493a710fb3f02bf)), closes [#20908](https://github.com/vm0-ai/vm0/issues/20908)
+
 ## [0.37.104](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.103...sandbox-fc-v0.37.104) (2026-07-10)
 
 
