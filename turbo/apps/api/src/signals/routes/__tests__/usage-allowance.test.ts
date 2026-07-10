@@ -6,9 +6,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import {
-  cancelUsageAllowanceEntitlement,
   seedOrgMetadata,
-  seedUsageAllowanceEntitlement,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import {
@@ -24,6 +22,10 @@ import {
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
 } from "./helpers/automations";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import {
+  generatedStripeCustomerId,
+  postUsageAllowanceInvoicePaid,
+} from "./helpers/stripe-billing-webhook";
 
 const context = testContext();
 
@@ -50,15 +52,13 @@ interface AllowanceEntitlementArgs {
   readonly shortWindowUnits: number;
   readonly weeklyWindowUnits: number;
   readonly shortWindowSeconds?: number;
-  readonly status?: string;
 }
 
 /**
  * An org whose runs can be admitted with the vm0 managed model key. Tier and
  * credit balance are pinned through the org-metadata fixture; the allowance
- * entitlement (when given) comes from the usage-allowance fixture because no
- * product path writes entitlement rows. Everything downstream — window
- * activation, usage events, settlement — runs through product paths.
+ * entitlement (when given), window activation, usage events, and settlement
+ * all run through product paths.
  */
 async function vm0AllowanceActor(args: {
   readonly credits: number;
@@ -81,7 +81,7 @@ async function vm0AllowanceActor(args: {
   await bdd.setupOnboarding(actor, { displayName: "Usage allowance agent" });
   await seedOrgMetadata({ orgId, tier: "pro", credits: args.credits });
   if (args.allowance) {
-    await seedAllowanceEntitlement(orgId, args.allowance);
+    await seedAllowanceEntitlement(actor, orgId, args.allowance);
   }
   const agent = await bdd.createAgent(actor, {
     displayName: "Usage allowance agent",
@@ -91,16 +91,46 @@ async function vm0AllowanceActor(args: {
 }
 
 async function seedAllowanceEntitlement(
+  actor: ApiTestUser,
   orgId: string,
   args: AllowanceEntitlementArgs,
 ): Promise<void> {
-  await seedUsageAllowanceEntitlement({
+  await postUsageAllowanceInvoicePaid(context.signal, {
     orgId,
+    userId: actor.userId,
+    customerId: generatedStripeCustomerId(),
+    subscriptionId: usageAllowanceSubscriptionId(orgId),
+    effectiveAt: nowDate(),
+    expiresAt: addDays(nowDate(), 365),
     shortWindowSeconds: args.shortWindowSeconds ?? 5 * 60 * 60,
     shortWindowUnits: args.shortWindowUnits,
+    weeklyWindowSeconds: 7 * 24 * 60 * 60,
     weeklyWindowUnits: args.weeklyWindowUnits,
-    status: args.status,
   });
+}
+
+function usageAllowanceSubscriptionId(orgId: string): string {
+  return `sub_usage_allowance_${orgId}`;
+}
+
+async function cancelUsageAllowanceSubscription(orgId: string): Promise<void> {
+  const webhooks = createWebhookCallbackApi(context);
+  webhooks.configureStripeBillingEnv();
+  await webhooks.postStripeEvent(
+    {
+      id: `evt_usage_allowance_cancel_${randomUUID()}`,
+      type: "customer.subscription.updated",
+      created: Math.floor(now() / 1000),
+      data: {
+        object: {
+          id: usageAllowanceSubscriptionId(orgId),
+          status: "canceled",
+          items: { data: [] },
+        },
+      },
+    },
+    [200],
+  );
 }
 
 async function createVm0Run(
@@ -196,15 +226,12 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    context.mocks.ably.publish.mockClear();
+    // Another Vitest worker can settle this org through the shared test DB, so
+    // verify persisted billing behavior instead of a worker-local Ably mock.
     await processUsageEvents();
 
     await expect(readOrgCredits(actor)).resolves.toBe(10);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "billing:changed",
-      null,
-    );
   });
 
   it("falls back to org credits after the binding window cap is exhausted", async () => {
@@ -459,7 +486,7 @@ describe("Usage Allowance", () => {
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
     await seedOrgMetadata({ orgId, tier: "pro", credits: 100 });
-    await seedAllowanceEntitlement(orgId, {
+    await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 100,
       weeklyWindowUnits: 200,
     });
@@ -519,7 +546,7 @@ describe("Usage Allowance", () => {
   it("does not apply newly created allowance to older runs", async () => {
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
     const run = await createVm0Run(actor, agentId, "run before entitlement");
-    await seedAllowanceEntitlement(orgId, {
+    await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 100,
       weeklyWindowUnits: 200,
     });
@@ -555,7 +582,7 @@ describe("Usage Allowance", () => {
 
     const canceledAt = addHours(startedAt, 1);
     mockNow(canceledAt);
-    await cancelUsageAllowanceEntitlement({ orgId, canceledAt });
+    await cancelUsageAllowanceSubscription(orgId);
     const provider = usageProvider();
     await recordPendingUsage({
       actor,
@@ -583,7 +610,7 @@ describe("Usage Allowance", () => {
     await createVm0Run(actor, agentId, "activate allowance windows");
     const canceledAt = addHours(startedAt, 1);
     mockNow(canceledAt);
-    await cancelUsageAllowanceEntitlement({ orgId, canceledAt });
+    await cancelUsageAllowanceSubscription(orgId);
     mockNow(addHours(startedAt, 2));
     const run = await createVm0Run(
       actor,
@@ -609,7 +636,7 @@ describe("Usage Allowance", () => {
     const api = createRunsAutomationsApi(context);
     // The run predates the entitlement, so it has no allowance windows.
     const run = await createVm0Run(actor, agentId, "run without windows");
-    await seedAllowanceEntitlement(orgId, {
+    await seedAllowanceEntitlement(actor, orgId, {
       shortWindowUnits: 2,
       weeklyWindowUnits: 2,
     });

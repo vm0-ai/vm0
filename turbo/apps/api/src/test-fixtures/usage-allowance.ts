@@ -1,24 +1,17 @@
 /**
- * In-process test fixture for `org_usage_allowance_entitlements`.
+ * Narrow in-process fixtures for usage allowance state that has no equivalent
+ * product-facing setup or read surface.
  *
- * Usage-allowance entitlements are operator-managed configuration with no
- * product write path: no API route, webhook, or cron inserts into this table
- * (the billing reconcile cron only manages concurrency entitlements), so
- * tests cannot grant an org a usage allowance through any product endpoint.
- * This module is the narrow test-boundary exception for that state: it only
- * upserts the per-org entitlement row. Allowance windows and allocations are
- * deliberately NOT seeded here — production creates those during vm0 run
- * creation and usage-event settlement, and tests must drive them through
- * those paths.
+ * Entitlements are created through Stripe webhooks. Explicit window seeds are
+ * reserved for read scenarios that need pre-existing or historical state.
  */
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
 } from "@vm0/db/schema/org-usage-allowance";
 import { createStore } from "ccstate";
-import { and, eq, gt, lte, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-import { timestampWithoutTimeZone } from "../lib/time";
 import { writeDb$ } from "../signals/external/db";
 
 interface UsageAllowanceEntitlementFixtureState {
@@ -41,42 +34,6 @@ interface UsageAllowanceWindowFixtureSeed {
   readonly expiresAt: Date;
   readonly unitLimit: number;
   readonly consumedUnits?: number;
-}
-
-export async function upsertUsageAllowanceEntitlementFixture(values: {
-  readonly orgId: string;
-  readonly shortWindowSeconds: number;
-  readonly shortWindowUnits: number;
-  readonly weeklyWindowUnits: number;
-  readonly weeklyWindowSeconds?: number;
-  readonly status?: string;
-}): Promise<void> {
-  const status = values.status ?? "active";
-  const weeklyWindowSeconds = values.weeklyWindowSeconds ?? 604_800;
-  await createStore()
-    .set(writeDb$)
-    .insert(orgUsageAllowanceEntitlements)
-    .values({
-      orgId: values.orgId,
-      source: "manual",
-      status,
-      shortWindowSeconds: values.shortWindowSeconds,
-      shortWindowUnits: values.shortWindowUnits,
-      weeklyWindowSeconds,
-      weeklyWindowUnits: values.weeklyWindowUnits,
-    })
-    .onConflictDoUpdate({
-      target: orgUsageAllowanceEntitlements.orgId,
-      set: {
-        source: "manual",
-        status,
-        shortWindowSeconds: values.shortWindowSeconds,
-        shortWindowUnits: values.shortWindowUnits,
-        weeklyWindowSeconds,
-        weeklyWindowUnits: values.weeklyWindowUnits,
-        updatedAt: sql`now()`,
-      },
-    });
 }
 
 export async function insertUsageAllowanceWindowsFixture(values: {
@@ -113,35 +70,6 @@ export async function insertUsageAllowanceWindowsFixture(values: {
       };
     }),
   );
-}
-
-export async function cancelUsageAllowanceEntitlementFixture(values: {
-  readonly orgId: string;
-  readonly canceledAt: Date;
-}): Promise<void> {
-  const db = createStore().set(writeDb$);
-  await db
-    .update(orgUsageAllowanceEntitlements)
-    .set({
-      status: "canceled",
-      expiresAt: values.canceledAt,
-      updatedAt: values.canceledAt,
-    })
-    .where(eq(orgUsageAllowanceEntitlements.orgId, values.orgId));
-
-  await db
-    .update(orgUsageAllowanceWindows)
-    .set({
-      expiresAt: sql<Date>`GREATEST(${timestampWithoutTimeZone(values.canceledAt)}::timestamp, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
-      updatedAt: values.canceledAt,
-    })
-    .where(
-      and(
-        eq(orgUsageAllowanceWindows.orgId, values.orgId),
-        lte(orgUsageAllowanceWindows.startsAt, values.canceledAt),
-        gt(orgUsageAllowanceWindows.expiresAt, values.canceledAt),
-      ),
-    );
 }
 
 export async function readUsageAllowanceEntitlementFixture(
