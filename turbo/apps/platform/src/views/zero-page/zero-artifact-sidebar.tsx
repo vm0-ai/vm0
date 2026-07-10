@@ -2079,8 +2079,6 @@ const IMAGE_STYLE_TRANSFER_TEMPLATES = [
 const IMAGE_EDIT_UPLOAD_ACCEPT =
   "image/avif,image/bmp,image/gif,image/jpeg,image/png,image/webp";
 
-type ImageStyleTransferTemplateId =
-  (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number]["id"];
 type ImageStyleTransferTemplate =
   (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number];
 type ImageStyleTransferThumbnail =
@@ -2431,10 +2429,41 @@ function NotionStyleThumbnail() {
         stroke="#d7dee8"
         strokeWidth="2"
       />
-      <rect x="18" y="18" width="22" height="15" rx="4" fill="#fde68a" opacity=".8" />
-      <rect x="57" y="19" width="18" height="18" rx="5" fill="#bfdbfe" opacity=".82" />
-      <rect x="56" y="59" width="20" height="13" rx="4" fill="#fecaca" opacity=".82" />
-      <circle cx="30" cy="32" r="7" fill="#fbbf24" stroke="#111827" strokeWidth="2.5" />
+      <rect
+        x="18"
+        y="18"
+        width="22"
+        height="15"
+        rx="4"
+        fill="#fde68a"
+        opacity=".8"
+      />
+      <rect
+        x="57"
+        y="19"
+        width="18"
+        height="18"
+        rx="5"
+        fill="#bfdbfe"
+        opacity=".82"
+      />
+      <rect
+        x="56"
+        y="59"
+        width="20"
+        height="13"
+        rx="4"
+        fill="#fecaca"
+        opacity=".82"
+      />
+      <circle
+        cx="30"
+        cy="32"
+        r="7"
+        fill="#fbbf24"
+        stroke="#111827"
+        strokeWidth="2.5"
+      />
       <path
         d="M18 70l25-34 16 18 20-30"
         fill="none"
@@ -2520,7 +2549,13 @@ function StudioProductionStyleThumbnail() {
           <stop offset=".58" stopColor="#eef2f7" />
           <stop offset="1" stopColor="#cbd5e1" />
         </radialGradient>
-        <linearGradient id="image-style-studio-card" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient
+          id="image-style-studio-card"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
           <stop offset="0" stopColor="#ffffff" />
           <stop offset="1" stopColor="#e2e8f0" />
         </linearGradient>
@@ -2628,10 +2663,8 @@ function ImageStyleTemplateVisual({
 }
 
 function ImageStyleTemplateOption({
-  defaultChecked,
   template,
 }: {
-  defaultChecked: boolean;
   template: ImageStyleTransferTemplate;
 }) {
   return (
@@ -2641,9 +2674,8 @@ function ImageStyleTemplateOption({
     >
       <input
         type="radio"
-        name="styleTemplate"
+        name="styleMode"
         value={template.id}
-        defaultChecked={defaultChecked}
         className="peer sr-only"
       />
       <ImageStyleTemplateVisual template={template} />
@@ -2661,36 +2693,38 @@ function ImageStyleTemplateOption({
 }
 
 function ImageStyleTemplateList() {
-  const defaultTemplateId = IMAGE_STYLE_TRANSFER_TEMPLATES[0].id;
   return (
     <div className="mt-2 grid grid-cols-3 gap-1.5">
       {IMAGE_STYLE_TRANSFER_TEMPLATES.map((template) => {
         return (
-          <ImageStyleTemplateOption
-            key={template.id}
-            defaultChecked={template.id === defaultTemplateId}
-            template={template}
-          />
+          <ImageStyleTemplateOption key={template.id} template={template} />
         );
       })}
     </div>
   );
 }
 
-function imageStylePromptFromForm(form: HTMLFormElement): string {
+function imageStylePromptFromForm(form: HTMLFormElement): string | null {
   const data = new FormData(form);
+  const selectedMode = String(data.get("styleMode") ?? "");
   const customStyle = String(data.get("customStyle") ?? "").trim();
-  if (customStyle) {
-    return customStyle;
+  if (selectedMode === "custom") {
+    return customStyle || null;
   }
-  const templateId = String(
-    data.get("styleTemplate") ?? IMAGE_STYLE_TRANSFER_TEMPLATES[0].id,
-  ) as ImageStyleTransferTemplateId;
-  const template =
-    IMAGE_STYLE_TRANSFER_TEMPLATES.find((item) => {
-      return item.id === templateId;
-    }) ?? IMAGE_STYLE_TRANSFER_TEMPLATES[0];
-  return template.prompt;
+  const template = IMAGE_STYLE_TRANSFER_TEMPLATES.find((item) => {
+    return item.id === selectedMode;
+  });
+  return template?.prompt ?? null;
+}
+
+function syncImageStyleApplyButton(form: HTMLFormElement): void {
+  const button = form.querySelector('[data-testid="image-edit-apply-style"]');
+  if (button instanceof HTMLButtonElement) {
+    button.setAttribute(
+      "aria-disabled",
+      imageStylePromptFromForm(form) === null ? "true" : "false",
+    );
+  }
 }
 
 function ArtifactImageEditToolbarButton({
@@ -2744,7 +2778,11 @@ function ArtifactImageStyleTransferPopover({
   onApply: (stylePrompt: string, item: EditableImageCanvasItem) => void;
 }) {
   const applyStyle = (form: HTMLFormElement) => {
-    onApply(imageStylePromptFromForm(form), item);
+    const stylePrompt = imageStylePromptFromForm(form);
+    if (!stylePrompt) {
+      return;
+    }
+    onApply(stylePrompt, item);
   };
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2784,27 +2822,69 @@ function ArtifactImageStyleTransferPopover({
         className="z-[10000] max-h-[min(620px,calc(100vh-120px))] w-[420px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg border-border/70 p-3 shadow-lg"
         data-testid="image-edit-style-popover"
       >
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form
+          onChange={(event) => {
+            syncImageStyleApplyButton(event.currentTarget);
+          }}
+          onSubmit={handleSubmit}
+          className="space-y-3"
+        >
           <p className="text-sm font-bold text-foreground">Style Transfer</p>
           <ImageStyleTemplateList />
-          <p className="px-0.5 text-xs font-semibold text-muted-foreground">
-            Custom style
-          </p>
-          <textarea
-            className="min-h-16 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
-            name="customStyle"
-            placeholder="Describe a custom style..."
-            data-testid="image-edit-style-custom-input"
-          />
+          <label
+            className="group block cursor-text rounded-lg border border-border/70 bg-muted/20 p-2 transition-colors hover:border-primary/40 hover:bg-muted/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+            data-testid="image-edit-style-custom-option"
+          >
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Custom style
+              </span>
+              <span className="h-2 w-2 rounded-full bg-primary opacity-0 transition-opacity group-has-[:checked]:opacity-100" />
+            </span>
+            <input
+              type="radio"
+              name="styleMode"
+              value="custom"
+              className="peer sr-only"
+            />
+            <textarea
+              className="min-h-16 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
+              name="customStyle"
+              placeholder="Describe a custom style..."
+              data-testid="image-edit-style-custom-input"
+              onFocus={(event) => {
+                const form = event.currentTarget.form;
+                const customStyleRadio = form?.querySelector(
+                  'input[name="styleMode"][value="custom"]',
+                );
+                if (customStyleRadio instanceof HTMLInputElement) {
+                  customStyleRadio.checked = true;
+                }
+                if (form) {
+                  syncImageStyleApplyButton(form);
+                }
+              }}
+              onChange={(event) => {
+                const form = event.currentTarget.form;
+                if (form) {
+                  syncImageStyleApplyButton(form);
+                }
+              }}
+            />
+          </label>
           <PopoverClose asChild>
             <Button
               type="button"
-              className="h-8 w-full rounded-md text-sm font-medium"
+              className="h-8 w-full rounded-md text-sm font-medium aria-disabled:pointer-events-none aria-disabled:opacity-50"
               data-testid="image-edit-apply-style"
+              aria-disabled="true"
               onClick={(event) => {
-                if (event.currentTarget.form) {
-                  applyStyle(event.currentTarget.form);
+                const form = event.currentTarget.form;
+                if (!form || imageStylePromptFromForm(form) === null) {
+                  event.preventDefault();
+                  return;
                 }
+                applyStyle(form);
               }}
             >
               Apply style

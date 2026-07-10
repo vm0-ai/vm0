@@ -1294,12 +1294,36 @@ describe("image editing", () => {
       screen.getByTestId("image-edit-style-template-preview-ink-wash"),
     ).toBeInTheDocument();
     expect(
-      screen.getByTestId(
-        "image-edit-style-template-preview-studio-production",
-      ),
+      screen.getByTestId("image-edit-style-template-preview-studio-production"),
     ).toBeInTheDocument();
+    for (const templateName of STYLE_TRANSFER_TEMPLATES) {
+      expect(
+        within(stylePopover).getByRole("radio", {
+          name: new RegExp(templateName, "u"),
+        }),
+      ).not.toBeChecked();
+    }
+    expect(
+      within(stylePopover).getByRole("radio", { name: /Custom style/u }),
+    ).not.toBeChecked();
+    expect(screen.getByTestId("image-edit-apply-style")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     await user.click(
       screen.getByTestId("image-edit-style-template-studio-production"),
+    );
+    expect(
+      within(stylePopover).getByRole("radio", {
+        name: /Studio production/u,
+      }),
+    ).toBeChecked();
+    expect(
+      within(stylePopover).getByRole("radio", { name: /Custom style/u }),
+    ).not.toBeChecked();
+    expect(screen.getByTestId("image-edit-apply-style")).toHaveAttribute(
+      "aria-disabled",
+      "false",
     );
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
@@ -1317,6 +1341,12 @@ describe("image editing", () => {
       screen.getByTestId("image-edit-style-custom-input"),
       "Neon cyberpunk lighting",
     );
+    expect(
+      within(screen.getByTestId("image-edit-style-popover")).getByRole(
+        "radio",
+        { name: /Custom style/u },
+      ),
+    ).toBeChecked();
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
@@ -1359,6 +1389,9 @@ describe("image editing", () => {
       expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
     });
     await user.click(screen.getByTestId("image-edit-style-transfer"));
+    await user.click(
+      screen.getByTestId("image-edit-style-template-illustration"),
+    );
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
