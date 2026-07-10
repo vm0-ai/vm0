@@ -56,6 +56,8 @@ class _DiagnosticCatalog:
 
 @dataclass(frozen=True)
 class DiagnosticCatalogProjection:
+    """Diagnostic subset derived deterministically from a validated catalog."""
+
     connector_firewalls: tuple[dict, ...]
     model_provider_exclusions: tuple[dict, ...]
     shared_base_keys: frozenset[str]
@@ -63,6 +65,8 @@ class DiagnosticCatalogProjection:
 
 @dataclass(frozen=True)
 class DiagnosticCatalogSnapshot:
+    """Compiled diagnostic catalog or unavailable outcome selected for a flow."""
+
     dependency_file_key: builtin_firewall_cache.CatalogFileKey | None
     catalog_identity: builtin_firewall_cache.CatalogIdentity | None
     catalog: _DiagnosticCatalog | None

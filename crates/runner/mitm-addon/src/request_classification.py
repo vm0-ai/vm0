@@ -115,6 +115,9 @@ class RequestClassification:
     - `public_destination_denied`: `vm_info` and
       `public_destination_denial`.
     - `api_allow`, `browser_allow`, and `allow`: `vm_info`.
+    - `firewall_allow` and `allow` may also carry
+      `builtin_firewall_catalog_snapshot` when registry compilation depended on
+      a catalog snapshot.
     - `stale_tls_admission`: `stale_tls_reason`; `vm_info` is present only
       when the stale admission is detected after a VM entry is found.
     - `no_client_ip` and `pass_through`: no additional payload.

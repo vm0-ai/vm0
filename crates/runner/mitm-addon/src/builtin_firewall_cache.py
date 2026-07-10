@@ -115,7 +115,7 @@ def catalog_file_key(cache_path: str | None) -> CatalogFileKey | None:
 
 
 def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnapshot:
-    """Load one catalog cache state for a single registry reload."""
+    """Load one trusted catalog snapshot for a consumer pass."""
     if not cache_path:
         return BuiltinFirewallCatalogSnapshot(
             None,
