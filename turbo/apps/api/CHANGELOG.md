@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.261.0](https://github.com/vm0-ai/vm0/compare/api-v1.260.0...api-v1.261.0) (2026-07-10)
+
+
+### Features
+
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.0
+    * @vm0/core bumped to 8.424.1
+    * @vm0/db bumped to 1.109.0
+
 ## [1.260.0](https://github.com/vm0-ai/vm0/compare/api-v1.259.0...api-v1.260.0) (2026-07-10)
 
 
