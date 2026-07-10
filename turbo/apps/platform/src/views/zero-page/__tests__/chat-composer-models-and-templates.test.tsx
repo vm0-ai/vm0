@@ -594,13 +594,7 @@ async function openTemplatePicker(
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-
-  await fill(screen.getByLabelText("Search templates"), "no matching deck");
-  await waitFor(() => {
-    expect(screen.getByText("No matches")).toBeInTheDocument();
-  });
-
-  await fill(screen.getByLabelText("Search templates"), template.title);
+  expect(screen.queryByLabelText("Search connectors")).toBeNull();
   await waitFor(() => {
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
@@ -2598,7 +2592,6 @@ describe("chat composer templates", () => {
           return screen.getByLabelText("Template");
         }),
       );
-      await fill(screen.getByLabelText("Search templates"), template.title);
       expect(
         screen.queryByLabelText(`View template ${template.title}`),
       ).not.toBeInTheDocument();
@@ -2653,10 +2646,6 @@ describe("chat composer templates", () => {
         createObjectUrlCountBeforeLeave,
       );
 
-      await fill(
-        screen.getByLabelText("Search templates"),
-        prismTemplate.title,
-      );
       const currentPrismPreviewFrame = () => {
         return screen.getByTestId(`${prismTemplate.title} card HTML preview`);
       };
@@ -2773,7 +2762,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     const preview = screen.getByLabelText(
       `Preview ${template.title} at current slide`,
     ).parentElement;
@@ -2865,7 +2853,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     expect(
       screen.queryByLabelText(`Change theme for ${template.title}`),
     ).not.toBeInTheDocument();
@@ -2970,7 +2957,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     expect(
       screen.queryByLabelText(`Change theme for ${template.title}`),
     ).not.toBeInTheDocument();
@@ -3059,7 +3045,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
 
     const preview = screen.getByLabelText(
       `Preview ${template.title} at current slide`,
@@ -3224,7 +3209,6 @@ describe("chat composer templates", () => {
           return screen.getByLabelText("Template");
         }),
       );
-      await fill(screen.getByLabelText("Search templates"), template.title);
       click(
         screen.getByLabelText(`Preview ${template.title} at current slide`),
       );
@@ -3342,7 +3326,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     const templateDialog = screen.getByRole("dialog");
@@ -3607,12 +3590,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    await fill(screen.getByLabelText("Search templates"), "no matching style");
-    await waitFor(() => {
-      expect(screen.getByText("No matches")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Search templates"), "ink");
+    expect(screen.queryByLabelText("Search connectors")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -4164,12 +4142,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "no matching style");
-    await waitFor(() => {
-      expect(screen.getByText("No matches")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Search templates"), "luxury");
+    expect(screen.queryByLabelText("Search connectors")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -4229,12 +4202,16 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "no workflow match");
+    expect(screen.getByLabelText("Search connectors")).toHaveAttribute(
+      "placeholder",
+      "Search connector...",
+    );
+    await fill(screen.getByLabelText("Search connectors"), "no workflow match");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
+    await fill(screen.getByLabelText("Search connectors"), "auto-inbox");
     click(
       screen.getByLabelText(
         `Select workflow template ${workflowTemplate.title}`,
@@ -4255,9 +4232,7 @@ describe("chat composer templates", () => {
     });
 
     const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Create this inbox workflow");
-    await user.keyboard("{Enter}");
+    await sendMessageInUI(user, editor, "Create this inbox workflow");
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({
@@ -4279,6 +4254,10 @@ describe("chat composer templates", () => {
   it("selects and sends a website template behind the feature switch", async () => {
     const user = userEvent.setup({ delay: null });
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const websiteTemplatePreviewImageUrl = r2ImageTransformUrl(
+      websiteTemplate.previewImageUrl,
+      { width: 480, height: 270 },
+    );
     let submittedTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -4311,7 +4290,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
-      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`)
           .tagName,
@@ -4320,16 +4299,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-
-    await fill(screen.getByLabelText("Search templates"), "no website match");
-    await waitFor(() => {
-      expect(screen.getByText("No matches")).toBeInTheDocument();
-    });
-
-    await fill(
-      screen.getByLabelText("Search templates"),
-      websiteTemplate.title,
-    );
+    expect(screen.queryByLabelText("Search connectors")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );
@@ -4356,7 +4326,7 @@ describe("chat composer templates", () => {
       expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
-      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`)
           .tagName,
