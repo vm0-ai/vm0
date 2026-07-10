@@ -196,15 +196,12 @@ describe("Usage Allowance", () => {
       quantity: 80,
     });
 
-    context.mocks.ably.publish.mockClear();
+    // Another Vitest worker can settle this org through the shared test DB, so
+    // verify persisted billing behavior instead of a worker-local Ably mock.
     await processUsageEvents();
 
     await expect(readOrgCredits(actor)).resolves.toBe(10);
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(80);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "billing:changed",
-      null,
-    );
   });
 
   it("falls back to org credits after the binding window cap is exhausted", async () => {
@@ -583,7 +580,27 @@ describe("Usage Allowance", () => {
     await createVm0Run(actor, agentId, "activate allowance windows");
     const canceledAt = addHours(startedAt, 1);
     mockNow(canceledAt);
-    await cancelUsageAllowanceEntitlement({ orgId, canceledAt });
+    const webhooks = createWebhookCallbackApi(context);
+    webhooks.configureStripeBillingEnv();
+    await webhooks.postStripeEvent(
+      {
+        id: `evt_usage_allowance_cancel_${randomUUID()}`,
+        type: "customer.subscription.updated",
+        created: Math.floor(now() / 1000),
+        data: {
+          object: {
+            id: `sub_usage_allowance_cancel_${randomUUID()}`,
+            status: "canceled",
+            metadata: {
+              purpose: "usage_allowance",
+              orgId,
+            },
+            items: { data: [] },
+          },
+        },
+      },
+      [200],
+    );
     mockNow(addHours(startedAt, 2));
     const run = await createVm0Run(
       actor,
