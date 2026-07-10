@@ -417,6 +417,8 @@ interface TeamsConnectStatus {
   readonly teamName?: string | null;
   readonly defaultAgentName?: string | null;
   readonly agentOrgSlug?: string | null;
+  readonly permissionMismatch?: boolean | null;
+  readonly reinstallUrl?: string | null;
   readonly environment?: TeamsEnvironment;
 }
 
@@ -581,6 +583,33 @@ function inactiveTeamsStatus(args: {
   };
 }
 
+function teamsPermissionStatus(args: {
+  readonly installation: TeamsInstallation;
+  readonly isAdmin: boolean;
+}): {
+  readonly permissionMismatch?: boolean | null;
+  readonly reinstallUrl?: string | null;
+} {
+  if (!args.isAdmin) {
+    return {};
+  }
+
+  const configuredAppId = env("MICROSOFT_TEAMS_BOT_APP_ID");
+  const installedAppId = args.installation.teamsAppId;
+  const permissionMismatch = Boolean(
+    configuredAppId &&
+    installedAppId &&
+    configuredAppId.toLowerCase() !== installedAppId.toLowerCase(),
+  );
+
+  return {
+    permissionMismatch,
+    reinstallUrl: permissionMismatch
+      ? buildTeamsInstallUrl(args.installation.teamsTenantId)
+      : null,
+  };
+}
+
 function activeTeamsStatus(args: {
   readonly installation: TeamsInstallation;
   readonly connection: typeof teamsOrgConnections.$inferSelect | undefined;
@@ -605,6 +634,10 @@ function activeTeamsStatus(args: {
     teamId: args.installation.teamsTeamId,
     teamName: args.installation.teamsTeamName,
     defaultAgentName: args.connectedFields?.defaultAgentName ?? null,
+    ...teamsPermissionStatus({
+      installation: args.installation,
+      isAdmin: args.isAdmin,
+    }),
   };
   if (!args.connectedFields) {
     return status;

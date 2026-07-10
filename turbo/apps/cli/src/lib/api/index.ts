@@ -170,6 +170,14 @@ export {
   completeTelegramFileUpload,
 } from "./domains/integrations-telegram";
 
+// Domain modules - Integrations Teams
+export {
+  sendTeamsMessage,
+  initTeamsFileUpload,
+  completeTeamsFileUpload,
+  downloadTeamsFile,
+} from "./domains/integrations-teams";
+
 // Domain modules - Integrations GitHub
 export {
   downloadGithubFile,

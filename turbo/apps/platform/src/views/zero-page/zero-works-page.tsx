@@ -1,5 +1,6 @@
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { TeamsConnectStatus } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertTriangle,
@@ -403,6 +404,66 @@ function TeamsCardActions({
   );
 }
 
+function teamsPermissionReinstallUrl(args: {
+  isAdmin: boolean;
+  permissionMismatch: boolean;
+  reinstallUrl: string | null | undefined;
+}): string | null {
+  if (!args.isAdmin || !args.permissionMismatch || !args.reinstallUrl) {
+    return null;
+  }
+  return args.reinstallUrl;
+}
+
+function TeamsPermissionWarning({
+  reinstallUrl,
+}: {
+  reinstallUrl: string | null;
+}) {
+  if (!reinstallUrl) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
+      <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+      <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
+        Microsoft Teams permissions have been updated
+      </span>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 text-xs"
+        onClick={() => {
+          return openFreshOAuth(reinstallUrl);
+        }}
+      >
+        Update Permissions
+      </Button>
+    </div>
+  );
+}
+
+function teamsConnectedDetail(
+  teamsData: TeamsConnectStatus | null,
+): string | null | undefined {
+  return teamsData?.teamName ?? teamsData?.tenantName ?? teamsData?.tenantId;
+}
+
+function teamsCardDescription(args: {
+  isInstalled: boolean;
+  isConnected: boolean;
+  isAdmin: boolean;
+}): string {
+  if (!args.isInstalled && !args.isAdmin) {
+    return "Ask your admin to install the Microsoft Teams integration";
+  }
+  if (args.isInstalled && !args.isConnected) {
+    return "Connect your Microsoft account to finish setup";
+  }
+  return "Team communication and collaboration";
+}
+
 function TeamsCard({ displayName }: { displayName: string }) {
   const teamsDataLoadable = useLastLoadable(teamsOrgData$);
   const teamsData =
@@ -419,14 +480,18 @@ function TeamsCard({ displayName }: { displayName: string }) {
   const isConnected = teamsData?.isConnected ?? false;
   const isInstalled = teamsData?.isInstalled ?? false;
   const isAdmin = teamsData?.isAdmin ?? false;
-  const connectedDetail =
-    teamsData?.teamName ?? teamsData?.tenantName ?? teamsData?.tenantId;
-  const description =
-    !isInstalled && !isAdmin
-      ? "Ask your admin to install the Microsoft Teams integration"
-      : isInstalled && !isConnected
-        ? "Connect your Microsoft account to finish setup"
-        : "Team communication and collaboration";
+  const connectedDetail = teamsConnectedDetail(teamsData);
+  const permissionMismatch = teamsData?.permissionMismatch === true;
+  const reinstallUrl = teamsPermissionReinstallUrl({
+    isAdmin,
+    permissionMismatch,
+    reinstallUrl: teamsData?.reinstallUrl,
+  });
+  const description = teamsCardDescription({
+    isInstalled,
+    isConnected,
+    isAdmin,
+  });
 
   return (
     <>
@@ -457,6 +522,8 @@ function TeamsCard({ displayName }: { displayName: string }) {
             }}
           />
         </div>
+
+        <TeamsPermissionWarning reinstallUrl={reinstallUrl} />
       </div>
 
       <Dialog

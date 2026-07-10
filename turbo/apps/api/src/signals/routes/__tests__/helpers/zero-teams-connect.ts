@@ -148,7 +148,7 @@ export function teamsMessageActivityForTest(
       tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
       team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
-      teamsAppId: "teams-app-test",
+      teamsAppId: BOT_APP_ID,
     },
     from: {
       id: fixture.teamsUserId,
@@ -187,7 +187,7 @@ function teamsBotRemovedActivity(
       tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
       team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
-      teamsAppId: "teams-app-test",
+      teamsAppId: BOT_APP_ID,
     },
     recipient: { id: "28:bot-1", name: "Zero" },
     membersRemoved: [{ id: "28:bot-1", name: "Zero" }],

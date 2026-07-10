@@ -28,6 +28,7 @@ function buildCommands(): Command[] {
     new Command("secret"),
     new Command("github"),
     new Command("slack"),
+    new Command("teams"),
     new Command("telegram"),
     new Command("phone"),
     new Command("variable"),
@@ -165,6 +166,7 @@ describe("registerZeroCommands", () => {
       "secret",
       "github",
       "slack",
+      "teams",
       "telegram",
       "phone",
       "variable",
@@ -725,7 +727,26 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("telegram");
+    expect(hiddenCommandNames(prog)).toContain("teams");
     expect(hiddenCommandNames(prog)).toContain("phone");
+  });
+
+  it("should show teams when teams:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["teams:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("teams");
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Send Teams?",
+    );
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Download Teams?",
+    );
   });
 
   it("should show logs when agent-run:read capability is present", () => {

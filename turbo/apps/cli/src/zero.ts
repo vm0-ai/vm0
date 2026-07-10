@@ -44,6 +44,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
+  teams: "teams:write",
   telegram: ["telegram:read", "telegram:write"],
   phone: ["phone:read", "phone:write"],
   whoami: null,
@@ -167,6 +168,14 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
       "Send messages, upload files, and download files from Slack as the bot",
     load: async () => {
       return (await import("./commands/zero/slack")).zeroSlackCommand;
+    },
+  },
+  {
+    name: "teams",
+    description:
+      "Send Microsoft Teams messages, upload files, and download files",
+    load: async () => {
+      return (await import("./commands/zero/teams")).zeroTeamsCommand;
     },
   },
   {
@@ -401,6 +410,9 @@ export function buildZeroHelpText(
       ? []
       : ["  Buy credits?           zero credit 20000"]),
     "  Send a Slack message?  zero slack message send --help",
+    "  Send Teams?           zero teams message send --help",
+    "  Upload Teams?         zero teams upload-file --help",
+    "  Download Teams?       zero teams download-file --help",
     "  Upload GitHub?        zero github upload-file --help",
     "  Download GitHub?      zero github download-file --help",
     "  List Telegram bots?    zero telegram bot list",

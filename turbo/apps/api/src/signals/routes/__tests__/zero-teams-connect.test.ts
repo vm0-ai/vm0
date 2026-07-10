@@ -11,9 +11,11 @@ import {
 } from "./helpers/zero-route-test";
 import {
   installTeamsForTest,
+  postTeamsActivityForTest,
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
+  teamsMessageActivityForTest,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
 
@@ -208,6 +210,51 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       teamId: fixture.teamsTeamId,
       teamName: fixture.teamsTeamName,
       defaultAgentName: null,
+      permissionMismatch: false,
+      reinstallUrl: null,
+    });
+  });
+
+  it("returns a Teams reinstall URL to admins when the installed app id is stale", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: connectBody(fixture),
+      }),
+      [200],
+    );
+
+    const seedActivity = teamsMessageActivityForTest(fixture, {
+      id: "activity-stale-teams-app",
+    });
+    const channelData = seedActivity.channelData as Record<string, unknown>;
+    const response = await postTeamsActivityForTest({
+      signal: context.signal,
+      activity: {
+        ...seedActivity,
+        channelData: {
+          ...channelData,
+          teamsAppId: "22222222-2222-2222-2222-222222222222",
+        },
+      },
+    });
+    expect(response.ok).toBeTruthy();
+
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(status.body).toMatchObject({
+      isInstalled: true,
+      isAdmin: true,
+      permissionMismatch: true,
+      reinstallUrl: teamsInstallUrl(fixture.teamsTenantId),
     });
   });
 

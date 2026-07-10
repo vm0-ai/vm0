@@ -5968,10 +5968,11 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero developer-support --help",
       "zero maps --help",
       "zero slack message send --help",
+      "zero teams message send --help",
       "zero telegram bot list",
       "zero telegram message send --help",
       "zero phone message --help",
-      "do not invent `zero github message`, `zero teams message`, or `zero email message` commands",
+      "do not invent `zero github message` or `zero email message` commands",
     ]) {
       expect(appendSystemPrompt).toContain(toolHint);
     }

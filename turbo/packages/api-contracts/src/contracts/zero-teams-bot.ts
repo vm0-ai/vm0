@@ -12,6 +12,14 @@ const teamsActorSchema = z.object({
   userPrincipalName: z.string().nullable(),
 });
 
+const teamsInboundAttachmentSchema = z.object({
+  id: z.string().nullable(),
+  contentType: z.string().nullable(),
+  contentUrl: z.string().nullable(),
+  name: z.string().nullable(),
+  content: z.record(z.string(), z.unknown()).nullable(),
+});
+
 const teamsActivityBaseSchema = z.object({
   activityId: z.string().nullable(),
   tenantId: z.string(),
@@ -37,6 +45,7 @@ export const teamsInboundMessageActivitySchema = teamsActivityBaseSchema.extend(
     text: z.string(),
     value: z.record(z.string(), z.unknown()).nullable(),
     mentionsRecipient: z.boolean(),
+    attachments: z.array(teamsInboundAttachmentSchema),
   },
 );
 
@@ -124,6 +133,9 @@ export const zeroTeamsBotContract = c.router({
 });
 
 export type TeamsActor = z.infer<typeof teamsActorSchema>;
+export type TeamsInboundAttachment = z.infer<
+  typeof teamsInboundAttachmentSchema
+>;
 export type TeamsInboundActivity = z.infer<typeof teamsInboundActivitySchema>;
 export type TeamsBotIngressResponse = z.infer<
   typeof teamsBotIngressResponseSchema

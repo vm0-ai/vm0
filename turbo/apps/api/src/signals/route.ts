@@ -155,6 +155,10 @@ import { zeroIntegrationsSlackRoutes } from "./routes/zero-integrations-slack";
 import { zeroIntegrationsSlackMessageRoutes } from "./routes/zero-integrations-slack-message";
 import { zeroIntegrationsSlackUploadCompleteRoutes } from "./routes/zero-integrations-slack-upload-complete";
 import { zeroIntegrationsSlackUploadInitRoutes } from "./routes/zero-integrations-slack-upload-init";
+import { zeroIntegrationsTeamsDownloadFileRoutes } from "./routes/zero-integrations-teams-download-file";
+import { zeroIntegrationsTeamsMessageRoutes } from "./routes/zero-integrations-teams-message";
+import { zeroIntegrationsTeamsUploadCompleteRoutes } from "./routes/zero-integrations-teams-upload-complete";
+import { zeroIntegrationsTeamsUploadInitRoutes } from "./routes/zero-integrations-teams-upload-init";
 import { zeroIntegrationsTelegramRoutes } from "./routes/zero-integrations-telegram";
 import { zeroIntegrationsTelegramMessageRoutes } from "./routes/zero-integrations-telegram-message";
 import { zeroIntegrationsTelegramUploadCompleteRoutes } from "./routes/zero-integrations-telegram-upload-complete";
@@ -366,6 +370,10 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsSlackMessageRoutes,
   ...zeroIntegrationsSlackUploadCompleteRoutes,
   ...zeroIntegrationsSlackUploadInitRoutes,
+  ...zeroIntegrationsTeamsDownloadFileRoutes,
+  ...zeroIntegrationsTeamsMessageRoutes,
+  ...zeroIntegrationsTeamsUploadCompleteRoutes,
+  ...zeroIntegrationsTeamsUploadInitRoutes,
   ...zeroSlackChannelsRoutes,
   ...zeroSteamPlayerRoutes,
   ...zeroIntegrationsTelegramRoutes,

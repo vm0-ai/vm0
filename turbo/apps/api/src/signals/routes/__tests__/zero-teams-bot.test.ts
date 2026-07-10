@@ -1,4 +1,9 @@
-import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
+import {
+  createSign,
+  generateKeyPairSync,
+  randomUUID,
+  type KeyObject,
+} from "node:crypto";
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -6,18 +11,21 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { verifyZeroToken } from "../../auth/tokens";
+import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { ROUTES } from "../../route";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import {
+  installTeamsForTest,
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
@@ -227,6 +235,10 @@ interface TeamsGraphMessageFixture {
   readonly createdDateTime: string;
   readonly senderId?: string;
   readonly senderName?: string;
+  readonly senderPrincipalName?: string | null;
+  readonly graphUserPrincipalName?: string | null;
+  readonly attachments?: readonly Record<string, unknown>[];
+  readonly mentions?: readonly Record<string, unknown>[];
 }
 
 function graphTokenUrl(tenantId: string): string {
@@ -246,13 +258,48 @@ function teamsGraphMessage(
       user: {
         id: message.senderId ?? "29:user-1",
         displayName: message.senderName ?? "Ada Lovelace",
+        ...(message.senderPrincipalName !== undefined
+          ? { userPrincipalName: message.senderPrincipalName }
+          : {}),
       },
     },
     body: {
       contentType: "html",
       content: `<p>${message.text}</p>`,
     },
+    ...(message.attachments ? { attachments: message.attachments } : {}),
+    ...(message.mentions ? { mentions: message.mentions } : {}),
   };
+}
+
+function teamsGraphUserMap(
+  messages: readonly TeamsGraphMessageFixture[],
+): ReadonlyMap<
+  string,
+  {
+    readonly displayName: string;
+    readonly userPrincipalName: string | null;
+  }
+> {
+  const users = new Map<
+    string,
+    {
+      readonly displayName: string;
+      readonly userPrincipalName: string | null;
+    }
+  >();
+  for (const message of messages) {
+    const senderId = message.senderId ?? "29:user-1";
+    const existing = users.get(senderId);
+    const userPrincipalName =
+      message.graphUserPrincipalName ?? existing?.userPrincipalName ?? null;
+    users.set(senderId, {
+      displayName:
+        message.senderName ?? existing?.displayName ?? "Ada Lovelace",
+      userPrincipalName,
+    });
+  }
+  return users;
 }
 
 function teamsGraphHistoryHandlers(args: {
@@ -264,6 +311,11 @@ function teamsGraphHistoryHandlers(args: {
   >;
 }): string[] {
   const requests: string[] = [];
+  const users = teamsGraphUserMap([
+    ...args.channelMessages,
+    ...Object.values(args.threadRoots),
+    ...Object.values(args.threadReplies).flat(),
+  ]);
   server.use(
     http.post(graphTokenUrl(args.tenantId), async ({ request }) => {
       const form = await request.formData();
@@ -329,6 +381,21 @@ function teamsGraphHistoryHandlers(args: {
             );
       },
     ),
+    http.get("https://graph.microsoft.com/v1.0/users/:userId", ({ params }) => {
+      const userId = typeof params.userId === "string" ? params.userId : "";
+      const user = users.get(userId);
+      requests.push(`user:${userId}`);
+      return user
+        ? HttpResponse.json({
+            id: userId,
+            displayName: user.displayName,
+            userPrincipalName: user.userPrincipalName,
+          })
+        : HttpResponse.json(
+            { error: { code: "NotFound", message: "User not found" } },
+            { status: 404 },
+          );
+    }),
   );
   return requests;
 }
@@ -370,6 +437,23 @@ function teamsToken(
       nbf: seconds - 30,
       serviceurl: overrides.serviceUrl ?? SERVICE_URL,
     },
+  });
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities?: readonly string[];
+}): string {
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: (args.capabilities ?? ["teams:write"]) as never,
+    iat: seconds,
+    exp: seconds + 60,
   });
 }
 
@@ -627,6 +711,7 @@ describe("POST /api/zero/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
     mockEnv("MICROSOFT_TEAMS_BOT_APP_PASSWORD", BOT_APP_PASSWORD);
+    mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
     mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     mockEnv("VM0_API_URL", "https://api.vm0.test");
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
@@ -901,6 +986,130 @@ describe("POST /api/zero/teams/bot", () => {
       },
     });
     expect(outboundRequests[0]?.body).not.toHaveProperty("text");
+  });
+
+  it("injects Teams file attachments into the run prompt and downloads them", async () => {
+    botFrameworkHandlers();
+    const fixture = await trackTeamsFixture(
+      Promise.resolve(teamsConnectFixture()),
+    );
+    const actor = authOrgApi.user({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+    });
+    const runnerGroup = runsApi.configureRunnerGroup();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    authOrgApi.acceptAgentStorageWrites();
+    runsApi.acceptStorageDownloads();
+    runsApi.acceptTelemetryIngest();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams file agent",
+      visibility: "public",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+    await runsApi.grantProEntitlement(actor);
+    await runsApi.ensureOrgModelProvider(actor);
+    await installTeamsForTest(context.signal, fixture);
+    await connectTeamsFixture(fixture);
+    clearTeamsBotAuthCacheForTest();
+    botFrameworkHandlers();
+    teamsOutboundHandlers(fixture.serviceUrl, fixture.teamsTenantId);
+
+    const downloadUrl = "https://contoso.sharepoint.com/sites/docs/spec.png";
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-file-dm",
+        conversation: {
+          id: "a:personal-conversation",
+          conversationType: "personal",
+        },
+        channelData: {
+          tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+          teamsAppId: "teams-app-test",
+        },
+        text: "please inspect this",
+        entities: [],
+        replyToId: null,
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.teams.file.download.info",
+            name: "spec.png",
+            content: {
+              downloadUrl,
+              uniqueId: "drive-item-1",
+              fileType: "png",
+            },
+          },
+        ],
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await readTeamsBotResponseAndFlush(response);
+    expect(body).not.toHaveProperty("dispatch");
+    const list = await runsApi.listAgentRuns(actor, { limit: 20 });
+    const run = list.runs.find((item) => {
+      return (
+        item.prompt.includes("please inspect this") &&
+        item.prompt.includes("[Teams file] spec.png (image/png)")
+      );
+    });
+    expect(run).toBeDefined();
+    const runId = run?.id;
+    if (!runId) {
+      throw new Error("Expected Teams file run id");
+    }
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runId);
+    expect(claim.prompt).toContain("please inspect this");
+    expect(claim.prompt).toContain("[Teams file] spec.png (image/png)");
+    expect(claim.appendSystemPrompt).toContain("zero teams download-file -h");
+
+    const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);
+    const fileId = fileIdMatch?.[1];
+    expect(fileId).toBeTruthy();
+    expect(fileId).not.toContain(downloadUrl);
+
+    const fileBytes = Buffer.from("teams file bytes");
+    server.use(
+      http.get(downloadUrl, ({ request }) => {
+        expect(request.headers.get("authorization")).toBeNull();
+        return new HttpResponse(fileBytes, {
+          status: 200,
+          headers: {
+            "content-type": "image/png",
+            "content-length": String(fileBytes.length),
+          },
+        });
+      }),
+    );
+
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: ROUTES,
+    });
+    const downloadResponse = await app.request(
+      `/api/zero/integrations/teams/download-file?${new URLSearchParams({
+        file_id: fileId ?? "",
+      }).toString()}`,
+      {
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+          })}`,
+        },
+      },
+    );
+
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("content-type")).toBe("image/png");
+    expect(downloadResponse.headers.get("x-file-mimetype")).toBe("image/png");
+    expect(downloadResponse.headers.get("x-file-name")).toBe("spec.png");
+    const receivedBytes = Buffer.from(await downloadResponse.arrayBuffer());
+    expect(receivedBytes.equals(fileBytes)).toBeTruthy();
   });
 
   it("preserves non-bot Teams mentions in message text", async () => {
@@ -1431,15 +1640,56 @@ describe("POST /api/zero/teams/bot", () => {
         text: "remember the deployment target",
         createdDateTime: "2026-06-30T09:10:00.000Z",
         senderId: fixture.teamsUserId,
+        graphUserPrincipalName: "ada@example.com",
       },
     };
     const threadReplies: Record<string, TeamsGraphMessageFixture[]> = {
       "root-dispatch": [
         {
           id: "activity-context-1",
-          text: "confirm the target is staging",
+          text: 'confirm with <at id="0">Grace Hopper</at> that the target is staging',
           createdDateTime: "2026-06-30T09:11:00.000Z",
           senderId: fixture.teamsUserId,
+          mentions: [
+            {
+              id: 0,
+              mentionText: '<at id="0">Grace Hopper</at>',
+              mentioned: {
+                user: {
+                  id: "29:user-grace",
+                  displayName: "Grace Hopper",
+                },
+              },
+            },
+          ],
+          attachments: [
+            {
+              id: "teams-file-plan-1",
+              name: "deployment-plan.pdf",
+              contentType: "application/vnd.microsoft.teams.file.download.info",
+              content: {
+                downloadUrl: "https://files.example.test/deployment-plan.pdf",
+                fileType: "pdf",
+              },
+            },
+          ],
+        },
+        {
+          id: "activity-context-file-only",
+          text: "",
+          createdDateTime: "2026-06-30T09:11:30.000Z",
+          senderId: fixture.teamsUserId,
+          attachments: [
+            {
+              id: "teams-file-checklist-1",
+              name: "release-checklist.txt",
+              contentType: "application/vnd.microsoft.teams.file.download.info",
+              content: {
+                downloadUrl: "https://files.example.test/release-checklist.txt",
+                fileType: "txt",
+              },
+            },
+          ],
         },
         {
           id: "activity-dispatch-1",
@@ -1593,6 +1843,10 @@ describe("POST /api/zero/teams/bot", () => {
       "You are currently running inside: Microsoft Teams",
     );
     expect(appendSystemPrompt).toContain("Microsoft Teams messaging and files");
+    expect(appendSystemPrompt).toContain("zero teams --help");
+    expect(appendSystemPrompt).toContain("zero teams message send -h");
+    expect(appendSystemPrompt).toContain("zero teams download-file -h");
+    expect(appendSystemPrompt).toContain("zero teams upload-file -h");
     expect(currentIntegrationPrompt).toContain(
       `Tenant ID: ${fixture.teamsTenantId}`,
     );
@@ -1625,13 +1879,28 @@ describe("POST /api/zero/teams/bot", () => {
     );
     expect(teamsThreadContext).toContain("- RELATIVE_INDEX: -1");
     expect(teamsThreadContext).toContain(
-      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace}`,
+      `- SENDER: {id: ${fixture.teamsUserId}, name: Ada Lovelace, email: ada@example.com}`,
     );
     expect(teamsThreadContext).toContain("remember the deployment target");
-    expect(teamsThreadContext).toContain("confirm the target is staging");
+    expect(teamsThreadContext).toContain(
+      "confirm with @Grace Hopper (29:user-grace) that the target is staging",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams file] deployment-plan.pdf (application/pdf)",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams attachment ID] teams-file-plan-1",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams file] release-checklist.txt (text/plain)",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams attachment ID] teams-file-checklist-1",
+    );
     expect(teamsThreadContext).not.toContain("ship the Teams dispatch");
     expect(graphRequests).toContain("thread-root:root-dispatch");
     expect(graphRequests).toContain("thread-replies:root-dispatch");
+    expect(graphRequests).toContain(`user:${fixture.teamsUserId}`);
   });
 
   it("includes Teams thread computer use host bindings in queued zero tokens", async () => {

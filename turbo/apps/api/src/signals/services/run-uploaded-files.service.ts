@@ -386,6 +386,18 @@ interface RecordSlackUploadedFileArgs {
   readonly metadata: Record<string, unknown>;
 }
 
+interface RecordTeamsUploadedFileArgs {
+  readonly runId: string | undefined;
+  readonly externalId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly filename: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly url: string;
+  readonly metadata: Record<string, unknown>;
+}
+
 interface RecordAgentPhoneUploadedFileArgs {
   readonly runId: string | undefined;
   readonly externalId: string;
@@ -421,6 +433,55 @@ export const recordGithubUploadedFile$ = command(
     }
     const writeDb = set(writeDb$);
     const source = await sourceForRun(writeDb, args.runId, "github", signal);
+
+    await writeDb
+      .insert(runUploadedFiles)
+      .values({
+        runId: args.runId,
+        source,
+        externalId: args.externalId,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: args.filename,
+        contentType: args.contentType,
+        sizeBytes: args.sizeBytes,
+        url: args.url,
+        metadata: args.metadata,
+      })
+      .onConflictDoUpdate({
+        target: [
+          runUploadedFiles.runId,
+          runUploadedFiles.source,
+          runUploadedFiles.externalId,
+        ],
+        set: {
+          userId: args.userId,
+          orgId: args.orgId,
+          filename: args.filename,
+          contentType: args.contentType,
+          sizeBytes: args.sizeBytes,
+          url: args.url,
+          metadata: args.metadata,
+          updatedAt: sql`now()`,
+        },
+      });
+    signal.throwIfAborted();
+
+    await publishArtifactsChangedForRun(writeDb, args.runId, signal);
+  },
+);
+
+export const recordTeamsUploadedFile$ = command(
+  async (
+    { set },
+    args: RecordTeamsUploadedFileArgs,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!args.runId) {
+      return;
+    }
+    const writeDb = set(writeDb$);
+    const source = await sourceForRun(writeDb, args.runId, "teams", signal);
 
     await writeDb
       .insert(runUploadedFiles)
