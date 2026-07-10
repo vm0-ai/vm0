@@ -138,8 +138,12 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "78988a658604a25feb259d54e4543bfe6d57f85efe7ad67737e02c794d25e491",
   "template:coastal-hotel":
     "3907cdbed6078702a058ed9c66c1cdeb76f83f1062efcf3b046cce0bd5c8ed06",
+  "template:dot-matrix":
+    "293a2bc33150ca1f39132a8235c5cf355944e8d3e213b5f7703237314a2ac449",
   "template:frame-stack":
     "efbf1788c8b084aa12b7cd48f7a3bf5fc9964d1e6115edbd9124f8cacfbfb3ca",
+  "template:frosted-scatter":
+    "f23092f727e7a8a20d586e80a6f6cc0ff27d51f2fee3356a7d8ab97c3539c3b9",
   "template:gallery-wall":
     "9e81cd8b35f9f6374440cd3a4a8fc214db4a137962797df69bde46248c4e75f3",
   "template:glass-bloom":
