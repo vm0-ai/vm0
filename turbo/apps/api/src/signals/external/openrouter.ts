@@ -31,7 +31,7 @@ interface OpenRouterResponse {
   }[];
 }
 
-export interface OpenRouterGenerateTextOptions {
+interface OpenRouterGenerateTextOptions {
   readonly signal?: AbortSignal;
   readonly responseFormat?: { readonly type: "json_object" };
   readonly temperature?: number;

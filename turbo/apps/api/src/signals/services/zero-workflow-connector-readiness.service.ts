@@ -26,7 +26,7 @@ import { zeroConnectorList } from "./zero-connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
 const CONNECTOR_READINESS_TIMEOUT_MS = 30_000;
-export const WORKFLOW_CONNECTOR_READINESS_INPUT_MAX_CHARS = 100_000;
+const WORKFLOW_CONNECTOR_READINESS_INPUT_MAX_CHARS = 100_000;
 
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
