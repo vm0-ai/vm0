@@ -358,7 +358,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
     <>
       <style suppressHydrationWarning>{CLERK_CSS}</style>
       <div
-        className="relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background px-6 pb-[calc(1.5rem+var(--sab))] pt-[calc(1.5rem+var(--sat))]"
+        className="relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
         data-testid="app-auth-layout"
       >
         {/* Background grid pattern - medium grid with subtle visibility */}
@@ -381,7 +381,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           onClick={() => {
             setTheme(theme === "dark" ? "light" : "dark");
           }}
-          className="fixed right-6 top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
+          className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
           aria-label="Toggle theme"
         >
           {theme === "dark" ? (
@@ -392,10 +392,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         </button>
 
         {/* Logo Header */}
-        <a
-          href="/"
-          className="absolute left-6 top-[calc(1.5rem+var(--sat))] flex items-center gap-2"
-        >
+        <a href="/" className="absolute left-6 top-6 flex items-center gap-2">
           <img
             src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
             alt="VM0"
