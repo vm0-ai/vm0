@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.262.0](https://github.com/vm0-ai/vm0/compare/api-v1.261.1...api-v1.262.0) (2026-07-10)
+
+
+### Features
+
+* **image-editor:** share edited images to x ([#20836](https://github.com/vm0-ai/vm0/issues/20836)) ([fca6111](https://github.com/vm0-ai/vm0/commit/fca611179fda0489a8f92b0edecd5532cbf6ca0d))
+
+
+### Bug Fixes
+
+* refresh frosted scatter archive ([#20972](https://github.com/vm0-ai/vm0/issues/20972)) ([518cccc](https://github.com/vm0-ai/vm0/commit/518cccc4d4231a3009319381269eaf19fd8a18a5))
+* upload large presentations to google slides ([#20974](https://github.com/vm0-ai/vm0/issues/20974)) ([e4e15e8](https://github.com/vm0-ai/vm0/commit/e4e15e8d99a627fd4c5a0e837e16ba424d78c7d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.0
+    * @vm0/connectors bumped to 1.154.2
+    * @vm0/core bumped to 8.424.3
+    * @vm0/db bumped to 1.109.2
+
 ## [1.261.1](https://github.com/vm0-ai/vm0/compare/api-v1.261.0...api-v1.261.1) (2026-07-10)
 
 
