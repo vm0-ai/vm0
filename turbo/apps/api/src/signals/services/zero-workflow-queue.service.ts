@@ -173,7 +173,7 @@ export async function admitWorkflowTriggerEvent(
         ),
       )
       .limit(1);
-    const paused = threadRow?.queuePausedAt != null;
+    const paused = threadRow !== undefined && threadRow.queuePausedAt !== null;
 
     if (!paused) {
       const busy = await activeRunExistsForWorkflowThread(
@@ -258,7 +258,7 @@ export async function claimNextWorkflowQueueEvent(
       .from(workflowUserTriggerThreads)
       .where(eq(workflowUserTriggerThreads.chatThreadId, chatThreadId))
       .limit(1);
-    if (!threadRow || threadRow.queuePausedAt != null) {
+    if (!threadRow || threadRow.queuePausedAt !== null) {
       return null;
     }
 
