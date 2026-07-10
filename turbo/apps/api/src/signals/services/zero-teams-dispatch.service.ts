@@ -1196,7 +1196,8 @@ function teamsGraphContextMessage(
   }
 
   const text = teamsGraphMessageText(message);
-  if (!text) {
+  const files = teamsGraphPromptFiles(tenantId, message);
+  if (!text && files.length === 0) {
     return null;
   }
 
@@ -1204,7 +1205,7 @@ function teamsGraphContextMessage(
     id: message.id ?? null,
     createdDateTime: message.createdDateTime ?? null,
     text,
-    files: teamsGraphPromptFiles(tenantId, message),
+    files,
     ...teamsGraphMessageSender(message, userInfoMap),
   };
 }

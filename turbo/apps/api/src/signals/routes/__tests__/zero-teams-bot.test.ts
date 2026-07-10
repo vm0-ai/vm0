@@ -1675,6 +1675,23 @@ describe("POST /api/zero/teams/bot", () => {
           ],
         },
         {
+          id: "activity-context-file-only",
+          text: "",
+          createdDateTime: "2026-06-30T09:11:30.000Z",
+          senderId: fixture.teamsUserId,
+          attachments: [
+            {
+              id: "teams-file-checklist-1",
+              name: "release-checklist.txt",
+              contentType: "application/vnd.microsoft.teams.file.download.info",
+              content: {
+                downloadUrl: "https://files.example.test/release-checklist.txt",
+                fileType: "txt",
+              },
+            },
+          ],
+        },
+        {
           id: "activity-dispatch-1",
           text: "ship the Teams dispatch",
           createdDateTime: "2026-06-30T09:12:00.000Z",
@@ -1873,6 +1890,12 @@ describe("POST /api/zero/teams/bot", () => {
     );
     expect(teamsThreadContext).toContain(
       "[Teams attachment ID] teams-file-plan-1",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams file] release-checklist.txt (text/plain)",
+    );
+    expect(teamsThreadContext).toContain(
+      "[Teams attachment ID] teams-file-checklist-1",
     );
     expect(teamsThreadContext).not.toContain("ship the Teams dispatch");
     expect(graphRequests).toContain("thread-root:root-dispatch");

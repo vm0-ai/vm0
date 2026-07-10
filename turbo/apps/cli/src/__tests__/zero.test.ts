@@ -70,7 +70,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 34 commands", () => {
-    expect(commandNames).toHaveLength(34);
+  it("should have exactly 35 commands", () => {
+    expect(commandNames).toHaveLength(35);
   });
 });
