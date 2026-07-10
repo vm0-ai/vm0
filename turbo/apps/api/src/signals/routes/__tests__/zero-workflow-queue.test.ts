@@ -234,7 +234,9 @@ describe("workflow queue", () => {
     // without creating runs.
     expectAcceptedWithoutRun(await postWorkflowWebhook(trigger, "second"));
     expectAcceptedWithoutRun(await postWorkflowWebhook(trigger, "third"));
-    await expect(workflowRunIds(trigger.threadId)).resolves.toStrictEqual([firstRunId]);
+    await expect(workflowRunIds(trigger.threadId)).resolves.toStrictEqual([
+      firstRunId,
+    ]);
 
     // Completing the run drains exactly one event into the next run.
     await completeRunThroughSandbox(scenario, firstRunId);
@@ -315,7 +317,9 @@ describe("workflow queue", () => {
 
     // Only the single coalesced tick ran; nothing else is queued.
     await completeRunThroughSandbox(scenario, afterBusy[1]!);
-    await expect(workflowRunIds(webhookTrigger.threadId)).resolves.toHaveLength(2);
+    await expect(workflowRunIds(webhookTrigger.threadId)).resolves.toHaveLength(
+      2,
+    );
   });
 
   it("drains queued user chat messages before workflow events", async () => {
