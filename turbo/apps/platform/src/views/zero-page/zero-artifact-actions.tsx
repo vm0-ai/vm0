@@ -646,13 +646,16 @@ function startArtifactDownloadWithCleanup(params: {
   readonly closeMenu: () => void;
   readonly description: string;
   readonly download: Promise<void>;
-  readonly finish: () => void;
-  readonly start: () => void;
+  readonly finish: (key: string) => void;
+  readonly menuKey: string;
+  readonly start: (key: string) => void;
 }): void {
   params.closeMenu();
-  params.start();
+  params.start(params.menuKey);
   detach(
-    withCleanup(params.download, params.finish),
+    withCleanup(params.download, () => {
+      params.finish(params.menuKey);
+    }),
     Reason.DomCallback,
     params.description,
   );
@@ -689,7 +692,6 @@ export function ArtifactDownloadMenu({
   const features = useGet(featureSwitch$);
   const open = openKey === menuKey;
   const downloadPending = pendingKey === menuKey;
-  const showPresentationPptxDownload = artifactKind === "presentation-html";
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
     filename,
@@ -752,15 +754,16 @@ export function ArtifactDownloadMenu({
                 pageSignal,
                 downloadFilename,
               ),
-              finish: () => finishArtifactDownload(menuKey),
-              start: () => startArtifactDownload(menuKey),
+              finish: finishArtifactDownload,
+              menuKey,
+              start: startArtifactDownload,
             });
           }}
         >
           <IconDownload size={14} stroke={1.5} />
           Download
         </ArtifactDownloadMenuItem>
-        {showPresentationPptxDownload && (
+        {artifactKind === "presentation-html" && (
           <ArtifactDownloadMenuItem
             onClick={() => {
               startArtifactDownloadWithCleanup({
@@ -771,8 +774,9 @@ export function ArtifactDownloadMenu({
                   signal: pageSignal,
                   url,
                 }),
-                finish: () => finishArtifactDownload(menuKey),
-                start: () => startArtifactDownload(menuKey),
+                finish: finishArtifactDownload,
+                menuKey,
+                start: startArtifactDownload,
               });
             }}
           >
