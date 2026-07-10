@@ -80,3 +80,29 @@ export async function deleteBddVm0ApiKeys(args: {
     .delete(vm0ApiKeys)
     .where(bddVm0ApiKeyFilter(args.vendor, args.model));
 }
+
+/**
+ * Checks the operator-managed label for a key returned through a public test
+ * entry point. The key pool has no product read surface, and local dev seeds
+ * may contain additional valid keys for the same vendor and model.
+ */
+export async function hasVm0ApiKeyLabel(args: {
+  readonly vendor: string;
+  readonly model: string;
+  readonly apiKey: string;
+  readonly label: string;
+}): Promise<boolean> {
+  const rows = await db()
+    .select({ id: vm0ApiKeys.id })
+    .from(vm0ApiKeys)
+    .where(
+      and(
+        eq(vm0ApiKeys.vendor, args.vendor),
+        eq(vm0ApiKeys.model, args.model),
+        eq(vm0ApiKeys.apiKey, args.apiKey),
+        eq(vm0ApiKeys.label, args.label),
+      ),
+    )
+    .limit(1);
+  return rows.length === 1;
+}

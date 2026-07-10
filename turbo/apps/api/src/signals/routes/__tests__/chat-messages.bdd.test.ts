@@ -21,7 +21,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
@@ -47,6 +47,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
 import {
   deleteBddVm0ApiKeys,
+  hasVm0ApiKeyLabel,
   replaceBddVm0ApiKeys,
 } from "../../../test-fixtures/chat-messages";
 
@@ -1944,6 +1945,14 @@ describe("CHAT-02: model-first provider policies", () => {
     const keySuffix = randomUUID();
     const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+    let runId: string | null = null;
+
+    onTestFinished(async () => {
+      await Promise.all([
+        deleteBddVm0ApiKeys({ vendor: "zai", model: "glm-5.2" }),
+        ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
+      ]);
+    });
 
     await replaceBddVm0ApiKeys({
       vendor: "zai",
@@ -1975,6 +1984,7 @@ describe("CHAT-02: model-first provider policies", () => {
       prompt: "run with the selected vm0 provider",
       model: "glm-5.2",
     });
+    runId = run.runId;
 
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
@@ -2005,13 +2015,18 @@ describe("CHAT-02: model-first provider policies", () => {
     if (resolved.status !== 200) {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
-    expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-    await deleteBddVm0ApiKeys({
-      vendor: "zai",
-      model: "glm-5.2",
-    });
+    const authorization = resolved.body.headers.Authorization;
+    if (!authorization?.startsWith("Bearer ")) {
+      throw new Error("Expected vm0 firewall auth to return a bearer token");
+    }
+    await expect(
+      hasVm0ApiKeyLabel({
+        vendor: "zai",
+        model: "glm-5.2",
+        apiKey: authorization.slice("Bearer ".length),
+        label: "dev-seed",
+      }),
+    ).resolves.toBeTruthy();
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
