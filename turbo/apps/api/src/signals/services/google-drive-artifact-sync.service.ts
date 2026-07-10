@@ -22,12 +22,16 @@ import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
 import {
   buildArtifactKey,
+  buildArtifactPrefix,
   storageUserIdFromFileUrlSegment,
 } from "../../lib/file-url";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
+  deleteS3Objects,
   downloadHostedSitesS3Buffer,
   downloadS3Buffer,
+  downloadS3BufferWithMaxBytes,
+  listS3Objects,
   s3ObjectExists,
 } from "../external/s3";
 import { createDeferredPromise, safeSync, settle } from "../utils";
@@ -1176,6 +1180,20 @@ export const syncArtifactToGoogleDrive$ = command(
 const GOOGLE_SLIDES_MIME_TYPE = "application/vnd.google-apps.presentation";
 const PPTX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const MAX_GOOGLE_SLIDES_PPTX_BYTES = 100 * 1024 * 1024;
+
+type PresentationPptxSource =
+  | {
+      readonly type: "inline";
+      readonly filename: string;
+      readonly pptx: Buffer;
+    }
+  | { readonly type: "staged"; readonly uploadId: string };
+
+interface ResolvedPresentationPptx {
+  readonly filename: string;
+  readonly pptx: Buffer;
+}
 
 function slidesTitle(filename: string): string {
   const trimmed = filename.trim();
@@ -1183,55 +1201,121 @@ function slidesTitle(filename: string): string {
   return base.length > 0 ? base : "presentation";
 }
 
+function resolvePresentationPptx(
+  userId: string,
+  source: PresentationPptxSource,
+): Computed<
+  Promise<ResolvedPresentationPptx | BadRequestResponse | NotFoundResponse>
+> {
+  return computed(async (get) => {
+    if (source.type === "inline") {
+      return { filename: source.filename, pptx: source.pptx };
+    }
+
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    const objects = await get(
+      listS3Objects(bucket, buildArtifactPrefix(userId, source.uploadId)),
+    );
+    const object = objects[0];
+    if (!object) {
+      return notFound("Presentation upload not found");
+    }
+
+    const filename = object.key.split("/").pop() ?? source.uploadId;
+    if (!filename.toLowerCase().endsWith(".pptx")) {
+      return badRequestMessage("Presentation upload must be a PPTX file");
+    }
+    if (object.size > MAX_GOOGLE_SLIDES_PPTX_BYTES) {
+      return badRequestMessage("Presentation file is too large (max 100 MB)");
+    }
+
+    const pptx = await get(
+      downloadS3BufferWithMaxBytes(
+        bucket,
+        object.key,
+        MAX_GOOGLE_SLIDES_PPTX_BYTES,
+      ),
+    );
+    await get(deleteS3Objects(bucket, [object.key]));
+    return { filename, pptx };
+  });
+}
+
+async function startGoogleSlidesUpload(args: {
+  readonly accessToken: string;
+  readonly parentFolderId: string;
+  readonly filename: string;
+  readonly size: number;
+}): Promise<DriveTokenResult<string>> {
+  const metadata = JSON.stringify({
+    name: slidesTitle(args.filename),
+    mimeType: GOOGLE_SLIDES_MIME_TYPE,
+    parents: [args.parentFolderId],
+  });
+
+  const uploadUrl = new URL(GOOGLE_DRIVE_UPLOAD_URL);
+  uploadUrl.searchParams.set("uploadType", "resumable");
+  uploadUrl.searchParams.set("fields", "id,name,webViewLink");
+
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.accessToken}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Length": String(args.size),
+      "X-Upload-Content-Type": PPTX_MIME_TYPE,
+    },
+    body: metadata,
+  });
+  if (response.status === 401) {
+    return { type: "unauthorized" };
+  }
+  if (!response.ok) {
+    throw badRequestMessage(
+      `Google Slides upload failed with HTTP ${String(response.status)}`,
+    );
+  }
+  const sessionUrl = response.headers.get("location");
+  if (!sessionUrl) {
+    throw badRequestMessage("Google Slides upload session was not created");
+  }
+  return { type: "ok", value: sessionUrl };
+}
+
 /**
- * Upload PPTX bytes and let Drive convert them into a native Google Slides
- * deck by declaring the target `mimeType` on the file metadata. Unlike the
- * raw-artifact sync, no `appProperties` are attached so the Slides file does
- * not appear as a "synced" raw artifact in the Drive status lookup.
+ * Upload PPTX bytes through a Drive resumable session and let Drive convert
+ * them into a native Google Slides deck. Unlike the raw-artifact sync, no
+ * `appProperties` are attached so the Slides file does not appear as a
+ * "synced" raw artifact in the Drive status lookup.
  */
 async function uploadPptxAsGoogleSlides(args: {
   readonly accessToken: string;
   readonly parentFolderId: string;
   readonly filename: string;
   readonly pptx: Buffer;
-}): Promise<Response> {
-  const boundary = `vm0-${randomUUID()}`;
-  const metadata = JSON.stringify({
-    name: slidesTitle(args.filename),
-    mimeType: GOOGLE_SLIDES_MIME_TYPE,
-    parents: [args.parentFolderId],
+}): Promise<DriveTokenResult<Response>> {
+  const session = await startGoogleSlidesUpload({
+    accessToken: args.accessToken,
+    parentFolderId: args.parentFolderId,
+    filename: args.filename,
+    size: args.pptx.length,
   });
-  const body = Buffer.concat([
-    Buffer.from(
-      [
-        `--${boundary}`,
-        "Content-Type: application/json; charset=UTF-8",
-        "",
-        metadata,
-        `--${boundary}`,
-        `Content-Type: ${PPTX_MIME_TYPE}`,
-        "",
-        "",
-      ].join("\r\n"),
-      "utf8",
-    ),
-    args.pptx,
-    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
-  ]);
+  if (session.type === "unauthorized") {
+    return session;
+  }
 
-  const uploadUrl = new URL(GOOGLE_DRIVE_UPLOAD_URL);
-  uploadUrl.searchParams.set("uploadType", "multipart");
-  uploadUrl.searchParams.set("fields", "id,name,webViewLink");
-
-  return await fetch(uploadUrl, {
-    method: "POST",
+  const response = await fetch(session.value, {
+    method: "PUT",
     headers: {
       Authorization: `Bearer ${args.accessToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`,
-      "Content-Length": String(body.length),
+      "Content-Type": PPTX_MIME_TYPE,
+      "Content-Length": String(args.pptx.length),
     },
-    body,
+    body: Uint8Array.from(args.pptx),
   });
+  return response.status === 401
+    ? { type: "unauthorized" }
+    : { type: "ok", value: response };
 }
 
 async function uploadSlidesWithToken(args: {
@@ -1247,16 +1331,12 @@ async function uploadSlidesWithToken(args: {
   if (folder.type === "unauthorized") {
     return folder;
   }
-  const response = await uploadPptxAsGoogleSlides({
+  return await uploadPptxAsGoogleSlides({
     accessToken: args.accessToken,
     parentFolderId: folder.value,
     filename: args.filename,
     pptx: args.pptx,
   });
-  if (response.status === 401) {
-    return { type: "unauthorized" };
-  }
-  return { type: "ok", value: response };
 }
 
 /**
@@ -1266,6 +1346,8 @@ async function uploadSlidesWithToken(args: {
  * Error mapping mirrors {@link syncArtifactToGoogleDrive$}:
  *  - 400 "Connect Google Drive before uploading to Google Slides" — connector
  *    absent or `needsReconnect`.
+ *  - 400 for invalid or oversized staged presentation files.
+ *  - 404 "Presentation upload not found" — staged upload absent or cross-user.
  *  - 400 "Google Slides upload failed with HTTP <status>" — upload error after
  *    refresh-token retry exhausted.
  *  - 200 with `{ id, name, webViewLink }`.
@@ -1277,12 +1359,12 @@ export const uploadPresentationToGoogleSlides$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly threadId: string;
-      readonly filename: string;
-      readonly pptx: Buffer;
+      readonly source: PresentationPptxSource;
     },
     signal: AbortSignal,
   ): Promise<
     | BadRequestResponse
+    | NotFoundResponse
     | { readonly status: 200; readonly body: DriveSyncResult }
   > => {
     const db = get(db$);
@@ -1303,11 +1385,19 @@ export const uploadPresentationToGoogleSlides$ = command(
       );
     }
 
+    const presentation = await get(
+      resolvePresentationPptx(args.userId, args.source),
+    );
+    signal.throwIfAborted();
+    if ("status" in presentation) {
+      return presentation;
+    }
+
     let result = await uploadSlidesWithToken({
       accessToken: tokens.accessToken,
       threadId: args.threadId,
-      filename: args.filename,
-      pptx: args.pptx,
+      filename: presentation.filename,
+      pptx: presentation.pptx,
     });
     signal.throwIfAborted();
 
@@ -1318,8 +1408,8 @@ export const uploadPresentationToGoogleSlides$ = command(
         result = await uploadSlidesWithToken({
           accessToken: refreshed,
           threadId: args.threadId,
-          filename: args.filename,
-          pptx: args.pptx,
+          filename: presentation.filename,
+          pptx: presentation.pptx,
         });
         signal.throwIfAborted();
       }

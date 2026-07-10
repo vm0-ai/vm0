@@ -308,6 +308,85 @@ function presentationPptxBlob(): Promise<Blob> {
   return zip.generateAsync({ type: "blob" });
 }
 
+const PRESENTATION_PPTX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const PRESENTATION_UPLOAD_ID = "123e4567-e89b-42d3-a456-426614174000";
+
+interface PresentationUploadCapture {
+  finalizedUploadId: string | null;
+  legacyUploaded: File | null;
+  prepared: {
+    readonly contentType: string;
+    readonly filename: string;
+    readonly size: number;
+  } | null;
+  uploaded: Blob | null;
+}
+
+function mockPresentationGoogleSlidesUpload(options: {
+  readonly beforeFinalize?: () => void;
+  readonly previousApi?: boolean;
+  readonly response: {
+    readonly id: string;
+    readonly name: string;
+    readonly webViewLink: string | null;
+  };
+}): PresentationUploadCapture {
+  const capture: PresentationUploadCapture = {
+    finalizedUploadId: null,
+    legacyUploaded: null,
+    prepared: null,
+    uploaded: null,
+  };
+  const uploadUrl = `https://mock-upload.example.com/${PRESENTATION_UPLOAD_ID}`;
+
+  context.mocks.http.post("*/api/zero/uploads/prepare", async ({ request }) => {
+    const body = (await request.json()) as {
+      contentType: string;
+      filename: string;
+      size: number;
+    };
+    capture.prepared = body;
+    return HttpResponse.json({
+      ...body,
+      id: PRESENTATION_UPLOAD_ID,
+      uploadUrl,
+      url: `https://cdn.vm7.io/artifacts/test/${PRESENTATION_UPLOAD_ID}/${body.filename}`,
+    });
+  });
+  context.mocks.http.put(uploadUrl, async ({ request }) => {
+    capture.uploaded = await request.blob();
+    return new HttpResponse(null, { status: 200 });
+  });
+  context.mocks.http.post(
+    "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
+    async ({ request }) => {
+      options.beforeFinalize?.();
+      const formData = await request.formData();
+      const uploadId = formData.get("uploadId");
+      if (typeof uploadId === "string") {
+        capture.finalizedUploadId = uploadId;
+      }
+      if (options.previousApi && typeof uploadId === "string") {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message: "No presentation file provided",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      const legacyUploaded = formData.get("file");
+      capture.legacyUploaded =
+        legacyUploaded instanceof File ? legacyUploaded : null;
+      return HttpResponse.json(options.response);
+    },
+  );
+  return capture;
+}
+
 function captureDownloads(signal: AbortSignal): string[] {
   const downloads: string[] = [];
   const onClick = (event: MouseEvent) => {
@@ -2044,25 +2123,15 @@ describe("zero artifact sidebar", () => {
       context.mocks.browser.authWindow(),
     );
     const successToast = vi.spyOn(toast, "success");
-    const upload = { file: null as File | null };
     context.mocks.data.connectors([googleDriveConnector()]);
-    context.mocks.http.post(
-      "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
-      async ({ request }) => {
-        const formData = await request.formData();
-        const file = formData.get("file");
-        if (!(file instanceof File)) {
-          throw new Error("Google Slides upload did not include a file");
-        }
-        upload.file = file;
-        return HttpResponse.json({
-          id: "slides-file-quarterly-roadmap",
-          name: "quarterly-roadmap",
-          webViewLink:
-            "https://docs.google.com/presentation/d/slides-file-quarterly-roadmap/edit",
-        });
+    const upload = mockPresentationGoogleSlidesUpload({
+      response: {
+        id: "slides-file-quarterly-roadmap",
+        name: "quarterly-roadmap",
+        webViewLink:
+          "https://docs.google.com/presentation/d/slides-file-quarterly-roadmap/edit",
       },
-    );
+    });
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
         [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
@@ -2090,10 +2159,11 @@ describe("zero artifact sidebar", () => {
       });
       expect(openMock.calls).toStrictEqual([]);
 
-      completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+      const pptx = await presentationPptxBlob();
+      completePresentationPptxExport(exportFrame, pptx);
 
       await waitFor(() => {
-        expect(upload.file).not.toBeNull();
+        expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
         expect(successToast).toHaveBeenCalledWith("Uploaded to Google Slides", {
           id: expect.anything(),
         });
@@ -2101,14 +2171,13 @@ describe("zero artifact sidebar", () => {
           document.querySelector('iframe[title="Presentation PPTX export"]'),
         ).not.toBeInTheDocument();
       });
-      if (!upload.file) {
-        throw new Error("Google Slides upload did not send a file");
-      }
-      expect(upload.file.name).toBe("quarterly-roadmap.pptx");
-      expect(upload.file.type).toBe(
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      );
-      expect(upload.file.size).toBeGreaterThan(0);
+      expect(upload.prepared).toStrictEqual({
+        contentType: PRESENTATION_PPTX_MIME_TYPE,
+        filename: "quarterly-roadmap.pptx",
+        size: upload.uploaded?.size,
+      });
+      expect(upload.uploaded?.size).toBeGreaterThanOrEqual(pptx.size);
+      expect(upload.uploaded?.type).toBe(PRESENTATION_PPTX_MIME_TYPE);
       expect(openMock.calls).toStrictEqual([]);
     } finally {
       successToast.mockRestore();
@@ -2168,7 +2237,6 @@ describe("zero artifact sidebar", () => {
       });
     });
     let agentAuthorized = false;
-    let slidesUploaded = false;
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -2181,20 +2249,17 @@ describe("zero artifact sidebar", () => {
         return respond(200, { enabledTypes: ["google-drive"] });
       },
     );
-    context.mocks.http.post(
-      "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
-      async ({ request }) => {
+    const upload = mockPresentationGoogleSlidesUpload({
+      beforeFinalize: () => {
         expect(agentAuthorized).toBeTruthy();
-        const file = (await request.formData()).get("file");
-        expect(file).toBeInstanceOf(File);
-        slidesUploaded = true;
-        return HttpResponse.json({
-          id: "slides-file-quarterly-roadmap",
-          name: "quarterly-roadmap",
-          webViewLink: null,
-        });
       },
-    );
+      previousApi: true,
+      response: {
+        id: "slides-file-quarterly-roadmap",
+        name: "quarterly-roadmap",
+        webViewLink: null,
+      },
+    });
     setupChatThread({
       artifactFiles,
       content: `[Quarterly roadmap](${presentationUrl})`,
@@ -2227,8 +2292,11 @@ describe("zero artifact sidebar", () => {
     completePresentationPptxExport(exportFrame, await presentationPptxBlob());
 
     await waitFor(() => {
-      expect(slidesUploaded).toBeTruthy();
+      expect(upload.legacyUploaded).toBeInstanceOf(File);
     });
+    expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
+    expect(upload.legacyUploaded?.name).toBe("quarterly-roadmap.pptx");
+    expect(upload.legacyUploaded?.size).toBeGreaterThan(0);
   });
 
   it("preserves deck-level slide backgrounds for editable PPTX export", async () => {
