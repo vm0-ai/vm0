@@ -3104,6 +3104,83 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
+  it("allows limited-free Terra and Luna runs while rejecting Sol", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    const onboarding = await bdd.readOnboardingStatus(actor);
+    if (!onboarding.defaultAgentId) {
+      throw new Error("Expected limited-free bootstrap agent");
+    }
+    const agentId = onboarding.defaultAgentId;
+    await expect(api.readBillingStatus(actor)).resolves.toMatchObject({
+      tier: "limited-free-1",
+      credits: 3000,
+      onboardingPaymentPending: false,
+    });
+
+    for (const model of ["gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+      await seedVm0ManagedModelKey(model);
+      const sent = await chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          prompt: `limited-free ${model} run`,
+          model,
+        },
+        [201],
+      );
+      if (sent.status !== 201 || sent.body.runId === null) {
+        throw new Error(`Expected ${model} to create a run`);
+      }
+      await api.heartbeatRunner(runnerGroup);
+      const claim = await api.claimRunnerJob(sent.body.runId);
+      expect(claim.cliAgentType).toBe("codex");
+      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.modelUsageProvider).toBe(model);
+      await api.requestCancelRun(actor, sent.body.runId, [200]);
+    }
+
+    const clientMessageId = randomUUID();
+    const sol = await chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        clientMessageId,
+        prompt: "limited-free Sol run",
+        model: "gpt-5.6-sol",
+      },
+      [201],
+    );
+    if (sol.status !== 201) {
+      throw new Error("Expected limited-free Sol send to be accepted");
+    }
+    expect(sol.body.runId).toBeNull();
+    const messages = await chat.listThreadMessages(actor, sol.body.threadId);
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        id: clientMessageId,
+        role: "user",
+        error: "insufficient_credits",
+      }),
+    );
+    expect(messages.messages).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        error: "insufficient_credits",
+      }),
+    );
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toHaveLength(0);
+    expect(queue.body.concurrency.active).toBe(0);
+  });
+
   it("claims vm0 runs with billable model firewall and usage provider", async () => {
     const api = createRunsAutomationsApi(context);
     const selectedModel = await seedVm0ManagedDefaultModelKey();
