@@ -477,10 +477,15 @@ describe("GET /api/zero/memory/recall", () => {
       appendSystemPrompt: "",
       profile: { static: [], dynamic: [] },
       queryMemories: [],
+      documentEvidence: [],
       stats: {
         injectedCount: 0,
         omittedCount: 0,
         characterCount: 0,
+        tokenCount: 0,
+        profileTokenCount: 0,
+        memoryTokenCount: 0,
+        documentTokenCount: 0,
       },
     });
   });
