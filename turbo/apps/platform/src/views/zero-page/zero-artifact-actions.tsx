@@ -670,7 +670,6 @@ export function ArtifactDownloadMenu({
       description,
     );
   };
-
   return (
     <Popover
       modal={false}
