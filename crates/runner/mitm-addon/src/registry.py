@@ -81,9 +81,8 @@ class _RegistryCacheState:
     # compiled matcher sidecars are published together.
     snapshot: _RegistrySnapshot = field(default_factory=_empty_snapshot)
     unavailable: RegistryUnavailable | None = None
-    # Known-bad decoded registry input. Unlike the snapshot loaded key, this
-    # means the current snapshot belongs to an older file state and this key
-    # should short-circuit until the file changes again.
+    # Known-bad decoded registry input. This key should short-circuit until the
+    # file changes again, while enforcement continues to see RegistryUnavailable.
     failed_key: _RegistryCacheKey | None = None
     # Open/stat failures do not provide a key, so use a one-shot guard. Read
     # errors have a key but are retried on every call; track their last warning
@@ -392,6 +391,9 @@ def _mark_unavailable(
 ) -> RegistryUnavailable:
     if state.unavailable is None and state.snapshot.loaded_key is not None:
         evict_all_cache_keys()
+    state.snapshot = _empty_snapshot()
+    state.builtin_firewall_core_cache.clear()
+    registry_firewalls.clear_catalog_cache()
     state.unavailable = RegistryUnavailable(reason, message)
     return state.unavailable
 
@@ -444,6 +446,7 @@ def load_registry_state(registry_path: str) -> RegistryState:
             state.unavailable = None
             state.stat_error_logged = False
             state.read_error_key = None
+            registry_firewalls.clear_catalog_cache()
             return state.snapshot
         if key == state.failed_key:
             return state.unavailable or _mark_unavailable(
@@ -485,6 +488,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
         if uses_builtin_catalog_dependency
         else _NO_BUILTIN_FIREWALL_CATALOG_DEPENDENCY
     )
+    if not uses_builtin_catalog_dependency:
+        registry_firewalls.clear_catalog_cache()
     loaded_key = (
         path_key,
         st.st_dev,

@@ -135,6 +135,9 @@ class TestRegistryContextState:
         assert unavailable_context is None
         assert isinstance(state, registry.RegistryUnavailable)
         assert state.reason == "parse_failed"
+        assert registry._registry_state.snapshot.loaded_key is None
+        assert registry._registry_state.snapshot.compiled_firewalls == {}
+        assert registry._registry_state.snapshot.compiled_network_policies == {}
 
     def test_missing_file_returns_no_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -152,6 +155,9 @@ class TestRegistryContextState:
         assert unavailable_context is None
         assert isinstance(state, registry.RegistryUnavailable)
         assert state.reason == "stat_failed"
+        assert registry._registry_state.snapshot.loaded_key is None
+        assert registry._registry_state.snapshot.compiled_firewalls == {}
+        assert registry._registry_state.snapshot.compiled_network_policies == {}
 
     def test_malformed_network_policy_shape_compiles_without_load_failure(self, tmp_path):
         path = tmp_path / "registry.json"

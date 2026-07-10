@@ -15,6 +15,7 @@
 //!   the Mutex when `provider.shutdown()` is called.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -24,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
+use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 use sandbox::SandboxId;
@@ -44,6 +46,7 @@ pub struct Completion {
 /// acquires the same Mutex, so omitting the
 /// `drop(discover_fut)` before `shutdown()` causes a real deadlock.
 pub struct MockJobProvider {
+    startup_readiness: Arc<MockStartupReadiness>,
     /// Held by `discover()` for its entire lifetime and acquired by
     /// `shutdown()`. Reproduces the historical API-provider shutdown deadlock
     /// shape used by main-loop regression tests.
@@ -79,6 +82,7 @@ pub struct MockJobProvider {
     /// about to start. Paused-time tests use this to avoid advancing virtual
     /// time before the discover timer exists.
     discover_poll_started: Arc<Notify>,
+    discover_started_count: Arc<AtomicUsize>,
     /// Fired by `heartbeat()` after a state is appended to `heartbeats`.
     /// `wait_heartbeat_past` uses the same subscribe-then-check pattern as
     /// `wait_completion` so a heartbeat that lands mid-check is still observed.
@@ -87,6 +91,7 @@ pub struct MockJobProvider {
 
 /// Test-side handle for driving the mock provider.
 pub struct MockProviderHandle {
+    startup_readiness: Arc<MockStartupReadiness>,
     pub discover_tx: mpsc::UnboundedSender<JobCandidate>,
     ready_discovery: Arc<StdMutex<VecDeque<JobCandidate>>>,
     claim_candidates: Arc<StdMutex<Vec<JobCandidate>>>,
@@ -99,8 +104,84 @@ pub struct MockProviderHandle {
     completion_notify: Arc<Notify>,
     /// See [`MockJobProvider::discover_poll_started`].
     discover_poll_started: Arc<Notify>,
+    discover_started_count: Arc<AtomicUsize>,
     /// See [`MockJobProvider::heartbeat_notify`].
     heartbeat_notify: Arc<Notify>,
+}
+
+#[derive(Clone)]
+enum MockStartupReadinessMode {
+    Ready,
+    Fail(String),
+    WaitForRelease,
+}
+
+struct MockStartupReadiness {
+    mode: StdMutex<MockStartupReadinessMode>,
+    entered: Notify,
+    release: Notify,
+    released: AtomicBool,
+    calls: AtomicUsize,
+}
+
+impl Default for MockStartupReadiness {
+    fn default() -> Self {
+        Self {
+            mode: StdMutex::new(MockStartupReadinessMode::Ready),
+            entered: Notify::new(),
+            release: Notify::new(),
+            released: AtomicBool::new(false),
+            calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl MockStartupReadiness {
+    async fn prepare(&self, cancel: &CancellationToken) -> RunnerResult<()> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.entered.notify_waiters();
+        let mode = self.mode.lock().unwrap_or_else(|e| e.into_inner()).clone();
+
+        match mode {
+            MockStartupReadinessMode::Ready => Ok(()),
+            MockStartupReadinessMode::Fail(message) => Err(RunnerError::Internal(message)),
+            MockStartupReadinessMode::WaitForRelease => loop {
+                if self.released.load(Ordering::SeqCst) {
+                    return Ok(());
+                }
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => {
+                        return Err(RunnerError::Internal(
+                            "mock startup readiness cancelled".to_string(),
+                        ));
+                    }
+                    () = self.release.notified() => {}
+                }
+            },
+        }
+    }
+
+    fn set_failure(&self, message: impl Into<String>) {
+        *self.mode.lock().unwrap_or_else(|e| e.into_inner()) =
+            MockStartupReadinessMode::Fail(message.into());
+        self.released.store(false, Ordering::SeqCst);
+    }
+
+    fn set_wait_for_release(&self) {
+        *self.mode.lock().unwrap_or_else(|e| e.into_inner()) =
+            MockStartupReadinessMode::WaitForRelease;
+        self.released.store(false, Ordering::SeqCst);
+    }
+
+    fn release(&self) {
+        self.released.store(true, Ordering::SeqCst);
+        self.release.notify_waiters();
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
 }
 
 impl MockJobProvider {
@@ -128,11 +209,14 @@ impl MockJobProvider {
         let completions = Arc::new(StdMutex::new(Vec::new()));
         let heartbeats = Arc::new(StdMutex::new(Vec::new()));
         let deferred_poll_delays = Arc::new(StdMutex::new(Vec::new()));
+        let startup_readiness = Arc::new(MockStartupReadiness::default());
         let discover_entered = Arc::new(Notify::new());
         let completion_notify = Arc::new(Notify::new());
         let discover_poll_started = Arc::new(Notify::new());
+        let discover_started_count = Arc::new(AtomicUsize::new(0));
         let heartbeat_notify = Arc::new(Notify::new());
         let provider = Arc::new(Self {
+            startup_readiness: Arc::clone(&startup_readiness),
             discovery: Mutex::new(rx),
             poll_delay,
             ready_discovery: Arc::clone(&ready_discovery),
@@ -145,9 +229,11 @@ impl MockJobProvider {
             discover_entered: Arc::clone(&discover_entered),
             completion_notify: Arc::clone(&completion_notify),
             discover_poll_started: Arc::clone(&discover_poll_started),
+            discover_started_count: Arc::clone(&discover_started_count),
             heartbeat_notify: Arc::clone(&heartbeat_notify),
         });
         let handle = MockProviderHandle {
+            startup_readiness,
             discover_tx: tx,
             ready_discovery,
             claim_candidates,
@@ -157,6 +243,7 @@ impl MockJobProvider {
             discover_entered,
             completion_notify,
             discover_poll_started,
+            discover_started_count,
             heartbeat_notify,
         };
         (provider, handle)
@@ -173,6 +260,47 @@ impl MockJobProvider {
 }
 
 impl MockProviderHandle {
+    pub fn fail_startup_readiness(&self, message: impl Into<String>) {
+        self.startup_readiness.set_failure(message);
+    }
+
+    pub fn block_startup_readiness(&self) {
+        self.startup_readiness.set_wait_for_release();
+    }
+
+    pub fn release_startup_readiness(&self) {
+        self.startup_readiness.release();
+    }
+
+    pub async fn wait_startup_readiness_entered(&self, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let notified = self.startup_readiness.entered.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+
+            if self.startup_readiness_calls() > 0 {
+                return true;
+            }
+
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return false;
+            }
+        }
+    }
+
+    pub fn startup_readiness_calls(&self) -> usize {
+        self.startup_readiness.calls()
+    }
+
+    pub fn discover_started_count(&self) -> usize {
+        self.discover_started_count.load(Ordering::SeqCst)
+    }
+
     /// Wait for a specific run's completion to appear, with timeout.
     ///
     /// Event-driven — see [`MockJobProvider::completion_notify`] for the
@@ -278,6 +406,10 @@ impl MockProviderHandle {
 
 #[async_trait]
 impl JobProvider for MockJobProvider {
+    async fn prepare_startup_readiness(&self) -> RunnerResult<()> {
+        self.startup_readiness.prepare(&self.cancel).await
+    }
+
     /// Block until a job is pushed or the token is cancelled.
     ///
     /// Holds `self.discovery` Mutex for the entire call. This keeps the
@@ -289,6 +421,7 @@ impl JobProvider for MockJobProvider {
     /// - If the caller fails to drop this future before `shutdown()` (#8898),
     ///   the Mutex deadlocks — exactly reproducing the production bug.
     async fn discover(&self) -> Option<JobCandidate> {
+        self.discover_started_count.fetch_add(1, Ordering::SeqCst);
         let mut rx = self.discovery.lock().await;
         self.discover_poll_started.notify_one();
         if let Some(delay) = self.poll_delay {
