@@ -479,21 +479,26 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
-      if (policy.model !== LIMITED_FREE1_DEFAULT_RUN_MODEL) {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
-        modelProviderId: openRouterProviderId,
-      };
+    const allowedPolicy = toUpdate(listResponse.body).find((policy) => {
+      return policy.model === "claude-sonnet-5";
     });
+    if (!allowedPolicy) {
+      throw new Error("Expected the Sonnet 5 policy to be available");
+    }
 
     const response = await client.update({
       headers: authHeaders(),
-      body: { policies: updates },
+      body: {
+        policies: [
+          {
+            ...allowedPolicy,
+            isDefault: true,
+            defaultProviderType: "openrouter-api-key",
+            credentialScope: "org",
+            modelProviderId: openRouterProviderId,
+          },
+        ],
+      },
     });
 
     expect(response.status).toBe(402);

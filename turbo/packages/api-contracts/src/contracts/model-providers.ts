@@ -226,7 +226,7 @@ export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
   "gpt-5.6-terra" as const satisfies SupportedRunModel;
 
 export const LIMITED_FREE1_DEFAULT_RUN_MODEL =
-  "claude-sonnet-5" as const satisfies SupportedRunModel;
+  "gpt-5.6-terra" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
