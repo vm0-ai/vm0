@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroWorkflowQueueContract,
   type WorkflowQueueResponse,
@@ -16,7 +15,6 @@ import {
   createMockWorkflowTrigger,
   setMockWorkflowTriggers,
 } from "../../../mocks/handlers/workflow-triggers-store.ts";
-import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -68,21 +66,9 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
-async function enableWorkflowQueueSwitch(): Promise<void> {
-  context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-    return respond(200, {
-      switches: { [FeatureSwitchKey.WorkflowQueue]: true },
-      effectiveSwitches: { [FeatureSwitchKey.WorkflowQueue]: true },
-    });
-  });
-  await context.store.set(
-    setFeatureSwitch$,
-    { [FeatureSwitchKey.WorkflowQueue]: true },
-    context.signal,
-  );
-}
-
-async function openAutomationsPanel(): Promise<void> {
+async function openAutomationsPanel(
+  workflowQueueEnabled = true,
+): Promise<void> {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
     threadTitle: "Workflow queue thread",
@@ -102,7 +88,13 @@ async function openAutomationsPanel(): Promise<void> {
     }),
   ]);
 
-  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+  detachedSetupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: {
+      [FeatureSwitchKey.WorkflowQueue]: workflowQueueEnabled,
+    },
+  });
 
   await waitFor(() => {
     expect(buttonByLabel("Automations")).toBeInTheDocument();
@@ -115,7 +107,6 @@ async function openAutomationsPanel(): Promise<void> {
 
 describe("workflow queue panel", () => {
   it("shows the pending badge, running event, and FIFO pending list", async () => {
-    await enableWorkflowQueueSwitch();
     context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
       return respond(200, queueResponse());
     });
@@ -135,7 +126,6 @@ describe("workflow queue panel", () => {
   });
 
   it("skips a single pending event", async () => {
-    await enableWorkflowQueueSwitch();
     let skippedEventId: string | null = null;
     let pending = queueResponse().pending;
     context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
@@ -173,7 +163,6 @@ describe("workflow queue panel", () => {
   });
 
   it("pauses the queue and shows the paused banner", async () => {
-    await enableWorkflowQueueSwitch();
     let paused = false;
     context.mocks.api(zeroWorkflowQueueContract.get, ({ respond }) => {
       return respond(
@@ -208,7 +197,7 @@ describe("workflow queue panel", () => {
       return respond(200, queueResponse());
     });
 
-    await openAutomationsPanel();
+    await openAutomationsPanel(false);
 
     await waitFor(() => {
       expect(
