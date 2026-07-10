@@ -639,62 +639,36 @@ pub async fn populate_cache(
 
 #[cfg(test)]
 async fn populate_cache_passthrough_without_background(
-    manifest: &mut guest_contracts::storage_manifest::Manifest,
+    plan: &mut StoragePlan,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
-    let mut plan = StoragePlan::from_guest_manifest_for_cache_test(manifest.clone());
-    let result = populate_cache_with_mode(
-        &mut plan,
+    populate_cache_with_mode(
+        plan,
         sandbox,
         home,
         telemetry,
         ForegroundCacheMode::HitOrPassthroughWithoutBackgroundFill,
     )
-    .await;
-    *manifest = plan.into_guest_manifest();
-    result
+    .await
 }
 
 #[cfg(test)]
 async fn populate_cache_blocking(
-    manifest: &mut guest_contracts::storage_manifest::Manifest,
+    plan: &mut StoragePlan,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
-    let mut plan = StoragePlan::from_guest_manifest_for_cache_test(manifest.clone());
-    let result = populate_cache_with_mode(
-        &mut plan,
+    populate_cache_with_mode(
+        plan,
         sandbox,
         home,
         telemetry,
         ForegroundCacheMode::BlockingFill,
     )
-    .await;
-    *manifest = plan.into_guest_manifest();
-    result
-}
-
-#[cfg(test)]
-async fn populate_cache_for_manifest_test(
-    manifest: &mut guest_contracts::storage_manifest::Manifest,
-    sandbox: &dyn Sandbox,
-    home: &HomePaths,
-    telemetry: &mut JobTelemetry,
-) -> RunnerResult<()> {
-    let mut plan = StoragePlan::from_guest_manifest_for_cache_test(manifest.clone());
-    let result = populate_cache_with_mode(
-        &mut plan,
-        sandbox,
-        home,
-        telemetry,
-        ForegroundCacheMode::HitOrPassthrough,
-    )
-    .await;
-    *manifest = plan.into_guest_manifest();
-    result
+    .await
 }
 
 async fn populate_cache_with_mode(
@@ -2397,22 +2371,25 @@ fn rewrite_url(plan: &mut StoragePlan, target: &CacheTarget) {
 mod tests {
     use super::*;
 
+    use api_contracts::generated::types::runners::storage::{
+        ArtifactEntry, StorageEntry, StorageManifest,
+    };
     use async_trait::async_trait;
     use httpmock::Method::{GET, HEAD};
     use httpmock::prelude::*;
     use sandbox::{SandboxError, SandboxOperation, SandboxOperationReason};
     use sandbox_mock::{MockLifecycleGate, MockSandbox};
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::io::AsyncWriteExt as _;
     use tokio::net::TcpListener;
 
     use crate::http::{HttpClient, HttpClientConfig};
     use crate::ids::RunId;
-    use guest_contracts::storage_manifest::{
-        ArtifactEntry as GuestDownloadArtifactEntry, Manifest as GuestDownloadManifest,
-        StorageEntry as GuestDownloadStorageEntry,
-    };
+    use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
+    use crate::storage_plan::build_storage_plan;
+
+    const CACHE_TEST_RUNTIME_DIR: &str = "/tmp/storage-cache-test-runtime";
 
     fn new_telemetry() -> JobTelemetry {
         new_telemetry_for_api_url("http://localhost:0")
@@ -2482,21 +2459,51 @@ mod tests {
         HomePaths::with_root(temp.path().to_path_buf())
     }
 
-    fn manifest_single_storage(url: String, name: &str, version: &str) -> GuestDownloadManifest {
-        GuestDownloadManifest {
-            storages: vec![GuestDownloadStorageEntry {
-                mount_path: format!("/mnt/{name}"),
-                extract_path: None,
-                archive_url: Some(url),
-                cached: false,
-                instructions_target_filename: None,
-                vas_storage_name: Some(name.to_string()),
-                vas_version_id: Some(version.to_string()),
-            }],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
+    fn storage_entry(mount_path: String, url: String, name: &str, version: &str) -> StorageEntry {
+        StorageEntry {
+            name: name.to_string(),
+            mount_path,
+            archive_url: url,
+            vas_storage_name: name.to_string(),
+            vas_version_id: version.to_string(),
+            instructions_target_filename: None,
         }
+    }
+
+    fn artifact_entry(mount_path: String, url: String, name: &str, version: &str) -> ArtifactEntry {
+        ArtifactEntry {
+            mount_path,
+            archive_url: Some(url),
+            vas_storage_name: name.to_string(),
+            vas_storage_id: format!("{name}-id"),
+            vas_version_id: version.to_string(),
+            empty: None,
+            missing_root_policy: None,
+        }
+    }
+
+    fn plan_from_entries(
+        storages: Vec<StorageEntry>,
+        artifacts: Vec<ArtifactEntry>,
+        previous: Option<&StorageFingerprints>,
+    ) -> StoragePlan {
+        build_storage_plan(
+            &StorageManifest {
+                storages,
+                artifacts,
+            },
+            CACHE_TEST_RUNTIME_DIR,
+            previous,
+        )
+        .unwrap()
+    }
+
+    fn manifest_single_storage(url: String, name: &str, version: &str) -> StoragePlan {
+        plan_from_entries(
+            vec![storage_entry(format!("/mnt/{name}"), url, name, version)],
+            Vec::new(),
+            None,
+        )
     }
 
     fn manifest_duplicate_storages(
@@ -2504,50 +2511,36 @@ mod tests {
         second_url: String,
         name: &str,
         version: &str,
-    ) -> GuestDownloadManifest {
-        GuestDownloadManifest {
-            storages: vec![
-                GuestDownloadStorageEntry {
-                    mount_path: "/mnt/duplicate-a".into(),
-                    extract_path: None,
-                    archive_url: Some(first_url),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(name.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
-                GuestDownloadStorageEntry {
-                    mount_path: "/mnt/duplicate-b".into(),
-                    extract_path: None,
-                    archive_url: Some(second_url),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(name.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
+    ) -> StoragePlan {
+        plan_from_entries(
+            vec![
+                storage_entry("/mnt/duplicate-a".into(), first_url, name, version),
+                storage_entry("/mnt/duplicate-b".into(), second_url, name, version),
             ],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        }
+            Vec::new(),
+            None,
+        )
     }
 
-    fn manifest_single_artifact(url: String, name: &str, version: &str) -> GuestDownloadManifest {
-        GuestDownloadManifest {
-            storages: Vec::new(),
-            artifacts: vec![GuestDownloadArtifactEntry {
-                mount_path: format!("/mnt/artifact-{name}"),
-                archive_url: Some(url),
-                empty: false,
-                cached: false,
-                vas_storage_name: Some(name.to_string()),
-                vas_storage_id: Some(format!("{name}-id")),
-                vas_version_id: Some(version.to_string()),
-                missing_root_policy: None,
-            }],
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        }
+    fn manifest_single_artifact(url: String, name: &str, version: &str) -> StoragePlan {
+        plan_from_entries(
+            Vec::new(),
+            vec![artifact_entry(
+                format!("/mnt/artifact-{name}"),
+                url,
+                name,
+                version,
+            )],
+            None,
+        )
+    }
+
+    fn storage_archive_url(plan: &StoragePlan, index: usize) -> Option<&str> {
+        plan.archive_source_url_for_test(ArchiveHandle::storage(index))
+    }
+
+    fn artifact_archive_url(plan: &StoragePlan, index: usize) -> Option<&str> {
+        plan.archive_source_url_for_test(ArchiveHandle::artifact(index))
     }
 
     fn tarball_bytes() -> Vec<u8> {
@@ -2906,7 +2899,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
@@ -2953,7 +2946,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let batches = sandbox.write_files_calls();
@@ -2992,7 +2985,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         assert!(lock_path.exists());
@@ -3036,10 +3029,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             hit_rx.try_recv().is_err(),
             "guarded miss should not contact the archive URL"
@@ -3088,14 +3078,11 @@ mod tests {
         let original = format!("http://{addr}/archive.tar.gz");
         let mut manifest = manifest_single_storage(original.clone(), name, version);
 
-        populate_cache_for_manifest_test(&mut manifest, &sandbox, &home, &mut telemetry)
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -3300,10 +3287,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(!lock_path.exists());
         assert!(sandbox.write_file_calls().is_empty());
         assert!(sandbox.write_files_calls().is_empty());
@@ -3336,10 +3320,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             lock_path.exists(),
             "cleanup must not remove a lock while another reader still holds it"
@@ -3371,31 +3352,19 @@ mod tests {
         write_storage_lock(&home, oversized_name, version);
         let empty_url = "https://r2.example.com/empty.tar.gz".to_string();
         let oversized_url = "https://r2.example.com/oversized.tar.gz".to_string();
-        let mut manifest = GuestDownloadManifest {
-            storages: vec![
-                GuestDownloadStorageEntry {
-                    mount_path: "/mnt/empty".into(),
-                    extract_path: None,
-                    archive_url: Some(empty_url.clone()),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(empty_name.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
-                GuestDownloadStorageEntry {
-                    mount_path: "/mnt/oversized".into(),
-                    extract_path: None,
-                    archive_url: Some(oversized_url.clone()),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(oversized_name.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
+        let mut manifest = plan_from_entries(
+            vec![
+                storage_entry("/mnt/empty".into(), empty_url.clone(), empty_name, version),
+                storage_entry(
+                    "/mnt/oversized".into(),
+                    oversized_url.clone(),
+                    oversized_name,
+                    version,
+                ),
             ],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+            Vec::new(),
+            None,
+        );
 
         populate_cache_passthrough_without_background(
             &mut manifest,
@@ -3406,12 +3375,9 @@ mod tests {
         .await
         .unwrap();
 
+        assert_eq!(storage_archive_url(&manifest, 0), Some(empty_url.as_str()));
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(empty_url.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
+            storage_archive_url(&manifest, 1),
             Some(oversized_url.as_str())
         );
         assert!(empty_dir.join("archive.tar.gz").exists());
@@ -3445,14 +3411,8 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(first_url.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(second_url.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(first_url.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(second_url.as_str()));
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, "storage_cache_passthrough_miss_count_2", true);
         assert_op_count(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, 2);
@@ -3479,10 +3439,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            manifest.artifacts[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(artifact_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(!home.storage_cache_dir(name, version).exists());
         assert!(!home.storage_lock(name, version).exists());
         let ops = telemetry.pending_ops_snapshot();
@@ -3513,10 +3470,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_LOCK_BUSY_PASSTHROUGH, true);
         assert_op(&ops, "storage_cache_passthrough_lock_busy_count_1", true);
@@ -3537,31 +3491,24 @@ mod tests {
         write_cached_archive(&home, first_name, version, &body);
         write_cached_archive(&home, second_name, version, &body);
 
-        let mut manifest = GuestDownloadManifest {
-            storages: vec![
-                GuestDownloadStorageEntry {
-                    mount_path: "/mnt/a".into(),
-                    extract_path: None,
-                    archive_url: Some("https://r2.example.com/a.tar.gz".into()),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(first_name.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
-                GuestDownloadStorageEntry {
-                    mount_path: "/mnt/b".into(),
-                    extract_path: None,
-                    archive_url: Some("https://r2.example.com/b.tar.gz".into()),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(second_name.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
+        let mut manifest = plan_from_entries(
+            vec![
+                storage_entry(
+                    "/mnt/a".into(),
+                    "https://r2.example.com/a.tar.gz".into(),
+                    first_name,
+                    version,
+                ),
+                storage_entry(
+                    "/mnt/b".into(),
+                    "https://r2.example.com/b.tar.gz".into(),
+                    second_name,
+                    version,
+                ),
             ],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+            Vec::new(),
+            None,
+        );
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -3614,10 +3561,7 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("vsock write failed"), "got: {err}");
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, false);
@@ -3677,7 +3621,7 @@ mod tests {
         assert_eq!(std::fs::read(&final_path).unwrap(), body);
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
 
@@ -3723,7 +3667,7 @@ mod tests {
         await_raw_http_sequence(handle).await;
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         assert_eq!(
@@ -3773,10 +3717,7 @@ mod tests {
 
         probe.assert_calls_async(1).await;
         full.assert_calls_async(0).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
         let reason = ops
@@ -3806,10 +3747,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
         let reason = ops
@@ -3846,7 +3784,7 @@ mod tests {
         await_raw_http_sequence(handle).await;
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         assert_eq!(
@@ -3882,7 +3820,7 @@ mod tests {
         await_raw_http_sequence(handle).await;
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         assert_eq!(
@@ -3937,10 +3875,7 @@ mod tests {
 
         probe.assert_async().await;
         full.assert_calls_async(1).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
         let reason = ops
@@ -4004,10 +3939,7 @@ mod tests {
 
         probe.assert_async().await;
         full.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
         assert!(
             !home
@@ -4078,10 +4010,7 @@ mod tests {
             err.to_string().contains("single write failed"),
             "got: {err}"
         );
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert_eq!(
             std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
             body
@@ -4134,10 +4063,7 @@ mod tests {
         probe.assert_async().await;
 
         // archive_url untouched.
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         // Cache dir must not exist.
         assert!(!home.storage_cache_dir(name, version).exists());
 
@@ -4195,10 +4121,7 @@ mod tests {
             err.to_string().contains("download size mismatch"),
             "got: {err}"
         );
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -4255,10 +4178,7 @@ mod tests {
 
         probe.assert_async().await;
         get.assert_async().await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -4310,7 +4230,7 @@ mod tests {
         probe.assert_async().await;
         get.assert_async().await;
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         assert_eq!(
@@ -4365,10 +4285,7 @@ mod tests {
 
         probe.assert_async().await;
         get.assert_async().await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -4419,10 +4336,7 @@ mod tests {
 
         probe.assert_async().await;
         get.assert_async().await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -4435,35 +4349,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cached_true_entry_is_not_touched() {
+    async fn reused_storage_is_not_touched() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
 
-        // Entry the filter has already marked reuse-in-place: archive_url = None, cached = true.
-        let mut manifest = GuestDownloadManifest {
-            storages: vec![GuestDownloadStorageEntry {
-                mount_path: "/mnt/foo".into(),
-                extract_path: None,
-                archive_url: None,
-                cached: true,
-                instructions_target_filename: None,
-                vas_storage_name: Some("foo".into()),
-                vas_version_id: Some("v1".into()),
-            }],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
+        let previous = StorageFingerprints {
+            storages: HashMap::from([("/mnt/foo".into(), StorageFingerprint::new("foo", "v1"))]),
+            artifacts: HashMap::new(),
         };
+        let mut manifest = plan_from_entries(
+            vec![storage_entry(
+                "/mnt/foo".into(),
+                "https://r2.example.com/unused.tar.gz".into(),
+                "foo",
+                "v1",
+            )],
+            Vec::new(),
+            Some(&previous),
+        );
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
-        // Unchanged.
-        assert!(manifest.storages[0].archive_url.is_none());
-        assert!(manifest.storages[0].cached);
+        assert!(storage_archive_url(&manifest, 0).is_none());
+        assert!(manifest.cache_candidates().is_empty());
         // No telemetry emitted — no eligible targets.
         assert!(telemetry.pending_ops_snapshot().is_empty());
     }
@@ -4476,20 +4388,8 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         // Entry without usable vas_storage_name / vas_version_id passes through.
-        let mut manifest = GuestDownloadManifest {
-            storages: vec![GuestDownloadStorageEntry {
-                mount_path: "/mnt/legacy".into(),
-                extract_path: None,
-                archive_url: Some("https://r2.example.com/legacy.tar.gz".into()),
-                cached: false,
-                instructions_target_filename: None,
-                vas_storage_name: Some(String::new()),
-                vas_version_id: Some(String::new()),
-            }],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+        let mut manifest =
+            manifest_single_storage("https://r2.example.com/legacy.tar.gz".into(), "", "");
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -4497,7 +4397,7 @@ mod tests {
 
         // archive_url untouched.
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some("https://r2.example.com/legacy.tar.gz")
         );
     }
@@ -4532,7 +4432,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, "v2")).as_str())
         );
         // v2 cache retained; v1 cache untouched (only a GC branch would evict it).
@@ -4589,7 +4489,7 @@ mod tests {
             body
         );
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
@@ -4651,7 +4551,7 @@ mod tests {
             body
         );
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
@@ -4713,7 +4613,7 @@ mod tests {
             body
         );
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let batches = sandbox.write_files_calls();
@@ -4745,28 +4645,18 @@ mod tests {
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
 
-        let mut manifest = GuestDownloadManifest {
-            storages: Vec::new(),
-            artifacts: vec![GuestDownloadArtifactEntry {
-                mount_path: "/mnt/artifact".into(),
-                archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
-                empty: false,
-                cached: false,
-                vas_storage_name: Some(name.to_string()),
-                vas_storage_id: Some(String::new()),
-                vas_version_id: Some(version.to_string()),
-                missing_root_policy: None,
-            }],
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+        let mut manifest = manifest_single_artifact(
+            "https://r2.example.com/ignored.tar.gz".into(),
+            name,
+            version,
+        );
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
         assert_eq!(
-            manifest.artifacts[0].archive_url.as_deref(),
+            artifact_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
     }
@@ -4801,10 +4691,7 @@ mod tests {
         probe.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
 
         // archive_url untouched — guest-download will retry via the original URL.
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         let ops = telemetry.pending_ops_snapshot();
         assert!(
             ops.iter()
@@ -4847,10 +4734,7 @@ mod tests {
             .unwrap();
         await_raw_http_sequence(handle).await;
 
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(sandbox.write_file_calls().is_empty());
         let ops = telemetry.pending_ops_snapshot();
         let (_, _, error) = ops
@@ -4939,10 +4823,7 @@ mod tests {
             .unwrap();
 
         handle.await.unwrap().unwrap();
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -4998,10 +4879,7 @@ mod tests {
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -5048,10 +4926,7 @@ mod tests {
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -5314,14 +5189,8 @@ mod tests {
         let manifest_a = task_a.await.unwrap();
 
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest_a.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest_b.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest_a, 0), Some(expected.as_str()));
+        assert_eq!(storage_archive_url(&manifest_b, 0), Some(expected.as_str()));
     }
 
     #[tokio::test]
@@ -5453,35 +5322,28 @@ mod tests {
             let home = home.clone();
             let sandbox = Arc::clone(&sandbox);
             tokio::spawn(async move {
-                let mut manifest = GuestDownloadManifest {
-                    storages: vec![
-                        GuestDownloadStorageEntry {
-                            mount_path: "/mnt/ready".into(),
-                            extract_path: None,
-                            archive_url: Some(format!("http://{ready_addr}/ready.tar.gz")),
-                            cached: false,
-                            instructions_target_filename: None,
-                            vas_storage_name: Some(ready_name.to_string()),
-                            vas_version_id: Some(version.to_string()),
-                        },
-                        GuestDownloadStorageEntry {
-                            mount_path: "/mnt/cold".into(),
-                            extract_path: None,
-                            archive_url: Some(format!("http://{cold_addr}/cold.tar.gz")),
-                            cached: false,
-                            instructions_target_filename: None,
-                            vas_storage_name: Some(cold_name.to_string()),
-                            vas_version_id: Some(version.to_string()),
-                        },
+                let mut manifest = plan_from_entries(
+                    vec![
+                        storage_entry(
+                            "/mnt/ready".into(),
+                            format!("http://{ready_addr}/ready.tar.gz"),
+                            ready_name,
+                            version,
+                        ),
+                        storage_entry(
+                            "/mnt/cold".into(),
+                            format!("http://{cold_addr}/cold.tar.gz"),
+                            cold_name,
+                            version,
+                        ),
                     ],
-                    artifacts: Vec::new(),
-                    cleanup_paths: Vec::new(),
-                    instruction_cleanups: Vec::new(),
-                };
+                    Vec::new(),
+                    None,
+                );
                 let mut telemetry = new_telemetry();
                 populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
                     .await?;
-                Ok::<GuestDownloadManifest, RunnerError>(manifest)
+                Ok::<StoragePlan, RunnerError>(manifest)
             })
         };
 
@@ -5514,11 +5376,11 @@ mod tests {
         cold_server_task.await.unwrap().unwrap();
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(ready_name, version)).as_str())
         );
         assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
+            storage_archive_url(&manifest, 1),
             Some(format!("file://{}", guest_archive_path(cold_name, version)).as_str())
         );
     }
@@ -5547,7 +5409,7 @@ mod tests {
                 let mut telemetry = new_telemetry();
                 populate_cache_blocking(&mut manifest, sandbox.as_ref(), &home, &mut telemetry)
                     .await?;
-                Ok::<GuestDownloadManifest, RunnerError>(manifest)
+                Ok::<StoragePlan, RunnerError>(manifest)
             })
         };
 
@@ -5567,14 +5429,8 @@ mod tests {
         );
 
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
     }
 
     #[tokio::test]
@@ -5647,14 +5503,8 @@ mod tests {
         );
 
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_eq!(
@@ -5691,29 +5541,21 @@ mod tests {
         let version = "v1";
         write_cached_archive(&home, name, version, &tarball_bytes());
 
-        let mut manifest = GuestDownloadManifest {
-            storages: vec![GuestDownloadStorageEntry {
-                mount_path: "/mnt/storage".into(),
-                extract_path: None,
-                archive_url: Some("https://r2.example.com/storage.tar.gz".into()),
-                cached: false,
-                instructions_target_filename: None,
-                vas_storage_name: Some(name.to_string()),
-                vas_version_id: Some(version.to_string()),
-            }],
-            artifacts: vec![GuestDownloadArtifactEntry {
-                mount_path: "/mnt/artifact".into(),
-                archive_url: Some("https://r2.example.com/artifact.tar.gz".into()),
-                empty: false,
-                cached: false,
-                vas_storage_name: Some(name.to_string()),
-                vas_storage_id: Some("storage-id".into()),
-                vas_version_id: Some(version.to_string()),
-                missing_root_policy: None,
-            }],
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+        let mut manifest = plan_from_entries(
+            vec![storage_entry(
+                "/mnt/storage".into(),
+                "https://r2.example.com/storage.tar.gz".into(),
+                name,
+                version,
+            )],
+            vec![artifact_entry(
+                "/mnt/artifact".into(),
+                "https://r2.example.com/artifact.tar.gz".into(),
+                name,
+                version,
+            )],
+            None,
+        );
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
@@ -5725,14 +5567,8 @@ mod tests {
             "storage and artifact targets with the same key should share one guest write"
         );
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest.artifacts[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
+        assert_eq!(artifact_archive_url(&manifest, 0), Some(expected.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_eq!(
@@ -5814,14 +5650,8 @@ mod tests {
         );
 
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_eq!(
@@ -5908,14 +5738,8 @@ mod tests {
         );
 
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(expected.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(expected.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_eq!(
@@ -5997,14 +5821,8 @@ mod tests {
             sandbox.write_file_calls().is_empty(),
             "all probe failures should not stage a guest archive"
         );
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original_a.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(original_b.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original_a.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(original_b.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_eq!(
@@ -6087,14 +5905,8 @@ mod tests {
             sandbox.write_file_calls().is_empty(),
             "all invalid downloads should not stage a guest archive"
         );
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original_a.as_str())
-        );
-        assert_eq!(
-            manifest.storages[1].archive_url.as_deref(),
-            Some(original_b.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original_a.as_str()));
+        assert_eq!(storage_archive_url(&manifest, 1), Some(original_b.as_str()));
 
         let ops = telemetry.pending_ops_snapshot();
         assert_eq!(
@@ -6133,38 +5945,31 @@ mod tests {
             std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
         }
 
-        let mut manifest = GuestDownloadManifest {
-            storages: vec![
-                GuestDownloadStorageEntry {
-                    mount_path: format!("/mnt/{name_a}"),
-                    extract_path: None,
-                    archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(name_a.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
-                GuestDownloadStorageEntry {
-                    mount_path: format!("/mnt/{name_b}"),
-                    extract_path: None,
-                    archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
-                    cached: false,
-                    instructions_target_filename: None,
-                    vas_storage_name: Some(name_b.to_string()),
-                    vas_version_id: Some(version.to_string()),
-                },
+        let mut manifest = plan_from_entries(
+            vec![
+                storage_entry(
+                    format!("/mnt/{name_a}"),
+                    "https://r2.example.com/ignored.tar.gz".into(),
+                    name_a,
+                    version,
+                ),
+                storage_entry(
+                    format!("/mnt/{name_b}"),
+                    "https://r2.example.com/ignored.tar.gz".into(),
+                    name_b,
+                    version,
+                ),
             ],
-            artifacts: Vec::new(),
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+            Vec::new(),
+            None,
+        );
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
-        let url_a = manifest.storages[0].archive_url.clone().unwrap();
-        let url_b = manifest.storages[1].archive_url.clone().unwrap();
+        let url_a = storage_archive_url(&manifest, 0).unwrap();
+        let url_b = storage_archive_url(&manifest, 1).unwrap();
         assert_ne!(
             url_a, url_b,
             "same-version entries must get distinct guest URLs"
@@ -6192,31 +5997,14 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         let original = "https://r2.example.com/nameless.tar.gz".to_string();
-        let mut manifest = GuestDownloadManifest {
-            storages: Vec::new(),
-            artifacts: vec![GuestDownloadArtifactEntry {
-                mount_path: "/mnt/nameless".into(),
-                archive_url: Some(original.clone()),
-                empty: false,
-                cached: false,
-                vas_storage_name: Some(String::new()),
-                vas_storage_id: Some(String::new()),
-                vas_version_id: Some(String::new()),
-                missing_root_policy: None,
-            }],
-            cleanup_paths: Vec::new(),
-            instruction_cleanups: Vec::new(),
-        };
+        let mut manifest = manifest_single_artifact(original.clone(), "", "");
 
         populate_cache_blocking(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
 
         // archive_url untouched — the entry was skipped entirely.
-        assert_eq!(
-            manifest.artifacts[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(artifact_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(telemetry.pending_ops_snapshot().is_empty());
     }
 
@@ -6273,14 +6061,8 @@ mod tests {
 
         // Both manifests rewritten.
         let expected = format!("file://{}", guest_archive_path(name, version));
-        assert_eq!(
-            manifest_a.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
-        assert_eq!(
-            manifest_b.storages[0].archive_url.as_deref(),
-            Some(expected.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest_a, 0), Some(expected.as_str()));
+        assert_eq!(storage_archive_url(&manifest_b, 0), Some(expected.as_str()));
 
         // Exactly one full download — the second caller saw the
         // flock-serialized cache and took the hit path. The probe may
@@ -6382,7 +6164,7 @@ mod tests {
         full.assert_async().await;
 
         assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
+            storage_archive_url(&manifest, 0),
             Some(format!("file://{}", guest_archive_path(name, version)).as_str())
         );
         let ops = telemetry.pending_ops_snapshot();
@@ -6430,10 +6212,7 @@ mod tests {
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -6483,10 +6262,7 @@ mod tests {
 
         probe.assert_async().await;
         full.assert_calls_async(0).await;
-        assert_eq!(
-            manifest.storages[0].archive_url.as_deref(),
-            Some(original.as_str())
-        );
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -6560,7 +6336,7 @@ mod tests {
             probe.assert_async().await;
             full.assert_calls_async(0).await;
             assert_eq!(
-                manifest.storages[0].archive_url.as_deref(),
+                storage_archive_url(&manifest, 0),
                 Some(original.as_str()),
                 "{content_range} must stay passthrough"
             );

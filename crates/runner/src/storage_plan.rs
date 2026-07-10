@@ -98,6 +98,14 @@ impl ArchiveHandle {
             index,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) const fn artifact(index: usize) -> Self {
+        Self {
+            kind: ArchiveKind::Artifact,
+            index,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -426,97 +434,28 @@ impl StoragePlan {
     }
 
     #[cfg(test)]
-    pub(crate) fn from_guest_manifest_for_cache_test(manifest: wire::Manifest) -> Self {
-        let storages = manifest
-            .storages
-            .into_iter()
-            .map(|entry| {
-                let action = match (
-                    entry.cached,
-                    entry.instructions_target_filename.is_some(),
-                    entry.archive_url,
-                ) {
-                    (true, false, _) => StorageAction::ReuseExisting,
-                    (true, true, _) => StorageAction::NormalizeInPlace,
-                    (false, false, Some(url)) => StorageAction::Download {
-                        source: ArchiveSource::Remote(url),
-                    },
-                    (false, true, Some(url)) => StorageAction::DownloadAndNormalize {
-                        source: ArchiveSource::Remote(url),
-                    },
-                    (false, false, None) => StorageAction::ReuseExisting,
-                    (false, true, None) => StorageAction::NormalizeInPlace,
-                };
-                StoragePlanEntry {
-                    mount_path: entry.mount_path,
-                    extract_path: entry.extract_path,
-                    instructions_target_filename: entry.instructions_target_filename,
-                    vas_storage_name: entry.vas_storage_name.unwrap_or_default(),
-                    vas_version_id: entry.vas_version_id.unwrap_or_default(),
-                    action,
+    pub(crate) fn archive_source_url_for_test(&self, handle: ArchiveHandle) -> Option<&str> {
+        let source = match handle.kind {
+            ArchiveKind::Storage => {
+                let entry = self.storages.get(handle.index)?;
+                match &entry.action {
+                    StorageAction::Download { source }
+                    | StorageAction::DownloadAndNormalize { source } => source,
+                    StorageAction::ReuseExisting | StorageAction::NormalizeInPlace => return None,
                 }
-            })
-            .collect::<Vec<_>>();
-        let artifacts = manifest
-            .artifacts
-            .into_iter()
-            .map(|entry| {
-                let action = if entry.empty {
-                    ArtifactAction::PrepareEmpty {
-                        cached: entry.cached,
-                    }
-                } else if entry.cached {
-                    ArtifactAction::ReuseOrRepair {
-                        source: ArchiveSource::Remote(entry.archive_url.unwrap_or_default()),
-                    }
-                } else {
-                    ArtifactAction::Download {
-                        source: ArchiveSource::Remote(entry.archive_url.unwrap_or_default()),
-                    }
-                };
-                ArtifactPlanEntry {
-                    mount_path: entry.mount_path,
-                    vas_storage_name: entry.vas_storage_name.unwrap_or_default(),
-                    vas_storage_id: entry.vas_storage_id.unwrap_or_default(),
-                    vas_version_id: entry.vas_version_id.unwrap_or_default(),
-                    missing_root_policy: entry.missing_root_policy,
-                    action,
+            }
+            ArchiveKind::Artifact => {
+                let entry = self.artifacts.get(handle.index)?;
+                match &entry.action {
+                    ArtifactAction::Download { source }
+                    | ArtifactAction::ReuseOrRepair { source } => source,
+                    ArtifactAction::PrepareEmpty { .. } => return None,
                 }
-            })
-            .collect::<Vec<_>>();
-        let reused_entries = storages
-            .iter()
-            .filter(|entry| {
-                matches!(
-                    entry.action,
-                    StorageAction::ReuseExisting | StorageAction::NormalizeInPlace
-                )
-            })
-            .count()
-            + artifacts
-                .iter()
-                .filter(|entry| {
-                    matches!(
-                        entry.action,
-                        ArtifactAction::ReuseOrRepair { .. }
-                            | ArtifactAction::PrepareEmpty { cached: true }
-                    )
-                })
-                .count();
-        Self {
-            storages,
-            artifacts,
-            cleanup_paths: manifest.cleanup_paths,
-            instruction_cleanups: manifest
-                .instruction_cleanups
-                .into_iter()
-                .map(|entry| InstructionCleanup {
-                    mount_path: entry.mount_path,
-                    target_filename: entry.target_filename,
-                })
-                .collect(),
-            reused_entries,
-        }
+            }
+        };
+        Some(match source {
+            ArchiveSource::Remote(url) | ArchiveSource::GuestStaged(url) => url,
+        })
     }
 }
 
