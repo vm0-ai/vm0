@@ -285,5 +285,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
     && rm -rf /var/lib/apt/lists/*
 
+# Install PostgreSQL and pgvector for local development.
+ARG POSTGRES_VERSION=17
+RUN install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsS \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && . /etc/os-release \
+    && printf '%s\n' \
+        'Types: deb' \
+        'URIs: https://apt.postgresql.org/pub/repos/apt' \
+        "Suites: ${VERSION_CODENAME}-pgdg" \
+        "Architectures: $(dpkg --print-architecture)" \
+        'Components: main' \
+        'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+        > /etc/apt/sources.list.d/pgdg.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        "postgresql-${POSTGRES_VERSION}-pgvector" \
+    && test -f "/usr/lib/postgresql/${POSTGRES_VERSION}/lib/vector.so" \
+    && rm -rf /var/lib/apt/lists/*
+
 # Default command
 CMD ["/usr/bin/zsh"]
