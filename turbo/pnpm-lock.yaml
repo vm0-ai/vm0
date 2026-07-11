@@ -188,8 +188,8 @@ importers:
         specifier: ^7.0.1
         version: 7.0.1
       ccstate:
-        specifier: ^5.3.1
-        version: 5.3.1
+        specifier: ^5.4.0
+        version: 5.4.0
       croner:
         specifier: ^9.1.0
         version: 9.1.0
@@ -418,11 +418,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/api-contracts
       ccstate:
-        specifier: ^5.3.1
-        version: 5.3.1
+        specifier: ^5.4.0
+        version: 5.4.0
       ccstate-react:
-        specifier: ^5.3.1
-        version: 5.3.1(@types/react@19.2.14)(react@19.2.6)
+        specifier: ^5.4.0
+        version: 5.4.0(@types/react@19.2.14)(react@19.2.6)
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -563,11 +563,11 @@ importers:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       ccstate:
-        specifier: ^5.3.1
-        version: 5.3.1
+        specifier: ^5.4.0
+        version: 5.4.0
       ccstate-react:
-        specifier: ^5.3.1
-        version: 5.3.1(@types/react@19.2.14)(react@19.2.6)
+        specifier: ^5.4.0
+        version: 5.4.0(@types/react@19.2.14)(react@19.2.6)
       dom-to-pptx:
         specifier: 1.1.10
         version: 1.1.10
@@ -1598,7 +1598,7 @@ packages:
     engines: {node: '>=22.12.0'}
 
   '@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2':
-    resolution: {gitHosted: true, integrity: sha512-MXgzlTDEEndJB3TBbvd5uFQO/8gaINo1Hfen8vef5rq/VHVPeB63uuv/uO5+8GFsAJ/rauu6XB79S6K4+aXc+w==, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
     version: 10.2.0-electron.1
     engines: {node: '>=12.13.0'}
     hasBin: true
@@ -5273,8 +5273,8 @@ packages:
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
-  ccstate-react@5.3.1:
-    resolution: {integrity: sha512-i/h6qYg3Cx0uvSJnwPG3mzmd48bKN/Jsmp+3EtL+5saFj9Yz8Oc8FSTdUKQgiYipQ6nfheIX6RFw6PZbk0uF5g==}
+  ccstate-react@5.4.0:
+    resolution: {integrity: sha512-2KKdNAV0IPUc+CNmOcPSD78tPOYU2aYZxbUYq0NnA0ZM5tpMSKFMqJ8wSfNyO15CyqYp7n5spH83vcGtLFtgyA==}
     peerDependencies:
       '@types/react': '>=17.0.0'
       react: '>=17.0.0'
@@ -5284,8 +5284,8 @@ packages:
       react:
         optional: true
 
-  ccstate@5.3.1:
-    resolution: {integrity: sha512-iWZ4ix9H16yAhHha7Hw5TwxQcdXsckQKDcG4XqLY4ITiI9c9PUZ/3rR0y/A7XAnrW8v/I4T7pD35gvPVA8/1hA==}
+  ccstate@5.4.0:
+    resolution: {integrity: sha512-8ezEsKjsOwyx5GrO+16fkavPCqDa/k5pAsZmdntjP9RJi/565qVQGm16tO3evmcMLJx35oD8PmvqD7afCnzvsg==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -14305,14 +14305,14 @@ snapshots:
 
   ccount@2.0.1: {}
 
-  ccstate-react@5.3.1(@types/react@19.2.14)(react@19.2.6):
+  ccstate-react@5.4.0(@types/react@19.2.14)(react@19.2.6):
     dependencies:
-      ccstate: 5.3.1
+      ccstate: 5.4.0
     optionalDependencies:
       '@types/react': 19.2.14
       react: 19.2.6
 
-  ccstate@5.3.1: {}
+  ccstate@5.4.0: {}
 
   chai@6.2.2: {}
 

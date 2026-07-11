@@ -449,7 +449,7 @@ export function createIdbCachedDataSource(
     return stores;
   }
 
-  const initialPage$ = computed(async (get): Promise<InitialPage> => {
+  const initialPage$ = computed(async (get): Promise<InitialPage | null> => {
     const { userId, orgId } = await get(authenticatedIdentity$);
     const stores = getStores(userId, orgId);
     const readStore = stores.readStore;
@@ -482,6 +482,9 @@ export function createIdbCachedDataSource(
 
     L.debug("initialPage:cacheMiss", { threadId });
     const page = await get(remote.initialPage$);
+    if (!page) {
+      return null;
+    }
     const writeStore = stores.writeStore;
     await chatIdbWriteBestEffort("cachedDataSource:initialUpsert", () => {
       return writeStore.upsertMessages(threadId, page.messages);

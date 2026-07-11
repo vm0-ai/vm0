@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
+  chatThreadDraftContract,
+  chatThreadMessagesContract,
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
@@ -23,6 +25,7 @@ import { openRenameChatThreadDialogFromThreadMeta$ } from "../chat-thread-rename
 import {
   eventDrivenChatThread,
   optimisticChatThreadCreateUnsettled,
+  reconcileOptimisticChatThreadEvents$,
   registerOptimisticChatThreadEvent$,
   syncEventDrivenChatThreads$,
   threadMeta,
@@ -620,7 +623,7 @@ describe("chat thread event sourcing local-first list", () => {
       },
     });
 
-    context.store.set(registerOptimisticChatThreadEvent$, {
+    const createdEvent = {
       id: OPTIMISTIC_EVENT_ID,
       kind: "created",
       chatThreadId: OPTIMISTIC_THREAD_ID,
@@ -628,7 +631,8 @@ describe("chat thread event sourcing local-first list", () => {
       title: null,
       selectedModel: null,
       createdAt: "2026-07-03T05:00:00.000Z",
-    });
+    } satisfies ChatThreadEvent;
+    context.store.set(registerOptimisticChatThreadEvent$, createdEvent);
     context.store.set(registerOptimisticChatThreadEvent$, {
       id: OPTIMISTIC_MODEL_EVENT_ID,
       kind: "model_selection_updated",
@@ -664,17 +668,77 @@ describe("chat thread event sourcing local-first list", () => {
       selectedModel: "claude-sonnet-4-6",
     });
 
+    let threadDetailRequests = 0;
+    let threadDraftRequests = 0;
+    let initialMessagesRequests = 0;
     context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      threadDetailRequests += 1;
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
-      return respond(404, {
-        error: { message: "Thread not found", code: "NOT_FOUND" },
+      return respond(200, {
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
       });
     });
+    context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
+      threadDraftRequests += 1;
+      expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
+      return respond(200, {
+        draftContent: null,
+        draftAttachments: null,
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, respond }) => {
+        initialMessagesRequests += 1;
+        expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
+        return respond(200, { messages: [], hasHistoryBefore: false });
+      },
+    );
 
     const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
     await expect(
       context.store.get(dataSource.remoteThreadDetail$),
     ).resolves.toBeNull();
+    await expect(
+      context.store.get(dataSource.threadDraft$),
+    ).resolves.toBeNull();
+    await expect(
+      context.store.get(dataSource.initialPage$),
+    ).resolves.toBeNull();
+    expect(threadDetailRequests).toBe(0);
+    expect(threadDraftRequests).toBe(0);
+    expect(initialMessagesRequests).toBe(0);
+
+    context.store.set(reconcileOptimisticChatThreadEvents$, {
+      snapshot: [],
+      events: [createdEvent],
+    });
+
+    await expect(
+      context.store.get(dataSource.remoteThreadDetail$),
+    ).resolves.toStrictEqual({
+      lastReadAt: null,
+      computerUseHostId: null,
+      codexServiceTier: null,
+    });
+    await expect(
+      context.store.get(dataSource.threadDraft$),
+    ).resolves.toStrictEqual({
+      draftContent: null,
+      draftAttachments: null,
+    });
+    await expect(
+      context.store.get(dataSource.initialPage$),
+    ).resolves.toStrictEqual({
+      messages: [],
+      hasHistoryBefore: false,
+      fetchedFromRemote: true,
+    });
+    expect(threadDetailRequests).toBe(1);
+    expect(threadDraftRequests).toBe(1);
+    expect(initialMessagesRequests).toBe(1);
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {

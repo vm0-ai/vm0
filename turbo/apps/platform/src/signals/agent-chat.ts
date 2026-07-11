@@ -12,7 +12,7 @@ import { activeRoute$ } from "./active-route.ts";
 import { reloadChatUnreadStateCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
-  eventDrivenActiveRunChatThreadIds$,
+  sidebarActiveThreadIds$,
   chatThreadMetaMap$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
@@ -176,7 +176,7 @@ function eventDrivenThreadToListItem(
 
 export const allChatThreadListItems$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const activeRunThreadIds = await get(eventDrivenActiveRunChatThreadIds$);
+    const activeRunThreadIds = await get(sidebarActiveThreadIds$);
     return (await get(eventDrivenChatThreads$)).map((thread) => {
       return eventDrivenThreadToListItem(
         thread,

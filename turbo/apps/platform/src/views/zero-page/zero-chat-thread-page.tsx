@@ -14,6 +14,7 @@ import {
   useLastResolved,
   useLoadable,
 } from "ccstate-react";
+import { equalArrays } from "../../lib/equality.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -3636,9 +3637,12 @@ function ChatThreadSkeletonOverlay({
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$, {
+    equalityFn: equalArrays,
+  });
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
+    { equalityFn: equalArrays },
   );
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
@@ -3844,7 +3848,7 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
-  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const selectedModel = useLastResolved(thread.selectedModel$) ?? null;
   const rootSignal = useGet(rootSignal$);
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
@@ -3863,7 +3867,7 @@ function RecommendedFollowupList({
     detach(
       sendMessage(
         followup.prompt,
-        modelSelection,
+        selectedModel ? { selectedModel } : null,
         {
           includeDraftAttachments: false,
         },
@@ -3992,18 +3996,15 @@ function resolveChatComposerModelPicker(params: {
 
 function useChatComposerQueue(
   thread: ChatThreadSignals,
-  groups: GroupedChatMessageGroup[],
+  queuedUserMessages: readonly EnrichedChatMessage[],
 ) {
   const recallMessage = useSet(thread.recallMessage$);
   const focusInput = useSet(thread.focusInput$);
   const pageSignal = useGet(pageSignal$);
 
-  const { queuedGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const queuedMessagesById = new Map(
-    queuedGroups.flatMap((group) => {
-      return group.messages.map((message) => {
-        return [message.id, message] as const;
-      });
+    queuedUserMessages.map((message) => {
+      return [message.id, message] as const;
     }),
   );
   const queuedItems: QueuedComposerItem[] = Array.from(
@@ -4059,9 +4060,11 @@ function useChatComposerModel(
   // Per-thread composer selection comes from the event projection. Read with
   // useLastResolved so the picker keeps the previous value while realtime
   // callbacks refetch the thread detail for non-selection fields.
-  const modelSelectionResolved = useLastResolved(thread.modelSelection$);
+  const selectedModelResolved = useLastResolved(thread.selectedModel$);
   const threadDetail = useLastResolved(thread.remoteThreadDetail$);
-  const baseModelSelection = modelSelectionResolved ?? null;
+  const baseModelSelection = selectedModelResolved
+    ? { selectedModel: selectedModelResolved }
+    : null;
   const modelSelection =
     baseModelSelection && threadDetail?.codexServiceTier
       ? {
@@ -4086,7 +4089,7 @@ function useChatComposerModel(
         disabled: false,
       })
     : undefined;
-  const modelPickerLoading = modelSelectionResolved === undefined;
+  const modelPickerLoading = selectedModelResolved === undefined;
   const submitBlockerProps = modelSelection
     ? resolveChatComposerSubmitBlocker({
         personalModelProvider,
@@ -4274,11 +4277,9 @@ function useChatThreadComposerFeedback(
 
 function useChatThreadComposerWorkflowPrompt({
   thread,
-  input,
   pageSignal,
 }: {
   thread: ChatThreadSignals;
-  input: string;
   pageSignal: AbortSignal;
 }): {
   onCreateWorkflowPrompt: (() => void) | undefined;
@@ -4287,6 +4288,7 @@ function useChatThreadComposerWorkflowPrompt({
   onReplaceDialogOpenChange: (open: boolean) => void;
 } {
   const attachments = useGet(thread.draft.attachments$);
+  const readInput = useSet(thread.draft.readInput$);
   const setInput = useSet(thread.draft.setInput$);
   const clearDraft = useSet(thread.draft.clear$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
@@ -4294,7 +4296,6 @@ function useChatThreadComposerWorkflowPrompt({
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
   const workflowPromptDraftTarget = `composer:${thread.threadId}`;
-  const hasComposerDraft = input.trim().length > 0 || attachments.length > 0;
   const replaceDraftDialogOpen =
     replaceDraftTarget === workflowPromptDraftTarget;
 
@@ -4306,7 +4307,7 @@ function useChatThreadComposerWorkflowPrompt({
   };
 
   const handleCreateWorkflowPrompt = () => {
-    if (hasComposerDraft) {
+    if (readInput().trim().length > 0 || attachments.length > 0) {
       setReplaceDraftTarget(workflowPromptDraftTarget);
       return;
     }
@@ -4330,45 +4331,29 @@ function useChatThreadComposerWorkflowPrompt({
   };
 }
 
-function resolveChatThreadComposerActivity({
-  groups,
-  sending,
-}: {
-  groups: readonly GroupedChatMessageGroup[];
-  sending: boolean;
-}): {
-  composerSending: boolean;
-  queueWhileSending: boolean;
-} {
-  const lastGroup = groups[groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const composerSending = sending && !lastAssistantCancelled;
-  return {
-    composerSending,
-    queueWhileSending: canQueueMessage({
-      sending: composerSending,
-    }),
-  };
+const EMPTY_QUEUED_USER_MESSAGES: readonly EnrichedChatMessage[] = [];
+
+function useQueuedUserMessages(thread: ChatThreadSignals) {
+  const hasQueuedUserMessages =
+    useLastResolved(thread.hasQueuedUserMessages$) ?? false;
+  const queuedUserMessages$ = hasQueuedUserMessages
+    ? thread.queuedUserMessages$
+    : thread.emptyQueuedUserMessages$;
+  return (
+    useLastResolved(queuedUserMessages$, { equalityFn: equalArrays }) ??
+    EMPTY_QUEUED_USER_MESSAGES
+  );
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
-  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
-  const hasMessages = groups.length > 0;
+  const queuedUserMessages = useQueuedUserMessages(thread);
+  const hasMessagesResolved = useLastResolved(thread.hasChatGroups$);
+  const hasMessages = hasMessagesResolved ?? false;
+  const lastAssistantCancelled =
+    useLastResolved(thread.lastAssistantCancelled$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  // useLastResolved (not useLastLoadable) so refetches keep the previously
-  // resolved value instead of flipping `sending` and the placeholder.
   const allFinished = useLastResolved(thread.allFinished$)!;
-  const input = useGet(thread.draft.input$);
-  const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
-  const setInputRef = useSet(thread.setInputRef$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
   const {
@@ -4379,10 +4364,8 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
-    groups,
+    queuedUserMessages,
   );
-  // The active goal row above the composer, with its cancel handler folded from
-  // the thread's message stream, no separate resource poll.
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
@@ -4406,17 +4389,9 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     clearComputerUseHostOverride,
   });
   const sending = !allFinished || sendLoading;
-  const skeletonVisible = groupsLoadable.state === "loading";
-  const { composerSending, queueWhileSending } =
-    resolveChatThreadComposerActivity({
-      groups,
-      sending,
-    });
-
-  const handleInputChange = (text: string) => {
-    setInput(text);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-  };
+  const skeletonVisible = hasMessagesResolved === undefined;
+  const composerSending = sending && !lastAssistantCancelled;
+  const queueWhileSending = canQueueMessage({ sending: composerSending });
 
   const handleDraftChange = () => {
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
@@ -4425,12 +4400,10 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
-    input,
     pageSignal,
   });
   const composerOptions: ZeroChatComposerProps = {
-    input,
-    onInputChange: handleInputChange,
+    composer: thread.workflowComposer,
     onSend: handleSend,
     onQueue: handleQueue,
     sending: composerSending,
@@ -4452,7 +4425,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     draft: thread.draft,
     composerFileInput$: thread.composerFileInput$,
     setComposerFileInput$: thread.setComposerFileInput$,
-    setInputRef,
     chatThreadId: thread.threadId,
     actionsLoading: skeletonVisible,
     modelPicker,

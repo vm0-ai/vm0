@@ -37,7 +37,6 @@ export interface PatchDraftArgs {
 export interface PatchModelSelectionArgs {
   threadId: string;
   modelSelection: {
-    readonly modelProviderId: string;
     readonly selectedModel: string;
     readonly codexServiceTier?: CodexServiceTier;
   } | null;
@@ -108,7 +107,7 @@ export interface ChatThreadDataSource {
   remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   reloadThread$: Command<void, []>;
-  initialPage$: Computed<Promise<InitialPage>>;
+  initialPage$: Computed<Promise<InitialPage | null>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
   patchModelSelection$: Command<
     Promise<void>,

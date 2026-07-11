@@ -29,6 +29,7 @@ import {
 } from "./sidebar-unread-threads.ts";
 import {
   chatThreadMetaMap$,
+  optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
 import type { ChatThread } from "../agent-chat.ts";
@@ -482,9 +483,14 @@ export function createRemoteChatThreadDataSource(
 ): ChatThreadDataSource {
   const reloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
 
   const remoteThreadDetail$ = computed(
     async (get): Promise<ChatThread | null> => {
+      if (get(optimisticCreateUnsettled$)) {
+        return null;
+      }
       get(reloadCounter$);
       const threadClient = get(zeroClient$)(chatThreadByIdContract);
       const threadResult = await accept(
@@ -504,6 +510,9 @@ export function createRemoteChatThreadDataSource(
   );
 
   const threadDraft$ = computed(async (get) => {
+    if (get(optimisticCreateUnsettled$)) {
+      return null;
+    }
     const client = get(zeroClient$)(chatThreadDraftContract);
     const result = await accept(
       client.get({ params: { id: threadId } }),
@@ -521,7 +530,10 @@ export function createRemoteChatThreadDataSource(
     });
   });
 
-  const initialPage$ = computed(async (get): Promise<InitialPage> => {
+  const initialPage$ = computed(async (get): Promise<InitialPage | null> => {
+    if (get(optimisticCreateUnsettled$)) {
+      return null;
+    }
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({ params: { threadId }, query: { limit: 50 } }),

@@ -8,6 +8,7 @@ import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
+import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
@@ -41,7 +42,7 @@ export interface ChatThreadSignals {
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
-  modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  selectedModel$: Computed<Promise<string | null>>;
   setModelSelection$: Command<
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
@@ -77,6 +78,7 @@ export interface ChatThreadSignals {
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
+  workflowComposer: WorkflowComposerSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
     (() => void) | undefined,
@@ -95,7 +97,6 @@ export interface ChatThreadSignals {
     [string, ChatClipboardPayload, AbortSignal]
   >;
   // -- Focus ----------------------------------------------------------------
-  setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
@@ -106,6 +107,11 @@ export interface ChatThreadSignals {
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  hasChatGroups$: Computed<Promise<boolean>>;
+  hasQueuedUserMessages$: Computed<Promise<boolean>>;
+  queuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
+  emptyQueuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
+  lastAssistantCancelled$: Computed<Promise<boolean>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;

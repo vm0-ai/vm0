@@ -11,6 +11,7 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detach, Reason } from "../../utils.ts";
+import type { InitialPage } from "../chat-thread-data-source.ts";
 
 const idbStoreMock = vi.hoisted(() => {
   let cachedMessages: unknown[] = [];
@@ -78,6 +79,14 @@ const idbStoreMock = vi.hoisted(() => {
   };
 });
 
+function requireInitialPage(page: InitialPage | null): InitialPage {
+  expect(page).not.toBeNull();
+  if (!page) {
+    throw new Error("Expected an initial message page");
+  }
+  return page;
+}
+
 vi.mock("../../external/idb-message-store.ts", () => {
   return {
     createIdbMessageStores: () => {
@@ -141,7 +150,9 @@ describe("createIdbCachedDataSource initial page cache", () => {
       await import("../idb-cached-chat-thread-data-source.ts");
     const dataSource = createIdbCachedDataSource("thread-1");
 
-    const initialPage = await ctx.store.get(dataSource.initialPage$);
+    const initialPage = requireInitialPage(
+      await ctx.store.get(dataSource.initialPage$),
+    );
 
     expect(idbStoreMock.readLatest.mock.calls[0]?.length).toBe(1);
     expect(ids(initialPage.messages)).toStrictEqual(ids(cachedMessages));
@@ -175,7 +186,9 @@ describe("createIdbCachedDataSource initial page cache", () => {
       await import("../idb-cached-chat-thread-data-source.ts");
     const remoteDataSource = createIdbCachedDataSource(threadId);
 
-    const remotePage = await ctx.store.get(remoteDataSource.initialPage$);
+    const remotePage = requireInitialPage(
+      await ctx.store.get(remoteDataSource.initialPage$),
+    );
 
     expect(remotePage.fetchedFromRemote).toBeTruthy();
     expect(ids(remotePage.messages)).toStrictEqual(ids(range(1, 2)));
@@ -187,7 +200,9 @@ describe("createIdbCachedDataSource initial page cache", () => {
     );
 
     const cachedDataSource = createIdbCachedDataSource(threadId);
-    const cachedPage = await ctx.store.get(cachedDataSource.initialPage$);
+    const cachedPage = requireInitialPage(
+      await ctx.store.get(cachedDataSource.initialPage$),
+    );
 
     expect(requestCount).toBe(2);
     expect(ids(cachedPage.messages)).toStrictEqual(ids(range(1, 2)));
