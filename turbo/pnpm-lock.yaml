@@ -188,8 +188,8 @@ importers:
         specifier: ^7.0.1
         version: 7.0.1
       ccstate:
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: ^5.3.1
+        version: 5.3.1
       croner:
         specifier: ^9.1.0
         version: 9.1.0
@@ -418,11 +418,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/api-contracts
       ccstate:
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: ^5.3.1
+        version: 5.3.1
       ccstate-react:
-        specifier: ^5.3.0
-        version: 5.3.0(@types/react@19.2.14)(react@19.2.6)
+        specifier: ^5.3.1
+        version: 5.3.1(@types/react@19.2.14)(react@19.2.6)
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -563,11 +563,11 @@ importers:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       ccstate:
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: ^5.3.1
+        version: 5.3.1
       ccstate-react:
-        specifier: ^5.3.0
-        version: 5.3.0(@types/react@19.2.14)(react@19.2.6)
+        specifier: ^5.3.1
+        version: 5.3.1(@types/react@19.2.14)(react@19.2.6)
       dom-to-pptx:
         specifier: 1.1.10
         version: 1.1.10
@@ -5273,8 +5273,8 @@ packages:
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
-  ccstate-react@5.3.0:
-    resolution: {integrity: sha512-H/go/ZJkaqsdx1Kj5wTeTpUQnN0OU/l8Tc79M91JwczI8YDL+ab45q5abRP8c3wMRJ10JOCU6jlBNKtDoldnJw==}
+  ccstate-react@5.3.1:
+    resolution: {integrity: sha512-i/h6qYg3Cx0uvSJnwPG3mzmd48bKN/Jsmp+3EtL+5saFj9Yz8Oc8FSTdUKQgiYipQ6nfheIX6RFw6PZbk0uF5g==}
     peerDependencies:
       '@types/react': '>=17.0.0'
       react: '>=17.0.0'
@@ -5284,8 +5284,8 @@ packages:
       react:
         optional: true
 
-  ccstate@5.3.0:
-    resolution: {integrity: sha512-qpKinRchlg1mAq3RnwOMmNlBLNOYIZCjo8vFSPsKJb4Mr0opbyvkAx+TDHSwA19L7WwoB6E3mGkQnl+wDilOKg==}
+  ccstate@5.3.1:
+    resolution: {integrity: sha512-iWZ4ix9H16yAhHha7Hw5TwxQcdXsckQKDcG4XqLY4ITiI9c9PUZ/3rR0y/A7XAnrW8v/I4T7pD35gvPVA8/1hA==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -14305,14 +14305,14 @@ snapshots:
 
   ccount@2.0.1: {}
 
-  ccstate-react@5.3.0(@types/react@19.2.14)(react@19.2.6):
+  ccstate-react@5.3.1(@types/react@19.2.14)(react@19.2.6):
     dependencies:
-      ccstate: 5.3.0
+      ccstate: 5.3.1
     optionalDependencies:
       '@types/react': 19.2.14
       react: 19.2.6
 
-  ccstate@5.3.0: {}
+  ccstate@5.3.1: {}
 
   chai@6.2.2: {}
 
