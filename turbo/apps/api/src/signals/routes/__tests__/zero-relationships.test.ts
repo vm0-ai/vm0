@@ -953,17 +953,7 @@ describe("GET /api/zero/relationships/*", () => {
       }),
       [200],
     );
-    expect(gmailDocuments.body.documents).toHaveLength(1);
-    expect(gmailDocuments.body.documents[0]).toMatchObject({
-      provider: "gmail",
-      sourceType: "gmail_message",
-      title: "Partnership follow-up",
-      chunkCount: 1,
-      contextSpace: {
-        type: "user",
-        displayName: "Partnership follow-up",
-      },
-    });
+    expect(gmailDocuments.body.documents).toStrictEqual([]);
     expect(queries.at(-1)).not.toContain("in:inbox");
     expect(queries.at(-1)).not.toContain("-in:sent");
 
@@ -1106,7 +1096,7 @@ describe("GET /api/zero/relationships/*", () => {
     );
   });
 
-  it("stores generated Gmail interaction summaries instead of raw body excerpts", async () => {
+  it("stores durable Gmail facts without raw body excerpts or recent context", async () => {
     const fixture = await seedRelationshipFixture();
     const gmailEmail = `relationship-${randomUUID()}@example.com`;
     const gmailToken = `gmail-access-token-${randomUUID()}`;
@@ -1145,7 +1135,8 @@ describe("GET /api/zero/relationships/*", () => {
       [200],
     );
     const serialized = JSON.stringify(search.body);
-    expect(serialized).toContain(
+    expect(serialized).toContain("Send the security review answer.");
+    expect(serialized).not.toContain(
       "Customer Example asked for the security review answer.",
     );
     expect(serialized).not.toContain("<center>");
@@ -1155,9 +1146,8 @@ describe("GET /api/zero/relationships/*", () => {
     const customer = search.body.relationships.find((relationship) => {
       return relationship.entity.primaryEmail === "customer@example.com";
     });
-    expect(customer?.recentInteractions[0]?.snippet).toBe(
-      "Customer Example asked for the security review answer.",
-    );
+    expect(customer?.recentInteractions).toStrictEqual([]);
+    expect(customer?.items[0]?.text).toBe("Send the security review answer.");
     expect(customer?.items[0]?.sources[0]?.quote).toBeNull();
   });
 
@@ -1332,17 +1322,7 @@ describe("GET /api/zero/relationships/*", () => {
       }),
       [200],
     );
-    expect(slackDocuments.body.documents).toHaveLength(1);
-    expect(slackDocuments.body.documents[0]).toMatchObject({
-      provider: "slack",
-      sourceType: "slack_message",
-      title: "Slack channel conversation",
-      chunkCount: 1,
-      contextSpace: {
-        type: "project",
-        displayName: "Slack channel conversation",
-      },
-    });
+    expect(slackDocuments.body.documents).toStrictEqual([]);
 
     const sourceId = sources.body.sources[0]?.id;
     expect(sourceId).toBeDefined();
@@ -1475,6 +1455,15 @@ describe("GET /api/zero/relationships/*", () => {
       ]),
     );
     expect(JSON.stringify(sources.body)).not.toContain("external");
+
+    const githubDocuments = await accept(
+      memoryClient().documents({
+        headers: authHeaders(),
+        query: { provider: "github", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(githubDocuments.body.documents).toStrictEqual([]);
   });
 
   it("does not backfill GitHub comments when the parent pull request type is disabled", async () => {
@@ -1611,5 +1600,14 @@ describe("GET /api/zero/relationships/*", () => {
         notionPageId: "11111111-1111-4111-8111-111111111111",
       },
     });
+
+    const notionDocuments = await accept(
+      memoryClient().documents({
+        headers: authHeaders(),
+        query: { provider: "notion", page: 1, limit: 10 },
+      }),
+      [200],
+    );
+    expect(notionDocuments.body.documents).toStrictEqual([]);
   });
 });

@@ -42,7 +42,6 @@ import {
 import {
   loadGraphMemoryCandidates,
   loadGraphRelationshipState,
-  recordGraphInteraction,
   upsertGraphMemory,
   upsertGraphRelationshipEntity,
   upsertGraphRelationshipState,
@@ -382,18 +381,6 @@ async function applyRelationshipExtraction(args: {
     status: "active",
     lastInteractionAt,
   });
-  if (extraction.interactionSummary !== null) {
-    await recordGraphInteraction({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      entityId: graphEntityId,
-      source: args.source,
-      snippet: extraction.interactionSummary,
-      occurredAt: args.occurredAt,
-    });
-  }
-
   for (const item of extraction.items) {
     await upsertGraphMemory({
       db: args.db,

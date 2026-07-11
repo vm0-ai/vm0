@@ -27,10 +27,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import {
-  seedLexicalRelationshipMemory,
-  seedMemoryDocumentChunk,
-} from "../../../test-fixtures/relationship-memory";
+import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -1094,10 +1091,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     const prompt = "security review answer";
     const seededMemoryText = "Send the security review answer to the customer.";
-    const documentTitle = "Security review answer playbook";
-    const documentText =
-      "Use the security review answer from the cited runbook.";
-    const documentExternalId = "runtime-document-timing-fixture";
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
@@ -1112,12 +1105,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "preference",
       text: seededMemoryText,
     });
-    const seededDocument = await seedMemoryDocumentChunk({
-      fixture: { orgId: actor.orgId, userId: actor.userId },
-      title: documentTitle,
-      text: documentText,
-      externalId: documentExternalId,
-    });
     mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
 
     const created = await api.createRun(actor, {
@@ -1129,7 +1116,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const zeroMemoryActionTypes = new Set<string>([
       ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
       ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
     ]);
     const memoryTimingEvents = timingEvents.filter((event) => {
@@ -1142,7 +1128,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
     );
@@ -1154,7 +1140,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       [
         ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-        ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
         ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
       ],
       "nested",
@@ -1212,59 +1197,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_profile_semantic_embedding_result: "present",
       }),
     );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_search_result_count_bucket: "1",
-        zero_run_origin: "zero_run",
-        trigger_source: "web",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_lexical",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_lexical_candidate_count_bucket: "1",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_semantic_embedding_result: "present",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_semantic_candidate_count_bucket: "0",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_hydration_candidate_count_bucket: "1",
-        memory_document_hydrated_result_count_bucket: "1",
-      }),
-    );
     expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
     expectApiDispatchTimingEventsNotToLeak(memoryTimingEvents, [
       prompt,
@@ -1274,12 +1206,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       seeded.entityId,
       seeded.memoryId,
       seededMemoryText,
-      documentTitle,
-      documentText,
-      documentExternalId,
-      seededDocument.contextSpaceId,
-      seededDocument.documentId,
-      seededDocument.chunkId,
       "vm0-ai/vm0",
       "source-search-fixture",
       "https://github.com/vm0-ai/vm0/issues/1",
@@ -1353,55 +1279,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_profile_semantic_embedding_result: "empty",
       }),
     );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_semantic_embedding_result: "empty",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_search_result_count_bucket: "0",
-        span_kind: "nested",
-        zero_run_origin: "zero_run",
-        trigger_source: "web",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_lexical",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_lexical_candidate_count_bucket: "0",
-        span_kind: "nested",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_hydration_candidate_count_bucket: "0",
-        memory_document_hydrated_result_count_bucket: "0",
-        span_kind: "nested",
-      }),
-    );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
-      "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
     ]);
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
