@@ -53,11 +53,11 @@ async function entitledUsageActor(): Promise<UsageActor> {
 }
 
 /**
- * Drives a run through its production lifecycle at a mocked clock: creation
- * and the runner claim happen at `createdAt` (stamping created_at/started_at),
- * and the sandbox completion webhook fires `durationMs` later (stamping
- * completed_at). The failure-path completion is used because it terminates a
- * run without checkpoint plumbing; /api/usage aggregates every finished run.
+ * Drives a run through its production lifecycle at a mocked clock. Creation
+ * happens at `createdAt`, while runner claim time comes from PostgreSQL. The
+ * sandbox completion clock is aligned to the persisted claim time plus
+ * `durationMs`. The failure path terminates the run without checkpoint
+ * plumbing; /api/usage aggregates every finished run.
  */
 async function runFinishedRun(
   fixture: UsageActor,
@@ -70,11 +70,16 @@ async function runFinishedRun(
     modelProvider: "anthropic-api-key",
   });
   await api.heartbeatRunner(fixture.runnerGroup);
-  const claim = await api.claimRunnerJob(run.runId);
-  mockNow(new Date(args.createdAt.getTime() + args.durationMs));
+  await api.claimRunnerJob(run.runId);
+  const running = await api.readRun(fixture.actor, run.runId);
+  if (!running.startedAt) {
+    throw new Error("Claimed usage run is missing startedAt");
+  }
+  mockNow(new Date(new Date(running.startedAt).getTime() + args.durationMs));
+  const sandboxToken = api.sandboxTokenForRun(fixture.actor, run.runId);
   await webhooks.requestAgentComplete(
     { runId: run.runId, exitCode: 1, error: "bdd usage summary run" },
-    { authorization: `Bearer ${claim.sandboxToken}` },
+    { authorization: `Bearer ${sandboxToken}` },
     [200],
   );
   mockNow(new Date(FIXED_NOW_ISO));

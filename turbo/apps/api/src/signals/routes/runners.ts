@@ -26,7 +26,7 @@ import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -46,7 +46,7 @@ import {
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { env } from "../../lib/env";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
@@ -133,10 +133,7 @@ type ClaimRouteTimingActionType =
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
   | "claim_route_transition_running"
-  | "claim_route_transition_lock_run"
-  | "claim_route_transition_lock_queue_job"
-  | "claim_route_transition_update_run"
-  | "claim_route_transition_delete_queue_job";
+  | "claim_route_transition_execute";
 
 interface ClaimRouteTimingRecord {
   readonly actionType: ClaimRouteTimingActionType;
@@ -470,7 +467,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const supportedProfiles = body.data.supportedProfiles;
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
-    isNull(runnerJobQueue.claimedAt),
     gt(runnerJobQueue.expiresAt, sql`now()`),
     eq(agentRuns.status, "pending"),
   ];
@@ -578,7 +574,10 @@ const builtinFirewallsResolveBody$ = bodyResultOf(
 );
 
 interface ClaimableJob {
-  readonly job: typeof runnerJobQueue.$inferSelect;
+  readonly job: Pick<
+    typeof runnerJobQueue.$inferSelect,
+    "runnerGroup" | "profile" | "executionContext" | "createdAt"
+  >;
   readonly run: ClaimedRun;
 }
 
@@ -600,10 +599,7 @@ interface ActiveRunNetworkPolicyScope {
   readonly agentId: string;
 }
 
-type ClaimLookupResult =
-  | ClaimableJob
-  | ReturnType<typeof conflict>
-  | ReturnType<typeof notFound>;
+type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
@@ -651,7 +647,12 @@ async function getClaimableJob(
 ): Promise<ClaimLookupResult> {
   const [jobWithRun] = await db
     .select({
-      job: runnerJobQueue,
+      job: {
+        runnerGroup: runnerJobQueue.runnerGroup,
+        profile: runnerJobQueue.profile,
+        executionContext: runnerJobQueue.executionContext,
+        createdAt: runnerJobQueue.createdAt,
+      },
       run: {
         id: agentRuns.id,
         userId: agentRuns.userId,
@@ -668,7 +669,6 @@ async function getClaimableJob(
     .where(
       and(
         eq(runnerJobQueue.runId, runId),
-        isNull(runnerJobQueue.claimedAt),
         gt(runnerJobQueue.expiresAt, sql`now()`),
       ),
     )
@@ -678,21 +678,7 @@ async function getClaimableJob(
   if (jobWithRun) {
     return jobWithRun;
   }
-
-  const [existingJob] = await db
-    .select({
-      runId: runnerJobQueue.runId,
-      isExpired: sql<boolean>`${runnerJobQueue.expiresAt} <= now()`,
-    })
-    .from(runnerJobQueue)
-    .where(eq(runnerJobQueue.runId, runId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (!existingJob || existingJob.isExpired) {
-    return notFound("Job not found in queue");
-  }
-  return conflict("Job already claimed");
+  return notFound("Job not found in queue");
 }
 
 function claimAuthorizationError(
@@ -715,7 +701,6 @@ function claimAuthorizationError(
 
 type ClaimTransitionResult =
   | { readonly status: "claimed"; readonly claimedAt: Date }
-  | { readonly status: "conflict" }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
 type ClaimedTransitionResult = Extract<
@@ -733,9 +718,6 @@ interface LockedClaimRunRow extends Record<string, unknown> {
 }
 
 function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
-  if (result.status === "conflict") {
-    return conflict("Job was claimed by another runner");
-  }
   if (result.status === "job-not-found") {
     return notFound("Job not found in queue");
   }
@@ -744,8 +726,12 @@ function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
 
 interface LockedRunnerJobRow extends Record<string, unknown> {
   readonly runId: string;
-  readonly claimedAt: Date | null;
   readonly isExpired: boolean;
+}
+
+interface ClaimTransitionSqlRow extends Record<string, unknown> {
+  readonly status: ClaimTransitionResult["status"] | "invariant-error";
+  readonly claimedAtMs: number | null;
 }
 
 async function lockClaimRun(
@@ -770,7 +756,6 @@ async function lockRunnerJob(
   const rows = await db.execute<LockedRunnerJobRow>(sql`
     SELECT
       ${runnerJobQueue.runId} AS "runId",
-      ${runnerJobQueue.claimedAt} AS "claimedAt",
       ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
     FROM ${runnerJobQueue}
     WHERE ${runnerJobQueue.runId} = ${runId}
@@ -786,83 +771,124 @@ async function transitionClaimedJobToRunning(
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
   return await db.transaction(async (tx) => {
-    const run = await timing.measure(
-      "claim_route_transition_lock_run",
+    const result = await timing.measure(
+      "claim_route_transition_execute",
       "nested",
       async () => {
-        return await lockClaimRun(tx, runId);
+        // Materialized outputs make the row locks depend on run, then queue.
+        return await tx.execute<ClaimTransitionSqlRow>(sql`
+          WITH locked_run AS MATERIALIZED (
+            SELECT
+              ${agentRuns.id} AS "id",
+              ${agentRuns.status} AS "status"
+            FROM ${agentRuns}
+            WHERE ${agentRuns.id} = ${runId}
+            FOR UPDATE
+          ),
+          locked_job AS MATERIALIZED (
+            SELECT
+              ${runnerJobQueue.runId} AS "runId",
+              ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+            FROM ${runnerJobQueue}
+            INNER JOIN locked_run
+              ON locked_run."id" = ${runnerJobQueue.runId}
+            FOR UPDATE OF ${runnerJobQueue}
+          ),
+          claim_clock AS MATERIALIZED (
+            SELECT
+              date_trunc(
+                'milliseconds',
+                clock_timestamp() AT TIME ZONE 'UTC'
+              ) AS "claimedAt"
+            FROM locked_run
+            INNER JOIN locked_job
+              ON locked_job."runId" = locked_run."id"
+            WHERE
+              locked_run."status" = 'pending'
+              AND NOT locked_job."isExpired"
+          ),
+          updated_run AS (
+            UPDATE ${agentRuns}
+            SET
+              status = 'running',
+              started_at = claim_clock."claimedAt",
+              last_heartbeat_at = claim_clock."claimedAt"
+            FROM locked_run
+            INNER JOIN locked_job
+              ON locked_job."runId" = locked_run."id"
+            CROSS JOIN claim_clock
+            WHERE
+              ${agentRuns.id} = locked_run."id"
+              AND ${agentRuns.status} = 'pending'
+            RETURNING
+              ${agentRuns.id} AS "id",
+              ${agentRuns.startedAt} AS "claimedAt"
+          ),
+          deleted_job AS (
+            DELETE FROM ${runnerJobQueue}
+            USING locked_run, locked_job
+            WHERE
+              ${runnerJobQueue.runId} = locked_job."runId"
+              AND locked_job."runId" = locked_run."id"
+              AND (
+                locked_run."status" <> 'pending'
+                OR EXISTS (
+                  SELECT 1
+                  FROM updated_run
+                  WHERE updated_run."id" = locked_run."id"
+                )
+              )
+            RETURNING ${runnerJobQueue.runId} AS "runId"
+          )
+          SELECT
+            CASE
+              WHEN NOT EXISTS (SELECT 1 FROM locked_run)
+                THEN 'run-not-found'
+              WHEN EXISTS (
+                SELECT 1
+                FROM locked_run
+                WHERE locked_run."status" <> 'pending'
+              )
+                THEN 'run-not-found'
+              WHEN NOT EXISTS (SELECT 1 FROM locked_job)
+                OR EXISTS (
+                  SELECT 1
+                  FROM locked_job
+                  WHERE locked_job."isExpired"
+                )
+                THEN 'job-not-found'
+              WHEN EXISTS (SELECT 1 FROM updated_run)
+                AND EXISTS (SELECT 1 FROM deleted_job)
+                THEN 'claimed'
+              ELSE 'invariant-error'
+            END AS "status",
+            (
+              SELECT
+                (
+                  EXTRACT(EPOCH FROM updated_run."claimedAt") * 1000
+                )::double precision
+              FROM updated_run
+            ) AS "claimedAtMs"
+        `);
       },
     );
     signal.throwIfAborted();
-    if (!run) {
-      return { status: "run-not-found" };
+    const row = result.rows[0];
+    if (!row || row.status === "invariant-error") {
+      throw new Error("Runner job claim transition violated its invariant");
     }
-    if (run.status !== "pending") {
-      await timing.measure(
-        "claim_route_transition_delete_queue_job",
-        "nested",
-        async () => {
-          await tx
-            .delete(runnerJobQueue)
-            .where(eq(runnerJobQueue.runId, runId));
-        },
-      );
-      signal.throwIfAborted();
-      return { status: "run-not-found" };
+    if (row.status === "claimed") {
+      if (row.claimedAtMs === null) {
+        throw new Error("Claimed runner job is missing its transition time");
+      }
+      return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
     }
-
-    const job = await timing.measure(
-      "claim_route_transition_lock_queue_job",
-      "nested",
-      async () => {
-        return await lockRunnerJob(tx, runId);
-      },
-    );
-    signal.throwIfAborted();
-    if (!job || job.isExpired) {
-      return { status: "job-not-found" };
-    }
-    if (job.claimedAt) {
-      return { status: "conflict" };
-    }
-
-    const claimedAt = nowDate();
-    const [updatedRun] = await timing.measure(
-      "claim_route_transition_update_run",
-      "nested",
-      async () => {
-        return await tx
-          .update(agentRuns)
-          .set({
-            status: "running",
-            startedAt: claimedAt,
-            lastHeartbeatAt: claimedAt,
-          })
-          .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
-          .returning({ id: agentRuns.id });
-      },
-    );
-    signal.throwIfAborted();
-    if (!updatedRun) {
-      throw new Error("Locked pending run was not claimed");
-    }
-
-    await timing.measure(
-      "claim_route_transition_delete_queue_job",
-      "nested",
-      async () => {
-        await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
-      },
-    );
-    signal.throwIfAborted();
-
-    return { status: "claimed" as const, claimedAt };
+    return { status: row.status };
   });
 }
 
 type PoisonJobResult =
   | { readonly status: "failed" }
-  | { readonly status: "conflict" }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
 type FailedPoisonJobResult = Exclude<
@@ -871,9 +897,6 @@ type FailedPoisonJobResult = Exclude<
 >;
 
 function poisonJobErrorResponse(result: FailedPoisonJobResult) {
-  if (result.status === "conflict") {
-    return conflict("Job was claimed by another runner");
-  }
   if (result.status === "job-not-found") {
     return notFound("Job not found in queue");
   }
@@ -902,9 +925,6 @@ async function failPoisonQueuedJob(
     signal.throwIfAborted();
     if (!job || job.isExpired) {
       return { status: "job-not-found" };
-    }
-    if (job.claimedAt) {
-      return { status: "conflict" };
     }
 
     const failedAt = nowDate();

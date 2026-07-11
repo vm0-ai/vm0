@@ -38,7 +38,7 @@ export const runnerJobQueue = pgTable(
     // first-turn jobs before the guest reports a CLI agent session).
     cliAgentSessionId: varchar("session_id", { length: 255 }),
 
-    // Claim status
+    // Retained for previous API versions during rollout; remove in #21036.
     claimedAt: timestamp("claimed_at"),
 
     // Execution context (secrets encrypted with persistent-secret envelope)
@@ -52,7 +52,12 @@ export const runnerJobQueue = pgTable(
   },
   (table) => {
     return [
-      // Index for polling unclaimed jobs by group and profile
+      // Predicate-free index used by current poll queries.
+      index("runner_job_queue_group_profile_idx").on(
+        table.runnerGroup,
+        table.profile,
+      ),
+      // Retained for previous API versions during rollout; remove in #21036.
       index("runner_job_queue_group_profile_unclaimed_idx")
         .on(table.runnerGroup, table.profile)
         .where(sql`claimed_at IS NULL`),
