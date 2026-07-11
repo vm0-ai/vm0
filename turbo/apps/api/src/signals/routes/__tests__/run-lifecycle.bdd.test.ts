@@ -27,7 +27,6 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -231,7 +230,7 @@ const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_memory_profile_static",
   "api_dispatch_pre_create_zero_memory_profile_dynamic",
   "api_dispatch_pre_create_zero_memory_profile_search",
-  "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+  "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
   "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
   "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
   "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion",
@@ -251,7 +250,7 @@ const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
   "memory_profile_static_result_count_bucket",
   "memory_profile_dynamic_result_count_bucket",
   "memory_profile_search_result_count_bucket",
-  "memory_profile_lexical_candidate_count_bucket",
+  "memory_profile_exact_identity_candidate_count_bucket",
   "memory_profile_semantic_candidate_count_bucket",
   "memory_profile_expansion_candidate_count_bucket",
   "memory_profile_seed_ranked_count_bucket",
@@ -1086,8 +1085,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (!actor.orgId) {
       throw new Error("Memory runtime timing test requires an org");
     }
-    const prompt = "security review answer";
-    const seededMemoryText = "Send the security review answer to the customer.";
+    const prompt = "find customer@example.com security review";
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
@@ -1096,12 +1094,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
       },
     );
-    const seeded = await seedLexicalRelationshipMemory({
-      fixture: { orgId: actor.orgId, userId: actor.userId },
-      displayName: "Security Review",
-      kind: "preference",
-      text: seededMemoryText,
-    });
     mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
 
     const created = await api.createRun(actor, {
@@ -1166,12 +1158,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+        "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_lexical_candidate_count_bucket: "1",
-        memory_profile_lexical_query_eligible: "true",
+        memory_profile_exact_identity_candidate_count_bucket: "0",
+        memory_profile_exact_identity_query_eligible: "true",
       }),
     );
     expect(
@@ -1200,9 +1192,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       agentId,
       actor.userId,
       actor.orgId,
-      seeded.entityId,
-      seeded.memoryId,
-      seededMemoryText,
       "vm0-ai/vm0",
       "source-search-fixture",
       "https://github.com/vm0-ai/vm0/issues/1",
@@ -1212,7 +1201,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("skips runtime memory lexical search for long noisy zero run prompts", async () => {
+  it("skips exact identity lookup for long noisy zero run prompts", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
     if (!actor.orgId) {
@@ -1258,12 +1247,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+        "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_lexical_candidate_count_bucket: "0",
-        memory_profile_lexical_query_eligible: "false",
+        memory_profile_exact_identity_candidate_count_bucket: "0",
+        memory_profile_exact_identity_query_eligible: "false",
       }),
     );
     expect(
@@ -1290,7 +1279,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("keeps short Unicode runtime memory queries eligible for lexical search", async () => {
+  it("does not treat short Unicode runtime queries as exact identities", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
     if (!actor.orgId) {
@@ -1328,12 +1317,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+        "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_lexical_candidate_count_bucket: "0",
-        memory_profile_lexical_query_eligible: "true",
+        memory_profile_exact_identity_candidate_count_bucket: "0",
+        memory_profile_exact_identity_query_eligible: "false",
       }),
     );
 

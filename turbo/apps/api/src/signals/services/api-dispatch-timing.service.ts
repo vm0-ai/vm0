@@ -34,7 +34,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_memory_profile_static"
   | "api_dispatch_pre_create_zero_memory_profile_dynamic"
   | "api_dispatch_pre_create_zero_memory_profile_search"
-  | "api_dispatch_pre_create_zero_memory_profile_search_lexical"
+  | "api_dispatch_pre_create_zero_memory_profile_search_exact_identity"
   | "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding"
   | "api_dispatch_pre_create_zero_memory_profile_search_semantic_query"
   | "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion"

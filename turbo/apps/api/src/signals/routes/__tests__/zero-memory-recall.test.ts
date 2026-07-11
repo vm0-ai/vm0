@@ -15,9 +15,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   seedGraphExpansionMemories,
-  seedLexicalRelationshipMemory,
   seedMemoryDocumentChunk,
-  seedSemanticRecallMemory,
 } from "../../../test-fixtures/relationship-memory";
 import {
   createConnectorBddApi,
@@ -34,6 +32,7 @@ const mocks = createZeroRouteMocks(context);
 const connectorsApi = createConnectorBddApi(context);
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const CRON_SECRET = "test-cron-secret";
+const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 
 interface RelationshipFixture {
   readonly orgId: string;
@@ -58,6 +57,37 @@ function cronClient() {
 
 function cronHeaders() {
   return { authorization: `Bearer ${CRON_SECRET}` };
+}
+
+function testMemoryEmbedding(): readonly number[] {
+  return Array.from({ length: 1536 }, (_value, index) => {
+    return index === 0 ? 1 : 0;
+  });
+}
+
+function configureMemoryEmbeddingMock(): void {
+  mockEnv("VITEST", "false");
+  mockEnv("OPENAI_API_KEY", "test-openai-key");
+  server.use(
+    http.post(OPENAI_EMBEDDINGS_URL, () => {
+      return HttpResponse.json({
+        data: [{ embedding: testMemoryEmbedding() }],
+      });
+    }),
+  );
+}
+
+function configureMemoryEmbeddingFailure(): void {
+  mockEnv("VITEST", "false");
+  mockEnv("OPENAI_API_KEY", "test-openai-key");
+  server.use(
+    http.post(OPENAI_EMBEDDINGS_URL, () => {
+      return HttpResponse.json(
+        { error: { message: "embedding unavailable" } },
+        { status: 503 },
+      );
+    }),
+  );
 }
 
 function fixtureActor(fixture: RelationshipFixture): ApiTestUser {
@@ -204,6 +234,7 @@ async function seedRelationshipMemory(): Promise<RelationshipFixture> {
   const fixture = await seedRelationshipFixture();
   const gmailEmail = `relationship-${randomUUID()}@example.com`;
   const accessToken = `gmail-access-token-${randomUUID()}`;
+  configureMemoryEmbeddingMock();
   configureGmailMocks(gmailEmail, accessToken);
   await connectGmail(fixture, gmailEmail, accessToken);
   mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -220,14 +251,14 @@ async function seedRelationshipMemory(): Promise<RelationshipFixture> {
   await expect
     .poll(async () => {
       await accept(cronClient().drain({ headers: cronHeaders() }), [200]);
-      const recalled = await accept(
-        memoryClient().recall({
+      const resolved = await accept(
+        relationshipsClient().resolve({
           headers: authHeaders(),
-          query: { q: "security review", limit: 5 },
+          query: { email: "customer@example.com" },
         }),
         [200],
       );
-      return recalled.body.memories.length;
+      return resolved.body.relationship?.items.length ?? 0;
     })
     .toBeGreaterThanOrEqual(1);
   return fixture;
@@ -299,35 +330,89 @@ describe("GET /api/zero/memory/recall", () => {
     );
   });
 
-  it("recalls matching structured relationship memory", async () => {
+  it("recalls indexed email and domain identities when embedding fails", async () => {
     await seedRelationshipMemory();
 
-    const response = await accept(
+    const overlap = await accept(
       memoryClient().recall({
         headers: authHeaders(),
-        query: { q: "security review", limit: 5 },
+        query: {
+          q: "what should I do for customer@example.com today?",
+          limit: 10,
+        },
       }),
       [200],
     );
+    expect(
+      new Set(
+        overlap.body.memories.map((memory) => {
+          return memory.id;
+        }),
+      ).size,
+    ).toBe(overlap.body.memories.length);
 
-    expect(response.body.query).toBe("security review");
-    expect(response.body.memories.length).toBeGreaterThanOrEqual(1);
-    expect(response.body.memories[0]).toMatchObject({
-      kind: "open_loop",
-      relationship: {
-        entity: {
-          primaryEmail: "customer@example.com",
-          type: "person",
+    configureMemoryEmbeddingFailure();
+    const emailResponse = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: {
+          q: "what should I do for customer@example.com today?",
+          limit: 5,
         },
-      },
-    });
+      }),
+      [200],
+    );
+    expect(emailResponse.body.memories).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "open_loop",
+          relationship: expect.objectContaining({
+            entity: expect.objectContaining({
+              primaryEmail: "customer@example.com",
+              type: "person",
+            }),
+          }),
+        }),
+      ]),
+    );
+
+    const domainResponse = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: { q: "summarize the relationship with example.com.", limit: 5 },
+      }),
+      [200],
+    );
+    expect(domainResponse.body.memories).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relationship: expect.objectContaining({
+            entity: expect.objectContaining({
+              domain: "example.com",
+              type: "organization",
+            }),
+          }),
+        }),
+      ]),
+    );
   });
 
   it("recalls semantic memory without lexical overlap", async () => {
-    const fixture = await seedRelationshipFixture();
+    await seedRelationshipFixture();
+    configureMemoryEmbeddingMock();
     const query = "cash management sweep fund";
-    await seedSemanticRecallMemory(fixture, query);
-    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "The user prefers JPM IJTXX Treasury allocation.",
+          kind: "preference",
+          confidence: 95,
+          entityDisplayName: "Portfolio Settings",
+        },
+      }),
+      [200],
+    );
 
     const response = await accept(
       memoryClient().recall({
@@ -348,6 +433,84 @@ describe("GET /api/zero/memory/recall", () => {
         },
       },
     });
+
+    const multilingual = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: { q: "现金管理偏好", limit: 5 },
+      }),
+      [200],
+    );
+    expect(multilingual.body.memories[0]?.text).toBe(
+      "The user prefers JPM IJTXX Treasury allocation.",
+    );
+  });
+
+  it("uses literal score to rerank bounded semantic candidates", async () => {
+    await seedRelationshipFixture();
+    configureMemoryEmbeddingMock();
+    const exact = await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "The launch budget sequence is blue.",
+          kind: "key_fact",
+          confidence: 90,
+          entityDisplayName: "Launch planning",
+        },
+      }),
+      [200],
+    );
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "The support rotation begins next week.",
+          kind: "key_fact",
+          confidence: 90,
+          entityDisplayName: "Launch planning",
+        },
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: { q: "launch budget sequence", limit: 2 },
+      }),
+      [200],
+    );
+
+    expect(response.body.memories[0]?.id).toBe(exact.body.memory.id);
+  });
+
+  it("does not use generic literal recall when embedding fails", async () => {
+    await seedRelationshipFixture();
+    configureMemoryEmbeddingMock();
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "Remember the cobalt fallback phrase.",
+          kind: "key_fact",
+          confidence: 90,
+          entityDisplayName: "Fallback behavior",
+        },
+      }),
+      [200],
+    );
+    configureMemoryEmbeddingFailure();
+
+    const response = await accept(
+      memoryClient().recall({
+        headers: authHeaders(),
+        query: { q: "cobalt fallback phrase", limit: 5 },
+      }),
+      [200],
+    );
+
+    expect(response.body.memories).toStrictEqual([]);
   });
 
   it("expands semantic recall through related graph memories", async () => {
@@ -395,13 +558,24 @@ describe("GET /api/zero/memory/recall", () => {
   });
 
   it("packs profile memory into runtime context", async () => {
-    const fixture = await seedRelationshipFixture({
+    await seedRelationshipFixture({
       relationshipMemoryEnabled: true,
       runtimeInjectionEnabled: true,
     });
+    configureMemoryEmbeddingMock();
     const query = "cash management sweep fund";
-    await seedSemanticRecallMemory(fixture, query);
-    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "The user prefers JPM IJTXX Treasury allocation.",
+          kind: "preference",
+          confidence: 95,
+          entityDisplayName: "Portfolio Settings",
+        },
+      }),
+      [200],
+    );
 
     const response = await accept(
       memoryClient().injectionPreview({
@@ -453,12 +627,22 @@ describe("GET /api/zero/memory/recall", () => {
   });
 
   it("does not inject memory for whitespace-only runtime prompts", async () => {
-    const fixture = await seedRelationshipFixture({
+    await seedRelationshipFixture({
       relationshipMemoryEnabled: true,
       runtimeInjectionEnabled: true,
     });
-    await seedSemanticRecallMemory(fixture, "cash management sweep fund");
-    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "The user prefers concise summaries.",
+          kind: "preference",
+          confidence: 95,
+          entityDisplayName: "Runtime preferences",
+        },
+      }),
+      [200],
+    );
 
     const response = await accept(
       memoryClient().injectionPreview({
@@ -556,13 +740,19 @@ describe("GET /api/zero/memory/search", () => {
   it("returns durable memories without locally persisted document chunks", async () => {
     const fixture = await seedRelationshipFixture();
     const text = "Use the launch checklist for the security review.";
-    await seedLexicalRelationshipMemory({
-      fixture,
-      displayName: "Security review",
-      kind: "key_fact",
-      text,
-      query: "launch checklist",
-    });
+    configureMemoryEmbeddingMock();
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text,
+          kind: "key_fact",
+          confidence: 91,
+          entityDisplayName: "Security review",
+        },
+      }),
+      [200],
+    );
     await seedMemoryDocumentChunk({
       fixture,
       title: "Security review checklist",
