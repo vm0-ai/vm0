@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "../../connectors/nintendo-switch-parental-controls";
@@ -228,6 +230,70 @@ describe("Nintendo Switch Parental Controls firewall", () => {
       "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
       "NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID",
     ]);
+  });
+
+  it("uses format-correct, non-obvious runtime placeholders", () => {
+    const placeholders = firewall.placeholders;
+    if (!placeholders) {
+      throw new Error(
+        "Expected Nintendo Switch Parental Controls placeholders",
+      );
+    }
+
+    for (const value of Object.values(placeholders)) {
+      expect(value).not.toMatch(/placeholder|fake|dummy|test|example/i);
+    }
+    for (const [name, expectedPayload] of [
+      [
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
+        {
+          at_hash: "CoffeeSafeLocalCoffeeS",
+          jti: "10ca1c0f-fee5-4afe-8c0f-fee5afe10ca1",
+          typ: "id_token",
+        },
+      ],
+      [
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
+        {
+          "ac:scp": [
+            0, 8, 17, 320, 321, 325, 322, 323, 324, 326, 327, 328, 329,
+          ],
+          jti: "afe10ca1-c0ff-4ee5-8afe-10ca1c0ffee5",
+          typ: "token",
+        },
+      ],
+    ] as const) {
+      const token = placeholders[name];
+      const [encodedHeader, encodedPayload, signature, extra] =
+        token?.split(".") ?? [];
+      if (!encodedHeader || !encodedPayload || !signature || extra) {
+        throw new Error(`Expected a three-segment Nintendo JWT for ${name}`);
+      }
+      const header: unknown = JSON.parse(
+        Buffer.from(encodedHeader, "base64url").toString(),
+      );
+      const payload: unknown = JSON.parse(
+        Buffer.from(encodedPayload, "base64url").toString(),
+      );
+      expect(header).toStrictEqual({
+        alg: "RS256",
+        kid: "5afe10ca-1c0f-4fee-8afe-10ca1c0ffee5",
+        jku: "https://accounts.nintendo.com/1.0.0/certificates",
+      });
+      expect(payload).toMatchObject({
+        aud: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.clientId,
+        exp: 4_102_444_800,
+        iat: 4_102_443_900,
+        iss: "https://accounts.nintendo.com",
+        ...expectedPayload,
+      });
+      expect(signature).toMatch(/^[A-Za-z0-9_-]{342}$/);
+    }
+    expect(
+      placeholders["NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID"],
+    ).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
   });
 
   it("covers the account profile and all 45 app action routes exactly", () => {
