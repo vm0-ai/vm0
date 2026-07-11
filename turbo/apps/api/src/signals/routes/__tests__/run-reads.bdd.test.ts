@@ -1936,25 +1936,6 @@ function networkHardeningRows(
       request_body_encoding: "utf-16",
       request_body_truncated: "false",
       response_body_encoding: "binary",
-      firewall_block_reason: "not_a_block_reason",
-      firewall_rule_matches: [
-        { permission: "repo-read", rule: "GET /repos/{owner}/{repo}" },
-        { permission: "repo-admin" },
-      ],
-    },
-    {
-      _time: "2026-06-10T12:00:30Z",
-      runId,
-      userId,
-      type: "http",
-      action: "DENY",
-      host: "denied.example.com",
-      port: 443,
-      firewall_block_reason: "permission_denied",
-      firewall_rule_matches: [
-        { permission: "repo-read", rule: "GET /repos/{owner}/{repo}" },
-        { permission: "repo-admin", rule: "GET /repos/{owner}/{repo}" },
-      ],
     },
     {
       _time: "2026-06-10T12:01:00Z",
@@ -2571,13 +2552,13 @@ describe("RUN-04: agent run telemetry families", () => {
     const agentNetwork = await reads.requestRunNetworkLogs(
       actor,
       agentRun.runId,
-      { limit: 5, order: "asc" },
+      { limit: 4, order: "asc" },
       [200],
     );
     const zeroNetwork = await reads.requestZeroRunNetworkLogs(
       actor,
       zeroRun.runId,
-      { limit: 5, order: "asc" },
+      { limit: 4, order: "asc" },
       [200],
     );
     if (agentNetwork.status !== 200 || zeroNetwork.status !== 200) {
@@ -2593,18 +2574,6 @@ describe("RUN-04: agent run telemetry families", () => {
         response_body_encoding: "binary",
       },
       {
-        timestamp: "2026-06-10T12:00:30Z",
-        type: "http",
-        action: "DENY",
-        host: "denied.example.com",
-        port: 443,
-        firewall_block_reason: "permission_denied",
-        firewall_rule_matches: [
-          { permission: "repo-read", rule: "GET /repos/{owner}/{repo}" },
-          { permission: "repo-admin", rule: "GET /repos/{owner}/{repo}" },
-        ],
-      },
-      {
         timestamp: "2026-06-10T12:01:00Z",
         type: "http",
         action: "BLOCK",
@@ -2616,7 +2585,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const expectedNextCursor = timeLogCursor(
       "asc",
       "2026-06-10T12:01:00Z",
-      "cursor-0004",
+      "cursor-0003",
     );
 
     expect(agentNetwork.body).toStrictEqual({

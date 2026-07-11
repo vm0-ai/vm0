@@ -156,24 +156,6 @@ def _metadata_str_record(meta: Mapping[str, object], key: str) -> dict[str, str]
     return result
 
 
-def _metadata_firewall_rule_matches(
-    meta: Mapping[str, object], key: str
-) -> list[dict[str, str]] | None:
-    value = meta.get(key)
-    if not isinstance(value, list):
-        return None
-    result: list[dict[str, str]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            return None
-        permission = item.get("permission")
-        rule = item.get("rule")
-        if not isinstance(permission, str) or not isinstance(rule, str):
-            return None
-        result.append({"permission": permission, "rule": rule})
-    return result
-
-
 def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
@@ -186,14 +168,6 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     # Optional fields — only include when present with the network-log schema type.
     for log_key, value in (
-        (
-            "firewall_block_reason",
-            _metadata_optional_str(meta, metadata_keys.FIREWALL_BLOCK_REASON),
-        ),
-        (
-            "firewall_rule_matches",
-            _metadata_firewall_rule_matches(meta, metadata_keys.FIREWALL_RULE_MATCHES),
-        ),
         ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
         ("firewall_error", flow_metadata.firewall_error(meta)),
         (

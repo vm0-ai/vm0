@@ -801,8 +801,6 @@ function mapNetworkLogs(
       firewall_name: event.firewall_name,
       firewall_permission: event.firewall_permission,
       firewall_rule_match: event.firewall_rule_match,
-      firewall_block_reason: event.firewall_block_reason,
-      firewall_rule_matches: event.firewall_rule_matches,
       firewall_params: event.firewall_params,
       firewall_billable: event.firewall_billable,
       firewall_error: event.firewall_error,

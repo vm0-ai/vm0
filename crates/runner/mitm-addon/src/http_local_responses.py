@@ -232,19 +232,9 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
     flow_metadata.set_firewall_decision(flow.metadata, "DENY")
     flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
-    flow.metadata[metadata_keys.FIREWALL_BLOCK_REASON] = result.reason
-    matched_permissions = tuple(dict.fromkeys(match.permission for match in result.rule_matches))
     flow.metadata[metadata_keys.FIREWALL_PERMISSION] = (
-        matched_permissions[0] if len(matched_permissions) == 1 else ""
+        result.permissions[0] if len(result.permissions) == 1 else ""
     )
-    matched_rules = tuple(dict.fromkeys(match.rule for match in result.rule_matches))
-    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = (
-        matched_rules[0] if len(matched_rules) == 1 else ""
-    )
-    if result.rule_matches:
-        flow.metadata[metadata_keys.FIREWALL_RULE_MATCHES] = [
-            {"permission": match.permission, "rule": match.rule} for match in result.rule_matches
-        ]
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     diagnostic_parts = urllib.parse.urlsplit(original_url)
     diagnostic_url = urllib.parse.urlunsplit(

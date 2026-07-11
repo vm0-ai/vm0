@@ -661,25 +661,18 @@ function checkoutNetworkLogs(): NetworkLogEntry[] {
     {
       timestamp: "2026-03-10T14:56:03.000Z",
       type: "http",
-      action: "DENY",
+      action: "ALLOW",
       method: "POST",
       url: "https://payments.example.test/v1/checkout",
-      status: 403,
+      status: 200,
       latency_ms: 245,
       request_size: 128,
       response_size: 512,
       firewall_name: "payments",
       firewall_permission: "checkout-write",
       firewall_rule_match: "POST /v1/checkout",
-      firewall_block_reason: "permission_denied",
-      firewall_rule_matches: [
-        {
-          permission: "checkout-write",
-          rule: "POST /v1/checkout",
-        },
-      ],
       firewall_params: { tenant: "acme" },
-      firewall_billable: false,
+      firewall_billable: true,
       auth_resolved_secrets: ["PAYMENTS_API_KEY"],
       browser_user_agent: false,
       request_headers: {
@@ -693,23 +686,6 @@ function checkoutNetworkLogs(): NetworkLogEntry[] {
       response_body: "eyJzdGF0dXMiOiJvayJ9",
       response_body_encoding: "base64",
       response_body_truncated: true,
-    },
-    {
-      timestamp: "2026-03-10T14:56:04.000Z",
-      type: "http",
-      action: "DENY",
-      method: "GET",
-      url: "https://payments.example.test/v1/orders/order_123",
-      status: 403,
-      firewall_name: "payments",
-      firewall_permission: "",
-      firewall_rule_match: "GET /v1/orders/{id}",
-      firewall_block_reason: "permission_denied",
-      firewall_rule_matches: [
-        { permission: "orders-read", rule: "GET /v1/orders/{id}" },
-        { permission: "orders-admin", rule: "GET /v1/orders/{id}" },
-      ],
-      firewall_billable: false,
     },
   ];
 }
@@ -1568,16 +1544,6 @@ function getButtonByText(text: string): HTMLElement {
   return button;
 }
 
-function getCellByText(text: string): HTMLElement {
-  const cell = queryAllByRoleFast("cell").find((element) => {
-    return element.textContent?.trim() === text;
-  });
-  if (!cell) {
-    throw new Error(`Could not find cell: ${text}`);
-  }
-  return cell;
-}
-
 function getMenuItemCheckboxByText(text: string): HTMLElement {
   const item = queryAllByRoleFast("menuitemcheckbox").find((element) => {
     return element.textContent?.trim() === text;
@@ -1802,25 +1768,20 @@ describe("activity detail polling", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("POST")).toBeInTheDocument();
-    expect(screen.getAllByText("403")).not.toHaveLength(0);
+    expect(screen.getByText("200")).toBeInTheDocument();
     expect(screen.getByText("245ms")).toBeInTheDocument();
-    expect(screen.getAllByText("payments")).not.toHaveLength(0);
+    expect(screen.getByText("payments")).toBeInTheDocument();
 
     click(screen.getByText("https://payments.example.test/v1/checkout"));
 
     await waitFor(() => {
       expect(screen.getByText("Rule Match")).toBeInTheDocument();
       expect(screen.getByText("POST /v1/checkout")).toBeInTheDocument();
-      expect(screen.getByText("Block Reason")).toBeInTheDocument();
-      expect(screen.getByText("permission_denied")).toBeInTheDocument();
       expect(screen.getByText("PAYMENTS_API_KEY")).toBeInTheDocument();
       expect(screen.getByText("Request Headers (2)")).toBeInTheDocument();
       expect(screen.getByText("Request Body")).toBeInTheDocument();
       expect(screen.getByText("Response Body")).toBeInTheDocument();
     });
-    expect(
-      screen.queryByText("Permission / Rule Candidates"),
-    ).not.toBeInTheDocument();
     expect(
       screen.getByText('{"cartId":"cart_123","retry":true}'),
     ).toBeInTheDocument();
@@ -1828,25 +1789,6 @@ describe("activity detail polling", () => {
       screen.getByText("[Binary data, 15B base64-encoded]"),
     ).toBeInTheDocument();
     expect(screen.getByText("truncated")).toBeInTheDocument();
-
-    click(getCellByText("https://payments.example.test/v1/checkout"));
-    click(getCellByText("https://payments.example.test/v1/orders/order_123"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Block Reason")).toBeInTheDocument();
-      expect(screen.getByText("permission_denied")).toBeInTheDocument();
-      expect(screen.getByText("Rule Match")).toBeInTheDocument();
-      expect(screen.getByText("GET /v1/orders/{id}")).toBeInTheDocument();
-      expect(
-        screen.getByText("Permission / Rule Candidates"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          "orders-read — GET /v1/orders/{id}; orders-admin — GET /v1/orders/{id}",
-        ),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getAllByText("Permission")).toHaveLength(1);
   });
 
   it("shows collapsed repeated tools and failed task output", async () => {

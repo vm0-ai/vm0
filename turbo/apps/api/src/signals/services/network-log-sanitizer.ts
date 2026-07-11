@@ -53,22 +53,6 @@ function networkActionValue(
   return parsed.success ? parsed.data : undefined;
 }
 
-function firewallBlockReasonValue(
-  value: unknown,
-): NetworkLogEntry["firewall_block_reason"] | undefined {
-  const parsed =
-    networkLogEntrySchema.shape.firewall_block_reason.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-function firewallRuleMatchesValue(
-  value: unknown,
-): NetworkLogEntry["firewall_rule_matches"] | undefined {
-  const parsed =
-    networkLogEntrySchema.shape.firewall_rule_matches.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
 function networkBodyEncodingValue(value: unknown): string | undefined {
   const isUtf8 =
     typeof value === "string" &&
@@ -121,12 +105,6 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     firewall_name: stringValue(event.firewall_name),
     firewall_permission: stringValue(event.firewall_permission),
     firewall_rule_match: stringValue(event.firewall_rule_match),
-    firewall_block_reason: firewallBlockReasonValue(
-      event.firewall_block_reason,
-    ),
-    firewall_rule_matches: firewallRuleMatchesValue(
-      event.firewall_rule_matches,
-    ),
     firewall_params: stringRecordValue(event.firewall_params),
     firewall_billable: booleanValue(event.firewall_billable),
     firewall_error: stringValue(event.firewall_error),

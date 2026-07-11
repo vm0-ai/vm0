@@ -991,13 +991,6 @@ FirewallBlockReason = Literal[
 ]
 
 
-class FirewallRuleMatch(NamedTuple):
-    """Permission and raw rule for one denied candidate."""
-
-    permission: str
-    rule: str
-
-
 class FirewallBlock(NamedTuple):
     """Base URL matched but the request should return 403."""
 
@@ -1007,7 +1000,6 @@ class FirewallBlock(NamedTuple):
     path: str
     permissions: tuple[str, ...]  # denied/asked permission names only
     reason: FirewallBlockReason
-    rule_matches: tuple[FirewallRuleMatch, ...]
 
 
 class _BaseMatch(NamedTuple):
@@ -1042,7 +1034,6 @@ class _FirewallDecisionState:
         "best_rule_specificity",
         "denied_match",
         "denied_permission_names",
-        "denied_rule_matches",
         "malformed_config_match",
         "malformed_policy_match",
     )
@@ -1054,8 +1045,6 @@ class _FirewallDecisionState:
     denied_match: _BlockMatch | None
     # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]
-    # Dict keys act as an ordered set of first-seen denied permission/rule pairs.
-    denied_rule_matches: dict[FirewallRuleMatch, None]
     malformed_config_match: _BlockMatch | None
     malformed_policy_match: _BlockMatch | None
 
@@ -1066,7 +1055,6 @@ class _FirewallDecisionState:
         self.best_rule_specificity = None
         self.denied_match = None
         self.denied_permission_names = {}
-        self.denied_rule_matches = {}
         self.malformed_config_match = None
         self.malformed_policy_match = None
 
@@ -1088,7 +1076,6 @@ class _FirewallDecisionState:
             self.base_match = None
             self.denied_match = None
             self.denied_permission_names = {}
-            self.denied_rule_matches = {}
             self.malformed_config_match = None
             self.malformed_policy_match = None
         elif api_entry.base.specificity < self.best_base_specificity:
@@ -1127,7 +1114,6 @@ class _FirewallDecisionState:
             self.allowed_match = None
             self.denied_match = None
             self.denied_permission_names = {}
-            self.denied_rule_matches = {}
         elif specificity < self.best_rule_specificity:
             return False
 
@@ -1137,9 +1123,8 @@ class _FirewallDecisionState:
         if self.allowed_match is None:
             self.allowed_match = match
 
-    def record_denied_rule(self, match: _BlockMatch, permission: str, rule: str) -> None:
+    def record_denied_rule(self, match: _BlockMatch, permission: str) -> None:
         self.denied_permission_names[permission] = None
-        self.denied_rule_matches[FirewallRuleMatch(permission, rule)] = None
         if self.denied_match is None:
             self.denied_match = match
 
@@ -1174,7 +1159,6 @@ def _resolve_firewall_decision(
             denied_match.rel_path,
             tuple(state.denied_permission_names),
             "permission_denied",
-            tuple(state.denied_rule_matches),
         )
     if state.malformed_policy_match is not None:
         match = state.malformed_policy_match
@@ -1185,7 +1169,6 @@ def _resolve_firewall_decision(
             match.rel_path,
             (),
             "malformed_network_policy",
-            (),
         )
     if state.malformed_config_match is not None:
         match = state.malformed_config_match
@@ -1196,7 +1179,6 @@ def _resolve_firewall_decision(
             match.rel_path,
             (),
             "malformed_firewall_config",
-            (),
         )
 
     blocked_policy = compiled_network_policies.policies.get(base_match.name)
@@ -1215,7 +1197,6 @@ def _resolve_firewall_decision(
             base_match.rel_path,
             (),
             "malformed_network_policy",
-            (),
         )
     if blocked_policy.unknown_policy == "allow":
         return _unknown_allow(
@@ -1231,7 +1212,6 @@ def _resolve_firewall_decision(
         base_match.rel_path,
         (),
         "unknown_endpoint",
-        (),
     )
 
 
@@ -1261,7 +1241,7 @@ def _evaluate_rule_entries(
                 continue
             if not decision.accept_rule_specificity(rule.specificity):
                 continue
-            decision.record_denied_rule(block_match, entry.permission, rule.raw)
+            decision.record_denied_rule(block_match, entry.permission)
             continue
 
         params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
@@ -1319,7 +1299,6 @@ def _match_compiled_firewall_request_with_api_candidates(
                 rel_path,
                 (),
                 "unsafe_path",
-                (),
             )
 
         if not decision.accept_base_match(

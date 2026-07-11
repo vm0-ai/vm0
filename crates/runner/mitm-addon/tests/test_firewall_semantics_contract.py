@@ -130,10 +130,6 @@ def _normalize_final_decision(result: object | None) -> dict[str, object]:
             "relativePath": result.path,
             "reason": result.reason,
             "permissions": list(result.permissions),
-            "ruleMatches": [
-                {"permission": match.permission, "rule": match.rule}
-                for match in result.rule_matches
-            ],
         }
     raise TypeError(f"unexpected firewall decision result: {result!r}")
 
