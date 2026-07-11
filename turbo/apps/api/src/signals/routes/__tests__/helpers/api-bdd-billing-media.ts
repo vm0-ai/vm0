@@ -2,11 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type StripeSDK from "stripe";
 import { audioTranscriptionsV1Contract } from "@vm0/api-contracts/contracts/audio-transcriptions-v1";
-import {
-  cronAggregateInsightsContract,
-  cronAggregateUsageContract,
-  cronProcessUsageEventsContract,
-} from "@vm0/api-contracts/contracts/cron";
+import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
@@ -558,19 +554,9 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async aggregateUsage() {
-      const client = setupApp({ context })(cronAggregateUsageContract);
-      return await accept(client.aggregate({ headers: cronHeaders() }), [200]);
-    },
-
     async processUsageEvents() {
       const client = setupApp({ context })(cronProcessUsageEventsContract);
       return await accept(client.process({ headers: cronHeaders() }), [200]);
-    },
-
-    async aggregateInsights() {
-      const client = setupApp({ context })(cronAggregateInsightsContract);
-      return await accept(client.aggregate({ headers: cronHeaders() }), [200]);
     },
 
     async recordSignupAttribution(actor: ApiTestUser) {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { cronAggregateUsageContract } from "@vm0/api-contracts/contracts/cron";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -16,6 +17,11 @@ const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
 
+/*
+ * This file owns valid aggregate-usage cron coverage. The fixed clock keeps
+ * its previous-day global sweep outside wall-clock windows used by parallel
+ * test files, while unique actors keep user-visible assertions isolated.
+ */
 const FIXED_NOW_ISO = "2026-05-12T12:00:00.000Z";
 
 interface UsageActor {
@@ -35,6 +41,10 @@ function authHeaders() {
 
 function apiClient() {
   return setupApp({ context })(usageContract);
+}
+
+function aggregateUsageClient() {
+  return setupApp({ context })(cronAggregateUsageContract);
 }
 
 async function entitledUsageActor(): Promise<UsageActor> {
@@ -406,5 +416,33 @@ describe("GET /api/usage", () => {
       total_runs: 1,
       total_run_time_ms: 5000,
     });
+  });
+});
+
+describe("GET /api/cron/aggregate-usage", () => {
+  beforeEach(() => {
+    mockNow(new Date(FIXED_NOW_ISO));
+  });
+
+  afterEach(() => {
+    clearMockNow();
+  });
+
+  it("aggregates the previous day's completed runs", async () => {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
+      createdAt: new Date("2026-05-11T10:00:00.000Z"),
+      durationMs: 5000,
+    });
+
+    const response = await accept(
+      aggregateUsageClient().aggregate({
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+      [200],
+    );
+
+    expect(response.body.date).toBe("2026-05-11");
+    expect(response.body.aggregated).toBeGreaterThan(0);
   });
 });
