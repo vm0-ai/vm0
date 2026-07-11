@@ -1,13 +1,14 @@
 use super::{BinaryLoggingFixture, assert_download_total_success_present};
-use crate::support::{assert_does_not_contain_any, create_tar_gz, write_manifest};
+use crate::support::{
+    assert_does_not_contain_any, create_tar_gz, read_http_request_path, write_manifest,
+};
 use httpmock::prelude::*;
-use std::io::{self, Read as _};
-use std::net::TcpListener;
+use std::io::{self, Write as _};
+use std::net::{TcpListener, TcpStream};
 use std::thread;
-use std::time::{Duration, Instant};
 
 const EXPECTED_RETRY_ATTEMPTS: usize = 3;
-const SERVER_DEADLINE: Duration = Duration::from_secs(10);
+const SERVER_STOP_PATH: &str = "/__stop";
 
 fn validate_attempt_warning(
     log_name: &str,
@@ -50,36 +51,30 @@ fn validate_retry_warnings(log_name: &str, log: &str, expected_error: &str) -> R
 
 fn start_connection_drop_server() -> io::Result<(String, thread::JoinHandle<io::Result<usize>>)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
-    listener.set_nonblocking(true)?;
     let base_url = format!("http://{}", listener.local_addr()?);
     let handle = thread::spawn(move || {
-        let deadline = Instant::now() + SERVER_DEADLINE;
         let mut accepted = 0;
-        while accepted < EXPECTED_RETRY_ATTEMPTS && Instant::now() < deadline {
-            match listener.accept() {
-                Ok((mut stream, _)) => {
-                    stream.set_read_timeout(Some(Duration::from_secs(1)))?;
-                    let mut request = Vec::new();
-                    let mut buffer = [0_u8; 512];
-                    while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-                        let bytes_read = stream.read(&mut buffer)?;
-                        if bytes_read == 0 {
-                            break;
-                        }
-                        request.extend(buffer.iter().take(bytes_read).copied());
-                    }
-                    accepted += 1;
-                }
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(error) => return Err(error),
+        loop {
+            let (mut stream, _) = listener.accept()?;
+            if read_http_request_path(&mut stream)? == SERVER_STOP_PATH {
+                return Ok(accepted);
             }
+            accepted += 1;
         }
-        Ok(accepted)
     });
 
     Ok((base_url, handle))
+}
+
+fn stop_connection_drop_server(base_url: &str) -> io::Result<()> {
+    let address = base_url
+        .strip_prefix("http://")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid server URL"))?;
+    let mut stream = TcpStream::connect(address)?;
+    stream.write_all(
+        format!("GET {SERVER_STOP_PATH} HTTP/1.1\r\nhost: localhost\r\nconnection: close\r\n\r\n")
+            .as_bytes(),
+    )
 }
 
 #[test]
@@ -246,6 +241,7 @@ fn binary_classifies_connection_drop_without_logging_url() {
         write_manifest(&fixture.dir, &[(mount.to_str().unwrap(), Some(&url))], None).unwrap();
 
     let output = fixture.run_manifest_path(&manifest).unwrap();
+    stop_connection_drop_server(&base_url).unwrap();
     let accepted = server_handle.join().unwrap().unwrap();
 
     assert!(!output.status.success());
