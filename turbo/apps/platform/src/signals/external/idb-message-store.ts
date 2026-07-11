@@ -18,7 +18,7 @@ import {
 } from "./chat-idb-safe.ts";
 import { openChatIdb } from "./chat-idb-store.ts";
 
-const L = logger("ChatIdbCache");
+const L = logger("ChatMessageIndexedDb");
 
 type StoredPagedChatMessage = PagedChatMessage & {
   readonly threadId: string;
@@ -227,13 +227,9 @@ function createMessageWriteStore(
           const tx = db.transaction(storeName, "readwrite");
           for (const msg of messages) {
             signal?.throwIfAborted();
-            const existing = await tx.store.get(msg.id);
-            if (existing !== undefined) {
-              continue;
-            }
             // Stitch local ordering fields onto the stored value. PagedChatMessage
             // from the API has no threadId and keeps sequenceNumber optional.
-            await tx.store.add(storedMessage(threadId, msg));
+            await tx.store.put(storedMessage(threadId, msg));
           }
           await tx.done;
           L.debug("upsertMessages:done", { threadId, count: messages.length });

@@ -5,7 +5,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-thread-panes.ts";
-import { warmLatestChatThreadMessages$ } from "./idb-cached-chat-thread-data-source.ts";
+import { warmLatestChatThreadMessages$ } from "./chat-message-indexed-db.ts";
 
 const L = logger("BackgroundChatThreadCache");
 const CHAT_THREAD_FOLLOWUPS_FINISHED_TOPIC = "chatThreadFollowupsFinished";

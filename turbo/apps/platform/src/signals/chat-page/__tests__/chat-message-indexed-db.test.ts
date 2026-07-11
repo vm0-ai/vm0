@@ -11,20 +11,37 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detach, Reason } from "../../utils.ts";
-import type { InitialPage } from "../chat-thread-data-source.ts";
 
 const idbStoreMock = vi.hoisted(() => {
-  let cachedMessages: unknown[] = [];
+  let indexedDbMessages: unknown[] = [];
 
   const readLatest = vi.fn((_threadId: string, limit?: number) => {
     if (limit === undefined) {
-      return Promise.resolve(cachedMessages);
+      return Promise.resolve(indexedDbMessages);
     }
-    return Promise.resolve(cachedMessages.slice(-limit));
+    return Promise.resolve(indexedDbMessages.slice(-limit));
   });
+  const readBefore = vi.fn(
+    (_threadId: string, beforeId: string, limit: number) => {
+      const beforeIndex = indexedDbMessages.findIndex((message) => {
+        return (
+          typeof message === "object" &&
+          message !== null &&
+          "id" in message &&
+          message.id === beforeId
+        );
+      });
+      if (beforeIndex === -1) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(
+        indexedDbMessages.slice(Math.max(0, beforeIndex - limit), beforeIndex),
+      );
+    },
+  );
   const messageExists = vi.fn((_threadId: string, messageId: string) => {
     return Promise.resolve(
-      cachedMessages.some((message) => {
+      indexedDbMessages.some((message) => {
         return (
           typeof message === "object" &&
           message !== null &&
@@ -43,18 +60,18 @@ const idbStoreMock = vi.hoisted(() => {
       ) {
         continue;
       }
-      const index = cachedMessages.findIndex((cached) => {
+      const index = indexedDbMessages.findIndex((persisted) => {
         return (
-          typeof cached === "object" &&
-          cached !== null &&
-          "id" in cached &&
-          cached.id === message.id
+          typeof persisted === "object" &&
+          persisted !== null &&
+          "id" in persisted &&
+          persisted.id === message.id
         );
       });
       if (index === -1) {
-        cachedMessages.push(message);
+        indexedDbMessages.push(message);
       } else {
-        cachedMessages[index] = message;
+        indexedDbMessages[index] = message;
       }
     }
     return Promise.resolve();
@@ -62,30 +79,24 @@ const idbStoreMock = vi.hoisted(() => {
 
   return {
     readLatest,
+    readBefore,
     messageExists,
     upsertMessages,
     getMessages() {
-      return cachedMessages;
+      return indexedDbMessages;
     },
     setMessages(messages: unknown[]) {
-      cachedMessages = messages;
+      indexedDbMessages = messages;
     },
     reset() {
-      cachedMessages = [];
+      indexedDbMessages = [];
       readLatest.mockClear();
+      readBefore.mockClear();
       messageExists.mockClear();
       upsertMessages.mockClear();
     },
   };
 });
-
-function requireInitialPage(page: InitialPage | null): InitialPage {
-  expect(page).not.toBeNull();
-  if (!page) {
-    throw new Error("Expected an initial message page");
-  }
-  return page;
-}
 
 vi.mock("../../external/idb-message-store.ts", () => {
   return {
@@ -94,9 +105,7 @@ vi.mock("../../external/idb-message-store.ts", () => {
         readStore: {
           readLatest: idbStoreMock.readLatest,
           messageExists: idbStoreMock.messageExists,
-          readBefore: () => {
-            return Promise.resolve([]);
-          },
+          readBefore: idbStoreMock.readBefore,
         },
         writeStore: {
           upsertMessages: idbStoreMock.upsertMessages,
@@ -128,7 +137,7 @@ function ids(messages: PagedChatMessage[]): string[] {
   });
 }
 
-describe("createIdbCachedDataSource initial page cache", () => {
+describe("chat message IndexedDB persistence", () => {
   const ctx = testContext();
 
   afterEach(() => {
@@ -136,30 +145,34 @@ describe("createIdbCachedDataSource initial page cache", () => {
     clearMockedAuth();
   });
 
-  it("loads every cached IndexedDB message when entering a thread", async () => {
+  it("loads every IndexedDB message when entering a thread", async () => {
     mockUser({ id: "user_1", fullName: "Test User" }, { token: "token" });
     mockOrganization({
       activeOrg: { id: "org_1", name: "Test Org" },
       memberships: [{ id: "org_1" }],
     });
 
-    const cachedMessages = range(1, 75);
-    idbStoreMock.setMessages(cachedMessages);
+    const indexedDbMessages = range(1, 75);
+    idbStoreMock.setMessages(indexedDbMessages);
 
-    const { createIdbCachedDataSource } =
-      await import("../idb-cached-chat-thread-data-source.ts");
-    const dataSource = createIdbCachedDataSource("thread-1");
+    const { loadIndexedDbChatMessages$ } =
+      await import("../chat-message-indexed-db.ts");
 
-    const initialPage = requireInitialPage(
-      await ctx.store.get(dataSource.initialPage$),
+    const messages = await ctx.store.set(
+      loadIndexedDbChatMessages$,
+      "thread-1",
+      ctx.signal,
     );
 
-    expect(idbStoreMock.readLatest.mock.calls[0]?.length).toBe(1);
-    expect(ids(initialPage.messages)).toStrictEqual(ids(cachedMessages));
-    expect(initialPage.needsHistoryBackfill).toBeTruthy();
+    expect(idbStoreMock.readLatest).toHaveBeenCalledWith(
+      "thread-1",
+      undefined,
+      ctx.signal,
+    );
+    expect(ids(messages)).toStrictEqual(ids(indexedDbMessages));
   });
 
-  it("remembers a remote-confirmed history boundary in memory for cached re-entry", async () => {
+  it("writes API messages to IndexedDB for thread re-entry", async () => {
     mockUser({ id: "user_2", fullName: "Test User" }, { token: "token" });
     mockOrganization({
       activeOrg: { id: "org_2", name: "Test Org" },
@@ -167,50 +180,52 @@ describe("createIdbCachedDataSource initial page cache", () => {
     });
 
     const threadId = "00000000-0000-4000-8000-000000000997";
-    let requestCount = 0;
-    ctx.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
-      requestCount += 1;
-      if (query.beforeId) {
-        return respond(200, {
-          messages: [],
-          hasHistoryBefore: false,
-        });
-      }
-      return respond(200, {
-        messages: range(1, 2),
-        hasHistoryBefore: false,
-      });
-    });
-
-    const { createIdbCachedDataSource } =
-      await import("../idb-cached-chat-thread-data-source.ts");
-    const remoteDataSource = createIdbCachedDataSource(threadId);
-
-    const remotePage = requireInitialPage(
-      await ctx.store.get(remoteDataSource.initialPage$),
-    );
-
-    expect(remotePage.fetchedFromRemote).toBeTruthy();
-    expect(ids(remotePage.messages)).toStrictEqual(ids(range(1, 2)));
-
+    const { loadIndexedDbChatMessages$, writeIndexedDbChatMessages$ } =
+      await import("../chat-message-indexed-db.ts");
     await ctx.store.set(
-      remoteDataSource.listMessagesBefore$,
-      { threadId, beforeId: message(1).id },
+      writeIndexedDbChatMessages$,
+      threadId,
+      range(1, 2),
+      ctx.signal,
+    );
+    const indexedDbMessages = await ctx.store.set(
+      loadIndexedDbChatMessages$,
+      threadId,
       ctx.signal,
     );
 
-    const cachedDataSource = createIdbCachedDataSource(threadId);
-    const cachedPage = requireInitialPage(
-      await ctx.store.get(cachedDataSource.initialPage$),
+    expect(idbStoreMock.upsertMessages).toHaveBeenCalledWith(
+      threadId,
+      range(1, 2),
+      ctx.signal,
     );
-
-    expect(requestCount).toBe(2);
-    expect(ids(cachedPage.messages)).toStrictEqual(ids(range(1, 2)));
-    expect(cachedPage.hasHistoryBefore).toBeFalsy();
-    expect(cachedPage.needsHistoryBackfill).toBeFalsy();
+    expect(ids(indexedDbMessages)).toStrictEqual(ids(range(1, 2)));
   });
 
-  it("warms latest messages from the cached cursor until the remote reaches the end", async () => {
+  it("loads all IndexedDB messages before the current window", async () => {
+    mockUser({ id: "user_3", fullName: "Test User" }, { token: "token" });
+    mockOrganization({
+      activeOrg: { id: "org_3", name: "Test Org" },
+      memberships: [{ id: "org_3" }],
+    });
+
+    const indexedDbMessages = range(1, 121);
+    idbStoreMock.setMessages(indexedDbMessages);
+    const { loadIndexedDbChatMessagesBefore$ } =
+      await import("../chat-message-indexed-db.ts");
+
+    const messages = await ctx.store.set(
+      loadIndexedDbChatMessagesBefore$,
+      "thread-1",
+      message(121).id,
+      ctx.signal,
+    );
+
+    expect(ids(messages)).toStrictEqual(ids(range(1, 120)));
+    expect(idbStoreMock.readBefore).toHaveBeenCalledTimes(3);
+  });
+
+  it("warms latest messages from the IndexedDB cursor until the remote reaches the end", async () => {
     mockUser({ id: "user_1", fullName: "Test User" }, { token: "token" });
     mockOrganization({
       activeOrg: { id: "org_1", name: "Test Org" },
@@ -229,7 +244,7 @@ describe("createIdbCachedDataSource initial page cache", () => {
     });
 
     const { warmLatestChatThreadMessages$ } =
-      await import("../idb-cached-chat-thread-data-source.ts");
+      await import("../chat-message-indexed-db.ts");
 
     await ctx.store.set(warmLatestChatThreadMessages$, threadId, ctx.signal);
 

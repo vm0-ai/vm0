@@ -112,7 +112,6 @@ export interface ChatThreadSignals {
   queuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
   emptyQueuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
   lastAssistantCancelled$: Computed<Promise<boolean>>;
-  hasOlderHistory$: Computed<Promise<boolean>>;
   messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   // The thread's active goal, folded from goal-state marker messages. Null when

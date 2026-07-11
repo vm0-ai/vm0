@@ -384,7 +384,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     expect(messageListRequests).toBeGreaterThan(0);
   });
 
-  it("keeps the chat skeleton visible while the initial message list is blocked after an IndexedDB miss", async () => {
+  it("renders the empty chat shell while remote messages are blocked after an IndexedDB miss", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -402,9 +402,9 @@ describe("zero chat thread IndexedDB fallback", () => {
 
       await waitFor(() => {
         expect(messageListRequests).toBeGreaterThan(0);
-        expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
       });
-      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     } finally {
       initialMessageList.resolve();
     }

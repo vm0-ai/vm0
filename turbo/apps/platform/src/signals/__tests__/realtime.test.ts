@@ -3,7 +3,11 @@ import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { clearMockedAuth, mockUser } from "../../__tests__/mock-auth.ts";
+import {
+  clearMockedAuth,
+  mockOrganization,
+  mockUser,
+} from "../../__tests__/mock-auth.ts";
 import {
   setupRealtime$,
   setAblyLoop$,
@@ -11,16 +15,15 @@ import {
 } from "../realtime.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import { createChatThreadSignals } from "../chat-page/create-chat-thread.ts";
-import type {
-  ChatThreadDataSource,
-  SubscribeRealtimeArgs,
-} from "../chat-page/chat-thread-data-source.ts";
+import type { SubscribeRealtimeArgs } from "../chat-page/chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
 import { createDeferredPromise } from "../utils.ts";
 import { createDraftSignals } from "../zero-page/chat-draft.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
+
+type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 
 const finishLoop$ = command((_ctx, _signal: AbortSignal) => {
   return true;
@@ -57,6 +60,10 @@ function mockSignedInUser(): void {
     },
     { token: "test-token" },
   );
+  mockOrganization({
+    activeOrg: { id: "test-org-123", name: "Test Organization" },
+    memberships: [{ id: "test-org-123" }],
+  });
 }
 
 function abortError(message: string): Error {
@@ -97,7 +104,7 @@ function unexpectedDataSourceCall(name: string): never {
   throw new Error(`Unexpected data source call: ${name}`);
 }
 
-function createFailingSubscribeDataSource(): ChatThreadDataSource {
+function createFailingSubscribeDataSource(): ChatThreadRemote {
   const thread: ChatThread = {
     lastReadAt: null,
     codexServiceTier: null,
@@ -115,13 +122,6 @@ function createFailingSubscribeDataSource(): ChatThreadDataSource {
       });
     }),
     reloadThread$: command(() => {}),
-    initialPage$: computed(() => {
-      return Promise.resolve({
-        messages: [],
-        hasHistoryBefore: false,
-        fetchedFromRemote: true,
-      });
-    }),
     patchDraft$: command(() => {
       return unexpectedDataSourceCall("patchDraft$");
     }),
@@ -138,7 +138,10 @@ function createFailingSubscribeDataSource(): ChatThreadDataSource {
       return unexpectedDataSourceCall("recallMessage$");
     }),
     listMessagesAfter$: command(() => {
-      return Promise.resolve({ messages: [], reachedEnd: true });
+      return Promise.resolve({
+        messages: [],
+        reachedEnd: true,
+      });
     }),
     listMessagesBefore$: command(() => {
       return unexpectedDataSourceCall("listMessagesBefore$");

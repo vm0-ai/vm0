@@ -3604,7 +3604,9 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Current keyboard thread",
+      );
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
