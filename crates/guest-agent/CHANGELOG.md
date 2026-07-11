@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.2...guest-agent-v0.50.3) (2026-07-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** set terra reasoning effort to low ([#21020](https://github.com/vm0-ai/vm0/issues/21020)) ([79283c9](https://github.com/vm0-ai/vm0/commit/79283c9c40735662efcd330c52d70dd16a5daa52))
+
 ## [0.50.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.1...guest-agent-v0.50.2) (2026-07-10)
 
 
