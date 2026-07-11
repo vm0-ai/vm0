@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +15,32 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+
+function loadRunnerClaimResponseFixture(): unknown {
+  return JSON.parse(
+    fs.readFileSync(
+      path.resolve(import.meta.dirname, "fixtures/runner-claim-response.json"),
+      "utf-8",
+    ),
+  );
+}
+
+describe("runner claim response contract", () => {
+  it("accepts the shared current response fixture", () => {
+    const context = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+
+    expect(context).toMatchObject({
+      runId: "00000000-0000-4000-8000-000000020985",
+      agentComposeVersionId:
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      checkpointId: "11111111-1111-4111-8111-111111111111",
+      experimentalProfile: "vm0/default",
+      modelUsageProvider: "fixture-model",
+    });
+  });
+});
 
 describe("runner storage manifest contract", () => {
   it("accepts the web-produced claim manifest shape", () => {

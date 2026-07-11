@@ -1,0 +1,102 @@
+{
+  "runId": "00000000-0000-4000-8000-000000020985",
+  "prompt": "Inspect the fixture repository",
+  "appendSystemPrompt": "Use the shared contract fixture",
+  "agentComposeVersionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "vars": {
+    "FIXTURE_REGION": "test-region"
+  },
+  "checkpointId": "11111111-1111-4111-8111-111111111111",
+  "sandboxToken": "fixture-sandbox-token-not-real",
+  "storageManifest": {
+    "storages": [
+      {
+        "name": "workspace",
+        "mountPath": "/home/user/workspace",
+        "vasStorageName": "fixture-workspace",
+        "vasVersionId": "fixture-storage-version",
+        "archiveUrl": "https://storage.fixture.invalid/workspace.tar.gz"
+      }
+    ],
+    "artifacts": [
+      {
+        "mountPath": "/home/user/artifacts",
+        "vasStorageName": "fixture-artifacts",
+        "vasStorageId": "fixture-storage-id",
+        "vasVersionId": "fixture-artifact-version",
+        "archiveUrl": "https://storage.fixture.invalid/artifacts.tar.gz"
+      }
+    ]
+  },
+  "environment": {
+    "FIXTURE_API_KEY": "fixture-placeholder-not-a-secret",
+    "FIXTURE_MODEL": "fixture-model"
+  },
+  "resumeSession": {
+    "sessionId": "fixture-session-id",
+    "sessionHistory": "{}"
+  },
+  "secretValues": ["fixture-secret-value-not-real"],
+  "encryptedSecrets": "fixture-encrypted-secrets-not-real",
+  "secretConnectorMap": {
+    "FIXTURE_API_KEY": "fixture-connector"
+  },
+  "secretConnectorMetadataMap": {
+    "FIXTURE_API_KEY": {
+      "sourceType": "connector",
+      "sourceUserId": "fixture-user-id",
+      "metadataKey": "fixture-token"
+    }
+  },
+  "cliAgentType": "codex",
+  "realAgentInPreview": false,
+  "captureNetworkBodies": true,
+  "apiStartTime": 1700000000000,
+  "userTimezone": "UTC",
+  "firewalls": [
+    {
+      "kind": "builtin",
+      "name": "model-provider:fixture",
+      "baseUrlVars": {
+        "FIXTURE_HOST": "api.fixture.invalid"
+      }
+    }
+  ],
+  "networkPolicies": {
+    "model-provider:fixture": {
+      "allow": ["models:read"],
+      "deny": ["models:delete"],
+      "ask": ["models:write"],
+      "unknownPolicy": "deny"
+    }
+  },
+  "networkPolicyRefreshes": {
+    "model-provider:fixture": {
+      "nextRefreshAt": "2030-01-01T00:00:00.000Z"
+    }
+  },
+  "disallowedTools": ["FixtureDangerousTool"],
+  "tools": ["Bash", "Read"],
+  "settings": "{\"fixture\":true}",
+  "experimentalProfile": "vm0/default",
+  "featureFlags": {
+    "fixtureFlag": true
+  },
+  "billableFirewalls": ["model-provider:fixture"],
+  "modelUsageProvider": "fixture-model",
+  "codexRuntimeConfig": {
+    "providerId": "fixture_provider",
+    "name": "Fixture Provider",
+    "baseUrl": "https://api.fixture.invalid/v1",
+    "envKey": "FIXTURE_API_KEY",
+    "wireApi": "responses",
+    "supportsWebsockets": false,
+    "modelCatalog": {
+      "models": [
+        {
+          "slug": "fixture-model"
+        }
+      ]
+    }
+  }
+}
