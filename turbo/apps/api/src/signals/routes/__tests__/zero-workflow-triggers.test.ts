@@ -764,6 +764,39 @@ describe("zero workflow triggers", () => {
     });
   });
 
+  it("serializes webhook creation with an effective downgrade", async () => {
+    const { fixture, subscriptionId, workflowId } = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const [created] = await Promise.all([
+      accept(
+        triggersClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: { kind: "event", eventType: "webhook-received" },
+        }),
+        [201, 402],
+      ),
+      webhookCallbacks.postStripeEvent(
+        {
+          id: `evt_trigger_create_race_${randomUUID()}`,
+          type: "customer.subscription.deleted",
+          data: { object: { id: subscriptionId } },
+        },
+        [200],
+      ),
+    ]);
+
+    if (created.status === 201) {
+      await expect(wf.readTrigger(created.body.id)).resolves.toMatchObject({
+        enabled: false,
+        disabledReason: "paid_plan_required",
+      });
+    } else {
+      expect(created.body.error.code).toBe("TEAM_REQUIRED");
+    }
+  });
+
   it("lists owned workflow triggers across visible workflows", async () => {
     const scenario = await setupFixture();
     const { agentId, workflowId } = scenario;
@@ -960,6 +993,56 @@ describe("zero workflow triggers", () => {
     expect(switchRequired.body.error.message).toBe(
       "Workflow webhook triggers are not enabled",
     );
+  });
+
+  it("serializes webhook re-enable with an effective downgrade", async () => {
+    const { fixture, subscriptionId, workflowId } = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+
+    const [enabled] = await Promise.all([
+      accept(
+        triggersClient().enable({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+          body: undefined,
+        }),
+        [200, 402],
+      ),
+      webhookCallbacks.postStripeEvent(
+        {
+          id: `evt_trigger_enable_race_${randomUUID()}`,
+          type: "customer.subscription.deleted",
+          data: { object: { id: subscriptionId } },
+        },
+        [200],
+      ),
+    ]);
+
+    const after = await wf.readTrigger(created.body.id);
+    expect(after.enabled).toBeFalsy();
+    if (enabled.status === 200) {
+      expect(after).toMatchObject({
+        disabledReason: "paid_plan_required",
+      });
+    } else {
+      expect(enabled.body.error.code).toBe("TEAM_REQUIRED");
+    }
   });
 
   it("clears the plan-disabled reason without rotating webhook credentials", async () => {

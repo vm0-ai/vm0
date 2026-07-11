@@ -6,8 +6,10 @@ import {
   zeroWorkflowWebhookTriggers,
 } from "@vm0/db/schema/zero-workflow";
 
-import type { Db, ReadonlyDb } from "../external/db";
+import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
+
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 export const WORKFLOW_WEBHOOK_TRIGGER_ELIGIBLE_TIERS = [
   "team",
@@ -20,15 +22,17 @@ function workflowWebhookTriggerTierEligible(
   return tier === "team" || tier === "custom";
 }
 
-export async function workflowWebhookTriggerTierEligibleForOrg(
-  db: ReadonlyDb,
-  orgId: string,
+export async function lockWorkflowWebhookTriggerTierEligibleForOrg(
+  tx: DbTransaction,
+  args: { readonly orgId: string; readonly signal: AbortSignal },
 ): Promise<boolean> {
-  const [org] = await db
+  const [org] = await tx
     .select({ tier: orgMetadata.tier })
     .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
+    .where(eq(orgMetadata.orgId, args.orgId))
+    .limit(1)
+    .for("update");
+  args.signal.throwIfAborted();
   return workflowWebhookTriggerTierEligible(org?.tier);
 }
 
@@ -37,14 +41,11 @@ export async function disableIneligibleWorkflowWebhookTriggersForOrg(
   args: { readonly orgId: string; readonly signal: AbortSignal },
 ): Promise<number> {
   return await db.transaction(async (tx) => {
-    const [org] = await tx
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, args.orgId))
-      .limit(1)
-      .for("update");
-    args.signal.throwIfAborted();
-    if (workflowWebhookTriggerTierEligible(org?.tier)) {
+    const tierEligible = await lockWorkflowWebhookTriggerTierEligibleForOrg(
+      tx,
+      args,
+    );
+    if (tierEligible) {
       return 0;
     }
 
