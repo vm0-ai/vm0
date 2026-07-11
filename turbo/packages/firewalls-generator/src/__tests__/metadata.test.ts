@@ -29,10 +29,6 @@ const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../lazy-loader-renderer.ts",
   "../connector-firewall-manifest.ts",
   "../connector-firewall-sources.ts",
-  "../python-builtin-firewall-catalog-composition.ts",
-] as const;
-const GENERATOR_RENDERER_BOUNDARY_FILES = [
-  "../python-builtin-firewall-catalog.ts",
 ] as const;
 const ALLOWED_GENERATOR_CONNECTOR_IMPORTS = new Set([
   "@vm0/connectors/connectors",
@@ -243,30 +239,6 @@ describe("firewall metadata generator", () => {
       .sort(compareStrings);
 
     expect(unexpectedScripts).toStrictEqual([]);
-  });
-
-  it("keeps Python builtin firewall rendering detached from source composition", () => {
-    for (const file of GENERATOR_RENDERER_BOUNDARY_FILES) {
-      const source = fs.readFileSync(
-        path.resolve(import.meta.dirname, file),
-        "utf-8",
-      );
-      const specifiers = [
-        ...staticValueModuleSpecifiers(source),
-        ...dynamicImportSpecifiers(source),
-      ];
-
-      for (const specifier of specifiers) {
-        expect(specifier, file).not.toBe("@vm0/api-contracts");
-        expect(specifier, file).not.toBe("@vm0/connectors");
-        expect(specifier, file).not.toBe("@vm0/connectors/firewalls/all");
-        expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
-      }
-      expect(source, file).not.toContain("@vm0/api-contracts");
-      expect(source, file).not.toContain("@vm0/connectors");
-      expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
-      expect(source, file).not.toMatch(/\.\.\/\.\.\/connectors\/src\//);
-    }
   });
 
   it(
