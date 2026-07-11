@@ -4012,6 +4012,13 @@
       "when": 1783725611902,
       "tag": "0572_fact_only_memory_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 573,
+      "version": "7",
+      "when": 1783760942390,
+      "tag": "0573_burly_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }

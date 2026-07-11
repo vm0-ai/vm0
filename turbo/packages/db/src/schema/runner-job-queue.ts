@@ -52,7 +52,12 @@ export const runnerJobQueue = pgTable(
   },
   (table) => {
     return [
-      // Index for polling unclaimed jobs by group and profile
+      // Predicate-free index used by current poll queries.
+      index("runner_job_queue_group_profile_idx").on(
+        table.runnerGroup,
+        table.profile,
+      ),
+      // Retained for previous API versions during rollout; remove in #21036.
       index("runner_job_queue_group_profile_unclaimed_idx")
         .on(table.runnerGroup, table.profile)
         .where(sql`claimed_at IS NULL`),

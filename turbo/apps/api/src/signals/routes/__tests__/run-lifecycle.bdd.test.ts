@@ -104,10 +104,7 @@ const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
   "claim_route_secret_materialization",
 ] as const;
 const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
-  "claim_route_transition_lock_run",
-  "claim_route_transition_lock_queue_job",
-  "claim_route_transition_update_run",
-  "claim_route_transition_delete_queue_job",
+  "claim_route_transition_execute",
 ] as const;
 const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
@@ -2269,6 +2266,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       [400],
     );
     expectApiError(uncancellable.body);
+  });
+
+  it("allows exactly one concurrent runner claim", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim concurrently",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const claims = await Promise.all([
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+    ]);
+    expect(
+      claims
+        .map((claim) => {
+          return claim.status;
+        })
+        .sort((left, right) => {
+          return left - right;
+        }),
+    ).toStrictEqual([200, 404]);
+
+    const running = await api.readRun(actor, run.runId);
+    expect(running.status).toBe("running");
+    expect(running.startedAt).toBeDefined();
+
+    const laterClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(laterClaim.body);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("filters runner polls by supported profiles without widening malformed polls", async () => {
@@ -6366,6 +6397,30 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
+  });
+
+  it("serializes concurrent claim and cancellation without deadlock", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim while cancelling",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const [claim, cancellation] = await Promise.all([
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+      api.requestCancelRun(actor, run.runId, [200]),
+    ]);
+    expect([200, 404]).toContain(claim.status);
+    expect(cancellation.status).toBe(200);
+
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+
+    const laterClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(laterClaim.body);
   });
 });
 
