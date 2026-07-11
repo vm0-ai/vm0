@@ -743,12 +743,9 @@ async function triggerAgentIdForAuth(
   }
 
   const [parentRun] = await db
-    .select({ agentComposeId: agentComposeVersions.composeId })
+    .select({ agentComposeId: agentSessions.agentComposeId })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
-    )
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(eq(agentRuns.id, auth.runId))
     .limit(1);
 

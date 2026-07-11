@@ -1,10 +1,8 @@
 import { command } from "ccstate";
-import {
-  agentComposeVersions,
-  agentComposes,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom-connector-auth-ref";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
@@ -530,13 +528,10 @@ export const cleanupSandboxes$ = command(
         composeName: agentComposes.name,
       })
       .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(
         agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
+        eq(agentSessions.agentComposeId, agentComposes.id),
       )
       .where(inArray(agentRuns.status, ["pending", "running"]));
     signal.throwIfAborted();

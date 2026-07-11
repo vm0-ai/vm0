@@ -14,7 +14,7 @@ import {
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
@@ -589,17 +589,14 @@ async function loadActiveNetworkPolicyRefreshRuns(
       runnerGroup: agentRuns.runnerGroup,
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
-    )
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(
       and(
         eq(agentRuns.orgId, scope.orgId),
         eq(agentRuns.userId, scope.userId),
         eq(agentRuns.status, "running"),
         isNotNull(agentRuns.runnerGroup),
-        eq(agentComposeVersions.composeId, scope.agentId),
+        eq(agentSessions.agentComposeId, scope.agentId),
       ),
     );
 }

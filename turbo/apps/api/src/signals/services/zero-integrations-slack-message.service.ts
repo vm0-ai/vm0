@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -21,11 +21,8 @@ async function resolveAgentLabel(
       name: zeroAgents.name,
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .innerJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(eq(agentRuns.id, runId))
     .limit(1);
   if (!row) {

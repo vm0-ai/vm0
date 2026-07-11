@@ -45,6 +45,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -5968,6 +5969,164 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("preserves session agent identity when compose versions are shared", async () => {
+    const bdd = createBddApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const reads = createRunReadsApi(context);
+    const foreignActor = bdd.user();
+    const actor = bdd.user();
+
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    const foreignStatus = await bdd.requestReadOnboardingStatus(
+      foreignActor,
+      [200],
+    );
+    if (foreignStatus.status !== 200) {
+      throw new Error("Expected foreign onboarding status");
+    }
+    const foreignAgentId = foreignStatus.body.defaultAgentId;
+    if (!foreignAgentId) {
+      throw new Error("Expected foreign default agent bootstrap");
+    }
+
+    const currentStatus = await bdd.requestReadOnboardingStatus(actor, [200]);
+    if (currentStatus.status !== 200) {
+      throw new Error("Expected current onboarding status");
+    }
+    const agentId = currentStatus.body.defaultAgentId;
+    if (!agentId) {
+      throw new Error("Expected current default agent bootstrap");
+    }
+    expect(agentId).not.toBe(foreignAgentId);
+
+    const foreignCompose = await authOrg.readComposeById(
+      foreignActor,
+      foreignAgentId,
+    );
+    const currentCompose = await authOrg.readComposeById(actor, agentId);
+    expect(foreignCompose.headVersionId).toStrictEqual(expect.any(String));
+    expect(currentCompose.headVersionId).toBe(foreignCompose.headVersionId);
+
+    await bdd.updateAgentMetadata(foreignActor, foreignAgentId, {
+      displayName: "Foreign shared agent",
+    });
+    await bdd.updateAgentMetadata(actor, agentId, {
+      displayName: "Current shared agent",
+    });
+
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-shared-version",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+
+    await api.applyUserPermissionGrant(foreignActor, {
+      agentId: foreignAgentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const parent = await api.createRun(actor, {
+      agentId,
+      prompt: "shared version parent run",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(parent.runId);
+    const claimedPolicy = claim.networkPolicies?.slack;
+    if (!claimedPolicy) {
+      throw new Error("Expected shared-version Slack policy");
+    }
+    expect(claimedPolicy.allow).toContain("chat:write");
+    expect(claimedPolicy.deny).not.toContain("chat:write");
+    expect(claimedPolicy.deny).toContain("files:write");
+    expect(claimedPolicy.allow).not.toContain("files:write");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.runningTasks).toContainEqual(
+      expect.objectContaining({
+        runId: parent.runId,
+        agentDisplayName: "Current shared agent",
+      }),
+    );
+    expect(queue.body.runningTasks).not.toContainEqual(
+      expect.objectContaining({
+        agentDisplayName: "Foreign shared agent",
+      }),
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "network-policy-refresh",
+      { runId: parent.runId, connectorRef: "slack" },
+    );
+
+    const refreshed = await api.refreshRunnerNetworkPolicy(
+      parent.runId,
+      "slack",
+    );
+    expect(refreshed.networkPolicy.allow).toContain("chat:write");
+    expect(refreshed.networkPolicy.allow).toContain("files:write");
+    expect(refreshed.networkPolicy.deny).not.toContain("files:write");
+
+    const parentToken = api.zeroTokenForRunWithCapabilities(
+      actor,
+      parent.runId,
+      ["agent-run:write"],
+    );
+    const child = await api.requestCreateRunAs(
+      `Bearer ${parentToken}`,
+      {
+        agentId,
+        prompt: "shared version child run",
+        modelProvider: "anthropic-api-key",
+      },
+      [201],
+    );
+    if (child.status !== 201) {
+      throw new Error("Expected shared-version child run creation");
+    }
+    const childLog = await reads.requestReadLogById(
+      actor,
+      child.body.runId,
+      [200],
+    );
+    expect(childLog.body).toMatchObject({
+      id: child.body.runId,
+      agentId,
+      displayName: "Current shared agent",
+      triggerSource: "agent",
+      triggerAgentName: "Current shared agent",
+    });
+
+    await api.requestCancelRun(actor, child.body.runId, [200]);
+    await api.requestCancelRun(actor, parent.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });

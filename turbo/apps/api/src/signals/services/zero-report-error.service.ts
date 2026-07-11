@@ -40,7 +40,6 @@ export const submitZeroReportError$ = command(
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
         lastEventSequence: agentRuns.lastEventSequence,
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
         runnerGroup: agentRuns.runnerGroup,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
         result: agentRuns.result,
