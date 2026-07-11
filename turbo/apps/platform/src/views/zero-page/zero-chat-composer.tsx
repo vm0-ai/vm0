@@ -88,7 +88,10 @@ import {
   closeChatThreadGoalDialog$,
   openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
-import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type {
+  DraftInputSyncTarget,
+  DraftSignals,
+} from "../../signals/chat-page/create-chat-thread.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
 import {
@@ -98,6 +101,7 @@ import {
   restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
   appendZeroChatInput$ as singletonAppendInput$,
+  setZeroChatInputSyncTarget$ as singletonSetInputSyncTarget$,
   zeroDragOver$ as singletonDragOver$,
   setZeroDragOver$ as singletonSetDragOver$,
   composerFileInput$ as singletonComposerFileInput$,
@@ -6766,6 +6770,9 @@ function useResolvedComposerSignals(
   const appendInput = useSet(
     draft ? draft.appendInput$ : singletonAppendInput$,
   );
+  const setInputSyncTarget = useSet(
+    draft ? draft.setInputSyncTarget$ : singletonSetInputSyncTarget$,
+  );
 
   return {
     canSend,
@@ -6779,6 +6786,7 @@ function useResolvedComposerSignals(
     dragOver,
     setDragOver,
     appendInput,
+    setInputSyncTarget,
   };
 }
 
@@ -6834,6 +6842,7 @@ function ComposerInputSlot({
   setInputRef,
   onKeyDown,
   onPaste,
+  setInputSyncTarget,
 }: {
   readonly input: string;
   readonly onInputChange: (value: string) => void;
@@ -6844,6 +6853,7 @@ function ComposerInputSlot({
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
+  readonly setInputSyncTarget: (target: DraftInputSyncTarget | null) => void;
 }) {
   const singleLineOnMobile = enableMobileSingleLine;
 
@@ -6857,6 +6867,7 @@ function ComposerInputSlot({
       setInputRef={setInputRef}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
+      setInputSyncTarget={setInputSyncTarget}
       singleLineOnMobile={singleLineOnMobile}
     />
   );
@@ -7129,6 +7140,7 @@ export function useZeroChatComposer({
     dragOver,
     setDragOver,
     appendInput,
+    setInputSyncTarget,
   } = resolved;
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
@@ -7548,6 +7560,7 @@ export function useZeroChatComposer({
                     setInputRef={setInputRef}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
+                    setInputSyncTarget={setInputSyncTarget}
                   />
                 </>
               )}

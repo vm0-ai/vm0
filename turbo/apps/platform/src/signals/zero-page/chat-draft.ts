@@ -208,6 +208,7 @@ export interface DraftSignals {
   input$: Computed<string>;
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
+  setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
   generationTemplate$: Computed<GenerationTemplateRequest | undefined>;
   setGenerationTemplate$: Command<
     void,
@@ -224,6 +225,10 @@ export interface DraftSignals {
   clear$: Command<void, []>;
   /** Seed draft from persisted server data. Only called when local cache was empty. */
   seed$: Command<void, [content: string, attachments: ZeroChatAttachment[]]>;
+}
+
+export interface DraftInputSyncTarget {
+  syncInput(value: string): void;
 }
 
 /**
@@ -259,18 +264,22 @@ export function createRestoredAttachment(
   };
 }
 
-export function createDraftSignals(): DraftSignals {
+function createDraftInputSignals() {
   const internalInput$ = state("");
-  const internalGenerationTemplate$ = state<
-    GenerationTemplateRequest | undefined
-  >(undefined);
-  const internalAttachments$ = state<ZeroChatAttachment[]>([]);
-  const internalDragOver$ = state(false);
-
+  const internalInputSyncTarget$ = state<DraftInputSyncTarget | null>(null);
   const input$ = computed((get) => {
     return get(internalInput$);
   });
+  const syncInput$ = command(({ get }, value: string) => {
+    get(internalInputSyncTarget$)?.syncInput(value);
+  });
+  const setInputSyncTarget$ = command(
+    ({ set }, target: DraftInputSyncTarget | null) => {
+      set(internalInputSyncTarget$, target);
+    },
+  );
   const setInput$ = command(({ set }, value: string) => {
+    set(syncInput$, value);
     set(internalInput$, value);
   });
   const appendInput$ = command(({ get, set }, value: string) => {
@@ -280,8 +289,18 @@ export function createDraftSignals(): DraftSignals {
     }
     const base = get(internalInput$);
     const separator = base.length > 0 && !base.endsWith(" ") ? " " : "";
-    set(internalInput$, `${base}${separator}${text}`);
+    set(setInput$, `${base}${separator}${text}`);
   });
+  return { input$, setInput$, appendInput$, setInputSyncTarget$ };
+}
+
+export function createDraftSignals(): DraftSignals {
+  const draftInput = createDraftInputSignals();
+  const internalGenerationTemplate$ = state<
+    GenerationTemplateRequest | undefined
+  >(undefined);
+  const internalAttachments$ = state<ZeroChatAttachment[]>([]);
+  const internalDragOver$ = state(false);
 
   const generationTemplate$ = computed((get) => {
     return get(internalGenerationTemplate$);
@@ -362,7 +381,7 @@ export function createDraftSignals(): DraftSignals {
   });
 
   const clear$ = command(({ get, set }) => {
-    set(internalInput$, "");
+    set(draftInput.setInput$, "");
     set(internalGenerationTemplate$, undefined);
     // Cancel all pending uploads before clearing
     for (const attachment of get(internalAttachments$)) {
@@ -374,15 +393,13 @@ export function createDraftSignals(): DraftSignals {
 
   const seed$ = command(
     ({ set }, content: string, attachments: ZeroChatAttachment[]) => {
-      set(internalInput$, content);
+      set(draftInput.setInput$, content);
       set(internalAttachments$, attachments);
     },
   );
 
   return {
-    input$,
-    setInput$,
-    appendInput$,
+    ...draftInput,
     generationTemplate$,
     setGenerationTemplate$,
     attachments$,
@@ -488,6 +505,15 @@ export const appendZeroChatInput$ = command(({ get, set }, value: string) => {
     set(draft.appendInput$, value);
   }
 });
+
+export const setZeroChatInputSyncTarget$ = command(
+  ({ get, set }, target: DraftInputSyncTarget | null) => {
+    const draft = get(currentDraft$);
+    if (draft) {
+      set(draft.setInputSyncTarget$, target);
+    }
+  },
+);
 
 /**
  * True when the current draft has content to send: either non-empty text or

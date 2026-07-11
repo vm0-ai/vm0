@@ -100,7 +100,10 @@ import type {
   SendMessageOptions,
 } from "./chat-thread-signals.ts";
 
-export type { DraftSignals } from "../zero-page/chat-draft.ts";
+export type {
+  DraftInputSyncTarget,
+  DraftSignals,
+} from "../zero-page/chat-draft.ts";
 export type {
   ActiveGoalState,
   ChatThreadSignals,
@@ -1317,12 +1320,15 @@ function createPersistentMessagesComputed({
   initialPage$,
   persistentMessages$,
 }: {
-  initialPage$: Computed<Promise<InitialPage>>;
+  initialPage$: Computed<Promise<InitialPage | null>>;
   persistentMessages$: PersistentMessages$;
 }): Computed<Promise<PagedChatMessage[]>> {
   return computed(async (get): Promise<PagedChatMessage[]> => {
     const initial = await get(initialPage$);
-    return mergeServerMessages([initial.messages, get(persistentMessages$)]);
+    return mergeServerMessages([
+      initial?.messages ?? [],
+      get(persistentMessages$),
+    ]);
   });
 }
 
@@ -1520,7 +1526,7 @@ function createFetchNextPageCommand({
   dataSource,
 }: {
   threadId: string;
-  initialPage$: Computed<Promise<InitialPage>>;
+  initialPage$: Computed<Promise<InitialPage | null>>;
   nextCursorId$: State<string | undefined>;
   writePersistentMessages$: Command<void, [PagedChatMessage[]]>;
   refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
@@ -1532,6 +1538,9 @@ function createFetchNextPageCommand({
     if (!sinceId) {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
+      if (!initial) {
+        return false;
+      }
       set(writePersistentMessages$, initial.messages);
       messagesMayHaveChanged = true;
       sinceId = initial.messages[initial.messages.length - 1]?.id;
@@ -1741,6 +1750,9 @@ function createPagedMessages(
       return loadedHistoryHasMore;
     }
     const initial = await get(initialPage$);
+    if (!initial) {
+      return false;
+    }
     return initial.hasHistoryBefore || initial.needsHistoryBackfill === true;
   });
 
@@ -2123,13 +2135,33 @@ interface RunTrackingDeps {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestRunStatus$: Computed<Promise<string | null>>;
-  initialPage$: Computed<Promise<InitialPage>>;
+  initialPage$: Computed<Promise<InitialPage | null>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
   silentBackfillHistory$: Command<Promise<void>, [AbortSignal]>;
   refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadDataSource;
+}
+
+function createShouldRunSubscribeReadyCatchup(
+  initialPage$: Computed<Promise<InitialPage | null>>,
+  latestRunStatus$: Computed<Promise<string | null>>,
+) {
+  return command(async ({ get }, signal: AbortSignal): Promise<boolean> => {
+    const initial = await get(initialPage$);
+    signal.throwIfAborted();
+    if (!initial) {
+      return false;
+    }
+    if (initial.messages.length > 0 || initial.fetchedFromRemote !== true) {
+      return true;
+    }
+
+    const latestRunStatus = await get(latestRunStatus$);
+    signal.throwIfAborted();
+    return latestRunStatus !== null;
+  });
 }
 
 interface MarkThreadReadDeps {
@@ -2335,18 +2367,9 @@ function createRunTracking({
     dataSource,
   });
 
-  const shouldRunSubscribeReadyCatchup$ = command(
-    async ({ get }, signal: AbortSignal): Promise<boolean> => {
-      const initial = await get(initialPage$);
-      signal.throwIfAborted();
-      if (initial.messages.length > 0 || initial.fetchedFromRemote !== true) {
-        return true;
-      }
-
-      const latestRunStatus = await get(latestRunStatus$);
-      signal.throwIfAborted();
-      return latestRunStatus !== null;
-    },
+  const shouldRunSubscribeReadyCatchup$ = createShouldRunSubscribeReadyCatchup(
+    initialPage$,
+    latestRunStatus$,
   );
 
   const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {

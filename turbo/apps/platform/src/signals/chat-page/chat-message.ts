@@ -28,10 +28,12 @@ export {
   restoreZeroAttachments$,
   removeZeroAttachment$,
   appendZeroChatInput$,
+  setZeroChatInputSyncTarget$,
   zeroDragOver$,
   setZeroDragOver$,
   canSendZeroChat$,
   type ZeroChatAttachment,
+  type DraftInputSyncTarget,
 } from "../zero-page/chat-draft.ts";
 
 // ---------------------------------------------------------------------------

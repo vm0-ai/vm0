@@ -10,13 +10,21 @@ import {
 } from "ccstate-react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
-import { Extension, type Editor, type JSONContent } from "@tiptap/core";
+import { Extension, type Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { currentChatAgentRecordId$ } from "../../signals/agent-chat.ts";
 import { composerWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
+import type { DraftInputSyncTarget } from "../../signals/zero-page/chat-draft.ts";
+import {
+  syncTiptapWorkflowComposerEditor$,
+  valueToWorkflowComposerDoc,
+  workflowComposerDocToString,
+  type TiptapWorkflowComposerEditorSyncArgs,
+  type WorkflowHighlightStorage,
+} from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import {
   slashWorkflowCaretIndex$,
   setSlashWorkflowCaretIndex$,
@@ -58,30 +66,6 @@ function editorContentClass(singleLineOnMobile: boolean): string {
 
 const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
 
-// Plain text -> document: one paragraph per line. Workflow coloring is applied
-// by the decoration plugin, so the document stays plain text.
-function valueToDoc(value: string): JSONContent {
-  const content: JSONContent[] = value.split("\n").map((line) => {
-    return line.length > 0
-      ? { type: "paragraph", content: [{ type: "text", text: line }] }
-      : { type: "paragraph" };
-  });
-  return { type: "doc", content };
-}
-
-// Document -> plain string, with block and hard breaks as newlines, so the rest
-// of the chat keeps a plain string value.
-function docToString(editor: Editor): string {
-  return editor.getText({
-    blockSeparator: "\n",
-    textSerializers: {
-      hardBreak: () => {
-        return "\n";
-      },
-    },
-  });
-}
-
 // Caret position as an offset into the serialized string, so the existing
 // string-based slash-range detection can be reused unchanged.
 function caretStringIndex(editor: Editor): number {
@@ -115,25 +99,6 @@ function buildWorkflowDecorations(
     }
   });
   return DecorationSet.create(doc, decorations);
-}
-
-interface WorkflowHighlightStorage {
-  workflowNames: readonly string[];
-}
-
-function isWorkflowHighlightStorage(
-  value: unknown,
-): value is WorkflowHighlightStorage {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const workflowNames = Reflect.get(value, "workflowNames");
-  return (
-    Array.isArray(workflowNames) &&
-    workflowNames.every((name) => {
-      return typeof name === "string";
-    })
-  );
 }
 
 // Colors `/workflow` tokens via inline decorations. The workflow list is read from
@@ -440,6 +405,10 @@ interface EditorOptionsParams {
   readonly onInputChange: (value: string) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
+  readonly setInputSyncTarget: (target: DraftInputSyncTarget | null) => void;
+  readonly syncEditorState: (
+    args: TiptapWorkflowComposerEditorSyncArgs,
+  ) => void;
   readonly setSelectedWorkflowIndex: (index: number) => void;
   readonly setCaretIndex: (index: number) => void;
   readonly setEditorFocused: (focused: boolean) => void;
@@ -456,7 +425,7 @@ function buildEditorOptions(
       STARTER_KIT,
       WorkflowHighlight.configure({ workflowNames: params.workflowNames }),
     ],
-    content: valueToDoc(params.input),
+    content: valueToWorkflowComposerDoc(params.input),
     autofocus: params.autoFocus && !isIOS() ? "end" : false,
     shouldRerenderOnTransaction: false,
     editorProps: {
@@ -476,7 +445,8 @@ function buildEditorOptions(
       },
     },
     onUpdate: ({ editor }) => {
-      const value = docToString(editor);
+      params.syncEditorState({ editor, workflowNames: params.workflowNames });
+      const value = workflowComposerDocToString(editor);
       if (value !== params.input) {
         params.onInputChange(value);
       }
@@ -484,6 +454,7 @@ function buildEditorOptions(
       params.setCaretIndex(caretStringIndex(editor));
     },
     onSelectionUpdate: ({ editor }) => {
+      params.syncEditorState({ editor, workflowNames: params.workflowNames });
       params.setCaretIndex(caretStringIndex(editor));
     },
     onFocus: ({ editor }) => {
@@ -494,38 +465,24 @@ function buildEditorOptions(
       params.setEditorFocused(false);
     },
     onCreate: ({ editor }) => {
+      params.syncEditorState({
+        editor,
+        workflowNames: params.workflowNames,
+        input: params.input,
+      });
+      params.setInputSyncTarget({
+        syncInput: (input) => {
+          params.syncEditorState({ editor, input });
+        },
+      });
       params.setInputRef?.(editor.view.dom);
     },
     onDestroy: () => {
+      params.setInputSyncTarget(null);
       params.setInputRef?.(null);
       params.setEditorFocused(false);
     },
   };
-}
-
-// Keep the highlight plugin's workflow list current without rebuilding the editor
-// (decorations recompute on the next transaction), and reconcile the value when it
-// changes outside of typing (draft restore, the send-clear, template insertion).
-// Guarded so typing — where the serialized value already matches — never resets the
-// caret. shouldRerenderOnTransaction is off, so this never triggers a React re-render.
-function syncEditorState(
-  editor: Editor,
-  workflowNames: readonly string[],
-  input: string,
-): void {
-  const workflowHighlightStorage = Reflect.get(
-    editor.storage,
-    "workflowHighlight",
-  );
-  const storage = isWorkflowHighlightStorage(workflowHighlightStorage)
-    ? workflowHighlightStorage
-    : undefined;
-  if (storage) {
-    storage.workflowNames = workflowNames;
-  }
-  if (docToString(editor) !== input) {
-    editor.commands.setContent(valueToDoc(input), { emitUpdate: false });
-  }
 }
 
 interface TiptapWorkflowComposerProps {
@@ -537,6 +494,7 @@ interface TiptapWorkflowComposerProps {
   readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (event: KeyboardEventLike) => void;
   readonly onPaste: (event: ComposerPasteEvent) => void;
+  readonly setInputSyncTarget: (target: DraftInputSyncTarget | null) => void;
   readonly singleLineOnMobile: boolean;
 }
 
@@ -544,6 +502,28 @@ function workflowComposerPlaceholder(sending: boolean | undefined): string {
   return sending
     ? "Type your next message…"
     : "Ask me to automate workflows, manage tasks...";
+}
+
+function composerWorkflowNames(
+  workflows: readonly ComposerSlashWorkflow[],
+): string[] {
+  return workflows.map((workflow) => {
+    return workflow.name;
+  });
+}
+
+function workflowSuggestionState(
+  input: string,
+  caretIndex: number,
+  workflows: readonly ComposerSlashWorkflow[],
+) {
+  const slashRange = findActiveSlashWorkflowRange(input, caretIndex);
+  const suggestions = slashRange
+    ? workflows.filter((workflow) => {
+        return matchesWorkflowQuery(workflow, slashRange.query);
+      })
+    : [];
+  return { slashRange, suggestions };
 }
 
 export function TiptapWorkflowComposer({
@@ -555,6 +535,7 @@ export function TiptapWorkflowComposer({
   setInputRef,
   onKeyDown,
   onPaste,
+  setInputSyncTarget,
   singleLineOnMobile,
 }: TiptapWorkflowComposerProps) {
   const caretIndex = useGet(slashWorkflowCaretIndex$);
@@ -563,6 +544,7 @@ export function TiptapWorkflowComposer({
   const setEditorFocused = useSet(setSlashWorkflowEditorFocused$);
   const selectedWorkflowIndex = useGet(selectedSlashWorkflowIndex$);
   const setSelectedWorkflowIndex = useSet(setSelectedSlashWorkflowIndex$);
+  const syncEditorState = useSet(syncTiptapWorkflowComposerEditor$);
   const currentAgentId = useLastResolved(currentChatAgentRecordId$);
   const composerWorkflowsLoadable = useLastLoadable(composerWorkflows$);
   const composerWorkflowsData =
@@ -573,20 +555,15 @@ export function TiptapWorkflowComposer({
     agentId: currentAgentId,
     workflows: composerWorkflowsData,
   });
-  const workflowNames = composerWorkflows.map((workflow) => {
-    return workflow.name;
-  });
+  const workflowNames = composerWorkflowNames(composerWorkflows);
 
-  const slashRange = findActiveSlashWorkflowRange(input, caretIndex);
-  const suggestions = slashRange
-    ? composerWorkflows.filter((workflow) => {
-        return matchesWorkflowQuery(workflow, slashRange.query);
-      })
-    : [];
+  const { slashRange, suggestions } = workflowSuggestionState(
+    input,
+    caretIndex,
+    composerWorkflows,
+  );
   const isLoadingOrgWorkflows = composerWorkflowsLoadable.state === "loading";
   const showSlashWorkflowMenu = slashRange !== null && editorFocused;
-  const placeholder = workflowComposerPlaceholder(sending);
-
   const editor = useEditor(
     buildEditorOptions({
       input,
@@ -596,16 +573,14 @@ export function TiptapWorkflowComposer({
       onInputChange,
       onPaste,
       setInputRef,
+      setInputSyncTarget,
+      syncEditorState,
       setSelectedWorkflowIndex,
       setCaretIndex,
       setEditorFocused,
       onEditorKeyDown: handleEditorKeyDown,
     }),
   );
-
-  if (editor) {
-    syncEditorState(editor, workflowNames, input);
-  }
 
   function insertWorkflow(workflow: ComposerSlashWorkflow): void {
     if (!editor || !slashRange) {
@@ -669,13 +644,13 @@ export function TiptapWorkflowComposer({
             className="pointer-events-none absolute left-0 top-0 px-4 pt-4 text-[0.9375rem] leading-6 text-muted-foreground/40"
             aria-hidden="true"
           >
-            {placeholder}
+            {workflowComposerPlaceholder(sending)}
           </div>
         )}
         <EditorContent
           editor={editor}
           aria-label="Message"
-          placeholder={placeholder}
+          placeholder={workflowComposerPlaceholder(sending)}
         />
       </div>
       {showSlashWorkflowMenu && (
