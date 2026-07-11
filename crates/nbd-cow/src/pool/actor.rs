@@ -5,7 +5,8 @@ use crate::error::{NbdCowError, Result};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
-use super::lease::DeviceLease;
+use super::lease::{DeviceAcquisition, DeviceLease};
+use super::scan::ScannedDeviceClaim;
 #[cfg(test)]
 use super::state::DevicePoolSnapshot;
 use super::state::{DevicePool, DevicePoolConfig};
@@ -82,7 +83,7 @@ impl LeaseReturnOperation {
 
 pub(super) enum DevicePoolCommand {
     Acquire {
-        respond_to: oneshot::Sender<Result<DeviceLease>>,
+        respond_to: oneshot::Sender<Result<DeviceAcquisition>>,
     },
     ReturnLease {
         action: LeaseReturnAction,
@@ -101,7 +102,7 @@ pub(super) enum DevicePoolCommand {
 struct DevicePoolActor {
     pool: DevicePool,
     commands: mpsc::UnboundedReceiver<DevicePoolCommand>,
-    pending: JoinSet<Result<NbdDeviceClaim>>,
+    pending: JoinSet<Result<ScannedDeviceClaim>>,
 }
 
 impl DevicePoolHandle {
@@ -126,17 +127,20 @@ impl DevicePoolHandle {
     #[cfg(test)]
     pub(super) fn from_pool_with_pending(
         pool: DevicePool,
-        pending: JoinSet<Result<NbdDeviceClaim>>,
+        pending: JoinSet<Result<ScannedDeviceClaim>>,
     ) -> Self {
         Self::spawn_actor(pool, pending)
     }
 
     #[cfg(not(test))]
-    fn from_pool_with_pending(pool: DevicePool, pending: JoinSet<Result<NbdDeviceClaim>>) -> Self {
+    fn from_pool_with_pending(
+        pool: DevicePool,
+        pending: JoinSet<Result<ScannedDeviceClaim>>,
+    ) -> Self {
         Self::spawn_actor(pool, pending)
     }
 
-    fn spawn_actor(mut pool: DevicePool, pending: JoinSet<Result<NbdDeviceClaim>>) -> Self {
+    fn spawn_actor(mut pool: DevicePool, pending: JoinSet<Result<ScannedDeviceClaim>>) -> Self {
         let (commands, command_rx) = mpsc::unbounded_channel();
         pool.set_lease_return(commands.downgrade());
         tokio::spawn(
@@ -182,7 +186,7 @@ impl DevicePoolHandle {
         }
     }
 
-    pub(crate) async fn acquire(&self) -> Result<DeviceLease> {
+    pub(crate) async fn acquire(&self) -> Result<DeviceAcquisition> {
         let (respond_to, response) = oneshot::channel();
         if self
             .commands

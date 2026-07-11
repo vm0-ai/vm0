@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxId,
+    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -65,6 +66,41 @@ const RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE: &str =
     "runner_fresh_sandbox_factory_netns_acquire";
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE: &str =
     "runner_fresh_sandbox_factory_nbd_cow_create";
+// NBD detail durations are children of `nbd_cow_create`. Device scan is
+// nested again inside device acquire, so downstream queries must not add it to
+// the acquire duration or to a peer-stage sum.
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_LAYER_CREATE: &str =
+    "runner_fresh_sandbox_factory_nbd_cow_layer_create";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_DEVICE_ACQUIRE: &str =
+    "runner_fresh_sandbox_factory_nbd_device_acquire";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_DEVICE_SCAN: &str =
+    "runner_fresh_sandbox_factory_nbd_device_scan";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_DISPATCH_SETUP: &str =
+    "runner_fresh_sandbox_factory_nbd_dispatch_setup";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT: &str =
+    "runner_fresh_sandbox_factory_nbd_netlink_connect";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_VERIFY: &str =
+    "runner_fresh_sandbox_factory_nbd_size_verify";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_CLEANUP: &str =
+    "runner_fresh_sandbox_factory_nbd_retry_cleanup";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_DELAY: &str =
+    "runner_fresh_sandbox_factory_nbd_retry_delay";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_ACQUIRE_SOURCE_DEMAND_SCAN: &str =
+    "runner_fresh_sandbox_factory_nbd_acquire_source_demand_scan";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_ACQUIRE_SOURCE_COOLED_CLAIM: &str =
+    "runner_fresh_sandbox_factory_nbd_acquire_source_cooled_claim";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_EBUSY_RETRIES_NONE: &str =
+    "runner_fresh_sandbox_factory_nbd_ebusy_retries_none";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_EBUSY_RETRIES_ONE: &str =
+    "runner_fresh_sandbox_factory_nbd_ebusy_retries_one";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_EBUSY_RETRIES_MULTIPLE: &str =
+    "runner_fresh_sandbox_factory_nbd_ebusy_retries_multiple";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_NONE: &str =
+    "runner_fresh_sandbox_factory_nbd_size_zero_retries_none";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_ONE: &str =
+    "runner_fresh_sandbox_factory_nbd_size_zero_retries_one";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_MULTIPLE: &str =
+    "runner_fresh_sandbox_factory_nbd_size_zero_retries_multiple";
 const RUNNER_FRESH_SANDBOX_PROXY_REGISTER: &str = "runner_fresh_sandbox_proxy_register";
 const RUNNER_FRESH_SANDBOX_START: &str = "runner_fresh_sandbox_start";
 const RUNNER_FRESH_SANDBOX_RETRY_WITHOUT_WORKSPACE_IMAGE: &str =
@@ -98,6 +134,34 @@ impl SandboxCreateObserver for FreshSandboxFactoryCreateObserver<'_> {
             error,
         );
     }
+
+    fn record_nbd_cow_stage(
+        &mut self,
+        stage: SandboxNbdCowCreateStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let error = if success {
+            None
+        } else {
+            Some(SANDBOX_FACTORY_CREATE_STAGE_FAILED)
+        };
+        self.telemetry.record(
+            fresh_sandbox_factory_nbd_cow_stage_action(stage),
+            duration,
+            success,
+            error,
+        );
+    }
+
+    fn record_nbd_cow_outcome(&mut self, outcome: SandboxNbdCowCreateOutcome) {
+        self.telemetry.record(
+            fresh_sandbox_factory_nbd_cow_outcome_action(outcome),
+            Duration::ZERO,
+            true,
+            None,
+        );
+    }
 }
 
 fn fresh_sandbox_factory_stage_action(stage: SandboxCreateStage) -> &'static str {
@@ -116,6 +180,54 @@ fn fresh_sandbox_factory_stage_action(stage: SandboxCreateStage) -> &'static str
         SandboxCreateStage::SockDirPrepare => RUNNER_FRESH_SANDBOX_FACTORY_SOCK_DIR_PREPARE,
         SandboxCreateStage::NetnsAcquire => RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE,
         SandboxCreateStage::NbdCowCreate => RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE,
+    }
+}
+
+fn fresh_sandbox_factory_nbd_cow_stage_action(stage: SandboxNbdCowCreateStage) -> &'static str {
+    match stage {
+        SandboxNbdCowCreateStage::CowLayerCreate => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_LAYER_CREATE
+        }
+        SandboxNbdCowCreateStage::DeviceAcquire => RUNNER_FRESH_SANDBOX_FACTORY_NBD_DEVICE_ACQUIRE,
+        SandboxNbdCowCreateStage::DeviceScan => RUNNER_FRESH_SANDBOX_FACTORY_NBD_DEVICE_SCAN,
+        SandboxNbdCowCreateStage::DispatchSetup => RUNNER_FRESH_SANDBOX_FACTORY_NBD_DISPATCH_SETUP,
+        SandboxNbdCowCreateStage::NetlinkConnect => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT
+        }
+        SandboxNbdCowCreateStage::SizeVerify => RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_VERIFY,
+        SandboxNbdCowCreateStage::RetryCleanup => RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_CLEANUP,
+        SandboxNbdCowCreateStage::RetryDelay => RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_DELAY,
+    }
+}
+
+fn fresh_sandbox_factory_nbd_cow_outcome_action(
+    outcome: SandboxNbdCowCreateOutcome,
+) -> &'static str {
+    match outcome {
+        SandboxNbdCowCreateOutcome::AcquireSourceDemandScan => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_ACQUIRE_SOURCE_DEMAND_SCAN
+        }
+        SandboxNbdCowCreateOutcome::AcquireSourceCooledClaim => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_ACQUIRE_SOURCE_COOLED_CLAIM
+        }
+        SandboxNbdCowCreateOutcome::EbusyRetriesNone => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_EBUSY_RETRIES_NONE
+        }
+        SandboxNbdCowCreateOutcome::EbusyRetriesOne => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_EBUSY_RETRIES_ONE
+        }
+        SandboxNbdCowCreateOutcome::EbusyRetriesMultiple => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_EBUSY_RETRIES_MULTIPLE
+        }
+        SandboxNbdCowCreateOutcome::SizeZeroRetriesNone => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_NONE
+        }
+        SandboxNbdCowCreateOutcome::SizeZeroRetriesOne => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_ONE
+        }
+        SandboxNbdCowCreateOutcome::SizeZeroRetriesMultiple => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_ZERO_RETRIES_MULTIPLE
+        }
     }
 }
 

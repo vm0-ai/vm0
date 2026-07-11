@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::device_lock::{self, NbdDeviceClaim};
 use crate::error::{NbdCowError, Result};
@@ -14,14 +15,31 @@ pub(super) struct ScanRequest {
     pub(super) device_appears_free: DeviceFreeCheck,
 }
 
+pub(super) struct ScannedDeviceClaim {
+    claim: NbdDeviceClaim,
+    duration: Duration,
+}
+
+impl ScannedDeviceClaim {
+    pub(super) fn new(claim: NbdDeviceClaim, duration: Duration) -> Self {
+        Self { claim, duration }
+    }
+
+    pub(super) fn into_parts(self) -> (NbdDeviceClaim, Duration) {
+        (self.claim, self.duration)
+    }
+}
+
 impl ScanRequest {
-    pub(super) fn run(self) -> Result<NbdDeviceClaim> {
-        scan_and_claim_with(
+    pub(super) fn run(self) -> Result<ScannedDeviceClaim> {
+        let started_at = Instant::now();
+        let claim = scan_and_claim_with(
             self.max_devices,
             &self.exclude,
             &self.lock_dir,
             self.device_appears_free,
-        )
+        )?;
+        Ok(ScannedDeviceClaim::new(claim, started_at.elapsed()))
     }
 }
 

@@ -8,8 +8,8 @@ use crate::netlink;
 use tokio::sync::{mpsc, oneshot};
 
 use super::actor::DevicePoolCommand;
-use super::lease::DeviceLease;
-use super::scan::ScanRequest;
+use super::lease::{DeviceAcquireSource, DeviceAcquisition, DeviceLease};
+use super::scan::{ScanRequest, ScannedDeviceClaim};
 use super::{DEFAULT_COOLDOWN_MS, DeviceFreeCheck, MAX_PENDING};
 
 #[derive(Clone, Copy)]
@@ -93,7 +93,7 @@ pub struct DevicePool {
     /// Acquire errors that raced with still-pending scans.
     pub(super) deferred_acquire_errors: VecDeque<NbdCowError>,
     /// Acquire requests waiting for a scan or an expired cooldown claim.
-    pub(super) waiting_acquires: VecDeque<oneshot::Sender<Result<DeviceLease>>>,
+    pub(super) waiting_acquires: VecDeque<oneshot::Sender<Result<DeviceAcquisition>>>,
     /// Total number of NBD devices (from sysfs nbds_max).
     pub(super) max_devices: u32,
     /// Pool configuration.
@@ -160,7 +160,7 @@ impl DevicePool {
 
     pub(super) fn handle_acquire(
         &mut self,
-        respond_to: oneshot::Sender<Result<DeviceLease>>,
+        respond_to: oneshot::Sender<Result<DeviceAcquisition>>,
         pending_scans: usize,
     ) {
         if !self.active {
@@ -217,17 +217,22 @@ impl DevicePool {
 
     pub(super) fn handle_scan_join(
         &mut self,
-        scan: Option<std::result::Result<Result<NbdDeviceClaim>, tokio::task::JoinError>>,
+        scan: Option<std::result::Result<Result<ScannedDeviceClaim>, tokio::task::JoinError>>,
     ) {
         match scan {
-            Some(Ok(Ok(claim))) => {
+            Some(Ok(Ok(scanned))) => {
+                let (claim, scan_duration) = scanned.into_parts();
                 if self.is_tracked(claim.index()) {
                     tracing::warn!(
                         device_index = claim.index(),
                         "dropping scan result because index is already tracked"
                     );
                 } else {
-                    self.assign_claim_to_waiter(claim);
+                    self.assign_claim_to_waiter(
+                        claim,
+                        DeviceAcquireSource::DemandScan,
+                        Some(scan_duration),
+                    );
                 }
             }
             Some(Ok(Err(e))) => {
@@ -242,15 +247,22 @@ impl DevicePool {
         }
     }
 
-    pub(super) fn assign_claim_to_waiter(&mut self, mut claim: NbdDeviceClaim) -> bool {
+    pub(super) fn assign_claim_to_waiter(
+        &mut self,
+        mut claim: NbdDeviceClaim,
+        source: DeviceAcquireSource,
+        scan_duration: Option<Duration>,
+    ) -> bool {
         let index = claim.index();
         while let Some(respond_to) = self.waiting_acquires.pop_front() {
-            match respond_to.send(Ok(self.lease_for(claim))) {
+            let acquisition = DeviceAcquisition::new(self.lease_for(claim), source, scan_duration);
+            match respond_to.send(Ok(acquisition)) {
                 Ok(()) => {
                     self.in_flight.insert(index);
                     return true;
                 }
-                Err(Ok(lease)) => {
+                Err(Ok(acquisition)) => {
+                    let (lease, _, _) = acquisition.into_parts();
                     let Some(returned_claim) = lease.into_claim() else {
                         return false;
                     };
@@ -414,7 +426,7 @@ impl DevicePool {
             );
             return;
         }
-        self.assign_claim_to_waiter(slot.claim);
+        self.assign_claim_to_waiter(slot.claim, DeviceAcquireSource::CooledClaim, None);
     }
 
     pub(super) fn next_cooldown_deadline(&self) -> Option<Instant> {
