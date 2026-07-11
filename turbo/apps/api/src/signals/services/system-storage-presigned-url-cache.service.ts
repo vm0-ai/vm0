@@ -26,7 +26,7 @@ export const SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS = 2 * 60 * 60;
 const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_CACHE_POLICY =
   "workflow-skill-storage-url-v1";
-export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 3;
+export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 32;
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
 
 type StoragePresignedUrlCacheStatus =
@@ -511,11 +511,12 @@ async function refreshDueStoragePresignedUrls(args: {
       asc(systemStoragePresignedUrlCache.refreshAfter),
       asc(systemStoragePresignedUrlCache.expiresAt),
     )
-    .limit(args.limit);
+    .limit(args.limit + 1);
   args.signal?.throwIfAborted();
 
+  const rowsToRefresh = rows.slice(0, args.limit);
   const freshValues = await Promise.all(
-    rows.map((row) => {
+    rowsToRefresh.map((row) => {
       return signCacheValue({
         get: args.get,
         cacheKey: row.cacheKey,

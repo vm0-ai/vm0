@@ -419,7 +419,7 @@ describe("system storage presigned URL cache", () => {
         expect(refreshed.body).toStrictEqual({
           success: true,
           system: {
-            due: 3,
+            due: 4,
             refreshed: 3,
             pruned: 0,
           },
