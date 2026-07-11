@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.9...runner-rs-v0.143.10) (2026-07-11)
+
+
+### Refactoring
+
+* **runner:** make execution context a tolerant claim consumer ([#21015](https://github.com/vm0-ai/vm0/issues/21015)) ([d3f39e7](https://github.com/vm0-ai/vm0/commit/d3f39e758f6ae3e1b9a57a1bf9247f6b5e62f917))
+
 ## [0.143.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.8...runner-rs-v0.143.9) (2026-07-11)
 
 ## [0.143.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.7...runner-rs-v0.143.8) (2026-07-10)

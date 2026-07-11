@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.262.3](https://github.com/vm0-ai/vm0/compare/api-v1.262.2...api-v1.262.3) (2026-07-11)
+
+
+### Performance Improvements
+
+* **platform:** reduce chat render commits ([#21023](https://github.com/vm0-ai/vm0/issues/21023)) ([6d37bf9](https://github.com/vm0-ai/vm0/commit/6d37bf9b62748da09db8405df2ee4d289ad6d01c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.2
+    * @vm0/core bumped to 8.424.5
+    * @vm0/db bumped to 1.109.5
+
 ## [1.262.2](https://github.com/vm0-ai/vm0/compare/api-v1.262.1...api-v1.262.2) (2026-07-11)
 
 
