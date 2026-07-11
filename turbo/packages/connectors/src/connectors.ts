@@ -8,6 +8,7 @@ import type {
   ConnectorGrantKind,
   ConnectorRevokeKind,
   StaticConfidentialConnectorAuthClientConfig,
+  StaticPublicConnectorAuthClientConfig,
 } from "./connector-config";
 import { github } from "./connectors/github";
 import { gmail } from "./connectors/gmail";
@@ -37,6 +38,7 @@ import { googleAds } from "./connectors/google-ads";
 import { googleMaps } from "./connectors/google-maps";
 import { gumroad } from "./connectors/gumroad";
 import { nintendoStore } from "./connectors/nintendo-store";
+import { nintendoSwitchParentalControls } from "./connectors/nintendo-switch-parental-controls";
 import { playstation } from "./connectors/playstation";
 import { spotify } from "./connectors/spotify";
 import { steam } from "./connectors/steam";
@@ -454,6 +456,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...googleCloud,
   ...googleMaps,
   ...gumroad,
+  ...nintendoSwitchParentalControls,
   ...nintendoStore,
   ...playstation,
   ...spotify,
@@ -952,11 +955,13 @@ export type RefreshTokenAccessConnectorType =
   ConnectorTypesByAccessKind<"refresh-token">;
 export type TokenRevokeConnectorType =
   ConnectorTypesByRevokeKind<"token-revoke">;
-type TokenRevokeConnectorTypeWithNonConfidentialClient = {
+type TokenRevokeConnectorTypeWithNonStaticClient = {
   [Type in TokenRevokeConnectorType]: {
     [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
       readonly revoke: { readonly kind: "token-revoke" };
-      readonly client: StaticConfidentialConnectorAuthClientConfig;
+      readonly client:
+        | StaticConfidentialConnectorAuthClientConfig
+        | StaticPublicConnectorAuthClientConfig;
     }
       ? never
       : ConnectorAuthMethodsOf<Type>[Method] extends {
@@ -966,8 +971,8 @@ type TokenRevokeConnectorTypeWithNonConfidentialClient = {
         : never;
   }[ConnectorAuthMethodIds<Type>];
 }[TokenRevokeConnectorType];
-export type TokenRevokeConnectorAuthMethodsUseConfidentialClients =
-  AssertNever<TokenRevokeConnectorTypeWithNonConfidentialClient>;
+export type TokenRevokeConnectorAuthMethodsUseStaticClients =
+  AssertNever<TokenRevokeConnectorTypeWithNonStaticClient>;
 
 export const CONNECTOR_TYPES = CONNECTOR_TYPES_DEF;
 export const CONNECTOR_TYPE_KEYS = Object.freeze(

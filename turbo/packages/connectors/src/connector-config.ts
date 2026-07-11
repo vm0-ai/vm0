@@ -264,6 +264,12 @@ export type ConnectorRevokeConfig =
   | {
       readonly kind: "token-revoke";
       readonly inputs: ConnectorRevokeInputBindings;
+      /**
+       * Revoke the previous credential after a replacement connection commits.
+       * Only enable this when the revoke inputs identify the old credential or
+       * remote registration without invalidating the replacement connection.
+       */
+      readonly revokePreviousOnReplace?: boolean;
     };
 
 interface ConnectorAuthMethodConfigBase {

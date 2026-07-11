@@ -510,6 +510,59 @@ describe("GET /api/zero/connector-catalog", () => {
     ]);
   });
 
+  it("hides Nintendo Switch Parental Controls until its connector switch is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const hidden = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      hidden.body.connectors.some((connector) => {
+        return connector.connectorRef === "nintendo-switch-parental-controls";
+      }),
+    ).toBeFalsy();
+
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: true,
+    });
+    const visible = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(visible.body);
+    const connector = visible.body.connectors.find((entry) => {
+      return entry.connectorRef === "nintendo-switch-parental-controls";
+    });
+    expect(connector).toMatchObject({
+      connectorRef: "nintendo-switch-parental-controls",
+      label: "Nintendo Switch Parental Controls",
+      connected: false,
+      connectionStatus: "not-connected",
+      permissionSummary: {
+        hasPermissions: true,
+        permissionCount: 15,
+        hasCategories: true,
+        hasDefaultPolicyOverrides: true,
+      },
+    });
+    expect(connector?.authMethods).toStrictEqual([
+      {
+        id: "api",
+        label: "Nintendo sign-in",
+        description:
+          "Sign in with the adult Nintendo Account used by the Nintendo Switch Parental Controls app. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
+        grantKind: "external-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ]);
+  });
+
   it("returns connected manual grant status from public API-created state", async () => {
     const actor = bdd.user();
     await connectorsApi.connectManualGrant(actor, "openai", "api-token", {

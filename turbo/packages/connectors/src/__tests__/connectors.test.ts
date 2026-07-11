@@ -1163,6 +1163,7 @@ describe("connector selected auth method capability checks", () => {
         type: "github",
         authMethod: "oauth",
         readEnv,
+        signal: testRefreshSignal(),
         loadInputs: () => {
           return { accessToken: "gh-access-token" };
         },
@@ -1184,6 +1185,7 @@ describe("connector selected auth method capability checks", () => {
         readEnv: () => {
           return undefined;
         },
+        signal: testRefreshSignal(),
         loadInputs: () => {
           loadedInputs = true;
           return { accessToken: "notion-access-token" };
@@ -1203,6 +1205,7 @@ describe("connector selected auth method capability checks", () => {
         readEnv: () => {
           return undefined;
         },
+        signal: testRefreshSignal(),
         loadInputs: () => {
           loadedInputs = true;
           return { accessToken: "gh-access-token" };
@@ -1222,6 +1225,7 @@ describe("connector selected auth method capability checks", () => {
         readEnv: () => {
           return undefined;
         },
+        signal: testRefreshSignal(),
         loadInputs: () => {
           loadedInputs = true;
           return { accessToken: "gh-access-token" };

@@ -282,7 +282,10 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
 }): Promise<void> {
   let postCommitAbort = args.postCommitAbort;
   if (args.pendingTokenRevoke) {
-    await revokePendingConnectorToken({ pending: args.pendingTokenRevoke });
+    await revokePendingConnectorToken({
+      pending: args.pendingTokenRevoke,
+      signal: args.signal,
+    });
     if (args.signal.aborted) {
       postCommitAbort ??= args.signal.reason;
     }
@@ -706,8 +709,37 @@ function resolveTokenRevokeMethodRef(args: {
     : null;
 }
 
+function resolveReplaceTokenRevokeMethodRef(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string | null;
+}): TokenRevokeMethodRef | null {
+  if (!args.authMethod) {
+    return null;
+  }
+  const tokenRevokeMethod = resolveTokenRevokeMethodRef({
+    type: args.type,
+    authMethod: args.authMethod,
+  });
+  if (!tokenRevokeMethod) {
+    return null;
+  }
+  const method = getConnectorAuthMethod(
+    tokenRevokeMethod.type,
+    tokenRevokeMethod.authMethod,
+  );
+  if (
+    !method ||
+    method.revoke.kind !== "token-revoke" ||
+    method.revoke.revokePreviousOnReplace !== true
+  ) {
+    return null;
+  }
+  return tokenRevokeMethod;
+}
+
 async function revokePendingConnectorToken(args: {
   readonly pending: PendingConnectorTokenRevoke;
+  readonly signal: AbortSignal;
 }): Promise<void> {
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
@@ -715,6 +747,7 @@ async function revokePendingConnectorToken(args: {
       type: args.pending.type,
       authMethod: args.pending.authMethod,
       readEnv: optionalEnv,
+      signal: args.signal,
       loadInputs: () => {
         return decryptConnectorRevokeInputs({
           encryptedInputs: args.pending.encryptedInputs,
@@ -1939,6 +1972,90 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
   });
 }
 
+async function commitConnectorTokenConnection(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: AuthGrantConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly connectorTokenState: PreparedConnectorTokenState;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly userInfo: ExternalUserInfo;
+  readonly oauthScopes: readonly string[];
+  readonly tokenExpiresAt: Date | null;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly connectorRow: StoredConnectorRow;
+  readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
+}> {
+  await lockConnectorState(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    type: args.type,
+  });
+  args.signal.throwIfAborted();
+
+  const existingAuthMethod = await loadExistingConnectorAuthMethod(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    type: args.type,
+    signal: args.signal,
+  });
+  const replaceTokenRevokeMethod = resolveReplaceTokenRevokeMethodRef({
+    type: args.type,
+    authMethod: existingAuthMethod,
+  });
+  const pendingTokenRevoke = replaceTokenRevokeMethod
+    ? await loadPendingConnectorTokenRevoke({
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        method: replaceTokenRevokeMethod,
+        featureSwitchContext: args.featureSwitchContext,
+        signal: args.signal,
+      })
+    : null;
+
+  await upsertPreparedConnectorTokenState({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    state: args.connectorTokenState,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+
+  const connectorRow = await upsertConnectorTokenConnectionRow(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    type: args.type,
+    authMethod: args.authMethod,
+    userInfo: args.userInfo,
+    oauthScopes: args.oauthScopes,
+    tokenExpiresAt: args.tokenExpiresAt,
+    signal: args.signal,
+  });
+
+  await deleteObsoleteConnectorScopedStateForTokenConnect(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    type: args.type,
+    authMethod: args.authMethod,
+    existingAuthMethod,
+    signal: args.signal,
+  });
+  await deleteManualGrantConnectorLocalStateForAuthMethods({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    type: args.type,
+    authMethods: [existingAuthMethod, args.authMethod],
+    signal: args.signal,
+  });
+
+  return { connectorRow, pendingTokenRevoke };
+}
+
 export const upsertConnectorTokenConnection$ = command(
   async (
     { get, set },
@@ -1996,60 +2113,20 @@ export const upsertConnectorTokenConnection$ = command(
     signal.throwIfAborted();
 
     let postCommitAbort: unknown = null;
-    const connectorRow = await writeDb.transaction(async (tx) => {
-      await lockConnectorState(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-      });
-      signal.throwIfAborted();
-
-      const existingAuthMethod = await loadExistingConnectorAuthMethod(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-        signal,
-      });
-
-      await upsertPreparedConnectorTokenState({
+    const connectionResult = await writeDb.transaction(async (tx) => {
+      return await commitConnectorTokenConnection({
         db: tx,
-        orgId: args.orgId,
-        userId: args.userId,
-        state: connectorTokenState,
-        signal,
-      });
-      signal.throwIfAborted();
-
-      const row = await upsertConnectorTokenConnectionRow(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
         authMethod: args.authMethod,
+        connectorTokenState,
+        featureSwitchContext,
         userInfo: args.userInfo,
         oauthScopes: args.oauthScopes,
         tokenExpiresAt,
         signal,
       });
-
-      await deleteObsoleteConnectorScopedStateForTokenConnect(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-        authMethod: args.authMethod,
-        existingAuthMethod,
-        signal,
-      });
-
-      await deleteManualGrantConnectorLocalStateForAuthMethods({
-        db: tx,
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-        authMethods: [existingAuthMethod, args.authMethod],
-        signal,
-      });
-
-      return row;
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
@@ -2057,7 +2134,7 @@ export const upsertConnectorTokenConnection$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
-      pendingTokenRevoke: null,
+      pendingTokenRevoke: connectionResult.pendingTokenRevoke,
       signal,
       postCommitAbort,
     });
@@ -2065,12 +2142,13 @@ export const upsertConnectorTokenConnection$ = command(
 
     return {
       connector: storedConnectorRowToResponse(
-        connectorRow,
+        connectionResult.connectorRow,
         args.type,
         nowDate(),
       ),
       created:
-        connectorRow.createdAt.getTime() === connectorRow.updatedAt.getTime(),
+        connectionResult.connectorRow.createdAt.getTime() ===
+        connectionResult.connectorRow.updatedAt.getTime(),
     };
   },
 );
