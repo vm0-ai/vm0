@@ -432,8 +432,10 @@ Note what's absent compared to older patterns:
 
 - Create and verify test data via API calls
 - `testContext()` provides isolated route context and centralized mocks
-- No manual cleanup needed for API route tests that stay inside the route
-  context
+- Use unique identities for independent persistent test data; `testContext()`
+  does not roll back database rows
+- Release resources through production APIs when a test must use a fixed shared
+  identity or another quota-limited scope
 
 ---
 
