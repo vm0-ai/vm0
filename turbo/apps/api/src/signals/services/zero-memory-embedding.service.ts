@@ -18,7 +18,7 @@ const openAiEmbeddingResponseSchema = z.object({
     .min(1),
 });
 
-interface MemoryEmbeddingResult {
+export interface MemoryEmbeddingResult {
   readonly model: string;
   readonly embedding: readonly number[];
 }

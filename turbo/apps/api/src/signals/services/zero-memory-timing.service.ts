@@ -8,7 +8,7 @@ export type ZeroMemoryTimingStage =
   | "profile_static"
   | "profile_dynamic"
   | "profile_search"
-  | "profile_search_lexical"
+  | "profile_search_exact_identity"
   | "profile_search_semantic_embedding"
   | "profile_search_semantic_query"
   | "profile_search_graph_expansion"
