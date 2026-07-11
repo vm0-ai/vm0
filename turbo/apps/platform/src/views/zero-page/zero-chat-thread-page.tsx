@@ -274,7 +274,8 @@ import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
-  ZeroChatComposer,
+  useZeroChatComposer,
+  type ZeroChatComposerProps,
   type QueuedComposerItem,
   type ComposerFeedback,
 } from "./zero-chat-composer.tsx";
@@ -4151,9 +4152,24 @@ function useChatThreadComposerSendState({
     );
   };
 
+  const handleFeedbackSend = (text: string) => {
+    detach(
+      send(
+        text,
+        modelSelection,
+        {
+          includeDraftAttachments: true,
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
   return {
     handleSend,
     handleQueue,
+    handleFeedbackSend,
     sendLoading: sendLoadable.state === "loading",
     templatePicker: {
       value: generationTemplate,
@@ -4169,11 +4185,10 @@ function useChatThreadComputerUse(
   pageSignal: AbortSignal,
 ) {
   const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
-  const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
-      : lastResolvedComputerUseHosts;
+      : [];
   const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
   const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
   const selectedComputerUseHostId =
@@ -4219,7 +4234,7 @@ function useChatThreadComputerUse(
 // keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
-  modelSelection: ModelProviderSelection | null,
+  sendFeedback: (prompt: string) => void,
 ): ComposerFeedback | undefined {
   const items = useGet(feedbackItemsValue$);
   const feedbackThreadId = useGet(feedbackThreadIdValue$);
@@ -4228,8 +4243,6 @@ function useChatThreadComposerFeedback(
   const removeItem = useSet(removeFeedbackItem$);
   const compose = useSet(submitFeedback$);
   const dismiss = useSet(dismissFeedback$);
-  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
 
   // Feedback is owned by the thread it was drafted in; other threads keep their
   // own composer textarea so a draft never bleeds across chats.
@@ -4250,17 +4263,7 @@ function useChatThreadComposerFeedback(
       if (prompt === null) {
         return;
       }
-      detach(
-        sendMessage(
-          prompt,
-          modelSelection,
-          {
-            includeDraftAttachments: true,
-          },
-          rootSignal,
-        ),
-        Reason.DomCallback,
-      );
+      sendFeedback(prompt);
       dismiss();
     },
     onDismiss: () => {
@@ -4354,13 +4357,7 @@ function resolveChatThreadComposerActivity({
   };
 }
 
-function ChatThreadComposer({
-  thread,
-  autoFocus: autoFocusProp = true,
-}: {
-  thread: ChatThreadSignals;
-  autoFocus?: boolean;
-}) {
+function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const hasMessages = groups.length > 0;
@@ -4396,13 +4393,18 @@ function ChatThreadComposer({
     submitBlockerProps,
     modelSelection,
   } = useChatComposerModel(thread, pageSignal);
-  const { handleSend, handleQueue, sendLoading, templatePicker } =
-    useChatThreadComposerSendState({
-      thread,
-      modelSelection,
-      computerUseHostIdForSend,
-      clearComputerUseHostOverride,
-    });
+  const {
+    handleSend,
+    handleQueue,
+    handleFeedbackSend,
+    sendLoading,
+    templatePicker,
+  } = useChatThreadComposerSendState({
+    thread,
+    modelSelection,
+    computerUseHostIdForSend,
+    clearComputerUseHostOverride,
+  });
   const sending = !allFinished || sendLoading;
   const skeletonVisible = groupsLoadable.state === "loading";
   const { composerSending, queueWhileSending } =
@@ -4420,12 +4422,52 @@ function ChatThreadComposer({
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread, modelSelection);
+  const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
     input,
     pageSignal,
   });
+  const composerOptions: ZeroChatComposerProps = {
+    input,
+    onInputChange: handleInputChange,
+    onSend: handleSend,
+    onQueue: handleQueue,
+    sending: composerSending,
+    queueWhileSending,
+    onCancel:
+      !allFinished || sendLoading
+        ? () => {
+            detach(cancelRun(pageSignal), Reason.DomCallback);
+          }
+        : undefined,
+    displayName,
+    className: "w-full min-w-0",
+    autoFocus: shouldAutoFocusComposer({
+      autoFocus: true,
+      hasMessages,
+    }),
+    enableMobileSingleLine: true,
+    onDraftChange: handleDraftChange,
+    draft: thread.draft,
+    composerFileInput$: thread.composerFileInput$,
+    setComposerFileInput$: thread.setComposerFileInput$,
+    setInputRef,
+    chatThreadId: thread.threadId,
+    actionsLoading: skeletonVisible,
+    modelPicker,
+    templatePicker,
+    onCreateWorkflowPrompt: workflowPrompt.onCreateWorkflowPrompt,
+    computerUse,
+    modelPickerLoading,
+    submitBlocker: submitBlockerProps,
+    queuedItems,
+    onRemoveQueuedItem,
+    activeGoal,
+    onCancelActiveGoal,
+    feedback,
+  };
+  const composer = useZeroChatComposer(composerOptions);
 
   return (
     <footer
@@ -4435,46 +4477,7 @@ function ChatThreadComposer({
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
         <div className="mx-auto max-w-[900px]">
-          <ZeroChatComposer
-            className="w-full min-w-0"
-            input={input}
-            onInputChange={handleInputChange}
-            onSend={handleSend}
-            onQueue={handleQueue}
-            sending={composerSending}
-            queueWhileSending={queueWhileSending}
-            onCancel={
-              !allFinished || sendLoading
-                ? () => {
-                    detach(cancelRun(pageSignal), Reason.DomCallback);
-                  }
-                : undefined
-            }
-            displayName={displayName}
-            autoFocus={shouldAutoFocusComposer({
-              autoFocus: autoFocusProp,
-              hasMessages,
-            })}
-            enableMobileSingleLine
-            onDraftChange={handleDraftChange}
-            draft={thread.draft}
-            composerFileInput$={thread.composerFileInput$}
-            setComposerFileInput$={thread.setComposerFileInput$}
-            setInputRef={setInputRef}
-            chatThreadId={thread.threadId}
-            actionsLoading={skeletonVisible}
-            modelPicker={modelPicker}
-            templatePicker={templatePicker}
-            onCreateWorkflowPrompt={workflowPrompt.onCreateWorkflowPrompt}
-            computerUse={computerUse}
-            modelPickerLoading={modelPickerLoading}
-            submitBlocker={submitBlockerProps}
-            queuedItems={queuedItems}
-            onRemoveQueuedItem={onRemoveQueuedItem}
-            activeGoal={activeGoal}
-            onCancelActiveGoal={onCancelActiveGoal}
-            feedback={feedback}
-          />
+          {composer}
           <ReplaceComposerDraftDialog
             open={workflowPrompt.replaceDraftDialogOpen}
             onOpenChange={workflowPrompt.onReplaceDialogOpenChange}

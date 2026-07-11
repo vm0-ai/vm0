@@ -2355,12 +2355,10 @@ function createRunTracking({
       },
     );
 
-    const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+    const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
-      set(reloadThread$);
       await set(refreshLatestMessages$, sig);
       sig.throwIfAborted();
-      await get(remoteThreadDetail$);
       animationFrame(
         () => {
           set(autoScroll$);

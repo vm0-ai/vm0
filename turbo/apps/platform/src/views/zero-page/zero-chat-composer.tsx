@@ -96,7 +96,6 @@ import {
   restoreZeroAttachments$ as singletonRestore$,
   removeZeroAttachment$ as singletonRemove$,
   appendZeroChatInput$ as singletonAppendInput$,
-  canSendZeroChat$ as singletonCanSend$,
   zeroDragOver$ as singletonDragOver$,
   setZeroDragOver$ as singletonSetDragOver$,
   composerFileInput$ as singletonComposerFileInput$,
@@ -260,7 +259,7 @@ function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
 // Props
 // ---------------------------------------------------------------------------
 
-interface ZeroChatComposerProps {
+export interface ZeroChatComposerProps {
   input: string;
   onInputChange: (value: string) => void;
   onSend: (
@@ -6742,10 +6741,7 @@ function useResolvedComposerSignals(
   const attachmentUploadSummary = useLoadable(
     draft ? draft.attachmentUploadSummary$ : singletonAttachmentUploadSummary$,
   );
-  const canSendSingleton = useGet(singletonCanSend$);
-  const canSend = draft
-    ? input.trim() !== "" || attachments.length > 0
-    : canSendSingleton;
+  const canSend = input.trim() !== "" || attachments.length > 0;
   const uploadAttachment = useSet(
     draft ? draft.uploadAttachment$ : singletonUpload$,
   );
@@ -7060,17 +7056,20 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function useCodexFastModeEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
+function resolveComposerFeatures(
+  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+) {
+  return {
+    codexFastModeEnabled: features?.[FeatureSwitchKey.CodexFastMode] ?? false,
+    uploadPopoverEnabled:
+      features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false,
+  };
 }
 
-function useUploadPopoverEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
-}
-
-export function ZeroChatComposer({
+// The thread route invokes this hook from its ccstate-connected composer so
+// dynamic bindings do not cross another React component boundary. The agent
+// landing page uses the component wrapper below for its separate signal scope.
+export function useZeroChatComposer({
   input,
   onInputChange,
   onSend,
@@ -7106,8 +7105,9 @@ export function ZeroChatComposer({
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const codexFastModeEnabled = useCodexFastModeEnabled();
-  const uploadPopoverEnabled = useUploadPopoverEnabled();
+  const features = useLastResolved(featureSwitch$);
+  const { codexFastModeEnabled, uploadPopoverEnabled } =
+    resolveComposerFeatures(features);
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -7639,4 +7639,8 @@ export function ZeroChatComposer({
       )}
     </>
   );
+}
+
+export function ZeroChatComposer(props: ZeroChatComposerProps) {
+  return useZeroChatComposer(props);
 }

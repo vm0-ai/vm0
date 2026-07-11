@@ -87,7 +87,7 @@ export function mockUser(
       },
       getOrganizationInvitations: () => {
         return Promise.resolve({
-          data: internalMockedInvitations,
+          data: [...internalMockedInvitations],
           total_count: internalMockedInvitations.length,
         });
       },
