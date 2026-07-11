@@ -414,35 +414,38 @@ mod tests {
         }
     }
 
-    fn test_firewalls() -> Vec<FirewallEntry> {
-        vec![FirewallEntry::Inline {
-            firewall: Firewall {
-                name: "github".to_string(),
-                apis: vec![FirewallApi {
-                    id: "github-rest".to_string(),
-                    base: "https://api.github.com".to_string(),
-                    auth: FirewallAuth {
-                        headers: HashMap::new(),
-                        base: None,
-                        query: None,
-                        aws_sigv4: None,
-                    },
-                    host_policy: None,
-                    permissions: Some(vec![
-                        FirewallPermission {
-                            name: "repos.read".to_string(),
-                            description: None,
-                            rules: vec!["GET /repos/{owner}/{repo}".to_string()],
+    fn test_firewalls(connector_refs: &[&str]) -> Vec<FirewallEntry> {
+        connector_refs
+            .iter()
+            .map(|connector_ref| FirewallEntry::Inline {
+                firewall: Firewall {
+                    name: (*connector_ref).to_string(),
+                    apis: vec![FirewallApi {
+                        id: format!("{connector_ref}-rest"),
+                        base: format!("https://api.{connector_ref}.com"),
+                        auth: FirewallAuth {
+                            headers: HashMap::new(),
+                            base: None,
+                            query: None,
+                            aws_sigv4: None,
                         },
-                        FirewallPermission {
-                            name: "issues.write".to_string(),
-                            description: None,
-                            rules: vec!["POST /repos/{owner}/{repo}/issues".to_string()],
-                        },
-                    ]),
-                }],
-            },
-        }]
+                        host_policy: None,
+                        permissions: Some(vec![
+                            FirewallPermission {
+                                name: "repos.read".to_string(),
+                                description: None,
+                                rules: vec!["GET /repos/{owner}/{repo}".to_string()],
+                            },
+                            FirewallPermission {
+                                name: "issues.write".to_string(),
+                                description: None,
+                                rules: vec!["POST /repos/{owner}/{repo}/issues".to_string()],
+                            },
+                        ]),
+                    }],
+                },
+            })
+            .collect()
     }
 
     fn policy(allow: &[&str], deny: &[&str], ask: &[&str], unknown_policy: &str) -> NetworkPolicy {
@@ -780,14 +783,17 @@ mod tests {
     #[tokio::test]
     async fn near_limit_registry_preserves_fail_closed_capacity() {
         let harness = RegistryHarness::new().await;
-        let firewalls = test_firewalls();
+        let firewalls = test_firewalls(&["github", "slack"]);
         let initial_policy = policy(
             &["allow.permission"],
             &["deny.permission"],
             &["ask.permission"],
             "ask",
         );
-        let network_policies = HashMap::from([("github".to_string(), initial_policy)]);
+        let network_policies = HashMap::from([
+            ("github".to_string(), initial_policy.clone()),
+            ("slack".to_string(), initial_policy),
+        ]);
         let empty_padding = HashMap::from([("PADDING".to_string(), String::new())]);
         let measured = VmRegistration {
             run_id: "run-near-limit",
@@ -807,17 +813,29 @@ mod tests {
             .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "github")
             .await
             .unwrap();
-        let fail_closed_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
-        let fail_closed_growth = fail_closed_bytes
+        let after_first_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        let first_fail_closed_growth = after_first_fail_closed
             .len()
             .checked_sub(normal_bytes.len())
             .expect("test policy should grow when failed closed");
-        assert!(fail_closed_growth > 0);
+        assert!(first_fail_closed_growth > 0);
+        harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "slack")
+            .await
+            .unwrap();
+        let after_all_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        let second_fail_closed_growth = after_all_fail_closed
+            .len()
+            .checked_sub(after_first_fail_closed.len())
+            .expect("second test policy should grow when failed closed");
+        assert!(second_fail_closed_growth > 0);
+        let total_fail_closed_growth = first_fail_closed_growth + second_fail_closed_growth;
         harness.handle.unregister_vm("10.200.0.2").await.unwrap();
 
         let max_bytes = PROXY_REGISTRY_MAX_BYTES as usize;
         let padding_len = max_bytes
-            .checked_sub(normal_bytes.len() + fail_closed_growth)
+            .checked_sub(normal_bytes.len() + total_fail_closed_growth)
             .expect("measured registry should leave room for padding");
         let padding = HashMap::from([("PADDING".to_string(), "x".repeat(padding_len))]);
         let near_limit = VmRegistration {
@@ -833,7 +851,7 @@ mod tests {
             .await
             .unwrap();
         let before_patch = tokio::fs::read(harness.registry_path()).await.unwrap();
-        assert_eq!(before_patch.len() + fail_closed_growth, max_bytes);
+        assert_eq!(before_patch.len() + total_fail_closed_growth, max_bytes);
 
         let error = harness
             .handle
@@ -868,6 +886,19 @@ mod tests {
             .await
             .unwrap();
         assert!(updated);
+        let after_first_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        assert_eq!(
+            after_first_fail_closed.len() + second_fail_closed_growth,
+            max_bytes
+        );
+        read_registry(harness.registry_path()).await.unwrap();
+
+        let updated = harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "slack")
+            .await
+            .unwrap();
+        assert!(updated);
         let final_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
         assert_eq!(final_bytes.len(), max_bytes);
         read_registry(harness.registry_path()).await.unwrap();
@@ -876,7 +907,7 @@ mod tests {
     #[tokio::test]
     async fn patch_network_policy_requires_matching_run_and_connector() {
         let harness = RegistryHarness::new().await;
-        let firewalls = test_firewalls();
+        let firewalls = test_firewalls(&["github"]);
         let mut network_policies = HashMap::new();
         network_policies.insert(
             "github".to_string(),
@@ -946,7 +977,7 @@ mod tests {
     #[tokio::test]
     async fn fail_closed_network_policy_uses_existing_policy_names() {
         let harness = RegistryHarness::new().await;
-        let firewalls = test_firewalls();
+        let firewalls = test_firewalls(&["github"]);
         let without_policy = VmRegistration {
             run_id: "run-1",
             firewalls: Some(&firewalls),
