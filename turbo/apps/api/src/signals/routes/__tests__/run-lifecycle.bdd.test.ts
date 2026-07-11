@@ -7798,7 +7798,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
-  it("fails a clean exit whose run never reported a checkpoint", async () => {
+  it("acknowledges a clean exit whose missing checkpoint fails the run", async () => {
     const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -7815,10 +7815,14 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const missing = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
       sandboxHeaders,
-      [404],
+      [200],
     );
-    expectApiError(missing.body);
-    expect(missing.body.error.message).toBe("Checkpoint for run not found");
+    if (missing.status !== 200) {
+      throw new Error(
+        "Expected the missing checkpoint failure to be acknowledged",
+      );
+    }
+    expect(missing.body).toStrictEqual({ success: true, status: "failed" });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${run.runId}`,
       { status: "failed" },
