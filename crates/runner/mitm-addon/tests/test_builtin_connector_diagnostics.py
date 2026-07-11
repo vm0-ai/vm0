@@ -42,18 +42,13 @@ def _firewall(
 
 
 def _diagnostic_snapshot(
-    firewalls: dict[str, dict] | list[dict],
+    firewalls: list[dict],
 ) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot:
-    firewall_map = (
-        firewalls
-        if isinstance(firewalls, dict)
-        else {firewall["name"]: firewall for firewall in firewalls}
-    )
     raw_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
         dependency_file_key=_TEST_FILE_KEY,
         catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
             identity=("cache", "sha256:" + "0" * 64, "test", _TEST_FILE_KEY),
-            firewalls=firewall_map,
+            firewalls={firewall["name"]: firewall for firewall in firewalls},
         ),
         cache_path=_TEST_FILE_KEY[0],
     )
