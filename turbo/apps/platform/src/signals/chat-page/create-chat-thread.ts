@@ -62,7 +62,6 @@ import { chatMessageOrderSequence } from "../chat-message-order.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
-import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../zero-page/model-default-selection.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -520,18 +519,10 @@ function createModelSelection(
   threadMeta$: Computed<Promise<ThreadMeta | null>>,
   dataSource: ChatThreadDataSource,
 ) {
-  const modelSelection$ = computed(
-    async (get): Promise<ModelProviderSelection | null> => {
-      const threadMeta = await get(threadMeta$);
-      if (threadMeta?.selectedModel) {
-        return {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-          selectedModel: threadMeta.selectedModel,
-        };
-      }
-      return null;
-    },
-  );
+  const selectedModel$ = computed(async (get): Promise<string | null> => {
+    const threadMeta = await get(threadMeta$);
+    return threadMeta?.selectedModel ?? null;
+  });
 
   const setModelSelection$ = command(
     async (
@@ -550,7 +541,7 @@ function createModelSelection(
   );
 
   return {
-    modelSelection$,
+    selectedModel$,
     setModelSelection$,
   };
 }
@@ -1123,7 +1114,57 @@ function createGroupedChatMessagesCache(
     },
   );
 
-  return { groupedChatMessages$, refreshGroupedChatMessagesCache$ };
+  const hasChatGroups$ = computed(async (get): Promise<boolean> => {
+    return (await get(groupedChatMessages$)).length > 0;
+  });
+
+  const queuedUserMessages$ = computed(
+    async (get): Promise<readonly EnrichedChatMessage[]> => {
+      return (await get(groupedChatMessages$)).flatMap((group) => {
+        if (group.role !== "user") {
+          return [];
+        }
+        return group.messages.filter((message) => {
+          return message.isQueued;
+        });
+      });
+    },
+  );
+
+  const emptyQueuedUserMessages = Promise.resolve(
+    [] as readonly EnrichedChatMessage[],
+  );
+  const emptyQueuedUserMessages$ = computed(() => {
+    return emptyQueuedUserMessages;
+  });
+
+  const hasQueuedUserMessages$ = computed(async (get): Promise<boolean> => {
+    return (await get(groupedChatMessages$)).some((group) => {
+      return (
+        group.role === "user" &&
+        group.messages.some((message) => {
+          return message.isQueued;
+        })
+      );
+    });
+  });
+
+  const lastAssistantCancelled$ = computed(async (get): Promise<boolean> => {
+    const groups = await get(groupedChatMessages$);
+    const lastGroup = groups.at(-1);
+    const lastMessage = lastGroup?.messages.at(-1);
+    return lastMessage ? isCancelledAssistantMessage(lastMessage) : false;
+  });
+
+  return {
+    groupedChatMessages$,
+    hasChatGroups$,
+    hasQueuedUserMessages$,
+    queuedUserMessages$,
+    emptyQueuedUserMessages$,
+    lastAssistantCancelled$,
+    refreshGroupedChatMessagesCache$,
+  };
 }
 
 type PersistentMessages$ = State<PagedChatMessage[]>;
@@ -1656,8 +1697,8 @@ function createPagedMessages(
   // because goal markers are control rows, not transcript rows.
   const activeGoal$ = createActiveGoalComputed(rawMessages$);
 
-  const { groupedChatMessages$, refreshGroupedChatMessagesCache$ } =
-    createGroupedChatMessagesCache(rawMessages$);
+  const groupedMessages = createGroupedChatMessagesCache(rawMessages$);
+  const { refreshGroupedChatMessagesCache$ } = groupedMessages;
 
   const writePersistentMessages$ = createWritePersistentMessages(
     threadId,
@@ -1748,8 +1789,7 @@ function createPagedMessages(
     latestChatMessageId$,
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
-    groupedChatMessages$,
-    refreshGroupedChatMessagesCache$,
+    ...groupedMessages,
     rawMessages$,
     hasOlderHistory$,
     messageRunIndicatorState$,
@@ -2711,7 +2751,7 @@ function createSendMessage(deps: SendMessageDeps) {
 interface QueueMessageDeps {
   threadId: string;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
-  modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  selectedModel$: Computed<Promise<string | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
@@ -2724,7 +2764,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
     threadMeta$,
-    modelSelection$,
+    selectedModel$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
@@ -2760,16 +2800,15 @@ function createQueueMessage(deps: QueueMessageDeps) {
         get(featureSwitch$),
       );
 
-      const modelSelection = await get(modelSelection$);
+      const selectedModel = await get(selectedModel$);
       signal.throwIfAborted();
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
         prompt,
         {
-          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-            modelSelection?.selectedModel,
-          ),
+          excludeVisualAttachments:
+            shouldExcludeVisualAttachmentsForModel(selectedModel),
         },
         signal,
       );
@@ -2818,7 +2857,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       const realAgentInPreviewEnabled =
         features[FeatureSwitchKey.RealAgentInPreview] ?? false;
       const runOptions = runOptionsFromModelProviderSelection(
-        modelSelection,
+        selectedModel ? { selectedModel } : null,
         codexFastModeEnabled,
       );
       await Promise.all([
@@ -3553,7 +3592,7 @@ export function createChatThreadSignals(
   const threadMeta$ = createThreadMeta(threadId);
   const { threadTitleEmoji$, threadTitleText$ } =
     createThreadTitleParts(threadMeta$);
-  const { modelSelection$, setModelSelection$ } = createModelSelection(
+  const { selectedModel$, setModelSelection$ } = createModelSelection(
     threadId,
     threadMeta$,
     dataSource,
@@ -3604,7 +3643,7 @@ export function createChatThreadSignals(
   const messageActions = createThreadMessageActions({
     threadId,
     threadMeta$,
-    modelSelection$,
+    selectedModel$,
     rawMessages$: messages.rawMessages$,
     groupedChatMessages$: messages.groupedChatMessages$,
     draft,
@@ -3632,7 +3671,7 @@ export function createChatThreadSignals(
     reloadThread$,
     threadTitleEmoji$,
     threadTitleText$,
-    modelSelection$,
+    selectedModel$,
     setModelSelection$,
     ...computerUseHostSelection,
     ...messageActions,
@@ -3653,6 +3692,11 @@ export function createChatThreadSignals(
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
     groupedChatMessages$: messages.groupedChatMessages$,
     renderedGroupedChatMessages$: messages.renderedGroupedChatMessages$,
+    hasChatGroups$: messages.hasChatGroups$,
+    hasQueuedUserMessages$: messages.hasQueuedUserMessages$,
+    queuedUserMessages$: messages.queuedUserMessages$,
+    emptyQueuedUserMessages$: messages.emptyQueuedUserMessages$,
+    lastAssistantCancelled$: messages.lastAssistantCancelled$,
     hasOlderHistory$: messages.hasOlderHistory$,
     messageRunIndicatorState$: messages.messageRunIndicatorState$,
     latestRunStatus$: messages.latestRunStatus$,

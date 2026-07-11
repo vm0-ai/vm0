@@ -41,7 +41,7 @@ export interface ChatThreadSignals {
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
-  modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  selectedModel$: Computed<Promise<string | null>>;
   setModelSelection$: Command<
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
@@ -106,6 +106,11 @@ export interface ChatThreadSignals {
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
   renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  hasChatGroups$: Computed<Promise<boolean>>;
+  hasQueuedUserMessages$: Computed<Promise<boolean>>;
+  queuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
+  emptyQueuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
+  lastAssistantCancelled$: Computed<Promise<boolean>>;
   hasOlderHistory$: Computed<Promise<boolean>>;
   messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;

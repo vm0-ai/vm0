@@ -37,7 +37,6 @@ export interface PatchDraftArgs {
 export interface PatchModelSelectionArgs {
   threadId: string;
   modelSelection: {
-    readonly modelProviderId: string;
     readonly selectedModel: string;
     readonly codexServiceTier?: CodexServiceTier;
   } | null;

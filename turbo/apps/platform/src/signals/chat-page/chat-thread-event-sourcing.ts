@@ -105,7 +105,7 @@ async function readChatThreadEventState(
   };
 }
 
-export const eventDrivenActiveRunChatThreadIds$ = computed(
+export const sidebarActiveThreadIds$ = computed(
   async (get): Promise<ReadonlySet<string>> => {
     get(reloadChatActiveRunIdsCounter$);
     const client = get(zeroClient$)(chatThreadsContract);
