@@ -29,6 +29,13 @@ function readGlobalCss(): string {
 }
 
 describe("platform entrypoint safe area behavior", () => {
+  it("keeps iOS system chrome opaque above fullscreen surfaces", () => {
+    expect(indexHtml).toMatch(
+      /<meta\s+name="apple-mobile-web-app-status-bar-style"\s+content="default"\s*\/>/,
+    );
+    expect(indexHtml).not.toContain('content="black-translucent"');
+  });
+
   it("keeps supported viewport hints without unsupported keyboard directives", () => {
     const viewportDirectives = getViewportDirectives();
 
