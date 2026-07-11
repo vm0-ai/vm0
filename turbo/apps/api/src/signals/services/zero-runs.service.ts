@@ -15,11 +15,9 @@ import {
   sandboxReuseResultSchema,
   type SandboxReuseResult,
 } from "@vm0/api-contracts/contracts/webhooks";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -135,14 +133,8 @@ function queuedRunRows(db: ReadDb, orgId: string): Promise<QueuedRunRow[]> {
     })
     .from(agentRuns)
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
+    .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "queued")))
     .orderBy(asc(agentRuns.createdAt));
@@ -158,14 +150,8 @@ function runningRunRows(db: ReadDb, orgId: string): Promise<RunningRunRow[]> {
       agentDisplayName: zeroAgents.displayName,
     })
     .from(agentRuns)
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
-    )
+    .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .leftJoin(agentComposes, eq(agentSessions.agentComposeId, agentComposes.id))
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "running")))
     .orderBy(asc(agentRuns.startedAt));
@@ -381,13 +367,10 @@ export function agentRunList(args: {
         composeName: agentComposes.name,
       })
       .from(agentRuns)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(
         agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
+        eq(agentSessions.agentComposeId, agentComposes.id),
       )
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt))

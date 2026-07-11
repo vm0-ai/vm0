@@ -3,11 +3,9 @@ import { randomUUID } from "node:crypto";
 import archiver from "archiver";
 import { eq, or, sql } from "drizzle-orm";
 import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { computed, type Computed } from "ccstate";
 
@@ -64,9 +62,7 @@ interface RunMeta {
   readonly result: unknown;
 }
 
-interface DiagnosticRunRecord extends RunMeta {
-  readonly agentComposeVersionId: string | null;
-}
+type DiagnosticRunRecord = RunMeta;
 
 interface AgentMeta {
   readonly displayName?: string | null;
@@ -172,7 +168,7 @@ export function submitDiagnosticBundle(
 
     const [connectors, agentConfig, sessionRuns] = await Promise.all([
       get(collectConnectors(orgId, userId)),
-      collectAgentConfig(db, run.agentComposeVersionId),
+      collectAgentConfig(db, runId),
       collectSessionRuns(db, runId, agentSessionId),
     ]);
 
@@ -467,12 +463,8 @@ function uploadDiagnosticZip(params: {
 
 async function collectAgentConfig(
   db: ServiceDb,
-  agentComposeVersionId: string | null,
+  runId: string,
 ): Promise<Record<string, unknown>> {
-  if (!agentComposeVersionId) {
-    return {};
-  }
-
   const [agent] = await db
     .select({
       displayName: zeroAgents.displayName,
@@ -480,13 +472,14 @@ async function collectAgentConfig(
       sound: zeroAgents.sound,
       composeContent: agentComposeVersions.content,
     })
-    .from(agentComposeVersions)
-    .innerJoin(
-      agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .innerJoin(zeroAgents, eq(zeroAgents.id, agentSessions.agentComposeId))
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
     )
-    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
-    .where(eq(agentComposeVersions.id, agentComposeVersionId))
+    .where(eq(agentRuns.id, runId))
     .limit(1);
 
   if (!agent) {
@@ -515,7 +508,6 @@ function sessionRunSelect() {
     startedAt: agentRuns.startedAt,
     completedAt: agentRuns.completedAt,
     lastEventSequence: agentRuns.lastEventSequence,
-    agentComposeVersionId: agentRuns.agentComposeVersionId,
     runnerGroup: agentRuns.runnerGroup,
     continuedFromSessionId: agentRuns.continuedFromSessionId,
     result: agentRuns.result,

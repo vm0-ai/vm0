@@ -3,8 +3,8 @@ import type {
   ZeroGoalResponse,
   ZeroGoalStatus,
 } from "@vm0/api-contracts/contracts/zero-goals";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals, type ThreadGoalStatus } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -109,15 +109,12 @@ async function currentGoalContext(
   const [row] = await db
     .select({
       threadId: zeroRuns.chatThreadId,
-      agentId: agentComposeVersions.composeId,
+      agentId: agentSessions.agentComposeId,
       runGoalId: zeroRuns.goalId,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
-    )
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(
       and(
         eq(agentRuns.id, auth.runId),

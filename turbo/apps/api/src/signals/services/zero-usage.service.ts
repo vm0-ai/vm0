@@ -6,11 +6,9 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-usage";
 import type { UsageRecordRange } from "@vm0/api-contracts/contracts/zero-usage-record";
 import type { UsageRunsResponse } from "@vm0/api-contracts/contracts/zero-usage-daily";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -148,13 +146,10 @@ export const zeroUsageRuns$ = command(
       .select({ total: count() })
       .from(agentRuns)
       .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(
         agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
+        eq(agentSessions.agentComposeId, agentComposes.id),
       )
       .where(and(...conditions, hasRunUsageTotals(eventUsage)));
     signal.throwIfAborted();
@@ -180,13 +175,10 @@ export const zeroUsageRuns$ = command(
       .from(agentRuns)
       .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-      )
+      .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
       .leftJoin(
         agentComposes,
-        eq(agentComposeVersions.composeId, agentComposes.id),
+        eq(agentSessions.agentComposeId, agentComposes.id),
       )
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(and(...conditions, hasRunUsageTotals(eventUsage)))

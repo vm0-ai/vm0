@@ -6,7 +6,10 @@ import {
   apiKeysByIdContract,
   apiKeysContract,
 } from "@vm0/api-contracts/contracts/api-keys";
-import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
+import {
+  composesMainContract,
+  type ZeroCapability,
+} from "@vm0/api-contracts/contracts/composes";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
@@ -50,7 +53,10 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
-import { generateSandboxToken } from "../../../auth/tokens";
+import {
+  generateSandboxToken,
+  signSandboxJwtForTests,
+} from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
@@ -521,6 +527,27 @@ export function createRunsAutomationsApi(context: TestContext) {
         throw new Error("Sandbox run tokens require an org-scoped actor");
       }
       return generateSandboxToken(actor.userId, runId, actor.orgId);
+    },
+
+    /** Mints a route-test token without changing production capability issuance. */
+    zeroTokenForRunWithCapabilities(
+      actor: ApiTestUser,
+      runId: string,
+      capabilities: readonly ZeroCapability[],
+    ): string {
+      if (!actor.orgId) {
+        throw new Error("Zero run tokens require an org-scoped actor");
+      }
+      const seconds = Math.floor(now() / 1000);
+      return signSandboxJwtForTests({
+        scope: "zero",
+        userId: actor.userId,
+        orgId: actor.orgId,
+        runId,
+        capabilities: [...capabilities],
+        iat: seconds,
+        exp: seconds + 3600,
+      });
     },
 
     async createCompose(

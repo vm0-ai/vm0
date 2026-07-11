@@ -22,7 +22,7 @@ import {
 } from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
@@ -585,6 +585,7 @@ interface ClaimedRun {
   readonly id: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
   readonly agentComposeVersionId: string | null;
@@ -615,13 +616,10 @@ async function getActiveRunNetworkPolicyScope(
       runId: agentRuns.id,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      agentId: agentComposeVersions.composeId,
+      agentId: agentSessions.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
-    )
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
     .limit(1);
   signal.throwIfAborted();
@@ -657,6 +655,7 @@ async function getClaimableJob(
         id: agentRuns.id,
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
+        agentId: agentSessions.agentComposeId,
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
@@ -666,6 +665,7 @@ async function getClaimableJob(
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(
       and(
         eq(runnerJobQueue.runId, runId),
@@ -1010,22 +1010,6 @@ async function secretValuesForRunner(
   });
 }
 
-async function agentIdForRun(
-  db: Pick<Db, "select">,
-  run: Pick<ClaimedRun, "agentComposeVersionId">,
-): Promise<string | undefined> {
-  if (!run.agentComposeVersionId) {
-    return undefined;
-  }
-
-  const [version] = await db
-    .select({ agentId: agentComposeVersions.composeId })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
-    .limit(1);
-  return version?.agentId ?? undefined;
-}
-
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
@@ -1043,20 +1027,12 @@ async function refreshClaimNetworkPolicies(args: {
     };
   }
 
-  const agentId = await agentIdForRun(args.db, args.run);
-  if (!agentId) {
-    return {
-      networkPolicies: args.storedContext.networkPolicies,
-      networkPolicyRefreshes: undefined,
-    };
-  }
-
   const refreshes = await resolveActiveNetworkPolicyRefreshes(
     args.db,
     {
       orgId: args.run.orgId,
       userId: args.run.userId,
-      agentId,
+      agentId: args.run.agentId,
     },
     connectorRefs,
   );
