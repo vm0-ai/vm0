@@ -8,6 +8,7 @@ use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
+use crate::state_file::PROXY_REGISTRY_MAX_BYTES;
 use crate::types::{FirewallEntry, NetworkPolicy, SecretConnectorMetadata};
 
 #[derive(Serialize, Deserialize)]
@@ -61,7 +62,7 @@ pub struct VmRegistration<'a> {
 async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
     let content = crate::state_file::read_to_string(
         path,
-        crate::state_file::PROXY_REGISTRY_MAX_BYTES,
+        PROXY_REGISTRY_MAX_BYTES,
         crate::state_file::OwnerCheck::CurrentEuid,
     )
     .await?
@@ -70,15 +71,70 @@ async fn read_registry(path: &std::path::Path) -> RunnerResult<ProxyRegistry> {
         .map_err(|e| RunnerError::Internal(format!("parse registry: {e}")))
 }
 
-/// Write the proxy registry JSON file with target-path atomic replacement on Unix.
+/// Write the proxy registry while preserving capacity for every stored policy
+/// to transition to fail-closed.
 ///
 /// On supported Unix runner hosts, this ensures the Python mitm-addon never
 /// reads a partially-written file.
 async fn write_registry(path: &std::path::Path, value: &ProxyRegistry) -> RunnerResult<()> {
-    let content = serde_json::to_string(value)
+    let fail_closed_reserve = fail_closed_capacity_bytes(value)?;
+    write_registry_with_reserve(path, value, fail_closed_reserve).await
+}
+
+async fn write_registry_consuming_fail_closed_capacity(
+    path: &Path,
+    value: &ProxyRegistry,
+) -> RunnerResult<()> {
+    write_registry_with_reserve(path, value, 0).await
+}
+
+async fn write_registry_with_reserve(
+    path: &Path,
+    value: &ProxyRegistry,
+    fail_closed_reserve: u64,
+) -> RunnerResult<()> {
+    let content = serde_json::to_vec(value)
         .map_err(|e| RunnerError::Internal(format!("serialize registry: {e}")))?;
+    let content_bytes = content.len() as u64;
+    let required_bytes = content_bytes
+        .checked_add(fail_closed_reserve)
+        .ok_or_else(|| RunnerError::Internal("proxy registry size overflow".to_string()))?;
+    if required_bytes > PROXY_REGISTRY_MAX_BYTES {
+        return Err(RunnerError::Internal(format!(
+            "proxy registry {} requires {required_bytes} bytes ({content_bytes} serialized plus \
+             {fail_closed_reserve} reserved for fail-closed policy updates), exceeds \
+             {PROXY_REGISTRY_MAX_BYTES} bytes",
+            path.display()
+        )));
+    }
     remove_legacy_registry_tmp(path).await?;
-    crate::state_file::write_private_atomic(path, content.as_bytes()).await
+    crate::state_file::write_private_atomic(path, &content).await
+}
+
+fn fail_closed_capacity_bytes(value: &ProxyRegistry) -> RunnerResult<u64> {
+    // Replacing a policy changes only that independent JSON object value. The
+    // sum of positive per-policy deltas is therefore the maximum growth across
+    // any subset of sequential fail-closed transitions.
+    value
+        .vms
+        .values()
+        .filter_map(|vm| vm.network_policies.as_ref())
+        .flat_map(|policies| policies.values())
+        .try_fold(0_u64, |reserve, policy| {
+            let current_bytes = serde_json::to_vec(policy)
+                .map_err(|e| RunnerError::Internal(format!("serialize network policy: {e}")))?
+                .len() as u64;
+            let fail_closed_bytes = serde_json::to_vec(&fail_closed_policy(policy))
+                .map_err(|e| {
+                    RunnerError::Internal(format!("serialize fail-closed network policy: {e}"))
+                })?
+                .len() as u64;
+            reserve
+                .checked_add(fail_closed_bytes.saturating_sub(current_bytes))
+                .ok_or_else(|| {
+                    RunnerError::Internal("proxy registry fail-closed reserve overflow".to_string())
+                })
+        })
 }
 
 async fn remove_legacy_registry_tmp(path: &Path) -> RunnerResult<()> {
@@ -208,20 +264,19 @@ impl ProxyRegistryHandle {
             return Ok(false);
         }
 
-        let Some(permission_names) = connector_known_permission_names(vm, connector_ref) else {
+        if !vm_has_connector_firewall(vm, connector_ref) {
+            return Ok(false);
+        }
+        let Some(policy) = vm
+            .network_policies
+            .as_mut()
+            .and_then(|policies| policies.get_mut(connector_ref))
+        else {
             return Ok(false);
         };
-        let policy = NetworkPolicy {
-            allow: Vec::new(),
-            deny: permission_names,
-            ask: Vec::new(),
-            unknown_policy: "deny".to_string(),
-        };
-        vm.network_policies
-            .get_or_insert_with(HashMap::new)
-            .insert(connector_ref.to_string(), policy);
+        *policy = fail_closed_policy(policy);
         registry.updated_at = chrono::Utc::now().timestamp_millis();
-        write_registry(&self.registry_path, &registry).await?;
+        write_registry_consuming_fail_closed_capacity(&self.registry_path, &registry).await?;
         info!(
             source_ip,
             run_id, connector_ref, "failed closed connector network policy in proxy registry"
@@ -259,29 +314,18 @@ impl ProxyRegistryHandle {
     }
 }
 
-fn connector_known_permission_names(vm: &VmEntry, connector_ref: &str) -> Option<Vec<String>> {
-    if !vm_has_connector_firewall(vm, connector_ref) {
-        return None;
+fn fail_closed_policy(policy: &NetworkPolicy) -> NetworkPolicy {
+    let mut permission_names = policy.allow.clone();
+    permission_names.extend(policy.deny.iter().cloned());
+    permission_names.extend(policy.ask.iter().cloned());
+    permission_names.sort();
+    permission_names.dedup();
+    NetworkPolicy {
+        allow: Vec::new(),
+        deny: permission_names,
+        ask: Vec::new(),
+        unknown_policy: "deny".to_string(),
     }
-
-    if let Some(policy) = vm
-        .network_policies
-        .as_ref()
-        .and_then(|policies| policies.get(connector_ref))
-    {
-        let mut names = policy.allow.clone();
-        names.extend(policy.deny.iter().cloned());
-        names.extend(policy.ask.iter().cloned());
-        names.sort();
-        names.dedup();
-        return Some(names);
-    }
-
-    let firewalls = vm.firewalls.as_deref()?;
-    firewalls
-        .iter()
-        .find_map(|entry| inline_firewall_permission_names(entry, connector_ref))
-        .or_else(|| Some(Vec::new()))
 }
 
 fn vm_has_connector_firewall(vm: &VmEntry, connector_ref: &str) -> bool {
@@ -296,23 +340,6 @@ fn firewall_entry_matches(entry: &FirewallEntry, connector_ref: &str) -> bool {
     match entry {
         FirewallEntry::Builtin { name, .. } => name == connector_ref,
         FirewallEntry::Inline { firewall } => firewall.name == connector_ref,
-    }
-}
-
-fn inline_firewall_permission_names(
-    entry: &FirewallEntry,
-    connector_ref: &str,
-) -> Option<Vec<String>> {
-    match entry {
-        FirewallEntry::Inline { firewall } if firewall.name == connector_ref => Some(
-            firewall
-                .apis
-                .iter()
-                .flat_map(|api| api.permissions.as_deref().unwrap_or_default())
-                .map(|permission| permission.name.clone())
-                .collect(),
-        ),
-        _ => None,
     }
 }
 
@@ -387,35 +414,38 @@ mod tests {
         }
     }
 
-    fn test_firewalls() -> Vec<FirewallEntry> {
-        vec![FirewallEntry::Inline {
-            firewall: Firewall {
-                name: "github".to_string(),
-                apis: vec![FirewallApi {
-                    id: "github-rest".to_string(),
-                    base: "https://api.github.com".to_string(),
-                    auth: FirewallAuth {
-                        headers: HashMap::new(),
-                        base: None,
-                        query: None,
-                        aws_sigv4: None,
-                    },
-                    host_policy: None,
-                    permissions: Some(vec![
-                        FirewallPermission {
-                            name: "repos.read".to_string(),
-                            description: None,
-                            rules: vec!["GET /repos/{owner}/{repo}".to_string()],
+    fn test_firewalls(connector_refs: &[&str]) -> Vec<FirewallEntry> {
+        connector_refs
+            .iter()
+            .map(|connector_ref| FirewallEntry::Inline {
+                firewall: Firewall {
+                    name: (*connector_ref).to_string(),
+                    apis: vec![FirewallApi {
+                        id: format!("{connector_ref}-rest"),
+                        base: format!("https://api.{connector_ref}.com"),
+                        auth: FirewallAuth {
+                            headers: HashMap::new(),
+                            base: None,
+                            query: None,
+                            aws_sigv4: None,
                         },
-                        FirewallPermission {
-                            name: "issues.write".to_string(),
-                            description: None,
-                            rules: vec!["POST /repos/{owner}/{repo}/issues".to_string()],
-                        },
-                    ]),
-                }],
-            },
-        }]
+                        host_policy: None,
+                        permissions: Some(vec![
+                            FirewallPermission {
+                                name: "repos.read".to_string(),
+                                description: None,
+                                rules: vec!["GET /repos/{owner}/{repo}".to_string()],
+                            },
+                            FirewallPermission {
+                                name: "issues.write".to_string(),
+                                description: None,
+                                rules: vec!["POST /repos/{owner}/{repo}/issues".to_string()],
+                            },
+                        ]),
+                    }],
+                },
+            })
+            .collect()
     }
 
     fn policy(allow: &[&str], deny: &[&str], ask: &[&str], unknown_policy: &str) -> NetworkPolicy {
@@ -687,9 +717,197 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oversized_registration_preserves_readable_registry() {
+        let harness = RegistryHarness::new().await;
+        let existing = VmRegistration {
+            run_id: "run-existing",
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &existing)
+            .await
+            .unwrap();
+        let previous_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
+
+        let oversized_vars = HashMap::from([(
+            "OVERSIZED".to_string(),
+            "x".repeat(PROXY_REGISTRY_MAX_BYTES as usize),
+        )]);
+        let oversized = VmRegistration {
+            run_id: "run-oversized",
+            vars: Some(&oversized_vars),
+            ..base_registration()
+        };
+        let error = harness
+            .handle
+            .register_vm("10.200.0.3", &oversized)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("exceeds {PROXY_REGISTRY_MAX_BYTES} bytes")),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            tokio::fs::read(harness.registry_path()).await.unwrap(),
+            previous_bytes,
+            "a rejected registration must not replace the readable registry"
+        );
+        let loaded = read_registry(harness.registry_path()).await.unwrap();
+        assert!(loaded.vms.contains_key("10.200.0.2"));
+        assert!(!loaded.vms.contains_key("10.200.0.3"));
+
+        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
+        let later = VmRegistration {
+            run_id: "run-later",
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.3", &later)
+            .await
+            .unwrap();
+        harness.handle.unregister_vm("10.200.0.3").await.unwrap();
+        assert!(
+            read_registry(harness.registry_path())
+                .await
+                .unwrap()
+                .vms
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn near_limit_registry_preserves_fail_closed_capacity() {
+        let harness = RegistryHarness::new().await;
+        let firewalls = test_firewalls(&["github", "slack"]);
+        let initial_policy = policy(
+            &["allow.permission"],
+            &["deny.permission"],
+            &["ask.permission"],
+            "ask",
+        );
+        let network_policies = HashMap::from([
+            ("github".to_string(), initial_policy.clone()),
+            ("slack".to_string(), initial_policy),
+        ]);
+        let empty_padding = HashMap::from([("PADDING".to_string(), String::new())]);
+        let measured = VmRegistration {
+            run_id: "run-near-limit",
+            firewalls: Some(&firewalls),
+            network_policies: Some(&network_policies),
+            vars: Some(&empty_padding),
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &measured)
+            .await
+            .unwrap();
+        let normal_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
+        harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "github")
+            .await
+            .unwrap();
+        let after_first_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        let first_fail_closed_growth = after_first_fail_closed
+            .len()
+            .checked_sub(normal_bytes.len())
+            .expect("test policy should grow when failed closed");
+        assert!(first_fail_closed_growth > 0);
+        harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "slack")
+            .await
+            .unwrap();
+        let after_all_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        let second_fail_closed_growth = after_all_fail_closed
+            .len()
+            .checked_sub(after_first_fail_closed.len())
+            .expect("second test policy should grow when failed closed");
+        assert!(second_fail_closed_growth > 0);
+        let total_fail_closed_growth = first_fail_closed_growth + second_fail_closed_growth;
+        harness.handle.unregister_vm("10.200.0.2").await.unwrap();
+
+        let max_bytes = PROXY_REGISTRY_MAX_BYTES as usize;
+        let padding_len = max_bytes
+            .checked_sub(normal_bytes.len() + total_fail_closed_growth)
+            .expect("measured registry should leave room for padding");
+        let padding = HashMap::from([("PADDING".to_string(), "x".repeat(padding_len))]);
+        let near_limit = VmRegistration {
+            run_id: "run-near-limit",
+            firewalls: Some(&firewalls),
+            network_policies: Some(&network_policies),
+            vars: Some(&padding),
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &near_limit)
+            .await
+            .unwrap();
+        let before_patch = tokio::fs::read(harness.registry_path()).await.unwrap();
+        assert_eq!(before_patch.len() + total_fail_closed_growth, max_bytes);
+
+        let error = harness
+            .handle
+            .patch_network_policy_if_run_matches(
+                "10.200.0.2",
+                "run-near-limit",
+                "github",
+                policy(
+                    &["allow.permission", "additional.permission"],
+                    &["deny.permission"],
+                    &["ask.permission"],
+                    "ask",
+                ),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("exceeds {PROXY_REGISTRY_MAX_BYTES} bytes")),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            tokio::fs::read(harness.registry_path()).await.unwrap(),
+            before_patch,
+            "a policy update that consumes fail-closed capacity must be rejected"
+        );
+
+        let updated = harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "github")
+            .await
+            .unwrap();
+        assert!(updated);
+        let after_first_fail_closed = tokio::fs::read(harness.registry_path()).await.unwrap();
+        assert_eq!(
+            after_first_fail_closed.len() + second_fail_closed_growth,
+            max_bytes
+        );
+        read_registry(harness.registry_path()).await.unwrap();
+
+        let updated = harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-near-limit", "slack")
+            .await
+            .unwrap();
+        assert!(updated);
+        let final_bytes = tokio::fs::read(harness.registry_path()).await.unwrap();
+        assert_eq!(final_bytes.len(), max_bytes);
+        read_registry(harness.registry_path()).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn patch_network_policy_requires_matching_run_and_connector() {
         let harness = RegistryHarness::new().await;
-        let firewalls = test_firewalls();
+        let firewalls = test_firewalls(&["github"]);
         let mut network_policies = HashMap::new();
         network_policies.insert(
             "github".to_string(),
@@ -759,7 +977,24 @@ mod tests {
     #[tokio::test]
     async fn fail_closed_network_policy_uses_existing_policy_names() {
         let harness = RegistryHarness::new().await;
-        let firewalls = test_firewalls();
+        let firewalls = test_firewalls(&["github"]);
+        let without_policy = VmRegistration {
+            run_id: "run-1",
+            firewalls: Some(&firewalls),
+            ..base_registration()
+        };
+        harness
+            .handle
+            .register_vm("10.200.0.2", &without_policy)
+            .await
+            .unwrap();
+        let updated = harness
+            .handle
+            .fail_closed_network_policy_if_run_matches("10.200.0.2", "run-1", "github")
+            .await
+            .unwrap();
+        assert!(!updated);
+
         let mut network_policies = HashMap::new();
         network_policies.insert(
             "github".to_string(),
