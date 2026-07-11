@@ -129,10 +129,15 @@ fn load_guest_binaries() -> Vec<GuestBinary> {
         }
     }
     for guest in &guests {
-        if !Path::new(&guest.destination).is_absolute() {
+        let destination = guest.destination.as_str();
+        let relative = destination.strip_prefix('/').unwrap_or("");
+        if relative.is_empty()
+            || relative
+                .split('/')
+                .any(|component| component.is_empty() || component == "." || component == "..")
+        {
             panic!(
-                "guest binary inventory destination must be absolute: {}",
-                guest.destination
+                "guest binary inventory destination must be an absolute, safe non-root path: {destination}"
             );
         }
     }

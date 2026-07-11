@@ -85,11 +85,20 @@ fn delivered_guests_match_cargo_and_release_contracts() {
         "guest destination",
         inventory.iter().map(|guest| guest.destination.as_str()),
     );
-    assert!(
-        inventory
-            .iter()
-            .all(|guest| guest.destination.starts_with('/'))
-    );
+    for guest in &inventory {
+        let relative = guest
+            .destination
+            .strip_prefix('/')
+            .unwrap_or_else(|| panic!("guest destination must be absolute: {}", guest.destination));
+        assert!(
+            !relative.is_empty()
+                && !relative
+                    .split('/')
+                    .any(|component| component.is_empty() || component == "." || component == ".."),
+            "guest destination must be a safe non-root path: {}",
+            guest.destination
+        );
+    }
 
     let output = Command::new(env!("CARGO"))
         .args([
