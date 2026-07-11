@@ -52,6 +52,6 @@ export function setupGlobalShortcut(
         }
       }
     }),
-    { signal },
+    { capture: true, signal },
   );
 }

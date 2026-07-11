@@ -312,7 +312,9 @@ function createMountEditorCommand({
         runtime.keyDown = () => {
           return false;
         };
-        runtime.paste = () => false;
+        runtime.paste = () => {
+          return false;
+        };
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
         editor.unmount();
@@ -362,7 +364,9 @@ export function createWorkflowComposerSignals(
     keyDown(_event: KeyboardEvent): boolean {
       return false;
     },
-    paste: (_event: ClipboardEvent, _currentTarget: HTMLElement) => false,
+    paste: (_event: ClipboardEvent, _currentTarget: HTMLElement) => {
+      return false;
+    },
   };
 
   const editor = createWorkflowEditor(runtime);

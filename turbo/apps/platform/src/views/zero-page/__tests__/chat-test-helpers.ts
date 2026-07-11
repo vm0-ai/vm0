@@ -184,11 +184,9 @@ export async function sendMessageInUI(
   await user.keyboard("{Enter}");
 }
 
-export function activeRunTextarea(): Promise<HTMLTextAreaElement> {
+export function activeRunComposer(): Promise<HTMLElement> {
   return waitFor(() => {
-    return screen.getByPlaceholderText(
-      /Type your next message/,
-    ) as HTMLTextAreaElement;
+    return screen.getByRole("textbox", { name: "Message" });
   });
 }
 
@@ -196,8 +194,8 @@ export async function sendQueuedMessage(
   user: ReturnType<typeof userEvent.setup>,
   text: string,
 ): Promise<void> {
-  const textarea = await activeRunTextarea();
-  await fill(textarea, text);
+  const composer = await activeRunComposer();
+  await fill(composer, text);
   await user.keyboard("{Enter}");
 }
 

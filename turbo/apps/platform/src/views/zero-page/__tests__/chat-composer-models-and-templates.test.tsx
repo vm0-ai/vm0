@@ -4217,14 +4217,10 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     await selectTemplate(user, template);
-    const queuedTextarea = await screen.findByPlaceholderText(
-      /Type your next message/,
-    );
-    await sendMessageInUI(
-      user,
-      queuedTextarea as HTMLTextAreaElement,
-      "Queue a matching deck",
-    );
+    const queuedComposer = await screen.findByRole("textbox", {
+      name: "Message",
+    });
+    await sendMessageInUI(user, queuedComposer, "Queue a matching deck");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
@@ -4257,9 +4253,7 @@ describe("chat composer templates", () => {
     await selectTemplate(user, template);
     await sendMessageInUI(
       user,
-      (await screen.findByPlaceholderText(
-        /Type your next message/,
-      )) as HTMLTextAreaElement,
+      await screen.findByRole("textbox", { name: "Message" }),
       "Queue a matching deck",
     );
 
