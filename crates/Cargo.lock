@@ -1350,7 +1350,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "chrono",
  "clap",
@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.58"
+version = "0.4.59"
 dependencies = [
  "bitvec",
  "libc",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.143.11"
+version = "0.143.12"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.17"
+version = "0.19.18"
 dependencies = [
  "async-trait",
  "serde",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.106"
+version = "0.37.107"
 dependencies = [
  "async-trait",
  "base64",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.26"
+version = "0.8.27"
 dependencies = [
  "async-trait",
  "guest-contracts",

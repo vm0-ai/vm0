@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.107](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.106...sandbox-fc-v0.37.107) (2026-07-11)
+
+
+### Performance Improvements
+
+* **runner:** attribute nbd cow creation latency ([#21065](https://github.com/vm0-ai/vm0/issues/21065)) ([7d97c9a](https://github.com/vm0-ai/vm0/commit/7d97c9a0e83e09645f97675c2594fad08b54bfc7))
+
 ## [0.37.106](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.105...sandbox-fc-v0.37.106) (2026-07-10)
 
 

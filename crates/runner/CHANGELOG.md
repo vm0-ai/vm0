@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.143.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.11...runner-rs-v0.143.12) (2026-07-11)
+
+
+### Bug Fixes
+
+* log denied firewall permission ([#21055](https://github.com/vm0-ai/vm0/issues/21055)) ([4452546](https://github.com/vm0-ai/vm0/commit/445254636ee824f5630d93feb6c2834cfd13f7d7))
+* **runner:** enforce guest binary inventory completeness ([#21066](https://github.com/vm0-ai/vm0/issues/21066)) ([32af65b](https://github.com/vm0-ai/vm0/commit/32af65bddde9534477ba49ae0082e5c1fe9e6b90))
+* **runner:** preserve proxy registry capacity ([#21073](https://github.com/vm0-ai/vm0/issues/21073)) ([53044a6](https://github.com/vm0-ai/vm0/commit/53044a6ad9d0e1999775186f74e1204bfae347ec))
+
+
+### Documentation
+
+* **mitm-addon:** document upstream admission contract ([#21063](https://github.com/vm0-ai/vm0/issues/21063)) ([de65ddf](https://github.com/vm0-ai/vm0/commit/de65ddfd79e6d7f610ea25bba5ece1e454a04607))
+
+
+### Refactoring
+
+* **mitm-addon:** derive metadata key diagnostic path ([#21062](https://github.com/vm0-ai/vm0/issues/21062)) ([c703488](https://github.com/vm0-ai/vm0/commit/c7034882e78c372a3cb15896d6216ad1815bfaed))
+* **runner:** remove bundled python firewall catalog ([#21051](https://github.com/vm0-ai/vm0/issues/21051)) ([4ffaeed](https://github.com/vm0-ai/vm0/commit/4ffaeed60806d48bcad8b7b0bbcffdc19ee8bed9))
+
+
+### Performance Improvements
+
+* **runner:** attribute nbd cow creation latency ([#21065](https://github.com/vm0-ai/vm0/issues/21065)) ([7d97c9a](https://github.com/vm0-ai/vm0/commit/7d97c9a0e83e09645f97675c2594fad08b54bfc7))
+
 ## [0.143.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.10...runner-rs-v0.143.11) (2026-07-11)
 
 
