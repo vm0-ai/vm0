@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.592.2](https://github.com/vm0-ai/vm0/compare/app-v0.592.1...app-v0.592.2) (2026-07-11)
+
+
+### Bug Fixes
+
+* keep mobile slash menu within the ios safe viewport ([#20982](https://github.com/vm0-ai/vm0/issues/20982)) ([a522877](https://github.com/vm0-ai/vm0/commit/a52287735e40ec03566b9e884bd4be65fce9da6e))
+
 ## [0.592.1](https://github.com/vm0-ai/vm0/compare/app-v0.592.0...app-v0.592.1) (2026-07-10)
 
 
