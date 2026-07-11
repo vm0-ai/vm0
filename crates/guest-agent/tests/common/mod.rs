@@ -6,7 +6,8 @@
 //! overrides as setup input. Consolidating scenarios with different prompts or
 //! grace windows into one `#[tokio::test]` binary would make those process-wide
 //! side effects race. Splitting into separate binaries gives each scenario a
-//! fresh process, paid for by a small cargo build-cache hit (idempotent).
+//! fresh process. The repository Rust test wrapper prepares shared mock
+//! executables before running these processes.
 //!
 //! # Error handling
 //!
@@ -382,8 +383,11 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
     Ok(())
 }
 
-/// Build the mock binary (idempotent when up to date) and resolve its
-/// filesystem path.
+const TEST_MOCK_CLAUDE_PATH_ENV: &str = "VM0_TEST_GUEST_MOCK_CLAUDE_PATH";
+const TEST_MOCK_CODEX_PATH_ENV: &str = "VM0_TEST_GUEST_MOCK_CODEX_PATH";
+
+/// Resolve the mock binary prepared by the outer test wrapper, or build it for
+/// compatibility with direct Cargo test commands.
 ///
 /// The subprocess `cargo build` must land the artifact in the same
 /// `target/` directory + profile that the enclosing `cargo test` uses,
@@ -392,16 +396,54 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
 /// and under `cargo test --release`. We infer both from the currently-
 /// running test binary's path and forward them to the subprocess.
 pub fn build_and_locate_mock() -> Result<PathBuf, String> {
-    build_and_locate_mock_package("guest-mock-claude", "guest-mock-claude")
+    locate_or_build_mock_package(
+        "guest-mock-claude",
+        "guest-mock-claude",
+        TEST_MOCK_CLAUDE_PATH_ENV,
+    )
 }
 
 /// Build the mock Codex binary and resolve its filesystem path beside the
 /// current test profile.
 pub fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
-    build_and_locate_mock_package("guest-mock-codex", "guest-mock-codex")
+    locate_or_build_mock_package(
+        "guest-mock-codex",
+        "guest-mock-codex",
+        TEST_MOCK_CODEX_PATH_ENV,
+    )
 }
 
-fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf, String> {
+fn locate_or_build_mock_package(
+    package: &str,
+    binary: &str,
+    prebuilt_path_env: &str,
+) -> Result<PathBuf, String> {
+    if let Some(value) = std::env::var_os(prebuilt_path_env) {
+        let path = PathBuf::from(value);
+        if path.as_os_str().is_empty() {
+            return Err(format!("{prebuilt_path_env} is empty"));
+        }
+        if !path.is_absolute() {
+            return Err(format!(
+                "{prebuilt_path_env} must be an absolute path: {}",
+                path.display()
+            ));
+        }
+        let metadata = std::fs::metadata(&path).map_err(|error| {
+            format!(
+                "read {prebuilt_path_env} executable metadata at {}: {error}",
+                path.display()
+            )
+        })?;
+        if !metadata.is_file() {
+            return Err(format!(
+                "{prebuilt_path_env} is not a file: {}",
+                path.display()
+            ));
+        }
+        return Ok(path);
+    }
+
     // Test binary:   <target_dir>/<profile>/deps/<name>-<hash>
     //   parent():    <target_dir>/<profile>/deps
     //   parent().parent():  <target_dir>/<profile>   ← target_profile_dir
@@ -555,6 +597,20 @@ pub unsafe fn set_user_env_file_env_for_test(
     Ok(())
 }
 
+/// Forward cargo-llvm-cov's output path through the curated CLI environment so
+/// instrumented mock executables do not fall back to the read-only canonical
+/// workspace.
+///
+/// # Safety
+/// Call before any other test thread reads process environment.
+pub unsafe fn set_coverage_user_env_for_test(runtime_dir: &Path) -> Result<(), String> {
+    let Ok(profile_file) = std::env::var("LLVM_PROFILE_FILE") else {
+        return Ok(());
+    };
+    let user_env = HashMap::from([("LLVM_PROFILE_FILE".to_string(), profile_file)]);
+    unsafe { set_user_env_file_env_for_test(runtime_dir, &user_env) }
+}
+
 /// Configure one test binary for the experimental Codex app-server backend.
 ///
 /// Must be called before building a `GuestRuntime` because runtime bootstrap
@@ -594,6 +650,7 @@ pub unsafe fn setup_codex_app_server_env(
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
+        set_coverage_user_env_for_test(&runtime_dir)?;
         if let Some(resume_session_id) = config.resume_session_id {
             std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
         } else {
@@ -705,6 +762,7 @@ pub unsafe fn setup_env(
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
+        set_coverage_user_env_for_test(&runtime_dir)?;
         // Empty API token → has_api() false → no network calls.
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");

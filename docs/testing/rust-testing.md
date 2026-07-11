@@ -7,18 +7,27 @@ Rust crates live in `crates/` and use `cargo test` for testing. The same princip
 ## Running Tests
 
 ```bash
-# All crates
-cargo test --manifest-path crates/Cargo.toml
+# All crates (prepares shared guest mocks once)
+./scripts/test-rust.sh
 
-# Specific crate
-cargo test --manifest-path crates/Cargo.toml -p guest-agent
+# Guest-agent
+./scripts/test-rust.sh -p guest-agent
 
-# Specific test by name
+# Focused guest-agent integration target
+./scripts/test-rust.sh -p guest-agent --test cli_child_env
+
+# Other specific crates can use Cargo directly
 cargo test --manifest-path crates/Cargo.toml -p runner config::tests::load_full_config
 
-# With output (for debugging)
-cargo test --manifest-path crates/Cargo.toml -- --nocapture
+# Guest-agent with output (for debugging)
+./scripts/test-rust.sh -p guest-agent -- --nocapture
 ```
+
+The wrapper builds `guest-mock-claude` and `guest-mock-codex` once and passes
+their Cargo-reported executable paths to the process-isolated guest-agent test
+binaries. Direct guest-agent `cargo test` commands remain supported, but use a
+compatibility fallback that may repeat Cargo freshness checks across test
+processes.
 
 Pre-commit hooks run `cargo-clippy` and `cargo-fmt` on staged Rust files.
 

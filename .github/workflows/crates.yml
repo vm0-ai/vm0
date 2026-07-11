@@ -374,7 +374,10 @@ jobs:
       - name: Run tests with coverage
         run: |
           cd crates
-          cargo llvm-cov --all-targets --all-features --lcov --output-path lcov.info
+          source <(cargo llvm-cov show-env --sh)
+          cargo llvm-cov clean --workspace
+          ../scripts/test-rust.sh --all-targets --all-features
+          cargo llvm-cov report --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         if: success() || failure()

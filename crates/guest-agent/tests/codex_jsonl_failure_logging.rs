@@ -109,6 +109,7 @@ unsafe fn setup_codex_env(
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
+        common::set_coverage_user_env_for_test(&runtime_dir)?;
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
