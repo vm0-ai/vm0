@@ -23,6 +23,7 @@ const context = testContext();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const WORKFLOW_CACHE_TTL_SECONDS = 2 * 60 * 60;
+const WORKFLOW_CACHE_REFRESH_LIMIT = 32;
 const ISOLATED_CACHE_CRON_NOW = Date.parse("2000-01-02T00:00:00.000Z");
 
 interface CacheRow {
@@ -474,8 +475,9 @@ describe("workflow skill storage presigned URL cache", () => {
       const refreshAfter = new Date(now.getTime() - 60 * 1000);
       const inactiveRequestedAt = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-      for (let index = 0; index < 5; index += 1) {
-        const versionId = `${index}`.repeat(64).slice(0, 64);
+      const activeRowCount = WORKFLOW_CACHE_REFRESH_LIMIT + 2;
+      for (let index = 0; index < activeRowCount; index += 1) {
+        const versionId = index.toString(36).padStart(2, "0").repeat(32);
         await seedCacheRow({
           bucket: BUCKET,
           objectKey: `${prefix}/${versionId}/archive.tar.gz`,
@@ -530,11 +532,18 @@ describe("workflow skill storage presigned URL cache", () => {
           pruned: expect.any(Number),
         }),
         workflowSkill: {
-          due: 3,
-          refreshed: 3,
+          due: WORKFLOW_CACHE_REFRESH_LIMIT + 1,
+          refreshed: WORKFLOW_CACHE_REFRESH_LIMIT,
           pruned: 2,
         },
       });
+
+      const rowsAfterFirstTick = await readCacheRowsByObjectKeyPrefix(prefix);
+      expect(
+        rowsAfterFirstTick.filter((row) => {
+          return row.presigned_url.includes("?sig=");
+        }),
+      ).toHaveLength(WORKFLOW_CACHE_REFRESH_LIMIT);
 
       const secondTick = await accept(
         cronClient().refresh({ headers: cronHeaders() }),
@@ -547,12 +556,12 @@ describe("workflow skill storage presigned URL cache", () => {
       });
 
       const rows = await readCacheRowsByObjectKeyPrefix(prefix);
-      expect(rows).toHaveLength(6);
+      expect(rows).toHaveLength(activeRowCount + 1);
       expect(
         rows.filter((row) => {
           return row.presigned_url.includes("?sig=");
         }),
-      ).toHaveLength(5);
+      ).toHaveLength(activeRowCount);
       expect(
         rows.find((row) => {
           return row.storage_version_id === inactiveFreshVersionId;
