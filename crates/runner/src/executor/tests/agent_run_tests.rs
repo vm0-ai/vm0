@@ -12,8 +12,15 @@ use flate2::{Compression, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use httpmock::prelude::*;
 use sandbox::{
@@ -1604,6 +1611,57 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
             .any(|op| op.0 == "session_history_restore_skip" && op.1),
         "expected checkpointed skip telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_classifies_checkpointed_final_identity_helper_failure_codes() {
+    let cases = [
+        (
+            "generic",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+            "session_history_identity_verify_helper_failed",
+        ),
+        (
+            "invalid-args",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+            "session_history_identity_verify_helper_invalid_args",
+        ),
+        (
+            "metadata-read",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+            "session_history_identity_verify_helper_metadata_read_failed",
+        ),
+        (
+            "invalid-metadata",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+            "session_history_identity_verify_helper_invalid_metadata",
+        ),
+        (
+            "framework-mismatch",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
+            "session_history_identity_verify_helper_framework_mismatch",
+        ),
+        (
+            "expected-mismatch",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+            "session_history_identity_verify_helper_expected_mismatch",
+        ),
+        (
+            "history-read",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+            "session_history_identity_verify_helper_history_read_failed",
+        ),
+    ];
+
+    for (name, exit_code, expected_reason_action) in cases {
+        let session_id = format!("sess-final-helper-{name}-123");
+        assert_checkpointed_final_identity_helper_failure_falls_back(
+            &session_id,
+            ExecResult::new(exit_code, Vec::new(), Vec::new()),
+            expected_reason_action,
+        )
+        .await;
+    }
 }
 
 #[tokio::test]
