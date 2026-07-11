@@ -277,7 +277,6 @@ import { generate as generateSnowflake } from "./snowflake";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 import { generate as generateGoogleDrive } from "./google-drive";
 import { generateFirewallMetadata } from "./metadata";
-import { generatePythonBuiltinFirewallCatalogPackage } from "./python-builtin-firewall-catalog-package";
 import {
   FIREWALL_CONNECTOR_TYPES,
   type FirewallConnectorType,
@@ -588,7 +587,6 @@ async function main(): Promise<void> {
     await gen();
     if (isFirewallConnectorType(target)) {
       await generateFirewallMetadata();
-      await generatePythonBuiltinFirewallCatalogPackage();
     }
   } else {
     // Run all generators
@@ -600,7 +598,6 @@ async function main(): Promise<void> {
     // Metadata summarizes the complete generated registry, so only rebuild it
     // after every registered firewall has been regenerated.
     await generateFirewallMetadata();
-    await generatePythonBuiltinFirewallCatalogPackage();
   }
 
   console.error("\nDone.");
