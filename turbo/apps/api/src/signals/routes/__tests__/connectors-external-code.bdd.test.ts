@@ -149,6 +149,7 @@ function mockNintendoStoreExternalCodeProvider(): {
 
 function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
   readonly federationBodies: unknown[];
+  readonly failLogout: () => void;
   readonly logoutBodies: unknown[];
   readonly sessionTokenBodies: URLSearchParams[];
   readonly tokenBodies: Readonly<Record<string, unknown>>[];
@@ -157,6 +158,7 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
   const logoutBodies: unknown[] = [];
   const sessionTokenBodies: URLSearchParams[] = [];
   const tokenBodies: Readonly<Record<string, unknown>>[] = [];
+  let logoutStatus = 204;
 
   server.use(
     http.post(NINTENDO_STORE_SESSION_TOKEN_URL, async ({ request }) => {
@@ -213,13 +215,21 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
       NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL,
       async ({ request }) => {
         logoutBodies.push(await request.json());
-        return new HttpResponse(null, { status: 204 });
+        return logoutStatus === 204
+          ? new HttpResponse(null, { status: 204 })
+          : HttpResponse.json(
+              { error: "temporarily unavailable" },
+              { status: logoutStatus },
+            );
       },
     ),
   );
 
   return {
     federationBodies,
+    failLogout: () => {
+      logoutStatus = 503;
+    },
     logoutBodies,
     sessionTokenBodies,
     tokenBodies,
@@ -614,7 +624,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("connects and logs out Nintendo Switch Parental Controls through public APIs", async () => {
+  it("deletes Nintendo Switch Parental Controls locally when remote logout fails", async () => {
     const provider = mockNintendoSwitchParentalControlsExternalCodeProvider();
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -745,6 +755,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       "NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID",
     ]);
 
+    provider.failLogout();
     await connectorsApi.deleteConnectorByType(
       actor,
       "nintendo-switch-parental-controls",
@@ -754,6 +765,13 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(provider.logoutBodies[0]).toMatchObject({
       smartDeviceId: expect.any(String),
     });
+    const afterDelete = await connectorsApi.requestReadConnectorByType(
+      actor,
+      "nintendo-switch-parental-controls",
+      [404],
+    );
+    expectApiError(afterDelete.body);
+    expect(afterDelete.body.error.code).toBe("NOT_FOUND");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
