@@ -232,6 +232,9 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
     flow_metadata.set_firewall_decision(flow.metadata, "DENY")
     flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = (
+        result.permissions[0] if len(result.permissions) == 1 else ""
+    )
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     diagnostic_parts = urllib.parse.urlsplit(original_url)
     diagnostic_url = urllib.parse.urlunsplit(

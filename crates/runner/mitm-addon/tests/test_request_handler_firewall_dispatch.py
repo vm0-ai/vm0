@@ -334,6 +334,7 @@ async def test_firewall_permission_denied_block_reports_reason(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     assert flow.response is not None
     assert flow.response.status_code == 403
@@ -344,6 +345,11 @@ async def test_firewall_permission_denied_block_reports_reason(
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "permission_denied"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["status"] == 403
+    assert network_log_entry["firewall_permission"] == "read-repos"
+    assert network_log_entry["firewall_rule_match"] == ""
 
 
 async def test_firewall_block_response_url_preserves_raw_encoded_path_without_query(
