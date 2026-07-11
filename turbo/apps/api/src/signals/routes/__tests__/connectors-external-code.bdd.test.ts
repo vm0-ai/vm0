@@ -148,12 +148,14 @@ function mockNintendoStoreExternalCodeProvider(): {
 }
 
 function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
+  readonly federatedSmartDeviceIds: string[];
   readonly federationBodies: unknown[];
   readonly failLogout: () => void;
   readonly logoutBodies: unknown[];
   readonly sessionTokenBodies: URLSearchParams[];
   readonly tokenBodies: Readonly<Record<string, unknown>>[];
 } {
+  const federatedSmartDeviceIds: string[] = [];
   const federationBodies: unknown[] = [];
   const logoutBodies: unknown[] = [];
   const sessionTokenBodies: URLSearchParams[] = [];
@@ -193,7 +195,16 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
     http.post(
       NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL,
       async ({ request }) => {
-        federationBodies.push(await request.json());
+        const body: unknown = await request.json();
+        if (
+          !isRecord(body) ||
+          !isRecord(body["smartDeviceInfo"]) ||
+          typeof body["smartDeviceInfo"]["id"] !== "string"
+        ) {
+          throw new Error("Expected Nintendo smart-device federation body");
+        }
+        federationBodies.push(body);
+        federatedSmartDeviceIds.push(body["smartDeviceInfo"]["id"]);
         return HttpResponse.json({
           loginInfo: {
             ownedDevices: [
@@ -226,6 +237,7 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
   );
 
   return {
+    federatedSmartDeviceIds,
     federationBodies,
     failLogout: () => {
       logoutStatus = 503;
@@ -624,7 +636,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 
-  it("deletes Nintendo Switch Parental Controls locally when remote logout fails", async () => {
+  it("replaces the remote Nintendo registration and keeps local deletion resilient", async () => {
     const provider = mockNintendoSwitchParentalControlsExternalCodeProvider();
     const bdd = createBddApi(context);
     const actor = bdd.user();
@@ -755,16 +767,46 @@ describe("CONN-02: external-code session lifecycle", () => {
       "NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID",
     ]);
 
+    const replacementSession = await connectorsApi.startExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      "api",
+    );
+    const replacementAuthorizationUrl = new URL(
+      replacementSession.authorizationUrl,
+    );
+    const replacementState =
+      replacementAuthorizationUrl.searchParams.get("state");
+    if (!replacementState) {
+      throw new Error("Expected replacement Nintendo authorization state");
+    }
+    await connectorsApi.completeExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      {
+        sessionId: replacementSession.sessionId,
+        sessionToken: replacementSession.sessionToken,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=bdd-switch-parental-controls-replacement-code&state=${replacementState}`,
+      },
+    );
+    expect(provider.federatedSmartDeviceIds).toHaveLength(2);
+    expect(provider.federatedSmartDeviceIds[1]).not.toBe(
+      provider.federatedSmartDeviceIds[0],
+    );
+    expect(provider.logoutBodies).toStrictEqual([
+      { smartDeviceId: provider.federatedSmartDeviceIds[0] },
+    ]);
+
     provider.failLogout();
     await connectorsApi.deleteConnectorByType(
       actor,
       "nintendo-switch-parental-controls",
     );
-    expect(provider.tokenBodies).toHaveLength(2);
-    expect(provider.logoutBodies).toHaveLength(1);
-    expect(provider.logoutBodies[0]).toMatchObject({
-      smartDeviceId: expect.any(String),
-    });
+    expect(provider.tokenBodies).toHaveLength(4);
+    expect(provider.logoutBodies).toStrictEqual([
+      { smartDeviceId: provider.federatedSmartDeviceIds[0] },
+      { smartDeviceId: provider.federatedSmartDeviceIds[1] },
+    ]);
     const afterDelete = await connectorsApi.requestReadConnectorByType(
       actor,
       "nintendo-switch-parental-controls",

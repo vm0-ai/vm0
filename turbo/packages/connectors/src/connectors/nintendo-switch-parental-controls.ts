@@ -121,6 +121,7 @@ export const nintendoSwitchParentalControls = {
         },
         revoke: {
           kind: "token-revoke",
+          revokePreviousOnReplace: true,
           inputs: {
             sessionToken:
               "$secrets.NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN",
