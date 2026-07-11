@@ -291,8 +291,12 @@ fn chmod_private_file_fd<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> Ru
 #[cfg(unix)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use std::ffi::CString;
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::time::Duration;
+
+    const FIFO_READ_CHILD_ENV: (&str, &str) = ("VM0_RUN_STATE_FILE_FIFO_READ_CHILD", "1");
 
     #[tokio::test]
     async fn read_to_string_rejects_symlink_without_reading_target() {
@@ -314,6 +318,21 @@ mod tests {
 
     #[tokio::test]
     async fn read_to_string_rejects_fifo_without_blocking() {
+        run_ignored_child_test(
+            "state_file::tests::read_to_string_rejects_fifo_without_blocking_child",
+            FIFO_READ_CHILD_ENV,
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by read_to_string_rejects_fifo_without_blocking"]
+    async fn read_to_string_rejects_fifo_without_blocking_child() {
+        if !ignored_child_test_env_guard_enabled(FIFO_READ_CHILD_ENV) {
+            return;
+        }
+
         let dir = tempfile::tempdir().unwrap();
         let fifo = dir.path().join("fifo");
         let c_path = CString::new(fifo.to_string_lossy().as_bytes()).unwrap();

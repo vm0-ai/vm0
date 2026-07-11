@@ -330,18 +330,6 @@ mod tests {
     use crate::types::{Firewall, FirewallApi, FirewallAuth, FirewallEntry, FirewallPermission};
     use std::os::unix::fs::PermissionsExt;
 
-    fn make_fifo(path: &Path) {
-        let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
-        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-        assert_eq!(
-            result,
-            0,
-            "mkfifo failed: {}",
-            std::io::Error::last_os_error()
-        );
-    }
-
     struct RegistryHarness {
         _dir: tempfile::TempDir,
         registry_path: PathBuf,
@@ -582,23 +570,6 @@ mod tests {
 
         assert!(
             error.to_string().contains("open state file"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[tokio::test]
-    async fn read_registry_rejects_fifo_without_blocking() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        make_fifo(&registry_path);
-
-        let error = read_registry(&registry_path)
-            .await
-            .err()
-            .expect("expected fifo registry rejection");
-
-        assert!(
-            error.to_string().contains("not a regular state file"),
             "unexpected error: {error}"
         );
     }
