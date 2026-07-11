@@ -18,9 +18,11 @@ from tests.jsonl_log_helpers import (
 class TestReportModelProviderUsage:
     """Tests for report_model_provider_usage helper."""
 
-    def test_reports_usage_for_model_provider(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    @pytest.fixture(autouse=True)
+    def _sync_executor(self, sync_usage_executor):
+        """Run delivery inline for reporting behavior tests."""
+
+    def test_reports_usage_for_model_provider(self, real_flow, usage_webhook_api):
         """Model-provider usage reaches the webhook boundary with correct payload."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -40,7 +42,6 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage(flow, "run-abc-123")
             assert webhook.request_count == 0
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 1
         assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
@@ -80,9 +81,7 @@ class TestReportModelProviderUsage:
         for event in body["events"]:
             uuid.UUID(event["idempotencyKey"])
 
-    def test_falls_back_to_response_model_then_unknown(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_falls_back_to_response_model_then_unknown(self, real_flow, usage_webhook_api):
         """Provider falls back only when selected vm0 model metadata is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -96,7 +95,6 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["provider"] == "unknown"
@@ -113,14 +111,11 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[-1].json_body()
         assert body["events"][0]["provider"] == "claude-sonnet-4-6"
 
-    def test_skips_when_no_positive_token_quantities(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_skips_when_no_positive_token_quantities(self, real_flow, usage_webhook_api):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
@@ -136,13 +131,10 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
 
-    def test_skips_when_firewall_not_billable(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_skips_when_firewall_not_billable(self, real_flow, usage_webhook_api):
         """Should NOT report usage when firewall_billable is False.
 
         Simulates a user supplying their own Anthropic key — the web layer
@@ -158,13 +150,10 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
 
-    def test_reports_non_billable_observable_model_provider(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_reports_non_billable_observable_model_provider(self, real_flow, usage_webhook_api):
         """BYOK model providers report observations without billing events."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -180,7 +169,6 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 1
         assert webhook.requests[0].path == "/api/webhooks/agent/model-usage-observation"
@@ -195,7 +183,7 @@ class TestReportModelProviderUsage:
         assert body["events"][0]["quantity"] == 100
 
     def test_billable_model_provider_reports_billing_and_observation(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0"
@@ -211,7 +199,6 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
@@ -230,7 +217,7 @@ class TestReportModelProviderUsage:
         )
 
     def test_billable_model_provider_without_model_usage_provider_skips_observation(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:vm0"
@@ -245,7 +232,6 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             observed = usage.report_model_provider_usage_observation(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert observed is False
         assert webhook.request_count == 0
@@ -275,7 +261,7 @@ class TestReportModelProviderUsage:
         )
         assert entry["type"] == "model_usage_observation"
 
-    def test_skips_non_model_provider(self, real_flow, fresh_usage_executor, usage_webhook_api):
+    def test_skips_non_model_provider(self, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "github"
@@ -284,14 +270,11 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
 
     @pytest.mark.parametrize("firewall_name", [None, 42])
-    def test_skips_malformed_firewall_name(
-        self, real_flow, fresh_usage_executor, usage_webhook_api, firewall_name
-    ):
+    def test_skips_malformed_firewall_name(self, real_flow, usage_webhook_api, firewall_name):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = firewall_name
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
@@ -301,14 +284,11 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             accepted = usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert accepted is False
         assert webhook.request_count == 0
 
-    def test_skips_when_no_model_provider_usage(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_skips_when_no_model_provider_usage(self, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary when model_provider_usage is absent."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -318,11 +298,10 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
 
-    def test_skips_when_no_run_id(self, real_flow, fresh_usage_executor, usage_webhook_api):
+    def test_skips_when_no_run_id(self, real_flow, usage_webhook_api):
         """Should NOT reach the webhook boundary when run_id is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -331,7 +310,6 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
 
@@ -361,9 +339,7 @@ class TestReportModelProviderUsage:
         assert entry["missing_sandbox_token"] is True
         assert entry["missing_api_url"] is False
 
-    def test_logs_underbilling_when_missing_api_url(
-        self, tmp_path, real_flow, fresh_usage_executor, mitm_ctx
-    ):
+    def test_logs_underbilling_when_missing_api_url(self, tmp_path, real_flow, mitm_ctx):
         """Should emit an alertable underbilling signal when api_url is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -376,7 +352,6 @@ class TestReportModelProviderUsage:
         with mitm_ctx(api_url=""):
             usage.report_model_provider_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert jsonl_exists_after_flush(proxy_log)
         [entry] = read_jsonl_entries_after_flush(proxy_log)
@@ -391,9 +366,7 @@ class TestReportModelProviderUsage:
         assert entry["missing_sandbox_token"] is False
         assert entry["missing_api_url"] is True
 
-    def test_source_dedupe_uses_flow_id_when_message_id_missing(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_source_dedupe_uses_flow_id_when_message_id_missing(self, real_flow, usage_webhook_api):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -408,14 +381,11 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage(flow, "run-fallback")
             usage.report_model_provider_usage(flow, "run-fallback")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 10
 
-    def test_source_dedupe_uses_flow_id_when_message_id_present(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
-    ):
+    def test_source_dedupe_uses_flow_id_when_message_id_present(self, real_flow, usage_webhook_api):
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.id = "flow-uuid-xyz-123"
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
@@ -431,13 +401,12 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage(flow, "run-fallback")
             usage.report_model_provider_usage(flow, "run-fallback")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 10
 
     def test_source_dedupe_aggregates_model_provider_usage_sources(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.id = "flow-uuid-xyz-123"
@@ -464,7 +433,6 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage_observation(flow, "run-websocket")
             usage.report_model_provider_usage_observation(flow, "run-websocket")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         requests_by_path = {request.path: request for request in webhook.requests}
         assert set(requests_by_path) == {
@@ -500,7 +468,7 @@ class TestReportModelProviderUsage:
         uuid.UUID(observation_body["events"][0]["idempotencyKey"])
 
     def test_source_dedupe_separates_billing_sources_by_response_model_without_context_model(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.id = "flow-uuid-xyz-123"
@@ -523,7 +491,6 @@ class TestReportModelProviderUsage:
         with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-websocket")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 1
         assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
@@ -537,7 +504,7 @@ class TestReportModelProviderUsage:
         }
 
     def test_source_dedupe_skips_malformed_model_provider_usage_sources(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.id = "flow-uuid-xyz-123"
@@ -554,14 +521,13 @@ class TestReportModelProviderUsage:
             accepted = usage.report_model_provider_usage(flow, "run-websocket")
             observed = usage.report_model_provider_usage_observation(flow, "run-websocket")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert accepted is False
         assert observed is False
         assert webhook.request_count == 0
 
     def test_source_dedupe_separates_flows_when_message_id_missing(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         first = real_flow(with_response=False, host="api.anthropic.com")
         first.id = "flow-first"
@@ -580,13 +546,12 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage(first, "run-fallback")
             usage.report_model_provider_usage(second, "run-fallback")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 20
 
     def test_source_dedupe_separates_flows_when_message_id_matches(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         first = real_flow(with_response=False, host="api.anthropic.com")
         first.id = "flow-first"
@@ -606,13 +571,12 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage(first, "run-preserved")
             usage.report_model_provider_usage(second, "run-preserved")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 20
 
     def test_observation_source_dedupe_separates_flows_when_message_id_matches(
-        self, real_flow, fresh_usage_executor, usage_webhook_api
+        self, real_flow, usage_webhook_api
     ):
         first = real_flow(with_response=False, host="api.anthropic.com")
         first.id = "flow-first"
@@ -633,7 +597,6 @@ class TestReportModelProviderUsage:
             usage.report_model_provider_usage_observation(first, "run-preserved")
             usage.report_model_provider_usage_observation(second, "run-preserved")
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         body = webhook.requests[0].json_body()
         assert body["events"][0]["quantity"] == 20

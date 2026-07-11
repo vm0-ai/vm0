@@ -1095,8 +1095,8 @@ function rawPathFromBaseUrl(value: string): string {
   const schemeEnd = value.indexOf("://");
   if (schemeEnd === -1) return "";
   const afterScheme = value.slice(schemeEnd + 3);
-  const pathStart = afterScheme.indexOf("/");
-  if (pathStart === -1) return "";
+  const pathStart = afterScheme.search(/[/?#]/);
+  if (pathStart === -1 || afterScheme[pathStart] !== "/") return "";
   const pathAndAfter = afterScheme.slice(pathStart);
   const pathEnd = pathAndAfter.search(/[?#]/);
   return pathEnd === -1 ? pathAndAfter : pathAndAfter.slice(0, pathEnd);
@@ -1113,6 +1113,15 @@ function validateBaseUrlPrefixVariable({
   readonly name: string;
   readonly value: string;
 }): void {
+  const rawPath = rawPathFromBaseUrl(value);
+  if (hasUnsafeFirewallPath(rawPath)) {
+    throw baseUrlVariableError(
+      base,
+      serviceName,
+      name,
+      "must not contain unsafe path segments before a fixed path suffix",
+    );
+  }
   validateBaseUrl(value, serviceName);
   const url = new URL(value);
   if (url.search || url.hash) {
@@ -1122,17 +1131,6 @@ function validateBaseUrlPrefixVariable({
       name,
       "must not contain query or fragment before a fixed path suffix",
     );
-  }
-  const rawPath = rawPathFromBaseUrl(value);
-  for (const segment of rawPath.split("/")) {
-    if (pathSegmentHasUnsafeSyntax(segment, false)) {
-      throw baseUrlVariableError(
-        base,
-        serviceName,
-        name,
-        "must not contain unsafe path segments before a fixed path suffix",
-      );
-    }
   }
 }
 
@@ -2842,6 +2840,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     );
   }
 
+  const hasTemplateVars = hasBaseUrlVars(base);
   const rawSyntaxTarget = baseUrlRawSyntaxTarget(base);
   if (hasRawWhitespace(rawSyntaxTarget)) {
     throw new Error(
@@ -2854,8 +2853,22 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     );
   }
 
+  let knownRawPath = rawPathFromBaseUrl(rawSyntaxTarget);
+  if (
+    knownRawPath === "" &&
+    hasTemplateVars &&
+    rawSyntaxTarget.startsWith(`${AUTH_TEMPLATE_URL_PLACEHOLDER}/`)
+  ) {
+    knownRawPath = rawSyntaxTarget.slice(AUTH_TEMPLATE_URL_PLACEHOLDER.length);
+  }
+  if (hasUnsafeFirewallPath(knownRawPath)) {
+    throw new Error(
+      errMsg(base, serviceName, "must not contain unsafe path segments"),
+    );
+  }
+
   // Template base URLs are validated after variable resolution at compose time.
-  if (hasBaseUrlVars(base)) return;
+  if (hasTemplateVars) return;
 
   validateUrlSchemeDelimiter(base, serviceName, "base URL");
 

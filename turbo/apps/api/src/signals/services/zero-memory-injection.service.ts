@@ -32,14 +32,12 @@ const STATIC_PROFILE_KINDS = [
 ] as const satisfies readonly MemoryKind[];
 const DYNAMIC_PROFILE_KINDS = [
   "open_loop",
-  "recent_context",
   "project",
 ] as const satisfies readonly MemoryKind[];
 const QUERY_MEMORY_KINDS = [
   "preference",
   "communication_style",
   "open_loop",
-  "recent_context",
   "key_fact",
 ] as const satisfies readonly MemoryKind[];
 

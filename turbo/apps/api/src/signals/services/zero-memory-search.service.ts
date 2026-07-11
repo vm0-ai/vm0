@@ -615,7 +615,10 @@ export async function searchZeroMemory(
   args: SearchParams,
 ): Promise<MemorySearchResponse> {
   const includeMemories = args.mode === "hybrid" || args.mode === "memories";
-  const includeDocuments = args.mode === "hybrid" || args.mode === "documents";
+  // Connector content remains with the connector. Until connector-native
+  // retrieval is available, hybrid search intentionally returns durable facts
+  // only instead of reading a locally persisted raw-content index.
+  const includeDocuments = false;
   const candidateLimit = Math.max(args.limit * 4, 20);
   const [memoryResults, documentResults] = await Promise.all([
     includeMemories

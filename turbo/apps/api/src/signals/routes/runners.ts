@@ -126,7 +126,6 @@ function isResumeSessionHistoryLoadError(
 }
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
-type SecretValueFallbackReason = "missing_field" | "invalid_keys";
 type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
@@ -144,7 +143,7 @@ interface ClaimRouteTimingRecord {
   readonly spanKind: ClaimRouteTimingSpanKind;
   readonly durationMs: number;
   readonly timestamp: string;
-  readonly fallbackReason?: SecretValueFallbackReason;
+  readonly fallbackReason?: "invalid_keys";
 }
 
 class ClaimRouteTimingCollector {
@@ -175,8 +174,7 @@ class ClaimRouteTimingCollector {
     });
   }
 
-  measureSecretMaterialization<T>(
-    fallbackReason: SecretValueFallbackReason,
+  measureInvalidKeySecretMaterialization<T>(
     operation: () => Promise<T>,
   ): Promise<T> {
     const startedAt = now();
@@ -187,7 +185,7 @@ class ClaimRouteTimingCollector {
         spanKind: "top_level",
         durationMs: Math.max(0, finishedAt - startedAt),
         timestamp: new Date(finishedAt).toISOString(),
-        fallbackReason,
+        fallbackReason: "invalid_keys",
       });
     });
   }
@@ -937,17 +935,13 @@ type PreparedSecretValuesResult =
       readonly secretValues: string[] | null;
     }
   | {
-      readonly status: "fallback";
-      readonly reason: SecretValueFallbackReason;
+      readonly status: "invalid-keys";
     };
 
 function preparedSecretValuesForRunner(
   storedContext: StoredExecutionContext,
 ): PreparedSecretValuesResult {
   const keys = storedContext.secretValueEnvironmentKeys;
-  if (keys === undefined) {
-    return { status: "fallback", reason: "missing_field" };
-  }
   if (keys === null) {
     return { status: "resolved", secretValues: null };
   }
@@ -958,11 +952,11 @@ function preparedSecretValuesForRunner(
       !storedContext.environment ||
       !Object.hasOwn(storedContext.environment, key)
     ) {
-      return { status: "fallback", reason: "invalid_keys" };
+      return { status: "invalid-keys" };
     }
     const value = storedContext.environment[key];
     if (typeof value !== "string") {
-      return { status: "fallback", reason: "invalid_keys" };
+      return { status: "invalid-keys" };
     }
     secretValues.push(value);
   }
@@ -978,25 +972,22 @@ async function secretValuesForRunner(
     return prepared.secretValues;
   }
 
-  return await timing.measureSecretMaterialization(
-    prepared.reason,
-    async () => {
-      const secretsMap = await decryptPersistentSecretsMap(
-        storedContext.encryptedSecrets,
-        {},
-      );
-      if (!secretsMap) {
-        return null;
-      }
+  return await timing.measureInvalidKeySecretMaterialization(async () => {
+    const secretsMap = await decryptPersistentSecretsMap(
+      storedContext.encryptedSecrets,
+      {},
+    );
+    if (!secretsMap) {
+      return null;
+    }
 
-      const envValues = storedContext.environment
-        ? new Set(Object.values(storedContext.environment))
-        : new Set<string>();
-      return Object.values(secretsMap).filter((value) => {
-        return envValues.has(value);
-      });
-    },
-  );
+    const envValues = storedContext.environment
+      ? new Set(Object.values(storedContext.environment))
+      : new Set<string>();
+    return Object.values(secretsMap).filter((value) => {
+      return envValues.has(value);
+    });
+  });
 }
 
 async function agentIdForRun(

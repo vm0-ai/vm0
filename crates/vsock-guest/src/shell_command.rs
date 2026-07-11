@@ -79,7 +79,11 @@ fn shell_escape_value(val: &str) -> String {
 /// In debug/test-support builds, local tests run as the current user unless
 /// `sudo` explicitly requests elevation through `sudo sh -c`.
 pub(crate) fn build_shell_command(command: &str, sudo: bool) -> Command {
-    match shell_command_user() {
+    build_shell_command_for_user(command, sudo, shell_command_user())
+}
+
+fn build_shell_command_for_user(command: &str, sudo: bool, user: Option<&str>) -> Command {
+    match user {
         Some(user) => {
             if sudo {
                 // Release: already root — run directly
@@ -992,31 +996,53 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_shell_command_normal() {
-        let cmd = build_shell_command("echo hello", false);
-        let prog = cmd.get_program().to_string_lossy().to_string();
-        let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into()).collect();
-        // In debug builds: sh -c "echo hello"
-        // In release builds: su - user -c "echo hello"
-        assert!(
-            (prog == "sh" && args == ["-c", "echo hello"])
-                || (prog == "su" && args == ["-", "user", "-c", "echo hello"]),
-            "unexpected command: {prog} {args:?}"
+    fn assert_command(command: Command, expected_program: &str, expected_args: &[&str]) {
+        assert_eq!(
+            command.get_program(),
+            std::ffi::OsStr::new(expected_program)
+        );
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            expected_args
+                .iter()
+                .map(std::ffi::OsStr::new)
+                .collect::<Vec<_>>()
         );
     }
 
     #[test]
-    fn build_shell_command_sudo() {
-        let cmd = build_shell_command("reboot", true);
-        let prog = cmd.get_program().to_string_lossy().to_string();
-        let args: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into()).collect();
-        // In debug builds: sudo sh -c "reboot"
-        // In release builds: sh -c "reboot"
-        assert!(
-            (prog == "sudo" && args == ["sh", "-c", "reboot"])
-                || (prog == "sh" && args == ["-c", "reboot"]),
-            "unexpected sudo command: {prog} {args:?}"
+    fn build_shell_command_for_local_user() {
+        assert_command(
+            build_shell_command_for_user("echo hello", false, None),
+            "sh",
+            &["-c", "echo hello"],
+        );
+    }
+
+    #[test]
+    fn build_privileged_shell_command_for_local_user() {
+        assert_command(
+            build_shell_command_for_user("reboot", true, None),
+            "sudo",
+            &["sh", "-c", "reboot"],
+        );
+    }
+
+    #[test]
+    fn build_shell_command_for_sandbox_user() {
+        assert_command(
+            build_shell_command_for_user("echo hello", false, Some("sandbox")),
+            "su",
+            &["-", "sandbox", "-c", "echo hello"],
+        );
+    }
+
+    #[test]
+    fn build_privileged_shell_command_for_sandbox_user() {
+        assert_command(
+            build_shell_command_for_user("reboot", true, Some("sandbox")),
+            "sh",
+            &["-c", "reboot"],
         );
     }
 }

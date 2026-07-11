@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.262.0",
+  "version": "1.262.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -58,6 +58,8 @@
   },
   "devDependencies": {
     "@hono/vite-build": "^1.11.1",
+    "@opentelemetry/context-async-hooks": "2.7.0",
+    "@opentelemetry/sdk-trace-base": "2.7.0",
     "@types/adm-zip": "^0.5.8",
     "@types/archiver": "^7.0.0",
     "@types/html-to-text": "^9.0.4",

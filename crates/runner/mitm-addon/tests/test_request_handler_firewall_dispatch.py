@@ -956,3 +956,55 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unsafe_path"
+
+
+async def test_unsafe_firewall_base_still_blocks_before_auth_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Unsafe request paths take precedence over malformed base configuration."""
+    unsafe_base = "https://api.github.com/repos/%2e%2e"
+    path = "/repos/%2e%2e/admin"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": unsafe_base,
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "full-access",
+                        "rules": ["ANY /{path+}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path=path,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == unsafe_base
+    assert "Authorization" not in flow.request.headers
+    body = json.loads(flow.response.content)
+    assert body["reason"] == "unsafe_path"
+    assert body["base"] == unsafe_base

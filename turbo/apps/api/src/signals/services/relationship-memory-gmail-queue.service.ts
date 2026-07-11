@@ -10,9 +10,7 @@ import {
 import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { gmailMemoryDocumentAdapter } from "./gmail-memory-document-adapter.service";
 import { recordMemorySource } from "./memory-substrate.service";
-import { recordConnectorMemoryDocument } from "./zero-memory-connector-adapter.service";
 
 export type GmailRelationshipMessageDirection = "received" | "sent";
 
@@ -215,26 +213,6 @@ export async function enqueueGmailRelationshipRefreshJob(
   if (!didRecordSource) {
     return false;
   }
-
-  await recordConnectorMemoryDocument({
-    db,
-    orgId: args.orgId,
-    userId: args.userId,
-    adapter: gmailMemoryDocumentAdapter,
-    input: {
-      mailboxEmail: args.message.mailboxEmail,
-      messageId: args.message.messageId,
-      threadId: args.message.threadId,
-      occurredAt: parsedOccurredAt(args.message.occurredAt),
-      direction: args.message.direction ?? "unknown",
-      from: args.message.from,
-      to: args.message.to,
-      cc: args.message.cc,
-      subject: args.message.subject,
-      bodyText: args.message.bodyText,
-      reason: args.reason ?? "gmail_webhook",
-    },
-  });
 
   const gmailMessage: PersistedGmailRelationshipMessage = {
     historyId: args.message.historyId,

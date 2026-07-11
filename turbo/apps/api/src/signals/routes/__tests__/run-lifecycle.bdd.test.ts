@@ -27,10 +27,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import {
-  seedLexicalRelationshipMemory,
-  seedMemoryDocumentChunk,
-} from "../../../test-fixtures/relationship-memory";
+import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -1094,10 +1091,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     const prompt = "security review answer";
     const seededMemoryText = "Send the security review answer to the customer.";
-    const documentTitle = "Security review answer playbook";
-    const documentText =
-      "Use the security review answer from the cited runbook.";
-    const documentExternalId = "runtime-document-timing-fixture";
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
@@ -1112,12 +1105,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       kind: "preference",
       text: seededMemoryText,
     });
-    const seededDocument = await seedMemoryDocumentChunk({
-      fixture: { orgId: actor.orgId, userId: actor.userId },
-      title: documentTitle,
-      text: documentText,
-      externalId: documentExternalId,
-    });
     mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
 
     const created = await api.createRun(actor, {
@@ -1129,7 +1116,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     const timingEvents = apiDispatchTimingEventsForRun(created.runId);
     const zeroMemoryActionTypes = new Set<string>([
       ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
       ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
     ]);
     const memoryTimingEvents = timingEvents.filter((event) => {
@@ -1142,7 +1128,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
     );
@@ -1154,7 +1140,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       [
         ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-        ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
         ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
       ],
       "nested",
@@ -1212,59 +1197,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_profile_semantic_embedding_result: "present",
       }),
     );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_search_result_count_bucket: "1",
-        zero_run_origin: "zero_run",
-        trigger_source: "web",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_lexical",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_lexical_candidate_count_bucket: "1",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_semantic_embedding_result: "present",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_semantic_candidate_count_bucket: "0",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_hydration_candidate_count_bucket: "1",
-        memory_document_hydrated_result_count_bucket: "1",
-      }),
-    );
     expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
     expectApiDispatchTimingEventsNotToLeak(memoryTimingEvents, [
       prompt,
@@ -1274,12 +1206,6 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       seeded.entityId,
       seeded.memoryId,
       seededMemoryText,
-      documentTitle,
-      documentText,
-      documentExternalId,
-      seededDocument.contextSpaceId,
-      seededDocument.documentId,
-      seededDocument.chunkId,
       "vm0-ai/vm0",
       "source-search-fixture",
       "https://github.com/vm0-ai/vm0/issues/1",
@@ -1353,55 +1279,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_profile_semantic_embedding_result: "empty",
       }),
     );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_semantic_embedding_result: "empty",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_search_result_count_bucket: "0",
-        span_kind: "nested",
-        zero_run_origin: "zero_run",
-        trigger_source: "web",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_lexical",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_lexical_candidate_count_bucket: "0",
-        span_kind: "nested",
-      }),
-    );
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_pre_create_zero_memory_document_search_hydrate",
-      ),
-    ).toStrictEqual(
-      expect.objectContaining({
-        memory_document_hydration_candidate_count_bucket: "0",
-        memory_document_hydrated_result_count_bucket: "0",
-        span_kind: "nested",
-      }),
-    );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
-      "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
     ]);
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
@@ -5087,7 +4967,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("falls back completely for legacy and invalid masking metadata", async () => {
+  it("rejects missing masking metadata but falls back completely for invalid keys", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const actor = bdd.user();
@@ -5116,47 +4996,83 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    for (const mode of ["remove", "invalid"] as const) {
-      const run = await api.createDirectRun(actor, {
-        agentComposeId: compose.composeId,
-        prompt: `materialize ${mode} masking metadata`,
-        secrets: {
-          FIRST_TOKEN: "first-fallback-secret",
-          SECOND_TOKEN: "second-fallback-secret",
-        },
-      });
-      await mutateRunnerJobSecretValueEnvironmentKeys(context, run.runId, mode);
-      const decryptCountBeforeClaim =
-        await readAutomationsFakeKmsDecryptCallCount(context);
+    const missingRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "reject missing masking metadata",
+      secrets: {
+        FIRST_TOKEN: "first-missing-secret",
+        SECOND_TOKEN: "second-missing-secret",
+      },
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      missingRun.runId,
+      "remove",
+    );
+    const decryptCountBeforeMissingClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
 
-      const claim = await api.claimRunnerJob(run.runId);
+    const missingClaim = await api.requestClaimRunnerJob(
+      true,
+      missingRun.runId,
+      [400],
+    );
+    expectApiError(missingClaim.body);
+    expect(missingClaim.body.error.message).toBe(
+      "Job missing execution context",
+    );
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeMissingClaim,
+    );
+    const failedMissingRun = await api.readRun(actor, missingRun.runId);
+    expect(failedMissingRun.status).toBe("failed");
+    expect(failedMissingRun.error).toBe(
+      "Runner job missing valid execution context",
+    );
 
-      expect(claim.secretValues).toStrictEqual([
-        "first-fallback-secret",
-        "second-fallback-secret",
-      ]);
-      await expect(
-        readAutomationsFakeKmsDecryptCallCount(context),
-      ).resolves.toBe(decryptCountBeforeClaim + 1);
-      expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
-      const materializationEvent = singleSandboxOperationEvent(
-        claimRouteTimingEventsForRun(run.runId),
-        "claim_route_secret_materialization",
-      );
-      expect(materializationEvent).toStrictEqual(
-        expect.objectContaining({
-          fallback_reason: mode === "remove" ? "missing_field" : "invalid_keys",
-          span_kind: "top_level",
-        }),
-      );
-      expect(
-        claimRouteTimingEventsForRun(run.runId).some((event) => {
-          return event.op_type === "claim_route_feature_switch_context";
-        }),
-      ).toBeFalsy();
+    const invalidRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "materialize invalid masking metadata",
+      secrets: {
+        FIRST_TOKEN: "first-fallback-secret",
+        SECOND_TOKEN: "second-fallback-secret",
+      },
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      invalidRun.runId,
+      "invalid",
+    );
+    const decryptCountBeforeInvalidClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
 
-      await api.requestCancelRun(actor, run.runId, [200]);
-    }
+    const claim = await api.claimRunnerJob(invalidRun.runId);
+
+    expect(claim.secretValues).toStrictEqual([
+      "first-fallback-secret",
+      "second-fallback-secret",
+    ]);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeInvalidClaim + 1,
+    );
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const materializationEvent = singleSandboxOperationEvent(
+      claimRouteTimingEventsForRun(invalidRun.runId),
+      "claim_route_secret_materialization",
+    );
+    expect(materializationEvent).toStrictEqual(
+      expect.objectContaining({
+        fallback_reason: "invalid_keys",
+        span_kind: "top_level",
+      }),
+    );
+    expect(
+      claimRouteTimingEventsForRun(invalidRun.runId).some((event) => {
+        return event.op_type === "claim_route_feature_switch_context";
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, invalidRun.runId, [200]);
   });
 });
 

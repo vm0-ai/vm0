@@ -806,7 +806,11 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             flow.kill()
         return None
 
-    if connector_diagnostics.maybe_make_firewall_allow_local_response(flow, classification):
+    if connector_diagnostics.maybe_make_firewall_allow_local_response(
+        flow,
+        classification,
+        commit=False,
+    ):
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         upstream_admission.forget_server_binding(flow.server_conn)
         return None
@@ -1068,14 +1072,15 @@ async def request(flow: http.HTTPFlow) -> None:
                 terminal_usage.release_tracked_flow(flow)
                 _block_public_destination_denied(flow, public_destination_denial)
                 return
-            if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
-                return
             if connector_diagnostics.maybe_make_firewall_allow_local_response(
                 flow,
                 classification,
+                commit=True,
             ):
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
+                return
+            if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
                 return
             if _firewall_allow_injects_ordinary_upstream_credentials(
                 allow
@@ -1322,7 +1327,7 @@ def _release_terminal_flow_state(
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.WEBSOCKET_UPGRADE_REQUEST, None)
     request_streaming.release_request_stream_state(flow)
-    connector_diagnostics.release_response_stream_state(flow)
+    connector_diagnostics.release_flow_state(flow)
     response_streaming.release_response_stream_state(flow)
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
     if flow.error is not None:

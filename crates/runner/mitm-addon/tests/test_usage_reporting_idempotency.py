@@ -4,6 +4,7 @@ import time
 import uuid
 from pathlib import Path
 
+import pytest
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
@@ -22,8 +23,12 @@ from tests.stream_buffer_helpers import set_response_stream_buffer
 class TestUsageReportingIdempotency:
     """Tests for duplicate-reporting guards and stable usage sources."""
 
+    @pytest.fixture(autouse=True)
+    def _sync_executor(self, sync_usage_executor):
+        """Run delivery inline for idempotency behavior tests."""
+
     def test_response_then_error_does_not_enqueue_model_usage_twice(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, usage_webhook_api
     ):
         """If mitmproxy fires both hooks for one flow, model usage reports once."""
         flow = make_model_provider_flow(
@@ -52,7 +57,6 @@ class TestUsageReportingIdempotency:
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         events = webhook.usage_events()
         assert [event["category"] for event in events] == ["tokens.output"]
@@ -65,7 +69,7 @@ class TestUsageReportingIdempotency:
             )
 
     def test_empty_model_usage_does_not_block_later_error_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, usage_webhook_api
     ):
         """A no-event response pass must not mark the flow reported."""
         flow = make_model_provider_flow(
@@ -90,13 +94,12 @@ class TestUsageReportingIdempotency:
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         events = webhook.usage_events()
         assert [event["category"] for event in events] == ["tokens.output"]
 
     def test_reports_usage_without_provider_message_id(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
         """Missing message_id in model_provider_usage still reports usage.
 
@@ -128,7 +131,6 @@ class TestUsageReportingIdempotency:
         with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 2
         requests_by_path = {request.path: request for request in webhook.requests}
@@ -151,7 +153,7 @@ class TestUsageReportingIdempotency:
         assert observation_key != billing_key
 
     def test_reports_usage_with_provider_message_id(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
         """Provider message_id metadata must not block ordinary usage reporting."""
         log_path = str(tmp_path / "network.jsonl")
@@ -178,7 +180,6 @@ class TestUsageReportingIdempotency:
         with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 2
         requests_by_path = {request.path: request for request in webhook.requests}

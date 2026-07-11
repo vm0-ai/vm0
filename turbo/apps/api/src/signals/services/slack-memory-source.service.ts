@@ -5,8 +5,6 @@ import {
   recordMemorySource,
 } from "./memory-substrate.service";
 import { enqueueMemorySourceRelationshipExtractionJob } from "./relationship-memory-gmail-queue.service";
-import { slackMemoryDocumentAdapter } from "./slack-memory-document-adapter.service";
-import { recordConnectorMemoryDocument } from "./zero-memory-connector-adapter.service";
 
 export type SlackMemoryChannelType =
   | "channel"
@@ -89,23 +87,6 @@ export async function recordSlackMessageMemorySource(args: {
   if (!didRecordSource) {
     return false;
   }
-
-  await recordConnectorMemoryDocument({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    adapter: slackMemoryDocumentAdapter,
-    input: {
-      workspaceId: args.workspaceId,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      senderId: args.slackUserId,
-      messageText: args.messageText,
-      messageTs: args.messageTs,
-      threadTs: args.threadTs,
-      files: args.files,
-    },
-  });
 
   await enqueueMemorySourceRelationshipExtractionJob(args.db, {
     orgId: args.orgId,

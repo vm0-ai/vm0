@@ -9,10 +9,6 @@ import {
   recordMemorySource,
 } from "./memory-substrate.service";
 import { enqueueMemorySourceRelationshipExtractionJob } from "./relationship-memory-gmail-queue.service";
-import {
-  normalizedConnectorMemoryDocumentAdapter,
-  recordConnectorMemoryDocument,
-} from "./zero-memory-connector-adapter.service";
 
 interface NotionPageMemorySourcePage {
   readonly id: string;
@@ -48,50 +44,6 @@ function parsedDate(value: string | null): Date | null {
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function notionContextSpace(args: {
-  readonly connectorId: string;
-  readonly workspaceId: string | null;
-  readonly workspaceName: string | null;
-}) {
-  const key = `notion:${args.workspaceId ?? args.connectorId}`;
-  return {
-    type: "project" as const,
-    key,
-    displayName: args.workspaceName ?? "Notion workspace",
-    metadata: {
-      provider: "notion",
-      externalId: args.workspaceId ?? args.connectorId,
-      displayName: args.workspaceName ?? "Notion workspace",
-      reason: "Notion workspace memory context",
-    },
-  };
-}
-
-function notionPageDocumentContent(args: {
-  readonly page: NotionPageMemorySourcePage;
-  readonly parent?: NotionPageMemorySourceParent;
-  readonly workspaceName: string | null;
-  readonly eventFamily?: NotionWorkflowPendingEventFamily;
-  readonly eventType?: string;
-}): string {
-  return [
-    `# ${args.page.title ?? "Untitled Notion page"}`,
-    "",
-    args.workspaceName ? `Workspace: ${args.workspaceName}` : null,
-    args.parent?.title ? `Parent: ${args.parent.title}` : null,
-    args.page.url ? `URL: ${args.page.url}` : null,
-    args.eventFamily ? `Event family: ${args.eventFamily}` : null,
-    args.eventType ? `Event type: ${args.eventType}` : null,
-    args.page.lastEditedTime
-      ? `Last edited: ${args.page.lastEditedTime}`
-      : null,
-  ]
-    .filter((line): line is string => {
-      return line !== null;
-    })
-    .join("\n");
 }
 
 export async function recordNotionPageMemorySource(args: {
@@ -164,50 +116,6 @@ export async function recordNotionPageMemorySource(args: {
     return false;
   }
 
-  const occurredAt =
-    parsedDate(args.page.lastEditedTime) ??
-    parsedDate(args.page.createdTime) ??
-    args.occurredAt;
-  await recordConnectorMemoryDocument({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    adapter: normalizedConnectorMemoryDocumentAdapter,
-    input: {
-      provider: "notion",
-      sourceType: "notion_page_event",
-      externalId,
-      title: args.page.title,
-      content: notionPageDocumentContent({
-        page: args.page,
-        parent: args.parent,
-        workspaceName: args.workspaceName,
-        eventFamily: args.eventFamily,
-        eventType: args.eventType,
-      }),
-      occurredAt,
-      contextSpace: notionContextSpace({
-        connectorId: args.connectorId,
-        workspaceId: args.workspaceId,
-        workspaceName: args.workspaceName,
-      }),
-      metadata: {
-        provider: "notion",
-        sourceType: "notion_page_event",
-        externalUrl: args.page.url,
-        pageId: args.page.id,
-        pageUrl: args.page.url,
-        workspaceId: args.workspaceId,
-        workspaceName: args.workspaceName,
-        reason: args.reason,
-      },
-      citation: {
-        url: args.page.url,
-        locator: args.eventFamily,
-      },
-    },
-  });
-
   return await enqueueMemorySourceRelationshipExtractionJob(args.db, {
     orgId: args.orgId,
     userId: args.userId,
@@ -271,43 +179,6 @@ export async function recordNotionBackfillPageMemorySource(args: {
   if (!didRecord) {
     return false;
   }
-
-  await recordConnectorMemoryDocument({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    adapter: normalizedConnectorMemoryDocumentAdapter,
-    input: {
-      provider: "notion",
-      sourceType: "notion_page",
-      externalId,
-      title: args.page.title,
-      content: notionPageDocumentContent({
-        page: args.page,
-        workspaceName: args.workspaceName,
-      }),
-      occurredAt,
-      contextSpace: notionContextSpace({
-        connectorId: args.connectorId,
-        workspaceId: args.workspaceId,
-        workspaceName: args.workspaceName,
-      }),
-      metadata: {
-        provider: "notion",
-        sourceType: "notion_page",
-        externalUrl: args.page.url,
-        pageId: args.page.id,
-        pageUrl: args.page.url,
-        workspaceId: args.workspaceId,
-        workspaceName: args.workspaceName,
-        reason: args.reason,
-      },
-      citation: {
-        url: args.page.url,
-        locator: args.page.id,
-      },
-    },
-  });
 
   return await enqueueMemorySourceRelationshipExtractionJob(args.db, {
     orgId: args.orgId,

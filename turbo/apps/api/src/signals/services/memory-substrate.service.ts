@@ -26,7 +26,7 @@ interface MemoryScope {
   readonly userId: string;
 }
 
-export interface MemoryContextSpaceInput {
+interface MemoryContextSpaceInput {
   readonly type: MemoryContextSpaceType;
   readonly key: string;
   readonly displayName: string;
@@ -61,7 +61,7 @@ export function defaultUserMemoryContextSpace(
   };
 }
 
-export async function memorySubstrateEnabled(
+async function memorySubstrateEnabled(
   db: ReadonlyDb,
   scope: MemoryScope,
 ): Promise<boolean> {

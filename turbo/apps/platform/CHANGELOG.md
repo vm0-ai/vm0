@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.592.1](https://github.com/vm0-ai/vm0/compare/app-v0.592.0...app-v0.592.1) (2026-07-10)
+
+
+### Performance Improvements
+
+* stabilize chat thread event state ([#20979](https://github.com/vm0-ai/vm0/issues/20979)) ([b3af853](https://github.com/vm0-ai/vm0/commit/b3af853a0d1aaf1f67985e64b06f98b82c90701f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.1
+    * @vm0/connectors bumped to 1.154.3
+    * @vm0/core bumped to 8.424.4
+
 ## [0.592.0](https://github.com/vm0-ai/vm0/compare/app-v0.591.1...app-v0.592.0) (2026-07-10)
 
 
