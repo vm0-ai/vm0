@@ -374,7 +374,8 @@ jobs:
       - name: Run tests with coverage
         run: |
           cd crates
-          eval "$(cargo llvm-cov show-env --sh)"
+          coverage_env="$(cargo llvm-cov show-env --sh)"
+          eval "$coverage_env"
           cargo llvm-cov clean --workspace
           ../scripts/test-rust.sh --all-targets --all-features
           cargo llvm-cov report --lcov --output-path lcov.info
