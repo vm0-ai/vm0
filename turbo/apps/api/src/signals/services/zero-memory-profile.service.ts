@@ -225,8 +225,10 @@ function containsQuery(value: string | null, query: string): boolean {
   return normalizedValue.length > 0 && normalizedValue.includes(query);
 }
 
-function tokenMatchScore(values: readonly (string | null)[], query: string) {
-  const tokens = tokenize(query);
+function tokenMatchScore(
+  values: readonly (string | null)[],
+  tokens: readonly string[],
+): number {
   if (tokens.length === 0) {
     return 0;
   }
@@ -237,7 +239,11 @@ function tokenMatchScore(values: readonly (string | null)[], query: string) {
   return matched / tokens.length;
 }
 
-function literalScore(row: MemoryProfileRow, normalizedQuery: string): number {
+function literalScore(
+  row: MemoryProfileRow,
+  normalizedQuery: string,
+  queryTokens: readonly string[],
+): number {
   if (containsQuery(row.text, normalizedQuery)) {
     return 1;
   }
@@ -265,7 +271,7 @@ function literalScore(row: MemoryProfileRow, normalizedQuery: string): number {
       row.relationship.summary,
       row.relationship.relationshipType,
     ],
-    normalizedQuery,
+    queryTokens,
   );
 }
 
@@ -988,6 +994,7 @@ async function rankCandidates(
     return candidate.id;
   });
   const rowsById = await loadRowsByIds(db, args, candidateIds);
+  const queryTokens = tokenize(args.normalizedQuery);
   const ranked = args.candidates
     .map((candidate) => {
       const row = rowsById.get(candidate.id);
@@ -1002,7 +1009,7 @@ async function rankCandidates(
             ...candidate,
             lexicalScore: Math.max(
               candidate.lexicalScore,
-              literalScore(row, args.normalizedQuery),
+              literalScore(row, args.normalizedQuery, queryTokens),
             ),
           },
           args.normalizedQuery,
