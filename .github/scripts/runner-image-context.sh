@@ -257,14 +257,7 @@ turbo_consumer() {
 crates_consumer() {
   local consumer="false"
   if is_true "${CI_CHANGED:-false}" ||
-    is_true "${RUNNER_CHANGED:-false}" ||
-    is_true "${GUEST_INIT_CHANGED:-false}" ||
-    is_true "${GUEST_DOWNLOAD_CHANGED:-false}" ||
-    is_true "${GUEST_AGENT_CHANGED:-false}" ||
-    is_true "${GUEST_MOCK_CLAUDE_CHANGED:-false}" ||
-    is_true "${GUEST_MOCK_CODEX_CHANGED:-false}" ||
-    is_true "${GUEST_RESEED_CHANGED:-false}" ||
-    is_true "${GUEST_WRITE_FILE_CHANGED:-false}"; then
+    is_true "${RUNNER_CHANGED:-false}"; then
     consumer="true"
   fi
 
@@ -273,14 +266,7 @@ crates_consumer() {
 
 image_inputs() {
   local crate_image_inputs_changed="false"
-  if is_true "${RUNNER_CHANGED:-false}" ||
-    is_true "${GUEST_INIT_CHANGED:-false}" ||
-    is_true "${GUEST_DOWNLOAD_CHANGED:-false}" ||
-    is_true "${GUEST_AGENT_CHANGED:-false}" ||
-    is_true "${GUEST_MOCK_CLAUDE_CHANGED:-false}" ||
-    is_true "${GUEST_MOCK_CODEX_CHANGED:-false}" ||
-    is_true "${GUEST_RESEED_CHANGED:-false}" ||
-    is_true "${GUEST_WRITE_FILE_CHANGED:-false}"; then
+  if is_true "${RUNNER_CHANGED:-false}"; then
     crate_image_inputs_changed="true"
   fi
 

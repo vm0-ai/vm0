@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATES_DIR="$PROJECT_ROOT/crates"
 . "$PROJECT_ROOT/.github/scripts/runner-image-target.sh"
+. "$PROJECT_ROOT/.github/scripts/runner-guest-binaries.sh"
 
 log() { echo "[runner] $1" >&2; }
 
@@ -111,22 +112,23 @@ cmd_deploy() {
   API_URL="https://tunnel-${RUNNER_NAME#local-}-www.vm7.ai"
   log "Runner: $RUNNER_NAME (group: $RUNNER_GROUP, api: $API_URL)"
 
+  runner_guest_binaries_load
+  local guest_cargo_args=()
+  local guest_env=()
+  local index
+  for index in "${!RUNNER_GUEST_PACKAGES[@]}"; do
+    guest_cargo_args+=("-p" "${RUNNER_GUEST_PACKAGES[$index]}")
+    guest_env+=("${RUNNER_GUEST_PATH_ENVS[$index]}=target/$TARGET/ci/${RUNNER_GUEST_BINARIES[$index]}")
+  done
+
   # Build guests
   log "Building guest binaries..."
   cd "$CRATES_DIR"
-  cargo build --profile ci --target "$TARGET" \
-    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
+  cargo build --profile ci --target "$TARGET" "${guest_cargo_args[@]}"
 
   # Build runner
   log "Building runner with embedded guests..."
-  GUEST_AGENT_PATH="target/$TARGET/ci/guest-agent" \
-  GUEST_DOWNLOAD_PATH="target/$TARGET/ci/guest-download" \
-  GUEST_INIT_PATH="target/$TARGET/ci/guest-init" \
-  GUEST_MOCK_CLAUDE_PATH="target/$TARGET/ci/guest-mock-claude" \
-  GUEST_MOCK_CODEX_PATH="target/$TARGET/ci/guest-mock-codex" \
-  GUEST_RESEED_PATH="target/$TARGET/ci/guest-reseed" \
-  GUEST_WRITE_FILE_PATH="target/$TARGET/ci/guest-write-file" \
-  cargo build --profile ci --target "$TARGET" -p runner
+  env "${guest_env[@]}" cargo build --profile ci --target "$TARGET" -p runner
 
   BINARY="$CRATES_DIR/target/$TARGET/ci/runner"
   log "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"

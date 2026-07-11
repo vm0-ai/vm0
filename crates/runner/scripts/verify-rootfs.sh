@@ -10,7 +10,8 @@
 # by the kernel if the script is hard-killed before the EXIT trap runs.
 #
 # Usage:
-#   bash verify-rootfs.sh --rootfs /path/to/image.ext4 [--mode template|rootfs]
+#   bash verify-rootfs.sh --rootfs /path/to/image.ext4 [--mode template|rootfs] \
+#     --guest-dest /usr/local/bin/guest-agent [--guest-dest DESTINATION ...]
 
 set -euo pipefail
 
@@ -33,11 +34,13 @@ shift
 
 ROOTFS=""
 MODE="rootfs"
+GUEST_DESTINATIONS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rootfs) ROOTFS="$2"; shift 2 ;;
     --mode)   MODE="$2";   shift 2 ;;
+    --guest-dest) GUEST_DESTINATIONS+=("$2"); shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -48,6 +51,10 @@ if [[ -z "$ROOTFS" ]]; then
 fi
 if [[ "$MODE" != "template" && "$MODE" != "rootfs" ]]; then
   echo "error: --mode must be template or rootfs" >&2
+  exit 1
+fi
+if [[ ${#GUEST_DESTINATIONS[@]} -eq 0 ]]; then
+  echo "error: at least one --guest-dest is required" >&2
   exit 1
 fi
 
@@ -232,23 +239,14 @@ else
   errors+=("python3 not found at /usr/bin/python3")
 fi
 
-guest_dests=(
-  "/usr/local/bin/guest-agent"
-  "/usr/local/bin/guest-download"
-  "/sbin/guest-init"
-  "/usr/local/bin/guest-mock-claude"
-  "/usr/local/bin/guest-mock-codex"
-  "/sbin/guest-reseed"
-  "/sbin/guest-write-file"
-)
 if [[ "$MODE" == "rootfs" ]]; then
   # Check guest binaries
-  for dest in "${guest_dests[@]}"; do
+  for dest in "${GUEST_DESTINATIONS[@]}"; do
     check_required_executable "$dest" "$dest"
   done
 else
   guest_contamination=0
-  for dest in "${guest_dests[@]}"; do
+  for dest in "${GUEST_DESTINATIONS[@]}"; do
     if [[ -e "${MOUNT_DIR}${dest}" || -L "${MOUNT_DIR}${dest}" ]]; then
       errors+=("template contains rootfs-only guest binary: ${dest}")
       guest_contamination=1
