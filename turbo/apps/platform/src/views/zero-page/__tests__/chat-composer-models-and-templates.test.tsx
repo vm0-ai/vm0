@@ -181,6 +181,40 @@ function mockNavigatorUserAgent(userAgent: string): () => void {
   };
 }
 
+function mockIPadOSNavigator(): () => void {
+  const userAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+  const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
+  const maxTouchPoints = Object.getOwnPropertyDescriptor(
+    navigator,
+    "maxTouchPoints",
+  );
+  Object.defineProperties(navigator, {
+    userAgent: {
+      configurable: true,
+      value:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
+        "AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15",
+    },
+    platform: { configurable: true, value: "MacIntel" },
+    maxTouchPoints: { configurable: true, value: 5 },
+  });
+  const restore = (
+    property: "userAgent" | "platform" | "maxTouchPoints",
+    descriptor: PropertyDescriptor | undefined,
+  ) => {
+    if (descriptor) {
+      Object.defineProperty(navigator, property, descriptor);
+    } else {
+      delete (navigator as Partial<Record<typeof property, unknown>>)[property];
+    }
+  };
+  return () => {
+    restore("userAgent", userAgent);
+    restore("platform", platform);
+    restore("maxTouchPoints", maxTouchPoints);
+  };
+}
+
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
     id: string;
@@ -778,6 +812,23 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
+  it("does not autofocus the agent chat composer on iPadOS", async () => {
+    const restoreNavigator = mockIPadOSNavigator();
+    try {
+      mockOrgModelRoutes("kimi-k2.7-code");
+      mockAgent();
+
+      detachedSetupPage({
+        context,
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      await expect(findComposerEditor()).resolves.not.toHaveFocus();
+    } finally {
+      restoreNavigator();
+    }
+  });
+
   it("keeps the agent chat composer at three-line height", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();

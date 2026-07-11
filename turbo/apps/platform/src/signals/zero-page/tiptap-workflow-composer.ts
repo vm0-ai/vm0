@@ -35,6 +35,16 @@ function editorContentClass(singleLineOnMobile: boolean): string {
 const WORKFLOW_HIGHLIGHT_CLASS = "text-primary";
 const COMPOSER_PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 interface WorkflowHighlightStorage {
   workflowNames: readonly string[];
 }
@@ -300,7 +310,7 @@ function createMountEditorCommand({
           }
         },
       });
-      if (autoFocus) {
+      if (autoFocus && !isIOS()) {
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
