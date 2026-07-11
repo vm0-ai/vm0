@@ -38,7 +38,7 @@ export const runnerJobQueue = pgTable(
     // first-turn jobs before the guest reports a CLI agent session).
     cliAgentSessionId: varchar("session_id", { length: 255 }),
 
-    // Claim status
+    // Retained for previous API versions during rollout; remove in #21036.
     claimedAt: timestamp("claimed_at"),
 
     // Execution context (secrets encrypted with persistent-secret envelope)
