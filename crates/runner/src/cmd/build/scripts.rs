@@ -396,13 +396,7 @@ exit 1
     #[test]
     fn template_build_script_excludes_rootfs_only_inputs() {
         for forbidden in [
-            "--guest-agent",
-            "--guest-download",
-            "--guest-init",
-            "--guest-mock-claude",
-            "--guest-mock-codex",
-            "--guest-reseed",
-            "--guest-write-file",
+            "--guest",
             "--ca-dir",
             "--dns-nameserver",
             "CA_ROOTFS_DEST",
@@ -602,20 +596,32 @@ exit 1
             VERIFY_SCRIPT.contains(r#"check_required_executable "$dest" "$dest""#),
             "verify-rootfs.sh should verify rootfs-only guest binaries are executable"
         );
-        for guest_binary_path in [
-            "/usr/local/bin/guest-agent",
-            "/usr/local/bin/guest-download",
-            "/sbin/guest-init",
-            "/usr/local/bin/guest-mock-claude",
-            "/usr/local/bin/guest-mock-codex",
-            "/sbin/guest-reseed",
-            "/sbin/guest-write-file",
-        ] {
-            assert!(
-                VERIFY_SCRIPT.contains(guest_binary_path),
-                "verify-rootfs.sh should verify {guest_binary_path} in rootfs mode"
-            );
-        }
+        assert!(
+            VERIFY_SCRIPT.contains("--guest-dest)"),
+            "verify-rootfs.sh should accept guest destinations from the runner"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(r#""${GUEST_DESTINATIONS[@]}""#),
+            "verify-rootfs.sh should iterate every supplied guest destination"
+        );
+    }
+
+    #[test]
+    fn customize_script_installs_supplied_guest_pairs() {
+        assert!(
+            CUSTOMIZE_SCRIPT.contains("--guest)"),
+            "customize-rootfs.sh should accept guest source/destination pairs"
+        );
+        assert!(
+            CUSTOMIZE_SCRIPT.contains(r#""${!GUEST_SOURCES[@]}""#),
+            "customize-rootfs.sh should iterate every supplied guest pair"
+        );
+        assert!(
+            CUSTOMIZE_SCRIPT.contains(
+                r#"install_host_file "${GUEST_SOURCES[$index]}" "${GUEST_DESTINATIONS[$index]}" 755"#
+            ),
+            "customize-rootfs.sh should install each supplied guest pair as executable"
+        );
     }
 
     #[cfg(unix)]

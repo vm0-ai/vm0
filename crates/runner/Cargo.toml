@@ -45,6 +45,10 @@ which = { workspace = true }
 zstd = { workspace = true, features = ["zstdmt"] }
 vsock-proto = { workspace = true }
 
+[build-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
 # These dev-dependencies exist solely for release-please version tracking:
 # cargo-workspace plugin includes dev-dependencies in its dependency graph,
 # so runner-rs gets auto-bumped when any guest crate version changes.

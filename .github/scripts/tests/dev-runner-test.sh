@@ -4,6 +4,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DEV_RUNNER="${REPO_ROOT}/scripts/dev-runner.sh"
 TARGET_HELPER="${REPO_ROOT}/.github/scripts/runner-image-target.sh"
+GUEST_HELPER="${REPO_ROOT}/.github/scripts/runner-guest-binaries.sh"
+GUEST_INVENTORY="${REPO_ROOT}/crates/runner/guest-binaries.json"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -19,11 +21,13 @@ setup_test_root() {
     "${root}/scripts" \
     "${root}/.github/scripts" \
     "${root}/.certs" \
-    "${root}/crates" \
+    "${root}/crates/runner" \
     "${root}/bin"
 
   ln -s "$DEV_RUNNER" "${root}/scripts/dev-runner.sh"
   ln -s "$TARGET_HELPER" "${root}/.github/scripts/runner-image-target.sh"
+  ln -s "$GUEST_HELPER" "${root}/.github/scripts/runner-guest-binaries.sh"
+  ln -s "$GUEST_INVENTORY" "${root}/crates/runner/guest-binaries.json"
   touch "${root}/.certs/vm0-metal-local.pem"
 
   cat >"${root}/scripts/.env.local" <<'ENV'
@@ -77,13 +81,20 @@ SH
 set -euo pipefail
 
 target=""
-previous=""
-for arg in "$@"; do
-  if [ "$previous" = "--target" ]; then
-    target="$arg"
-    break
-  fi
-  previous="$arg"
+packages=()
+original_args="$*"
+while (($#)); do
+  case "$1" in
+    --target)
+      target="$2"
+      shift 2
+      ;;
+    -p)
+      packages+=("$2")
+      shift 2
+      ;;
+    *) shift ;;
+  esac
 done
 
 if [ -z "$target" ]; then
@@ -91,9 +102,9 @@ if [ -z "$target" ]; then
   exit 2
 fi
 
-printf '%s\n' "$*" >>"${CARGO_LOG:?}"
+printf '%s\n' "$original_args" >>"${CARGO_LOG:?}"
 mkdir -p "target/${target}/ci"
-for bin in guest-agent guest-download guest-init guest-mock-claude guest-mock-codex guest-reseed guest-write-file runner; do
+for bin in "${packages[@]}"; do
   printf '%s\n' "$bin" >"target/${target}/ci/${bin}"
   chmod +x "target/${target}/ci/${bin}"
 done

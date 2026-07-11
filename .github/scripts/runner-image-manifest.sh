@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/runner-image-target.sh"
+. "${SCRIPT_DIR}/runner-guest-binaries.sh"
 
 usage() {
   cat <<'USAGE'
@@ -44,6 +45,8 @@ validate() {
   require_env PROFILE
   require_env METAL_HOSTS
 
+  runner_guest_binaries_load
+
   runner_image_validate_target "$TARGET"
 
   if [ ! -f "$MANIFEST_PATH" ]; then
@@ -73,7 +76,7 @@ validate() {
   [ -n "$runner_dir" ] || { echo "manifest missing runnerDir" >&2; exit 1; }
   [ -n "$runner_sha" ] || { echo "manifest missing runnerSha256" >&2; exit 1; }
 
-  for guest in guest-agent guest-download guest-init guest-mock-claude guest-mock-codex guest-reseed guest-write-file; do
+  for guest in "${RUNNER_GUEST_BINARIES[@]}"; do
     actual=$(jq -r --arg guest "$guest" '.guestSha256[$guest] // empty' "$MANIFEST_PATH")
     [ -n "$actual" ] || { echo "manifest missing guestSha256.${guest}" >&2; exit 1; }
   done

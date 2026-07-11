@@ -136,23 +136,9 @@ jobs:
           }
 
           check_crate runner runner-changed runner_changed
-          check_crate guest-init guest-init-changed guest_init_changed
-          check_crate guest-download guest-download-changed guest_download_changed
-          check_crate guest-agent guest-agent-changed guest_agent_changed
-          check_crate guest-mock-claude guest-mock-claude-changed guest_mock_claude_changed
-          check_crate guest-mock-codex guest-mock-codex-changed guest_mock_codex_changed
-          check_crate guest-reseed guest-reseed-changed guest_reseed_changed
-          check_crate guest-write-file guest-write-file-changed guest_write_file_changed
 
           CI_CHANGED="$ci_changed" \
           RUNNER_CHANGED="$runner_changed" \
-          GUEST_INIT_CHANGED="$guest_init_changed" \
-          GUEST_DOWNLOAD_CHANGED="$guest_download_changed" \
-          GUEST_AGENT_CHANGED="$guest_agent_changed" \
-          GUEST_MOCK_CLAUDE_CHANGED="$guest_mock_claude_changed" \
-          GUEST_MOCK_CODEX_CHANGED="$guest_mock_codex_changed" \
-          GUEST_RESEED_CHANGED="$guest_reseed_changed" \
-          GUEST_WRITE_FILE_CHANGED="$guest_write_file_changed" \
           .github/scripts/runner-image-context.sh crates-consumer
 
       - name: Detect runner image input changes
@@ -169,13 +155,6 @@ jobs:
           fi
 
           RUNNER_CHANGED="${{ steps.crates.outputs.runner-changed }}" \
-          GUEST_INIT_CHANGED="${{ steps.crates.outputs.guest-init-changed }}" \
-          GUEST_DOWNLOAD_CHANGED="${{ steps.crates.outputs.guest-download-changed }}" \
-          GUEST_AGENT_CHANGED="${{ steps.crates.outputs.guest-agent-changed }}" \
-          GUEST_MOCK_CLAUDE_CHANGED="${{ steps.crates.outputs.guest-mock-claude-changed }}" \
-          GUEST_MOCK_CODEX_CHANGED="${{ steps.crates.outputs.guest-mock-codex-changed }}" \
-          GUEST_RESEED_CHANGED="${{ steps.crates.outputs.guest-reseed-changed }}" \
-          GUEST_WRITE_FILE_CHANGED="${{ steps.crates.outputs.guest-write-file-changed }}" \
           RUNNER_IMAGE_CI_CHANGED="$runner_image_ci_changed" \
           .github/scripts/runner-image-context.sh image-inputs
 

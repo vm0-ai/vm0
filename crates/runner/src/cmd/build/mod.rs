@@ -20,7 +20,7 @@ mod scripts;
 mod sizes;
 mod snapshot;
 
-use guest::GuestBinaries;
+use guest::{GuestBinaries, guest_definitions};
 use hashes::{
     compute_ca_cert_fingerprint, compute_rootfs_hash, compute_snapshot_hash, compute_template_hash,
 };
@@ -110,6 +110,21 @@ pub struct BuildArgs {
     /// Build or upload only the shared R2 template cache, without creating a snapshot
     #[arg(long)]
     pub warm_rootfs_cache: bool,
+}
+
+impl BuildArgs {
+    fn take_guest_path(&mut self, name: &str) -> Option<PathBuf> {
+        match name {
+            "guest-agent" => self.guest_agent.take(),
+            "guest-download" => self.guest_download.take(),
+            "guest-init" => self.guest_init.take(),
+            "guest-mock-claude" => self.guest_mock_claude.take(),
+            "guest-mock-codex" => self.guest_mock_codex.take(),
+            "guest-reseed" => self.guest_reseed.take(),
+            "guest-write-file" => self.guest_write_file.take(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -358,9 +373,10 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
             // change if this host's CA changes.
             ca::ensure(&paths).await?;
             let ca_fingerprint = compute_ca_cert_fingerprint(&paths).await?;
+            let guest_hash_inputs = guests.hash_inputs();
             let rootfs_hash = compute_rootfs_hash(
                 &template_hash,
-                &guests.hash_inputs(),
+                &guest_hash_inputs,
                 &ca_fingerprint,
                 def.rootfs_disk_mb,
             )
@@ -1016,6 +1032,9 @@ async fn verify_template_file(rootfs: &Path, work_dir: &Path) -> RunnerResult<()
 async fn verify_rootfs_file(rootfs: &Path, work_dir: &Path, mode: &str) -> RunnerResult<()> {
     let mut cmd = rootfs_script_command(&work_dir.join("verify-rootfs.sh"));
     cmd.arg("--rootfs").arg(rootfs).arg("--mode").arg(mode);
+    for definition in guest_definitions() {
+        cmd.arg("--guest-dest").arg(definition.destination);
+    }
     let status = run_rootfs_script(cmd, "verify-rootfs.sh").await?;
 
     if !status.success() {
@@ -1068,21 +1087,12 @@ async fn customize_rootfs_staging(
         .arg("--ca-dir")
         .arg(&ca_dir)
         .arg("--dns-nameserver")
-        .arg(ROOTFS_DNS_NAMESERVER)
-        .arg("--guest-agent")
-        .arg(&input.guests.guest_agent)
-        .arg("--guest-download")
-        .arg(&input.guests.guest_download)
-        .arg("--guest-init")
-        .arg(&input.guests.guest_init)
-        .arg("--guest-mock-claude")
-        .arg(&input.guests.guest_mock_claude)
-        .arg("--guest-mock-codex")
-        .arg(&input.guests.guest_mock_codex)
-        .arg("--guest-reseed")
-        .arg(&input.guests.guest_reseed)
-        .arg("--guest-write-file")
-        .arg(&input.guests.guest_write_file);
+        .arg(ROOTFS_DNS_NAMESERVER);
+    for guest in input.guests.iter() {
+        cmd.arg("--guest")
+            .arg(&guest.path)
+            .arg(guest.definition.destination);
+    }
     let status = run_rootfs_script(cmd, "customize-rootfs.sh").await?;
 
     if !status.success() {

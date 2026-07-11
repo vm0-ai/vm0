@@ -1,3 +1,4 @@
+use super::super::guest::{ResolvedGuest, guest_definitions};
 use super::*;
 use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
 use std::sync::Arc;
@@ -8,26 +9,14 @@ pub(super) struct TestBuildCli {
     pub(super) args: BuildArgs,
 }
 
-pub(super) fn build_args() -> [&'static str; 17] {
-    [
-        "runner-build",
-        "--guest-agent",
-        "/tmp/guest-agent",
-        "--guest-download",
-        "/tmp/guest-download",
-        "--guest-init",
-        "/tmp/guest-init",
-        "--guest-mock-claude",
-        "/tmp/guest-mock-claude",
-        "--guest-mock-codex",
-        "/tmp/guest-mock-codex",
-        "--guest-reseed",
-        "/tmp/guest-reseed",
-        "--guest-write-file",
-        "/tmp/guest-write-file",
-        "--profile",
-        "vm0/default",
-    ]
+pub(super) fn build_args() -> Vec<String> {
+    let mut args = vec!["runner-build".to_string()];
+    for definition in guest_definitions() {
+        args.push(format!("--{}", definition.name));
+        args.push(format!("/tmp/{}", definition.name));
+    }
+    args.extend(["--profile".to_string(), "vm0/default".to_string()]);
+    args
 }
 
 pub(super) fn rootfs_input<'a>(
@@ -52,16 +41,16 @@ pub(super) fn test_guest_binaries() -> GuestBinaries {
     let temp_dir = tempfile::tempdir().unwrap();
     let guest = temp_dir.path().join("guest");
     std::fs::write(&guest, b"guest").unwrap();
-    let guest_write_file = guest.clone();
+    let entries = guest_definitions()
+        .iter()
+        .map(|definition| ResolvedGuest {
+            definition,
+            path: guest.clone(),
+        })
+        .collect();
     GuestBinaries {
         _temp_dir: temp_dir,
-        guest_agent: guest.clone(),
-        guest_download: guest.clone(),
-        guest_init: guest.clone(),
-        guest_mock_claude: guest.clone(),
-        guest_mock_codex: guest.clone(),
-        guest_reseed: guest,
-        guest_write_file,
+        entries,
     }
 }
 

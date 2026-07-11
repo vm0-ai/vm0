@@ -103,16 +103,7 @@ out=$(run_clean \
   "$CONTEXT" turbo-consumer)
 assert_contains "$out" "turbo-runner-consumer-needed=false"
 
-for flag in \
-  CI_CHANGED \
-  RUNNER_CHANGED \
-  GUEST_INIT_CHANGED \
-  GUEST_DOWNLOAD_CHANGED \
-  GUEST_AGENT_CHANGED \
-  GUEST_MOCK_CLAUDE_CHANGED \
-  GUEST_MOCK_CODEX_CHANGED \
-  GUEST_RESEED_CHANGED \
-  GUEST_WRITE_FILE_CHANGED; do
+for flag in CI_CHANGED RUNNER_CHANGED; do
   out=$(run_clean \
     "${flag}=true" \
     "$CONTEXT" crates-consumer)
