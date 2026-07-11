@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.262.2](https://github.com/vm0-ai/vm0/compare/api-v1.262.1...api-v1.262.2) (2026-07-11)
+
+
+### Refactoring
+
+* retain connector facts without raw memory documents ([#21019](https://github.com/vm0-ai/vm0/issues/21019)) ([880570d](https://github.com/vm0-ai/vm0/commit/880570db351b4e37367a0e4b4bcbbd96e95a1589))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.109.4
+
 ## [1.262.1](https://github.com/vm0-ai/vm0/compare/api-v1.262.0...api-v1.262.1) (2026-07-10)
 
 
