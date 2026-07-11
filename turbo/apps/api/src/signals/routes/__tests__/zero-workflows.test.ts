@@ -8,6 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
@@ -24,17 +25,64 @@ import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
-createMiscRoutesApi(context);
+const miscApi = createMiscRoutesApi(context);
 const mocks = createZeroRouteMocks(context);
 const api = createRunsAutomationsApi(context);
 const connectorApi = createConnectorBddApi(context);
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+type StaffFixture =
+  | {
+      readonly kind: "connector";
+      readonly actor: ApiTestUser;
+      readonly connectorType: ConnectorType;
+    }
+  | {
+      readonly kind: "workflow";
+      readonly actor: ApiTestUser;
+      readonly workflowId: string;
+    }
+  | {
+      readonly kind: "agent";
+      readonly actor: ApiTestUser;
+      readonly agentId: string;
+    };
+
+async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
+  switch (fixture.kind) {
+    case "connector": {
+      await connectorApi.deleteConnectorByType(
+        fixture.actor,
+        fixture.connectorType,
+      );
+      return;
+    }
+    case "workflow": {
+      await miscApi.deleteWorkflow(fixture.actor, fixture.workflowId, [204]);
+      return;
+    }
+    case "agent": {
+      await bdd.deleteAgent(fixture.actor, fixture.agentId);
+      return;
+    }
+  }
+}
+
+const trackStaffFixture =
+  createFixtureTracker<StaffFixture>(cleanupStaffFixture);
+
+function registerStaffFixture(fixture: StaffFixture): Promise<StaffFixture> {
+  return trackStaffFixture(Promise.resolve(fixture));
+}
 
 function user(options: ApiTestUserOptions = {}): ApiTestUser {
   return bdd.user(options);
@@ -89,20 +137,54 @@ async function createAgent(
   body: Parameters<typeof bdd.createAgent>[1] = {},
 ) {
   bdd.acceptAgentStorageWrites();
-  return await bdd.createAgent(actor, body);
+  const agent = await bdd.createAgent(actor, body);
+  if (actor.orgId === STAFF_ORG_ID) {
+    await registerStaffFixture({
+      kind: "agent",
+      actor,
+      agentId: agent.agentId,
+    });
+  }
+  return agent;
 }
 
 async function createWorkflow(
   actor: ApiTestUser,
   body: ZeroWorkflowCreateRequest,
 ) {
-  return await accept(
+  const workflow = await accept(
     collectionClient().create({
       headers: authHeaders(actor),
       body,
     }),
     [201],
   );
+  if (actor.orgId === STAFF_ORG_ID) {
+    await registerStaffFixture({
+      kind: "workflow",
+      actor,
+      workflowId: workflow.body.id,
+    });
+  }
+  return workflow;
+}
+
+async function connectManualGrant(
+  actor: ApiTestUser,
+  connectorType: ConnectorType,
+  authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
+  values: Parameters<typeof connectorApi.connectManualGrant>[3],
+) {
+  const connector = await connectorApi.connectManualGrant(
+    actor,
+    connectorType,
+    authMethod,
+    values,
+  );
+  if (actor.orgId === STAFF_ORG_ID) {
+    await registerStaffFixture({ kind: "connector", actor, connectorType });
+  }
+  return connector;
 }
 
 async function requestCreateWorkflow<
@@ -209,10 +291,10 @@ describe("zero workflows", () => {
       description: "Coordinate engineering work.",
     });
 
-    await connectorApi.connectManualGrant(viewer, "runtime", "api-token", {
+    await connectManualGrant(viewer, "runtime", "api-token", {
       RUNTIME_API_KEY: "runtime-readiness-test",
     });
-    await connectorApi.connectManualGrant(viewer, "gitlab", "api-token", {
+    await connectManualGrant(viewer, "gitlab", "api-token", {
       GITLAB_TOKEN: "gitlab-readiness-test",
     });
     await api.enableAgentConnectors(viewer, agent.agentId, ["gitlab"]);
