@@ -691,6 +691,29 @@ def ensure_bound_destination(
     kind: upstream_destination_binding.BindingKind,
     api_url: str,
 ) -> bool:
+    """Admit the flow's trusted authority for one privileged binding kind.
+
+    ``flow`` must already carry validated trusted-authority metadata and the
+    request, client, and server connection state to bind. ``kind`` selects the
+    privileged purpose, while ``api_url`` identifies the platform API authority
+    where ``connector_auth`` requires the gated test-endpoint bypass before
+    either binding or reusing a destination.
+
+    A direct server binding may be reused, extended with ``kind``, or refreshed
+    only while its authority and current destination remain valid. Otherwise an
+    unconnected server may be retargeted and bound to the normalized authority;
+    a connected server requires current verified upstream TLS and authoritative
+    endpoint evidence rather than fresh DNS. Client-associated matches are not
+    durable proof for the current server connection, so they still pass through
+    the direct binding path.
+
+    Return ``True`` only when the current server connection is directly admitted
+    for the flow authority, port, and requested kind. ``False`` does not create a
+    response and must not be treated as admission: request-header callers may use
+    the attempt for best-effort prebinding or defer the decision, but terminal
+    callers must fail closed before API auto-allow or ordinary connector
+    credential injection.
+    """
     if _flow_requires_platform_connector_auth_bypass(
         flow,
         kind=kind,
