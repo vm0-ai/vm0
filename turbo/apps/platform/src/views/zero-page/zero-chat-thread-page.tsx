@@ -14,6 +14,7 @@ import {
   useLastResolved,
   useLoadable,
 } from "ccstate-react";
+import { equalArrays } from "../../lib/equality.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -3636,9 +3637,12 @@ function ChatThreadSkeletonOverlay({
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$, {
+    equalityFn: equalArrays,
+  });
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
+    { equalityFn: equalArrays },
   );
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
@@ -4337,13 +4341,16 @@ function useQueuedUserMessages(thread: ChatThreadSignals) {
   const queuedUserMessages$ = hasQueuedUserMessages
     ? thread.queuedUserMessages$
     : thread.emptyQueuedUserMessages$;
-  return useLastResolved(queuedUserMessages$) ?? EMPTY_QUEUED_USER_MESSAGES;
+  return (
+    useLastResolved(queuedUserMessages$, { equalityFn: equalArrays }) ??
+    EMPTY_QUEUED_USER_MESSAGES
+  );
 }
 
 function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const queuedUserMessages = useQueuedUserMessages(thread);
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
-  const hasMessages = useLastResolved(thread.hasChatGroups$) ?? false;
+  const hasMessagesResolved = useLastResolved(thread.hasChatGroups$);
+  const hasMessages = hasMessagesResolved ?? false;
   const lastAssistantCancelled =
     useLastResolved(thread.lastAssistantCancelled$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
@@ -4387,7 +4394,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     clearComputerUseHostOverride,
   });
   const sending = !allFinished || sendLoading;
-  const skeletonVisible = groupsLoadable.state === "loading";
+  const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sending && !lastAssistantCancelled;
   const queueWhileSending = canQueueMessage({ sending: composerSending });
 

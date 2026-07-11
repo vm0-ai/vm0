@@ -12,9 +12,11 @@ import {
   useGet,
   useSet,
   useLoadable,
+  useLoadableState,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
@@ -6491,7 +6493,7 @@ function MicButton({
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
-  const quotaLoadable = useLoadable(audioInputQuota$);
+  const quotaState = useLoadableState(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const quotaResolved = quota !== null;
   const recording = useGet(sttRecording$);
@@ -6508,7 +6510,7 @@ function MicButton({
     recording,
     starting,
     transcribing,
-    quotaLoading: quotaLoadable.state === "loading" && !quotaResolved,
+    quotaLoading: quotaState === "loading" && !quotaResolved,
   };
 
   if (!available) {
@@ -7275,6 +7277,7 @@ export function useZeroChatComposer({
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const authorizedConnectorsLoadable = useLastLoadable(
     zeroAuthorizedConnectors$,
+    { equalityFn: equalArrays },
   );
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);

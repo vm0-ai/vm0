@@ -100,12 +100,37 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
+import { equalArrays, equalSets } from "../../lib/equality.ts";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
 const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
 const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
+
+function equalChatThreadListItems(
+  previous: ChatThreadListItem,
+  next: ChatThreadListItem,
+): boolean {
+  return (
+    previous.id === next.id &&
+    previous.title === next.title &&
+    previous.agent.id === next.agent.id &&
+    previous.agent.avatarUrl === next.agent.avatarUrl &&
+    previous.createdAt === next.createdAt &&
+    previous.updatedAt === next.updatedAt &&
+    previous.running === next.running &&
+    previous.pinnedAt === next.pinnedAt &&
+    previous.renamedAt === next.renamedAt
+  );
+}
+
+function equalChatThreadLists(
+  previous: readonly ChatThreadListItem[],
+  next: readonly ChatThreadListItem[],
+): boolean {
+  return equalArrays(previous, next, equalChatThreadListItems);
+}
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -458,9 +483,15 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const loadRightThread = useSet(loadRightThread$);
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
-  const draftThreadIds = useLastResolved(sidebarDraftThreadIds$);
-  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
-  const activeRunThreadIds = useLastResolved(sidebarActiveThreadIds$);
+  const draftThreadIds = useLastResolved(sidebarDraftThreadIds$, {
+    equalityFn: equalSets,
+  });
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$, {
+    equalityFn: equalSets,
+  });
+  const activeRunThreadIds = useLastResolved(sidebarActiveThreadIds$, {
+    equalityFn: equalSets,
+  });
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -996,7 +1027,9 @@ function ChatThreadsContent() {
   // useLastLoadable keeps the previous resolved list rendered while
   // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
   // flash the skeleton on every switch.
-  const chatThreadsLoadable = useLastLoadable(sidebarChatThreads$);
+  const chatThreadsLoadable = useLastLoadable(sidebarChatThreads$, {
+    equalityFn: equalChatThreadLists,
+  });
   const chatThreads =
     chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
   const chatThreadsLoading = chatThreadsLoadable.state === "loading";
