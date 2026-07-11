@@ -19,6 +19,8 @@ struct GuestBinary {
     destination: String,
 }
 
+type GuestField = (&'static str, fn(&GuestBinary) -> &str);
+
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(bundled_guests)");
 
@@ -103,20 +105,35 @@ fn load_guest_binaries() -> Vec<GuestBinary> {
         panic!("{GUEST_BINARIES_FILE} must contain at least one guest binary");
     }
 
-    let unique_fields: [fn(&GuestBinary) -> &str; 5] = [
-        |guest: &GuestBinary| guest.package.as_str(),
-        |guest: &GuestBinary| guest.binary.as_str(),
-        |guest: &GuestBinary| guest.path_env.as_str(),
-        |guest: &GuestBinary| guest.bundled_env.as_str(),
-        |guest: &GuestBinary| guest.destination.as_str(),
+    let unique_fields: [GuestField; 5] = [
+        ("package", |guest: &GuestBinary| guest.package.as_str()),
+        ("binary", |guest: &GuestBinary| guest.binary.as_str()),
+        ("pathEnv", |guest: &GuestBinary| guest.path_env.as_str()),
+        ("bundledEnv", |guest: &GuestBinary| {
+            guest.bundled_env.as_str()
+        }),
+        ("destination", |guest: &GuestBinary| {
+            guest.destination.as_str()
+        }),
     ];
-    for field in unique_fields {
+    for (name, field) in unique_fields {
         let mut values = HashSet::new();
         for guest in &guests {
             let value = field(guest);
-            if !values.insert(value) {
-                panic!("duplicate guest binary inventory value: {value}");
+            if value.is_empty() {
+                panic!("guest binary inventory {name} must not be empty");
             }
+            if !values.insert(value) {
+                panic!("duplicate guest binary inventory {name}: {value}");
+            }
+        }
+    }
+    for guest in &guests {
+        if !Path::new(&guest.destination).is_absolute() {
+            panic!(
+                "guest binary inventory destination must be absolute: {}",
+                guest.destination
+            );
         }
     }
 

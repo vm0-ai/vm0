@@ -7,8 +7,6 @@ RUNNER_GUEST_INVENTORY_PATH="${RUNNER_GUEST_INVENTORY_PATH:-${RUNNER_GUEST_REPO_
 RUNNER_GUEST_PACKAGES=()
 RUNNER_GUEST_BINARIES=()
 RUNNER_GUEST_PATH_ENVS=()
-RUNNER_GUEST_BUNDLED_ENVS=()
-RUNNER_GUEST_DESTINATIONS=()
 
 runner_guest_binaries_load() {
   if ! command -v jq >/dev/null 2>&1; then
@@ -26,7 +24,7 @@ runner_guest_binaries_load() {
       | if any($fields[]; type != "string" or length == 0) then
           error("runner guest inventory fields must be non-empty strings")
         else
-          $fields | @tsv
+          $fields[:3] | @tsv
         end
     end
   ' "$RUNNER_GUEST_INVENTORY_PATH"); then
@@ -36,15 +34,11 @@ runner_guest_binaries_load() {
   RUNNER_GUEST_PACKAGES=()
   RUNNER_GUEST_BINARIES=()
   RUNNER_GUEST_PATH_ENVS=()
-  RUNNER_GUEST_BUNDLED_ENVS=()
-  RUNNER_GUEST_DESTINATIONS=()
 
-  local package binary path_env bundled_env destination
-  while IFS=$'\t' read -r package binary path_env bundled_env destination; do
+  local package binary path_env
+  while IFS=$'\t' read -r package binary path_env; do
     RUNNER_GUEST_PACKAGES+=("$package")
     RUNNER_GUEST_BINARIES+=("$binary")
     RUNNER_GUEST_PATH_ENVS+=("$path_env")
-    RUNNER_GUEST_BUNDLED_ENVS+=("$bundled_env")
-    RUNNER_GUEST_DESTINATIONS+=("$destination")
   done <<<"$rows"
 }

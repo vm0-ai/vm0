@@ -38,8 +38,13 @@ runner_guest_binaries_load
 [ "${RUNNER_GUEST_PACKAGES[0]}" = "guest-one" ] || fail "expected first package"
 [ "${RUNNER_GUEST_BINARIES[1]}" = "guest-two" ] || fail "expected second binary"
 [ "${RUNNER_GUEST_PATH_ENVS[0]}" = "GUEST_ONE_PATH" ] || fail "expected first path env"
-[ "${RUNNER_GUEST_BUNDLED_ENVS[1]}" = "BUNDLED_GUEST_TWO" ] || fail "expected second bundled env"
-[ "${RUNNER_GUEST_DESTINATIONS[0]}" = "/usr/local/bin/guest one" ] || fail "expected destination with spaces"
+
+jq '.[0].bundledEnv = ""' "$RUNNER_GUEST_INVENTORY_PATH" >"${TMPDIR}/invalid.json"
+RUNNER_GUEST_INVENTORY_PATH="${TMPDIR}/invalid.json"
+if runner_guest_binaries_load >"${TMPDIR}/invalid.out" 2>"${TMPDIR}/invalid.err"; then
+  fail "expected empty inventory field to fail"
+fi
+grep -q "runner guest inventory fields must be non-empty strings" "${TMPDIR}/invalid.err" || fail "expected invalid field error"
 
 printf '[]\n' >"$RUNNER_GUEST_INVENTORY_PATH"
 if runner_guest_binaries_load >"${TMPDIR}/empty.out" 2>"${TMPDIR}/empty.err"; then
