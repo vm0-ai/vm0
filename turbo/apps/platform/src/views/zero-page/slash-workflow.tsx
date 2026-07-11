@@ -91,6 +91,31 @@ function slashWorkflowOptionId(workflowName: string): string {
   return `slash-workflow-option-${workflowName}`;
 }
 
+const SLASH_WORKFLOW_COLLISION_GAP = 12;
+
+function safeAreaCollisionPadding():
+  | number
+  | { top: number; right: number; bottom: number; left: number } {
+  // The global safe-area vars are applied as #root padding, while Radix portals
+  // the menu to body. Read the resolved pixel values from #root so collision
+  // detection keeps the portal inside the same visible content boundary.
+  const root = document.getElementById("root");
+  if (!root) {
+    return SLASH_WORKFLOW_COLLISION_GAP;
+  }
+  const styles = window.getComputedStyle(root);
+  const inset = (value: string): number => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return {
+    top: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingTop),
+    right: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingRight),
+    bottom: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingBottom),
+    left: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingLeft),
+  };
+}
+
 export function scrollSlashWorkflowIntoView(
   workflow: ComposerSlashWorkflow | undefined,
 ): void {
@@ -126,7 +151,7 @@ export function SlashWorkflowMenu({
       side="top"
       align="start"
       sideOffset={8}
-      collisionPadding={12}
+      collisionPadding={safeAreaCollisionPadding()}
       updatePositionStrategy="always"
       // Keep focus in the TipTap editor: the menu's keyboard navigation is
       // handled there, so the popover must never steal focus when it opens.

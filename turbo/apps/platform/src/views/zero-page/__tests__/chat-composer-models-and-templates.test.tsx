@@ -840,6 +840,93 @@ describe("chat composer models", () => {
     expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
   });
 
+  it("positions the slash workflow menu from the caret inside the viewport safe area", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const root = document.createElement("div");
+    root.id = "root";
+    root.style.padding = "44px 6px 8px 10px";
+    document.body.append(root);
+
+    const originalVisualViewport = Object.getOwnPropertyDescriptor(
+      window,
+      "visualViewport",
+    );
+    const visualViewport = Object.assign(new EventTarget(), {
+      height: 800,
+      offsetLeft: 0,
+      offsetTop: 100,
+      onresize: null,
+      onscroll: null,
+      pageLeft: 0,
+      pageTop: 100,
+      scale: 1,
+      width: 390,
+    }) as VisualViewport;
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+
+    const caretRect = new DOMRect(20, 300, 0, 24);
+    const getClientRects = vi
+      .spyOn(Range.prototype, "getClientRects")
+      .mockReturnValue([caretRect] as unknown as DOMRectList);
+    const getBoundingClientRect = vi
+      .spyOn(Range.prototype, "getBoundingClientRect")
+      .mockReturnValue(caretRect);
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-workflow-menu");
+    const wrapper = menu.parentElement;
+    if (!(wrapper instanceof HTMLElement)) {
+      throw new Error("Slash workflow menu wrapper not found");
+    }
+    await waitFor(() => {
+      expect(wrapper.style.transform).not.toContain("-200%");
+    });
+    const transform = wrapper.style.transform;
+    const availableWidth = wrapper.style.getPropertyValue(
+      "--radix-popper-available-width",
+    );
+    const availableHeight = wrapper.style.getPropertyValue(
+      "--radix-popper-available-height",
+    );
+
+    getClientRects.mockRestore();
+    getBoundingClientRect.mockRestore();
+    root.remove();
+    if (originalVisualViewport) {
+      Object.defineProperty(window, "visualViewport", originalVisualViewport);
+    } else {
+      delete (window as { visualViewport?: VisualViewport }).visualViewport;
+    }
+
+    expect(transform).toBe("translate(20px, 392px)");
+    expect(availableWidth).toBe("350px");
+    expect(availableHeight).toBe("236px");
+  });
+
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
