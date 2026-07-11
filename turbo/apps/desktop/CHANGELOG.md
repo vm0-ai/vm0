@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.16](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.15...desktop-v0.27.16) (2026-07-11)
+
+
+### Performance Improvements
+
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+
 ## [0.27.15](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.14...desktop-v0.27.15) (2026-07-11)
 
 

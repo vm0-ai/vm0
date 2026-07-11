@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.593.0](https://github.com/vm0-ai/vm0/compare/app-v0.592.4...app-v0.593.0) (2026-07-11)
+
+
+### Features
+
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+
+
+### Performance Improvements
+
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+    * @vm0/connectors bumped to 1.155.0
+    * @vm0/core bumped to 8.425.0
+
 ## [0.592.4](https://github.com/vm0-ai/vm0/compare/app-v0.592.3...app-v0.592.4) (2026-07-11)
 
 

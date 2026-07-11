@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.263.0](https://github.com/vm0-ai/vm0/compare/api-v1.262.4...api-v1.263.0) (2026-07-11)
+
+
+### Features
+
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+
+
+### Bug Fixes
+
+* **api:** preserve run agent identity across shared versions ([#21064](https://github.com/vm0-ai/vm0/issues/21064)) ([20bd45a](https://github.com/vm0-ai/vm0/commit/20bd45a83893258e745de6f572a6b6a3d974c641))
+
+
+### Performance Improvements
+
+* drain workflow skill presigned url refresh backlog ([#21070](https://github.com/vm0-ai/vm0/issues/21070)) ([3fb94c3](https://github.com/vm0-ai/vm0/commit/3fb94c3ba7d251499bd8054f676944ea38717830))
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+* redesign runtime profile retrieval ([#21048](https://github.com/vm0-ai/vm0/issues/21048)) ([cdf6142](https://github.com/vm0-ai/vm0/commit/cdf614220dd29c84ce349508bb7f757744c2c67b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+    * @vm0/connectors bumped to 1.155.0
+    * @vm0/core bumped to 8.425.0
+    * @vm0/db bumped to 1.109.7
+
 ## [1.262.4](https://github.com/vm0-ai/vm0/compare/api-v1.262.3...api-v1.262.4) (2026-07-11)
 
 

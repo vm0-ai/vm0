@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.425.0](https://github.com/vm0-ai/vm0/compare/core-v8.424.5...core-v8.425.0) (2026-07-11)
+
+
+### Features
+
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+    * @vm0/connectors bumped to 1.155.0
+
 ## [8.424.5](https://github.com/vm0-ai/vm0/compare/core-v8.424.4...core-v8.424.5) (2026-07-11)
 
 
