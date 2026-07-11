@@ -77,10 +77,6 @@ async fn token_renewal_error_backpressure_closes_socket_before_subscription_clos
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 22: backpressure drops messages when channel is full
-// ---------------------------------------------------------------------------
-
 // current_thread runtime is a determinism requirement: we rely on the
 // subscriber task's synchronous event-loop dispatch processes a batched
 // ProtocolMessage's Vec<AblyMessage> with no await between try_send calls)
@@ -208,10 +204,6 @@ async fn backpressure_drops_messages() {
         other => panic!("expected sentinel Message, got {other:?}"),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Test 23: DETACHED while attaching suspends channel and retries ATTACH
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn close_while_disconnected_event_send_is_backpressured_stops_without_reconnect() {
@@ -620,7 +612,3 @@ async fn channel_error_backpressure_closes_socket_before_subscription_close() {
     sub.close();
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 26: non-positive connection_state_ttl keeps the default resume window
-// ---------------------------------------------------------------------------

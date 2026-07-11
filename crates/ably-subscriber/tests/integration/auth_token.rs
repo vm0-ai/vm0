@@ -129,10 +129,6 @@ async fn token_exchange_dot_segment_key_name_fails_before_request() {
     assert_eq!(token_mock.calls(), 0);
 }
 
-// ---------------------------------------------------------------------------
-// Test 8: token renewal — server receives AUTH after short-TTL token
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn token_renewal() {
     let http = MockServer::start();
@@ -273,10 +269,6 @@ async fn close_during_pending_token_renewal_sends_close() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 9: reconnect after server drops connection
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn server_initiated_auth() {
     let http = MockServer::start();
@@ -394,10 +386,6 @@ async fn close_during_server_requested_pending_token_renewal_sends_close() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 18: get_token callback returns error → subscribe fails
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn get_token_callback_error() {
     let mut config = SubscribeConfig::new(
@@ -414,10 +402,6 @@ async fn get_token_callback_error() {
         Ok(_) => panic!("expected error, got Ok"),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Test 19: heartbeat timeout triggers reconnect (fast with TimingConfig)
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn token_renewal_failures_fatal() {

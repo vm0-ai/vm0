@@ -259,10 +259,6 @@ async fn zero_event_channel_capacity_uses_minimum_capacity() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 2: multiple messages received in order
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn multiple_messages() {
     let http = MockServer::start();
@@ -295,10 +291,6 @@ async fn multiple_messages() {
 
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 3: batched messages in a single frame
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn batched_messages_in_single_frame() {
@@ -358,10 +350,6 @@ async fn batched_messages_in_single_frame() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 4: message with json encoding
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn message_with_json_encoding() {
     let http = MockServer::start();
@@ -407,10 +395,6 @@ async fn message_with_json_encoding() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Test 5: server error during handshake
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn server_error_during_handshake() {
     let http = MockServer::start();
@@ -444,10 +428,6 @@ async fn server_error_during_handshake() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Test 6: connection closed before CONNECTED
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn connection_closed_before_connected() {
     let http = MockServer::start();
@@ -463,7 +443,3 @@ async fn connection_closed_before_connected() {
     let result = subscribe(test_config(ws_port, http.port(), "ch")).await;
     assert!(result.is_err());
 }
-
-// ---------------------------------------------------------------------------
-// Test 7: HTTP token exchange error (500)
-// ---------------------------------------------------------------------------

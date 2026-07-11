@@ -451,10 +451,6 @@ async fn huge_realtime_request_timeout_allows_detached_reattach() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 12: close subscription sends CLOSE to server
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn detached_with_client_error_reattaches() {
     let http = MockServer::start();
@@ -613,10 +609,6 @@ async fn superseded_error_after_attached_without_serial_keeps_resume_intent() {
 
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 16: server sends CLOSED → event loop stops
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn detached_while_attaching_suspends_and_retries_attach() {
@@ -1805,10 +1797,6 @@ async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
 
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 28: detach after reconnect reattaches on the active transport
-// ---------------------------------------------------------------------------
 
 /// Sequence: DETACH → send ATTACH → connection drops → reconnect succeeds →
 /// DETACH on new connection → client should send ATTACH (not open conn-3).

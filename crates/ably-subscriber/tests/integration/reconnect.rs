@@ -87,10 +87,6 @@ async fn reconnect_after_server_drop() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 9b: server sends WebSocket Close frame, client reconnects immediately
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn reconnect_immediately_after_close_frame() {
     let http = MockServer::start();
@@ -176,10 +172,6 @@ async fn reconnect_immediately_after_close_frame() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 9c: server sends Close without a close frame, client reconnects immediately
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn reconnect_immediately_after_close_frame_no_reason() {
     let http = MockServer::start();
@@ -258,10 +250,6 @@ async fn reconnect_immediately_after_close_frame_no_reason() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 9d: server sends Close frame with empty reason
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
     let http = MockServer::start();
@@ -323,10 +311,6 @@ async fn reconnect_after_close_frame_empty_reason_reports_code_only() {
 
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 9e: repeated clean close frames are rate-limited
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn repeated_clean_close_reconnect_is_rate_limited() {
@@ -424,10 +408,6 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
 
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 10: server sends DISCONNECTED, client reconnects
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn server_sends_disconnected() {
@@ -664,10 +644,6 @@ async fn disconnected_event_is_not_delayed_by_transport_close() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 11: server sends DETACHED, client re-attaches
-// ---------------------------------------------------------------------------
-
 /// ably-js always reconnects on mid-session DISCONNECTED regardless of
 /// retriability — the server may send 429 or 401 but still expect the
 /// client to backoff-and-retry. Only connection-level ERROR is fatal.
@@ -754,10 +730,6 @@ async fn non_retriable_disconnected_triggers_reconnect() {
 
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 14: ERROR during event loop → Event::Error + stop
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn retry_enters_suspended_after_connection_state_ttl() {
@@ -969,10 +941,6 @@ async fn suspended_retry_reconnect_attach_uses_resume_without_serial() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 21: token renewal failures become fatal (fast with TimingConfig)
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn non_positive_ttl_keeps_default_resume_window() {
     let http = MockServer::start();
@@ -1060,10 +1028,6 @@ async fn non_positive_ttl_keeps_default_resume_window() {
     token_mock.assert_calls(1);
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 27: resumed connection still re-attaches channel
-// ---------------------------------------------------------------------------
 
 /// Regression test: when the server returns the same connection_id (resume),
 /// the client must still send ATTACH. Before the fix, resumed connections
