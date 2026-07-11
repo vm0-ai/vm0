@@ -49,20 +49,6 @@ async function postAction(
   return await readJson<TestAutomationsStateActionResponse>(response);
 }
 
-export async function readAutomationComposeHeadVersion(
-  context: TestContext,
-  composeId: string,
-): Promise<string> {
-  const response = await postAction(context, {
-    action: "read-compose-head-version",
-    compose_id: composeId,
-  });
-  if (!response.head_version_id) {
-    throw new Error("readAutomationComposeHeadVersion missing head_version_id");
-  }
-  return response.head_version_id;
-}
-
 export async function seedVm0ManagedDefaultModelKey(
   context: TestContext,
 ): Promise<string> {

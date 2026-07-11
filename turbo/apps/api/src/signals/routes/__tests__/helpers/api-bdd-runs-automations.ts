@@ -553,7 +553,11 @@ export function createRunsAutomationsApi(context: TestContext) {
     async createCompose(
       actor: ApiTestUser,
       content: ComposeContent,
-    ): Promise<{ readonly composeId: string; readonly name: string }> {
+    ): Promise<{
+      readonly composeId: string;
+      readonly name: string;
+      readonly versionId: string;
+    }> {
       const response = await accept(
         runsAutomationApp(context)(composesMainContract).create({
           headers: authenticate(context, actor),
@@ -561,7 +565,11 @@ export function createRunsAutomationsApi(context: TestContext) {
         }),
         [200, 201],
       );
-      return { composeId: response.body.composeId, name: response.body.name };
+      return {
+        composeId: response.body.composeId,
+        name: response.body.name,
+        versionId: response.body.versionId,
+      };
     },
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
