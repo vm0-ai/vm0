@@ -53,6 +53,11 @@ export type FirewallRequestBlockReason =
   | "malformed_network_policy"
   | "unsafe_path";
 
+export interface FirewallRuleMatch {
+  readonly permission: string;
+  readonly rule: string;
+}
+
 export type FirewallRequestDecision =
   | {
       readonly kind: "no_match";
@@ -72,6 +77,7 @@ export type FirewallRequestDecision =
       readonly relativePath: string;
       readonly reason: FirewallRequestBlockReason;
       readonly permissions: readonly string[];
+      readonly ruleMatches: readonly FirewallRuleMatch[];
     };
 
 interface ApiMatchState {
@@ -152,6 +158,8 @@ interface FirewallDecisionState {
   allowedMatch: DecisionAllowedRuleMatch | null;
   deniedMatch: DecisionBlockMatch | null;
   deniedPermissionNames: string[];
+  deniedRulesByPermission: Map<string, Set<string>>;
+  deniedRuleMatches: FirewallRuleMatch[];
   malformedConfigMatch: DecisionBlockMatch | null;
   malformedPolicyMatch: DecisionBlockMatch | null;
 }
@@ -1210,6 +1218,8 @@ function createDecisionState(): FirewallDecisionState {
     allowedMatch: null,
     deniedMatch: null,
     deniedPermissionNames: [],
+    deniedRulesByPermission: new Map(),
+    deniedRuleMatches: [],
     malformedConfigMatch: null,
     malformedPolicyMatch: null,
   };
@@ -1227,6 +1237,8 @@ function acceptDecisionBaseMatch(
     state.allowedMatch = null;
     state.deniedMatch = null;
     state.deniedPermissionNames = [];
+    state.deniedRulesByPermission = new Map();
+    state.deniedRuleMatches = [];
     state.malformedConfigMatch = null;
     state.malformedPolicyMatch = null;
   } else if (score < state.bestBaseScore) {
@@ -1269,6 +1281,8 @@ function acceptRuleSpecificity(
     state.allowedMatch = null;
     state.deniedMatch = null;
     state.deniedPermissionNames = [];
+    state.deniedRulesByPermission = new Map();
+    state.deniedRuleMatches = [];
     return true;
   }
   return comparison === 0;
@@ -1278,9 +1292,17 @@ function recordDeniedRule(
   state: FirewallDecisionState,
   match: DecisionBlockMatch,
   permission: string,
+  rule: string,
 ): void {
-  if (!state.deniedPermissionNames.includes(permission)) {
+  let deniedRules = state.deniedRulesByPermission.get(permission);
+  if (deniedRules === undefined) {
+    deniedRules = new Set();
+    state.deniedRulesByPermission.set(permission, deniedRules);
     state.deniedPermissionNames.push(permission);
+  }
+  if (!deniedRules.has(rule)) {
+    deniedRules.add(rule);
+    state.deniedRuleMatches.push({ permission, rule });
   }
   state.deniedMatch ??= match;
 }
@@ -1313,6 +1335,7 @@ function resolveFirewallDecision(
       relativePath: state.deniedMatch.relativePath,
       reason: "permission_denied",
       permissions: state.deniedPermissionNames,
+      ruleMatches: state.deniedRuleMatches,
     };
   }
 
@@ -1324,6 +1347,7 @@ function resolveFirewallDecision(
       relativePath: state.malformedPolicyMatch.relativePath,
       reason: "malformed_network_policy",
       permissions: [],
+      ruleMatches: [],
     };
   }
 
@@ -1335,6 +1359,7 @@ function resolveFirewallDecision(
       relativePath: state.malformedConfigMatch.relativePath,
       reason: "malformed_firewall_config",
       permissions: [],
+      ruleMatches: [],
     };
   }
 
@@ -1355,6 +1380,7 @@ function resolveFirewallDecision(
       relativePath: baseMatch.relativePath,
       reason: "malformed_network_policy",
       permissions: [],
+      ruleMatches: [],
     };
   }
   if (policy.unknownPolicy === "allow") {
@@ -1373,6 +1399,7 @@ function resolveFirewallDecision(
     relativePath: baseMatch.relativePath,
     reason: "unknown_endpoint",
     permissions: [],
+    ruleMatches: [],
   };
 }
 
@@ -1387,6 +1414,7 @@ function unsafePathBlockDecision(
     relativePath: baseMatch.relativePath,
     reason: "unsafe_path",
     permissions: [],
+    ruleMatches: [],
   };
 }
 
@@ -1441,7 +1469,7 @@ function evaluateDecisionRule({
   if (!acceptRuleSpecificity(state, rule.specificity)) return;
 
   if (permissionBlocked) {
-    recordDeniedRule(state, blockMatch, rule.permission);
+    recordDeniedRule(state, blockMatch, rule.permission, rule.raw);
     return;
   }
 

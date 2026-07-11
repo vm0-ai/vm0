@@ -81,6 +81,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     # Dispatcher's FirewallBlock branch short-circuits with a 403 before
     # handle_firewall_request is reached.
@@ -101,6 +102,13 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unknown_endpoint"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["status"] == 403
+    assert network_log_entry["firewall_block_reason"] == "unknown_endpoint"
+    assert network_log_entry["firewall_permission"] == ""
+    assert network_log_entry["firewall_rule_match"] == ""
+    assert "firewall_rule_matches" not in network_log_entry
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
@@ -140,6 +148,7 @@ async def test_firewall_malformed_config_block_reports_reason(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     assert flow.response is not None
     assert flow.response.status_code == 403
@@ -150,6 +159,11 @@ async def test_firewall_malformed_config_block_reports_reason(
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "malformed_firewall_config"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["firewall_block_reason"] == "malformed_firewall_config"
+    assert network_log_entry["firewall_permission"] == ""
+    assert network_log_entry["firewall_rule_match"] == ""
+    assert "firewall_rule_matches" not in network_log_entry
 
 
 async def test_firewall_malformed_auth_config_block_reports_reason(
@@ -235,6 +249,7 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     assert flow.response is not None
     assert flow.response.status_code == 403
@@ -247,6 +262,9 @@ async def test_firewall_malformed_network_policy_block_reports_reason(
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "malformed_network_policy"
     assert "networkPolicies" not in proxy_log_entry
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["firewall_block_reason"] == "malformed_network_policy"
+    assert "firewall_rule_matches" not in network_log_entry
 
 
 async def test_firewall_top_level_malformed_network_policy_block_reports_reason(
@@ -334,6 +352,7 @@ async def test_firewall_permission_denied_block_reports_reason(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     assert flow.response is not None
     assert flow.response.status_code == 403
@@ -344,6 +363,166 @@ async def test_firewall_permission_denied_block_reports_reason(
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "permission_denied"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["status"] == 403
+    assert network_log_entry["firewall_block_reason"] == "permission_denied"
+    assert network_log_entry["firewall_permission"] == "read-repos"
+    assert network_log_entry["firewall_rule_match"] == "GET /repos/{owner}/{repo}"
+    assert network_log_entry["firewall_rule_matches"] == [
+        {
+            "permission": "read-repos",
+            "rule": "GET /repos/{owner}/{repo}",
+        }
+    ]
+    assert network_log_entry["firewall_billable"] is False
+
+
+@pytest.mark.parametrize(
+    (
+        "permissions",
+        "denied_permissions",
+        "expected_permission",
+        "expected_rule",
+        "expected_matches",
+    ),
+    [
+        (
+            [
+                {
+                    "name": "repo-read",
+                    "rules": [
+                        "GET /repos/{owner}/{repo}",
+                        "ANY /repos/{owner}/{repo}",
+                    ],
+                }
+            ],
+            ["repo-read"],
+            "repo-read",
+            "",
+            [
+                {
+                    "permission": "repo-read",
+                    "rule": "GET /repos/{owner}/{repo}",
+                },
+                {
+                    "permission": "repo-read",
+                    "rule": "ANY /repos/{owner}/{repo}",
+                },
+            ],
+        ),
+        (
+            [
+                {
+                    "name": "repo-read",
+                    "rules": ["GET /repos/{owner}/{repo}"],
+                },
+                {
+                    "name": "repo-admin",
+                    "rules": ["GET /repos/{owner}/{repo}"],
+                },
+            ],
+            ["repo-read", "repo-admin"],
+            "",
+            "GET /repos/{owner}/{repo}",
+            [
+                {
+                    "permission": "repo-read",
+                    "rule": "GET /repos/{owner}/{repo}",
+                },
+                {
+                    "permission": "repo-admin",
+                    "rule": "GET /repos/{owner}/{repo}",
+                },
+            ],
+        ),
+        (
+            [
+                {
+                    "name": "repo-read",
+                    "rules": [
+                        "GET /repos/{owner}/{repo}",
+                        "ANY /repos/{owner}/{repo}",
+                    ],
+                },
+                {
+                    "name": "repo-admin",
+                    "rules": ["GET /repos/{owner}/{repo}"],
+                },
+            ],
+            ["repo-read", "repo-admin"],
+            "",
+            "",
+            [
+                {
+                    "permission": "repo-read",
+                    "rule": "GET /repos/{owner}/{repo}",
+                },
+                {
+                    "permission": "repo-read",
+                    "rule": "ANY /repos/{owner}/{repo}",
+                },
+                {
+                    "permission": "repo-admin",
+                    "rule": "GET /repos/{owner}/{repo}",
+                },
+            ],
+        ),
+    ],
+    ids=[
+        "one-permission-multiple-rules",
+        "multiple-permissions-one-rule",
+        "multiple-permissions-multiple-rules",
+    ],
+)
+async def test_firewall_permission_denied_network_log_preserves_tied_rule_matches(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    headers,
+    permissions,
+    denied_permissions,
+    expected_permission,
+    expected_rule,
+    expected_matches,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": permissions,
+            },
+            network_policy={
+                "allow": [],
+                "deny": denied_permissions,
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    assert flow.response is not None
+    body = json.loads(flow.response.content)
+    assert body["permissions"] == denied_permissions
+    assert body["reason"] == "permission_denied"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["firewall_block_reason"] == "permission_denied"
+    assert network_log_entry["firewall_permission"] == expected_permission
+    assert network_log_entry["firewall_rule_match"] == expected_rule
+    assert network_log_entry["firewall_rule_matches"] == expected_matches
 
 
 async def test_firewall_block_response_url_preserves_raw_encoded_path_without_query(
@@ -935,6 +1114,7 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
         fake_firewall_headers() as mock_headers,
     ):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     mock_headers.assert_not_called()
     assert flow.response is not None
@@ -956,6 +1136,9 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unsafe_path"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["firewall_block_reason"] == "unsafe_path"
+    assert "firewall_rule_matches" not in network_log_entry
 
 
 async def test_unsafe_firewall_base_still_blocks_before_auth_injection(

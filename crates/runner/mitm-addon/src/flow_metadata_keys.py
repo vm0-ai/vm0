@@ -65,6 +65,10 @@ Firewall and auth context
   Read by logging and connector-specific billing.
 - ``FIREWALL_RULE_MATCH``: ``str`` matched rule or empty string. Read by
   network-log firewall metadata.
+- ``FIREWALL_BLOCK_REASON``: ``str`` matcher block reason for a denied firewall
+  request. Read by network-log firewall metadata.
+- ``FIREWALL_RULE_MATCHES``: ``list[dict[str, str]]`` ordered denied
+  permission/rule pairs. Read by network-log firewall metadata.
 - ``FIREWALL_PARAMS``: ``dict`` firewall params from the match. Read by
   network-log firewall metadata when it has the expected shape.
 - ``FIREWALL_BILLABLE``: ``bool`` computed from runner VM billable firewall
@@ -183,6 +187,8 @@ FIREWALL_AUTH_CACHE_KEY: Final = "firewall_auth_cache_key"
 FIREWALL_NAME: Final = "firewall_name"
 FIREWALL_PERMISSION: Final = "firewall_permission"
 FIREWALL_RULE_MATCH: Final = "firewall_rule_match"
+FIREWALL_BLOCK_REASON: Final = "firewall_block_reason"
+FIREWALL_RULE_MATCHES: Final = "firewall_rule_matches"
 FIREWALL_PARAMS: Final = "firewall_params"
 FIREWALL_BILLABLE: Final = "firewall_billable"
 FIREWALL_ACTION: Final = "firewall_action"

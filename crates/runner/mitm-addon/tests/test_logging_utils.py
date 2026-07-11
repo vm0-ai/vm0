@@ -372,6 +372,8 @@ class TestAddFirewallMetadata:
         flow = real_flow(with_response=False)
         flow.metadata.update(
             {
+                metadata_keys.FIREWALL_BLOCK_REASON: 123,
+                metadata_keys.FIREWALL_RULE_MATCHES: [{"permission": "repo-read", "rule": None}],
                 metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "branch": None},
                 metadata_keys.FIREWALL_ERROR: 123,
                 metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN", None],

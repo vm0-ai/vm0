@@ -76,6 +76,12 @@ const firewallDecisionExpectedSchema = z.discriminatedUnion("kind", [
       z.literal("unsafe_path"),
     ]),
     permissions: z.array(z.string()),
+    ruleMatches: z.array(
+      z.object({
+        permission: z.string(),
+        rule: z.string(),
+      }),
+    ),
   }),
 ]);
 

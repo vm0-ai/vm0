@@ -378,13 +378,21 @@ mod tests {
 
     #[test]
     fn network_log_preserves_all_fields() {
-        let json = r#"{"timestamp":"2026-02-15T10:00:00","action":"ALLOW","host":"api.github.com","port":443,"method":"GET","url":"https://api.github.com/repos/vm0-ai/vm0","status":200,"latency_ms":150,"request_size":0,"response_size":1024,"firewall_base":"https://api.github.com","firewall_name":"github","firewall_permission":"metadata:read","firewall_rule_match":"GET /repos/{owner}/{repo}"}"#;
+        let json = r#"{"timestamp":"2026-02-15T10:00:00","action":"DENY","host":"api.github.com","port":443,"method":"GET","url":"https://api.github.com/repos/vm0-ai/vm0","status":403,"latency_ms":150,"request_size":0,"response_size":1024,"firewall_base":"https://api.github.com","firewall_name":"github","firewall_permission":"metadata:read","firewall_rule_match":"GET /repos/{owner}/{repo}","firewall_block_reason":"permission_denied","firewall_rule_matches":[{"permission":"metadata:read","rule":"GET /repos/{owner}/{repo}"}]}"#;
         let log: NetworkLog = serde_json::from_str(json).unwrap();
         let v = &log.0;
         assert_eq!(v["method"], "GET");
-        assert_eq!(v["status"], 200);
+        assert_eq!(v["status"], 403);
         assert_eq!(v["firewall_name"], "github");
         assert_eq!(v["firewall_permission"], "metadata:read");
+        assert_eq!(v["firewall_block_reason"], "permission_denied");
+        assert_eq!(
+            v["firewall_rule_matches"],
+            json!([{
+                "permission": "metadata:read",
+                "rule": "GET /repos/{owner}/{repo}",
+            }])
+        );
     }
 
     #[test]
@@ -461,6 +469,13 @@ mod tests {
             "action": "DENY",
             "host": "blocked.example",
             "status": 403,
+            "firewall_block_reason": "permission_denied",
+            "firewall_rule_matches": [
+                {
+                    "permission": "metadata:read",
+                    "rule": "GET /repos/{owner}/{repo}",
+                },
+            ],
         });
         let content = format!(
             "{}\n{}\n",

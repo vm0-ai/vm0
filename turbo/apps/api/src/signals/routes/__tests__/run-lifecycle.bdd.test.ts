@@ -7680,6 +7680,28 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             firewall_name: "blocked-service",
             firewall_error: "connector_not_configured",
           },
+          {
+            timestamp: nowDate().toISOString(),
+            type: "http",
+            action: "DENY",
+            host: "api.github.com",
+            port: 443,
+            method: "GET",
+            url: "https://api.github.com/repos/vm0-ai/vm0",
+            status: 403,
+            firewall_name: "github",
+            firewall_block_reason: "permission_denied",
+            firewall_rule_matches: [
+              {
+                permission: "repos:read",
+                rule: "GET /repos/{owner}/{repo}",
+              },
+              {
+                permission: "repos:admin",
+                rule: "GET /repos/{owner}/{repo}",
+              },
+            ],
+          },
         ],
         sandboxOperations: [
           {
@@ -7711,7 +7733,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       },
     );
     expect(networkIngestCall).toBeDefined();
-    expect(networkIngestCall?.[1]).toHaveLength(2);
+    expect(networkIngestCall?.[1]).toHaveLength(3);
     expect(networkIngestCall?.[1]).toStrictEqual([
       expect.objectContaining({
         runId: created.runId,
@@ -7723,6 +7745,22 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         action: "BLOCK",
         host: "blocked.example.test",
         firewall_error: "connector_not_configured",
+      }),
+      expect.objectContaining({
+        runId: created.runId,
+        action: "DENY",
+        host: "api.github.com",
+        firewall_block_reason: "permission_denied",
+        firewall_rule_matches: [
+          {
+            permission: "repos:read",
+            rule: "GET /repos/{owner}/{repo}",
+          },
+          {
+            permission: "repos:admin",
+            rule: "GET /repos/{owner}/{repo}",
+          },
+        ],
       }),
     ]);
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(

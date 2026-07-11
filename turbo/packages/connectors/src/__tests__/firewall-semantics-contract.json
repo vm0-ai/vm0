@@ -820,7 +820,10 @@
         "base": "https://api.example.com",
         "relativePath": "/items/123",
         "reason": "permission_denied",
-        "permissions": ["items.read"]
+        "permissions": ["items.read"],
+        "ruleMatches": [
+          { "permission": "items.read", "rule": "GET /items/{id}" }
+        ]
       }
     },
     {
@@ -860,7 +863,63 @@
         "base": "https://api.example.com",
         "relativePath": "/items/123",
         "reason": "permission_denied",
-        "permissions": ["items.write"]
+        "permissions": ["items.write"],
+        "ruleMatches": [
+          { "permission": "items.write", "rule": "POST /items/{id}" }
+        ]
+      }
+    },
+    {
+      "name": "same-specificity denied rules preserve ordered permission pairs",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                {
+                  "name": "items.read",
+                  "rules": [
+                    "GET /items/{id}",
+                    "ANY /items/{id}",
+                    "GET /items/{id}"
+                  ]
+                },
+                {
+                  "name": "items.admin",
+                  "rules": ["GET /items/{id}"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": [],
+          "deny": ["items.read", "items.admin"],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "permission_denied",
+        "permissions": ["items.read", "items.admin"],
+        "ruleMatches": [
+          { "permission": "items.read", "rule": "GET /items/{id}" },
+          { "permission": "items.read", "rule": "ANY /items/{id}" },
+          { "permission": "items.admin", "rule": "GET /items/{id}" }
+        ]
       }
     },
     {
@@ -948,7 +1007,10 @@
         "base": "https://api.example.com",
         "relativePath": "/items/admin",
         "reason": "permission_denied",
-        "permissions": ["items.specific"]
+        "permissions": ["items.specific"],
+        "ruleMatches": [
+          { "permission": "items.specific", "rule": "GET /items/admin" }
+        ]
       }
     },
     {
@@ -988,7 +1050,8 @@
         "base": "https://api.example.com",
         "relativePath": "/items/123",
         "reason": "unknown_endpoint",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1076,7 +1139,10 @@
         "base": "https://api.example.com/admin",
         "relativePath": "/users/42",
         "reason": "permission_denied",
-        "permissions": ["admin.read"]
+        "permissions": ["admin.read"],
+        "ruleMatches": [
+          { "permission": "admin.read", "rule": "GET /users/{id}" }
+        ]
       }
     },
     {
@@ -1116,7 +1182,8 @@
         "base": "https://api.example.com/admin?token=1",
         "relativePath": "/delete",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1156,7 +1223,8 @@
         "base": "https://user@api.example.com",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1236,7 +1304,8 @@
         "base": "https://api.example.com",
         "relativePath": "/items/123",
         "reason": "unknown_endpoint",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1276,7 +1345,8 @@
         "base": "https://api.example.com:abc",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1351,7 +1421,8 @@
         "base": "https://api.example.com/v1?x=\\",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1391,7 +1462,8 @@
         "base": "https://api.{env+}.example.com",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1491,7 +1563,8 @@
         "base": "https://api%2eexample.com",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1541,7 +1614,8 @@
         "base": "https://api.{a}{b}.example.com",
         "relativePath": "/items/123",
         "reason": "malformed_firewall_config",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1581,7 +1655,8 @@
         "base": "https://api.example.com",
         "relativePath": "/items/123",
         "reason": "malformed_network_policy",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1621,7 +1696,8 @@
         "base": "https://api.example.com",
         "relativePath": "/items\\123",
         "reason": "unsafe_path",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     },
     {
@@ -1696,7 +1772,8 @@
         "base": "https://api.example.com",
         "relativePath": "/users/%2e%2e/admin",
         "reason": "unsafe_path",
-        "permissions": []
+        "permissions": [],
+        "ruleMatches": []
       }
     }
   ]

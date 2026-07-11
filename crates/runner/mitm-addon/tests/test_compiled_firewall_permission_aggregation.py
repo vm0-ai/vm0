@@ -72,6 +72,11 @@ def test_denied_permission_names_keep_encounter_order_and_deduplicate():
     )
     assert isinstance(compiled, matching.FirewallBlock)
     assert compiled.permissions == ("repo-read", "repo-admin")
+    assert compiled.rule_matches == (
+        matching.FirewallRuleMatch("repo-read", "GET /repos/{owner}/{repo}"),
+        matching.FirewallRuleMatch("repo-read", "ANY /repos/{owner}/{repo}"),
+        matching.FirewallRuleMatch("repo-admin", "GET /repos/{owner}/{repo}"),
+    )
     assert compiled.reason == "permission_denied"
 
 
@@ -107,6 +112,16 @@ def test_denied_permission_names_deduplicate_many_same_specificity_candidates():
         *(f"generated-{index}" for index in range(12)),
         "repo-write",
     )
+    expected_rule_matches = (
+        matching.FirewallRuleMatch("repo-read", matching_rule),
+        matching.FirewallRuleMatch("repo-read", repeated_rule),
+        *(
+            matching.FirewallRuleMatch(f"generated-{index}", rule)
+            for index in range(12)
+            for rule in (matching_rule, repeated_rule)
+        ),
+        matching.FirewallRuleMatch("repo-write", matching_rule),
+    )
     policies = {
         "github": {
             "allow": [],
@@ -123,4 +138,5 @@ def test_denied_permission_names_deduplicate_many_same_specificity_candidates():
     )
     assert isinstance(compiled, matching.FirewallBlock)
     assert compiled.permissions == expected_permissions
+    assert compiled.rule_matches == expected_rule_matches
     assert compiled.reason == "permission_denied"

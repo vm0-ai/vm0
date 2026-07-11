@@ -718,6 +718,19 @@ const agentEventsResponseSchema = z.object({
  */
 const networkLogActionSchema = z.enum(["ALLOW", "DENY", "BLOCK"]);
 
+const firewallBlockReasonSchema = z.enum([
+  "permission_denied",
+  "unknown_endpoint",
+  "malformed_firewall_config",
+  "malformed_network_policy",
+  "unsafe_path",
+]);
+
+const firewallRuleMatchSchema = z.object({
+  permission: z.string(),
+  rule: z.string(),
+});
+
 /**
  * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
@@ -743,6 +756,8 @@ const networkLogEntrySchema = z.object({
   firewall_name: z.string().optional(),
   firewall_permission: z.string().optional(),
   firewall_rule_match: z.string().optional(),
+  firewall_block_reason: firewallBlockReasonSchema.optional(),
+  firewall_rule_matches: z.array(firewallRuleMatchSchema).optional(),
   firewall_params: z.record(z.string(), z.string()).optional(),
   firewall_billable: z.boolean().optional(),
   firewall_error: z.string().optional(),

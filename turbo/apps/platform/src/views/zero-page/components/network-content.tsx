@@ -336,6 +336,9 @@ function hasValue(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.length > 0;
   }
+  if (typeof value === "string") {
+    return value.length > 0;
+  }
   if (typeof value === "object") {
     return Object.keys(value).length > 0;
   }
@@ -351,6 +354,70 @@ function addField(
   if (hasValue(raw)) {
     out.push([label, formatted]);
   }
+}
+
+function addFirewallFields(
+  out: [string, string][],
+  entry: NetworkLogEntry,
+): void {
+  addField(
+    out,
+    "Firewall",
+    entry.firewall_name,
+    formatValue(entry.firewall_name),
+  );
+  addField(
+    out,
+    "Permission",
+    entry.firewall_permission,
+    formatValue(entry.firewall_permission),
+  );
+  addField(
+    out,
+    "Rule Match",
+    entry.firewall_rule_match,
+    formatValue(entry.firewall_rule_match),
+  );
+  addField(
+    out,
+    "Block Reason",
+    entry.firewall_block_reason,
+    formatValue(entry.firewall_block_reason),
+  );
+  if (entry.firewall_rule_matches && entry.firewall_rule_matches.length > 1) {
+    out.push([
+      "Permission / Rule Candidates",
+      entry.firewall_rule_matches
+        .map(({ permission, rule }) => {
+          return `${permission} — ${rule}`;
+        })
+        .join("; "),
+    ]);
+  }
+  addField(
+    out,
+    "Base URL",
+    entry.firewall_base,
+    formatValue(entry.firewall_base),
+  );
+  addField(
+    out,
+    "Params",
+    entry.firewall_params,
+    formatParams(entry.firewall_params),
+  );
+  addField(
+    out,
+    "Billable",
+    entry.firewall_billable,
+    entry.firewall_billable ? "Yes" : "No",
+  );
+  addField(
+    out,
+    "Permission Error",
+    entry.firewall_error,
+    formatValue(entry.firewall_error),
+  );
 }
 
 function addConnectorDiagnosticFields(
@@ -424,48 +491,7 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
   );
   addField(out, "DNS Result", entry.dns_result, formatValue(entry.dns_result));
   addField(out, "DNS Serial", entry.dns_serial, formatValue(entry.dns_serial));
-  addField(
-    out,
-    "Firewall",
-    entry.firewall_name,
-    formatValue(entry.firewall_name),
-  );
-  addField(
-    out,
-    "Permission",
-    entry.firewall_permission,
-    formatValue(entry.firewall_permission),
-  );
-  addField(
-    out,
-    "Rule Match",
-    entry.firewall_rule_match,
-    formatValue(entry.firewall_rule_match),
-  );
-  addField(
-    out,
-    "Base URL",
-    entry.firewall_base,
-    formatValue(entry.firewall_base),
-  );
-  addField(
-    out,
-    "Params",
-    entry.firewall_params,
-    formatParams(entry.firewall_params),
-  );
-  addField(
-    out,
-    "Billable",
-    entry.firewall_billable,
-    entry.firewall_billable ? "Yes" : "No",
-  );
-  addField(
-    out,
-    "Permission Error",
-    entry.firewall_error,
-    formatValue(entry.firewall_error),
-  );
+  addFirewallFields(out, entry);
   addConnectorDiagnosticFields(out, entry);
   addField(
     out,
