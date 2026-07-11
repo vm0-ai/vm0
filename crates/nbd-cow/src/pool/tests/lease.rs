@@ -96,7 +96,7 @@ async fn discard_releases_in_flight_lease_without_cooldown() {
         .expect("acquire task panicked")
         .expect("acquire failed");
     assert_eq!(lease.index(), 4);
-    handle.discard(lease).await;
+    handle.discard(lease.into_lease()).await;
     handle.cleanup().await;
 }
 

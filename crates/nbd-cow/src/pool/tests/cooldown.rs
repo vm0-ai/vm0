@@ -64,7 +64,9 @@ async fn expired_cooldown_with_waiter_hands_off_same_claim() {
         .expect("acquire task panicked")
         .expect("acquire failed");
     assert_eq!(lease.index(), 3);
-    handle.discard(lease).await;
+    assert_eq!(lease.source(), DeviceAcquireSource::CooledClaim);
+    assert_eq!(lease.scan_duration(), None);
+    handle.discard(lease.into_lease()).await;
     handle.cleanup().await;
 }
 

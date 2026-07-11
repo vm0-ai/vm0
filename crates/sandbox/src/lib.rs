@@ -36,7 +36,10 @@ pub use error::{
     Result, SandboxError, SandboxIdleTransition, SandboxInitializationPhase,
     SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
 };
-pub use factory::{SandboxCreateObserver, SandboxCreateStage, SandboxFactory};
+pub use factory::{
+    SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,
+    SandboxNbdCowCreateStage,
+};
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::Sandbox;
 pub use snapshot::{

@@ -332,11 +332,19 @@ impl FirecrackerFactory {
                 )?;
                 tx.track_network(network);
 
-                // Create NBD COW device (~15ms via netlink, no subprocess).
+                // Create the NBD COW device. Observed runner creates report
+                // fixed child stages beneath the stable parent timing below.
                 let stage_started = Instant::now();
-                let cow_device = timing.record_stage_result(
-                    SandboxCreateStage::NbdCowCreate,
-                    stage_started,
+                let create_cow_result = if timing.has_observer() {
+                    self.device_pool
+                        .create_cow_device_with_observer(
+                            &resources.base_image.path,
+                            &cow_file,
+                            resources.base_image.size,
+                            &mut timing,
+                        )
+                        .await
+                } else {
                     self.device_pool
                         .create_cow_device(
                             &resources.base_image.path,
@@ -344,10 +352,14 @@ impl FirecrackerFactory {
                             resources.base_image.size,
                         )
                         .await
-                        .map_err(|e| SandboxError::Initialization {
-                            phase: SandboxInitializationPhase::SandboxAllocation,
-                            message: format!("create NBD COW device: {e}"),
-                        }),
+                };
+                let cow_device = timing.record_stage_result(
+                    SandboxCreateStage::NbdCowCreate,
+                    stage_started,
+                    create_cow_result.map_err(|e| SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("create NBD COW device: {e}"),
+                    }),
                 )?;
                 tx.track_cow_device(cow_device);
 
