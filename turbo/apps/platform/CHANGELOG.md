@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.592.4](https://github.com/vm0-ai/vm0/compare/app-v0.592.3...app-v0.592.4) (2026-07-11)
+
+
+### Bug Fixes
+
+* prevent gray chrome above mobile artifact previews ([#21035](https://github.com/vm0-ai/vm0/issues/21035)) ([c2d5b56](https://github.com/vm0-ai/vm0/commit/c2d5b56bdfa7ed16ad2dc03c2438f28be89d1e0f))
+
 ## [0.592.3](https://github.com/vm0-ai/vm0/compare/app-v0.592.2...app-v0.592.3) (2026-07-11)
 
 

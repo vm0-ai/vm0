@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.143.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.10...runner-rs-v0.143.11) (2026-07-11)
+
+
+### Bug Fixes
+
+* classify completion failures before retrying ([#21041](https://github.com/vm0-ai/vm0/issues/21041)) ([d28ccb6](https://github.com/vm0-ai/vm0/commit/d28ccb60eafbaa3aac279160c5f8fb2a76fa8e3e)), closes [#21006](https://github.com/vm0-ai/vm0/issues/21006)
+
 ## [0.143.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.9...runner-rs-v0.143.10) (2026-07-11)
 
 

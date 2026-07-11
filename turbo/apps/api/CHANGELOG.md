@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.262.4](https://github.com/vm0-ai/vm0/compare/api-v1.262.3...api-v1.262.4) (2026-07-11)
+
+
+### Bug Fixes
+
+* classify completion failures before retrying ([#21041](https://github.com/vm0-ai/vm0/issues/21041)) ([d28ccb6](https://github.com/vm0-ai/vm0/commit/d28ccb60eafbaa3aac279160c5f8fb2a76fa8e3e)), closes [#21006](https://github.com/vm0-ai/vm0/issues/21006)
+
+
+### Performance Improvements
+
+* **runner:** reduce claim database round trips ([#21042](https://github.com/vm0-ai/vm0/issues/21042)) ([e4ee3a3](https://github.com/vm0-ai/vm0/commit/e4ee3a38d6d8d4366c785cb91b8a39337f56e884))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.109.6
+
 ## [1.262.3](https://github.com/vm0-ai/vm0/compare/api-v1.262.2...api-v1.262.3) (2026-07-11)
 
 
