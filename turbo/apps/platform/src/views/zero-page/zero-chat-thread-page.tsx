@@ -4277,11 +4277,9 @@ function useChatThreadComposerFeedback(
 
 function useChatThreadComposerWorkflowPrompt({
   thread,
-  input,
   pageSignal,
 }: {
   thread: ChatThreadSignals;
-  input: string;
   pageSignal: AbortSignal;
 }): {
   onCreateWorkflowPrompt: (() => void) | undefined;
@@ -4290,6 +4288,7 @@ function useChatThreadComposerWorkflowPrompt({
   onReplaceDialogOpenChange: (open: boolean) => void;
 } {
   const attachments = useGet(thread.draft.attachments$);
+  const readInput = useSet(thread.draft.readInput$);
   const setInput = useSet(thread.draft.setInput$);
   const clearDraft = useSet(thread.draft.clear$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
@@ -4297,7 +4296,6 @@ function useChatThreadComposerWorkflowPrompt({
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
   const workflowPromptDraftTarget = `composer:${thread.threadId}`;
-  const hasComposerDraft = input.trim().length > 0 || attachments.length > 0;
   const replaceDraftDialogOpen =
     replaceDraftTarget === workflowPromptDraftTarget;
 
@@ -4309,7 +4307,7 @@ function useChatThreadComposerWorkflowPrompt({
   };
 
   const handleCreateWorkflowPrompt = () => {
-    if (hasComposerDraft) {
+    if (readInput().trim().length > 0 || attachments.length > 0) {
       setReplaceDraftTarget(workflowPromptDraftTarget);
       return;
     }
@@ -4355,10 +4353,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     useLastResolved(thread.lastAssistantCancelled$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinished = useLastResolved(thread.allFinished$)!;
-  const input = useGet(thread.draft.input$);
-  const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
-  const setInputRef = useSet(thread.setInputRef$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
   const {
@@ -4398,11 +4393,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const composerSending = sending && !lastAssistantCancelled;
   const queueWhileSending = canQueueMessage({ sending: composerSending });
 
-  const handleInputChange = (text: string) => {
-    setInput(text);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-  };
-
   const handleDraftChange = () => {
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
@@ -4410,12 +4400,10 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
-    input,
     pageSignal,
   });
   const composerOptions: ZeroChatComposerProps = {
-    input,
-    onInputChange: handleInputChange,
+    composer: thread.workflowComposer,
     onSend: handleSend,
     onQueue: handleQueue,
     sending: composerSending,
@@ -4437,7 +4425,6 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     draft: thread.draft,
     composerFileInput$: thread.composerFileInput$,
     setComposerFileInput$: thread.setComposerFileInput$,
-    setInputRef,
     chatThreadId: thread.threadId,
     actionsLoading: skeletonVisible,
     modelPicker,

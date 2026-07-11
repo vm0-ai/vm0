@@ -99,6 +99,7 @@ import type {
   LoadHistoryResult,
   SendMessageOptions,
 } from "./chat-thread-signals.ts";
+import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 
 export type {
   DraftInputSyncTarget,
@@ -2001,22 +2002,6 @@ function createContainerRef() {
   return { containerEl$, setContainerRef$ };
 }
 
-function createInputRef() {
-  const internalInputRef$ = state<HTMLElement | null>(null);
-  const setInputRef$ = onRef(
-    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
-      signal.addEventListener("abort", () => {
-        set(internalInputRef$, null);
-      });
-      set(internalInputRef$, el);
-    }),
-  );
-  const focusInput$ = command(({ get }) => {
-    get(internalInputRef$)?.focus();
-  });
-  return { setInputRef$, focusInput$ };
-}
-
 function createMessageRunIndicatorState(
   rawMessages$: Computed<Promise<ChatMessageProjectionEntry[]>>,
 ) {
@@ -3644,7 +3629,6 @@ export function createChatThreadSignals(
     clearScrollHeightForPrepend$,
     awayFromBottom$,
   });
-
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
   const runTracking = createRunTracking({
@@ -3662,7 +3646,6 @@ export function createChatThreadSignals(
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,
   });
-
   const messageActions = createThreadMessageActions({
     threadId,
     threadMeta$,
@@ -3677,15 +3660,12 @@ export function createChatThreadSignals(
     refreshGroupedChatMessagesCache$: messages.refreshGroupedChatMessagesCache$,
     dataSource,
   });
-
-  const inputRef = createInputRef();
+  const workflowComposer = createWorkflowComposerSignals(draft);
   const phraseLoop = createPhraseLoop(
     messages.groupedChatMessages$,
     runTracking.allFinished$,
   );
-  const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
-    createArtifacts(threadId, messages.groupedChatMessages$);
-
+  const artifact = createArtifacts(threadId, messages.groupedChatMessages$);
   return {
     threadId,
     remoteThreadDetail$,
@@ -3703,11 +3683,12 @@ export function createChatThreadSignals(
     setContainerRef$,
     awayFromBottom$,
     draft,
+    workflowComposer,
     composerFileInput$,
     setComposerFileInput$,
     ...agentInfo,
     ...threadUi,
-    ...inputRef,
+    focusInput$: workflowComposer.focus$,
     queueDraftSync$,
     earliestChatMessageId$: messages.earliestChatMessageId$,
     latestChatMessageId$: messages.latestChatMessageId$,
@@ -3732,8 +3713,6 @@ export function createChatThreadSignals(
     loadHistory$: messages.loadHistory$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
     ...phraseLoop,
-    artifacts$,
-    reloadArtifacts$,
-    setArtifactsRealtimeRef$,
+    ...artifact,
   };
 }

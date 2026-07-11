@@ -88,22 +88,11 @@ import {
   closeChatThreadGoalDialog$,
   openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
-import type {
-  DraftInputSyncTarget,
-  DraftSignals,
-} from "../../signals/chat-page/create-chat-thread.ts";
+import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
 import {
-  zeroChatAttachments$ as singletonAttachments$,
-  zeroChatAttachmentUploadSummary$ as singletonAttachmentUploadSummary$,
-  uploadZeroAttachment$ as singletonUpload$,
-  restoreZeroAttachments$ as singletonRestore$,
-  removeZeroAttachment$ as singletonRemove$,
-  appendZeroChatInput$ as singletonAppendInput$,
-  setZeroChatInputSyncTarget$ as singletonSetInputSyncTarget$,
-  zeroDragOver$ as singletonDragOver$,
-  setZeroDragOver$ as singletonSetDragOver$,
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
@@ -266,8 +255,7 @@ function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
 // ---------------------------------------------------------------------------
 
 export interface ZeroChatComposerProps {
-  input: string;
-  onInputChange: (value: string) => void;
+  composer: WorkflowComposerSignals;
   onSend: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
@@ -292,7 +280,7 @@ export interface ZeroChatComposerProps {
   /** When set, reduces this instance to a single-line resting height on mobile. */
   enableMobileSingleLine?: boolean;
   /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
-  draft?: DraftSignals;
+  draft: DraftSignals;
   /** Composer file input element reference. When omitted, falls back to singleton. */
   composerFileInput$?: Computed<HTMLElement | null>;
   /** Set the composer file input element. When omitted, falls back to singleton. */
@@ -300,8 +288,6 @@ export interface ZeroChatComposerProps {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  /** Register the textarea element for external focus control. */
-  setInputRef?: (el: HTMLElement | null) => void;
   /** Current chat thread id. Used by thread-scoped goal controls. */
   chatThreadId?: string;
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
@@ -506,21 +492,15 @@ function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
 }
 
 function resolveComposerCanSend({
-  draftCanSend,
-  input,
+  hasInput,
   visibleAttachmentCount,
   uploadsReady,
 }: {
-  draftCanSend: boolean;
-  input: string;
+  hasInput: boolean;
   visibleAttachmentCount: number;
   uploadsReady: boolean;
 }): boolean {
-  return (
-    uploadsReady &&
-    draftCanSend &&
-    (input.trim() !== "" || visibleAttachmentCount > 0)
-  );
+  return uploadsReady && (hasInput || visibleAttachmentCount > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -6625,12 +6605,12 @@ function ComposerAttachButton({
 }
 
 function ComposerUploadMenu({
-  input,
+  readInput,
   onDraftChange,
   onInputChange,
   onSelectFile,
 }: {
-  readonly input: string;
+  readonly readInput: () => string;
   readonly onDraftChange?: () => void;
   readonly onInputChange: (value: string) => void;
   readonly onSelectFile: () => void;
@@ -6647,6 +6627,7 @@ function ComposerUploadMenu({
       return;
     }
     const normalized = new URL(trimmed).toString();
+    const input = readInput();
     const base = input.trimEnd();
     onInputChange(base ? `${base}\n${normalized}` : normalized);
     onDraftChange?.();
@@ -6734,48 +6715,32 @@ function ComposerUploadMenu({
 // ---------------------------------------------------------------------------
 
 function useResolvedComposerSignals(
-  input: string,
-  draft: DraftSignals | undefined,
+  draft: DraftSignals,
   composerFileInputProp$: Computed<HTMLElement | null> | undefined,
   setComposerFileInputProp$:
     | Command<(() => void) | undefined, [HTMLElement | null]>
     | undefined,
 ) {
-  const attachments = useGet(
-    draft ? draft.attachments$ : singletonAttachments$,
-  );
-  const attachmentUploadSummary = useLoadable(
-    draft ? draft.attachmentUploadSummary$ : singletonAttachmentUploadSummary$,
-  );
-  const canSend = input.trim() !== "" || attachments.length > 0;
-  const uploadAttachment = useSet(
-    draft ? draft.uploadAttachment$ : singletonUpload$,
-  );
-  const restoreAttachments = useSet(
-    draft ? draft.restoreAttachments$ : singletonRestore$,
-  );
-  const removeAttachment = useSet(
-    draft ? draft.removeAttachment$ : singletonRemove$,
-  );
+  const attachments = useGet(draft.attachments$);
+  const attachmentUploadSummary = useLoadable(draft.attachmentUploadSummary$);
+  const readInput = useSet(draft.readInput$);
+  const setInput = useSet(draft.setInput$);
+  const uploadAttachment = useSet(draft.uploadAttachment$);
+  const restoreAttachments = useSet(draft.restoreAttachments$);
+  const removeAttachment = useSet(draft.removeAttachment$);
   const fileInputEl = useGet(
     composerFileInputProp$ ?? singletonComposerFileInput$,
   );
   const setFileInputEl = useSet(
     setComposerFileInputProp$ ?? singletonSetComposerFileInput$,
   );
-  const dragOver = useGet(draft ? draft.dragOver$ : singletonDragOver$);
-  const setDragOver = useSet(
-    draft ? draft.setDragOver$ : singletonSetDragOver$,
-  );
-  const appendInput = useSet(
-    draft ? draft.appendInput$ : singletonAppendInput$,
-  );
-  const setInputSyncTarget = useSet(
-    draft ? draft.setInputSyncTarget$ : singletonSetInputSyncTarget$,
-  );
+  const dragOver = useGet(draft.dragOver$);
+  const setDragOver = useSet(draft.setDragOver$);
+  const appendInput = useSet(draft.appendInput$);
 
   return {
-    canSend,
+    readInput,
+    setInput,
     attachments,
     attachmentUploadSummary,
     uploadAttachment,
@@ -6786,7 +6751,6 @@ function useResolvedComposerSignals(
     dragOver,
     setDragOver,
     appendInput,
-    setInputSyncTarget,
   };
 }
 
@@ -6833,41 +6797,32 @@ function toPersistedAttachments(
 type KeyboardSendAction = "none" | "send" | "queue";
 
 function ComposerInputSlot({
-  input,
-  onInputChange,
+  composer,
   onDraftChange,
   sending,
   autoFocus,
   enableMobileSingleLine,
-  setInputRef,
   onKeyDown,
   onPaste,
-  setInputSyncTarget,
 }: {
-  readonly input: string;
-  readonly onInputChange: (value: string) => void;
+  readonly composer: WorkflowComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
   readonly enableMobileSingleLine: boolean;
-  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
-  readonly setInputSyncTarget: (target: DraftInputSyncTarget | null) => void;
 }) {
   const singleLineOnMobile = enableMobileSingleLine;
 
   return (
     <TiptapWorkflowComposer
-      input={input}
-      onInputChange={onInputChange}
+      composer={composer}
       onDraftChange={onDraftChange}
       sending={sending}
       autoFocus={autoFocus}
-      setInputRef={setInputRef}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
-      setInputSyncTarget={setInputSyncTarget}
       singleLineOnMobile={singleLineOnMobile}
     />
   );
@@ -6952,6 +6907,53 @@ function ComposerSendButton({
       <IconArrowUp size={18} stroke={2} />
     </Button>
   );
+}
+
+function ComposerSendControl({
+  draft,
+  visibleAttachmentCount,
+  uploadsReady,
+  submitBlocked,
+  sending,
+  queueWhileSending,
+  hasQueueHandler,
+  onCancel,
+  activeFeedback,
+  actionsLoading,
+  onSend,
+}: {
+  draft: DraftSignals;
+  visibleAttachmentCount: number;
+  uploadsReady: boolean;
+  submitBlocked: boolean;
+  sending: boolean | undefined;
+  queueWhileSending: boolean;
+  hasQueueHandler: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  actionsLoading: boolean;
+  onSend: () => void;
+}) {
+  const hasInput = useGet(draft.hasInput$);
+  const canSend = resolveComposerCanSend({
+    hasInput,
+    visibleAttachmentCount,
+    uploadsReady,
+  });
+  const sendAction = resolveKeyboardSendAction({
+    canSend: canSend && !submitBlocked,
+    sending,
+    queueWhileSending,
+    hasQueueHandler,
+  });
+  const state = resolveSendButtonStateForActionsLoading({
+    actionsLoading,
+    showStopButton: Boolean(sending && onCancel) && !canSend,
+    onCancel,
+    activeFeedback,
+    sendAction,
+  });
+  return <ComposerSendButton {...state} onSend={onSend} />;
 }
 
 function resolveSendButtonStateForActionsLoading({
@@ -7083,8 +7085,7 @@ function resolveComposerFeatures(
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
 export function useZeroChatComposer({
-  input,
-  onInputChange,
+  composer,
   onSend,
   onQueue,
   sending,
@@ -7097,7 +7098,6 @@ export function useZeroChatComposer({
   draft,
   composerFileInput$: composerFileInputProp$,
   setComposerFileInput$: setComposerFileInputProp$,
-  setInputRef,
   chatThreadId,
   onDraftChange,
   actionsLoading = false,
@@ -7123,13 +7123,13 @@ export function useZeroChatComposer({
     resolveComposerFeatures(features);
 
   const resolved = useResolvedComposerSignals(
-    input,
     draft,
     composerFileInputProp$,
     setComposerFileInputProp$,
   );
   const {
-    canSend: draftCanSend,
+    readInput,
+    setInput,
     attachments,
     attachmentUploadSummary,
     uploadAttachment,
@@ -7140,7 +7140,6 @@ export function useZeroChatComposer({
     dragOver,
     setDragOver,
     appendInput,
-    setInputSyncTarget,
   } = resolved;
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
@@ -7151,16 +7150,10 @@ export function useZeroChatComposer({
     attachments,
     visualAttachmentUnsupported,
   );
-  const canSend = resolveComposerCanSend({
-    draftCanSend,
-    input,
-    visibleAttachmentCount: visibleAttachments.length,
-    uploadsReady:
-      attachmentUploadSummary.state === "hasData" &&
-      attachmentUploadSummary.data.readyCount ===
-        attachmentUploadSummary.data.attachmentCount,
-  });
-  const canSubmit = canSend && !submitBlocker;
+  const uploadsReady =
+    attachmentUploadSummary.state === "hasData" &&
+    attachmentUploadSummary.data.readyCount ===
+      attachmentUploadSummary.data.attachmentCount;
 
   // When feedback fragments are present the composer is in "feedback mode": the
   // textarea is replaced by the stacked quote + note rows and Send dispatches
@@ -7169,6 +7162,7 @@ export function useZeroChatComposer({
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
+    const input = readInput();
     if (!e.clipboardData) {
       return;
     }
@@ -7196,7 +7190,7 @@ export function useZeroChatComposer({
           chatPayload.text,
         );
         if (nextInput !== input) {
-          onInputChange(nextInput);
+          setInput(nextInput);
         }
         if (allowedAttachments.length > 0) {
           restoreAttachments(allowedAttachments);
@@ -7218,7 +7212,7 @@ export function useZeroChatComposer({
       }
       const nextInput = insertPastedText(e.currentTarget, input, plainText);
       if (nextInput !== input) {
-        onInputChange(nextInput);
+        setInput(nextInput);
       }
       pastedPlainText = true;
     };
@@ -7377,14 +7371,17 @@ export function useZeroChatComposer({
     setSavingType(null);
   };
 
-  const sendAction = resolveKeyboardSendAction({
-    canSend: canSubmit,
-    sending,
-    queueWhileSending,
-    hasQueueHandler: onQueue !== undefined,
-  });
-
   const handleSend = () => {
+    const input = readInput();
+    const sendAction = resolveKeyboardSendAction({
+      canSend:
+        uploadsReady &&
+        (input.trim().length > 0 || visibleAttachments.length > 0) &&
+        !submitBlocker,
+      sending,
+      queueWhileSending,
+      hasQueueHandler: onQueue !== undefined,
+    });
     if (sendAction === "send") {
       // Fire-and-forget: request push permission on first send, never blocks
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
@@ -7396,21 +7393,10 @@ export function useZeroChatComposer({
     }
   };
 
-  // Stop button replaces Send only when there is nothing to dispatch — i.e.
-  // the composer is empty during an active run. With draft content present
-  // the Send button stays visible so the click can queue the message.
-  const showStopButton = Boolean(sending && onCancel) && !canSend;
-  const sendButtonState = resolveSendButtonStateForActionsLoading({
-    actionsLoading,
-    showStopButton,
-    onCancel,
-    activeFeedback,
-    sendAction,
-  });
-
   // Routes a button click to the queue path while the current thread is sending,
   // otherwise to the normal send path.
   const handleButtonSend = () => {
+    const input = readInput();
     if (submitBlocker) {
       return;
     }
@@ -7551,16 +7537,13 @@ export function useZeroChatComposer({
               ) : (
                 <>
                   <ComposerInputSlot
-                    input={input}
-                    onInputChange={onInputChange}
+                    composer={composer}
                     onDraftChange={onDraftChange}
                     sending={sending}
                     autoFocus={autoFocus}
                     enableMobileSingleLine={enableMobileSingleLine}
-                    setInputRef={setInputRef}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
-                    setInputSyncTarget={setInputSyncTarget}
                   />
                 </>
               )}
@@ -7568,9 +7551,9 @@ export function useZeroChatComposer({
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   {uploadPopoverEnabled ? (
                     <ComposerUploadMenu
-                      input={input}
+                      readInput={readInput}
                       onDraftChange={onDraftChange}
-                      onInputChange={onInputChange}
+                      onInputChange={setInput}
                       onSelectFile={handleFileSelect}
                     />
                   ) : (
@@ -7608,8 +7591,17 @@ export function useZeroChatComposer({
                       onDraftChange?.();
                     }}
                   />
-                  <ComposerSendButton
-                    {...sendButtonState}
+                  <ComposerSendControl
+                    draft={draft}
+                    visibleAttachmentCount={visibleAttachments.length}
+                    uploadsReady={uploadsReady}
+                    submitBlocked={submitBlocker !== undefined}
+                    sending={sending}
+                    queueWhileSending={queueWhileSending}
+                    hasQueueHandler={onQueue !== undefined}
+                    onCancel={onCancel}
+                    activeFeedback={activeFeedback}
+                    actionsLoading={actionsLoading}
                     onSend={handleButtonSend}
                   />
                 </div>

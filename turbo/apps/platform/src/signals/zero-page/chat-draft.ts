@@ -206,6 +206,8 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 
 export interface DraftSignals {
   input$: Computed<string>;
+  hasInput$: Computed<boolean>;
+  readInput$: Command<string, []>;
   setInput$: Command<void, [string]>;
   appendInput$: Command<void, [string]>;
   setInputSyncTarget$: Command<void, [DraftInputSyncTarget | null]>;
@@ -270,6 +272,12 @@ function createDraftInputSignals() {
   const input$ = computed((get) => {
     return get(internalInput$);
   });
+  const hasInput$ = computed((get) => {
+    return get(internalInput$).trim().length > 0;
+  });
+  const readInput$ = command(({ get }) => {
+    return get(internalInput$);
+  });
   const syncInput$ = command(({ get }, value: string) => {
     get(internalInputSyncTarget$)?.syncInput(value);
   });
@@ -291,7 +299,14 @@ function createDraftInputSignals() {
     const separator = base.length > 0 && !base.endsWith(" ") ? " " : "";
     set(setInput$, `${base}${separator}${text}`);
   });
-  return { input$, setInput$, appendInput$, setInputSyncTarget$ };
+  return {
+    input$,
+    hasInput$,
+    readInput$,
+    setInput$,
+    appendInput$,
+    setInputSyncTarget$,
+  };
 }
 
 export function createDraftSignals(): DraftSignals {

@@ -53,7 +53,7 @@ import {
 } from "../../signals/chat-page/workflow-prompt-action.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
-  chatPageInput$,
+  chatPageWorkflowComposer$,
   chatPageModelSelection$,
   setChatPageInput$,
   setChatPageModelSelection$,
@@ -62,6 +62,7 @@ import {
   suggestedPrompts$,
   unfilteredSuggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
+import { talkDraft$ } from "../../signals/zero-page/chat-draft.ts";
 import {
   newThreadGenerationTemplate$,
   newThreadComputerUseHostId$,
@@ -613,11 +614,11 @@ function useAgentChatSendMessage({
 }
 
 function useAgentChatComposerWorkflowPrompt({
-  input,
+  readInput,
   setInput,
   queueDraftSync,
 }: {
-  input: string;
+  readInput: () => string;
   setInput: (value: string) => void;
   queueDraftSync: () => void;
 }): {
@@ -638,7 +639,7 @@ function useAgentChatComposerWorkflowPrompt({
   };
 
   const handleCreateWorkflowPrompt = () => {
-    if (input.trim().length > 0) {
+    if (readInput().trim().length > 0) {
       setReplaceDraftTarget(workflowPromptDraftTarget);
       return;
     }
@@ -693,11 +694,13 @@ export function AgentChatPage() {
 
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
-  const input = useGet(chatPageInput$);
+  const draft = useGet(talkDraft$);
+  const composer = useGet(chatPageWorkflowComposer$);
+  const readInput = useSet(draft.readInput$);
   const setInput = useSet(setChatPageInput$);
   const queueAgentDraftSync = useAgentChatDraftSync(pageSignal);
   const workflowPrompt = useAgentChatComposerWorkflowPrompt({
-    input,
+    readInput,
     setInput,
     queueDraftSync: queueAgentDraftSync,
   });
@@ -759,8 +762,8 @@ export function AgentChatPage() {
 
           <ZeroChatComposer
             className="w-full"
-            input={input}
-            onInputChange={handleInputChange}
+            composer={composer}
+            draft={draft}
             onSend={handleSend}
             onDraftChange={handleDraftChange}
             displayName={currentChatAgentDisplayName ?? ""}

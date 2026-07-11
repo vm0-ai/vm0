@@ -8,6 +8,7 @@ import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
+import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
 import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
@@ -77,6 +78,7 @@ export interface ChatThreadSignals {
   // feature-gated scroll-to-bottom button. Read-only outside scroll signals.
   awayFromBottom$: Computed<boolean>;
   draft: DraftSignals;
+  workflowComposer: WorkflowComposerSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<
     (() => void) | undefined,
@@ -95,7 +97,6 @@ export interface ChatThreadSignals {
     [string, ChatClipboardPayload, AbortSignal]
   >;
   // -- Focus ----------------------------------------------------------------
-  setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;

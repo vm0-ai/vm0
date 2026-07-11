@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
+import { createWorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
@@ -22,6 +23,10 @@ export const chatPageInput$ = computed((get) => {
 });
 export const setChatPageInput$ = command(({ get, set }, value: string) => {
   set(get(talkDraft$).setInput$, value);
+});
+
+export const chatPageWorkflowComposer$ = computed((get) => {
+  return createWorkflowComposerSignals(get(talkDraft$));
 });
 
 const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
