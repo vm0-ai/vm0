@@ -257,7 +257,7 @@ function ManualGrantDialog({
   onConnected,
 }: {
   type: ConnectorType;
-  icon: ConnectorTypeWithStatus["icon"];
+  icon: ConnectorTypeWithStatus["icon"] | undefined;
   connectorLabel: string;
   manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   open: boolean;
@@ -369,7 +369,7 @@ function DirectedConnectDialogs({
   setConnectModalOpen,
 }: {
   readonly connectorType: ConnectorType;
-  readonly icon: ConnectorTypeWithStatus["icon"];
+  readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
   readonly connectorLabel: string;
   readonly manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   readonly manualGrantDialogOpen: boolean;
@@ -485,7 +485,7 @@ function DirectedConnectCardContent({
   canConnect,
   onConnect,
 }: {
-  readonly icon: ConnectorTypeWithStatus["icon"];
+  readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;

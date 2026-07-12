@@ -194,7 +194,7 @@ function DirectedAuthorizeCardContent({
   canAuthorize,
   onAuthorize,
 }: {
-  readonly icon: ConnectorTypeWithStatus["icon"];
+  readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;

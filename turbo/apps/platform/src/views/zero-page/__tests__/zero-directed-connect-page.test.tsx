@@ -27,6 +27,13 @@ const context = testContext();
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
+function connectorIcon(connectorRef: string) {
+  return {
+    url: `https://icons.example.test/${connectorRef}.svg`,
+    invertInDarkMode: false,
+  };
+}
+
 function mockPublicConnectorStatus(
   connector: PublicConnectorCatalogStatusItem,
 ): void {
@@ -50,6 +57,7 @@ function publicManualTokenConnectorStatus(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: `${args.label} description`,
+    icon: connectorIcon(args.connectorRef),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -97,6 +105,7 @@ function publicOAuthConnectorStatus(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: `${args.label} description`,
+    icon: connectorIcon(args.connectorRef),
     category: "engineering-team-execution",
     generation: [],
     tags: [],
@@ -135,6 +144,7 @@ function publicNoAuthConnectorStatus(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: `${args.label} description`,
+    icon: connectorIcon(args.connectorRef),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -191,6 +201,7 @@ function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
     connectorRef: "steam",
     label: "Public Steam",
     description: "Public Steam description",
+    icon: connectorIcon("steam"),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -290,6 +301,7 @@ describe("directed connector connect page", () => {
       connectorRef: "github",
       label: "Public GitHub",
       description: "Public GitHub description",
+      icon: connectorIcon("github"),
       category: "engineering-team-execution",
       generation: [],
       tags: [],

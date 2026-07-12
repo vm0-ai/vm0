@@ -60,6 +60,13 @@ function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
+function connectorIcon(connectorRef: string) {
+  return {
+    url: `https://icons.example.test/${connectorRef}.svg`,
+    invertInDarkMode: false,
+  };
+}
+
 function detachedSetupWorkflowDetailPage(
   path: string,
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
@@ -1464,24 +1471,28 @@ describe("workflow detail page", () => {
             {
               connectorRef: "google-drive",
               label: "Google Drive",
+              icon: connectorIcon("google-drive"),
               reason: "The workflow reads account documents.",
               status: "connected",
             },
             {
               connectorRef: "github",
               label: "GitHub",
+              icon: connectorIcon("github"),
               reason: "A GitHub trigger requires this connector.",
               status: "unavailable",
             },
             {
               connectorRef: "slack",
               label: "Slack",
+              icon: connectorIcon("slack"),
               reason: "The workflow posts a summary to Slack.",
               status: "not-enabled-for-agent",
             },
             {
               connectorRef: "notion",
               label: "Notion",
+              icon: connectorIcon("notion"),
               reason: "The workflow updates a Notion page.",
               status: "scope-mismatch",
             },
@@ -1499,6 +1510,7 @@ describe("workflow detail page", () => {
             {
               connectorRef: "linear",
               label: "Linear",
+              icon: connectorIcon("linear"),
               reason: "The workflow creates follow-up issues.",
               status: "not-connected",
             },
@@ -1567,12 +1579,13 @@ describe("workflow detail page", () => {
       transform: "scale(1.25)",
     });
 
-    const linearRow = within(readiness).getByText("Linear").closest("li");
-    if (!(linearRow instanceof HTMLElement)) {
-      throw new Error("Linear readiness row not found");
+    const unavailableRow = within(readiness).getByText("GitHub").closest("li");
+    if (!(unavailableRow instanceof HTMLElement)) {
+      throw new Error("Unavailable readiness row not found");
     }
-    expect(within(linearRow).getByRole("img")).toHaveAccessibleName(
-      "Connector icon unavailable",
+    expect(unavailableRow.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/github.svg",
     );
 
     expect(linkByText("Reconnect Gmail", readiness)).toHaveAttribute(
@@ -1653,6 +1666,7 @@ describe("workflow detail page", () => {
             {
               connectorRef: "gmail",
               label: "Gmail",
+              icon: connectorIcon("gmail"),
               reason: "The workflow reads outreach replies.",
               status: "connected",
             },

@@ -5572,7 +5572,7 @@ function PermissionActionCardContent({
   onClick,
 }: {
   block: PermissionActionBlock;
-  icon: PublicConnectorCatalogPermissionDetail["icon"];
+  icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;

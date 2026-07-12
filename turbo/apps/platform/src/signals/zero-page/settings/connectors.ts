@@ -90,7 +90,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
-  icon: PublicConnectorCatalogIcon | undefined;
+  icon: PublicConnectorCatalogIcon;
   category: string;
   /** Lowercase aliases/keywords used by connector search. */
   tags: readonly string[];

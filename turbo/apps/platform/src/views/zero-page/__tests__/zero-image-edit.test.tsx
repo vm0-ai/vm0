@@ -307,6 +307,10 @@ function xConnectorStatusItem(args?: {
     connectorRef: "x",
     label: "X",
     description: "Connect your X account",
+    icon: {
+      url: "https://icons.example.test/x.svg",
+      invertInDarkMode: false,
+    },
     category: "marketing-content-growth",
     generation: [],
     tags: [],

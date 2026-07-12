@@ -78,6 +78,10 @@ export function catalogItem(
     connectorRef: overrides.connectorRef,
     label: overrides.label ?? overrides.connectorRef,
     description: overrides.description ?? `${overrides.connectorRef} connector`,
+    icon: overrides.icon ?? {
+      url: `https://icons.example.test/${overrides.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: overrides.category ?? "developer-tools",
     generation: overrides.generation ?? [],
     tags: overrides.tags ?? [],
@@ -98,6 +102,10 @@ export function catalogStatusItem(
     connectorRef: overrides.connectorRef,
     label: overrides.label ?? overrides.connectorRef,
     description: overrides.description ?? `${overrides.connectorRef} connector`,
+    icon: overrides.icon ?? {
+      url: `https://icons.example.test/${overrides.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: overrides.category ?? "developer-tools",
     generation: overrides.generation ?? [],
     tags: overrides.tags ?? [],

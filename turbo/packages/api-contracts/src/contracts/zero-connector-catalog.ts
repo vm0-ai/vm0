@@ -57,7 +57,7 @@ const publicConnectorCatalogItemSchema = z.object({
   connectorRef: connectorRefSchema,
   label: z.string(),
   description: z.string(),
-  icon: publicConnectorCatalogIconSchema.optional(),
+  icon: publicConnectorCatalogIconSchema,
   category: z.string(),
   generation: z.array(z.string()),
   tags: z.array(z.string()),
@@ -159,7 +159,7 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 const publicConnectorCatalogPermissionDetailSchema = z.object({
   connectorRef: connectorRefSchema,
   label: z.string(),
-  icon: publicConnectorCatalogIconSchema.optional(),
+  icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),
   permissions: z.array(publicConnectorCatalogPermissionSchema),
   categories: publicConnectorCatalogPermissionCategoriesSchema.nullable(),

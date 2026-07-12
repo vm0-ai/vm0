@@ -19,7 +19,7 @@ export interface ConnectorCatalogDisplayMetadata {
   readonly connectorRef: string;
   readonly label: string;
   readonly helpText: string;
-  readonly icon: PublicConnectorCatalogIcon | undefined;
+  readonly icon: PublicConnectorCatalogIcon;
 }
 
 /**

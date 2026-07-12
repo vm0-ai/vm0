@@ -21,7 +21,10 @@ import { db$, type ReadonlyDb } from "../external/db";
 import { generateText } from "../external/openrouter";
 import { safeJsonParse } from "../utils";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
-import { listPublicConnectorCatalogStatus } from "./connector-catalog-reader.service";
+import {
+  getPublicConnectorCatalogIcon,
+  listPublicConnectorCatalogStatus,
+} from "./connector-catalog-reader.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
@@ -336,6 +339,7 @@ export const detectWorkflowConnectorReadiness$ = command(
         connectors.push({
           connectorRef,
           label: CONNECTOR_TYPES[connectorRef].label,
+          icon: getPublicConnectorCatalogIcon(connectorRef),
           reason,
           status: "unavailable",
         });
@@ -344,7 +348,7 @@ export const detectWorkflowConnectorReadiness$ = command(
       connectors.push({
         connectorRef,
         label: catalogEntry.label,
-        ...(catalogEntry.icon ? { icon: catalogEntry.icon } : {}),
+        icon: catalogEntry.icon,
         reason,
         status: readinessStatus({
           connectionStatus: catalogEntry.connectionStatus,

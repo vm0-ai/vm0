@@ -984,7 +984,7 @@ export const zeroWorkflowConnectorReadinessEntrySchema = z
   .object({
     connectorRef: connectorTypeSchema,
     label: z.string().min(1),
-    icon: publicConnectorCatalogIconSchema.optional(),
+    icon: publicConnectorCatalogIconSchema,
     reason: z.string().min(1),
     status: zeroWorkflowConnectorReadinessStatusSchema,
   })

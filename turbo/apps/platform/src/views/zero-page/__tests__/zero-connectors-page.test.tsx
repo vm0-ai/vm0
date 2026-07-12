@@ -259,8 +259,11 @@ function publicStatusItem(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
+    icon: args.icon ?? {
+      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: args.category ?? "data-automation-infrastructure",
-    ...(args.icon ? { icon: args.icon } : {}),
     generation: [],
     tags: [],
     authMethods: args.authMethods,
@@ -481,27 +484,6 @@ describe("connectors page", () => {
     expect(slackIcon).not.toHaveClass("zero-icon-mono");
     expect(slackIcon).toHaveStyle({ transform: "scale(1.5)" });
     expect(slackIcon.closest(".overflow-hidden")).toBeInTheDocument();
-  });
-
-  it("renders an accessible fallback when a catalog icon is missing", async () => {
-    mockConnectors([]);
-    mockPublicConnectorStatus([
-      publicStatusItem({
-        connectorRef: "github",
-        label: "GitHub",
-        authMethods: [],
-      }),
-    ]);
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    const githubCard = await waitFor(() => {
-      return connectorCardByLabel("GitHub");
-    });
-    expect(within(githubCard).queryByRole("img")).toHaveAccessibleName(
-      "Connector icon unavailable",
-    );
-    expect(githubCard).toHaveAccessibleName("Connect GitHub");
   });
 
   it("renders server-authored connector categories unknown to the browser", async () => {
