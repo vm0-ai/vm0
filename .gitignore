@@ -206,4 +206,5 @@ junit.xml
 e2e/results/
 turbo/apps/desktop/desktop-runtime-config.json
 .codex
+codex-work/
 .agents/
