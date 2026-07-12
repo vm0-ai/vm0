@@ -893,6 +893,7 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    const confirmButton = await waitForButtonByText("Confirm", permissionCard);
     expect(
       within(permissionCard).getByText("Gmail permissions"),
     ).toBeInTheDocument();
@@ -900,13 +901,12 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText("Allow messages.write"),
     ).toBeInTheDocument();
 
-    await waitForButtonByText("Confirm", permissionCard);
     expect(listRequests).toBe(2);
     expect(
       within(permissionCard).queryByText("Failed to load permissions"),
     ).not.toBeInTheDocument();
 
-    await confirmPermissionAction(user, permissionCard);
+    await user.click(confirmButton);
 
     await waitFor(() => {
       expect(
@@ -1337,6 +1337,7 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    const confirmButton = await waitForButtonByText("Confirm", permissionCard);
     expect(
       within(permissionCard).getByText("Cloudflare permissions"),
     ).toBeInTheDocument();
@@ -1344,7 +1345,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText(`Allow ${UNKNOWN_PERMISSION_GRANT}`),
     ).toBeInTheDocument();
 
-    await confirmPermissionAction(user, permissionCard);
+    await user.click(confirmButton);
 
     await waitFor(() => {
       expect(
@@ -1431,6 +1432,7 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
+    const confirmButton = await waitForButtonByText("Confirm", permissionCard);
     expect(
       within(permissionCard).getByText("Slack permissions"),
     ).toBeInTheDocument();
@@ -1438,7 +1440,7 @@ describe("chat message action cards", () => {
       within(permissionCard).getByText("Deny admin.analytics:read"),
     ).toBeInTheDocument();
 
-    await confirmPermissionAction(user, permissionCard);
+    await user.click(confirmButton);
 
     await waitFor(() => {
       expect(
