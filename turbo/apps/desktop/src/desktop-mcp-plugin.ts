@@ -428,19 +428,19 @@ export class DesktopMcpPluginManager {
     payload: ComputerUseMcpPluginCallPayload,
     runtime: McpServerRuntime,
   ): Promise<ComputerUseCommandExecutionResult> {
-    if (!runtime.tools.includes(payload.tool)) {
-      const listed = await runtime.client.listTools().catch(() => null);
-      const live = listed?.tools.some((tool) => {
-        return tool.name === payload.tool;
-      });
-      if (!live) {
-        return commandFailure(
-          "unknown_tool",
-          `MCP server ${payload.server} does not expose tool: ${payload.tool}`,
-        );
-      }
-    }
     try {
+      if (!runtime.tools.includes(payload.tool)) {
+        const listed = await runtime.client.listTools();
+        const live = listed.tools.some((tool) => {
+          return tool.name === payload.tool;
+        });
+        if (!live) {
+          return commandFailure(
+            "unknown_tool",
+            `MCP server ${payload.server} does not expose tool: ${payload.tool}`,
+          );
+        }
+      }
       const result = await runtime.client.callTool({
         name: payload.tool,
         arguments: payload.arguments,
