@@ -490,7 +490,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     async requestClaimRunnerJobAs(
       authorization: string | undefined,
       runId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
     ) {
       return await accept(
@@ -1016,7 +1016,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     async requestClaimRunnerJob(
       validAuth: boolean,
       runId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: RunnerJobClaimRequest = {},
     ) {
       return await accept(

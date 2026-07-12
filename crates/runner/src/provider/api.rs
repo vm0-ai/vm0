@@ -631,11 +631,9 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
-    /// HTTP 409 (job row still present, already claimed) and HTTP 404 (job
-    /// row already dequeued by the winner) so callers can continue gracefully.
-    /// Both outcomes are normal contention signals when multiple runners race
-    /// for the same job.
+    /// Claim a job for execution. Treats the current HTTP 404 unavailable
+    /// response and the legacy HTTP 409 conflict response as
+    /// [`RunnerError::AlreadyClaimed`] so callers can continue gracefully.
     async fn claim(&self, candidate: &JobCandidate) -> RunnerResult<ExecutionContext> {
         let run_id = candidate.run_id();
         let body = claim_request_body(candidate);
@@ -2265,7 +2263,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_conflict_or_not_found_is_already_claimed() {
+    async fn api_client_claim_not_found_or_legacy_conflict_is_already_claimed() {
         for status in [409_u16, 404] {
             let server = MockServer::start_async().await;
             let run_id = RunId::nil();

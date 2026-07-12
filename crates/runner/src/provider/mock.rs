@@ -250,7 +250,7 @@ impl MockJobProvider {
     }
 
     /// Pre-configure the result for a future `claim(run_id)` call.
-    /// Pass `Some(ctx)` for success, `None` to simulate a 409 conflict.
+    /// Pass `Some(ctx)` for success, `None` to simulate an unavailable claim.
     pub fn set_claim_result(&self, run_id: RunId, result: Option<ExecutionContext>) {
         self.claim_results
             .lock()
