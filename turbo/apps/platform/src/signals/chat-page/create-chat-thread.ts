@@ -1398,7 +1398,7 @@ function createSyncRemoteMessagesCommand({
     const startedWithoutCursor = sinceId === undefined;
     let initialHasHistoryBefore: boolean | undefined;
 
-    while (true) {
+    async function syncMessagesAfter(): Promise<void> {
       const result = await set(
         dataSource.listMessagesAfter$,
         { threadId, sinceId },
@@ -1416,13 +1416,17 @@ function createSyncRemoteMessagesCommand({
       }
 
       if (result.messages.length === 0) {
-        break;
+        return;
       }
 
       await set(writePersistentMessages$, result.messages, signal);
       signal.throwIfAborted();
       sinceId = result.messages.at(-1)!.id;
+
+      return syncMessagesAfter();
     }
+    await syncMessagesAfter();
+    signal.throwIfAborted();
 
     if (get(hasReachedOldestMessage$)) {
       return;
@@ -1437,7 +1441,7 @@ function createSyncRemoteMessagesCommand({
     }
 
     let beforeId = get(persistentMessages$)[0]!.id;
-    while (true) {
+    async function syncMessagesBefore(): Promise<void> {
       const result = await set(
         dataSource.listMessagesBefore$,
         { threadId, beforeId },
@@ -1462,7 +1466,10 @@ function createSyncRemoteMessagesCommand({
       }
 
       beforeId = result.messages[0]!.id;
+
+      return syncMessagesBefore();
     }
+    await syncMessagesBefore();
   });
 }
 
