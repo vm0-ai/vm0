@@ -1877,6 +1877,9 @@ jobs:
     runs-on: ubuntu-latest-8-cores
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: write
     strategy:
