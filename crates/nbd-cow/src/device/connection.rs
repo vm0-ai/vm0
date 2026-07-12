@@ -468,16 +468,43 @@ mod tests {
         assert_eq!(value, "connected");
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn timed_netlink_critical_section_records_queue_start() {
-        let outcome = run_netlink_critical_section_with_queue_timing(
-            "test netlink operation",
-            || "connected",
-        )
-        .await;
+    #[test]
+    fn timed_netlink_critical_section_records_queued_start() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .enable_time()
+            .build()
+            .unwrap();
 
-        assert!(outcome.queue_success);
-        assert_eq!(outcome.result.unwrap(), "connected");
+        runtime.block_on(async {
+            let (blocker_started_tx, blocker_started_rx) = tokio::sync::oneshot::channel();
+            let (release_blocker_tx, release_blocker_rx) = std::sync::mpsc::channel();
+            let blocker = tokio::task::spawn_blocking(move || {
+                let _ = blocker_started_tx.send(());
+                release_blocker_rx.recv().unwrap();
+            });
+            blocker_started_rx.await.unwrap();
+
+            let mut future = Box::pin(run_netlink_critical_section_with_queue_timing(
+                "test netlink operation",
+                || "connected",
+            ));
+            let waker = std::task::Waker::noop();
+            let mut cx = std::task::Context::from_waker(waker);
+            assert!(matches!(
+                future.as_mut().poll(&mut cx),
+                std::task::Poll::Pending
+            ));
+
+            release_blocker_tx.send(()).unwrap();
+            blocker.await.unwrap();
+            let outcome = future.await;
+
+            assert!(outcome.queue_success);
+            assert!(outcome.queue_duration > Duration::ZERO);
+            assert_eq!(outcome.result.unwrap(), "connected");
+        });
     }
 
     #[tokio::test(flavor = "multi_thread")]
