@@ -24,7 +24,7 @@ export const loadIndexedDbChatMessages$ = command(
     const messages = await chatIdbReadOr(
       "indexedDbMessages:readLatest",
       () => {
-        return stores.readStore.readLatest(threadId, undefined, signal);
+        return stores.readStore.readLatest(threadId, signal);
       },
       [],
       signal,
