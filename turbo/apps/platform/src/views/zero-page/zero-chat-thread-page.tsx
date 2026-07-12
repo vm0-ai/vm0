@@ -255,7 +255,6 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import type { ThreadMeta } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import {
   applyChatThreadEmoji,
   removeChatThreadEmoji,
@@ -443,7 +442,7 @@ export function AutomationMenuButton({
   );
 }
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
-  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
+  const threadTitleLoadable = useLastLoadable(thread.threadTitle$);
   const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
   const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
   const openRenameChatThreadDialog = useSet(
@@ -451,8 +450,8 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   );
   const pageSignal = useGet(pageSignal$);
   const threadTitle =
-    threadMetaLoadable.state === "hasData"
-      ? (threadMetaLoadable.data?.title?.trim() ?? "")
+    threadTitleLoadable.state === "hasData"
+      ? (threadTitleLoadable.data?.trim() ?? "")
       : "";
 
   function openRenameDialog(event: ReactMouseEvent<HTMLSpanElement>) {
@@ -466,7 +465,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex min-w-0 items-center gap-2">
-        {threadMetaLoadable.state === "loading" ? (
+        {threadTitleLoadable.state === "loading" ? (
           <Skeleton className="h-5 w-48 rounded" />
         ) : (
           <>
@@ -2753,24 +2752,18 @@ type LoadableValue<T> =
   | { state: "hasError"; error: unknown };
 
 function resolveSessionError(
-  threadMetaLoadable: LoadableValue<ThreadMeta | null>,
+  threadSettledInServerLoadable: LoadableValue<boolean>,
   groupsLoadable: LoadableValue<GroupedChatMessageGroup[]>,
 ): string | null {
-  if (threadMetaLoadable.state === "hasError") {
-    return threadMetaLoadable.error instanceof Error
-      ? threadMetaLoadable.error.message
+  if (threadSettledInServerLoadable.state === "hasError") {
+    return threadSettledInServerLoadable.error instanceof Error
+      ? threadSettledInServerLoadable.error.message
       : "Failed to load chat";
   }
   if (groupsLoadable.state === "hasError") {
     return groupsLoadable.error instanceof Error
       ? groupsLoadable.error.message
       : "Failed to load messages";
-  }
-  if (
-    threadMetaLoadable.state === "hasData" &&
-    threadMetaLoadable.data === null
-  ) {
-    return "Chat not found";
   }
   return null;
 }
@@ -2781,26 +2774,17 @@ const CHAT_RENDER_LOAD_MORE_TOP_THRESHOLD_PX = 100;
 
 function ChatThreadMessagesMain({
   thread,
-  groups,
-  activeGroups,
   renderedGroups,
   sessionError,
   skeletonVisible,
-  messagesLoading,
+  showEmptyState,
 }: {
   thread: ChatThreadSignals;
-  groups: GroupedChatMessageGroup[];
-  activeGroups: GroupedChatMessageGroup[];
   renderedGroups: GroupedChatMessageGroup[];
   sessionError: string | null;
   skeletonVisible: boolean;
-  messagesLoading: boolean;
+  showEmptyState: boolean;
 }) {
-  const showEmptyState =
-    !sessionError &&
-    groups.length === 0 &&
-    !messagesLoading &&
-    !skeletonVisible;
   const { activeGroups: renderedActiveGroups } =
     splitQueuedMessagesForThinkingIndicator(renderedGroups);
   const runGroupExpandedKeys = useGet(runGroupExpandedKeys$);
@@ -2856,10 +2840,23 @@ function ChatThreadMessagesMain({
           completedWorkExpandedKeys={completedWorkExpandedKeys}
           onToggleCompletedWork={toggleCompletedWorkExpanded}
         />
-        <ThinkingIndicator thread={thread} groups={activeGroups} />
+        <ChatThreadThinkingIndicator thread={thread} />
       </div>
     </main>
   );
+}
+
+function ChatThreadThinkingIndicator({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const groups =
+    useLastResolved(thread.groupedChatMessages$, {
+      equalityFn: equalArrays,
+    }) ?? [];
+  const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
+  return <ThinkingIndicator thread={thread} groups={activeGroups} />;
 }
 
 function ChatThreadMessageGroups({
@@ -3633,27 +3630,32 @@ function ChatThreadSkeletonOverlay({
   );
 }
 
-function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$, {
-    equalityFn: equalArrays,
-  });
+function ChatThreadMessagesPane({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
     { equalityFn: equalArrays },
   );
-  const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
-  const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
-  const messagesLoading = groupsLoadable.state === "loading";
-  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
+  const threadSettledInServerLoadable = useLastLoadable(
+    thread.threadSettledInServer$,
+  );
+  const sessionError = resolveSessionError(
+    threadSettledInServerLoadable,
+    renderedGroupsLoadable,
+  );
   const renderedGroups =
     renderedGroupsLoadable.state === "hasData"
       ? renderedGroupsLoadable.data
       : [];
-  const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
-  const skeletonVisible = messagesLoading;
+  const skeletonVisible = renderedGroupsLoadable.state === "loading";
+  const showEmptyState =
+    sessionError === null &&
+    threadSettledInServerLoadable.state === "hasData" &&
+    threadSettledInServerLoadable.data &&
+    renderedGroupsLoadable.state === "hasData" &&
+    renderedGroups.length === 0;
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -3665,40 +3667,43 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   };
 
   return (
+    <div className="flex-1 min-h-0 relative isolate">
+      <div
+        ref={setScrollContainer}
+        data-scroll-container
+        tabIndex={-1}
+        onScroll={handleScroll}
+        className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
+      >
+        <ChatThreadMessagesMain
+          thread={thread}
+          renderedGroups={renderedGroups}
+          sessionError={sessionError}
+          skeletonVisible={skeletonVisible}
+          showEmptyState={showEmptyState}
+        />
+      </div>
+      <ChatThreadSkeletonOverlay
+        sessionError={sessionError}
+        skeletonVisible={skeletonVisible}
+      />
+      <ScrollToBottomButton
+        thread={thread}
+        skeletonVisible={skeletonVisible}
+        sessionError={sessionError}
+      />
+    </div>
+  );
+}
+
+function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
+  return (
     <>
       <ChatThreadHeader thread={thread} />
 
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
-          <div className="flex-1 min-h-0 relative isolate">
-            <div
-              ref={setScrollContainer}
-              data-scroll-container
-              tabIndex={-1}
-              onScroll={handleScroll}
-              className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
-            >
-              <ChatThreadMessagesMain
-                thread={thread}
-                groups={groups}
-                activeGroups={activeGroups}
-                renderedGroups={renderedGroups}
-                sessionError={sessionError}
-                skeletonVisible={skeletonVisible}
-                messagesLoading={messagesLoading}
-              />
-            </div>
-            <ChatThreadSkeletonOverlay
-              sessionError={sessionError}
-              skeletonVisible={skeletonVisible}
-            />
-            <ScrollToBottomButton
-              thread={thread}
-              skeletonVisible={skeletonVisible}
-              sessionError={sessionError}
-            />
-          </div>
-
+          <ChatThreadMessagesPane thread={thread} />
           <ChatThreadComposer thread={thread} />
         </div>
       </div>
@@ -4544,18 +4549,15 @@ interface ServerThinkingLabel {
   readonly displayedText: string;
   readonly fullText: string;
   readonly id: string;
-  readonly setRef: (
-    el: HTMLParagraphElement | null,
-  ) => (() => void) | undefined;
 }
 
 function ThinkingLabel({
   isQueued,
-  rotatingLabel,
+  thinkingLabel,
   serverThinkingLabel,
 }: {
   isQueued: boolean;
-  rotatingLabel: string;
+  thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   const openQueueDrawer = useSet(openQueueDrawer$);
@@ -4563,7 +4565,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
+      <p className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -4582,8 +4584,7 @@ function ThinkingLabel({
     return (
       <p
         key={serverThinkingLabel.id}
-        ref={serverThinkingLabel.setRef}
-        className="zero-shimmer-text min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
+        className="text-muted-foreground min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -4592,8 +4593,8 @@ function ThinkingLabel({
   }
 
   return (
-    <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
-      {rotatingLabel}
+    <p className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] truncate">
+      {thinkingLabel}
     </p>
   );
 }
@@ -4601,12 +4602,12 @@ function ThinkingLabel({
 function InlineThinkingRow({
   blockStyle,
   isQueued,
-  rotatingLabel,
+  thinkingLabel,
   serverThinkingLabel,
 }: {
   blockStyle: CSSProperties;
   isQueued: boolean;
-  rotatingLabel: string;
+  thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
@@ -4618,7 +4619,7 @@ function InlineThinkingRow({
       </span>
       <ThinkingLabel
         isQueued={isQueued}
-        rotatingLabel={rotatingLabel}
+        thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
       />
     </div>
@@ -4627,13 +4628,14 @@ function InlineThinkingRow({
 
 function FinishedRunRow({
   thread,
-  label,
   source,
 }: {
   thread: ChatThreadSignals;
-  label: string;
   source: RecommendedFollowupSource | null;
 }) {
+  const donePhrase = useLastResolved(thread.donePhrase$) ?? "Done";
+  const label = source ? "Keep going" : donePhrase;
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-5 flex-col justify-center gap-1.5">
@@ -4654,20 +4656,20 @@ function WaitingForAssistantResponse({
   thread,
   blockStyle,
   isQueued,
-  rotatingLabel,
+  thinkingLabel,
   serverThinkingLabel,
 }: {
   thread: ChatThreadSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
-  rotatingLabel: string;
+  thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div
       data-thinking-indicator
       data-role="assistant"
-      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="flex flex-col gap-1"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
@@ -4680,7 +4682,7 @@ function WaitingForAssistantResponse({
             </span>
             <ThinkingLabel
               isQueued={isQueued}
-              rotatingLabel={rotatingLabel}
+              thinkingLabel={thinkingLabel}
               serverThinkingLabel={serverThinkingLabel}
             />
           </div>
@@ -4701,19 +4703,17 @@ function AssistantThinkingStatusRow({
   running,
   blockStyle,
   isQueued,
-  rotatingLabel,
+  thinkingLabel,
   serverThinkingLabel,
   thread,
-  doneLabel,
   recommendedFollowupSource,
 }: {
   running: boolean;
   blockStyle: CSSProperties;
   isQueued: boolean;
-  rotatingLabel: string;
+  thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
   thread: ChatThreadSignals;
-  doneLabel: string;
   recommendedFollowupSource: RecommendedFollowupSource | null;
 }) {
   const thinkingIndicatorProps = running
@@ -4732,15 +4732,11 @@ function AssistantThinkingStatusRow({
           <InlineThinkingRow
             blockStyle={blockStyle}
             isQueued={isQueued}
-            rotatingLabel={rotatingLabel}
+            thinkingLabel={thinkingLabel}
             serverThinkingLabel={serverThinkingLabel}
           />
         ) : (
-          <FinishedRunRow
-            thread={thread}
-            label={doneLabel}
-            source={recommendedFollowupSource}
-          />
+          <FinishedRunRow thread={thread} source={recommendedFollowupSource} />
         )}
       </div>
     </div>
@@ -4841,24 +4837,17 @@ function ThinkingIndicator({
     messageRunIndicatorResolved,
     initialThinkingEnabled: true,
   });
-  const rotatingLabel = useGet(thread.rotatingPhrase$);
-  const donePhrase = useGet(thread.donePhrase$);
-  const displayedThinkingText =
-    useLastResolved(thread.displayedThinkingText$) ?? "";
-  const setThinkingIndicatorTextRef = useSet(
-    thread.setThinkingIndicatorTextRef$,
-  );
+  const thinkingLabel = useGet(thread.thinkingPhrase$);
+  const thinkingText = indicatorState.lastThinkingMessage?.thinking.trim();
   const serverThinkingLabel =
-    indicatorState.lastThinkingMessage && indicatorState.running
+    thinkingText && indicatorState.lastThinkingMessage && indicatorState.running
       ? {
-          displayedText: displayedThinkingText,
-          fullText: indicatorState.lastThinkingMessage.thinking.trim(),
+          displayedText: thinkingText,
+          fullText: thinkingText,
           id: indicatorState.lastThinkingMessage.id,
-          setRef: setThinkingIndicatorTextRef,
         }
       : undefined;
   const recommendedFollowupSource = latestRecommendedFollowups(groups);
-  const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
 
   if (
     !shouldRenderThinkingIndicator({
@@ -4884,10 +4873,9 @@ function ThinkingIndicator({
         running={indicatorState.running}
         blockStyle={blockStyle}
         isQueued={indicatorState.isQueued}
-        rotatingLabel={rotatingLabel}
+        thinkingLabel={thinkingLabel}
         serverThinkingLabel={serverThinkingLabel}
         thread={thread}
-        doneLabel={doneLabel}
         recommendedFollowupSource={recommendedFollowupSource}
       />
     );
@@ -4899,7 +4887,7 @@ function ThinkingIndicator({
       thread={thread}
       blockStyle={blockStyle}
       isQueued={indicatorState.isQueued}
-      rotatingLabel={rotatingLabel}
+      thinkingLabel={thinkingLabel}
       serverThinkingLabel={serverThinkingLabel}
     />
   );

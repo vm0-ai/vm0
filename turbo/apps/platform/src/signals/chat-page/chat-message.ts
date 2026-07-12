@@ -24,7 +24,6 @@ export { chatThreads$ } from "../agent-chat.ts";
 export {
   zeroChatAttachments$,
   uploadZeroAttachment$,
-  zeroChatAttachmentUploadSummary$,
   restoreZeroAttachments$,
   removeZeroAttachment$,
   appendZeroChatInput$,

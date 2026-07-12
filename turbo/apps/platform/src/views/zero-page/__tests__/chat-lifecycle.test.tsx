@@ -756,129 +756,6 @@ function setScrollMetrics(
   });
 }
 
-function mockThinkingTypewriterLayout({
-  text,
-  labelWidth,
-  parentWidth,
-  graphemeWidth,
-  measureTextWidth = (value) => {
-    return Array.from(value).length * graphemeWidth;
-  },
-}: {
-  readonly text: string;
-  readonly labelWidth: number;
-  readonly parentWidth: number;
-  readonly graphemeWidth: number;
-  readonly measureTextWidth?: (value: string) => number;
-}): void {
-  const getContextDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLCanvasElement.prototype,
-    "getContext",
-  );
-  const getBoundingClientRectDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    "getBoundingClientRect",
-  );
-  const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    "clientWidth",
-  );
-
-  const rectForWidth = (width: number): DOMRect => {
-    return {
-      bottom: 20,
-      height: 20,
-      left: 0,
-      right: width,
-      toJSON: () => {
-        return {};
-      },
-      top: 0,
-      width,
-      x: 0,
-      y: 0,
-    } as DOMRect;
-  };
-  const elementWidth = (el: HTMLElement): number => {
-    if (el.getAttribute("aria-label") === text) {
-      return labelWidth;
-    }
-    if (
-      Array.from(el.children).some((child) => {
-        return child.getAttribute("aria-label") === text;
-      })
-    ) {
-      return parentWidth;
-    }
-    return 0;
-  };
-
-  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-    configurable: true,
-    value: (contextId: string) => {
-      if (contextId !== "2d") {
-        return null;
-      }
-      return {
-        measureText: (value: string) => {
-          return {
-            width: measureTextWidth(value),
-          } as TextMetrics;
-        },
-      } as CanvasRenderingContext2D;
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
-    configurable: true,
-    value(this: HTMLElement) {
-      return rectForWidth(elementWidth(this));
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-    configurable: true,
-    get(this: HTMLElement) {
-      return elementWidth(this);
-    },
-  });
-
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      if (getContextDescriptor) {
-        Object.defineProperty(
-          HTMLCanvasElement.prototype,
-          "getContext",
-          getContextDescriptor,
-        );
-      }
-      if (!getContextDescriptor) {
-        Reflect.deleteProperty(HTMLCanvasElement.prototype, "getContext");
-      }
-      if (getBoundingClientRectDescriptor) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "getBoundingClientRect",
-          getBoundingClientRectDescriptor,
-        );
-      }
-      if (!getBoundingClientRectDescriptor) {
-        Reflect.deleteProperty(HTMLElement.prototype, "getBoundingClientRect");
-      }
-      if (clientWidthDescriptor) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "clientWidth",
-          clientWidthDescriptor,
-        );
-      }
-      if (!clientWidthDescriptor) {
-        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
-      }
-    },
-    { once: true },
-  );
-}
-
 function mockResizeObserver(): { triggerAll: () => void } {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
@@ -7523,53 +7400,21 @@ describe("initial thinking indicator", () => {
     threadGate.resolve();
   });
 
-  it("restarts on every follow-up line instead of sliding a short tail", async () => {
-    const threadId = "thread-initial-thinking-rollover";
-    const thinking = "ABCDEFG";
-    mockThinkingTypewriterLayout({
-      text: thinking,
-      labelWidth: 38,
-      parentWidth: 160,
-      graphemeWidth: 10,
-      measureTextWidth: (value) => {
-        return (
-          Array.from(value).filter((grapheme) => {
-            return grapheme !== ".";
-          }).length * 10
-        );
-      },
-    });
-    const displayedLabels = new Set<string>();
-    const labelObserver = new MutationObserver(() => {
-      const label = document.querySelector(`[aria-label="${thinking}"]`);
-      if (label?.textContent) {
-        displayedLabels.add(label.textContent);
-      }
-    });
-    labelObserver.observe(document.body, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-    });
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        labelObserver.disconnect();
-      },
-      { once: true },
-    );
+  it("renders the full thinking text without incremental animation", async () => {
+    const threadId = "thread-initial-thinking-full-text";
+    const thinking = "Reviewing the complete request";
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-rollover-user",
+          id: "msg-thinking-full-text-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-rollover-marker",
+          id: "msg-thinking-full-text-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -7586,22 +7431,7 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
-    const sawFollowUpLine = () => {
-      if (label.textContent) {
-        displayedLabels.add(label.textContent);
-      }
-      return Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      });
-    };
-    await waitFor(() => {
-      expect(sawFollowUpLine()).toBeTruthy();
-    });
-    await waitFor(() => {
-      expect(label).toHaveTextContent(/^G$/);
-    });
-    expect(displayedLabels.has("...EFG")).toBeFalsy();
-    expect(label).not.toHaveTextContent(thinking);
+    expect(label).toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 

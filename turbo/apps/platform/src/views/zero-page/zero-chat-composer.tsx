@@ -6728,7 +6728,9 @@ function useResolvedComposerSignals(
     | undefined,
 ) {
   const attachments = useGet(draft.attachments$);
-  const attachmentUploadSummary = useLoadable(draft.attachmentUploadSummary$);
+  const attachmentUploadsState = useLoadableState(
+    draft.attachmentUploadsReady$,
+  );
   const readInput = useSet(draft.readInput$);
   const setInput = useSet(draft.setInput$);
   const uploadAttachment = useSet(draft.uploadAttachment$);
@@ -6748,7 +6750,7 @@ function useResolvedComposerSignals(
     readInput,
     setInput,
     attachments,
-    attachmentUploadSummary,
+    attachmentUploadsState,
     uploadAttachment,
     restoreAttachments,
     removeAttachment,
@@ -7137,7 +7139,7 @@ export function useZeroChatComposer({
     readInput,
     setInput,
     attachments,
-    attachmentUploadSummary,
+    attachmentUploadsState,
     uploadAttachment,
     restoreAttachments,
     removeAttachment,
@@ -7156,10 +7158,7 @@ export function useZeroChatComposer({
     attachments,
     visualAttachmentUnsupported,
   );
-  const uploadsReady =
-    attachmentUploadSummary.state === "hasData" &&
-    attachmentUploadSummary.data.readyCount ===
-      attachmentUploadSummary.data.attachmentCount;
+  const uploadsReady = attachmentUploadsState === "hasData";
 
   // When feedback fragments are present the composer is in "feedback mode": the
   // textarea is replaced by the stacked quote + note rows and Send dispatches

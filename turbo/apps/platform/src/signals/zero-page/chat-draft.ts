@@ -124,11 +124,6 @@ export interface ZeroChatAttachment {
   upload$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export interface AttachmentUploadSummary {
-  attachmentCount: number;
-  readyCount: number;
-}
-
 function createChatAttachment(file: File): ZeroChatAttachment {
   const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
@@ -217,7 +212,7 @@ export interface DraftSignals {
     [GenerationTemplateRequest | undefined]
   >;
   attachments$: Computed<ZeroChatAttachment[]>;
-  attachmentUploadSummary$: Computed<Promise<AttachmentUploadSummary>>;
+  attachmentUploadsReady$: Computed<boolean | Promise<boolean>>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   restoreAttachments$: Command<void, [PersistedAttachment[]]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
@@ -330,31 +325,38 @@ export function createDraftSignals(): DraftSignals {
     return get(internalAttachments$);
   });
 
-  const attachmentUploadSummary$ = computed(
-    async (get): Promise<AttachmentUploadSummary> => {
+  const attachmentUploadsReady$ = computed(
+    (get): boolean | Promise<boolean> => {
       const attachments = get(internalAttachments$);
-      const infos = await Promise.all(
-        attachments.map((attachment) => {
-          return get(attachment.fileInfo$);
-        }),
-      );
-      return {
-        attachmentCount: attachments.length,
-        readyCount: infos.filter((info) => {
-          return info !== null;
-        }).length,
-      };
+      if (attachments.length === 0) {
+        return true;
+      }
+      const fileInfos = attachments.map((attachment) => {
+        return get(attachment.fileInfo$);
+      });
+      return (async () => {
+        const infos = await Promise.all(fileInfos);
+        if (
+          infos.some((info) => {
+            return info === null;
+          })
+        ) {
+          throw new Error("Attachment upload did not start");
+        }
+        return true;
+      })();
     },
   );
 
   const uploadAttachment$ = command(
     async ({ set }, file: File, signal: AbortSignal) => {
       const attachment = createChatAttachment(file);
+      const upload = set(attachment.upload$, signal);
       set(internalAttachments$, (prev) => {
         return [...prev, attachment];
       });
 
-      await tapError(set(attachment.upload$, signal), () => {
+      await tapError(upload, () => {
         set(internalAttachments$, (prev) => {
           return prev.filter((a) => {
             return a !== attachment;
@@ -399,10 +401,13 @@ export function createDraftSignals(): DraftSignals {
     set(draftInput.setInput$, "");
     set(internalGenerationTemplate$, undefined);
     // Cancel all pending uploads before clearing
-    for (const attachment of get(internalAttachments$)) {
+    const attachments = get(internalAttachments$);
+    for (const attachment of attachments) {
       set(attachment.cancel$);
     }
-    set(internalAttachments$, []);
+    if (attachments.length > 0) {
+      set(internalAttachments$, []);
+    }
     set(internalDragOver$, false);
   });
 
@@ -418,7 +423,7 @@ export function createDraftSignals(): DraftSignals {
     generationTemplate$,
     setGenerationTemplate$,
     attachments$,
-    attachmentUploadSummary$,
+    attachmentUploadsReady$,
     uploadAttachment$,
     restoreAttachments$,
     removeAttachment$,
@@ -466,13 +471,6 @@ const zeroChatInput$ = computed((get) => {
 export const zeroChatAttachments$ = computed((get) => {
   const draft = get(currentDraft$);
   return draft ? get(draft.attachments$) : [];
-});
-
-export const zeroChatAttachmentUploadSummary$ = computed(async (get) => {
-  const draft = get(currentDraft$);
-  return draft
-    ? await get(draft.attachmentUploadSummary$)
-    : { attachmentCount: 0, readyCount: 0 };
 });
 
 export const uploadZeroAttachment$ = command(
