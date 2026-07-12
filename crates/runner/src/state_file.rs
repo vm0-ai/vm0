@@ -291,8 +291,13 @@ fn chmod_private_file_fd<Fd: std::os::fd::AsRawFd>(file: &Fd, path: &Path) -> Ru
 #[cfg(unix)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use std::ffi::CString;
     use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    const FIFO_READ_CHILD_PATH_ENV: &str = "VM0_RUN_STATE_FILE_FIFO_READ_CHILD_PATH";
 
     #[tokio::test]
     async fn read_to_string_rejects_symlink_without_reading_target() {
@@ -316,6 +321,26 @@ mod tests {
     async fn read_to_string_rejects_fifo_without_blocking() {
         let dir = tempfile::tempdir().unwrap();
         let fifo = dir.path().join("fifo");
+        let fifo_path = fifo.to_str().expect("temporary FIFO path must be UTF-8");
+        run_ignored_child_test(
+            "state_file::tests::read_to_string_rejects_fifo_without_blocking_child",
+            (FIFO_READ_CHILD_PATH_ENV, fifo_path),
+            Duration::from_secs(10),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by read_to_string_rejects_fifo_without_blocking"]
+    async fn read_to_string_rejects_fifo_without_blocking_child() {
+        let Ok(fifo_path) = std::env::var(FIFO_READ_CHILD_PATH_ENV) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((FIFO_READ_CHILD_PATH_ENV, &fifo_path)) {
+            return;
+        }
+
+        let fifo = PathBuf::from(fifo_path);
         let c_path = CString::new(fifo.to_string_lossy().as_bytes()).unwrap();
         // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
         let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };

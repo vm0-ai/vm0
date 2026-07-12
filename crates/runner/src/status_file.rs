@@ -338,28 +338,21 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn read_rejects_fifo_without_blocking() {
-        use std::ffi::CString;
-        use std::os::unix::ffi::OsStrExt;
+    async fn read_rejects_symlink_to_valid_status() {
+        use std::os::unix::fs::symlink;
 
         let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("outside-status.json");
         let path = dir.path().join("status.json");
-        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
-        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-        assert_eq!(
-            result,
-            0,
-            "mkfifo failed: {}",
-            std::io::Error::last_os_error()
-        );
-
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            read_as::<StatusForGate>(dir.path()),
+        std::fs::write(
+            &target,
+            r#"{"mode":"running","active_runs":[],"started_at":"2026-04-13T00:00:00.000Z"}"#,
         )
-        .await;
+        .unwrap();
+        symlink(&target, &path).unwrap();
 
-        assert!(result.is_ok(), "FIFO read should not block");
-        assert!(result.unwrap().is_err(), "FIFO status should be rejected");
+        let error = read_as::<StatusForGate>(dir.path()).await.unwrap_err();
+
+        assert!(matches!(error, StatusFileReadError::Read { .. }));
     }
 }
