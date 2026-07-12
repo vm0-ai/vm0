@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.108](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.107...sandbox-fc-v0.37.108) (2026-07-12)
+
+
+### Performance Improvements
+
+* attribute nbd netlink connect latency ([#21121](https://github.com/vm0-ai/vm0/issues/21121)) ([7ff85a6](https://github.com/vm0-ai/vm0/commit/7ff85a6d10e757e24534f5f9a00a1cab1342eb4d))
+
 ## [0.37.107](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.106...sandbox-fc-v0.37.107) (2026-07-11)
 
 

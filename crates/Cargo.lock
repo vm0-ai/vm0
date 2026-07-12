@@ -1255,7 +1255,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.50.3"
+version = "0.50.4"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.58"
+version = "0.20.59"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.59"
+version = "0.4.60"
 dependencies = [
  "bitvec",
  "libc",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.143.13"
+version = "0.144.0"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.18"
+version = "0.19.19"
 dependencies = [
  "async-trait",
  "serde",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.107"
+version = "0.37.108"
 dependencies = [
  "async-trait",
  "base64",
@@ -2818,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.27"
+version = "0.8.28"
 dependencies = [
  "async-trait",
  "guest-contracts",

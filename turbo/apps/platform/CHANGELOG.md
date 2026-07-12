@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.594.0](https://github.com/vm0-ai/vm0/compare/app-v0.593.1...app-v0.594.0) (2026-07-12)
+
+
+### Features
+
+* expose connector catalog icon descriptors ([#21092](https://github.com/vm0-ai/vm0/issues/21092)) ([c0b8e0f](https://github.com/vm0-ai/vm0/commit/c0b8e0f4c485c69884cae063c2c15dd68ea5c112))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+
+
+### Refactoring
+
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* **platform:** remove custom chat pagination loops ([#21119](https://github.com/vm0-ai/vm0/issues/21119)) ([41284bf](https://github.com/vm0-ai/vm0/commit/41284bfa5480aba96e69815e0087c7ec4ed3c76d))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* **platform:** simplify chat message persistence ([#21059](https://github.com/vm0-ai/vm0/issues/21059)) ([756abcf](https://github.com/vm0-ai/vm0/commit/756abcf36614f1d7236d85e6d706e3a0e089456e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+    * @vm0/core bumped to 8.425.2
+
 ## [0.593.1](https://github.com/vm0-ai/vm0/compare/app-v0.593.0...app-v0.593.1) (2026-07-12)
 
 

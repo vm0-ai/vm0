@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.264.0](https://github.com/vm0-ai/vm0/compare/api-v1.263.1...api-v1.264.0) (2026-07-12)
+
+
+### Features
+
+* expose connector catalog icon descriptors ([#21092](https://github.com/vm0-ai/vm0/issues/21092)) ([c0b8e0f](https://github.com/vm0-ai/vm0/commit/c0b8e0f4c485c69884cae063c2c15dd68ea5c112))
+* **runner:** make session affinity admission-aware ([#21111](https://github.com/vm0-ai/vm0/issues/21111)) ([ecf0021](https://github.com/vm0-ai/vm0/commit/ecf00216864b70cc5cea5fb0c148aa4f14705b90))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+
+
+### Refactoring
+
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* **platform:** simplify chat message persistence ([#21059](https://github.com/vm0-ai/vm0/issues/21059)) ([756abcf](https://github.com/vm0-ai/vm0/commit/756abcf36614f1d7236d85e6d706e3a0e089456e))
+
+
+### Performance Improvements
+
+* **api:** attribute claim response assembly stages ([#21124](https://github.com/vm0-ai/vm0/issues/21124)) ([3f84d56](https://github.com/vm0-ai/vm0/commit/3f84d56313e9156d4dee842ae324c951dabfad22))
+* **api:** correct runner queue timing boundary ([#21095](https://github.com/vm0-ai/vm0/issues/21095)) ([b0ec02b](https://github.com/vm0-ai/vm0/commit/b0ec02bc71e08dea835fb78ab645a99e5446329e))
+* cache goal continuation memory embeddings ([#21107](https://github.com/vm0-ai/vm0/issues/21107)) ([35d0d51](https://github.com/vm0-ai/vm0/commit/35d0d51ff844975fde0f87e591e16d280cda92c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+    * @vm0/core bumped to 8.425.2
+    * @vm0/db bumped to 1.110.0
+
 ## [1.263.1](https://github.com/vm0-ai/vm0/compare/api-v1.263.0...api-v1.263.1) (2026-07-12)
 
 
