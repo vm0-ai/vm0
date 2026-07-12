@@ -5,7 +5,12 @@ const STATIC_CONNECTOR_ICON_PATH_PATTERN =
   /^views\/zero-page\/components\/settings\/icons\/[a-z0-9]+(?:-[a-z0-9]+)*-[a-f0-9]{12}\.(?:png|svg)$/u;
 const SLACK_ICON_PATH =
   "views/zero-page/components/settings/icons/slack-198390069136.svg";
+// The query is part of the published asset URL because the query-free path was
+// cached as missing before the append-only static mirror finished publishing it.
 const SLACK_ICON_PATH_WITH_CACHE_BUSTER = `${SLACK_ICON_PATH}?v=568fa471`;
+// The official mark occupies only the center of its viewBox, so the current UI
+// clips its square slot and enlarges the image to match the other connector marks.
+const SLACK_ICON_SCALE = 2.2 as const;
 
 const CONNECTOR_ICON_ALIASES = {
   "railway-project": "railway",
@@ -687,7 +692,7 @@ const CONNECTOR_ICON_TYPES: ReadonlySet<string> = new Set(CONNECTOR_TYPE_KEYS);
 export interface StaticConnectorIconMetadata {
   readonly url: string;
   readonly invertInDarkMode: boolean;
-  readonly scale?: number;
+  readonly scale?: typeof SLACK_ICON_SCALE;
 }
 
 export function parseStaticConnectorIconAssetPath(path: string): string {
@@ -734,11 +739,13 @@ function connectorIconAssetKey(type: ConnectorType): ConnectorIconAssetKey {
   return type;
 }
 
-function connectorIconScale(type: ConnectorType): number | undefined {
+function connectorIconScale(
+  type: ConnectorType,
+): typeof SLACK_ICON_SCALE | undefined {
   switch (type) {
     case "slack":
     case "slack-webhook":
-      return 2.2;
+      return SLACK_ICON_SCALE;
     default:
       return undefined;
   }
@@ -759,7 +766,7 @@ function validateStaticConnectorIconMetadata(
   }
 }
 
-export function getStaticConnectorIconMetadata(
+function createStaticConnectorIconMetadata(
   type: ConnectorType,
 ): StaticConnectorIconMetadata {
   const scale = connectorIconScale(type);
@@ -775,12 +782,30 @@ export function getStaticConnectorIconMetadata(
           scale,
         };
   validateStaticConnectorIconMetadata(type, metadata);
-  return metadata;
+  return Object.freeze(metadata);
 }
 
-for (const path of Object.values(STATIC_CONNECTOR_ICON_PATHS)) {
-  parseStaticConnectorIconAssetPath(path);
+function buildStaticConnectorIconMetadata(): ReadonlyMap<
+  ConnectorType,
+  StaticConnectorIconMetadata
+> {
+  const icons = new Map<ConnectorType, StaticConnectorIconMetadata>();
+  for (const type of CONNECTOR_TYPE_KEYS) {
+    icons.set(type, createStaticConnectorIconMetadata(type));
+  }
+  return icons;
 }
-for (const type of CONNECTOR_TYPE_KEYS) {
-  getStaticConnectorIconMetadata(type);
+
+const STATIC_CONNECTOR_ICON_METADATA = buildStaticConnectorIconMetadata();
+
+export function getStaticConnectorIconMetadata(
+  type: ConnectorType,
+): StaticConnectorIconMetadata {
+  const metadata = STATIC_CONNECTOR_ICON_METADATA.get(type);
+  if (!metadata) {
+    throw new Error(
+      `Missing static icon metadata for connector type "${type}"`,
+    );
+  }
+  return metadata;
 }

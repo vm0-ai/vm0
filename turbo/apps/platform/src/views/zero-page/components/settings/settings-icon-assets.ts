@@ -41,7 +41,7 @@ function isSettingsOnlyIconAssetKey(
 
 export function settingsIconAssetUrl(key: SettingsIconAssetKey): string {
   const url = maybeSettingsIconAssetUrl(key);
-  if (url) {
+  if (url !== undefined) {
     return url;
   }
   throw new Error(`Missing settings icon asset for "${key}"`);
