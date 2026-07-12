@@ -981,9 +981,19 @@ describe("GET /api/zero/connector-catalog", () => {
       }),
       [200],
     );
+    const detailResponse = await accept(
+      client.get({
+        params: { connectorRef: "google-docs" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     expect(response.body.permissions.connectorRef).toBe("google-docs");
+    expect(response.body.permissions.icon).toStrictEqual(
+      detailResponse.body.connector.icon,
+    );
     expect(response.body.permissions.permissionCount).toBeGreaterThan(0);
     expect(response.body.permissions.permissions).toHaveLength(
       response.body.permissions.permissionCount,

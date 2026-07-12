@@ -36,6 +36,10 @@ function publicConnectorStatusItem(
     label: connectorRef,
     description: `${connectorRef} public description`,
     category: "data-automation-infrastructure",
+    icon: {
+      url: `https://icons.example.test/${connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     generation: [],
     tags: [],
     authMethods: [],
@@ -200,6 +204,9 @@ describe("zero ideation page", () => {
     const card = await cardByTitle("Daily standup report");
 
     expect(card.querySelectorAll("img")).toHaveLength(5);
+    expect(
+      card.querySelector('img[src="https://icons.example.test/github.svg"]'),
+    ).toBeInTheDocument();
   });
 
   it("hides use cases when any required connector is omitted from catalog", async () => {

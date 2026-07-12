@@ -250,6 +250,7 @@ function publicStatusItem(args: {
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
+  readonly icon?: PublicConnectorCatalogStatusItem["icon"];
   readonly authMethods: PublicConnectorCatalogStatusItem["authMethods"];
   readonly singleAuthCodeAuthMethodId?: string | null;
   readonly connectNotice?: PublicConnectorCatalogStatusItem["connectNotice"];
@@ -258,6 +259,10 @@ function publicStatusItem(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
+    icon: args.icon ?? {
+      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: args.category ?? "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -433,8 +438,29 @@ describe("connectors page", () => {
     ).toBeTruthy();
   });
 
-  it("preserves static connector icon rendering during catalog migration", async () => {
+  it("renders connector icons from server-authored catalog descriptors", async () => {
     mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "github",
+        label: "GitHub",
+        icon: {
+          url: "https://icons.example.test/github.svg",
+          invertInDarkMode: true,
+        },
+        authMethods: [],
+      }),
+      publicStatusItem({
+        connectorRef: "slack",
+        label: "Slack",
+        icon: {
+          url: "https://icons.example.test/slack.svg",
+          invertInDarkMode: false,
+          scale: 1.5,
+        },
+        authMethods: [],
+      }),
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -446,18 +472,18 @@ describe("connectors page", () => {
     const githubIcon = connectorIconByLabel("GitHub");
     expect(githubIcon).toHaveAttribute(
       "src",
-      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/github-4a739019d805.svg",
+      "https://icons.example.test/github.svg",
     );
     expect(githubIcon).toHaveClass("zero-icon-mono");
 
     const slackIcon = connectorIconByLabel("Slack");
     expect(slackIcon).toHaveAttribute(
       "src",
-      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+      "https://icons.example.test/slack.svg",
     );
     expect(slackIcon).not.toHaveClass("zero-icon-mono");
-    expect(slackIcon).toHaveClass("scale-[2.2]");
-    expect(slackIcon.parentElement).toHaveClass("overflow-hidden");
+    expect(slackIcon).toHaveStyle({ transform: "scale(1.5)" });
+    expect(slackIcon.closest(".overflow-hidden")).toBeInTheDocument();
   });
 
   it("renders server-authored connector categories unknown to the browser", async () => {
@@ -1963,6 +1989,10 @@ describe("connectors page", () => {
       connectorRef: "axiom",
       label: "Public Axiom",
       description: "Public Axiom description",
+      icon: {
+        url: "https://icons.example.test/axiom-v1.svg",
+        invertInDarkMode: false,
+      },
       authMethods: [
         {
           id: "api-token",
@@ -1998,6 +2028,10 @@ describe("connectors page", () => {
         catalogStatusItems = [
           {
             ...disconnectedAxiom,
+            icon: {
+              url: "https://icons.example.test/axiom-v2.svg",
+              invertInDarkMode: true,
+            },
             connection: {
               authMethod: body.authMethod,
               externalUsername: null,
@@ -2033,6 +2067,15 @@ describe("connectors page", () => {
     expect(
       within(connectorCardByLabel("Public Axiom")).queryByText("Connected"),
     ).not.toBeInTheDocument();
+    const initialIcon = connectorIconByLabel("Public Axiom");
+    expect(initialIcon).toHaveAttribute(
+      "src",
+      "https://icons.example.test/axiom-v1.svg",
+    );
+    fireEvent.error(initialIcon);
+    expect(
+      within(connectorCardByLabel("Public Axiom")).getByRole("img"),
+    ).toHaveAccessibleName("Connector icon unavailable");
 
     const abortScope = context.store.set(
       abortAfterManualGrantConnectSignalScope$,
@@ -2068,6 +2111,13 @@ describe("connectors page", () => {
       expect(
         within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
+      expect(connectorIconByLabel("Public Axiom")).toHaveAttribute(
+        "src",
+        "https://icons.example.test/axiom-v2.svg",
+      );
+      expect(connectorIconByLabel("Public Axiom")).toHaveClass(
+        "zero-icon-mono",
+      );
     });
   });
 

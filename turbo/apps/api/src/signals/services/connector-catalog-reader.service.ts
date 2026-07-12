@@ -4,6 +4,7 @@ import type {
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogDetail,
+  PublicConnectorCatalogIcon,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogListResponse,
   PublicConnectorCatalogManualField,
@@ -61,6 +62,12 @@ interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
 
 function isConnectorType(connectorRef: string): connectorRef is ConnectorType {
   return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, connectorRef);
+}
+
+export function getPublicConnectorCatalogIcon(
+  connectorRef: ConnectorType,
+): PublicConnectorCatalogIcon {
+  return getStaticConnectorIconMetadata(connectorRef);
 }
 
 function availableAuthMethodsForCatalog(
@@ -202,7 +209,7 @@ function connectorCatalogItem(
     connectorRef: type,
     label: config.label,
     description: config.helpText,
-    icon: getStaticConnectorIconMetadata(type),
+    icon: getPublicConnectorCatalogIcon(type),
     category: config.category,
     generation: [...getConnectorGenerationTypes(type)],
     tags: [...getConnectorTags(type)],
@@ -437,6 +444,7 @@ export async function getPublicConnectorCatalogPermissionDetail(
   return {
     connectorRef: args.connectorRef,
     label: metadata.label,
+    icon: getPublicConnectorCatalogIcon(args.connectorRef),
     permissionCount: metadata.permissionCount,
     permissions: metadata.permissions.map((permission) => {
       return {

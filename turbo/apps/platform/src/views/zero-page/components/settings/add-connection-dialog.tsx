@@ -1306,7 +1306,7 @@ export function ConnectModal({
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <ConnectorIcon type={selectedType} size={20} />
+              <ConnectorIcon icon={item.icon} size={20} />
             </div>
             <DialogTitle>{item.label}</DialogTitle>
           </div>

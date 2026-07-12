@@ -33,10 +33,10 @@ export function ScopeReviewModal({
     return null;
   }
 
-  const connectorLabel =
-    connectorTypes?.find((connector) => {
-      return connector.type === connectorType;
-    })?.label ?? connectorType;
+  const connector = connectorTypes?.find((candidate) => {
+    return candidate.type === connectorType;
+  });
+  const connectorLabel = connector?.label ?? connectorType;
 
   return (
     <Dialog
@@ -49,7 +49,7 @@ export function ScopeReviewModal({
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <ConnectorIcon type={connectorType} size={20} />
+              <ConnectorIcon icon={connector?.icon} size={20} />
             </div>
             <DialogTitle>{connectorLabel} permissions update</DialogTitle>
           </div>

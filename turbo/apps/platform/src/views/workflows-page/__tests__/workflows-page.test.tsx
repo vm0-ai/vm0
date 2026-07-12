@@ -60,6 +60,13 @@ function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
+function connectorIcon(connectorRef: string) {
+  return {
+    url: `https://icons.example.test/${connectorRef}.svg`,
+    invertInDarkMode: false,
+  };
+}
+
 function detachedSetupWorkflowDetailPage(
   path: string,
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
@@ -1464,24 +1471,28 @@ describe("workflow detail page", () => {
             {
               connectorRef: "google-drive",
               label: "Google Drive",
+              icon: connectorIcon("google-drive"),
               reason: "The workflow reads account documents.",
               status: "connected",
             },
             {
               connectorRef: "github",
               label: "GitHub",
+              icon: connectorIcon("github"),
               reason: "A GitHub trigger requires this connector.",
               status: "unavailable",
             },
             {
               connectorRef: "slack",
               label: "Slack",
+              icon: connectorIcon("slack"),
               reason: "The workflow posts a summary to Slack.",
               status: "not-enabled-for-agent",
             },
             {
               connectorRef: "notion",
               label: "Notion",
+              icon: connectorIcon("notion"),
               reason: "The workflow updates a Notion page.",
               status: "scope-mismatch",
             },
@@ -1490,10 +1501,16 @@ describe("workflow detail page", () => {
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
               status: "reconnect-required",
+              icon: {
+                url: "https://icons.example.test/gmail.svg",
+                invertInDarkMode: true,
+                scale: 1.25,
+              },
             },
             {
               connectorRef: "linear",
               label: "Linear",
+              icon: connectorIcon("linear"),
               reason: "The workflow creates follow-up issues.",
               status: "not-connected",
             },
@@ -1548,6 +1565,28 @@ describe("workflow detail page", () => {
       within(readiness).getByText("Currently unavailable"),
     ).toBeInTheDocument();
     expect(within(readiness).getByText("Connected")).toBeInTheDocument();
+
+    const gmailRow = within(readiness).getByText("Gmail").closest("li");
+    if (!(gmailRow instanceof HTMLElement)) {
+      throw new Error("Gmail readiness row not found");
+    }
+    expect(gmailRow.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/gmail.svg",
+    );
+    expect(gmailRow.querySelector("img")).toHaveClass("zero-icon-mono");
+    expect(gmailRow.querySelector("img")).toHaveStyle({
+      transform: "scale(1.25)",
+    });
+
+    const unavailableRow = within(readiness).getByText("GitHub").closest("li");
+    if (!(unavailableRow instanceof HTMLElement)) {
+      throw new Error("Unavailable readiness row not found");
+    }
+    expect(unavailableRow.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/github.svg",
+    );
 
     expect(linkByText("Reconnect Gmail", readiness)).toHaveAttribute(
       "href",
@@ -1627,6 +1666,7 @@ describe("workflow detail page", () => {
             {
               connectorRef: "gmail",
               label: "Gmail",
+              icon: connectorIcon("gmail"),
               reason: "The workflow reads outreach replies.",
               status: "connected",
             },

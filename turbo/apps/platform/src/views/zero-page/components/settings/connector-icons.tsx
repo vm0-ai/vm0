@@ -1,27 +1,36 @@
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import {
-  getStaticConnectorIconMetadata,
-  isStaticConnectorIconType,
-} from "@vm0/connectors/static-connector-icons";
+import { IconPlug } from "@tabler/icons-react";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { cn } from "@vm0/ui";
 
-export function isConnectorIconType(type: string): type is ConnectorType {
-  return isStaticConnectorIconType(type);
+function ConnectorIconFallback({
+  size,
+  hidden = false,
+}: {
+  size: number;
+  hidden?: boolean;
+}) {
+  return (
+    <span
+      hidden={hidden}
+      role="img"
+      aria-label="Connector icon unavailable"
+      className="inline-flex h-full w-full items-center justify-center text-muted-foreground"
+    >
+      <IconPlug size={size * 0.65} stroke={1.5} aria-hidden="true" />
+    </span>
+  );
 }
 
-/**
- * Connector mark in a square slot. The asset scales with `object-contain` so the
- * drawable uses the full `size×size` box (e.g. a 20×28 logo fills height in a 28×28 slot).
- */
+/** Connector mark in a square slot, driven by public catalog display data. */
 export function ConnectorIcon({
-  type,
+  icon,
   size = 28,
 }: {
-  type: ConnectorType;
+  icon: PublicConnectorCatalogIcon | undefined;
   size?: number;
 }) {
-  const icon = getStaticConnectorIconMetadata(type);
-  const scaled = icon.scale !== undefined;
+  const scaled = icon?.scale !== undefined;
+
   return (
     <span
       className={cn(
@@ -30,16 +39,34 @@ export function ConnectorIcon({
       )}
       style={{ width: size, height: size }}
     >
-      <img
-        src={icon.url}
-        alt=""
-        decoding="async"
-        className={cn(
-          "block h-full w-full max-h-full max-w-full object-contain",
-          icon.invertInDarkMode && "zero-icon-mono",
-          scaled && "scale-[2.2]",
-        )}
-      />
+      {icon === undefined ? (
+        <ConnectorIconFallback size={size} />
+      ) : (
+        <span
+          key={icon.url}
+          className="inline-flex h-full w-full items-center justify-center"
+        >
+          <img
+            src={icon.url}
+            alt=""
+            decoding="async"
+            className={cn(
+              "block h-full w-full max-h-full max-w-full object-contain",
+              icon.invertInDarkMode && "zero-icon-mono",
+            )}
+            style={
+              icon.scale === undefined
+                ? undefined
+                : { transform: `scale(${icon.scale})` }
+            }
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+              event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+            }}
+          />
+          <ConnectorIconFallback size={size} hidden />
+        </span>
+      )}
     </span>
   );
 }

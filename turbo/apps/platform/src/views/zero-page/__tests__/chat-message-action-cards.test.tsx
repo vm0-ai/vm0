@@ -34,10 +34,14 @@ function catalogPermissionDetail(
       "connectorRef" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const { connectorRef, label, permissions, ...rest } = overrides;
+  const { connectorRef, label, permissions, icon, ...rest } = overrides;
   return {
     connectorRef,
     label,
+    icon: icon ?? {
+      url: `https://icons.example.test/${connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     permissionCount: permissions.length,
     permissions,
     categories: null,
@@ -90,11 +94,15 @@ function publicConnectorStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> &
     Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
 ): PublicConnectorCatalogStatusItem {
-  const { connectorRef, label, ...rest } = overrides;
+  const { connectorRef, label, icon, ...rest } = overrides;
   return {
     connectorRef,
     label,
     description: `${label} public help text`,
+    icon: icon ?? {
+      url: `https://icons.example.test/${connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -206,6 +214,10 @@ describe("chat message action cards", () => {
         connectorRef: "github",
         label: "Catalog GitHub",
         description: "Catalog GitHub server help text",
+        icon: {
+          url: "https://icons.example.test/action-github.svg",
+          invertInDarkMode: true,
+        },
         connected: true,
         connectionStatus: "connected",
         connection: {
@@ -289,6 +301,10 @@ describe("chat message action cards", () => {
     expect(
       within(connectorCard).getByText("Catalog GitHub server help text"),
     ).toBeInTheDocument();
+    expect(connectorCard.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/action-github.svg",
+    );
     await user.click(within(connectorCard).getByText("Connect"));
 
     await waitFor(() => {

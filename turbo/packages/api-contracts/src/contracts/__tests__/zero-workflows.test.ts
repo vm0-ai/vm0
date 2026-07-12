@@ -239,6 +239,10 @@ describe("workflow connector readiness contract", () => {
         return {
           connectorRef: entry.connectorRef,
           label: `Connector ${index}`,
+          icon: {
+            url: `https://icons.example.test/${entry.connectorRef}.svg`,
+            invertInDarkMode: false,
+          },
           reason: "The workflow uses this service.",
           status: entry.status,
         };

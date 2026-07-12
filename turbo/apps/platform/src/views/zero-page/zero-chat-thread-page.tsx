@@ -153,10 +153,7 @@ import type { PermissionActionBlock } from "../../signals/chat-page/permission-a
 import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "./components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -5054,11 +5051,7 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          {connectorType ? (
-            <ConnectorIcon type={connectorType} size={22} />
-          ) : (
-            <IconPackage size={22} />
-          )}
+          <ConnectorIcon icon={displayMetadata.icon} size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5567,6 +5560,7 @@ function createPermissionActionHandler(params: {
 
 function PermissionActionCardContent({
   block,
+  icon,
   connectorLabel,
   actionLabel,
   permissionName,
@@ -5578,6 +5572,7 @@ function PermissionActionCardContent({
   onClick,
 }: {
   block: PermissionActionBlock;
+  icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;
@@ -5588,11 +5583,6 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
-  const connectorIcon = isConnectorIconType(block.connectorRef) ? (
-    <ConnectorIcon type={block.connectorRef} size={22} />
-  ) : (
-    <IconPackage size={22} />
-  );
   const expiryText = expirationAvailable
     ? permissionGrantExpiryText(expiresAt)
     : null;
@@ -5608,7 +5598,7 @@ function PermissionActionCardContent({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          {connectorIcon}
+          <ConnectorIcon icon={icon} size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5704,6 +5694,7 @@ function PermissionActionCardForTarget({
   return (
     <PermissionActionCardContent
       block={block}
+      icon={permissionMetadata?.icon}
       connectorLabel={permissionMetadata?.label ?? block.connectorRef}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}

@@ -135,10 +135,7 @@ import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "./components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -419,6 +416,7 @@ interface ComposerConnectorItem {
   type: ConnectorType;
   label: string;
   helpText: string;
+  icon: ConnectorTypeWithStatus["icon"];
   tags: readonly string[];
   connected: boolean;
   authorized: boolean;
@@ -1399,49 +1397,62 @@ function WorkflowTemplateConnectorIcons({
   connectors,
   compact = false,
   limit = compact ? 3 : 5,
+  withDivider = false,
 }: {
-  // Loosely typed: the curated catalog stores connectors as plain strings;
-  // isConnectorIconType narrows to the ones that actually have an icon.
   connectors: readonly string[];
   compact?: boolean;
   limit?: number;
+  withDivider?: boolean;
 }) {
-  const connectorIconTypes = connectors.filter(isConnectorIconType);
-  if (connectorIconTypes.length === 0) {
+  const catalogConnectors = useLastResolved(allConnectorTypes$);
+  const visibleConnectors = connectors.flatMap((connectorRef) => {
+    const connector = catalogConnectors?.find((candidate) => {
+      return candidate.type === connectorRef;
+    });
+    return connector ? [connector] : [];
+  });
+  if (visibleConnectors.length === 0) {
     return null;
   }
 
-  const visibleConnectorTypes = connectorIconTypes.slice(0, limit);
-  const remainingCount =
-    connectorIconTypes.length - visibleConnectorTypes.length;
+  const displayedConnectors = visibleConnectors.slice(0, limit);
+  const remainingCount = visibleConnectors.length - displayedConnectors.length;
   return (
-    <span
-      className={cn("flex min-w-0 items-center", compact ? "gap-1" : "gap-1.5")}
-    >
-      {visibleConnectorTypes.map((type) => {
-        return (
+    <>
+      {withDivider ? (
+        <span className="h-3.5 w-px shrink-0 bg-border/70" />
+      ) : null}
+      <span
+        className={cn(
+          "flex min-w-0 items-center",
+          compact ? "gap-1" : "gap-1.5",
+        )}
+      >
+        {displayedConnectors.map((connector) => {
+          return (
+            <span
+              key={connector.type}
+              className={cn(
+                "flex shrink-0 items-center justify-center border border-border/60 bg-background",
+                compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+              )}
+            >
+              <ConnectorIcon icon={connector.icon} size={compact ? 12 : 14} />
+            </span>
+          );
+        })}
+        {remainingCount > 0 ? (
           <span
-            key={type}
             className={cn(
-              "flex shrink-0 items-center justify-center border border-border/60 bg-background",
-              compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+              "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
+              compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
             )}
           >
-            <ConnectorIcon type={type} size={compact ? 12 : 14} />
+            +{remainingCount}
           </span>
-        );
-      })}
-      {remainingCount > 0 ? (
-        <span
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
-            compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
-          )}
-        >
-          +{remainingCount}
-        </span>
-      ) : null}
-    </span>
+        ) : null}
+      </span>
+    </>
   );
 }
 
@@ -5512,7 +5523,6 @@ function SelectedWorkflowTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
-  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
@@ -5533,15 +5543,11 @@ function SelectedWorkflowTemplateChip({
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
               Workflow
             </span>
-            {hasConnectorIcons ? (
-              <>
-                <span className="h-3.5 w-px shrink-0 bg-border/70" />
-                <WorkflowTemplateConnectorIcons
-                  connectors={item.connectors}
-                  compact
-                />
-              </>
-            ) : null}
+            <WorkflowTemplateConnectorIcons
+              connectors={item.connectors}
+              compact
+              withDivider
+            />
             <span className="h-3.5 w-px shrink-0 bg-border/70" />
             <span className="min-w-0 truncate text-xs font-medium">
               {item.title}
@@ -5922,7 +5928,7 @@ function ConnectorTriggerIcons({
         return (
           <span key={c.type} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon type={c.type} size={16} />
+              <ConnectorIcon icon={c.icon} size={16} />
             </span>
           </span>
         );
@@ -5999,7 +6005,7 @@ function AddConnectorsDialog({
                 >
                   <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      <ConnectorIcon type={item.type} size={20} />
+                      <ConnectorIcon icon={item.icon} size={20} />
                     </span>
                     <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
                       {item.label}
@@ -6265,7 +6271,7 @@ function ConnectorsPopoverButton({
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon type={item.type} size={16} />
+                        <ConnectorIcon icon={item.icon} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
@@ -7331,6 +7337,7 @@ export function useZeroChatComposer({
       type: c.type,
       label: c.label,
       helpText: c.helpText,
+      icon: c.icon,
       tags: c.tags,
       connected,
       authorized,

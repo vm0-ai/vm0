@@ -1072,6 +1072,7 @@ export {
   type ZeroConnectorsSearchContract,
 } from "./zero-connectors";
 export {
+  publicConnectorCatalogIconSchema,
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogAuthMethodSummary,
@@ -1080,6 +1081,7 @@ export {
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogItem,
+  type PublicConnectorCatalogIcon,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogManualField,
   type PublicConnectorCatalogPermissionDetail,

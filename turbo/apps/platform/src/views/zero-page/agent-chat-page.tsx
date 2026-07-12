@@ -18,6 +18,7 @@ import {
 } from "@tabler/icons-react";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   Button,
   Tooltip,
@@ -47,6 +48,7 @@ import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx"
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
 import {
   replaceWorkflowPromptDraftTarget$,
   setReplaceWorkflowPromptDraftTarget$,
@@ -77,10 +79,7 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "./components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -291,12 +290,20 @@ interface SuggestedPrompt {
 
 function SuggestedPromptButton({
   item,
+  connectorStatusByRef,
   onSelectPrompt,
 }: {
   item: SuggestedPrompt;
+  connectorStatusByRef:
+    | ReadonlyMap<string, PublicConnectorCatalogStatusItem>
+    | undefined;
   onSelectPrompt: (prompt: string) => void;
 }) {
-  const connectorIconTypes = item.connectors?.filter(isConnectorIconType) ?? [];
+  const connectors =
+    item.connectors?.flatMap((connectorRef) => {
+      const connector = connectorStatusByRef?.get(connectorRef);
+      return connector ? [{ connectorRef, icon: connector.icon }] : [];
+    }) ?? [];
   return (
     <button
       type="button"
@@ -314,15 +321,15 @@ function SuggestedPromptButton({
       <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
         {item.description}
       </p>
-      {connectorIconTypes.length > 0 && (
+      {connectors.length > 0 && (
         <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-          {connectorIconTypes.map((type) => {
+          {connectors.map((connector) => {
             return (
               <span
-                key={type}
+                key={connector.connectorRef}
                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
               >
-                <ConnectorIcon type={type} size={14} />
+                <ConnectorIcon icon={connector.icon} size={14} />
               </span>
             );
           })}
@@ -432,6 +439,7 @@ function SuggestedPromptsGrid({
 }: {
   onSelectPrompt: (prompt: string) => void;
 }) {
+  const connectorStatusByRef = useLastResolved(connectorCatalogStatusByRef$);
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
   const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);
@@ -449,6 +457,7 @@ function SuggestedPromptsGrid({
           <SuggestedPromptButton
             key={item.title}
             item={item}
+            connectorStatusByRef={connectorStatusByRef}
             onSelectPrompt={onSelectPrompt}
           />
         );
