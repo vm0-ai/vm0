@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use futures_util::FutureExt;
 use sandbox::{
     Sandbox, SandboxConfig, SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxId,
-    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
+    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -66,9 +66,9 @@ const RUNNER_FRESH_SANDBOX_FACTORY_NETNS_ACQUIRE: &str =
     "runner_fresh_sandbox_factory_netns_acquire";
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_CREATE: &str =
     "runner_fresh_sandbox_factory_nbd_cow_create";
-// NBD detail durations are children of `nbd_cow_create`. Device scan is
-// nested again inside device acquire, so downstream queries must not add it to
-// the acquire duration or to a peer-stage sum.
+// NBD detail durations are children of `nbd_cow_create`. Device scan is nested
+// again inside device acquire, and netlink details are nested inside netlink
+// connect. Downstream queries must not add nested durations to their parents.
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_COW_LAYER_CREATE: &str =
     "runner_fresh_sandbox_factory_nbd_cow_layer_create";
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_DEVICE_ACQUIRE: &str =
@@ -79,6 +79,14 @@ const RUNNER_FRESH_SANDBOX_FACTORY_NBD_DISPATCH_SETUP: &str =
     "runner_fresh_sandbox_factory_nbd_dispatch_setup";
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT: &str =
     "runner_fresh_sandbox_factory_nbd_netlink_connect";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_BLOCKING_TASK_QUEUE: &str =
+    "runner_fresh_sandbox_factory_nbd_netlink_blocking_task_queue";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_SOCKET_SETUP: &str =
+    "runner_fresh_sandbox_factory_nbd_netlink_socket_setup";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_FAMILY_RESOLVE: &str =
+    "runner_fresh_sandbox_factory_nbd_netlink_family_resolve";
+const RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT_COMMAND: &str =
+    "runner_fresh_sandbox_factory_nbd_netlink_connect_command";
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_VERIFY: &str =
     "runner_fresh_sandbox_factory_nbd_size_verify";
 const RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_CLEANUP: &str =
@@ -154,6 +162,25 @@ impl SandboxCreateObserver for FreshSandboxFactoryCreateObserver<'_> {
         );
     }
 
+    fn record_nbd_netlink_connect_stage(
+        &mut self,
+        stage: SandboxNbdNetlinkConnectStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let error = if success {
+            None
+        } else {
+            Some(SANDBOX_FACTORY_CREATE_STAGE_FAILED)
+        };
+        self.telemetry.record(
+            fresh_sandbox_factory_nbd_netlink_connect_stage_action(stage),
+            duration,
+            success,
+            error,
+        );
+    }
+
     fn record_nbd_cow_outcome(&mut self, outcome: SandboxNbdCowCreateOutcome) {
         self.telemetry.record(
             fresh_sandbox_factory_nbd_cow_outcome_action(outcome),
@@ -197,6 +224,25 @@ fn fresh_sandbox_factory_nbd_cow_stage_action(stage: SandboxNbdCowCreateStage) -
         SandboxNbdCowCreateStage::SizeVerify => RUNNER_FRESH_SANDBOX_FACTORY_NBD_SIZE_VERIFY,
         SandboxNbdCowCreateStage::RetryCleanup => RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_CLEANUP,
         SandboxNbdCowCreateStage::RetryDelay => RUNNER_FRESH_SANDBOX_FACTORY_NBD_RETRY_DELAY,
+    }
+}
+
+fn fresh_sandbox_factory_nbd_netlink_connect_stage_action(
+    stage: SandboxNbdNetlinkConnectStage,
+) -> &'static str {
+    match stage {
+        SandboxNbdNetlinkConnectStage::BlockingTaskQueue => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_BLOCKING_TASK_QUEUE
+        }
+        SandboxNbdNetlinkConnectStage::SocketSetup => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_SOCKET_SETUP
+        }
+        SandboxNbdNetlinkConnectStage::FamilyResolve => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_FAMILY_RESOLVE
+        }
+        SandboxNbdNetlinkConnectStage::ConnectCommand => {
+            RUNNER_FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT_COMMAND
+        }
     }
 }
 

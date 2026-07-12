@@ -16,9 +16,11 @@
 
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::Path;
+use std::time::Instant;
 
 use nix::sys::socket::{AddressFamily, SockFlag, SockType, socketpair};
 
+use crate::device::{NbdNetlinkConnectStage, NbdNetlinkConnectTiming};
 use crate::error::{NbdCowError, Result};
 
 mod socket;
@@ -190,13 +192,50 @@ pub(crate) fn connect_device_with_state(
     size: u64,
     block_size: u64,
 ) -> std::result::Result<ConnectDeviceSuccess, ConnectDeviceError> {
-    let sockets_payload_len = validate_connect_socket_count(client_fds.len())?;
+    connect_device_with_state_timing(device_index, client_fds, size, block_size).0
+}
 
-    let sock =
-        socket::open_genl_socket().map_err(|source| ConnectDeviceError::NotSent { source })?;
-    let family_id =
-        resolve_nbd_family(&sock).map_err(|source| ConnectDeviceError::NotSent { source })?;
+pub(crate) fn connect_device_with_state_timing(
+    device_index: u32,
+    client_fds: &[OwnedFd],
+    size: u64,
+    block_size: u64,
+) -> (
+    std::result::Result<ConnectDeviceSuccess, ConnectDeviceError>,
+    NbdNetlinkConnectTiming,
+) {
+    let setup_started_at = Instant::now();
+    let mut timing = NbdNetlinkConnectTiming::default();
+    let setup_result = (|| {
+        let sockets_payload_len = validate_connect_socket_count(client_fds.len())?;
+        let sock =
+            socket::open_genl_socket().map_err(|source| ConnectDeviceError::NotSent { source })?;
+        Ok((sockets_payload_len, sock))
+    })();
+    timing.record_stage(
+        NbdNetlinkConnectStage::SocketSetup,
+        setup_started_at,
+        setup_result.is_ok(),
+    );
+    let (sockets_payload_len, sock) = match setup_result {
+        Ok(setup) => setup,
+        Err(error) => return (Err(error), timing),
+    };
 
+    let family_started_at = Instant::now();
+    let family_result =
+        resolve_nbd_family(&sock).map_err(|source| ConnectDeviceError::NotSent { source });
+    timing.record_stage(
+        NbdNetlinkConnectStage::FamilyResolve,
+        family_started_at,
+        family_result.is_ok(),
+    );
+    let family_id = match family_result {
+        Ok(family_id) => family_id,
+        Err(error) => return (Err(error), timing),
+    };
+
+    let command_started_at = Instant::now();
     let sockets_nla = build_sockets_nla(client_fds, sockets_payload_len);
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
@@ -228,10 +267,17 @@ pub(crate) fn connect_device_with_state(
     // The kernel records the sending task's TID in /sys/block/nbdN/pid on
     // successful connect. Capture it before crossing the netlink send boundary.
     let connect_tid = unsafe { libc::gettid() } as u32;
-    let seq = send_nbd_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)
-        .map_err(|source| ConnectDeviceError::NotSent { source })?;
+    let result = match send_nbd_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs) {
+        Ok(seq) => finish_connect_after_send(&sock, seq, connect_tid),
+        Err(source) => Err(ConnectDeviceError::NotSent { source }),
+    };
+    timing.record_stage(
+        NbdNetlinkConnectStage::ConnectCommand,
+        command_started_at,
+        result.is_ok(),
+    );
 
-    finish_connect_after_send(&sock, seq, connect_tid)
+    (result, timing)
 }
 
 /// Check whether the device has the expected size via sysfs.

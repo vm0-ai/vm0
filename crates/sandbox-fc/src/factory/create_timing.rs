@@ -1,8 +1,11 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use nbd_cow::{NbdCowCreateOutcome, NbdCowCreateStage};
-use sandbox::{SandboxCreateStage, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage};
+use nbd_cow::{NbdCowCreateOutcome, NbdCowCreateStage, NbdNetlinkConnectStage};
+use sandbox::{
+    SandboxCreateStage, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
+    SandboxNbdNetlinkConnectStage,
+};
 use tracing::{info, warn};
 
 use crate::duration::duration_ms;
@@ -266,6 +269,22 @@ impl nbd_cow::NbdCowCreateObserver for SandboxCreateTiming<'_> {
         observer.record_nbd_cow_stage(sandbox_nbd_cow_stage(stage), duration, success);
     }
 
+    fn record_netlink_connect_stage(
+        &mut self,
+        stage: NbdNetlinkConnectStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let Some(observer) = self.observer.as_deref_mut() else {
+            return;
+        };
+        observer.record_nbd_netlink_connect_stage(
+            sandbox_nbd_netlink_connect_stage(stage),
+            duration,
+            success,
+        );
+    }
+
     fn record_outcome(&mut self, outcome: NbdCowCreateOutcome) {
         let Some(observer) = self.observer.as_deref_mut() else {
             return;
@@ -284,6 +303,19 @@ fn sandbox_nbd_cow_stage(stage: NbdCowCreateStage) -> SandboxNbdCowCreateStage {
         NbdCowCreateStage::SizeVerify => SandboxNbdCowCreateStage::SizeVerify,
         NbdCowCreateStage::RetryCleanup => SandboxNbdCowCreateStage::RetryCleanup,
         NbdCowCreateStage::RetryDelay => SandboxNbdCowCreateStage::RetryDelay,
+    }
+}
+
+fn sandbox_nbd_netlink_connect_stage(
+    stage: NbdNetlinkConnectStage,
+) -> SandboxNbdNetlinkConnectStage {
+    match stage {
+        NbdNetlinkConnectStage::BlockingTaskQueue => {
+            SandboxNbdNetlinkConnectStage::BlockingTaskQueue
+        }
+        NbdNetlinkConnectStage::SocketSetup => SandboxNbdNetlinkConnectStage::SocketSetup,
+        NbdNetlinkConnectStage::FamilyResolve => SandboxNbdNetlinkConnectStage::FamilyResolve,
+        NbdNetlinkConnectStage::ConnectCommand => SandboxNbdNetlinkConnectStage::ConnectCommand,
     }
 }
 
@@ -395,6 +427,7 @@ mod tests {
     struct RecordingCreateObserver {
         records: Vec<(sandbox::SandboxCreateStage, Duration, bool)>,
         nbd_cow_records: Vec<(sandbox::SandboxNbdCowCreateStage, Duration, bool)>,
+        nbd_netlink_connect_records: Vec<(sandbox::SandboxNbdNetlinkConnectStage, Duration, bool)>,
         nbd_cow_outcomes: Vec<sandbox::SandboxNbdCowCreateOutcome>,
     }
 
@@ -415,6 +448,16 @@ mod tests {
             success: bool,
         ) {
             self.nbd_cow_records.push((stage, duration, success));
+        }
+
+        fn record_nbd_netlink_connect_stage(
+            &mut self,
+            stage: sandbox::SandboxNbdNetlinkConnectStage,
+            duration: Duration,
+            success: bool,
+        ) {
+            self.nbd_netlink_connect_records
+                .push((stage, duration, success));
         }
 
         fn record_nbd_cow_outcome(&mut self, outcome: sandbox::SandboxNbdCowCreateOutcome) {
@@ -721,6 +764,14 @@ mod tests {
                     stage != NbdCowCreateStage::NetlinkConnect,
                 );
             }
+            for stage in NbdNetlinkConnectStage::ALL {
+                nbd_cow::NbdCowCreateObserver::record_netlink_connect_stage(
+                    &mut timing,
+                    stage,
+                    Duration::from_millis(3),
+                    stage != NbdNetlinkConnectStage::FamilyResolve,
+                );
+            }
             for outcome in [
                 NbdCowCreateOutcome::AcquireSourceDemandScan,
                 NbdCowCreateOutcome::AcquireSourceCooledClaim,
@@ -748,6 +799,17 @@ mod tests {
                 record.2 == (record.0 != SandboxNbdCowCreateStage::NetlinkConnect)
             })
         );
+        assert_eq!(
+            observer
+                .nbd_netlink_connect_records
+                .iter()
+                .map(|record| record.0)
+                .collect::<Vec<_>>(),
+            SandboxNbdNetlinkConnectStage::ALL,
+        );
+        assert!(observer.nbd_netlink_connect_records.iter().all(|record| {
+            record.2 == (record.0 != SandboxNbdNetlinkConnectStage::FamilyResolve)
+        }));
         assert_eq!(
             observer.nbd_cow_outcomes,
             vec![
