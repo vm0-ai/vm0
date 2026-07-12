@@ -742,7 +742,7 @@ describe("chat thread event sourcing local-first list", () => {
       ),
     ).resolves.toStrictEqual({
       messages: [],
-      reachedEnd: true,
+      hasHistoryBefore: false,
     });
     expect(threadDetailRequests).toBe(1);
     expect(threadDraftRequests).toBe(1);

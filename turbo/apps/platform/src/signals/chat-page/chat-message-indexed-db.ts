@@ -12,7 +12,6 @@ import {
 } from "../external/chat-idb-safe.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
 import { logger } from "../log.ts";
-import { setLoop } from "../utils.ts";
 
 const L = logger("ChatMessageIndexedDb");
 const MESSAGE_PAGE_SIZE = 50;
@@ -38,59 +37,6 @@ export const loadIndexedDbChatMessages$ = command(
     );
     signal.throwIfAborted();
     L.debug("loadIndexedDbMessages", { threadId, count: messages.length });
-    return messages;
-  },
-);
-
-export const loadIndexedDbChatMessagesBefore$ = command(
-  async ({ get }, threadId: string, beforeId: string, signal: AbortSignal) => {
-    const stores = await get(chatMessageStores$);
-    signal.throwIfAborted();
-    let cursorId = beforeId;
-    const messagePages: PagedChatMessage[][] = [];
-    const seenIds = new Set<string>([beforeId]);
-    await setLoop(
-      async (loopSignal) => {
-        const page = await chatIdbReadOr(
-          "indexedDbMessages:readBefore",
-          () => {
-            return stores.readStore.readBefore(
-              threadId,
-              cursorId,
-              MESSAGE_PAGE_SIZE,
-              loopSignal,
-            );
-          },
-          [],
-          loopSignal,
-        );
-        loopSignal.throwIfAborted();
-        const newMessages = page.filter((message) => {
-          return !seenIds.has(message.id);
-        });
-        if (newMessages.length === 0) {
-          return true;
-        }
-        for (const message of newMessages) {
-          seenIds.add(message.id);
-        }
-        messagePages.unshift(newMessages);
-        if (page.length < MESSAGE_PAGE_SIZE) {
-          return true;
-        }
-        cursorId = newMessages[0]!.id;
-        return false;
-      },
-      0,
-      signal,
-    );
-    const messages = messagePages.flat();
-    L.debug("loadIndexedDbMessagesBefore", {
-      threadId,
-      beforeId,
-      count: messages.length,
-      pages: messagePages.length,
-    });
     return messages;
   },
 );
@@ -123,7 +69,7 @@ const warmListMessagesAfter$ = command(
     threadId: string,
     sinceId: string | undefined,
     signal: AbortSignal,
-  ): Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean } | null> => {
+  ): Promise<PagedChatMessage[]> => {
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({
@@ -131,16 +77,10 @@ const warmListMessagesAfter$ = command(
         query: { sinceId, limit: MESSAGE_PAGE_SIZE },
         fetchOptions: { signal },
       }),
-      [200, 404],
+      [200],
     );
     signal.throwIfAborted();
-    if (result.status === 404) {
-      return null;
-    }
-    return {
-      messages: result.body.messages,
-      reachedEnd: result.body.messages.length < MESSAGE_PAGE_SIZE,
-    };
+    return result.body.messages;
   },
 );
 
@@ -159,43 +99,27 @@ export const warmLatestChatThreadMessages$ = command(
     signal.throwIfAborted();
 
     let sinceId = latest[0]?.id;
-    await setLoop(
-      async (loopSignal) => {
-        const result = await set(
-          warmListMessagesAfter$,
-          threadId,
-          sinceId,
-          loopSignal,
-        );
-        loopSignal.throwIfAborted();
-        if (result === null) {
-          return true;
-        }
+    while (true) {
+      const result = await set(
+        warmListMessagesAfter$,
+        threadId,
+        sinceId,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (result.length === 0) {
+        return;
+      }
 
-        if (result.messages.length > 0) {
-          await chatIdbWriteBestEffort(
-            "indexedDbMessages:warmUpsert",
-            () => {
-              return stores.writeStore.upsertMessages(
-                threadId,
-                result.messages,
-                loopSignal,
-              );
-            },
-            loopSignal,
-          );
-          loopSignal.throwIfAborted();
-          const nextSinceId = result.messages.at(-1)!.id;
-          if (nextSinceId === sinceId) {
-            return true;
-          }
-          sinceId = nextSinceId;
-        }
-
-        return result.reachedEnd;
-      },
-      0,
-      signal,
-    );
+      await chatIdbWriteBestEffort(
+        "indexedDbMessages:warmUpsert",
+        () => {
+          return stores.writeStore.upsertMessages(threadId, result, signal);
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      sinceId = result.at(-1)!.id;
+    }
   },
 );

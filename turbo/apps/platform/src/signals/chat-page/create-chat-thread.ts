@@ -74,7 +74,6 @@ import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
   loadIndexedDbChatMessages$,
-  loadIndexedDbChatMessagesBefore$,
   writeIndexedDbChatMessages$,
 } from "./chat-message-indexed-db.ts";
 import {
@@ -98,7 +97,6 @@ import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hos
 import type {
   ActiveGoalState,
   ChatThreadSignals,
-  LoadHistoryResult,
   SendMessageOptions,
 } from "./chat-thread-signals.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
@@ -112,7 +110,6 @@ export type {
 export type {
   ActiveGoalState,
   ChatThreadSignals,
-  LoadHistoryResult,
   SendMessageOptions,
 } from "./chat-thread-signals.ts";
 
@@ -121,7 +118,6 @@ const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
-const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
 
 function createChatThreadScrollSignals(threadId: string) {
   return createScrollSignals(threadId);
@@ -1316,12 +1312,6 @@ function isServerProjectionEntry(entry: ChatMessageProjectionEntry): boolean {
   return entry.source === "server";
 }
 
-function earliestServerMessageId(
-  raw: readonly ChatMessageProjectionEntry[],
-): string | undefined {
-  return raw.find(isServerProjectionEntry)?.message.id;
-}
-
 function latestServerMessageId(
   raw: readonly ChatMessageProjectionEntry[],
 ): string | undefined {
@@ -1387,60 +1377,92 @@ function latestAssistantTextCreatedAtFromRaw(
   return undefined;
 }
 
-function createFetchNextPageCommand({
+function createSyncRemoteMessagesCommand({
   threadId,
   persistentMessages$,
-  optimisticCreateUnsettled$,
+  hasReachedOldestMessage$,
   writePersistentMessages$,
   dataSource,
 }: {
   threadId: string;
   persistentMessages$: PersistentChatMessages$;
-  optimisticCreateUnsettled$: Computed<boolean>;
+  hasReachedOldestMessage$: State<boolean>;
   writePersistentMessages$: Command<
     Promise<void>,
     [PagedChatMessage[], AbortSignal]
   >;
   dataSource: ChatThreadRemote;
-}): Command<Promise<boolean>, [AbortSignal]> {
+}): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
-    if (get(optimisticCreateUnsettled$)) {
-      return false;
-    }
     let sinceId = get(persistentMessages$).at(-1)?.id;
     const startedWithoutCursor = sinceId === undefined;
-    // No sinceId is *not* the same as "nothing to fetch": the server side
-    // accepts an absent cursor and returns the latest page in that case.
-    // Drain all pending pages so a single trigger fully catches the client up;
-    // without this loop a burst larger than one page leaves the client behind
-    // if the thread goes quiet afterwards.
-    const MAX_PAGES = 10;
-    for (let i = 0; i < MAX_PAGES; i++) {
+    let initialHasHistoryBefore: boolean | undefined;
+
+    while (true) {
       const result = await set(
         dataSource.listMessagesAfter$,
         { threadId, sinceId },
         signal,
       );
       signal.throwIfAborted();
-      L.debug("fetchNextPage$ listMessagesAfter result", {
+      L.debug("syncRemoteMessages$ listMessagesAfter result", {
         threadId,
         sinceId: sinceId ?? null,
         gotCount: result.messages.length,
-        reachedEnd: result.reachedEnd,
-        page: i,
       });
+
+      if (sinceId === undefined) {
+        initialHasHistoryBefore = result.hasHistoryBefore;
+      }
+
+      if (result.messages.length === 0) {
+        break;
+      }
+
+      await set(writePersistentMessages$, result.messages, signal);
+      signal.throwIfAborted();
+      sinceId = result.messages.at(-1)!.id;
+    }
+
+    if (get(hasReachedOldestMessage$)) {
+      return;
+    }
+
+    if (
+      (startedWithoutCursor && initialHasHistoryBefore === false) ||
+      get(persistentMessages$).length === 0
+    ) {
+      set(hasReachedOldestMessage$, true);
+      return;
+    }
+
+    let beforeId = get(persistentMessages$)[0]!.id;
+    while (true) {
+      const result = await set(
+        dataSource.listMessagesBefore$,
+        { threadId, beforeId },
+        signal,
+      );
+      signal.throwIfAborted();
+      L.debug("syncRemoteMessages$ listMessagesBefore result", {
+        threadId,
+        beforeId,
+        gotCount: result.messages.length,
+        hasHistoryBefore: result.hasHistoryBefore,
+      });
+
       if (result.messages.length > 0) {
         await set(writePersistentMessages$, result.messages, signal);
         signal.throwIfAborted();
-        sinceId = result.messages.at(-1)!.id;
       }
-      const needsInitialCatchup =
-        startedWithoutCursor && i === 0 && result.messages.length > 0;
-      if (result.reachedEnd && !needsInitialCatchup) {
-        return true;
+
+      if (!result.hasHistoryBefore) {
+        set(hasReachedOldestMessage$, true);
+        return;
       }
+
+      beforeId = result.messages[0]!.id;
     }
-    return false;
   });
 }
 
@@ -1515,15 +1537,10 @@ function createActiveGoalComputed(
   });
 }
 
-function createPagedMessages(
-  threadId: string,
-  threadMeta$: Computed<Promise<ThreadMeta | null>>,
-  dataSource: ChatThreadRemote,
-) {
+function createPagedMessages(threadId: string, dataSource: ChatThreadRemote) {
   const persistentChatMessages$ = state<PagedChatMessage[]>([]);
+  const hasReachedOldestMessage$ = state(false);
   const optimisticMessages$ = createOptimisticChatMessagesForThread(threadId);
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
 
   const rawMessages$ = createRawMessagesComputed({
     persistentMessages$: persistentChatMessages$,
@@ -1565,13 +1582,6 @@ function createPagedMessages(
     },
   );
 
-  const earliestChatMessageId$ = computed(
-    (get): Promise<string | undefined> => {
-      const raw = get(rawMessages$);
-      return Promise.resolve(earliestServerMessageId(raw));
-    },
-  );
-
   const latestChatMessageId$ = computed((get): Promise<string | undefined> => {
     const raw = get(rawMessages$);
     return Promise.resolve(latestServerMessageId(raw));
@@ -1591,10 +1601,10 @@ function createPagedMessages(
     },
   );
 
-  const fetchNextPage$ = createFetchNextPageCommand({
+  const syncRemoteMessages$ = createSyncRemoteMessagesCommand({
     threadId,
     persistentMessages$: persistentChatMessages$,
-    optimisticCreateUnsettled$,
+    hasReachedOldestMessage$,
     writePersistentMessages$,
     dataSource,
   });
@@ -1604,32 +1614,9 @@ function createPagedMessages(
     writePersistentMessages$,
   });
 
-  const refreshLatestMessages$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const result = await set(
-        dataSource.listMessagesAfter$,
-        { threadId, sinceId: undefined },
-        signal,
-      );
-      signal.throwIfAborted();
-      await set(writePersistentMessages$, result.messages, signal);
-      signal.throwIfAborted();
-    },
-  );
-
-  const loadHistory$ = createLoadHistoryCommand({
-    threadId,
-    threadMeta$,
-    earliestChatMessageId$,
-    mergeIndexedDbMessages$,
-    writePersistentMessages$,
-    dataSource,
-  });
-
   return {
     initializeIndexedDbMessages$,
     writePersistentMessages$,
-    earliestChatMessageId$,
     latestChatMessageId$,
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
@@ -1638,23 +1625,19 @@ function createPagedMessages(
     messageRunIndicatorState$,
     latestRunStatus$,
     activeGoal$,
-    fetchNextPage$,
+    syncRemoteMessages$,
     fetchUpdatedMessage$,
-    refreshLatestMessages$,
-    loadHistory$,
   };
 }
 
 function createChatThreadMessagePipeline({
   threadId,
-  threadMeta$,
   dataSource,
   recordScrollHeightForPrepend$,
   clearScrollHeightForPrepend$,
   awayFromBottom$,
 }: {
   threadId: string;
-  threadMeta$: Computed<Promise<ThreadMeta | null>>;
   dataSource: ChatThreadRemote;
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
@@ -1666,96 +1649,24 @@ function createChatThreadMessagePipeline({
   >;
   awayFromBottom$: Computed<boolean>;
 }) {
-  const pagedMessages = createPagedMessages(threadId, threadMeta$, dataSource);
+  const pagedMessages = createPagedMessages(threadId, dataSource);
   const renderedMessages = createChatRenderWindow({
     threadId,
     groupedChatMessages$: pagedMessages.groupedChatMessages$,
     awayFromBottom$,
   });
 
-  const loadHistory$ = createLoadHistoryWithPrependScroll(
-    recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
-    renderedMessages.renderedGroupedChatMessages$,
-    pagedMessages.loadHistory$,
-  );
   const loadMoreRenderedChatGroups$ =
     createLoadMoreRenderedChatGroupsWithPrependScroll(
       recordScrollHeightForPrepend$,
       clearScrollHeightForPrepend$,
       renderedMessages.loadMoreRenderedChatGroups$,
     );
-  const silentBackfillHistory$ = createSilentBackfillHistoryCommand({
-    groupedChatMessages$: pagedMessages.groupedChatMessages$,
-    loadHistory$,
-  });
-
   return {
     ...pagedMessages,
     ...renderedMessages,
-    loadHistory$,
     loadMoreRenderedChatGroups$,
-    silentBackfillHistory$,
   };
-}
-
-function createLoadHistoryCommand({
-  threadId,
-  threadMeta$,
-  earliestChatMessageId$,
-  mergeIndexedDbMessages$,
-  writePersistentMessages$,
-  dataSource,
-}: {
-  threadId: string;
-  threadMeta$: Computed<Promise<ThreadMeta | null>>;
-  earliestChatMessageId$: Computed<Promise<string | undefined>>;
-  mergeIndexedDbMessages$: Command<void, [PagedChatMessage[]]>;
-  writePersistentMessages$: Command<
-    Promise<void>,
-    [PagedChatMessage[], AbortSignal]
-  >;
-  dataSource: ChatThreadRemote;
-}): Command<Promise<LoadHistoryResult>, [AbortSignal]> {
-  return command(
-    async ({ get, set }, signal: AbortSignal): Promise<LoadHistoryResult> => {
-      const meta = await get(threadMeta$);
-      signal.throwIfAborted();
-      if (!meta) {
-        return { hasMore: false };
-      }
-
-      const beforeId = await get(earliestChatMessageId$);
-      signal.throwIfAborted();
-      if (!beforeId) {
-        return { hasMore: false };
-      }
-
-      const indexedDbMessages = await set(
-        loadIndexedDbChatMessagesBefore$,
-        threadId,
-        beforeId,
-        signal,
-      );
-      signal.throwIfAborted();
-      if (indexedDbMessages.length > 0) {
-        set(mergeIndexedDbMessages$, indexedDbMessages);
-        return { hasMore: true };
-      }
-
-      const result = await set(
-        dataSource.listMessagesBefore$,
-        { threadId, beforeId },
-        signal,
-      );
-      signal.throwIfAborted();
-      await set(writePersistentMessages$, result.messages, signal);
-      signal.throwIfAborted();
-      return {
-        hasMore: result.hasMore,
-      };
-    },
-  );
 }
 
 function createArtifacts(
@@ -1847,46 +1758,6 @@ function createMessageRunIndicatorState(
   });
 }
 
-function createLoadHistoryWithPrependScroll(
-  recordScrollHeightForPrepend$: Command<
-    PrependScrollCompensationToken | null,
-    []
-  >,
-  clearScrollHeightForPrepend$: Command<
-    void,
-    [PrependScrollCompensationToken | null | undefined]
-  >,
-  renderedGroupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
-  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>,
-) {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const renderedMessageCountBefore = renderedMessageCount(
-      await get(renderedGroupedChatMessages$),
-    );
-    signal.throwIfAborted();
-
-    const compensationToken = set(recordScrollHeightForPrepend$);
-    const result = await set(loadHistory$, signal);
-    signal.throwIfAborted();
-    const renderedMessageCountAfter = renderedMessageCount(
-      await get(renderedGroupedChatMessages$),
-    );
-    signal.throwIfAborted();
-    if (renderedMessageCountAfter === renderedMessageCountBefore) {
-      set(clearScrollHeightForPrepend$, compensationToken);
-    }
-    return result;
-  });
-}
-
-function renderedMessageCount(
-  groups: readonly GroupedChatMessageGroup[],
-): number {
-  return groups.reduce((count, group) => {
-    return count + group.messages.length;
-  }, 0);
-}
-
 function createLoadMoreRenderedChatGroupsWithPrependScroll(
   recordScrollHeightForPrepend$: Command<
     PrependScrollCompensationToken | null,
@@ -1908,35 +1779,6 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
   });
 }
 
-function createSilentBackfillHistoryCommand({
-  groupedChatMessages$,
-  loadHistory$,
-}: {
-  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
-  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
-}) {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    let initialMessagesResolved = false;
-
-    await setLoop(
-      async (sig) => {
-        if (!initialMessagesResolved) {
-          await get(groupedChatMessages$);
-          sig.throwIfAborted();
-          initialMessagesResolved = true;
-          return false;
-        }
-
-        const result = await set(loadHistory$, sig);
-        sig.throwIfAborted();
-        return !result.hasMore;
-      },
-      SILENT_HISTORY_BACKFILL_INTERVAL_MS,
-      signal,
-    );
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Factory: createRunTracking
 // ---------------------------------------------------------------------------
@@ -1949,10 +1791,8 @@ interface RunTrackingDeps {
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
-  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
-  silentBackfillHistory$: Command<Promise<void>, [AbortSignal]>;
-  refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadRemote;
 }
@@ -2138,10 +1978,8 @@ function createRunTracking({
   latestRunFinishCreatedAt$,
   latestRunStatus$,
   initializeIndexedDbMessages$,
-  fetchNextPage$,
+  syncRemoteMessages$,
   fetchUpdatedMessage$,
-  silentBackfillHistory$,
-  refreshLatestMessages$,
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
@@ -2168,8 +2006,8 @@ function createRunTracking({
     await Promise.all([
       get(remoteThreadDetail$),
       get(optimisticCreateUnsettled$)
-        ? Promise.resolve(false)
-        : set(fetchNextPage$, sig),
+        ? Promise.resolve()
+        : set(syncRemoteMessages$, sig),
     ]);
     sig.throwIfAborted();
     const latestMessageId = await get(latestChatMessageId$);
@@ -2193,8 +2031,8 @@ function createRunTracking({
 
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onMessageCreated$ fired", { threadId });
-      await set(fetchNextPage$, sig);
-      L.debug("onMessageCreated$ fetchNextPage$ done", { threadId });
+      await set(syncRemoteMessages$, sig);
+      L.debug("onMessageCreated$ syncRemoteMessages$ done", { threadId });
       await set(markThreadReadIfNeeded$, sig);
       animationFrame(
         () => {
@@ -2214,7 +2052,7 @@ function createRunTracking({
 
     const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
-      await set(refreshLatestMessages$, sig);
+      await set(syncRemoteMessages$, sig);
       sig.throwIfAborted();
       animationFrame(
         () => {
@@ -2237,7 +2075,6 @@ function createRunTracking({
 
     await withCleanup(
       Promise.all([
-        set(silentBackfillHistory$, subscriptionSignal),
         set(markThreadReadIfNeeded$, subscriptionSignal),
         set(subscribeComputerUseHostsChanged$, subscriptionSignal),
         set(
@@ -2405,7 +2242,7 @@ interface SendMessageDeps {
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
-  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
 }
 
 const postSendMessage$ = command(
@@ -2464,7 +2301,7 @@ function createSendMessage(deps: SendMessageDeps) {
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$,
-    fetchNextPage$,
+    syncRemoteMessages$,
   } = deps;
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -2553,7 +2390,7 @@ function createSendMessage(deps: SendMessageDeps) {
       });
       if (runId === null) {
         set(reloadBillingStatus$);
-        await set(fetchNextPage$, signal);
+        await set(syncRemoteMessages$, signal);
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
@@ -3431,7 +3268,6 @@ export function createChatThreadSignals(
   const threadUi = createThreadUIState();
   const messages = createChatThreadMessagePipeline({
     threadId,
-    threadMeta$,
     dataSource,
     recordScrollHeightForPrepend$,
     clearScrollHeightForPrepend$,
@@ -3447,10 +3283,8 @@ export function createChatThreadSignals(
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestRunStatus$: messages.latestRunStatus$,
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
-    fetchNextPage$: messages.fetchNextPage$,
+    syncRemoteMessages$: messages.syncRemoteMessages$,
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
-    silentBackfillHistory$: messages.silentBackfillHistory$,
-    refreshLatestMessages$: messages.refreshLatestMessages$,
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,
   });
@@ -3464,7 +3298,7 @@ export function createChatThreadSignals(
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$: scrollSignals.scrollToBottom$,
-    fetchNextPage$: messages.fetchNextPage$,
+    syncRemoteMessages$: messages.syncRemoteMessages$,
     writePersistentMessages$: messages.writePersistentMessages$,
     dataSource,
   });
@@ -3498,7 +3332,6 @@ export function createChatThreadSignals(
     ...threadUi,
     focusInput$: workflowComposer.focus$,
     queueDraftSync$,
-    earliestChatMessageId$: messages.earliestChatMessageId$,
     latestChatMessageId$: messages.latestChatMessageId$,
     latestRunFinishCreatedAt$: messages.latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$: messages.latestAssistantTextCreatedAt$,
@@ -3516,8 +3349,6 @@ export function createChatThreadSignals(
     loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
       messages.resetRenderedChatGroupsIfAtBottom$,
-    fetchNextPage$: messages.fetchNextPage$,
-    loadHistory$: messages.loadHistory$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
     ...phraseLoop,
     ...artifact,

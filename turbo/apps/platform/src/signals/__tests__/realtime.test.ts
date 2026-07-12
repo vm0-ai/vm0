@@ -140,7 +140,7 @@ function createFailingSubscribeDataSource(): ChatThreadRemote {
     listMessagesAfter$: command(() => {
       return Promise.resolve({
         messages: [],
-        reachedEnd: true,
+        hasHistoryBefore: false,
       });
     }),
     listMessagesBefore$: command(() => {

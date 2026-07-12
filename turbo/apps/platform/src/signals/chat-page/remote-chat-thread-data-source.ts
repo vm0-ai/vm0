@@ -235,7 +235,7 @@ const listMessagesAfter$ = command(
       [200],
     );
     signal.throwIfAborted();
-    L.debug("fetchNextPage$", {
+    L.debug("listMessagesAfter$", {
       threadId,
       sinceId,
       count: result.body.messages.length,
@@ -253,7 +253,7 @@ const listMessagesAfter$ = command(
     });
     return {
       messages: result.body.messages,
-      reachedEnd: result.body.messages.length < 50,
+      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
   },
 );
@@ -276,7 +276,7 @@ const listMessagesBefore$ = command(
     signal.throwIfAborted();
     return {
       messages: result.body.messages,
-      hasMore: result.body.hasHistoryBefore ?? false,
+      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
   },
 );

@@ -26,21 +26,6 @@ const idbMessageStoreMock = vi.hoisted(() => {
     }
     return Promise.resolve(cachedMessages.slice(-limit));
   };
-  const readBeforeImpl = () => {
-    return Promise.resolve([]);
-  };
-  const messageExistsImpl = (_threadId: string, messageId: string) => {
-    return Promise.resolve(
-      cachedMessages.some((message) => {
-        return (
-          typeof message === "object" &&
-          message !== null &&
-          "id" in message &&
-          message.id === messageId
-        );
-      }),
-    );
-  };
   const upsertMessagesImpl = (_threadId: string, messages: unknown[]) => {
     for (const message of messages) {
       if (
@@ -67,14 +52,10 @@ const idbMessageStoreMock = vi.hoisted(() => {
     return Promise.resolve();
   };
   const readLatest = vi.fn(readLatestImpl);
-  const readBefore = vi.fn(readBeforeImpl);
-  const messageExists = vi.fn(messageExistsImpl);
   const upsertMessages = vi.fn(upsertMessagesImpl);
 
   return {
     readLatest,
-    readBefore,
-    messageExists,
     upsertMessages,
     setMessages(messages: unknown[]) {
       cachedMessages = messages;
@@ -83,10 +64,6 @@ const idbMessageStoreMock = vi.hoisted(() => {
       cachedMessages = [];
       readLatest.mockReset();
       readLatest.mockImplementation(readLatestImpl);
-      readBefore.mockReset();
-      readBefore.mockImplementation(readBeforeImpl);
-      messageExists.mockReset();
-      messageExists.mockImplementation(messageExistsImpl);
       upsertMessages.mockReset();
       upsertMessages.mockImplementation(upsertMessagesImpl);
     },
@@ -161,8 +138,6 @@ vi.mock("../../../signals/external/idb-message-store.ts", () => {
       return {
         readStore: {
           readLatest: idbMessageStoreMock.readLatest,
-          readBefore: idbMessageStoreMock.readBefore,
-          messageExists: idbMessageStoreMock.messageExists,
         },
         writeStore: {
           upsertMessages: idbMessageStoreMock.upsertMessages,
@@ -345,8 +320,11 @@ describe("zero chat thread IndexedDB fallback", () => {
     mockSidebarThread();
 
     let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       messageListRequests += 1;
+      if (query.sinceId) {
+        return respond(200, { messages: [] });
+      }
       return respond(200, {
         messages: [
           {
