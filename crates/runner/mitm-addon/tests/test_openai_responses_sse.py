@@ -306,6 +306,44 @@ class TestOpenAIResponsesSseUsageExtractor:
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 5
 
+    @pytest.mark.parametrize(
+        "event_prefix",
+        [
+            pytest.param(b"", id="eventless"),
+            pytest.param(b"event: response.completed\n", id="named"),
+        ],
+    )
+    def test_tiny_chunks_classify_late_terminal_type_once(self, event_prefix, monkeypatch):
+        metadata = b",".join(f'"key_{index}":{index}'.encode() for index in range(250))
+        payload = (
+            b"{"
+            + metadata
+            + b',"type":"response.completed","response":{"model":"gpt-5.6",'
+            + b'"usage":{"output_tokens":17}}}'
+        )
+        assert len(payload) < openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
+
+        real_classify = openai_responses._classify_responses_event_type
+        classified_prefixes: list[bytes] = []
+
+        def track_classification(body: bytes):
+            classified_prefixes.append(body)
+            return real_classify(body)
+
+        monkeypatch.setattr(
+            openai_responses,
+            "_classify_responses_event_type",
+            track_classification,
+        )
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(event_prefix + b"data: ")
+        for byte in payload:
+            parse(bytes((byte,)))
+        parse(b"\n\n")
+
+        assert usage == {"model": "gpt-5.6", "tokens.output": 17}
+        assert classified_prefixes == [payload]
+
     def test_eventless_incomplete_terminal_reports_parse_error(self):
         parse_errors: list[tuple[str, str]] = []
 

@@ -131,12 +131,6 @@ def _resolved_data_event_type(
     return event_type
 
 
-def _resolved_data_event_type_from_prefix(
-    prefix: bytearray,
-) -> _ResponsesEventTypeClassification | None:
-    return _resolved_data_event_type(_classify_responses_event_type(bytes(prefix)))
-
-
 def _is_known_terminal_usage_event(value: object) -> bool:
     return isinstance(value, str) and value in _RESPONSES_TERMINAL_USAGE_EVENTS
 
@@ -425,15 +419,17 @@ class _OpenAIResponsesSseUsageHandler:
 
     def on_event_end(self, event_name: str | None) -> None:
         if self._eventless_prefix is not None:
-            self._data_event_type = _resolved_data_event_type_from_prefix(self._eventless_prefix)
-            extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
-            extractor.feed(bytes(self._eventless_prefix))
+            prefix = bytes(self._eventless_prefix)
             self._eventless_prefix = None
+            event_type = _classify_responses_event_type(prefix)
+            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE:
+                self._start_full_extractor_from_prefix(prefix, event_type)
         if self._named_event_prefix is not None and self._data_event_type is None:
-            self._data_event_type = _resolved_data_event_type_from_prefix(self._named_event_prefix)
-            extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
-            extractor.feed(bytes(self._named_event_prefix))
+            prefix = bytes(self._named_event_prefix)
             self._named_event_prefix = None
+            event_type = _classify_responses_event_type(prefix)
+            if event_type != _RESPONSES_EVENT_KNOWN_NON_USAGE:
+                self._start_full_extractor_from_prefix(prefix, event_type)
         extractor = self._extractor
         data_event_type = self._data_event_type
         self._reset_event_state()
@@ -482,6 +478,15 @@ class _OpenAIResponsesSseUsageHandler:
     def _should_include_type_scalar(self) -> bool:
         return self._data_event_type is None or self._on_parse_error is not None
 
+    def _start_full_extractor_from_prefix(
+        self,
+        prefix: bytes,
+        event_type: _ResponsesEventTypeClassification,
+    ) -> None:
+        self._data_event_type = _resolved_data_event_type(event_type)
+        extractor = self._start_full_extractor(include_type=self._should_include_type_scalar())
+        extractor.feed(prefix)
+
     def _feed_eventless_data(self, chunk: bytes) -> None:
         prefix = self._eventless_prefix
         if prefix is None:
@@ -492,25 +497,20 @@ class _OpenAIResponsesSseUsageHandler:
         if captured_len:
             prefix.extend(chunk[:captured_len])
 
-        event_type = _classify_responses_event_type(bytes(prefix))
+        if (
+            captured_len == len(chunk)
+            and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
+        ):
+            return
+
+        prefix_bytes = bytes(prefix)
+        self._eventless_prefix = None
+        event_type = _classify_responses_event_type(prefix_bytes)
         if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
-            self._eventless_prefix = None
             self._discard_eventless_event = True
             return
 
-        should_fallback = (
-            event_type
-            in (_RESPONSES_EVENT_TERMINAL, _RESPONSES_EVENT_UNKNOWN, _RESPONSES_EVENT_UNRESOLVED)
-            or captured_len < len(chunk)
-            or len(prefix) >= _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
-        )
-        if not should_fallback:
-            return
-
-        self._data_event_type = _resolved_data_event_type(event_type)
-        self._fallback_eventless_prefix_to_full_extractor(
-            include_type=self._should_include_type_scalar()
-        )
+        self._start_full_extractor_from_prefix(prefix_bytes, event_type)
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
 
@@ -524,40 +524,23 @@ class _OpenAIResponsesSseUsageHandler:
         if captured_len:
             prefix.extend(chunk[:captured_len])
 
-        event_type = _classify_responses_event_type(bytes(prefix))
         if (
-            event_type == _RESPONSES_EVENT_PENDING
-            and captured_len == len(chunk)
+            captured_len == len(chunk)
             and len(prefix) < _RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES
         ):
             return
 
+        prefix_bytes = bytes(prefix)
+        self._named_event_prefix = None
+        event_type = _classify_responses_event_type(prefix_bytes)
         if event_type == _RESPONSES_EVENT_KNOWN_NON_USAGE:
-            self._named_event_prefix = None
             self._extractor = None
             self._discard_named_event = True
             return
 
-        self._data_event_type = _resolved_data_event_type(event_type)
-        self._fallback_named_prefix_to_full_extractor(
-            include_type=self._should_include_type_scalar()
-        )
+        self._start_full_extractor_from_prefix(prefix_bytes, event_type)
         if self._extractor is not None and captured_len < len(chunk):
             self._extractor.feed(chunk[captured_len:])
-
-    def _fallback_eventless_prefix_to_full_extractor(self, *, include_type: bool) -> None:
-        prefix = self._eventless_prefix
-        self._eventless_prefix = None
-        extractor = self._start_full_extractor(include_type=include_type)
-        if prefix:
-            extractor.feed(bytes(prefix))
-
-    def _fallback_named_prefix_to_full_extractor(self, *, include_type: bool) -> None:
-        prefix = self._named_event_prefix
-        self._named_event_prefix = None
-        extractor = self._start_full_extractor(include_type=include_type)
-        if prefix:
-            extractor.feed(bytes(prefix))
 
 
 class OpenAIResponsesJsonUsageExtractor:
