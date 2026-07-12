@@ -1,5 +1,5 @@
 import { and, eq, inArray, or } from "drizzle-orm";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
@@ -18,7 +18,7 @@ import type { Db } from "../external/db";
 type UpdateUserConnectorsResult =
   | {
       readonly status: "updated";
-      readonly enabledTypes: readonly ConnectorType[];
+      readonly enabledTypes: readonly ConnectorCatalogRef[];
     }
   | { readonly status: "agentNotFound" };
 
@@ -438,7 +438,7 @@ export async function updateUserConnectors(
     readonly orgId: string;
     readonly userId: string;
     readonly agentId: string;
-    readonly enabledTypes: readonly ConnectorType[];
+    readonly enabledTypes: readonly ConnectorCatalogRef[];
     readonly operation?: UserConnectorUpdateOperation;
     readonly allowMissingZeroAgentForEmptyReplace: boolean;
   },
@@ -506,7 +506,7 @@ export async function updateUserConnectors(
     return {
       status: "updated",
       enabledTypes: rows.map((row) => {
-        return row.connectorType as ConnectorType;
+        return row.connectorType;
       }),
     };
   });

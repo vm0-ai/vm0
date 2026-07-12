@@ -22,6 +22,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAuthMethodId,
   ConnectorType,
@@ -246,7 +247,7 @@ function customConnector(
 }
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
@@ -1435,17 +1436,23 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("starts single OpenID auth connector directly without opening the connect dialog", async () => {
+  it("routes a server-authored connector from its catalog grant metadata", async () => {
+    const connectorRef = "server-authored-steam";
+    const authMethod = "partner-openid";
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "steam",
-        label: "Steam",
-        description: "Steam player data",
+        connectorRef,
+        label: "Partner Steam",
+        description: "Server-authored Steam player data",
+        icon: {
+          url: "https://icons.example.test/partner-steam.svg",
+          invertInDarkMode: false,
+        },
         authMethods: [
           {
-            id: "openid",
-            label: "Steam OpenID",
+            id: authMethod,
+            label: "Partner OpenID",
             description: null,
             grantKind: "openid-auth",
             manualFields: [],
@@ -1458,10 +1465,11 @@ describe("connectors page", () => {
     context.mocks.browser.open(authWindow);
     context.mocks.api(
       zeroConnectorOpenIdStartContract.start,
-      ({ params, respond }) => {
-        expect(params.type).toBe("steam");
+      ({ body, params, respond }) => {
+        expect(params.type).toBe(connectorRef);
+        expect(body.authMethod).toBe(authMethod);
         return respond(200, {
-          authorizationUrl: "https://openid.test/steam/authorize",
+          authorizationUrl: "https://openid.test/partner-steam/authorize",
         });
       },
     );
@@ -1471,16 +1479,23 @@ describe("connectors page", () => {
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    await fill(await screen.findByPlaceholderText("Find connectors"), "steam");
-    click(await screen.findByLabelText("Connect Steam"));
+    await fill(
+      await screen.findByPlaceholderText("Find connectors"),
+      "partner steam",
+    );
+    expect(connectorIconByLabel("Partner Steam")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/partner-steam.svg",
+    );
+    click(await screen.findByLabelText("Connect Partner Steam"));
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
-        "https://openid.test/steam/authorize",
+        "https://openid.test/partner-steam/authorize",
       );
     });
     expect(
-      screen.queryByRole("dialog", { name: "Steam" }),
+      screen.queryByRole("dialog", { name: "Partner Steam" }),
     ).not.toBeInTheDocument();
   });
 

@@ -13,11 +13,7 @@ import type {
   ConnectorAuthMethodId,
   ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethod,
-  getConnectorAuthMethodIdsForGrantKind,
-  hasConnectorOpenIdAuthGrant,
-} from "@vm0/connectors/connector-utils";
+import type { PublicConnectorCatalogDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -37,7 +33,11 @@ import {
   zeroConnectorScopeDiff,
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
-import { userConnectorAvailability } from "../services/connector-availability.service";
+import {
+  userConnectorActionResolver,
+  type ConnectorActionMethodResolution,
+  type ConnectorExecutableRefResolution,
+} from "../services/connector-action-resolver.service";
 import type { RouteEntry } from "../route-entry";
 import {
   getConnectorOAuthCallbackOrigin,
@@ -85,68 +85,6 @@ function connectorUnavailable(type: string) {
   };
 }
 
-function connectorTypeHasAuthCodeGrant(type: ConnectorType): boolean {
-  return getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length > 0;
-}
-
-function connectorTypeHasOpenIdAuthGrant(type: ConnectorType): boolean {
-  return hasConnectorOpenIdAuthGrant(type);
-}
-
-function connectorAuthCodeStartErrorMessage(
-  type: ConnectorType,
-  authMethod: string,
-  reason:
-    | "missing_auth_code_grant"
-    | "missing_auth_method"
-    | "wrong_grant_kind",
-): string {
-  switch (reason) {
-    case "missing_auth_code_grant": {
-      return `${type} connector does not use an auth-code grant`;
-    }
-    case "missing_auth_method": {
-      if (!connectorTypeHasAuthCodeGrant(type)) {
-        return `${type} connector does not use an auth-code grant`;
-      }
-      return `${type} connector does not have ${authMethod} auth method`;
-    }
-    case "wrong_grant_kind": {
-      if (!connectorTypeHasAuthCodeGrant(type)) {
-        return `${type} connector does not use an auth-code grant`;
-      }
-      return `${type} ${authMethod} auth method does not use an auth-code grant`;
-    }
-  }
-}
-
-function connectorOpenIdAuthStartErrorMessage(
-  type: ConnectorType,
-  authMethod: string,
-  reason:
-    | "missing_openid_auth_grant"
-    | "missing_auth_method"
-    | "wrong_grant_kind",
-): string {
-  switch (reason) {
-    case "missing_openid_auth_grant": {
-      return `${type} connector does not use an OpenID auth grant`;
-    }
-    case "missing_auth_method": {
-      if (!connectorTypeHasOpenIdAuthGrant(type)) {
-        return `${type} connector does not use an OpenID auth grant`;
-      }
-      return `${type} connector does not have ${authMethod} auth method`;
-    }
-    case "wrong_grant_kind": {
-      if (!connectorTypeHasOpenIdAuthGrant(type)) {
-        return `${type} connector does not use an OpenID auth grant`;
-      }
-      return `${type} ${authMethod} auth method does not use an OpenID auth grant`;
-    }
-  }
-}
-
 function resolveRequestedAuthCodeStartMethod(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
@@ -181,6 +119,83 @@ function internalServerError(message: string) {
   };
 }
 
+type ActionGrantKind =
+  PublicConnectorCatalogDetail["authMethods"][number]["grantKind"];
+
+function catalogHasGrantKind(
+  catalog: PublicConnectorCatalogDetail,
+  grantKind: ActionGrantKind,
+): boolean {
+  return catalog.authMethods.some((method) => {
+    return method.grantKind === grantKind;
+  });
+}
+
+function connectorMethodResolutionError(
+  resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
+  args: {
+    readonly connectorRef: string;
+    readonly authMethodId: string;
+    readonly expectedGrantKind: ActionGrantKind;
+    readonly expectedGrantLabel: string;
+    readonly missingGrantWhenAbsent?: boolean;
+  },
+) {
+  switch (resolution.reason) {
+    case "unknown_connector": {
+      return badRequestMessage(
+        `${args.connectorRef} connector is not supported`,
+      );
+    }
+    case "unknown_auth_method":
+    case "wrong_grant_kind": {
+      if (
+        args.missingGrantWhenAbsent &&
+        !catalogHasGrantKind(
+          resolution.catalogConnector,
+          args.expectedGrantKind,
+        )
+      ) {
+        return badRequestMessage(
+          `${args.connectorRef} connector does not use ${args.expectedGrantLabel}`,
+        );
+      }
+      if (resolution.reason === "unknown_auth_method") {
+        return badRequestMessage(
+          `${args.connectorRef} connector does not have ${args.authMethodId} auth method`,
+        );
+      }
+      return badRequestMessage(
+        `${args.connectorRef} ${args.authMethodId} auth method does not use ${args.expectedGrantLabel}`,
+      );
+    }
+    case "unavailable_connector":
+    case "unavailable_auth_method": {
+      return connectorUnavailable(args.connectorRef);
+    }
+    case "missing_executable_capability": {
+      return internalServerError("Connector execution is not configured");
+    }
+  }
+}
+
+function connectorRefResolutionError(
+  resolution: Exclude<ConnectorExecutableRefResolution, { readonly ok: true }>,
+  connectorRef: string,
+) {
+  switch (resolution.reason) {
+    case "unknown_connector": {
+      return notFound("Connector not found");
+    }
+    case "unavailable_connector": {
+      return connectorUnavailable(connectorRef);
+    }
+    case "missing_executable_capability": {
+      return internalServerError("Connector execution is not configured");
+    }
+  }
+}
+
 const getConnectorListInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const result = await get(
@@ -192,11 +207,21 @@ const getConnectorListInner$ = computed(async (get) => {
 const getConnectorByTypeInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorsByTypeContract.get));
+  const resolver = await get(
+    userConnectorActionResolver(auth.orgId, auth.userId),
+  );
+  const resolved = await resolver.resolveRef({
+    connectorRef: params.type,
+    requireAvailable: false,
+  });
+  if (!resolved.ok) {
+    return connectorRefResolutionError(resolved, params.type);
+  }
   const connector = await get(
     zeroConnectorByType({
       orgId: auth.orgId,
       userId: auth.userId,
-      type: params.type,
+      type: resolved.type,
     }),
   );
   if (!connector) {
@@ -210,12 +235,24 @@ const deleteConnectorByTypeInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorsByTypeContract.delete));
+    const resolver = await get(
+      userConnectorActionResolver(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    const resolved = await resolver.resolveRef({
+      connectorRef: params.type,
+      requireAvailable: false,
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return connectorRefResolutionError(resolved, params.type);
+    }
     const deleted = await set(
       deleteZeroConnectorLocalState$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: params.type,
+        type: resolved.type,
       },
       signal,
     );
@@ -232,11 +269,21 @@ const deleteConnectorByTypeInner$ = command(
 const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
+  const resolver = await get(
+    userConnectorActionResolver(auth.orgId, auth.userId),
+  );
+  const resolved = await resolver.resolveRef({
+    connectorRef: params.type,
+    requireAvailable: false,
+  });
+  if (!resolved.ok) {
+    return connectorRefResolutionError(resolved, params.type);
+  }
   const diff = await get(
     zeroConnectorScopeDiff({
       orgId: auth.orgId,
       userId: auth.userId,
-      type: params.type,
+      type: resolved.type,
     }),
   );
   if (!diff) {
@@ -271,32 +318,23 @@ const connectManualGrantConnectorInner$ = command(
       return bodyResult.response;
     }
 
-    const method = getConnectorAuthMethod(
-      params.type,
-      bodyResult.data.authMethod,
-    );
-    if (!method) {
-      return badRequestMessage(
-        `${params.type} connector does not have ${bodyResult.data.authMethod} auth method`,
-      );
-    }
-    if (method.grant.kind !== "manual") {
-      return badRequestMessage(
-        `${params.type} ${bodyResult.data.authMethod} auth method does not use a manual grant`,
-      );
-    }
-
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
+    const resolver = await get(
+      userConnectorActionResolver(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (
-      !availability.isAuthMethodAvailable(
-        params.type,
-        bodyResult.data.authMethod,
-      )
-    ) {
-      return connectorUnavailable(params.type);
+    const resolved = await resolver.resolveMethod({
+      connectorRef: params.type,
+      authMethodId: bodyResult.data.authMethod,
+      expectedGrantKind: "manual",
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return connectorMethodResolutionError(resolved, {
+        connectorRef: params.type,
+        authMethodId: bodyResult.data.authMethod,
+        expectedGrantKind: "manual",
+        expectedGrantLabel: "a manual grant",
+      });
     }
 
     const result = await set(
@@ -304,8 +342,8 @@ const connectManualGrantConnectorInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: params.type,
-        authMethod: bodyResult.data.authMethod,
+        type: resolved.type,
+        authMethod: resolved.authMethod,
         values: bodyResult.data.values,
       },
       signal,
@@ -332,32 +370,23 @@ const connectNoAuthConnectorInner$ = command(
       return bodyResult.response;
     }
 
-    const method = getConnectorAuthMethod(
-      params.type,
-      bodyResult.data.authMethod,
-    );
-    if (!method) {
-      return badRequestMessage(
-        `${params.type} connector does not have ${bodyResult.data.authMethod} auth method`,
-      );
-    }
-    if (method.grant.kind !== "none") {
-      return badRequestMessage(
-        `${params.type} ${bodyResult.data.authMethod} auth method does not use a no-auth grant`,
-      );
-    }
-
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
+    const resolver = await get(
+      userConnectorActionResolver(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (
-      !availability.isAuthMethodAvailable(
-        params.type,
-        bodyResult.data.authMethod,
-      )
-    ) {
-      return connectorUnavailable(params.type);
+    const resolved = await resolver.resolveMethod({
+      connectorRef: params.type,
+      authMethodId: bodyResult.data.authMethod,
+      expectedGrantKind: "none",
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return connectorMethodResolutionError(resolved, {
+        connectorRef: params.type,
+        authMethodId: bodyResult.data.authMethod,
+        expectedGrantKind: "none",
+        expectedGrantLabel: "a no-auth grant",
+      });
     }
 
     const result = await set(
@@ -365,8 +394,8 @@ const connectNoAuthConnectorInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: params.type,
-        authMethod: bodyResult.data.authMethod,
+        type: resolved.type,
+        authMethod: resolved.authMethod,
       },
       signal,
     );
@@ -390,37 +419,38 @@ const startConnectorOauthInner$ = command(
     const auth = get(authContext$);
     const type = params.type;
 
-    const authCodeStartType = resolveRequestedAuthCodeStartMethod(
-      type,
-      bodyResult.data.authMethod,
-    );
-    if (!authCodeStartType.ok) {
-      return badRequestMessage(
-        connectorAuthCodeStartErrorMessage(
-          type,
-          bodyResult.data.authMethod,
-          authCodeStartType.reason,
-        ),
-      );
-    }
-
     if (!auth.orgId) {
       return badRequestMessage(
         "Explicit org context required — ensure active org in session",
       );
     }
 
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
+    const resolver = await get(
+      userConnectorActionResolver(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (
-      !availability.isAuthMethodAvailable(
-        authCodeStartType.type,
-        authCodeStartType.authMethod,
-      )
-    ) {
-      return connectorUnavailable(type);
+    const resolved = await resolver.resolveMethod({
+      connectorRef: type,
+      authMethodId: bodyResult.data.authMethod,
+      expectedGrantKind: "auth-code",
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return connectorMethodResolutionError(resolved, {
+        connectorRef: type,
+        authMethodId: bodyResult.data.authMethod,
+        expectedGrantKind: "auth-code",
+        expectedGrantLabel: "an auth-code grant",
+        missingGrantWhenAbsent: true,
+      });
+    }
+
+    const authCodeStartType = resolveRequestedAuthCodeStartMethod(
+      resolved.type,
+      resolved.authMethod,
+    );
+    if (!authCodeStartType.ok) {
+      return internalServerError("Connector execution is not configured");
     }
 
     const origin = getConnectorOAuthCallbackOrigin({
@@ -448,7 +478,11 @@ const startConnectorOauthInner$ = command(
 
     await set(
       deleteZeroConnectorLocalState$,
-      { orgId: auth.orgId, userId: auth.userId, type },
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type: authCodeStartType.type,
+      },
       signal,
     );
     signal.throwIfAborted();
@@ -492,37 +526,38 @@ const startConnectorOpenIdInner$ = command(
     const auth = get(authContext$);
     const type = params.type;
 
-    const openIdStartType = resolveRequestedOpenIdAuthStartMethod(
-      type,
-      bodyResult.data.authMethod,
-    );
-    if (!openIdStartType.ok) {
-      return badRequestMessage(
-        connectorOpenIdAuthStartErrorMessage(
-          type,
-          bodyResult.data.authMethod,
-          openIdStartType.reason,
-        ),
-      );
-    }
-
     if (!auth.orgId) {
       return badRequestMessage(
         "Explicit org context required — ensure active org in session",
       );
     }
 
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
+    const resolver = await get(
+      userConnectorActionResolver(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (
-      !availability.isAuthMethodAvailable(
-        openIdStartType.type,
-        openIdStartType.authMethod,
-      )
-    ) {
-      return connectorUnavailable(type);
+    const resolved = await resolver.resolveMethod({
+      connectorRef: type,
+      authMethodId: bodyResult.data.authMethod,
+      expectedGrantKind: "openid-auth",
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return connectorMethodResolutionError(resolved, {
+        connectorRef: type,
+        authMethodId: bodyResult.data.authMethod,
+        expectedGrantKind: "openid-auth",
+        expectedGrantLabel: "an OpenID auth grant",
+        missingGrantWhenAbsent: true,
+      });
+    }
+
+    const openIdStartType = resolveRequestedOpenIdAuthStartMethod(
+      resolved.type,
+      resolved.authMethod,
+    );
+    if (!openIdStartType.ok) {
+      return internalServerError("Connector execution is not configured");
     }
 
     const prepared = prepareResolvedConnectorOpenIdAuthStart({
@@ -544,7 +579,11 @@ const startConnectorOpenIdInner$ = command(
 
     await set(
       deleteZeroConnectorLocalState$,
-      { orgId: auth.orgId, userId: auth.userId, type },
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        type: openIdStartType.type,
+      },
       signal,
     );
     signal.throwIfAborted();

@@ -4,13 +4,12 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
 import {
-  connectorAuthMethodIdSchema,
-  connectorTypeSchema,
-  type ConnectorAuthMethodId,
-  type ConnectorDeviceAuthStartOptions,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  connectorCatalogAuthMethodIdSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorExternalCodeSessionContract,
@@ -21,7 +20,6 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import type {
   InitClientArgs,
   InitClientReturn,
@@ -66,6 +64,9 @@ import { sanitizeTokenInputRecord } from "./token-input.ts";
 import { IN_VITEST } from "../../../env.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
+type ConnectorType = ConnectorCatalogRef;
+type ConnectorAuthMethodId = ConnectorCatalogAuthMethodId;
+
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 type PostConnectOptions = {
@@ -124,6 +125,11 @@ const DAY_MS = 24 * HOUR_MS;
 type ConnectorConnectLaunchMode = "browser-auth" | "no-auth" | "modal";
 type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
+export type ConnectorCatalogBrowserAuthMethodDetail =
+  PublicConnectorCatalogAuthMethodDetail & {
+    readonly grantKind: BrowserAuthGrantKind;
+  };
+
 export type ConnectorStatusAuthMethodDetail = Omit<
   PublicConnectorCatalogAuthMethodDetail,
   "id"
@@ -152,29 +158,45 @@ function isBrowserAuthGrantKind(
   return grantKind === "auth-code" || grantKind === "openid-auth";
 }
 
-function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
-  return grantKind === "none";
+function isCatalogBrowserAuthMethodDetail(
+  method: PublicConnectorCatalogAuthMethodDetail,
+): method is ConnectorCatalogBrowserAuthMethodDetail {
+  return isBrowserAuthGrantKind(method.grantKind);
 }
 
-function connectorBrowserAuthGrantKind(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
-): BrowserAuthGrantKind | null {
-  const method = getConnectorAuthMethod(type, authMethod);
-  return method && isBrowserAuthGrantKind(method.grant.kind)
-    ? method.grant.kind
-    : null;
+export function getOnlyAvailableCatalogBrowserAuthMethodDetail(connector: {
+  readonly authMethods: readonly PublicConnectorCatalogAuthMethodDetail[];
+  readonly singleAuthCodeAuthMethodId: ConnectorAuthMethodId | null;
+}): ConnectorCatalogBrowserAuthMethodDetail | null {
+  const [method] = connector.authMethods;
+  if (
+    connector.authMethods.length !== 1 ||
+    !method ||
+    !isCatalogBrowserAuthMethodDetail(method)
+  ) {
+    return null;
+  }
+  if (
+    method.grantKind === "auth-code" &&
+    connector.singleAuthCodeAuthMethodId !== method.id
+  ) {
+    return null;
+  }
+  return method;
+}
+
+function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
+  return grantKind === "none";
 }
 
 function parseConnectorStatusAuthMethodDetail(
   connector: ConnectorTypeWithStatus,
   method: PublicConnectorCatalogAuthMethodDetail,
 ): ConnectorStatusAuthMethodDetail | null {
-  const id = parseConnectorAuthMethodId(method.id);
-  if (!id || !connector.availableAuthMethods.includes(id)) {
+  if (!connector.availableAuthMethods.includes(method.id)) {
     return null;
   }
-  return { ...method, id };
+  return method;
 }
 
 export function getConnectorStatusAuthMethod(
@@ -263,7 +285,7 @@ export function getAvailableStatusAuthCodeAuthMethod(
   connector: ConnectorTypeWithStatus,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
+  const parsed = connectorCatalogAuthMethodIdSchema.safeParse(authMethod);
   if (!parsed.success) {
     return null;
   }
@@ -292,7 +314,7 @@ export function getAvailableStatusBrowserAuthMethod(
   connector: ConnectorTypeWithStatus,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
+  const parsed = connectorCatalogAuthMethodIdSchema.safeParse(authMethod);
   if (!parsed.success) {
     return null;
   }
@@ -317,11 +339,20 @@ export function getOnlyAvailableStatusBrowserAuthMethod(
   return method?.grantKind === "openid-auth" ? authMethod : null;
 }
 
+export function getOnlyAvailableStatusBrowserAuthMethodDetail(
+  connector: ConnectorTypeWithStatus,
+): ConnectorStatusAuthMethodDetail | null {
+  const authMethod = getOnlyAvailableStatusBrowserAuthMethod(connector);
+  return authMethod
+    ? getConnectorStatusAuthMethod(connector, authMethod)
+    : null;
+}
+
 export function getAvailableStatusNoAuthMethod(
   connector: ConnectorTypeWithStatus,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
-  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
+  const parsed = connectorCatalogAuthMethodIdSchema.safeParse(authMethod);
   if (!parsed.success) {
     return null;
   }
@@ -411,30 +442,11 @@ export function connectorReconnectReasonTooltipText(
   return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
-function parseConnectorAuthMethodId(
-  value: string | null,
-): ConnectorAuthMethodId | null {
-  if (!value) {
-    return null;
-  }
-  const parsed = connectorAuthMethodIdSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
 function connectorCatalogStatusItemToConnectorType(
   item: PublicConnectorCatalogStatusItem,
-): ConnectorTypeWithStatus | null {
-  const type = connectorTypeSchema.safeParse(item.connectorRef);
-  if (!type.success) {
-    return null;
-  }
-  const availableAuthMethods = item.authMethods.flatMap((authMethod) => {
-    const parsed = parseConnectorAuthMethodId(authMethod.id);
-    return parsed ? [parsed] : [];
-  });
-
+): ConnectorTypeWithStatus {
   return {
-    type: type.data,
+    type: item.connectorRef,
     label: item.label,
     helpText: item.description,
     icon: item.icon,
@@ -443,10 +455,10 @@ function connectorCatalogStatusItemToConnectorType(
     connected: item.connected,
     connector: item.connection,
     authMethods: item.authMethods,
-    availableAuthMethods,
-    singleAuthCodeAuthMethodId: parseConnectorAuthMethodId(
-      item.singleAuthCodeAuthMethodId,
-    ),
+    availableAuthMethods: item.authMethods.map((authMethod) => {
+      return authMethod.id;
+    }),
+    singleAuthCodeAuthMethodId: item.singleAuthCodeAuthMethodId,
     connectNotice: item.connectNotice,
     scopeMismatch: item.scopeMismatch,
     connectionStatus: item.connectionStatus,
@@ -494,10 +506,7 @@ export function matchesConnectorSearch(
 
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogStatus$);
-  const items = connectors.flatMap((connector) => {
-    const item = connectorCatalogStatusItemToConnectorType(connector);
-    return item ? [item] : [];
-  });
+  const items = connectors.map(connectorCatalogStatusItemToConnectorType);
 
   // Sort connected connectors to the top of the list
   items.sort((a, b) => {
@@ -2149,7 +2158,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
     type: ConnectorType,
-    authMethod: ConnectorAuthMethodId,
+    method: ConnectorStatusAuthMethodDetail,
     beforeStart: (signal: AbortSignal) => Promise<void>,
     signal: AbortSignal,
   ) => {
@@ -2170,10 +2179,9 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     let navigated = false;
     await withCleanup(
       (async () => {
-        const grantKind = connectorBrowserAuthGrantKind(type, authMethod);
-        if (!grantKind) {
+        if (!isBrowserAuthGrantKind(method.grantKind)) {
           throw new Error(
-            `${type}/${authMethod} does not support browser authorization`,
+            `${type}/${method.id} does not support browser authorization`,
           );
         }
 
@@ -2181,13 +2189,13 @@ const openConnectorOAuthAuthCodeWindow$ = command(
         signal.throwIfAborted();
 
         const startResult =
-          grantKind === "openid-auth"
+          method.grantKind === "openid-auth"
             ? await accept(
                 get(zeroClient$)(zeroConnectorOpenIdStartContract, {
                   apiBase: "api",
                 }).start({
                   params: { type },
-                  body: { authMethod },
+                  body: { authMethod: method.id },
                   fetchOptions: { signal },
                 }),
                 [200],
@@ -2197,7 +2205,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                   apiBase: OAUTH_WEB_API_BASE,
                 }).start({
                   params: { type },
-                  body: { authMethod },
+                  body: { authMethod: method.id },
                   fetchOptions: { signal },
                 }),
                 [200],
@@ -2227,7 +2235,7 @@ export const connectConnectorOAuthAuthCode$ = command(
   async (
     { get, set },
     type: ConnectorType,
-    authMethod: ConnectorAuthMethodId,
+    method: ConnectorStatusAuthMethodDetail,
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
@@ -2255,12 +2263,12 @@ export const connectConnectorOAuthAuthCode$ = command(
         // first poll baseline is captured.
         const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
           type,
-          authMethod,
+          method.id,
         );
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
           type,
-          authMethod,
+          method,
           async (sig) => {
             await set(onConnectorChanged$, sig);
           },
@@ -2331,7 +2339,7 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Mark as optimistically connected before clearing polling so the UI
         // transitions directly from "Connecting…" to "Connected" without flash.
         const isConnected = connectors.some((c) => {
-          return connectorMatchesAuthMethod(c, type, authMethod);
+          return connectorMatchesAuthMethod(c, type, method.id);
         });
         if (isConnected) {
           set(finishConnectorConnection$, type, {
@@ -2364,7 +2372,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
     { set },
     args: {
       readonly type: ConnectorType;
-      readonly authMethod: ConnectorAuthMethodId;
+      readonly method: ConnectorStatusAuthMethodDetail;
       readonly onSuccess: () => void | Promise<void>;
       readonly options: PostConnectOptions;
     },
@@ -2373,7 +2381,7 @@ export const connectConnectorOAuthAuthCodeAndSettle$ = command(
     const connected = await set(
       connectConnectorOAuthAuthCode$,
       args.type,
-      args.authMethod,
+      args.method,
       args.options,
       signal,
     );

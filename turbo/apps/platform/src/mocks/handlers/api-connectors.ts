@@ -7,6 +7,10 @@ import {
   connectorDisplayCategoryMetadataForItems,
 } from "@vm0/connectors/connectors";
 import type {
+  ConnectorCatalogAuthMethodId,
+  ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import type {
   ConnectorExternalCodeSessionStartResponse,
   ConnectorOauthDeviceAuthSessionPollResponse,
   ConnectorOauthDeviceAuthSessionStartResponse,
@@ -69,7 +73,7 @@ let mockExternalCodeSessionStartResponse:
   | undefined;
 
 function createMockOauthDeviceAuthConnector(
-  type: ConnectorType,
+  type: ConnectorCatalogRef,
 ): ConnectorResponse {
   const now = "2026-01-01T00:00:00Z";
   return {
@@ -89,7 +93,7 @@ function createMockOauthDeviceAuthConnector(
 }
 
 function defaultOauthDeviceAuthSessionStartResponse(
-  type: ConnectorType,
+  type: ConnectorCatalogRef,
 ): ConnectorOauthDeviceAuthSessionStartResponse {
   return {
     sessionId: "00000000-0000-4000-8000-000000000001",
@@ -105,8 +109,8 @@ function defaultOauthDeviceAuthSessionStartResponse(
 }
 
 function createMockLocalGrantConnector(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
+  type: ConnectorCatalogRef,
+  authMethod: ConnectorCatalogAuthMethodId,
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
@@ -125,8 +129,8 @@ function createMockLocalGrantConnector(
 }
 
 function createMockExternalCodeConnector(
-  type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
+  type: ConnectorCatalogRef,
+  authMethod: ConnectorCatalogAuthMethodId,
 ): ConnectorResponse {
   const now = "2026-01-01T00:00:00.000Z";
   return {
@@ -146,7 +150,7 @@ function createMockExternalCodeConnector(
 }
 
 function defaultExternalCodeSessionStartResponse(
-  type: ConnectorType,
+  type: ConnectorCatalogRef,
 ): ConnectorExternalCodeSessionStartResponse {
   return {
     sessionId: "00000000-0000-4000-8000-000000000002",
@@ -458,7 +462,7 @@ export const apiConnectorsHandlers = [
   ),
 
   mockApi(zeroConnectorsByTypeContract.delete, ({ params, respond }) => {
-    const type = params.type as string;
+    const type = params.type;
     const existing = mockConnectors.find((c) => {
       return c.type === type;
     });

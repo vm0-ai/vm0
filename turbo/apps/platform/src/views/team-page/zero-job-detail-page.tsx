@@ -21,7 +21,7 @@ import {
   IconWand,
   IconRoute,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,

@@ -1,9 +1,8 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
-  connectorTypeSchema,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
-import { connectorRefSchema } from "@vm0/api-contracts/contracts/connector-ref";
+  connectorCatalogRefSchema,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorCatalogDisplayMetadataByRef$,
@@ -20,8 +19,7 @@ import { isAgentConnectorAuthorized } from "../zero-page/agent-connector-authori
 import { jsonParseBase64UrlOr } from "../utils.ts";
 
 export interface ConnectorActionDescriptor {
-  connectorRef: string;
-  connectorType: ConnectorType | null;
+  connectorRef: ConnectorCatalogRef;
   agentId: string;
   originalUrl: string;
 }
@@ -53,7 +51,6 @@ export type CustomConnectorActionBlock = CustomConnectorActionDescriptor & {
 };
 
 type ActiveChatConnectorAction = ConnectorActionDescriptor & {
-  connectorType: ConnectorType;
   markComplete$: Command<void, []>;
 };
 
@@ -78,7 +75,7 @@ export const completeChatConnectorActionConnect$ = command(
     }
     await set(
       authorizeDirectedConnector$,
-      active.connectorType,
+      active.connectorRef,
       active.agentId,
       signal,
     );
@@ -87,11 +84,6 @@ export const completeChatConnectorActionConnect$ = command(
     set(closeChatConnectorActionConnectDialog$);
   },
 );
-
-function parseConnectorType(value: string): ConnectorType | null {
-  const parsed = connectorTypeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
 
 const CONNECTOR_AUTHORIZE_BASE_URL = "https://app.vm0.ai";
 
@@ -111,17 +103,13 @@ export function parseConnectorAuthorizeUrl(
   );
   const connectorRef = match?.[1]?.toLowerCase();
   const agentId = url.searchParams.get("agentId");
-  if (
-    !connectorRef ||
-    !agentId ||
-    !connectorRefSchema.safeParse(connectorRef).success
-  ) {
+  const parsedConnectorRef = connectorCatalogRefSchema.safeParse(connectorRef);
+  if (!parsedConnectorRef.success || !agentId) {
     return null;
   }
 
   return {
-    connectorRef,
-    connectorType: parseConnectorType(connectorRef),
+    connectorRef: parsedConnectorRef.data,
     agentId,
     originalUrl: value,
   };
@@ -190,13 +178,9 @@ export function createConnectorActionBlock(
   });
 
   const connected$ = computed(async (get): Promise<boolean> => {
-    const connectorType = descriptor.connectorType;
-    if (connectorType === null) {
-      return false;
-    }
     if (
       get(connectedOverride$) ||
-      get(justConnectedTypes$).has(connectorType)
+      get(justConnectedTypes$).has(descriptor.connectorRef)
     ) {
       return true;
     }
@@ -205,17 +189,13 @@ export function createConnectorActionBlock(
   });
 
   const authorized$ = computed(async (get): Promise<boolean> => {
-    const connectorType = descriptor.connectorType;
-    if (connectorType === null) {
-      return false;
-    }
     if (get(authorizedOverride$)) {
       return true;
     }
     return await get(
       isAgentConnectorAuthorized({
         agentId: descriptor.agentId,
-        connectorType,
+        connectorType: descriptor.connectorRef,
       }),
     );
   });
@@ -234,10 +214,6 @@ export function createConnectorActionBlock(
   });
 
   const activate$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const connectorType = descriptor.connectorType;
-    if (connectorType === null) {
-      return;
-    }
     const available = await get(available$);
     signal.throwIfAborted();
     if (!available) {
@@ -249,7 +225,7 @@ export function createConnectorActionBlock(
     if (connected) {
       await set(
         authorizeDirectedConnector$,
-        connectorType,
+        descriptor.connectorRef,
         descriptor.agentId,
         signal,
       );
@@ -262,10 +238,9 @@ export function createConnectorActionBlock(
     signal.throwIfAborted();
     set(activeChatConnectorActionState$, {
       ...descriptor,
-      connectorType,
       markComplete$,
     });
-    set(setSelectedConnectorType$, connectorType);
+    set(setSelectedConnectorType$, descriptor.connectorRef);
   });
 
   return {

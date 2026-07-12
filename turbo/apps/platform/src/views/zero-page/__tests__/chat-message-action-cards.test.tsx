@@ -396,13 +396,32 @@ describe("chat message action cards", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("renders catalog-visible unsupported connector action cards as disabled", async () => {
+  it("keeps catalog-visible connectors actionable without a bundled type", async () => {
+    const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `https://app.vm0.ai/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
         connectorRef: "future-connector",
         label: "Catalog Future Connector",
         description: "Catalog future connector help text",
+        authMethods: [
+          {
+            id: "partner-token",
+            label: "Partner token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiKey",
+                label: "API key",
+                required: true,
+                placeholder: null,
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
       }),
     ]);
     mockChatLifecycle(context, {
@@ -438,7 +457,10 @@ describe("chat message action cards", () => {
     expect(
       within(connectorCard).getByText("Catalog future connector help text"),
     ).toBeInTheDocument();
-    expect(buttonByText("Unavailable", connectorCard)).toBeDisabled();
+    const connectButton = buttonByText("Connect", connectorCard);
+    expect(connectButton).toBeEnabled();
+    await user.click(connectButton);
+    expect((await screen.findAllByText("API key")).length).toBeGreaterThan(0);
   });
 
   it("fails closed when permission action metadata is hidden", async () => {

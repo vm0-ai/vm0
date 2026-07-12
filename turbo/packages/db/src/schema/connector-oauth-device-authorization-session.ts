@@ -28,7 +28,7 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    connectorType: varchar("connector_type", { length: 50 }).notNull(),
+    connectorType: varchar("connector_type", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorOauthDeviceAuthorizationSessionStatusEnum("status")
       .default("awaiting_user_authorization")

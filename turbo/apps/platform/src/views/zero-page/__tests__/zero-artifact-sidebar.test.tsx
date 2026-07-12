@@ -15,6 +15,8 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorOpenIdStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -1824,6 +1826,94 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("starts Google Drive connection from server catalog auth metadata", async () => {
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/server-authored.md";
+    const authMethod = "partner-openid";
+    const authorizationUrl =
+      "https://openid.example.test/google-drive/authorize";
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.data.connectors([]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          {
+            connectorRef: "google-drive",
+            label: "Google Drive",
+            description: "Google Drive artifact storage",
+            icon: {
+              url: "https://icons.example.test/google-drive.svg",
+              invertInDarkMode: false,
+            },
+            category: "productivity",
+            generation: [],
+            tags: [],
+            authMethods: [
+              {
+                id: authMethod,
+                label: "Partner OpenID",
+                description: null,
+                grantKind: "openid-auth",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            permissionSummary: {
+              hasPermissions: false,
+              permissionCount: 0,
+              hasCategories: false,
+              hasDefaultPolicyOverrides: false,
+            },
+            connection: null,
+            connected: false,
+            connectionStatus: "not-connected",
+            scopeMismatch: false,
+            authMethodSupportsRefresh: false,
+            tokenExpiresAt: null,
+            singleAuthCodeAuthMethodId: null,
+            connectNotice: null,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorOpenIdStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("google-drive");
+        expect(body.authMethod).toBe(authMethod);
+        return respond(200, { authorizationUrl });
+      },
+    );
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Server-authored connector", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles: [artifactFile(markdownUrl)],
+      content: `[Server-authored connector](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toBeEnabled();
+    });
+    click(menuItemByText("Connect Google Drive"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(authorizationUrl);
+    });
+  });
+
   it("shows download progress while downloading an HTML artifact", async () => {
     const user = userEvent.setup({ delay: null });
     const siteUrl = "https://launch.sites.vm7.io/launch-plan.html";
@@ -1960,6 +2050,9 @@ describe("zero artifact sidebar", () => {
       }),
     ];
     context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
     context.mocks.http.get(markdownUrl, () => {
       return new Response("# Agent notes\n\nThe artifact is ready.", {
         headers: { "Content-Type": "text/plain" },
@@ -2227,6 +2320,9 @@ describe("zero artifact sidebar", () => {
       }),
     ];
     context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
     context.mocks.http.get(presentationUrl, () => {
       return new Response(presentationHtml(), {
         headers: { "Content-Type": "text/html" },

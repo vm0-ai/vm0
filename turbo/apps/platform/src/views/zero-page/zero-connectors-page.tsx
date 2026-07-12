@@ -17,7 +17,7 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -52,8 +52,9 @@ import {
   permissionDialog$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
-  getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
+  getConnectorStatusAuthMethod,
   getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
@@ -982,7 +983,7 @@ export function ZeroConnectorsPage() {
       return;
     }
     if (launchMode === "browser-auth") {
-      const authMethod = getOnlyAvailableStatusBrowserAuthMethod(ct);
+      const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(ct);
       if (!authMethod) {
         setSelected(type);
         return;
@@ -1179,10 +1180,13 @@ export function ZeroConnectorsPage() {
               setSelected(type);
               return;
             }
-            const authMethod = getAvailableStatusAuthCodeAuthMethod(
+            const authMethodId = getAvailableStatusAuthCodeAuthMethod(
               connector,
               connection.authMethod,
             );
+            const authMethod = authMethodId
+              ? getConnectorStatusAuthMethod(connector, authMethodId)
+              : null;
             if (!authMethod) {
               setSelected(type);
               return;

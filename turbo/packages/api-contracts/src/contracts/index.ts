@@ -1094,6 +1094,14 @@ export {
 } from "./zero-connector-catalog";
 export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
+  CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
+  CONNECTOR_CATALOG_REF_MAX_LENGTH,
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "./connector-identity";
+export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
   type CodexDeviceAuthScope,
