@@ -1053,11 +1053,13 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
         .map(|index| HeldSessionState {
             session_id: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
+            reusable_sandbox: None,
         })
         .collect();
     states.push(HeldSessionState {
         session_id: "sess-0001".into(),
         last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
+        reusable_sandbox: None,
     });
 
     let capped = cap_workspace_held_session_states(states);

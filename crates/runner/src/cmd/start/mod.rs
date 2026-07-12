@@ -58,7 +58,7 @@ use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
 use crate::provider::{
-    ApiProvider, BuiltinFirewallCatalogCachePaths, JobProvider, LocalProvider,
+    ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths, JobProvider, LocalProvider,
     NetworkPolicyRefreshHandle,
 };
 use crate::proxy;
@@ -91,7 +91,7 @@ use heartbeat::{
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
     SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
-    evict_expired_idle_entries, evict_oldest_idle_entry, spawn_idle_destroy_job,
+    evict_expired_idle_entries, spawn_idle_destroy_job,
 };
 use job_discovery::{DiscoveredJob, DiscoveredJobContext, handle_discovered_job};
 use job_spawn::{SpawnContext, handle_job_result};
@@ -629,8 +629,11 @@ async fn run_start_with_home(
         let provider = ApiProvider::new(
             http.clone(),
             server.token,
-            group,
-            profiles,
+            ApiProviderConfig {
+                runner_id: runner_id.clone(),
+                group,
+                supported_profiles: profiles,
+            },
             BuiltinFirewallCatalogCachePaths {
                 cache_path: paths.builtin_firewall_catalog_cache(),
                 lock_path: paths.builtin_firewall_catalog_cache_lock(),
@@ -1424,32 +1427,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     }
                     continue;
                 }
-
-                // If budget is still exhausted, try evicting an idle VM before
-                // parking discovery. NOTE: evict_oldest is session-blind — it
-                // may destroy the VM the next job wants to reuse. A proper fix
-                // requires knowing session_id before claim, tracked separately.
-                if let Some(evicted) =
-                    evict_oldest_idle_entry(&shared.idle_pool, &shared.status).await
-                {
-                    info!(
-                        session_id = %evicted.cli_agent_session_id(),
-                        profile = %evicted.profile_name(),
-                        vcpu = evicted.budget_vcpu(),
-                        memory_mb = evicted.budget_memory_mb(),
-                        "evicting idle VM for resource pressure"
-                    );
-                    // Wait for the destroy task so the idle VM's lease is
-                    // dropped before the loop re-checks can_afford().
-                    if destroy_idle_jobs_and_wait(vec![evicted], "budget_pressure_oldest").await {
-                        park_notify.notify_one();
-                    }
-                    continue;
-                }
             }
             capacity
                 .budget
                 .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
+                || shared.idle_pool.lock().await.len() > 0
         } else {
             false
         };
@@ -1489,6 +1471,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     if !capacity
                         .budget
                         .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
+                        && shared.idle_pool.lock().await.len() == 0
                     {
                         break;
                     }

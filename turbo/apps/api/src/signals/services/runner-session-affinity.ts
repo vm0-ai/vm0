@@ -1,10 +1,47 @@
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, or, sql, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 
 const RUNNER_SESSION_AFFINITY_PROTECTION_MS = 2000;
 const RUNNER_SESSION_AFFINITY_HOLDER_FRESH_MS = 30_000;
+
+function runnerSessionAffinityHolderFreshAfter(currentDate: Date): Date {
+  return new Date(
+    currentDate.getTime() - RUNNER_SESSION_AFFINITY_HOLDER_FRESH_MS,
+  );
+}
+
+export function runnerReusableSessionPollPriority(args: {
+  readonly runnerId: string;
+  readonly runnerGroup: string;
+  readonly currentDate: Date;
+}): SQL<number> {
+  const protectedAfter = new Date(
+    args.currentDate.getTime() - RUNNER_SESSION_AFFINITY_PROTECTION_MS,
+  );
+  const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
+  return sql<number>`CASE WHEN
+    ${runnerJobQueue.createdAt} > ${protectedAfter}
+    AND EXISTS (
+      SELECT 1
+      FROM ${runnerState}
+      WHERE ${runnerState.runnerId} = ${args.runnerId}
+        AND ${runnerState.runnerGroup} = ${args.runnerGroup}
+        AND ${runnerState.mode} = 'running'
+        AND ${runnerState.lastSeenAt} > ${freshAfter}
+        AND ${runnerState.heldSessionStates} @> jsonb_build_array(
+          jsonb_build_object(
+            'sessionId', ${runnerJobQueue.cliAgentSessionId},
+            'reusableSandbox', jsonb_build_object(
+              'profile', ${runnerJobQueue.profile}
+            )
+          )
+        )
+    )
+    THEN 1 ELSE 0 END`;
+}
 
 type RunnerSessionAffinityStatus =
   | "no_session"
@@ -54,11 +91,15 @@ export async function runnerSessionAffinityProtection(args: {
     return { protectedUntil: null, status: "expired" };
   }
 
-  const freshAfter = new Date(
-    args.currentDate.getTime() - RUNNER_SESSION_AFFINITY_HOLDER_FRESH_MS,
-  );
+  const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
   const heldSessionProbe = JSON.stringify([
     { sessionId: args.cliAgentSessionId },
+  ]);
+  const reusableSessionProbe = JSON.stringify([
+    {
+      sessionId: args.cliAgentSessionId,
+      reusableSandbox: { profile: args.profile },
+    },
   ]);
   const admittableProfileProbe = JSON.stringify([args.profile]);
   const [holder] = await args.db
@@ -69,8 +110,13 @@ export async function runnerSessionAffinityProtection(args: {
         eq(runnerState.runnerGroup, args.runnerGroup),
         eq(runnerState.mode, "running"),
         gt(runnerState.lastSeenAt, freshAfter),
-        sql`${runnerState.heldSessionStates} @> ${heldSessionProbe}::jsonb`,
-        sql`${runnerState.admittableProfiles} @> ${admittableProfileProbe}::jsonb`,
+        or(
+          and(
+            sql`${runnerState.heldSessionStates} @> ${heldSessionProbe}::jsonb`,
+            sql`${runnerState.admittableProfiles} @> ${admittableProfileProbe}::jsonb`,
+          ),
+          sql`${runnerState.heldSessionStates} @> ${reusableSessionProbe}::jsonb`,
+        ),
       ),
     )
     .limit(1);

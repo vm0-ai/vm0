@@ -13,7 +13,7 @@ mod local;
 pub mod mock;
 mod network_policy_refresh;
 
-pub use api::{ApiProvider, BuiltinFirewallCatalogCachePaths};
+pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
 pub use local::LocalProvider;
 pub(crate) use network_policy_refresh::{
     NetworkPolicyRefreshHandle, NetworkPolicyRefreshRegistration,

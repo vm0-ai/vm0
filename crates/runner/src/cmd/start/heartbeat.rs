@@ -245,9 +245,15 @@ fn merge_held_session_states(
         if active_cli_agent_sessions.contains(&state.session_id) {
             continue;
         }
-        match by_session.get(&state.session_id) {
-            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
-            _ => {
+        match by_session.get_mut(&state.session_id) {
+            Some(existing) => {
+                let reusable_sandbox = existing.reusable_sandbox.take();
+                if state.last_completed_at > existing.last_completed_at {
+                    *existing = state;
+                }
+                existing.reusable_sandbox = reusable_sandbox.or(existing.reusable_sandbox.take());
+            }
+            None => {
                 by_session.insert(state.session_id.clone(), state);
             }
         }
@@ -672,6 +678,7 @@ mod tests {
         let idle = vec![HeldSessionState {
             session_id: "sess-idle".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            reusable_sandbox: None,
         }];
 
         let cache_states = workspace_cache_held_session_states(Some(&cache)).await;
@@ -707,14 +714,17 @@ mod tests {
                 HeldSessionState {
                     session_id: "sess-cache".into(),
                     last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+                    reusable_sandbox: None,
                 },
                 HeldSessionState {
                     session_id: "sess-claimed".into(),
                     last_completed_at: "2026-06-01T00:00:03.000Z".into(),
+                    reusable_sandbox: None,
                 },
                 HeldSessionState {
                     session_id: "sess-active".into(),
                     last_completed_at: "2026-06-01T00:00:04.000Z".into(),
+                    reusable_sandbox: None,
                 },
             ],
         );
@@ -728,10 +738,12 @@ mod tests {
             HeldSessionState {
                 session_id: "sess-cache".into(),
                 last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+                reusable_sandbox: None,
             },
             HeldSessionState {
                 session_id: "sess-idle".into(),
                 last_completed_at: "2026-06-01T00:00:05.000Z".into(),
+                reusable_sandbox: None,
             },
         ];
 
@@ -747,10 +759,12 @@ mod tests {
                 HeldSessionState {
                     session_id: "sess-cache".into(),
                     last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+                    reusable_sandbox: None,
                 },
                 HeldSessionState {
                     session_id: "sess-idle".into(),
                     last_completed_at: "2026-06-01T00:00:05.000Z".into(),
+                    reusable_sandbox: None,
                 },
             ]
         );
@@ -784,6 +798,7 @@ mod tests {
             vec![HeldSessionState {
                 session_id: "sess-cache".into(),
                 last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+                reusable_sandbox: None,
             }],
         );
         assert!(
@@ -799,6 +814,7 @@ mod tests {
             snapshot.upsert_workspace_cache_state(HeldSessionState {
                 session_id: format!("sess-{index:04}"),
                 last_completed_at: timestamp_for_index(index),
+                reusable_sandbox: None,
             });
         }
 
@@ -826,10 +842,12 @@ mod tests {
         let original = HeldSessionState {
             session_id: "sess-original".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            reusable_sandbox: None,
         };
         let promoted = HeldSessionState {
             session_id: "sess-promoted".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            reusable_sandbox: None,
         };
         refresh_snapshot(&snapshot, vec![original.clone()]);
 
@@ -861,10 +879,12 @@ mod tests {
         let idle = vec![HeldSessionState {
             session_id: "sess-active-idle".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            reusable_sandbox: None,
         }];
         let cache = vec![HeldSessionState {
             session_id: "sess-active".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+            reusable_sandbox: None,
         }];
         let active = std::collections::HashSet::from([
             "sess-active".to_string(),
@@ -881,10 +901,14 @@ mod tests {
         let idle = vec![HeldSessionState {
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+            reusable_sandbox: Some(crate::types::ReusableSandboxState {
+                profile: "vm0/default".into(),
+            }),
         }];
         let cache = vec![HeldSessionState {
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+            reusable_sandbox: None,
         }];
 
         let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
@@ -892,6 +916,13 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].session_id, "sess-1");
         assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:01.000Z");
+        assert_eq!(
+            merged[0]
+                .reusable_sandbox
+                .as_ref()
+                .map(|state| state.profile.as_str()),
+            Some("vm0/default")
+        );
     }
 
     #[test]
@@ -899,10 +930,14 @@ mod tests {
         let idle = vec![HeldSessionState {
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+            reusable_sandbox: Some(crate::types::ReusableSandboxState {
+                profile: "vm0/default".into(),
+            }),
         }];
         let cache = vec![HeldSessionState {
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+            reusable_sandbox: None,
         }];
 
         let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());

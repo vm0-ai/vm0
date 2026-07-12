@@ -1167,6 +1167,12 @@ impl ExecutionContext {
 // Heartbeat
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReusableSandboxState {
+    pub profile: String,
+}
+
 /// Runner state snapshot sent to the server via heartbeat.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -1175,6 +1181,8 @@ pub struct HeldSessionState {
     /// Claude/Codex CLI agent session id used for sandbox reuse affinity.
     pub session_id: String,
     pub last_completed_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reusable_sandbox: Option<ReusableSandboxState>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1871,6 +1879,9 @@ mod tests {
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
+                reusable_sandbox: Some(ReusableSandboxState {
+                    profile: "vm0/default".into(),
+                }),
             }],
             mode: "running".into(),
         };
@@ -1890,9 +1901,25 @@ mod tests {
             json["heldSessionStates"],
             json!([{
                 "sessionId": "session-abc",
-                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+                "reusableSandbox": {
+                    "profile": "vm0/default"
+                }
             }])
         );
         assert_eq!(json["mode"], "running");
+    }
+
+    #[test]
+    fn held_session_state_accepts_legacy_shape_and_omits_absent_capability() {
+        let state: HeldSessionState = serde_json::from_value(json!({
+            "sessionId": "session-legacy",
+            "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+        }))
+        .unwrap();
+        assert!(state.reusable_sandbox.is_none());
+
+        let serialized = serde_json::to_value(state).unwrap();
+        assert!(serialized.get("reusableSandbox").is_none());
     }
 }

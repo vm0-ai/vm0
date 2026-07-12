@@ -17,7 +17,9 @@ use super::active_sessions::ActiveCliAgentSessionGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
-    add_running_run_with_idle_status_snapshot, spawn_idle_destroy_job,
+    add_running_run_with_idle_status_snapshot, destroy_idle_jobs_and_wait,
+    evict_expired_idle_entries, evict_oldest_idle_entry, set_idle_status_snapshot,
+    spawn_idle_destroy_job,
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
@@ -27,7 +29,10 @@ use crate::executor::{
     validate_resume_session_id,
 };
 use crate::http::HttpClient;
-use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
+use crate::idle_pool::{
+    DestroyOutcome, IdlePoolSnapshot, IdleUnparkResult, ReservedIdleSandbox,
+    RestoreReservedIdleResult, ReusableIdleSandbox,
+};
 use crate::ids::RunId;
 use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate, PreLocalAdmissionOutcome};
@@ -58,13 +63,18 @@ pub(super) struct DiscoveredJobContext<'a> {
 
 struct LocalAdmission {
     run_id: RunId,
-    budget_lease: BudgetLease,
+    resource: LocalAdmissionResource,
     cancel: RunCancellationHandle,
+}
+
+enum LocalAdmissionResource {
+    Fresh(BudgetLease),
+    Reusable(Box<ReservedIdleSandbox>),
 }
 
 struct AdmittedClaim {
     claimed: ClaimedJob,
-    budget_lease: BudgetLease,
+    resource: LocalAdmissionResource,
     cancel: RunCancellationHandle,
 }
 
@@ -77,21 +87,29 @@ struct ReuseAdmissionRequest<'a> {
     job_lease: BudgetLease,
 }
 
+struct ReservedActivationRequest<'a> {
+    run_id: RunId,
+    profile_name: &'a str,
+    workspace_disk_mb: u32,
+    context: &'a ExecutionContext,
+    resume_session_valid: bool,
+}
+
 impl LocalAdmission {
-    async fn rollback(self, cancel_tokens: &SharedRunCancellationMap) {
+    async fn rollback(self, ctx: &mut DiscoveredJobContext<'_>) {
         let Self {
             run_id,
-            budget_lease,
+            resource,
             cancel: _,
         } = self;
-        cancel_tokens.lock().await.remove(&run_id);
-        drop(budget_lease);
+        ctx.cancel_tokens.lock().await.remove(&run_id);
+        rollback_untracked_resource(resource, ctx).await;
     }
 
     fn into_admitted(self, claimed: ClaimedJob) -> AdmittedClaim {
         AdmittedClaim {
             claimed,
-            budget_lease: self.budget_lease,
+            resource: self.resource,
             cancel: self.cancel,
         }
     }
@@ -113,26 +131,42 @@ pub(super) async fn handle_discovered_job(
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
     let job_workspace_disk_mb = profile_config.workspace_disk_mb;
+    let device_rate_limits = ctx.spawn_ctx.device_rate_limits.clone();
     // Look up factory for this profile.
     let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
         return false;
     };
 
-    let Some(admission) =
-        claim_with_local_admission(candidate, run_id, job_vcpu, job_memory, &ctx).await
+    let Some(admission) = claim_with_local_admission(
+        candidate,
+        run_id,
+        &profile_name,
+        job_vcpu,
+        job_memory,
+        &device_rate_limits,
+        &mut ctx,
+    )
+    .await
     else {
         return false;
     };
     let AdmittedClaim {
         claimed,
-        budget_lease: job_lease,
+        resource,
         cancel: job_cancel,
     } = admission;
     let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
     let started_at = Instant::now();
     let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
+    info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
+    let started_at = Instant::now();
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
+
+    // Hide the claimed session from heartbeat affinity before unpark or
+    // fallback cleanup can yield. Otherwise a concurrent heartbeat could
+    // briefly advertise stale workspace-cache affinity for an active session.
     let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
         ctx.spawn_ctx.active_cli_agent_sessions.clone(),
         if resume_session_valid {
@@ -141,26 +175,71 @@ pub(super) async fn handle_discovered_job(
             None
         },
     );
-    info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
-    let started_at = Instant::now();
-    let device_rate_limits = ctx.spawn_ctx.device_rate_limits.clone();
-    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
-        try_reuse_from_pool(
-            run_id,
-            ReuseAdmissionRequest {
-                profile_name: &profile_name,
-                device_rate_limits: &device_rate_limits,
-                workspace_disk_mb: job_workspace_disk_mb,
-                context: claimed.context(),
-                resume_session_valid,
-                job_lease,
-            },
-            &mut ctx,
-            &mut pre_spawn_timing,
-        )
-        .await;
+        match resource {
+            LocalAdmissionResource::Fresh(job_lease) => {
+                try_reuse_from_pool(
+                    run_id,
+                    ReuseAdmissionRequest {
+                        profile_name: &profile_name,
+                        device_rate_limits: &device_rate_limits,
+                        workspace_disk_mb: job_workspace_disk_mb,
+                        context: claimed.context(),
+                        resume_session_valid,
+                        job_lease,
+                    },
+                    &mut ctx,
+                    &mut pre_spawn_timing,
+                )
+                .await
+            }
+            LocalAdmissionResource::Reusable(reservation) => {
+                match activate_reserved_idle(
+                    *reservation,
+                    ReservedActivationRequest {
+                        run_id,
+                        profile_name: &profile_name,
+                        workspace_disk_mb: job_workspace_disk_mb,
+                        context: claimed.context(),
+                        resume_session_valid,
+                    },
+                    &mut ctx,
+                    &mut pre_spawn_timing,
+                )
+                .await
+                {
+                    ReservedActivation::Ready {
+                        reuse_entry,
+                        active_lease,
+                        reuse_result,
+                        idle_snapshot,
+                    } => (
+                        reuse_entry.map(|entry| *entry),
+                        active_lease,
+                        reuse_result,
+                        Some(idle_snapshot),
+                        true,
+                    ),
+                    ReservedActivation::CannotStart {
+                        budget_lease,
+                        reuse_result,
+                        error,
+                    } => {
+                        fail_claimed_without_sandbox(
+                            claimed,
+                            job_cancel,
+                            budget_lease,
+                            reuse_result,
+                            error,
+                            &ctx,
+                        )
+                        .await;
+                        return true;
+                    }
+                }
+            }
+        };
 
     let session_history_restore_plan = build_session_history_restore_plan(
         &ctx.spawn_ctx.exec_config.http,
@@ -330,16 +409,34 @@ async fn publish_active_run_status(
 async fn claim_with_local_admission(
     candidate: JobCandidate,
     run_id: RunId,
+    profile_name: &str,
     job_vcpu: u32,
     job_memory: u32,
-    ctx: &DiscoveredJobContext<'_>,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<AdmittedClaim> {
-    let mut candidate = prepare_affinity_protected_candidate(candidate, ctx).await?;
+    let mut candidate = prepare_affinity_protected_candidate(
+        candidate,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    )
+    .await?;
     candidate.mark_local_admission_started();
 
-    // Reserve resources before claiming so we don't waste a job that another
-    // runner could handle.
-    let job_lease = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)?;
+    // Reserve either the exact reusable sandbox or fresh capacity before
+    // claiming so a losing claim can restore all local ownership.
+    let resource = acquire_local_admission_resource(
+        &candidate,
+        profile_name,
+        job_vcpu,
+        job_memory,
+        device_rate_limits,
+        ctx,
+    )
+    .await?;
 
     // Insert cancel token before claiming so provider-side cancel channels
     // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
@@ -349,7 +446,11 @@ async fn claim_with_local_admission(
     {
         let mut tokens = ctx.cancel_tokens.lock().await;
         match tokens.entry(run_id) {
-            Entry::Occupied(_) => return None,
+            Entry::Occupied(_) => {
+                drop(tokens);
+                rollback_untracked_resource(resource, ctx).await;
+                return None;
+            }
             Entry::Vacant(entry) => {
                 entry.insert(job_cancel.clone());
             }
@@ -358,7 +459,7 @@ async fn claim_with_local_admission(
 
     let admission = LocalAdmission {
         run_id,
-        budget_lease: job_lease,
+        resource,
         cancel: job_cancel,
     };
 
@@ -369,18 +470,18 @@ async fn claim_with_local_admission(
     match mode {
         RunnerMode::Running => {}
         RunnerMode::Starting => {
-            admission.rollback(ctx.cancel_tokens).await;
+            admission.rollback(ctx).await;
             return None;
         }
         RunnerMode::Draining => {
-            admission.rollback(ctx.cancel_tokens).await;
+            admission.rollback(ctx).await;
             return None;
         }
         RunnerMode::Stopping => {
             admission.cancel.cancel().await;
         }
         RunnerMode::Stopped => {
-            admission.rollback(ctx.cancel_tokens).await;
+            admission.rollback(ctx).await;
             return None;
         }
     }
@@ -390,7 +491,7 @@ async fn claim_with_local_admission(
         // None means the job won't run here: either lost the race to another
         // runner, or the provider rejected the job. Release the reservation and
         // cancel token so the runner can continue.
-        admission.rollback(ctx.cancel_tokens).await;
+        admission.rollback(ctx).await;
         return None;
     };
     if claimed.context().run_id != run_id {
@@ -399,7 +500,7 @@ async fn claim_with_local_admission(
             context_run_id = %claimed.context().run_id,
             "provider returned claimed job with mismatched run_id"
         );
-        admission.rollback(ctx.cancel_tokens).await;
+        admission.rollback(ctx).await;
         return None;
     }
 
@@ -408,6 +509,10 @@ async fn claim_with_local_admission(
 
 async fn prepare_affinity_protected_candidate(
     candidate: JobCandidate,
+    profile_name: &str,
+    job_vcpu: u32,
+    job_memory: u32,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<JobCandidate> {
     if !candidate.is_affinity_protected() {
@@ -422,11 +527,17 @@ async fn prepare_affinity_protected_candidate(
         );
     };
 
+    let has_exact_reusable = ctx.idle_pool.lock().await.has_reusable(
+        &cli_agent_session_id,
+        profile_name,
+        device_rate_limits,
+    );
     let held_session_states = current_local_held_session_states(ctx).await;
-    if held_session_states
-        .iter()
-        .any(|state| state.session_id == cli_agent_session_id)
-    {
+    let has_fresh_affinity = ctx.budget.can_afford(job_vcpu, job_memory)
+        && held_session_states
+            .iter()
+            .any(|state| state.session_id == cli_agent_session_id);
+    if has_exact_reusable || has_fresh_affinity {
         return Some(
             candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
         );
@@ -460,6 +571,266 @@ async fn current_local_held_session_states(
     ctx.spawn_ctx
         .held_session_snapshot
         .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
+}
+
+async fn acquire_local_admission_resource(
+    candidate: &JobCandidate,
+    profile_name: &str,
+    job_vcpu: u32,
+    job_memory: u32,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    ctx: &mut DiscoveredJobContext<'_>,
+) -> Option<LocalAdmissionResource> {
+    loop {
+        if let Some(session_id) = candidate.cli_agent_session_id()
+            && let Some(reservation) =
+                reserve_reusable_idle(session_id, profile_name, device_rate_limits, ctx).await
+        {
+            return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
+        }
+
+        if let Some(lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory) {
+            return Some(LocalAdmissionResource::Fresh(lease));
+        }
+
+        let expired = evict_expired_idle_entries(ctx.idle_pool, ctx.status).await;
+        if !expired.is_empty() {
+            info!(
+                run_id = %candidate.run_id(),
+                count = expired.len(),
+                "reclaiming expired idle VMs for candidate admission"
+            );
+            destroy_idle_jobs_and_wait(expired, "candidate_admission_expired").await;
+            ctx.spawn_ctx.park_notify.notify_one();
+            continue;
+        }
+
+        let evicted = evict_oldest_idle_entry(ctx.idle_pool, ctx.status).await?;
+        info!(
+            run_id = %candidate.run_id(),
+            session_id = %evicted.cli_agent_session_id(),
+            profile = %evicted.profile_name(),
+            vcpu = evicted.budget_vcpu(),
+            memory_mb = evicted.budget_memory_mb(),
+            "evicting idle VM for candidate admission"
+        );
+        destroy_idle_jobs_and_wait(vec![evicted], "candidate_admission_oldest").await;
+        ctx.spawn_ctx.park_notify.notify_one();
+    }
+}
+
+async fn reserve_reusable_idle(
+    session_id: &str,
+    profile_name: &str,
+    device_rate_limits: &Option<sandbox::DeviceRateLimits>,
+    ctx: &DiscoveredJobContext<'_>,
+) -> Option<ReservedIdleSandbox> {
+    let (reservation, snapshot) = {
+        let mut pool = ctx.idle_pool.lock().await;
+        let reservation = pool.reserve_reusable(session_id, profile_name, device_rate_limits)?;
+        let snapshot = pool.status_snapshot();
+        (reservation, snapshot)
+    };
+    set_idle_status_snapshot(ctx.status, snapshot).await;
+    Some(reservation)
+}
+
+async fn rollback_untracked_resource(
+    resource: LocalAdmissionResource,
+    ctx: &mut DiscoveredJobContext<'_>,
+) {
+    match resource {
+        LocalAdmissionResource::Fresh(budget_lease) => drop(budget_lease),
+        LocalAdmissionResource::Reusable(reservation) => {
+            let (restore_result, snapshot) = {
+                let mut pool = ctx.idle_pool.lock().await;
+                let restore_result = pool.restore_reserved(*reservation);
+                let snapshot = pool.status_snapshot();
+                (restore_result, snapshot)
+            };
+            set_idle_status_snapshot(ctx.status, snapshot).await;
+            if let RestoreReservedIdleResult::Rejected(destroy_job) = restore_result {
+                spawn_idle_destroy_job(
+                    ctx.destroy_tasks,
+                    *destroy_job,
+                    "reserved_idle_rollback_rejected",
+                );
+                ctx.spawn_ctx.park_notify.notify_one();
+            }
+        }
+    }
+}
+
+enum ReservedActivation {
+    Ready {
+        reuse_entry: Option<Box<ReusableIdleSandbox>>,
+        active_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        idle_snapshot: IdlePoolSnapshot,
+    },
+    CannotStart {
+        budget_lease: BudgetLease,
+        reuse_result: SandboxReuseResult,
+        error: String,
+    },
+}
+
+async fn activate_reserved_idle(
+    reservation: ReservedIdleSandbox,
+    request: ReservedActivationRequest<'_>,
+    ctx: &mut DiscoveredJobContext<'_>,
+    pre_spawn_timing: &mut RunnerPreSpawnTiming,
+) -> ReservedActivation {
+    let ReservedActivationRequest {
+        run_id,
+        profile_name,
+        workspace_disk_mb,
+        context,
+        resume_session_valid,
+    } = request;
+    let started_at = Instant::now();
+    let requested_session_id = context.cli_agent_session_id();
+    let reserved_session_id = reservation.cli_agent_session_id().to_owned();
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
+
+    if !resume_session_valid || requested_session_id != Some(reserved_session_id.as_str()) {
+        let reuse_result = if requested_session_id.is_none() || !resume_session_valid {
+            SandboxReuseResult::NoSessionId
+        } else {
+            SandboxReuseResult::PoolMiss
+        };
+        warn!(
+            run_id = %run_id,
+            reserved_session_id = %reserved_session_id,
+            claimed_session_id = ?requested_session_id,
+            "claimed session does not match reserved idle VM, destroying before fresh fallback"
+        );
+        return cleanup_reserved_for_fresh_fallback(
+            reservation.into_destroy_job(),
+            reuse_result,
+            "reserved_reuse_session_mismatch",
+            ctx,
+        )
+        .await;
+    }
+
+    if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+        let started_at = Instant::now();
+        let validation = reservation.validate_workspace_promotion_identity(
+            cache,
+            CANONICAL_WORKING_DIR,
+            u64::from(workspace_disk_mb) * 1024 * 1024,
+        );
+        pre_spawn_timing.record_phase_elapsed(
+            RunnerPreSpawnPhase::WorkspacePromotionValidation,
+            started_at,
+        );
+        if let Err(mismatch) = validation {
+            warn!(
+                run_id = %run_id,
+                session_id = %reserved_session_id,
+                profile = %profile_name,
+                mismatch = mismatch.as_str(),
+                "workspace promotion identity mismatch, destroying reserved idle VM before fresh fallback"
+            );
+            return cleanup_reserved_for_fresh_fallback(
+                reservation.into_destroy_job_without_workspace_promotion_for_mismatch(),
+                SandboxReuseResult::PoolMiss,
+                "reserved_reuse_workspace_promotion_mismatch",
+                ctx,
+            )
+            .await;
+        }
+    }
+
+    let started_at = Instant::now();
+    let unpark_result = reservation.try_unpark().await;
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleUnpark, started_at);
+    match unpark_result {
+        IdleUnparkResult::Reused {
+            sandbox,
+            budget_lease,
+        } => {
+            info!(
+                run_id = %run_id,
+                session_id = %reserved_session_id,
+                "reusing pre-claim reserved idle VM for session"
+            );
+            let idle_snapshot = ctx.idle_pool.lock().await.status_snapshot();
+            ReservedActivation::Ready {
+                reuse_entry: Some(sandbox),
+                active_lease: budget_lease,
+                reuse_result: SandboxReuseResult::Reused,
+                idle_snapshot,
+            }
+        }
+        IdleUnparkResult::Failed { destroy_job, error } => {
+            warn!(
+                run_id = %run_id,
+                session_id = %reserved_session_id,
+                error = %error,
+                "reserved idle VM unpark failed, destroying before fresh fallback"
+            );
+            cleanup_reserved_for_fresh_fallback(
+                *destroy_job,
+                SandboxReuseResult::UnparkFailed,
+                "reserved_reuse_unpark_failed",
+                ctx,
+            )
+            .await
+        }
+    }
+}
+
+async fn cleanup_reserved_for_fresh_fallback(
+    destroy_job: crate::idle_pool::IdleDestroyJob,
+    reuse_result: SandboxReuseResult,
+    cleanup_context: &'static str,
+    ctx: &DiscoveredJobContext<'_>,
+) -> ReservedActivation {
+    let cleanup = destroy_job.run_retaining_lease(cleanup_context).await;
+    match cleanup.outcome {
+        DestroyOutcome::Completed => ReservedActivation::Ready {
+            reuse_entry: None,
+            active_lease: cleanup.budget_lease,
+            reuse_result,
+            idle_snapshot: ctx.idle_pool.lock().await.status_snapshot(),
+        },
+        DestroyOutcome::Uncertain => ReservedActivation::CannotStart {
+            budget_lease: cleanup.budget_lease,
+            reuse_result,
+            error: "reserved idle sandbox cleanup was uncertain; fresh replacement was not started"
+                .to_string(),
+        },
+    }
+}
+
+async fn fail_claimed_without_sandbox(
+    claimed: ClaimedJob,
+    cancel: RunCancellationHandle,
+    budget_lease: BudgetLease,
+    reuse_result: SandboxReuseResult,
+    error: String,
+    ctx: &DiscoveredJobContext<'_>,
+) {
+    let (context, completion_auth, active_input_source) = claimed.into_parts();
+    let run_id = context.run_id;
+    let failure = crate::executor::ExecutionFailure::from_error(error);
+    drop(active_input_source);
+    ctx.spawn_ctx
+        .provider
+        .complete(
+            run_id,
+            failure.exit_code,
+            Some(&failure.error),
+            None,
+            Some(reuse_result),
+            completion_auth,
+        )
+        .await;
+    ctx.cancel_tokens.lock().await.remove(&run_id);
+    drop(cancel);
+    drop(budget_lease);
 }
 
 async fn try_reuse_from_pool(

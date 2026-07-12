@@ -26,7 +26,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -65,6 +65,7 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  runnerReusableSessionPollPriority,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
 } from "../services/runner-session-affinity";
@@ -313,6 +314,13 @@ function canonicalizeHeldSessionStates(
     return {
       sessionId: cliAgentSessionId,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+      ...(state.reusableSandbox
+        ? {
+            reusableSandbox: {
+              profile: state.reusableSandbox.profile,
+            },
+          }
+        : {}),
     };
   });
 }
@@ -485,6 +493,18 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   whereConditions.push(inArray(runnerJobQueue.profile, supportedProfiles));
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
+  const currentDate = nowDate();
+  const reusableSessionPriorityOrder = body.data.runnerId
+    ? [
+        desc(
+          runnerReusableSessionPollPriority({
+            runnerId: body.data.runnerId,
+            runnerGroup: group,
+            currentDate,
+          }),
+        ),
+      ]
+    : [];
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -500,7 +520,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
-    .orderBy(runnerJobQueue.createdAt, runnerJobQueue.runId)
+    .orderBy(
+      ...reusableSessionPriorityOrder,
+      runnerJobQueue.createdAt,
+      runnerJobQueue.runId,
+    )
     .limit(1);
   signal.throwIfAborted();
   const pendingJobLookupFinishedAtMs = now();
@@ -516,7 +540,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       profile: pendingJob.profile,
       cliAgentSessionId: pendingJob.cliAgentSessionId,
       createdAt: pendingJob.createdAt,
-      currentDate: nowDate(),
+      currentDate,
     }),
     signal,
   );
