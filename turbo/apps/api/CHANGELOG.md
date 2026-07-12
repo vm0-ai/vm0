@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.263.1](https://github.com/vm0-ai/vm0/compare/api-v1.263.0...api-v1.263.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* harden nintendo parental controls credentials ([#21078](https://github.com/vm0-ai/vm0/issues/21078)) ([1360d30](https://github.com/vm0-ai/vm0/commit/1360d30ddf543769b2bf255bc2f444b98f5c86d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.4
+    * @vm0/connectors bumped to 1.155.1
+    * @vm0/core bumped to 8.425.1
+    * @vm0/db bumped to 1.109.8
+
 ## [1.263.0](https://github.com/vm0-ai/vm0/compare/api-v1.262.4...api-v1.263.0) (2026-07-11)
 
 

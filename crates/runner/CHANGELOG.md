@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.143.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.12...runner-rs-v0.143.13) (2026-07-12)
+
+
+### Documentation
+
+* **mitm-addon:** document connector diagnostic lifecycle ([#21077](https://github.com/vm0-ai/vm0/issues/21077)) ([0af4542](https://github.com/vm0-ai/vm0/commit/0af4542fea0a12f6133f73e2bf194915a8d8bd7f))
+* **mitm-addon:** document flow metadata linter helpers ([#21089](https://github.com/vm0-ai/vm0/issues/21089)) ([f4665a6](https://github.com/vm0-ai/vm0/commit/f4665a64c4bb4e2ec829ac7e9bf59565a1e56547))
+
 ## [0.143.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.11...runner-rs-v0.143.12) (2026-07-11)
 
 
