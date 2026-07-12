@@ -240,14 +240,21 @@ function inlineApiEnvironmentNames(
   metadata: FirewallRoutingMetadata | null,
 ): readonly string[] | null {
   if (!metadata) return null;
-  const names = new Set<string>();
-  let matched = false;
-  for (const api of metadata.apis) {
-    if (api.base !== base) continue;
-    matched = true;
-    for (const name of api.environmentNames) names.add(name);
+  const [first, ...otherApis] = metadata.apis.filter((api) => {
+    return api.base === base;
+  });
+  if (!first) return null;
+  for (const api of otherApis) {
+    if (
+      api.environmentNames.length !== first.environmentNames.length ||
+      api.environmentNames.some((name, index) => {
+        return name !== first.environmentNames[index];
+      })
+    ) {
+      return null;
+    }
   }
-  return matched ? [...names].sort() : null;
+  return first.environmentNames;
 }
 
 function routingConfigFromInlineRunContext(

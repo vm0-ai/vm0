@@ -1161,6 +1161,58 @@ describe("zero doctor check-connector command", () => {
       expect(output).not.toContain("diagnostic-api-");
     });
 
+    it("should not guess inline environment metadata for conflicting same-base APIs", async () => {
+      stubConnectedUrlConnector("cloudflare", "api-token");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "cloudflare",
+                apis: [
+                  {
+                    base: "https://api.cloudflare.com/client",
+                    permissions: [
+                      {
+                        name: "page.write",
+                        rules: ["POST /v4/pages/assets/upload"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              cloudflare: {
+                allow: ["page.write"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.cloudflare.com/client/v4/pages/assets/upload",
+        "--method",
+        "POST",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Environment names: unavailable");
+      expect(output).toContain(
+        "Environment metadata is unavailable for this run's sanitized firewall entry",
+      );
+      expect(output).toContain("Matched permissions: [page.write]");
+    });
+
     it("should reject an explicit connector that does not own a unique route", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
