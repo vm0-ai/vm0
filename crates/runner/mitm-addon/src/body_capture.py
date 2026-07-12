@@ -238,8 +238,10 @@ def _set_body_fields(
     content_type: str,
     *,
     already_truncated: bool = False,
+    truncated_at_limit: bool = False,
 ) -> None:
-    truncated = already_truncated or len(body) > BODY_CAPTURE_LIMIT
+    body_exceeds_limit = len(body) > BODY_CAPTURE_LIMIT
+    truncated = already_truncated or truncated_at_limit or body_exceeds_limit
     if truncated:
         # Truncation describes capture completeness, even when no body string is emitted.
         log_entry[f"{side}_body_truncated"] = True
@@ -251,7 +253,8 @@ def _set_body_fields(
     encoded, encoding = _encode_body(
         bounded_body,
         content_type,
-        truncated_at_limit=truncated and len(body) >= BODY_CAPTURE_LIMIT,
+        truncated_at_limit=(truncated_at_limit or body_exceeds_limit)
+        and len(body) >= BODY_CAPTURE_LIMIT,
     )
     if encoded is None:
         log_entry[f"{side}_body_encoding"] = "binary"
@@ -306,7 +309,8 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                     "request",
                     request_body,
                     req_ct,
-                    already_truncated=request_stream_body.truncated or request_stream_incomplete,
+                    already_truncated=request_stream_incomplete,
+                    truncated_at_limit=request_stream_body.truncated,
                 )
         elif flow.request.raw_content:
             req_ct = flow.request.headers.get("content-type", "")
@@ -350,5 +354,5 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             "response",
             body,
             res_ct,
-            already_truncated=stream_truncated,
+            truncated_at_limit=stream_truncated,
         )

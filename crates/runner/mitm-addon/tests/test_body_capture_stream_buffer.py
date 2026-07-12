@@ -75,6 +75,21 @@ class TestBodyCaptureStreamBuffer:
         assert entry["request_body_encoding"] == "utf-8"
         assert entry["request_body_truncated"] is True
 
+    def test_incomplete_request_at_limit_preserves_partial_utf8(self, real_flow):
+        body = b"x" * (STREAM_BUFFER_LIMIT - 1) + b"\xe2"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, complete=False)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == body
+        assert entry["request_body_truncated"] is True
+
     def test_empty_incomplete_request_stream_buffer_marks_truncation(self, real_flow):
         flow = real_flow(
             method="POST",
