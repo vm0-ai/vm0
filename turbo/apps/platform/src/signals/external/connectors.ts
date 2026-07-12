@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
+  type PublicConnectorCatalogIcon,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -18,6 +19,7 @@ export interface ConnectorCatalogDisplayMetadata {
   readonly connectorRef: string;
   readonly label: string;
   readonly helpText: string;
+  readonly icon: PublicConnectorCatalogIcon | undefined;
 }
 
 /**
@@ -72,6 +74,7 @@ function connectorCatalogDisplayMetadata(
     connectorRef: connector.connectorRef,
     label: connector.label,
     helpText: connector.description,
+    icon: connector.icon,
   };
 }
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { publicConnectorCatalogIconSchema } from "./zero-connector-catalog";
 
 const c = initContract();
 
@@ -983,6 +984,7 @@ export const zeroWorkflowConnectorReadinessEntrySchema = z
   .object({
     connectorRef: connectorTypeSchema,
     label: z.string().min(1),
+    icon: publicConnectorCatalogIconSchema.optional(),
     reason: z.string().min(1),
     status: zeroWorkflowConnectorReadinessStatusSchema,
   })

@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { agents$ } from "../../../../signals/agent.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -30,12 +31,14 @@ const VISIBLE_AGENT_COUNT = 16;
 interface ConnectorPermissionDialogProps {
   connectorType: ConnectorType;
   connectorLabel: string;
+  icon: PublicConnectorCatalogIcon | undefined;
   onClose: () => void;
 }
 
 export function ConnectorPermissionDialog({
   connectorType,
   connectorLabel,
+  icon,
   onClose,
 }: ConnectorPermissionDialogProps) {
   const allAgents = useLastResolved(agents$);
@@ -79,7 +82,7 @@ export function ConnectorPermissionDialog({
       >
         <DialogHeader className="mt-5 items-center gap-2.5 text-center">
           <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-            <ConnectorIcon type={connectorType} size={20} />
+            <ConnectorIcon icon={icon} size={20} />
           </div>
           <DialogTitle className="text-base font-medium">
             {connectorLabel}

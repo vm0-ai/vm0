@@ -43,6 +43,7 @@ import {
   getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
 } from "@vm0/connectors/firewall-metadata";
+import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { mockApi } from "../msw-contract.ts";
 
@@ -228,6 +229,7 @@ async function mockPermissionDetail(
   return {
     connectorRef,
     label: metadata.label,
+    icon: getStaticConnectorIconMetadata(connectorRef),
     permissionCount: metadata.permissionCount,
     permissions: metadata.permissions.map((permission) => {
       return {
@@ -363,6 +365,7 @@ function mockConnectorCatalogStatusItem(
     connectorRef: type,
     label: config.label,
     description: config.helpText,
+    icon: getStaticConnectorIconMetadata(type),
     category: config.category,
     generation: [...getConnectorGenerationTypes(type)],
     tags: [...getConnectorTags(type)],

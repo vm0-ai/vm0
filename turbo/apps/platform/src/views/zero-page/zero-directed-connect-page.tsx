@@ -249,6 +249,7 @@ function ManualGrantForm({
 
 function ManualGrantDialog({
   type,
+  icon,
   connectorLabel,
   manualGrantMethod,
   open,
@@ -256,6 +257,7 @@ function ManualGrantDialog({
   onConnected,
 }: {
   type: ConnectorType;
+  icon: ConnectorTypeWithStatus["icon"];
   connectorLabel: string;
   manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   open: boolean;
@@ -270,7 +272,7 @@ function ManualGrantDialog({
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <ConnectorIcon type={type} size={20} />
+            <ConnectorIcon icon={icon} size={20} />
             <DialogTitle>{connectorLabel}</DialogTitle>
           </div>
         </DialogHeader>
@@ -356,6 +358,7 @@ function DirectedConnectModal({
 
 function DirectedConnectDialogs({
   connectorType,
+  icon,
   connectorLabel,
   manualGrantMethod,
   manualGrantDialogOpen,
@@ -366,6 +369,7 @@ function DirectedConnectDialogs({
   setConnectModalOpen,
 }: {
   readonly connectorType: ConnectorType;
+  readonly icon: ConnectorTypeWithStatus["icon"];
   readonly connectorLabel: string;
   readonly manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   readonly manualGrantDialogOpen: boolean;
@@ -379,6 +383,7 @@ function DirectedConnectDialogs({
     <>
       <ManualGrantDialog
         type={connectorType}
+        icon={icon}
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         open={manualGrantDialogOpen}
@@ -470,7 +475,7 @@ function directedConnectModalOpen(
 }
 
 function DirectedConnectCardContent({
-  connectorType,
+  icon,
   connectorLabel,
   connectorDescription,
   agentName,
@@ -480,7 +485,7 @@ function DirectedConnectCardContent({
   canConnect,
   onConnect,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly icon: ConnectorTypeWithStatus["icon"];
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;
@@ -509,7 +514,7 @@ function DirectedConnectCardContent({
                     : `${agentName} needs ${connectorLabel} to proceed`}
                 </h1>
                 <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                  <ConnectorIcon type={connectorType} size={20} />
+                  <ConnectorIcon icon={icon} size={20} />
                 </div>
                 <p className="w-60 text-sm text-muted-foreground">
                   {connectorDescription}
@@ -614,7 +619,7 @@ function DirectedConnectCard() {
   return (
     <>
       <DirectedConnectCardContent
-        connectorType={connectorType}
+        icon={item?.icon}
         connectorLabel={connectorLabel}
         connectorDescription={connectorDescription}
         agentName={agentName}
@@ -626,6 +631,7 @@ function DirectedConnectCard() {
       />
       <DirectedConnectDialogs
         connectorType={connectorType}
+        icon={item?.icon}
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         manualGrantDialogOpen={manualGrantDialogOpen}

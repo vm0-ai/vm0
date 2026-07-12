@@ -344,6 +344,7 @@ export const detectWorkflowConnectorReadiness$ = command(
       connectors.push({
         connectorRef,
         label: catalogEntry.label,
+        ...(catalogEntry.icon ? { icon: catalogEntry.icon } : {}),
         reason,
         status: readinessStatus({
           connectionStatus: catalogEntry.connectionStatus,

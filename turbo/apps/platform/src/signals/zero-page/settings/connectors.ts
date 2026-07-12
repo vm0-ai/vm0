@@ -35,6 +35,7 @@ import type {
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnection,
+  PublicConnectorCatalogIcon,
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -89,6 +90,7 @@ export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
+  icon: PublicConnectorCatalogIcon | undefined;
   category: string;
   /** Lowercase aliases/keywords used by connector search. */
   tags: readonly string[];
@@ -435,6 +437,7 @@ function connectorCatalogStatusItemToConnectorType(
     type: type.data,
     label: item.label,
     helpText: item.description,
+    icon: item.icon,
     category: item.category,
     tags: item.tags,
     connected: item.connected,

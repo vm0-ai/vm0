@@ -184,7 +184,7 @@ function directedAuthorizeConnectModalOpen(
 }
 
 function DirectedAuthorizeCardContent({
-  connectorType,
+  icon,
   connectorLabel,
   connectorDescription,
   agentName,
@@ -194,7 +194,7 @@ function DirectedAuthorizeCardContent({
   canAuthorize,
   onAuthorize,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly icon: ConnectorTypeWithStatus["icon"];
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;
@@ -223,7 +223,7 @@ function DirectedAuthorizeCardContent({
                     : `${agentName} needs ${connectorLabel} to proceed`}
                 </h1>
                 <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                  <ConnectorIcon type={connectorType} size={20} />
+                  <ConnectorIcon icon={icon} size={20} />
                 </div>
                 <p className="w-60 text-sm text-muted-foreground">
                   {connectorDescription}
@@ -402,7 +402,7 @@ function DirectedAuthorizeCard() {
   return (
     <>
       <DirectedAuthorizeCardContent
-        connectorType={connectorType}
+        icon={item?.icon}
         connectorLabel={connectorLabel}
         connectorDescription={connectorDescription}
         agentName={agentName}

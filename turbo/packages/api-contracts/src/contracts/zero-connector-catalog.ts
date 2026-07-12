@@ -29,7 +29,7 @@ const publicConnectorCatalogPermissionSummarySchema = z.object({
   hasDefaultPolicyOverrides: z.boolean(),
 });
 
-const publicConnectorCatalogIconSchema = z.object({
+export const publicConnectorCatalogIconSchema = z.object({
   url: z.url({ protocol: /^https$/u }).max(2048),
   invertInDarkMode: z.boolean(),
   scale: z.number().min(1).max(3).optional(),
@@ -159,6 +159,7 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 const publicConnectorCatalogPermissionDetailSchema = z.object({
   connectorRef: connectorRefSchema,
   label: z.string(),
+  icon: publicConnectorCatalogIconSchema.optional(),
   permissionCount: z.number().int().nonnegative(),
   permissions: z.array(publicConnectorCatalogPermissionSchema),
   categories: publicConnectorCatalogPermissionCategoriesSchema.nullable(),

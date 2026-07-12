@@ -683,7 +683,7 @@ function GlobalConnectorCard({
     <div className="zero-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon type={connector.type} size={20} />
+          <ConnectorIcon icon={connector.icon} size={20} />
         </span>
         <span
           data-testid="connector-card-label"
@@ -775,7 +775,7 @@ function AvailableConnectorCard({
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon type={connector.type} size={20} />
+          <ConnectorIcon icon={connector.icon} size={20} />
         </span>
         <span
           data-testid="connector-card-label"
@@ -958,6 +958,11 @@ export function ZeroConnectorsPage() {
       : undefined;
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const permissionDialogConnector = permissionDialog
+    ? allConnectors.find((connector) => {
+        return connector.type === permissionDialog.type;
+      })
+    : undefined;
   const managedConnectorLabel = connectorLabelForType(
     allConnectors,
     managedConnectorType,
@@ -1202,6 +1207,7 @@ export function ZeroConnectorsPage() {
         <ConnectorPermissionDialog
           connectorType={permissionDialog.type}
           connectorLabel={permissionDialog.label}
+          icon={permissionDialogConnector?.icon}
           onClose={closePermissionDialog}
         />
       )}

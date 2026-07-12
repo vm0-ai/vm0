@@ -437,6 +437,7 @@ export async function getPublicConnectorCatalogPermissionDetail(
   return {
     connectorRef: args.connectorRef,
     label: metadata.label,
+    icon: getStaticConnectorIconMetadata(args.connectorRef),
     permissionCount: metadata.permissionCount,
     permissions: metadata.permissions.map((permission) => {
       return {

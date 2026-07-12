@@ -1490,6 +1490,11 @@ describe("workflow detail page", () => {
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
               status: "reconnect-required",
+              icon: {
+                url: "https://icons.example.test/gmail.svg",
+                invertInDarkMode: true,
+                scale: 1.25,
+              },
             },
             {
               connectorRef: "linear",
@@ -1548,6 +1553,27 @@ describe("workflow detail page", () => {
       within(readiness).getByText("Currently unavailable"),
     ).toBeInTheDocument();
     expect(within(readiness).getByText("Connected")).toBeInTheDocument();
+
+    const gmailRow = within(readiness).getByText("Gmail").closest("li");
+    if (!(gmailRow instanceof HTMLElement)) {
+      throw new Error("Gmail readiness row not found");
+    }
+    expect(gmailRow.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/gmail.svg",
+    );
+    expect(gmailRow.querySelector("img")).toHaveClass("zero-icon-mono");
+    expect(gmailRow.querySelector("img")).toHaveStyle({
+      transform: "scale(1.25)",
+    });
+
+    const linearRow = within(readiness).getByText("Linear").closest("li");
+    if (!(linearRow instanceof HTMLElement)) {
+      throw new Error("Linear readiness row not found");
+    }
+    expect(within(linearRow).getByRole("img")).toHaveAccessibleName(
+      "Connector icon unavailable",
+    );
 
     expect(linkByText("Reconnect Gmail", readiness)).toHaveAttribute(
       "href",

@@ -206,6 +206,10 @@ describe("chat message action cards", () => {
         connectorRef: "github",
         label: "Catalog GitHub",
         description: "Catalog GitHub server help text",
+        icon: {
+          url: "https://icons.example.test/action-github.svg",
+          invertInDarkMode: true,
+        },
         connected: true,
         connectionStatus: "connected",
         connection: {
@@ -289,6 +293,10 @@ describe("chat message action cards", () => {
     expect(
       within(connectorCard).getByText("Catalog GitHub server help text"),
     ).toBeInTheDocument();
+    expect(connectorCard.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/action-github.svg",
+    );
     await user.click(within(connectorCard).getByText("Connect"));
 
     await waitFor(() => {
