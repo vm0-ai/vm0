@@ -8,7 +8,7 @@ import {
   getDiagnosticConnectorTypeForRuntimeEnvName,
 } from "@vm0/connectors/connector-utils";
 import {
-  type FirewallBaseUrlMatch,
+  type FirewallConnectorIntent,
   type FirewallRequestDecision,
   matchFirewallBaseUrl,
   matchFirewallRequestDecision,
@@ -40,14 +40,21 @@ import { toPlatformUrl } from "./platform-url";
 import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
 
 interface CheckConnectorOptions {
+  connector?: string;
   envName?: string;
   url?: string;
   method: string;
   checkPermission?: string;
 }
 
+type ValidatedCheckConnectorOptions = CheckConnectorOptions &
+  (
+    | { readonly url: string }
+    | { readonly url?: undefined; readonly envName: string }
+  );
+
 interface DiagContext {
-  envName: string;
+  environmentNames: readonly string[] | null;
   connectorType: ConnectorType;
   label: string;
   connectorAvailable: boolean;
@@ -60,10 +67,14 @@ interface RunConnectorState {
   readonly configuredForRun: boolean | null;
 }
 
+interface DiagnosticRoutingApi extends FirewallRoutingPermissionApi {
+  readonly environmentNames: readonly string[] | null;
+}
+
 interface DiagnosticRoutingConfig {
-  type: ConnectorType;
-  label: string;
-  apis: readonly FirewallRoutingPermissionApi[];
+  readonly type: ConnectorType;
+  readonly label: string;
+  readonly apis: readonly DiagnosticRoutingApi[];
 }
 
 interface DiagnosticDecisionPermission {
@@ -78,16 +89,20 @@ interface DiagnosticDecisionApi {
 }
 
 interface DiagnosticDecisionFirewall {
-  readonly name: ConnectorType;
+  readonly name: string;
   readonly apis: readonly DiagnosticDecisionApi[];
 }
 
-interface UrlLookupResult {
-  connectorType: ConnectorType;
-  envName: string;
-  matchedBase: string;
-  relativePath: string;
-  routingConfig?: DiagnosticRoutingConfig;
+type SelectedFirewallRequestDecision = Extract<
+  FirewallRequestDecision,
+  { readonly kind: "allow" | "block" }
+>;
+
+interface UrlDiagnosticResult {
+  readonly connectorType: ConnectorType;
+  readonly routingConfig: DiagnosticRoutingConfig;
+  readonly decision: SelectedFirewallRequestDecision;
+  readonly environmentNames: readonly string[] | null;
 }
 
 type RunContextFirewall = RunContextResponse["firewalls"][number];
@@ -100,7 +115,7 @@ type RunContextInlinePermission =
     : never;
 
 function isConnectorType(type: string): type is ConnectorType {
-  return type in CONNECTOR_TYPES;
+  return Object.hasOwn(CONNECTOR_TYPES, type);
 }
 
 async function connectorTypeIsAvailable(type: ConnectorType): Promise<boolean> {
@@ -108,10 +123,6 @@ async function connectorTypeIsAvailable(type: ConnectorType): Promise<boolean> {
   return catalog.connectors.some((connector) => {
     return connector.id === type;
   });
-}
-
-function connectorEnvName(type: ConnectorType): string | null {
-  return getConnectorEnvBindingEntries(type)[0]?.envName ?? null;
 }
 
 function stripUrlQueryAndFragment(url: string): string {
@@ -145,11 +156,11 @@ function routesToDecisionPermissions(
   });
 }
 
-function routingConfigToDecisionFirewalls(
-  config: DiagnosticRoutingConfig,
+function routingConfigsToDecisionFirewalls(
+  configs: readonly DiagnosticRoutingConfig[],
 ): readonly DiagnosticDecisionFirewall[] {
-  return [
-    {
+  return configs.map((config) => {
+    return {
       name: config.type,
       apis: config.apis.map((api) => {
         return {
@@ -158,8 +169,8 @@ function routingConfigToDecisionFirewalls(
           permissions: routesToDecisionPermissions(api.routes),
         };
       }),
-    },
-  ];
+    };
+  });
 }
 
 interface RoutingBaseExecutionTemplate {
@@ -206,6 +217,7 @@ function routingConfigFromMetadata(
             })
           : api.base,
         routes: api.routes,
+        environmentNames: api.environmentNames,
       };
     }),
   };
@@ -229,58 +241,43 @@ function runContextPermissionRoutes(
   return routes;
 }
 
+function inlineApiEnvironmentNames(
+  base: string,
+  metadata: FirewallRoutingMetadata | null,
+): readonly string[] | null {
+  if (!metadata) return null;
+  const [first, ...otherApis] = metadata.apis.filter((api) => {
+    return api.base === base;
+  });
+  if (!first) return null;
+  for (const api of otherApis) {
+    if (
+      api.environmentNames.length !== first.environmentNames.length ||
+      api.environmentNames.some((name, index) => {
+        return name !== first.environmentNames[index];
+      })
+    ) {
+      return null;
+    }
+  }
+  return first.environmentNames;
+}
+
 function routingConfigFromInlineRunContext(
   firewall: RunContextInlineFirewall,
-): DiagnosticRoutingConfig | null {
-  if (!isConnectorType(firewall.name)) {
-    return null;
-  }
+  connectorType: ConnectorType,
+  metadata: FirewallRoutingMetadata | null,
+): DiagnosticRoutingConfig {
   return {
-    type: firewall.name,
-    label: CONNECTOR_TYPES[firewall.name].label,
+    type: connectorType,
+    label: CONNECTOR_TYPES[connectorType].label,
     apis: firewall.apis.map((api) => {
       return {
         base: api.base,
         routes: runContextPermissionRoutes(api.permissions),
+        environmentNames: inlineApiEnvironmentNames(api.base, metadata),
       };
     }),
-  };
-}
-
-/**
- * Reverse-lookup a full URL to find which connector handles it.
- * Iterates routing index base URLs and checks if the URL
- * starts with any registered base URL (scheme + host + optional path prefix).
- */
-function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
-  let bestMatch: {
-    connectorType: ConnectorType;
-    match: FirewallBaseUrlMatch;
-  } | null = null;
-
-  for (const metadata of Object.values(FIREWALL_ROUTING_METADATA_INDEX)) {
-    for (const api of metadata.apis) {
-      const match = matchFirewallBaseUrl(url, api.base);
-      if (match !== null) {
-        // Pick the longest (most specific) base URL match
-        if (!bestMatch || match.score > bestMatch.match.score) {
-          bestMatch = { connectorType: metadata.type, match };
-        }
-      }
-    }
-  }
-
-  if (!bestMatch) return null;
-
-  // Derive the environment name from the connector's configured env bindings.
-  const envName = connectorEnvName(bestMatch.connectorType);
-  if (!envName) return null;
-
-  return {
-    connectorType: bestMatch.connectorType,
-    envName,
-    matchedBase: bestMatch.match.displayBase,
-    relativePath: bestMatch.match.relativePath,
   };
 }
 
@@ -288,7 +285,9 @@ async function runContextFirewallRoutingConfig(
   firewall: RunContextFirewall,
 ): Promise<DiagnosticRoutingConfig | null> {
   if ("apis" in firewall) {
-    return routingConfigFromInlineRunContext(firewall);
+    if (!isConnectorType(firewall.name)) return null;
+    const metadata = await loadFirewallRoutingMetadata(firewall.name);
+    return routingConfigFromInlineRunContext(firewall, firewall.name, metadata);
   }
   if (!isConnectorType(firewall.name)) {
     return null;
@@ -298,44 +297,200 @@ async function runContextFirewallRoutingConfig(
   return routingConfigFromMetadata(metadata, firewall.baseUrlVars, true);
 }
 
-async function resolveConnectorFromRunContext(
-  url: string,
-  runContext: RunContextResponse,
-): Promise<UrlLookupResult | null> {
-  let bestMatch: {
-    connectorType: ConnectorType;
-    match: FirewallBaseUrlMatch;
-    routingConfig: DiagnosticRoutingConfig;
-  } | null = null;
+function mergeRoutingConfigs(
+  configs: readonly DiagnosticRoutingConfig[],
+): DiagnosticRoutingConfig[] {
+  const merged = new Map<ConnectorType, DiagnosticRoutingConfig>();
+  for (const config of configs) {
+    const existing = merged.get(config.type);
+    merged.set(config.type, {
+      type: config.type,
+      label: config.label,
+      apis: existing ? [...existing.apis, ...config.apis] : config.apis,
+    });
+  }
+  return [...merged.values()];
+}
 
-  for (const firewall of runContext.firewalls) {
-    if (!isConnectorType(firewall.name)) continue;
-    const routingConfig = await runContextFirewallRoutingConfig(firewall);
-    if (!routingConfig) continue;
-    for (const api of routingConfig.apis) {
+async function loadRunContextRoutingConfigs(
+  runContext: RunContextResponse,
+): Promise<DiagnosticRoutingConfig[]> {
+  const configs = await Promise.all(
+    runContext.firewalls.map(async (firewall) => {
+      return await runContextFirewallRoutingConfig(firewall);
+    }),
+  );
+  return mergeRoutingConfigs(
+    configs.filter((config): config is DiagnosticRoutingConfig => {
+      return config !== null;
+    }),
+  );
+}
+
+async function loadGeneratedRoutingConfigs(
+  url: string,
+): Promise<DiagnosticRoutingConfig[]> {
+  let bestScore: number | null = null;
+  const connectorTypes = new Set<ConnectorType>();
+  for (const metadata of Object.values(FIREWALL_ROUTING_METADATA_INDEX)) {
+    for (const api of metadata.apis) {
       const match = matchFirewallBaseUrl(url, api.base);
       if (match === null) continue;
-      if (!bestMatch || match.score > bestMatch.match.score) {
-        bestMatch = {
-          connectorType: firewall.name,
-          match,
-          routingConfig,
-        };
+      if (bestScore === null || match.score > bestScore) {
+        bestScore = match.score;
+        connectorTypes.clear();
+      }
+      if (match.score === bestScore) {
+        connectorTypes.add(metadata.type);
       }
     }
   }
 
-  if (!bestMatch) return null;
+  const configs = await Promise.all(
+    [...connectorTypes].sort().map(async (type) => {
+      const metadata = await loadFirewallRoutingMetadata(type);
+      return metadata
+        ? routingConfigFromMetadata(metadata, undefined, false)
+        : null;
+    }),
+  );
+  return configs.filter((config): config is DiagnosticRoutingConfig => {
+    return config !== null;
+  });
+}
 
-  const envName = connectorEnvName(bestMatch.connectorType);
-  if (!envName) return null;
+function decisionOwnerNames(
+  decision: FirewallRequestDecision,
+): readonly string[] {
+  if (decision.kind === "ambiguous") return decision.candidates;
+  if (decision.kind === "allow" || decision.kind === "block") {
+    return [decision.firewallName];
+  }
+  return [];
+}
+
+function environmentNamesForWinningApis(
+  config: DiagnosticRoutingConfig,
+  method: string,
+  url: string,
+): readonly string[] | null {
+  const apisByOwner = new Map<string, DiagnosticRoutingApi>();
+  const firewalls = config.apis.map((api, index) => {
+    const name = `diagnostic-api-${index}`;
+    apisByOwner.set(name, api);
+    return {
+      name,
+      apis: [
+        {
+          base: api.base,
+          auth: {},
+          permissions: routesToDecisionPermissions(api.routes),
+        },
+      ],
+    } satisfies DiagnosticDecisionFirewall;
+  });
+  const decision = matchFirewallRequestDecision(firewalls, method, url);
+  const names = new Set<string>();
+  let found = false;
+  for (const owner of decisionOwnerNames(decision)) {
+    const api = apisByOwner.get(owner);
+    if (!api) continue;
+    found = true;
+    if (api.environmentNames === null) return null;
+    for (const name of api.environmentNames) names.add(name);
+  }
+  return found ? [...names].sort() : null;
+}
+
+function connectorSelectionCommand(
+  url: string,
+  method: string,
+  connectorType: string,
+): string {
+  const args = [
+    `--url ${shellQuoteArg(stripUrlQueryAndFragment(url))}`,
+    `--connector ${shellQuoteArg(connectorType)}`,
+  ];
+  if (method !== "GET") args.push(`--method ${shellQuoteArg(method)}`);
+  return `zero doctor check-connector ${args.join(" ")}`;
+}
+
+function ambiguousConnectorError(
+  decision: Extract<FirewallRequestDecision, { readonly kind: "ambiguous" }>,
+  url: string,
+): Error {
+  const candidates = [...decision.candidates].sort();
+  const commands = candidates.map((candidate) => {
+    return `  ${connectorSelectionCommand(url, decision.method, candidate)}`;
+  });
+  return new Error(
+    `Multiple connectors match ${decision.method} ${stripUrlQueryAndFragment(url)} at the same route specificity: ${candidates.join(", ")}\nSelect one explicitly:\n${commands.join("\n")}`,
+  );
+}
+
+async function resolveUrlDiagnostic(
+  url: string,
+  method: string,
+  requestedConnector: ConnectorType | undefined,
+  runContext: RunContextResponse | null,
+): Promise<UrlDiagnosticResult> {
+  const routingConfigs = runContext
+    ? await loadRunContextRoutingConfigs(runContext)
+    : await loadGeneratedRoutingConfigs(url);
+  const connectorIntent: FirewallConnectorIntent = requestedConnector
+    ? { status: "present", value: requestedConnector }
+    : { status: "absent" };
+  const decision = matchFirewallRequestDecision(
+    routingConfigsToDecisionFirewalls(routingConfigs),
+    method,
+    url,
+    runContext?.networkPolicies,
+    connectorIntent,
+  );
+
+  if (decision.kind === "ambiguous") {
+    throw ambiguousConnectorError(decision, url);
+  }
+  if (decision.kind === "no_match") {
+    throw new Error(
+      runContext
+        ? "No connector found for provided URL — no firewall in the current run matches this URL"
+        : "No connector found for provided URL — no registered base URL matches this URL",
+    );
+  }
+  if (decision.kind === "block" && decision.reason === "unsafe_path") {
+    throw new Error(
+      `Cannot diagnose ${method} ${stripUrlQueryAndFragment(url)} because the request path contains unsafe syntax`,
+    );
+  }
+  if (!isConnectorType(decision.firewallName)) {
+    throw new Error("The matched firewall is not a registered connector");
+  }
+  if (
+    requestedConnector !== undefined &&
+    decision.firewallName !== requestedConnector
+  ) {
+    throw new Error(
+      `Connector ${requestedConnector} does not own ${method} ${stripUrlQueryAndFragment(url)}; the matching connector is ${decision.firewallName}\nRun: ${connectorSelectionCommand(url, method, decision.firewallName)}`,
+    );
+  }
+
+  const routingConfig = routingConfigs.find((config) => {
+    return config.type === decision.firewallName;
+  });
+  if (!routingConfig) {
+    throw new Error("The matched connector routing metadata is unavailable");
+  }
 
   return {
-    connectorType: bestMatch.connectorType,
-    envName,
-    matchedBase: bestMatch.match.displayBase,
-    relativePath: bestMatch.match.relativePath,
-    routingConfig: bestMatch.routingConfig,
+    connectorType: decision.firewallName,
+    routingConfig,
+    decision,
+    environmentNames: environmentNamesForWinningApis(
+      routingConfig,
+      method,
+      url,
+    ),
   };
 }
 
@@ -438,24 +593,105 @@ function printConnectorAuthorizationStatus(
   console.log("");
 }
 
-function checkEnvName(ctx: DiagContext): boolean {
+function connectorEnvironmentValueRefs(
+  connectorType: ConnectorType,
+  environmentName: string,
+): ReadonlySet<string> {
+  const refs = new Set<string>();
+  for (const entry of getConnectorEnvBindingEntries(connectorType)) {
+    if (entry.envName === environmentName) refs.add(entry.valueRef);
+  }
+  return refs;
+}
+
+function environmentNameSupportsRoute(
+  connectorType: ConnectorType,
+  environmentName: string,
+  routeEnvironmentNames: readonly string[],
+): boolean {
+  const explicitRefs = connectorEnvironmentValueRefs(
+    connectorType,
+    environmentName,
+  );
+  return routeEnvironmentNames.some((routeEnvironmentName) => {
+    if (routeEnvironmentName === environmentName) return true;
+    const routeRefs = connectorEnvironmentValueRefs(
+      connectorType,
+      routeEnvironmentName,
+    );
+    return [...explicitRefs].some((ref) => {
+      return routeRefs.has(ref);
+    });
+  });
+}
+
+function resolveUrlEnvironmentNames(
+  connectorType: ConnectorType,
+  routeEnvironmentNames: readonly string[] | null,
+  requestedEnvironmentName: string | undefined,
+): readonly string[] | null {
+  if (requestedEnvironmentName === undefined) return routeEnvironmentNames;
+  const ownedByConnector = getConnectorEnvBindingEntries(connectorType).some(
+    (entry) => {
+      return entry.envName === requestedEnvironmentName;
+    },
+  );
+  if (!ownedByConnector) {
+    throw new Error(
+      `${requestedEnvironmentName} is not an environment name for the ${CONNECTOR_TYPES[connectorType].label} connector. Remove --env-name to use the matched route metadata.`,
+    );
+  }
+  if (
+    routeEnvironmentNames !== null &&
+    !environmentNameSupportsRoute(
+      connectorType,
+      requestedEnvironmentName,
+      routeEnvironmentNames,
+    )
+  ) {
+    throw new Error(
+      `${requestedEnvironmentName} is not used by the matched API route. Expected one of: ${routeEnvironmentNames.join(", ") || "none"}. Remove --env-name to use the matched route metadata.`,
+    );
+  }
+  return [requestedEnvironmentName];
+}
+
+function checkEnvironmentNames(ctx: DiagContext): void {
   console.log("## Step 1: Sandbox environment name");
   console.log("");
-  const envPresent = Boolean(process.env[ctx.envName]);
-  console.log(
-    `Checking process.env.${ctx.envName}: ${envPresent ? "present" : "not present"}`,
-  );
-  if (envPresent) {
+  if (ctx.environmentNames === null) {
     console.log(
-      "A placeholder value is present in the sandbox environment. This value is not the real credential — it is a stand-in that gets replaced at the network boundary when requests are sent to registered base URLs.",
+      "Environment metadata is unavailable for this run's sanitized firewall entry, so no environment name was guessed.",
+    );
+    console.log("");
+    return;
+  }
+  if (ctx.environmentNames.length === 0) {
+    console.log(
+      "The matched API route does not use a sandbox environment name.",
+    );
+    console.log("");
+    return;
+  }
+
+  let environmentPresent = false;
+  for (const environmentName of ctx.environmentNames) {
+    const present = Boolean(process.env[environmentName]);
+    environmentPresent ||= present;
+    console.log(
+      `Checking process.env.${environmentName}: ${present ? "present" : "not present"}`,
+    );
+  }
+  if (environmentPresent) {
+    console.log(
+      "At least one connector value is present in the sandbox environment. These values may be non-secret connector settings or credential placeholders; real credentials are never injected and are resolved at the network boundary for registered base URLs.",
     );
   } else {
     console.log(
-      "No value found for this environment name. Note: credential replacement at the network boundary is independent of this name — the proxy injects auth headers based on the destination URL.",
+      "No value found for these environment names. Note: credential replacement at the network boundary is independent of these names — the proxy injects auth headers based on the destination URL.",
     );
   }
   console.log("");
-  return envPresent;
 }
 
 async function checkConnectorStatus(ctx: DiagContext): Promise<{
@@ -647,7 +883,7 @@ function unknownPermissionChangeCommand(connectorRef: string): string {
 }
 
 function matchedPermissionsFromDecision(
-  decision: FirewallRequestDecision,
+  decision: SelectedFirewallRequestDecision,
 ): string[] {
   if (decision.kind === "allow") {
     return decision.permission === undefined ? [] : [decision.permission];
@@ -661,7 +897,7 @@ function matchedPermissionsFromDecision(
 function printMatchedPermissionsSummary(
   method: string,
   relativePath: string,
-  decision: FirewallRequestDecision,
+  decision: SelectedFirewallRequestDecision,
 ): void {
   const matchedPermissions = matchedPermissionsFromDecision(decision);
   if (matchedPermissions.length > 0) {
@@ -675,13 +911,6 @@ function printMatchedPermissionsSummary(
   ) {
     console.log(
       `No named permission matches ${method} ${relativePath}. This request falls through to the unknown-endpoint policy.`,
-    );
-    return;
-  }
-
-  if (decision.kind === "no_match") {
-    console.log(
-      "No connector firewall base matched this request during final permission evaluation.",
     );
     return;
   }
@@ -735,7 +964,7 @@ function printDeniedPermissionResult(
 
 function printFirewallDecisionResult(
   connectorType: ConnectorType,
-  decision: FirewallRequestDecision,
+  decision: SelectedFirewallRequestDecision,
   connectorPolicies: NetworkPolicies[string],
 ): void {
   if (decision.kind === "allow") {
@@ -746,11 +975,6 @@ function printFirewallDecisionResult(
       return;
     }
     printAllowedPermissionResult(decision.permission, connectorPolicies);
-    return;
-  }
-
-  if (decision.kind === "no_match") {
-    console.log("Result: No connector firewall base matched this request.");
     return;
   }
 
@@ -786,21 +1010,16 @@ function printFirewallDecisionResult(
   }
 }
 
-/**
- * When --url is provided, auto-detect the matching permission by running
- * the URL's relative path against the connector's firewall rules.
- */
-async function resolvePermissionFromUrl(
+function resolvePermissionFromUrl(
   connectorType: ConnectorType,
   label: string,
   method: string,
-  url: string,
   relativePath: string,
   matchedBase: string,
-  routingConfig: DiagnosticRoutingConfig | undefined,
+  decision: SelectedFirewallRequestDecision,
   networkPolicies: NetworkPolicies | null,
   configuredForRun: boolean | null,
-): Promise<void> {
+): void {
   console.log("## Step 3: Permission policy check (auto-detected from URL)");
   console.log("");
   console.log(
@@ -808,27 +1027,6 @@ async function resolvePermissionFromUrl(
   );
   console.log("");
 
-  let config = routingConfig;
-  if (!config) {
-    const metadata = await loadFirewallRoutingMetadata(connectorType);
-    config = metadata
-      ? routingConfigFromMetadata(metadata, undefined, false)
-      : undefined;
-  }
-  if (!config) {
-    console.log(
-      `The ${label} connector does not have permission rules defined.`,
-    );
-    console.log("");
-    return;
-  }
-
-  const decision = matchFirewallRequestDecision(
-    routingConfigToDecisionFirewalls(config),
-    method,
-    url,
-    networkPolicies,
-  );
   printMatchedPermissionsSummary(method, relativePath, decision);
   console.log("");
 
@@ -871,10 +1069,161 @@ async function resolvePermissionFromUrl(
   console.log("");
 }
 
+type ResolvedCheckConnectorInput =
+  | {
+      readonly mode: "url";
+      readonly method: string;
+      readonly connectorType: ConnectorType;
+      readonly environmentNames: readonly string[] | null;
+      readonly urlDiagnostic: UrlDiagnosticResult;
+      readonly runContext: RunContextResponse | null;
+    }
+  | {
+      readonly mode: "environment";
+      readonly method: string;
+      readonly connectorType: ConnectorType;
+      readonly environmentNames: readonly string[];
+    };
+
+function validateCheckConnectorOptions(
+  opts: CheckConnectorOptions,
+  command: Command,
+): asserts opts is ValidatedCheckConnectorOptions {
+  const hasUrl = opts.url !== undefined;
+  if (opts.connector !== undefined && !hasUrl) {
+    throw new Error(
+      "--connector can only be used with --url. Add --url <URL> or remove --connector.",
+    );
+  }
+  if (opts.checkPermission !== undefined && hasUrl) {
+    throw new Error(
+      "--check-permission cannot be used with --url because the permission is derived from the request. Remove --check-permission.",
+    );
+  }
+  if (opts.checkPermission?.trim() === "") {
+    throw new Error("--check-permission requires a non-empty permission name.");
+  }
+  if (!hasUrl && command.getOptionValueSource("method") === "cli") {
+    throw new Error(
+      "--method can only be used with --url. Add --url <URL> or remove --method.",
+    );
+  }
+  if (opts.envName === undefined && !hasUrl) {
+    throw new Error(
+      "Either --env-name or --url is required. Use --help for usage.",
+    );
+  }
+}
+
+function requestedConnectorType(
+  value: string | undefined,
+): ConnectorType | undefined {
+  if (value === undefined) return undefined;
+  if (!isConnectorType(value)) {
+    throw new Error(
+      `Unknown connector type: ${value}\nRun: zero connector search ${shellQuoteArg(value)}`,
+    );
+  }
+  return value;
+}
+
+function printUrlDiagnosticSummary(
+  url: string,
+  diagnostic: UrlDiagnosticResult,
+  environmentNames: readonly string[] | null,
+): void {
+  const { connectorType, decision } = diagnostic;
+  console.log(
+    `URL ${stripUrlQueryAndFragment(url)} matches the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
+  );
+  console.log(`  Matched base URL: ${decision.base}`);
+  console.log(`  Relative path:    ${decision.relativePath}`);
+  if (environmentNames === null) {
+    console.log("  Environment names: unavailable");
+  } else {
+    console.log(`  Environment names: [${environmentNames.join(", ")}]`);
+  }
+}
+
+async function resolveCheckConnectorInput(
+  opts: ValidatedCheckConnectorOptions,
+): Promise<ResolvedCheckConnectorInput> {
+  const method = opts.method.toUpperCase();
+  if (opts.url !== undefined) {
+    const requestedConnector = requestedConnectorType(opts.connector);
+    const runContext = await getCurrentRunContext();
+    const urlDiagnostic = await resolveUrlDiagnostic(
+      opts.url,
+      method,
+      requestedConnector,
+      runContext,
+    );
+    const environmentNames = resolveUrlEnvironmentNames(
+      urlDiagnostic.connectorType,
+      urlDiagnostic.environmentNames,
+      opts.envName,
+    );
+    printUrlDiagnosticSummary(opts.url, urlDiagnostic, environmentNames);
+    return {
+      mode: "url",
+      method,
+      connectorType: urlDiagnostic.connectorType,
+      environmentNames,
+      urlDiagnostic,
+      runContext,
+    };
+  }
+
+  const environmentName = opts.envName;
+  const connectorType =
+    getDiagnosticConnectorTypeForRuntimeEnvName(environmentName);
+  if (!connectorType) {
+    throw new Error(
+      `Unknown environment name: ${environmentName} — not managed by any connector`,
+    );
+  }
+  console.log(
+    `${environmentName} is managed by the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
+  );
+  return {
+    mode: "environment",
+    method,
+    connectorType,
+    environmentNames: [environmentName],
+  };
+}
+
+function printRediagnoseHint(
+  opts: CheckConnectorOptions,
+  method: string,
+): void {
+  const args: string[] = [];
+  if (opts.url !== undefined) {
+    args.push(`--url ${shellQuoteArg(stripUrlQueryAndFragment(opts.url))}`);
+    if (opts.connector !== undefined) {
+      args.push(`--connector ${shellQuoteArg(opts.connector)}`);
+    }
+    if (opts.envName !== undefined) {
+      args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
+    }
+    if (method !== "GET") {
+      args.push(`--method ${shellQuoteArg(method)}`);
+    }
+  } else if (opts.envName !== undefined) {
+    args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
+  }
+  if (opts.checkPermission !== undefined) {
+    args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
+  }
+  console.log(
+    `To re-diagnose after changes, run: zero doctor check-connector ${args.join(" ")}`,
+  );
+}
+
 export const checkConnectorCommand = new Command()
   .name("check-connector")
   .description(
-    "Diagnose connector health: environment name, connector configuration, and permission policies",
+    "Diagnose connector health: environment names, connector configuration, and permission policies",
   )
   .addOption(
     new Option(
@@ -885,7 +1234,13 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--url <URL>",
-      "A full URL to diagnose — auto-detects the connector, environment name, and permission (e.g. https://api.github.com/repos/owner/repo)",
+      "A full URL to diagnose — matches connector ownership, route environment names, and permission (e.g. https://api.github.com/repos/owner/repo)",
+    ),
+  )
+  .addOption(
+    new Option(
+      "--connector <type>",
+      "Select the connector when multiple connectors own the same URL route",
     ),
   )
   .addOption(
@@ -906,6 +1261,7 @@ export const checkConnectorCommand = new Command()
 Examples:
   zero doctor check-connector --env-name GITHUB_TOKEN
   zero doctor check-connector --url https://api.github.com/repos/owner/repo
+  zero doctor check-connector --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
   zero doctor check-connector --url https://slack.com/api/chat.postMessage --method POST
   zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
 
@@ -918,59 +1274,12 @@ How connectors work:
   This command checks each part of that pipeline and reports what it finds.`,
   )
   .action(
-    withErrorHandler(async (opts: CheckConnectorOptions) => {
-      if (!opts.envName && !opts.url) {
-        throw new Error(
-          "Either --env-name or --url is required. Use --help for usage.",
-        );
-      }
-
-      let envName: string;
-      let connectorType: ConnectorType;
-      let urlLookup: UrlLookupResult | null = null;
-      let runContext: RunContextResponse | null | undefined;
-
-      if (opts.url) {
-        runContext = await getCurrentRunContext();
-        if (runContext) {
-          urlLookup = await resolveConnectorFromRunContext(
-            opts.url,
-            runContext,
-          );
-        }
-        if (!urlLookup) {
-          urlLookup = await resolveConnectorFromUrl(opts.url);
-        }
-        if (!urlLookup) {
-          throw new Error(
-            "No connector found for provided URL — no registered base URL matches this URL",
-          );
-        }
-        const displayUrl = stripUrlQueryAndFragment(opts.url);
-        connectorType = urlLookup.connectorType;
-        envName = opts.envName ?? urlLookup.envName;
-        console.log(
-          `URL ${displayUrl} matches the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
-        );
-        console.log(`  Matched base URL: ${urlLookup.matchedBase}`);
-        console.log(`  Relative path:    ${urlLookup.relativePath}`);
-        console.log(`  Environment name:  ${envName}`);
-      } else {
-        envName = opts.envName!;
-        const resolvedConnectorType =
-          getDiagnosticConnectorTypeForRuntimeEnvName(envName);
-        if (!resolvedConnectorType) {
-          throw new Error(
-            `Unknown environment name: ${envName} — not managed by any connector`,
-          );
-        }
-        connectorType = resolvedConnectorType;
-        console.log(
-          `${envName} is managed by the ${CONNECTOR_TYPES[connectorType].label} connector (type: ${connectorType}).`,
-        );
-      }
+    withErrorHandler(async (opts: CheckConnectorOptions, command: Command) => {
+      validateCheckConnectorOptions(opts, command);
+      const input = await resolveCheckConnectorInput(opts);
       console.log("");
 
+      const { connectorType, environmentNames, method } = input;
       const { label } = CONNECTOR_TYPES[connectorType];
       const [apiUrl, connectorAvailable] = await Promise.all([
         getApiUrl(),
@@ -979,7 +1288,7 @@ How connectors work:
       const platformUrl = toPlatformUrl(apiUrl);
 
       const ctx: DiagContext = {
-        envName,
+        environmentNames,
         connectorType,
         label,
         connectorAvailable,
@@ -987,15 +1296,14 @@ How connectors work:
         agentId: process.env.ZERO_AGENT_ID || undefined,
       };
 
-      checkEnvName(ctx);
+      checkEnvironmentNames(ctx);
       const { isConnected, isExpired, hasPermission } =
         await checkConnectorStatus(ctx);
       const { networkPolicies, configuredForRun } = await checkConnectorDomains(
         ctx,
-        runContext,
+        input.mode === "url" ? input.runContext : undefined,
       );
 
-      // Summary for Step 2
       if (configuredForRun === false) {
         console.log(
           `Steps 1-2 summary: The ${label} connector is not configured for this run. Check the agent authorization settings, then start a new run after updating them.`,
@@ -1007,23 +1315,18 @@ How connectors work:
       }
       console.log("");
 
-      // Step 3: Permission policy check
-      const diagnosedUrl = opts.url;
-      if (urlLookup && diagnosedUrl) {
-        // --url mode: auto-detect permission from URL path
-        await resolvePermissionFromUrl(
+      if (input.mode === "url") {
+        resolvePermissionFromUrl(
           connectorType,
           label,
-          opts.method,
-          diagnosedUrl,
-          urlLookup.relativePath,
-          urlLookup.matchedBase,
-          urlLookup.routingConfig,
+          method,
+          input.urlDiagnostic.decision.relativePath,
+          input.urlDiagnostic.decision.base,
+          input.urlDiagnostic.decision,
           networkPolicies,
           configuredForRun,
         );
-      } else if (opts.checkPermission) {
-        // --env-name mode with explicit --check-permission
+      } else if (opts.checkPermission !== undefined) {
         checkPermissionPolicy(
           connectorType,
           label,
@@ -1033,21 +1336,6 @@ How connectors work:
         );
       }
 
-      // Re-diagnose hint
-      const args: string[] = [];
-      if (opts.url) {
-        args.push(`--url ${shellQuoteArg(stripUrlQueryAndFragment(opts.url))}`);
-        if (opts.method !== "GET") {
-          args.push(`--method ${shellQuoteArg(opts.method)}`);
-        }
-      } else {
-        args.push(`--env-name ${shellQuoteArg(envName)}`);
-      }
-      if (opts.checkPermission) {
-        args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
-      }
-      console.log(
-        `To re-diagnose after changes, run: zero doctor check-connector ${args.join(" ")}`,
-      );
+      printRediagnoseHint(opts, method);
     }),
   );
