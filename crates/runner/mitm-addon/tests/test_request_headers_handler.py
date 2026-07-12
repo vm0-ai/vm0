@@ -1212,8 +1212,20 @@ async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
+@pytest.mark.parametrize(
+    "peername",
+    [
+        pytest.param(("203.0.113.99", 443), id="ip-mismatch"),
+        pytest.param(("198.18.20.34", 8443), id="port-mismatch"),
+    ],
+)
 async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    peername: tuple[str, int],
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
@@ -1231,8 +1243,8 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    flow.server_conn.peername = ("203.0.113.99", 443)
-    flow.server_conn.address = ("203.0.113.99", 443)
+    flow.server_conn.peername = peername
+    flow.server_conn.address = ("api.github.com", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.client_conn.sockname = ("198.18.20.34", 443)
 
