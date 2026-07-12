@@ -25,6 +25,12 @@ interface RelationshipMemoryFixture {
   readonly userId: string;
 }
 
+export function semanticRecallEmbeddingForTest(
+  query: string,
+): readonly number[] {
+  return createDeterministicMemoryEmbeddingForTest(query);
+}
+
 function searchEntryText(args: {
   readonly text: string;
   readonly kind: MemoryKind;

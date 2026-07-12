@@ -22,6 +22,9 @@ import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
   embedZeroMemoryText,
+  type LoadedMemoryEmbedding,
+  type MemoryEmbeddingCacheResult,
+  type MemoryEmbeddingLoader,
   type MemoryEmbeddingResult,
   memoryEmbeddingSqlLiteral,
 } from "./zero-memory-embedding.service";
@@ -84,6 +87,7 @@ interface ProfileParams extends MemoryScope {
   readonly includeGraphExpansion: boolean;
   readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
   readonly timing?: ZeroMemoryTimingObserver;
+  readonly semanticEmbeddingLoader?: MemoryEmbeddingLoader;
 }
 
 interface SearchParams extends MemoryScope {
@@ -93,6 +97,7 @@ interface SearchParams extends MemoryScope {
   readonly includeGraphExpansion: boolean;
   readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
   readonly timing?: ZeroMemoryTimingObserver;
+  readonly semanticEmbeddingLoader?: MemoryEmbeddingLoader;
 }
 
 interface CandidateScore {
@@ -803,32 +808,47 @@ async function loadExactIdentityCandidates(
   return [...candidates.values()];
 }
 
-async function embedQuery(
-  query: string,
-): Promise<MemoryEmbeddingResult | null> {
-  const result = await settle(embedZeroMemoryText(query));
+async function embedQuery(args: {
+  readonly query: string;
+  readonly loader?: MemoryEmbeddingLoader;
+}): Promise<LoadedMemoryEmbedding> {
+  const result = await settle(
+    args.loader
+      ? args.loader(args.query)
+      : (async (): Promise<LoadedMemoryEmbedding> => {
+          return { embedding: await embedZeroMemoryText(args.query) };
+        })(),
+  );
   if (result.ok) {
     return result.value;
   }
   log.warn("Failed to embed zero memory query", { error: result.error });
-  return null;
+  return { embedding: null };
 }
 
 async function loadSemanticQueryEmbedding(
   args: SearchParams & { readonly normalizedQuery: string },
 ): Promise<MemoryEmbeddingResult | null> {
   let embeddingResult = "empty";
+  let cacheResult: MemoryEmbeddingCacheResult | undefined;
   return await measureZeroMemoryTiming(
     args.timing,
     "profile_search_semantic_embedding",
     async () => {
-      const result = await embedQuery(args.normalizedQuery);
-      embeddingResult = result ? "present" : "empty";
-      return result;
+      const loaded = await embedQuery({
+        query: args.normalizedQuery,
+        loader: args.semanticEmbeddingLoader,
+      });
+      embeddingResult = loaded.embedding ? "present" : "empty";
+      cacheResult = loaded.cacheResult;
+      return loaded.embedding;
     },
     () => {
       return {
         memory_profile_semantic_embedding_result: embeddingResult,
+        ...(cacheResult
+          ? { memory_profile_semantic_embedding_cache_result: cacheResult }
+          : {}),
       };
     },
   );
