@@ -13,6 +13,38 @@ vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
 });
 
+vi.mock("signal-timers", async () => {
+  const actual =
+    await vi.importActual<typeof import("signal-timers")>("signal-timers");
+
+  return {
+    ...actual,
+    async delay(
+      milliseconds: number,
+      options?: Parameters<typeof actual.delay>[1],
+    ): Promise<void> {
+      // Timeout fallback has its own integration test. Keep this cache-hit test
+      // independent of wall-clock contention while exercising real IndexedDB.
+      if (milliseconds !== 200) {
+        await actual.delay(milliseconds, options);
+        return;
+      }
+
+      const signal = options?.signal;
+      signal?.throwIfAborted();
+      const { promise, reject } = Promise.withResolvers<void>();
+      signal?.addEventListener(
+        "abort",
+        () => {
+          reject(signal.reason);
+        },
+        { once: true },
+      );
+      await promise;
+    },
+  };
+});
+
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
