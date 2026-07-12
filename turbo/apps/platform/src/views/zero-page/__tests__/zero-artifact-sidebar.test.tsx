@@ -2050,6 +2050,9 @@ describe("zero artifact sidebar", () => {
       }),
     ];
     context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
     context.mocks.http.get(markdownUrl, () => {
       return new Response("# Agent notes\n\nThe artifact is ready.", {
         headers: { "Content-Type": "text/plain" },
@@ -2317,6 +2320,9 @@ describe("zero artifact sidebar", () => {
       }),
     ];
     context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
     context.mocks.http.get(presentationUrl, () => {
       return new Response(presentationHtml(), {
         headers: { "Content-Type": "text/html" },
