@@ -47,6 +47,12 @@ interface CheckConnectorOptions {
   checkPermission?: string;
 }
 
+type ValidatedCheckConnectorOptions = CheckConnectorOptions &
+  (
+    | { readonly url: string }
+    | { readonly url?: undefined; readonly envName: string }
+  );
+
 interface DiagContext {
   environmentNames: readonly string[] | null;
   connectorType: ConnectorType;
@@ -259,14 +265,12 @@ function inlineApiEnvironmentNames(
 
 function routingConfigFromInlineRunContext(
   firewall: RunContextInlineFirewall,
+  connectorType: ConnectorType,
   metadata: FirewallRoutingMetadata | null,
-): DiagnosticRoutingConfig | null {
-  if (!isConnectorType(firewall.name)) {
-    return null;
-  }
+): DiagnosticRoutingConfig {
   return {
-    type: firewall.name,
-    label: CONNECTOR_TYPES[firewall.name].label,
+    type: connectorType,
+    label: CONNECTOR_TYPES[connectorType].label,
     apis: firewall.apis.map((api) => {
       return {
         base: api.base,
@@ -283,7 +287,7 @@ async function runContextFirewallRoutingConfig(
   if ("apis" in firewall) {
     if (!isConnectorType(firewall.name)) return null;
     const metadata = await loadFirewallRoutingMetadata(firewall.name);
-    return routingConfigFromInlineRunContext(firewall, metadata);
+    return routingConfigFromInlineRunContext(firewall, firewall.name, metadata);
   }
   if (!isConnectorType(firewall.name)) {
     return null;
@@ -1084,7 +1088,7 @@ type ResolvedCheckConnectorInput =
 function validateCheckConnectorOptions(
   opts: CheckConnectorOptions,
   command: Command,
-): void {
+): asserts opts is ValidatedCheckConnectorOptions {
   const hasUrl = opts.url !== undefined;
   if (opts.connector !== undefined && !hasUrl) {
     throw new Error(
@@ -1142,7 +1146,7 @@ function printUrlDiagnosticSummary(
 }
 
 async function resolveCheckConnectorInput(
-  opts: CheckConnectorOptions,
+  opts: ValidatedCheckConnectorOptions,
 ): Promise<ResolvedCheckConnectorInput> {
   const method = opts.method.toUpperCase();
   if (opts.url !== undefined) {
@@ -1171,11 +1175,6 @@ async function resolveCheckConnectorInput(
   }
 
   const environmentName = opts.envName;
-  if (environmentName === undefined) {
-    throw new Error(
-      "Either --env-name or --url is required. Use --help for usage.",
-    );
-  }
   const connectorType =
     getDiagnosticConnectorTypeForRuntimeEnvName(environmentName);
   if (!connectorType) {

@@ -763,6 +763,16 @@ describe("zero doctor check-connector command", () => {
   });
 
   describe("option validation", () => {
+    it("should require an environment name or URL", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync(["node", "cli"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Either --env-name or --url is required"),
+      );
+    });
+
     it("should reject --connector without --url", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
@@ -1422,7 +1432,7 @@ describe("zero doctor check-connector command", () => {
         http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
           return HttpResponse.json({
             ...runContextResponse,
-            firewalls: [],
+            firewalls: [{ kind: "builtin", name: "unknown-connector" }],
             networkPolicies: null,
           });
         }),
