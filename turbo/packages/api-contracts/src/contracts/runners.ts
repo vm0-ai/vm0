@@ -518,7 +518,6 @@ export const runnersJobClaimContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema, // Job does not belong to user
       404: apiErrorSchema,
-      409: apiErrorSchema, // Already claimed
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",

@@ -140,6 +140,11 @@ When an incompatible change is unavoidable, split it into phases:
 3. **Clean up**: remove compatibility logic only after the old deployed version
    is no longer active.
 
+Before a destructive clean-up migration, verify that the replacement version is
+healthy and every reader that needs the old schema has drained. After the
+cleanup, rolling back to a version that requires the removed schema is unsafe;
+recovery must restore compatibility first or roll forward.
+
 Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.

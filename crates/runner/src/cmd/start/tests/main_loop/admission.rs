@@ -125,7 +125,7 @@ async fn claim_after_stopping_sent_cancels_new_job() {
 }
 
 // -----------------------------------------------------------------------
-// Test 4: Claim failure (409) rolls back budget
+// Test 4: An unavailable claim rolls back budget
 // -----------------------------------------------------------------------
 
 #[tokio::test(start_paused = true)]
@@ -137,7 +137,7 @@ async fn claim_failure_rolls_back_budget() {
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
 
-    // First job: claim returns None (409 conflict)
+    // First job: claim returns None (unavailable).
     let run_id_1 = RunId::new_v4();
     push_job(&env, run_id_1, "vm0/default", None);
 
@@ -161,7 +161,7 @@ async fn claim_failure_rolls_back_budget() {
         .await;
     assert!(
         completion.is_some(),
-        "second job should complete (budget freed after first 409)"
+        "second job should complete (budget freed after unavailable claim)"
     );
 
     shutdown(&env, run_handle).await;
