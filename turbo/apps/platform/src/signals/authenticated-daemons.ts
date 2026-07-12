@@ -4,7 +4,6 @@ import {
   subscribeChatThreadReadCursorUpdated$,
   subscribeThreadListChanged$,
 } from "./chat-thread-list-reload.ts";
-import { subscribeBackgroundChatThreadFollowupsFinished$ } from "./chat-page/background-chat-thread-cache.ts";
 import { subscribeEventDrivenChatThreads$ } from "./chat-page/chat-thread-event-sourcing.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { setupRealtime$ } from "./realtime.ts";
@@ -23,7 +22,6 @@ export const setupAuthenticatedDaemons$ = command(
       set(setupRealtime$, signal),
       set(subscribeThreadListChanged$, signal),
       set(subscribeChatThreadReadCursorUpdated$, signal),
-      set(subscribeBackgroundChatThreadFollowupsFinished$, signal),
       set(subscribeEventDrivenChatThreads$, signal),
       set(setupBillingRealtime$, signal),
       set(reloadFeatureSwitch$, signal),
