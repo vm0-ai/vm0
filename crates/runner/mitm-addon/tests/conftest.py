@@ -332,11 +332,11 @@ def mitm_ctx(tmp_path):
     """Stub ``mitmproxy.ctx.options`` and ``ctx.log`` for a test block.
 
     Returns a context-manager factory: calling ``mitm_ctx(registry_path=...)``
-    patches in a stub ``Options`` object exposing the two addon-specific
-    settings plus a ``MagicMock`` log.  The log stays on MagicMock so tests
-    that need to assert on warn/debug calls can do so; ``options`` doesn't
-    get that treatment because the addon only ever reads two named
-    attributes from it.
+    patches in a concrete options stub for the addon-specific settings modeled
+    by these tests, plus a ``MagicMock`` log. The log stays on ``MagicMock`` so
+    tests that need to assert on warn/debug calls can do so; ``options`` stays
+    concrete so unexpected attribute access fails instead of silently creating
+    another mock.
 
     When the caller omits ``registry_path`` the default comes from pytest's
     per-test ``tmp_path`` fixture, so tests never share a /tmp path that
