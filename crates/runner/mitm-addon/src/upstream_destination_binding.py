@@ -19,6 +19,7 @@ from typing import Literal
 
 from mitmproxy import http
 
+import connection_endpoints
 import flow_metadata
 from url_utils import normalize_trusted_hostname
 
@@ -44,7 +45,6 @@ __all__ = (
 # `api_allow` authorizes VM0 API traffic. `connector_auth` authorizes ordinary
 # upstream credential injection for connector firewalls.
 BindingKind = Literal["api_allow", "connector_auth"]
-_ADDRESS_PAIR_LENGTH = 2
 
 
 @dataclass(frozen=True)
@@ -75,15 +75,6 @@ def _connection_id(connection: object) -> str | None:
     return None
 
 
-def _address_pair(address: object) -> tuple[str, int] | None:
-    if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
-        return None
-    host, port = address[:_ADDRESS_PAIR_LENGTH]
-    if not isinstance(host, str) or not isinstance(port, int):
-        return None
-    return host, port
-
-
 def _endpoint_ip_key(host: str) -> str | None:
     try:
         return str(ipaddress.ip_address(host))
@@ -92,7 +83,7 @@ def _endpoint_ip_key(host: str) -> str | None:
 
 
 def _endpoint_matches(left: object, right: tuple[str, int]) -> bool:
-    left_pair = _address_pair(left)
+    left_pair = connection_endpoints.address_pair(left)
     if left_pair is None:
         return False
     left_host, left_port = left_pair
@@ -113,18 +104,6 @@ def _endpoint_matches_any(
         for binding in bindings
         if binding.original_address is not None
     )
-
-
-def _is_authoritative_connected_address(endpoint: object) -> bool:
-    endpoint_pair = _address_pair(endpoint)
-    if endpoint_pair is None:
-        return False
-    endpoint_host, _endpoint_port = endpoint_pair
-    try:
-        endpoint_ip = ipaddress.ip_address(endpoint_host)
-    except ValueError:
-        return False
-    return not endpoint_ip.is_loopback and not endpoint_ip.is_unspecified
 
 
 def _associate_server_with_client(server_id: str, client: object | None) -> None:
@@ -214,8 +193,8 @@ def refresh_server_binding_connected_address_if_matching(
     normalized_host = normalize_trusted_hostname(host)
     if binding.host != normalized_host or binding.port != port:
         return False
-    connected_pair = _address_pair(connected_address)
-    if connected_pair is None or not _is_authoritative_connected_address(connected_pair):
+    connected_pair = connection_endpoints.authoritative_connected_endpoint(connected_address)
+    if connected_pair is None:
         return False
 
     refreshed_binding = UpstreamDestinationBinding(
@@ -274,7 +253,7 @@ def server_binding_original_address(server: object) -> tuple[str, int] | None:
 
 
 def _address_matches(host: str, port: int, address: object) -> bool:
-    address_pair = _address_pair(address)
+    address_pair = connection_endpoints.address_pair(address)
     if address_pair is None:
         return False
     address_host, address_port = address_pair
@@ -300,21 +279,15 @@ def _server_binding_matches_current_destination(
     binding: UpstreamDestinationBinding,
 ) -> bool:
     if bool(getattr(server, "connected", False)):
-        peername = getattr(server, "peername", None)
-        if _is_authoritative_connected_address(peername):
-            return binding.original_address is not None and _endpoint_matches(
-                peername,
-                binding.original_address,
-            )
-
-        server_address = getattr(server, "address", None)
-        if _is_authoritative_connected_address(server_address):
-            return binding.original_address is not None and _endpoint_matches(
-                server_address,
-                binding.original_address,
-            )
-
-        return False
+        connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
+            server,
+            port=binding.port,
+        )
+        return (
+            binding.original_address is not None
+            and connected_endpoint is not None
+            and _endpoint_matches(connected_endpoint, binding.original_address)
+        )
     return _address_matches(binding.host, binding.port, getattr(server, "address", None))
 
 
@@ -341,50 +314,21 @@ def _matching_client_bindings(
     )
 
 
-def _client_binding_matches_connected_endpoint(
-    *,
-    client: object,
-    server: object,
-    bindings: tuple[UpstreamDestinationBinding, ...],
-) -> bool:
-    peername = getattr(server, "peername", None)
-    if _is_authoritative_connected_address(peername):
-        return _endpoint_matches_any(peername, bindings)
-
-    server_address = getattr(server, "address", None)
-    if _is_authoritative_connected_address(server_address):
-        return _endpoint_matches_any(server_address, bindings)
-
-    client_sockname = getattr(client, "sockname", None)
-    if _is_authoritative_connected_address(client_sockname):
-        return _endpoint_matches_any(client_sockname, bindings)
-    return False
-
-
 def _client_binding_connected_endpoint(
     *,
     client: object,
     server: object,
+    port: int,
     bindings: tuple[UpstreamDestinationBinding, ...],
 ) -> tuple[str, int] | None:
-    peername = getattr(server, "peername", None)
-    if _is_authoritative_connected_address(peername) and _endpoint_matches_any(peername, bindings):
-        return _address_pair(peername)
-
-    server_address = getattr(server, "address", None)
-    if _is_authoritative_connected_address(server_address) and _endpoint_matches_any(
-        server_address,
-        bindings,
-    ):
-        return _address_pair(server_address)
-
-    client_sockname = getattr(client, "sockname", None)
-    if _is_authoritative_connected_address(client_sockname) and _endpoint_matches_any(
-        client_sockname,
-        bindings,
-    ):
-        return _address_pair(client_sockname)
-    return None
+    connected_endpoint = connection_endpoints.connected_ip_destination_endpoint(
+        server,
+        port=port,
+        extra_endpoints=(connection_endpoints.connection_sockname(client),),
+    )
+    if connected_endpoint is None or not _endpoint_matches_any(connected_endpoint, bindings):
+        return None
+    return connected_endpoint
 
 
 def diagnostic_snapshot_for_flow(
@@ -431,10 +375,14 @@ def diagnostic_snapshot_for_flow(
         if normalized_host is not None
         else ()
     )
-    client_binding_endpoint_match = _client_binding_matches_connected_endpoint(
-        client=flow.client_conn,
-        server=server,
-        bindings=matching_client_bindings,
+    client_binding_endpoint_match = (
+        _client_binding_connected_endpoint(
+            client=flow.client_conn,
+            server=server,
+            port=flow.request.port,
+            bindings=matching_client_bindings,
+        )
+        is not None
     )
     return {
         "server_id": server_id or "",
@@ -492,10 +440,14 @@ def flow_matches_bound_destination(
         allowed_kinds=allowed_kinds,
     )
     if bool(getattr(server, "connected", False)):
-        return _client_binding_matches_connected_endpoint(
-            client=flow.client_conn,
-            server=server,
-            bindings=matching_client_bindings,
+        return (
+            _client_binding_connected_endpoint(
+                client=flow.client_conn,
+                server=server,
+                port=port,
+                bindings=matching_client_bindings,
+            )
+            is not None
         )
 
     return _address_matches(normalized_host, port, getattr(server, "address", None))
@@ -545,6 +497,7 @@ def bound_destination_endpoint_for_flow(
         return _client_binding_connected_endpoint(
             client=flow.client_conn,
             server=server,
+            port=port,
             bindings=matching_client_bindings,
         )
     return None
