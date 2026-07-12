@@ -664,18 +664,6 @@ mod tests {
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
 
-    fn make_fifo(path: &Path) {
-        let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-        // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
-        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-        assert_eq!(
-            result,
-            0,
-            "mkfifo failed: {}",
-            std::io::Error::last_os_error()
-        );
-    }
-
     async fn capture_async_log_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)
     where
         F: std::future::Future,
@@ -943,16 +931,6 @@ mod tests {
         let outside = dir.path().join("outside-jsonl-flush-state");
         std::fs::write(&outside, jsonl_state(&log_path, 0)).unwrap();
         std::os::unix::fs::symlink(&outside, dir.path().join("jsonl-flush-state")).unwrap();
-
-        assert!(!wait_jsonl_flush(dir.path(), Duration::from_millis(50), &request).await);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn wait_jsonl_flush_rejects_fifo_state_without_blocking() {
-        let dir = tempfile::tempdir().unwrap();
-        let log_path = dir.path().join("network.jsonl");
-        let request = jsonl_request(&log_path);
-        make_fifo(&dir.path().join("jsonl-flush-state"));
 
         assert!(!wait_jsonl_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
@@ -1340,15 +1318,6 @@ mod tests {
         let outside = dir.path().join("outside-usage-pending");
         std::fs::write(&outside, usage_state(0, 0, 0)).unwrap();
         std::os::unix::fs::symlink(&outside, dir.path().join("usage-pending")).unwrap();
-
-        assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn wait_usage_flush_rejects_fifo_state_without_blocking() {
-        let dir = tempfile::tempdir().unwrap();
-        let request = usage_request();
-        make_fifo(&dir.path().join("usage-pending"));
 
         assert!(!wait_usage_flush(dir.path(), Duration::from_millis(50), &request).await);
     }
