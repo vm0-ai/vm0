@@ -893,12 +893,14 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
-    expect(
-      within(permissionCard).getByText("Gmail permissions"),
-    ).toBeInTheDocument();
-    expect(
-      within(permissionCard).getByText("Allow messages.write"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Gmail permissions"),
+      ).toBeInTheDocument();
+      expect(
+        within(permissionCard).getByText("Allow messages.write"),
+      ).toBeInTheDocument();
+    });
 
     await waitForButtonByText("Confirm", permissionCard);
     expect(listRequests).toBe(2);
@@ -1337,12 +1339,14 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
-    expect(
-      within(permissionCard).getByText("Cloudflare permissions"),
-    ).toBeInTheDocument();
-    expect(
-      within(permissionCard).getByText(`Allow ${UNKNOWN_PERMISSION_GRANT}`),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Cloudflare permissions"),
+      ).toBeInTheDocument();
+      expect(
+        within(permissionCard).getByText(`Allow ${UNKNOWN_PERMISSION_GRANT}`),
+      ).toBeInTheDocument();
+    });
 
     await confirmPermissionAction(user, permissionCard);
 
@@ -1431,12 +1435,14 @@ describe("chat message action cards", () => {
     });
 
     const permissionCard = await screen.findByTestId("permission-action-card");
-    expect(
-      within(permissionCard).getByText("Slack permissions"),
-    ).toBeInTheDocument();
-    expect(
-      within(permissionCard).getByText("Deny admin.analytics:read"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Slack permissions"),
+      ).toBeInTheDocument();
+      expect(
+        within(permissionCard).getByText("Deny admin.analytics:read"),
+      ).toBeInTheDocument();
+    });
 
     await confirmPermissionAction(user, permissionCard);
 
