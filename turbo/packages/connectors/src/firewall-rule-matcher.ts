@@ -1630,13 +1630,12 @@ function selectOwner(
   upperMethod: string,
   path: string,
 ): OwnerSelection {
-  const owners = winningOwnerNames(collection);
-  if (owners.length === 0) return { kind: "selected", name: null };
-  if (owners.length === 1) {
-    const [owner] = owners;
-    if (owner === undefined) throw new Error("missing connector route owner");
+  const [owner, ...otherOwners] = winningOwnerNames(collection);
+  if (owner === undefined) return { kind: "selected", name: null };
+  if (otherOwners.length === 0) {
     return { kind: "selected", name: owner };
   }
+  const owners = [owner, ...otherOwners];
   if (intent.status === "present" && owners.includes(intent.value)) {
     return { kind: "selected", name: intent.value };
   }
@@ -1656,21 +1655,20 @@ function conflictingSelectedApiDecision(
   collection: FirewallMatchCollection,
   selectedName: string,
 ): FirewallRequestDecision | null {
-  const matches = winningApiMatches(collection).filter((match) => {
-    return (
-      match.firewall.name === selectedName &&
-      !match.firewall.nameMalformed &&
-      !match.api.baseMalformed &&
-      !match.api.authMalformed &&
-      match.api.routingIdentity !== null
-    );
-  });
-  if (matches.length < 2) return null;
-
-  const [first] = matches;
-  if (first === undefined) return null;
+  const [first, ...otherMatches] = winningApiMatches(collection).filter(
+    (match) => {
+      return (
+        match.firewall.name === selectedName &&
+        !match.firewall.nameMalformed &&
+        !match.api.baseMalformed &&
+        !match.api.authMalformed &&
+        match.api.routingIdentity !== null
+      );
+    },
+  );
+  if (first === undefined || otherMatches.length === 0) return null;
   if (
-    matches.slice(1).every((match) => {
+    otherMatches.every((match) => {
       return match.api.routingIdentity === first.api.routingIdentity;
     })
   ) {
