@@ -231,6 +231,47 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
   });
 
+  it("returns shared public icon descriptors across catalog views", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const headers = { authorization: "Bearer clerk-session" };
+    const listResponse = await accept(client.list({ headers }), [200]);
+    const statusResponse = await accept(client.status({ headers }), [200]);
+    const detailResponse = await accept(
+      client.get({ params: { connectorRef: "openai" }, headers }),
+      [200],
+    );
+
+    const openai = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    const openaiStatus = statusResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    expect(openai?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
+      invertInDarkMode: true,
+    });
+    expect(openaiStatus?.icon).toStrictEqual(openai?.icon);
+    expect(detailResponse.body.connector.icon).toStrictEqual(openai?.icon);
+
+    const slack = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "slack";
+    });
+    const slackWebhook = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "slack-webhook";
+    });
+    expect(slack?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+      invertInDarkMode: false,
+      scale: 2.2,
+    });
+    expect(slackWebhook?.icon).toStrictEqual(slack?.icon);
+  });
+
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

@@ -16,6 +16,10 @@
       "import": "./src/connector-search.ts",
       "types": "./src/connector-search.ts"
     },
+    "./static-connector-icons": {
+      "import": "./src/static-connector-icons.ts",
+      "types": "./src/static-connector-icons.ts"
+    },
     "./connectors": {
       "import": "./src/connectors.ts",
       "types": "./src/connectors.ts"

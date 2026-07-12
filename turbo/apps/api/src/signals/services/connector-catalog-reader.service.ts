@@ -34,6 +34,7 @@ import {
   type ApiAuthMethodPolicy,
   type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-utils";
+import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import {
   getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
@@ -201,6 +202,7 @@ function connectorCatalogItem(
     connectorRef: type,
     label: config.label,
     description: config.helpText,
+    icon: getStaticConnectorIconMetadata(type),
     category: config.category,
     generation: [...getConnectorGenerationTypes(type)],
     tags: [...getConnectorTags(type)],
