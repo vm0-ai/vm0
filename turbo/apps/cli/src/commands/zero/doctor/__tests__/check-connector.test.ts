@@ -780,6 +780,23 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should reject an explicitly empty --connector without --url", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+          "--connector",
+          "",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--connector can only be used with --url"),
+      );
+    });
+
     it("should reject --check-permission with --url", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
@@ -795,6 +812,41 @@ describe("zero doctor check-connector command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("--check-permission cannot be used with --url"),
       );
+    });
+
+    it("should reject an explicitly empty --check-permission with --url", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/repos/owner/repo",
+          "--check-permission",
+          "",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--check-permission cannot be used with --url"),
+      );
+    });
+
+    it("should not ignore an explicitly empty --url", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+          "--url",
+          "",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No connector found for provided URL"),
+      );
+      expect(getOutput()).not.toContain("GH_TOKEN is managed by");
     });
 
     it("should reject an explicit --method without --url", async () => {

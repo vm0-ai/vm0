@@ -1085,22 +1085,23 @@ function validateCheckConnectorOptions(
   opts: CheckConnectorOptions,
   command: Command,
 ): void {
-  if (opts.connector && !opts.url) {
+  const hasUrl = opts.url !== undefined;
+  if (opts.connector !== undefined && !hasUrl) {
     throw new Error(
       "--connector can only be used with --url. Add --url <URL> or remove --connector.",
     );
   }
-  if (opts.checkPermission && opts.url) {
+  if (opts.checkPermission !== undefined && hasUrl) {
     throw new Error(
       "--check-permission cannot be used with --url because the permission is derived from the request. Remove --check-permission.",
     );
   }
-  if (!opts.url && command.getOptionValueSource("method") === "cli") {
+  if (!hasUrl && command.getOptionValueSource("method") === "cli") {
     throw new Error(
       "--method can only be used with --url. Add --url <URL> or remove --method.",
     );
   }
-  if (!opts.envName && !opts.url) {
+  if (opts.envName === undefined && !hasUrl) {
     throw new Error(
       "Either --env-name or --url is required. Use --help for usage.",
     );
@@ -1141,7 +1142,7 @@ async function resolveCheckConnectorInput(
   opts: CheckConnectorOptions,
 ): Promise<ResolvedCheckConnectorInput> {
   const method = opts.method.toUpperCase();
-  if (opts.url) {
+  if (opts.url !== undefined) {
     const requestedConnector = requestedConnectorType(opts.connector);
     const runContext = await getCurrentRunContext();
     const urlDiagnostic = await resolveUrlDiagnostic(
@@ -1167,7 +1168,7 @@ async function resolveCheckConnectorInput(
   }
 
   const environmentName = opts.envName;
-  if (!environmentName) {
+  if (environmentName === undefined) {
     throw new Error(
       "Either --env-name or --url is required. Use --help for usage.",
     );
@@ -1195,21 +1196,21 @@ function printRediagnoseHint(
   method: string,
 ): void {
   const args: string[] = [];
-  if (opts.url) {
+  if (opts.url !== undefined) {
     args.push(`--url ${shellQuoteArg(stripUrlQueryAndFragment(opts.url))}`);
-    if (opts.connector) {
+    if (opts.connector !== undefined) {
       args.push(`--connector ${shellQuoteArg(opts.connector)}`);
     }
-    if (opts.envName) {
+    if (opts.envName !== undefined) {
       args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
     }
     if (method !== "GET") {
       args.push(`--method ${shellQuoteArg(method)}`);
     }
-  } else if (opts.envName) {
+  } else if (opts.envName !== undefined) {
     args.push(`--env-name ${shellQuoteArg(opts.envName)}`);
   }
-  if (opts.checkPermission) {
+  if (opts.checkPermission !== undefined) {
     args.push(`--check-permission ${shellQuoteArg(opts.checkPermission)}`);
   }
   console.log(
@@ -1323,7 +1324,7 @@ How connectors work:
           networkPolicies,
           configuredForRun,
         );
-      } else if (opts.checkPermission) {
+      } else if (opts.checkPermission !== undefined) {
         checkPermissionPolicy(
           connectorType,
           label,
