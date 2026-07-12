@@ -81,8 +81,11 @@ class _UsageBufferState:
     ) -> int:
         if atomic_source_key is not None:
             events = tuple(events)
-            if atomic_source_key in self._seen_source_keys or any(
-                event["idempotencyKey"] in self._seen_source_keys for event in events
+            batch_source_keys = {event["idempotencyKey"] for event in events}
+            if (
+                atomic_source_key in self._seen_source_keys
+                or len(batch_source_keys) != len(events)
+                or any(source_key in self._seen_source_keys for source_key in batch_source_keys)
             ):
                 return 0
 
