@@ -46,8 +46,10 @@ export const runnerJobQueue = pgTable(
       .$type<RunnerJobQueueExecutionContext>()
       .notNull(),
 
-    // Lifecycle management
+    // Lifecycle management. Current API writers provide an application-clock
+    // insertion time; the default keeps older writers compatible.
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    // Current API writers use the database clock during the insert statement.
     expiresAt: timestamp("expires_at").notNull(), // TTL for auto-cleanup
   },
   (table) => {

@@ -54,9 +54,12 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
+  holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
   readAutomationComposeHeadVersion,
   readAutomationsFakeKmsDecryptCallCount,
+  readOrgAdmissionLockState,
+  releaseOrgAdmissionLock,
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -565,6 +568,19 @@ function sandboxOperationEventsForRun(
       return isRecord(event) && event.run_id === runId;
     });
   });
+}
+
+function sandboxOperationDurationForRun(
+  runId: string,
+  actionType: string,
+): number {
+  const event = sandboxOperationEventsForRun(runId).find((candidate) => {
+    return candidate.op_type === actionType;
+  });
+  if (!event || typeof event.duration_ms !== "number") {
+    throw new Error(`Missing ${actionType} duration for run ${runId}`);
+  }
+  return event.duration_ms;
 }
 
 function claimRouteTimingEventsForRun(
@@ -2592,12 +2608,39 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
     });
-    const protectedFollowUp = await api.createRun(actor, {
+    if (!actor.orgId) {
+      throw new Error("Expected affinity actor to have an organization");
+    }
+    const requestStartedAt = now();
+    const queueInsertedAt = requestStartedAt + 5000;
+    mockNow(requestStartedAt);
+    const admissionLockRequest = holdOrgAdmissionLock(context, actor.orgId);
+    onTestFinished(async () => {
+      clearMockNow();
+      await releaseOrgAdmissionLock(context);
+      await admissionLockRequest;
+    });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).held;
+      })
+      .toBe(true);
+
+    const protectedFollowUpRequest = api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
       prompt: "continue affinity-protected session",
       modelProvider: "anthropic-api-key",
     });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).waiting;
+      })
+      .toBe(true);
+    mockNow(queueInsertedAt);
+    await releaseOrgAdmissionLock(context);
+    await admissionLockRequest;
+    const protectedFollowUp = await protectedFollowUpRequest;
 
     const protectedPoll = await api.requestPollRunner(
       true,
@@ -2609,12 +2652,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
     expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toBe(
+      new Date(queueInsertedAt + 2000).toISOString(),
     );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    const apiToRunnerQueueMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "api_to_runner_queue",
+    );
+    const runnerQueueToClaimRequestMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "runner_queue_to_claim_request",
+    );
+    const apiToClaimRequestMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "api_to_claim_request",
+    );
+    expect(apiToRunnerQueueMs).toBe(queueInsertedAt - requestStartedAt);
+    expect(runnerQueueToClaimRequestMs).toBe(0);
+    expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
+      apiToClaimRequestMs,
+    );
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
 
     const expiredFollowUp = await api.createRun(actor, {
@@ -2735,6 +2795,76 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("keeps runner expiry on the database clock", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockNow(now() - 3 * 60 * 60 * 1000);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "runner ttl should use the database insertion clock",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const poll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (poll.status !== 200) {
+      throw new Error("Expected runner expiry poll to succeed");
+    }
+    expect(poll.body.job?.runId).toBe(run.runId);
+    await api.claimRunnerJob(run.runId);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("orders equal runner queue timestamps deterministically", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockNow(now());
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "same timestamp runner job one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "same timestamp runner job two",
+      modelProvider: "anthropic-api-key",
+    });
+    const orderedRunIds = [first.runId, second.runId].sort();
+
+    const firstPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (firstPoll.status !== 200) {
+      throw new Error("Expected first deterministic runner poll to succeed");
+    }
+    expect(firstPoll.body.job?.runId).toBe(orderedRunIds[0]);
+    if (!orderedRunIds[0]) {
+      throw new Error("Expected a first ordered runner job");
+    }
+    await api.claimRunnerJob(orderedRunIds[0]);
+
+    const secondPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (secondPoll.status !== 200) {
+      throw new Error("Expected second deterministic runner poll to succeed");
+    }
+    expect(secondPoll.body.job?.runId).toBe(orderedRunIds[1]);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2768,6 +2898,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(queued.body.queue).toHaveLength(1);
     expect(queued.body.queue[0]?.runId).toBe(third.runId);
 
+    const promotedAt = now() + 5000;
+    mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
 
     const promoted = await waitForRunStatus(api, actor, third.runId, "pending");
@@ -2785,6 +2917,23 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     }
     expect(thirdClaim.secretValues).toContain(zeroToken);
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const apiToRunnerQueueMs = sandboxOperationDurationForRun(
+      third.runId,
+      "api_to_runner_queue",
+    );
+    const runnerQueueToClaimRequestMs = sandboxOperationDurationForRun(
+      third.runId,
+      "runner_queue_to_claim_request",
+    );
+    const apiToClaimRequestMs = sandboxOperationDurationForRun(
+      third.runId,
+      "api_to_claim_request",
+    );
+    expect(apiToRunnerQueueMs).toBe(0);
+    expect(runnerQueueToClaimRequestMs).toBe(0);
+    expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
+      apiToClaimRequestMs,
+    );
     await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
       decryptCountBeforeClaim,
     );
