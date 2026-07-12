@@ -19,8 +19,8 @@ const FIRST_THREAD_ID = "b0000000-0000-4000-a000-000000000731";
 const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
 const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 
-function threadLink(title: string): HTMLAnchorElement {
-  const link = screen.getByText(title).closest("a");
+async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
+  const link = (await screen.findByText(title)).closest("a");
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error(`Thread link not found: ${title}`);
   }
@@ -32,7 +32,7 @@ describe("chat message persistence", () => {
     const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
-    let firstThreadCaughtUp = false;
+    const firstThreadCaughtUp = context.mocks.deferred<void>();
     let blockFirstThreadRemote = false;
     const lifecycle = mockChatLifecycle(context, {
       threadId: FIRST_THREAD_ID,
@@ -64,7 +64,9 @@ describe("chat message persistence", () => {
             await blockedRemote.promise;
           }
           if (query.sinceId) {
-            firstThreadCaughtUp = true;
+            if (!firstThreadCaughtUp.settled()) {
+              firstThreadCaughtUp.resolve();
+            }
             return respond(200, { messages: [] });
           }
           return respond(200, {
@@ -107,19 +109,19 @@ describe("chat message persistence", () => {
         },
       });
 
-      await waitFor(() => {
-        expect(screen.getByText(FIRST_MESSAGE)).toBeInTheDocument();
-        expect(firstThreadCaughtUp).toBeTruthy();
-      });
+      await expect(
+        screen.findByText(FIRST_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      await firstThreadCaughtUp.promise;
 
-      await user.click(threadLink("IndexedDB other thread"));
+      await user.click(await findThreadLink("IndexedDB other thread"));
       await waitFor(() => {
         expect(document.title).toBe("IndexedDB other thread | VM0");
         expect(screen.getByText("Other thread response")).toBeInTheDocument();
       });
 
       blockFirstThreadRemote = true;
-      await user.click(threadLink("IndexedDB source thread"));
+      await user.click(await findThreadLink("IndexedDB source thread"));
 
       await waitFor(() => {
         expect(document.title).toBe("IndexedDB source thread | VM0");

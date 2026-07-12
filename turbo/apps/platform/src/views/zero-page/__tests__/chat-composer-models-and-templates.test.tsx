@@ -413,8 +413,14 @@ function mockThread(options?: {
           : [],
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
-    return respond(200, { messages: options?.messages ?? [] });
+  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+    if (query.sinceId || query.beforeId) {
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    }
+    return respond(200, {
+      messages: options?.messages ?? [],
+      hasHistoryBefore: false,
+    });
   });
 }
 
