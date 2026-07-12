@@ -1,9 +1,9 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  connectorTypeSchema,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
+  type ConnectorCatalogRef as ConnectorType,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -11,10 +11,11 @@ import {
   connectConnectorNoAuth$,
   connectFlowType$,
   getConnectorStatusConnectLaunchMode,
-  getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
+  type ConnectorStatusAuthMethodDetail,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -86,7 +87,7 @@ function useDirectedAuthorizeParams(): {
   if (!type || !agentId) {
     return null;
   }
-  const parsed = connectorTypeSchema.safeParse(type);
+  const parsed = connectorCatalogRefSchema.safeParse(type);
   if (!parsed.success) {
     return null;
   }
@@ -255,7 +256,7 @@ function runDirectedAuthorize(params: {
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
   readonly agentId: string;
-  readonly authMethod: ConnectorAuthMethodId | null;
+  readonly authMethod: ConnectorStatusAuthMethodDetail | null;
   readonly signal: AbortSignal;
   readonly authorize: (
     connectorType: ConnectorType,
@@ -264,7 +265,7 @@ function runDirectedAuthorize(params: {
   ) => Promise<void>;
   readonly connect: (
     connectorType: ConnectorType,
-    authMethod: ConnectorAuthMethodId,
+    method: ConnectorStatusAuthMethodDetail,
     options: { readonly connectorLabel?: string },
     signal: AbortSignal,
   ) => Promise<boolean>;
@@ -291,31 +292,35 @@ function runDirectedAuthorize(params: {
   const launchMode = params.item
     ? getConnectorStatusConnectLaunchMode(params.item)
     : "modal";
-  const authMethod =
-    launchMode === "browser-auth"
-      ? params.authMethod
-      : params.item
-        ? getOnlyAvailableStatusNoAuthMethod(params.item)
-        : null;
-  if (authMethod) {
+  const browserAuthMethod =
+    launchMode === "browser-auth" ? params.authMethod : null;
+  const noAuthMethod =
+    launchMode === "no-auth" && params.item
+      ? getOnlyAvailableStatusNoAuthMethod(params.item)
+      : null;
+  if (browserAuthMethod || noAuthMethod) {
     detach(
       (async () => {
-        const connected =
-          launchMode === "browser-auth"
-            ? await params.connect(
-                params.connectorType,
-                authMethod,
-                { connectorLabel: params.connectorLabel },
-                params.signal,
-              )
-            : await params.connectNoAuth(
-                {
-                  type: params.connectorType,
-                  authMethod,
-                  options: { connectorLabel: params.connectorLabel },
-                },
-                params.signal,
-              );
+        let connected: boolean;
+        if (browserAuthMethod) {
+          connected = await params.connect(
+            params.connectorType,
+            browserAuthMethod,
+            { connectorLabel: params.connectorLabel },
+            params.signal,
+          );
+        } else if (noAuthMethod) {
+          connected = await params.connectNoAuth(
+            {
+              type: params.connectorType,
+              authMethod: noAuthMethod,
+              options: { connectorLabel: params.connectorLabel },
+            },
+            params.signal,
+          );
+        } else {
+          return;
+        }
         if (!connected) {
           return;
         }
@@ -375,7 +380,7 @@ function DirectedAuthorizeCard() {
   const isLoading = catalogLoading || permissionLoading;
   const canAuthorize = canAuthorizeConnector(item, isConnected);
   const selectedAuthMethod = item
-    ? getOnlyAvailableStatusBrowserAuthMethod(item)
+    ? getOnlyAvailableStatusBrowserAuthMethodDetail(item)
     : null;
   const connectorLabel = item?.label ?? connectorType;
   const connectorDescription = item?.helpText ?? "";

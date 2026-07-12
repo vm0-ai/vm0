@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 
 // ---------------------------------------------------------------------------
 // JobPermissionsTab UI state

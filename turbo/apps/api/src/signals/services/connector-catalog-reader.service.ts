@@ -26,6 +26,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getAvailableConnectorAuthMethodIds,
+  getConfiguredConnectorAuthMethodIds,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
   getConnectorPrivateNames,
@@ -422,6 +423,26 @@ export function getPublicConnectorCatalogDetail(
   }
   return Promise.resolve(
     connectorCatalogDetail(args.connectorRef, authMethods),
+  );
+}
+
+/**
+ * Read catalog membership before user-specific availability filtering.
+ *
+ * Action resolution uses this view to distinguish an unknown catalog identity
+ * from a known connector or method that is unavailable to the current user.
+ */
+export function getConnectorCatalogResolutionDetail(
+  connectorRef: string,
+): Promise<PublicConnectorCatalogDetail | null> {
+  if (!isConnectorType(connectorRef)) {
+    return Promise.resolve(null);
+  }
+  return Promise.resolve(
+    connectorCatalogDetail(
+      connectorRef,
+      getConfiguredConnectorAuthMethodIds(connectorRef),
+    ),
   );
 }
 

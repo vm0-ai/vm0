@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { apiErrorSchema } from "./errors";
 import {
-  connectorAuthMethodIdSchema,
-  connectorTypeSchema,
-} from "@vm0/connectors/connectors";
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+} from "./connector-identity";
+import { apiErrorSchema } from "./errors";
 import {
   connectorOauthDeviceAuthSessionPollRequestSchema,
   connectorOauthDeviceAuthSessionPollResponseSchema,
@@ -48,7 +48,7 @@ export const zeroConnectorsByTypeContract = c.router({
     method: "GET",
     path: "/api/zero/connectors/:type",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     responses: {
       200: connectorResponseSchema,
       401: apiErrorSchema,
@@ -61,7 +61,7 @@ export const zeroConnectorsByTypeContract = c.router({
     method: "DELETE",
     path: "/api/zero/connectors/:type",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
@@ -80,7 +80,7 @@ export const zeroConnectorScopeDiffContract = c.router({
     method: "GET",
     path: "/api/zero/connectors/:type/scope-diff",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     responses: {
       200: scopeDiffResponseSchema,
       401: apiErrorSchema,
@@ -96,8 +96,8 @@ export const zeroConnectorOauthStartContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/:type/oauth/start",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
-    body: z.object({ authMethod: connectorAuthMethodIdSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
+    body: z.object({ authMethod: connectorCatalogAuthMethodIdSchema }),
     responses: {
       200: connectorOauthStartResponseSchema,
       400: apiErrorSchema,
@@ -114,8 +114,8 @@ export const zeroConnectorOpenIdStartContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/:type/openid/start",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
-    body: z.object({ authMethod: connectorAuthMethodIdSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
+    body: z.object({ authMethod: connectorCatalogAuthMethodIdSchema }),
     responses: {
       200: connectorOauthStartResponseSchema,
       400: apiErrorSchema,
@@ -132,9 +132,9 @@ export const zeroConnectorManualGrantContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/:type/manual-grant",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
-      authMethod: connectorAuthMethodIdSchema,
+      authMethod: connectorCatalogAuthMethodIdSchema,
       values: z.record(z.string(), z.string()),
     }),
     responses: {
@@ -154,9 +154,9 @@ export const zeroConnectorNoAuthGrantContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/:type/no-auth",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
-      authMethod: connectorAuthMethodIdSchema,
+      authMethod: connectorCatalogAuthMethodIdSchema,
     }),
     responses: {
       200: connectorResponseSchema,
@@ -175,9 +175,9 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/:type/oauth/device/sessions",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
-      authMethod: connectorAuthMethodIdSchema,
+      authMethod: connectorCatalogAuthMethodIdSchema,
       options: z.record(z.string(), z.string()).optional(),
     }),
     responses: {
@@ -194,7 +194,7 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
     path: "/api/zero/connectors/:type/oauth/device/sessions/:sessionId/poll",
     headers: authHeadersSchema,
     pathParams: z.object({
-      type: connectorTypeSchema,
+      type: connectorCatalogRefSchema,
       sessionId: z.uuid(),
     }),
     body: connectorOauthDeviceAuthSessionPollRequestSchema,
@@ -215,9 +215,9 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
     method: "POST",
     path: "/api/zero/connectors/:type/external-code/sessions",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorTypeSchema }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     body: z.object({
-      authMethod: connectorAuthMethodIdSchema,
+      authMethod: connectorCatalogAuthMethodIdSchema,
     }),
     responses: {
       200: connectorExternalCodeSessionStartResponseSchema,
@@ -233,7 +233,7 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
     path: "/api/zero/connectors/:type/external-code/sessions/:sessionId/complete",
     headers: authHeadersSchema,
     pathParams: z.object({
-      type: connectorTypeSchema,
+      type: connectorCatalogRefSchema,
       sessionId: z.uuid(),
     }),
     body: connectorExternalCodeSessionCompleteRequestSchema,
@@ -250,14 +250,14 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
 });
 
 export type ConnectorSearchAuthMethod = z.infer<
-  typeof connectorAuthMethodIdSchema
+  typeof connectorCatalogAuthMethodIdSchema
 >;
 
 const connectorSearchItemSchema = z.object({
-  id: z.string(),
+  id: connectorCatalogRefSchema,
   label: z.string(),
   description: z.string(),
-  authMethods: z.array(connectorAuthMethodIdSchema),
+  authMethods: z.array(connectorCatalogAuthMethodIdSchema),
 });
 
 const connectorSearchResponseSchema = z.object({

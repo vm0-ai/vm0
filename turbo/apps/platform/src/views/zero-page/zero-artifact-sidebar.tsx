@@ -2776,7 +2776,7 @@ function ArtifactImageShareToXDialogContent({
             mode={mode}
             onConnect={async () => {
               if (!connecting) {
-                await connectXForImageShare(pageSignal);
+                await connectXForImageShare(xConnector ?? null, pageSignal);
               }
             }}
             onOpenComposer={() => {

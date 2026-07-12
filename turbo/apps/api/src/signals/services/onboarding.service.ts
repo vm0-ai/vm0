@@ -2,7 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import type { OnboardingStatusResponse } from "@vm0/api-contracts/contracts/onboarding";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { SEED_INSTRUCTIONS } from "@vm0/core/zero-seed-instructions";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -19,10 +19,7 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle, tapError } from "../utils";
 import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
-import {
-  unavailableUserConnectorTypes,
-  userConnectorAvailability,
-} from "./connector-availability.service";
+import { userConnectorActionResolver } from "./connector-action-resolver.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
@@ -45,7 +42,7 @@ interface OnboardingSetupArgs {
   readonly workspaceName?: string;
   readonly sound?: string;
   readonly avatarUrl?: string;
-  readonly selectedConnectors: readonly ConnectorType[];
+  readonly selectedConnectors: readonly ConnectorCatalogRef[];
   readonly timezone?: string;
   readonly onboardingRole?: string;
   readonly onboardingPaymentPending?: boolean;
@@ -80,7 +77,7 @@ type CompleteOnboardingResponse = {
 };
 
 function unavailableSelectedConnectorsError(
-  unavailableTypes: readonly ConnectorType[],
+  unavailableTypes: readonly ConnectorCatalogRef[],
 ): OnboardingSetupForbiddenResponse | null {
   if (unavailableTypes.length === 0) {
     return null;
@@ -383,7 +380,7 @@ async function replaceSelectedConnectors(
     readonly orgId: string;
     readonly userId: string;
     readonly agentId: string;
-    readonly selectedConnectors: readonly ConnectorType[];
+    readonly selectedConnectors: readonly ConnectorCatalogRef[];
   },
 ): Promise<void> {
   if (args.selectedConnectors.length === 0) {
@@ -426,7 +423,7 @@ async function updateOnboardingPaymentPending(
 async function completeExistingDefaultAgentSetup(
   db: Db,
   args: OnboardingSetupArgs,
-  selectedConnectors: readonly ConnectorType[],
+  selectedConnectors: readonly ConnectorCatalogRef[],
   agentId: string,
   signal: AbortSignal,
 ): Promise<OnboardingSetupResponse> {
@@ -582,16 +579,18 @@ export const setupOnboarding$ = command(
     signal: AbortSignal,
   ): Promise<OnboardingSetupResponse> => {
     const selectedConnectors = Array.from(new Set(args.selectedConnectors));
-    const unavailableTypes =
-      selectedConnectors.length === 0
-        ? []
-        : unavailableUserConnectorTypes(
-            await get(userConnectorAvailability(args.orgId, args.userId)),
-            selectedConnectors,
-          );
+    const resolver = await get(
+      userConnectorActionResolver(args.orgId, args.userId),
+    );
     signal.throwIfAborted();
-    const availabilityError =
-      unavailableSelectedConnectorsError(unavailableTypes);
+    const resolved = await resolver.resolveRefs({
+      connectorRefs: selectedConnectors,
+      requireAvailable: true,
+    });
+    signal.throwIfAborted();
+    const availabilityError = unavailableSelectedConnectorsError(
+      resolved.ok ? [] : [resolved.connectorRef],
+    );
     if (availabilityError) {
       return availabilityError;
     }

@@ -79,6 +79,11 @@ type StoredConnectorRow = {
   readonly updatedAt: Date;
 };
 
+type ExecutableConnectorResponse = ConnectorResponse & {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+};
+
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
@@ -181,10 +186,14 @@ function storedConnectorRowToResponse(
   row: StoredConnectorRow,
   type: ConnectorType,
   now: Date,
-): ConnectorResponse {
+): ExecutableConnectorResponse {
+  const authMethod = connectorAuthMethodIdSchema.parse(row.authMethod);
+  if (!getConnectorAuthMethod(type, authMethod)) {
+    throw new Error("Invalid stored connector auth method");
+  }
   const credentialStatus = connectorCredentialStatus({
     type,
-    authMethod: row.authMethod,
+    authMethod,
     storedNeedsReconnect: row.needsReconnect,
     tokenExpiresAt: row.tokenExpiresAt,
     now,
@@ -196,7 +205,7 @@ function storedConnectorRowToResponse(
   return {
     id: row.id,
     type,
-    authMethod: row.authMethod,
+    authMethod,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
@@ -207,7 +216,7 @@ function storedConnectorRowToResponse(
         ? (parseStoredReconnectReason(row.reconnectReason) ??
           connectorCredentialReconnectReason({
             type,
-            authMethod: row.authMethod,
+            authMethod,
             storedNeedsReconnect: row.needsReconnect,
             tokenExpiresAt: row.tokenExpiresAt,
             now,
@@ -470,16 +479,15 @@ export function zeroConnectorList(args: {
     ]);
 
     const now = nowDate();
-    const connectorList: ConnectorResponse[] = storedRows.flatMap((row) => {
-      const parsed = connectorTypeSchema.safeParse(row.type);
-      if (!parsed.success) {
-        return [];
-      }
-      if (!storedConnectorTypeIsVisible(parsed.data, featureStates)) {
-        return [];
-      }
-      return [storedConnectorRowToResponse(row, parsed.data, now)];
-    });
+    const connectorList: ExecutableConnectorResponse[] = storedRows.flatMap(
+      (row) => {
+        const type = connectorTypeSchema.parse(row.type);
+        if (!storedConnectorTypeIsVisible(type, featureStates)) {
+          return [];
+        }
+        return [storedConnectorRowToResponse(row, type, now)];
+      },
+    );
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
@@ -498,7 +506,7 @@ export function zeroConnectorList(args: {
 }
 
 function connectorProvidedBindingsForStoredConnectors(
-  connectorList: readonly ConnectorResponse[],
+  connectorList: readonly ExecutableConnectorResponse[],
 ): ConnectorProvidedBinding[] {
   const provided: ConnectorProvidedBinding[] = [];
   for (const connector of connectorList) {

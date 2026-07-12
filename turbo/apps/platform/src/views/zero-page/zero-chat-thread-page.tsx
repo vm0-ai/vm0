@@ -5036,13 +5036,9 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const displayMetadata = useLastResolved(block.displayMetadata$);
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
   const activating = activateLoadable.state === "loading";
-  const connectorType = block.connectorType;
-
   if (!available || !displayMetadata) {
     return null;
   }
-
-  const canActivate = connectorType !== null;
 
   return (
     <div
@@ -5064,14 +5060,14 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       </div>
       <button
         type="button"
-        disabled={complete || activating || !canActivate}
+        disabled={complete || activating}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
-        {!canActivate ? "Unavailable" : complete ? "Connected" : "Connect"}
+        {complete ? "Connected" : "Connect"}
       </button>
     </div>
   );

@@ -1,9 +1,9 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  connectorTypeSchema,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
+  type ConnectorCatalogRef as ConnectorType,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -17,7 +17,7 @@ import {
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowType$,
-  getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
   getConnectorStatusConnectLaunchMode,
   justConnectedTypes$,
@@ -68,7 +68,7 @@ function runDirectedConnect(params: {
   signal: AbortSignal;
   connect: (
     type: ConnectorType,
-    authMethod: ConnectorAuthMethodId,
+    method: ConnectorStatusAuthMethodDetail,
     options: {
       readonly showPermissionDialog?: boolean;
       readonly connectorLabel?: string;
@@ -114,34 +114,38 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod =
-    launchMode === "browser-auth"
-      ? getOnlyAvailableStatusBrowserAuthMethod(params.item)
-      : getOnlyAvailableStatusNoAuthMethod(params.item);
-
   detach(
     (async () => {
-      let connected = true;
-      if (!authMethod) {
-        params.openConnectModal();
-        return;
+      let connected: boolean;
+      if (launchMode === "browser-auth") {
+        const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(
+          params.item,
+        );
+        if (!authMethod) {
+          params.openConnectModal();
+          return;
+        }
+        connected = await params.connect(
+          params.connectorType,
+          authMethod,
+          { connectorLabel: params.item.label },
+          params.signal,
+        );
+      } else {
+        const authMethod = getOnlyAvailableStatusNoAuthMethod(params.item);
+        if (!authMethod) {
+          params.openConnectModal();
+          return;
+        }
+        connected = await params.connectNoAuth(
+          {
+            type: params.connectorType,
+            authMethod,
+            options: { connectorLabel: params.item.label },
+          },
+          params.signal,
+        );
       }
-      connected =
-        launchMode === "browser-auth"
-          ? await params.connect(
-              params.connectorType,
-              authMethod,
-              { connectorLabel: params.item.label },
-              params.signal,
-            )
-          : await params.connectNoAuth(
-              {
-                type: params.connectorType,
-                authMethod,
-                options: { connectorLabel: params.item.label },
-              },
-              params.signal,
-            );
       if (connected) {
         await params.onConnected();
       }
@@ -407,7 +411,7 @@ function useDirectedConnectConnectorType(): ConnectorType | null {
   if (!type) {
     return null;
   }
-  const parsed = connectorTypeSchema.safeParse(type);
+  const parsed = connectorCatalogRefSchema.safeParse(type);
   return parsed.success ? parsed.data : null;
 }
 

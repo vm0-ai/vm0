@@ -7,8 +7,12 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  connectorCatalogAuthMethodIdSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
   connectorAuthMethodIdSchema,
-  type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -40,7 +44,11 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
-import { userConnectorAvailability } from "./connector-availability.service";
+import {
+  userConnectorActionResolver,
+  type ConnectorActionMethodResolution,
+  type ConnectorActionResolver,
+} from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
@@ -85,6 +93,46 @@ const connectorExternalCodeDisabled = Object.freeze({
   }),
 });
 
+function externalCodeResolutionError(
+  resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
+  args: {
+    readonly connectorRef: ConnectorCatalogRef;
+    readonly authMethodId: ConnectorCatalogAuthMethodId;
+  },
+) {
+  switch (resolution.reason) {
+    case "unknown_connector": {
+      return badRequestMessage(
+        `${args.connectorRef} connector is not supported`,
+      );
+    }
+    case "unknown_auth_method": {
+      const hasExternalCode = resolution.catalogConnector.authMethods.some(
+        (method) => {
+          return method.grantKind === "external-code";
+        },
+      );
+      return badRequestMessage(
+        hasExternalCode
+          ? `${args.connectorRef} connector does not have ${args.authMethodId} auth method`
+          : connectorMissingExternalCodeGrantMessage(args.connectorRef),
+      );
+    }
+    case "wrong_grant_kind": {
+      return badRequestMessage(
+        `${args.connectorRef} ${args.authMethodId} auth method does not use an external-code grant`,
+      );
+    }
+    case "unavailable_connector":
+    case "unavailable_auth_method": {
+      return connectorExternalCodeDisabled;
+    }
+    case "missing_executable_capability": {
+      return internalServerError("Connector execution is not configured");
+    }
+  }
+}
+
 function internalServerError(message: string) {
   return {
     status: 500 as const,
@@ -105,7 +153,7 @@ function generateSessionToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-function connectorMissingExternalCodeGrantMessage(type: ConnectorType): string {
+function connectorMissingExternalCodeGrantMessage(type: string): string {
   return `${type} connector does not support an external-code grant`;
 }
 
@@ -142,17 +190,6 @@ function resolveExternalCodeMethod(
   return authMethodRef;
 }
 
-function resolveStoredExternalCodeMethod(
-  type: ConnectorType,
-  authMethod: string,
-): ExternalCodeMethodRef | ReturnType<typeof internalServerError> {
-  const resolved = resolveExternalCodeMethod(type, authMethod);
-  if ("status" in resolved) {
-    return internalServerError("Invalid external-code authorization session");
-  }
-  return resolved;
-}
-
 function resolveRequiredAuthClient(
   method: ExternalCodeMethodRef,
 ): ExternalCodeResolvedMethodClient | ReturnType<typeof internalServerError> {
@@ -164,6 +201,40 @@ function resolveRequiredAuthClient(
     return internalServerError(`${method.type} auth client not configured`);
   }
   return resolvedClient;
+}
+
+async function resolveStoredExternalCodeMethod(args: {
+  readonly resolver: ConnectorActionResolver;
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly authMethodId: string;
+}) {
+  const storedAuthMethod = connectorCatalogAuthMethodIdSchema.safeParse(
+    args.authMethodId,
+  );
+  if (!storedAuthMethod.success) {
+    return internalServerError("Invalid external-code authorization session");
+  }
+  const resolved = await args.resolver.resolveMethod({
+    connectorRef: args.connectorRef,
+    authMethodId: storedAuthMethod.data,
+    expectedGrantKind: "external-code",
+  });
+  if (!resolved.ok) {
+    if (
+      resolved.reason === "unavailable_connector" ||
+      resolved.reason === "unavailable_auth_method"
+    ) {
+      return connectorExternalCodeDisabled;
+    }
+    return internalServerError("Invalid external-code authorization session");
+  }
+  const resolvedMethod = resolveExternalCodeMethod(
+    resolved.type,
+    resolved.authMethod,
+  );
+  return "status" in resolvedMethod
+    ? internalServerError("Invalid external-code authorization session")
+    : resolvedMethod;
 }
 
 async function lockExternalCodeSessionOwner(
@@ -208,7 +279,7 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorType;
+  readonly type: ConnectorCatalogRef;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
@@ -625,31 +696,33 @@ export const startConnectorExternalCodeSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorType;
-      readonly authMethod: ConnectorAuthMethodId;
+      readonly type: ConnectorCatalogRef;
+      readonly authMethod: ConnectorCatalogAuthMethodId;
     },
     signal: AbortSignal,
   ) => {
-    const resolvedMethod = resolveExternalCodeMethod(
-      args.type,
-      args.authMethod,
-    );
-    if ("status" in resolvedMethod) {
-      return resolvedMethod;
-    }
-
-    const availability = await get(
-      userConnectorAvailability(args.orgId, args.userId),
+    const resolver = await get(
+      userConnectorActionResolver(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-
-    if (
-      !availability.isAuthMethodAvailable(
-        resolvedMethod.type,
-        resolvedMethod.authMethod,
-      )
-    ) {
-      return connectorExternalCodeDisabled;
+    const resolved = await resolver.resolveMethod({
+      connectorRef: args.type,
+      authMethodId: args.authMethod,
+      expectedGrantKind: "external-code",
+    });
+    signal.throwIfAborted();
+    if (!resolved.ok) {
+      return externalCodeResolutionError(resolved, {
+        connectorRef: args.type,
+        authMethodId: args.authMethod,
+      });
+    }
+    const resolvedMethod = resolveExternalCodeMethod(
+      resolved.type,
+      resolved.authMethod,
+    );
+    if ("status" in resolvedMethod) {
+      return internalServerError("Connector execution is not configured");
     }
 
     const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
@@ -732,7 +805,7 @@ export const completeConnectorExternalCodeSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorType;
+      readonly type: ConnectorCatalogRef;
       readonly sessionId: string;
       readonly sessionToken: string;
       readonly code: string;
@@ -753,25 +826,18 @@ export const completeConnectorExternalCodeSession$ = command(
       return notFound("External-code authorization session not found");
     }
 
-    const resolvedMethod = resolveStoredExternalCodeMethod(
-      args.type,
-      session.authMethod,
-    );
-    if ("status" in resolvedMethod) {
-      return resolvedMethod;
-    }
-
-    const availability = await get(
-      userConnectorAvailability(args.orgId, args.userId),
+    const resolver = await get(
+      userConnectorActionResolver(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-    if (
-      !availability.isAuthMethodAvailable(
-        resolvedMethod.type,
-        resolvedMethod.authMethod,
-      )
-    ) {
-      return connectorExternalCodeDisabled;
+    const resolvedMethod = await resolveStoredExternalCodeMethod({
+      resolver,
+      connectorRef: args.type,
+      authMethodId: session.authMethod,
+    });
+    signal.throwIfAborted();
+    if ("status" in resolvedMethod) {
+      return resolvedMethod;
     }
 
     const resolvedClient = resolveRequiredAuthClient(resolvedMethod);

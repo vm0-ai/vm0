@@ -4,6 +4,7 @@ import {
   type ZeroImageShareXResponse,
 } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
@@ -88,12 +89,24 @@ export const xImageShareConnectorStatus$ = computed(async (get) => {
 });
 
 export const connectXForImageShare$ = command(
-  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+  async (
+    { set },
+    connector: PublicConnectorCatalogStatusItem | null,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const authMethod = connector?.authMethods.find((method) => {
+      return (
+        method.grantKind === "auth-code" || method.grantKind === "openid-auth"
+      );
+    });
+    if (!connector || !authMethod) {
+      return false;
+    }
     const connected = await set(
       connectConnectorOAuthAuthCode$,
-      "x",
-      "oauth",
-      { connectorLabel: "X" },
+      connector.connectorRef,
+      authMethod,
+      { connectorLabel: connector.label },
       signal,
     );
     signal.throwIfAborted();
