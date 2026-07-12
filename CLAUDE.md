@@ -229,6 +229,10 @@ For detailed patterns and examples, use `/testing`.
 
 **All pull requests must pass CI checks before merging.** These checks are defined in `.github/workflows/turbo.yml` and run automatically on every PR, including lint, test, deploy, and cli-e2e.
 
+### GitHub Actions Shell Compatibility
+
+GitHub Actions container jobs run `run` steps with `sh` by default. Any step that uses Bash syntax or sources a Bash helper must set `shell: bash`, or the job must set `defaults.run.shell: bash`. A sourced script's shebang does not select the shell because the calling shell parses it.
+
 ### Zero Tolerance for Skipping Tests
 
 **NEVER skip tests to make CI pass.** All tests must execute and pass:
