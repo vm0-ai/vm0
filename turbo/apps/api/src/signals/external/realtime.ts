@@ -110,15 +110,6 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
 }
 
-export async function publishChatThreadFollowupsFinished(args: {
-  readonly userId: string;
-  readonly threadId: string;
-}): Promise<void> {
-  await publishUserSignal([args.userId], "chatThreadFollowupsFinished", {
-    threadId: args.threadId,
-  });
-}
-
 /**
  * Notify a chat thread's UI that a new message row was appended. The thread's
  * message data source subscribes to this topic and refetches, so derived state
