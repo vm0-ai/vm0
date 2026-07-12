@@ -50,7 +50,6 @@ match_base_url = _firewall_base_url.match_base_url
 
 CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern
 _compiled_rule_path_is_valid = _firewall_patterns._compiled_rule_path_is_valid
-_compiled_path_segments_match = _firewall_patterns._compiled_path_segments_match
 compile_path_pattern = _firewall_patterns.compile_path_pattern
 match_compiled_path = _firewall_patterns.match_compiled_path
 match_host = _firewall_patterns.match_host

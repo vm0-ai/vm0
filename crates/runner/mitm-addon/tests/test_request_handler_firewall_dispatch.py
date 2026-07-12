@@ -90,6 +90,18 @@ async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
             "malformed_connector_intent",
         ),
         (
+            (("X-VM0-Connector-Intent", "primary,auditor"),),
+            "malformed_connector_intent",
+        ),
+        (
+            (("X-VM0-Connector-Intent", ""),),
+            "malformed_connector_intent",
+        ),
+        (
+            (("X-VM0-Connector-Intent", "   "),),
+            "malformed_connector_intent",
+        ),
+        (
             (("X-VM0-Connector-Intent", "inactive"),),
             "connector_intent_not_candidate",
         ),
