@@ -31,6 +31,10 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
 
 describe("chat message persistence", () => {
   it("restores remotely fetched messages from IndexedDB when returning to a thread", async () => {
+    // Browsers do not expose setImmediate. Force fake-indexeddb to use its
+    // browser scheduler so an overdue 200 ms cache timeout cannot overtake IDB
+    // work that was already queued before a contended CI worker resumes.
+    vi.stubGlobal("setImmediate", undefined);
     const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
