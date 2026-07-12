@@ -13,6 +13,7 @@ import {
 
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const ENVIRONMENT_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 const FORBIDDEN_ROUTING_METADATA_KEYS = new Set([
   "auth",
   "headers",
@@ -205,6 +206,15 @@ describe("firewall routing metadata", () => {
 
       const apiCounts = new Map<string, number>();
       for (const api of metadata.apis) {
+        expect(api.environmentNames, `${type} ${api.base}`).toStrictEqual(
+          [...new Set(api.environmentNames)].sort(compareStrings),
+        );
+        for (const environmentName of api.environmentNames) {
+          expect(environmentName, `${type} ${api.base}`).toMatch(
+            ENVIRONMENT_NAME_PATTERN,
+          );
+        }
+
         const names = new Set(
           api.routes.map((route) => {
             return route.permissionName;
@@ -229,5 +239,28 @@ describe("firewall routing metadata", () => {
 
     expect(sharedPermissionExample).not.toBeNull();
     expect(sharedPermissionExample!.apiCount).toBeGreaterThan(1);
+  });
+
+  it("keeps Nintendo Parental Controls API environment names route-specific", async () => {
+    const metadata = await loadRequiredRoutingMetadata(
+      "nintendo-switch-parental-controls",
+    );
+
+    expect(
+      Object.fromEntries(
+        metadata.apis.map((api) => {
+          return [api.base, api.environmentNames];
+        }),
+      ),
+    ).toStrictEqual({
+      "https://api.accounts.nintendo.com": [
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
+      ],
+      "https://app.lp1.znma.srv.nintendo.net": [
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE",
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID",
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
+      ],
+    });
   });
 });

@@ -760,6 +760,79 @@ describe("zero doctor check-connector command", () => {
     });
   });
 
+  describe("option validation", () => {
+    it("should reject --connector without --url", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+          "--connector",
+          "github",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--connector can only be used with --url"),
+      );
+    });
+
+    it("should reject --check-permission with --url", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/repos/owner/repo",
+          "--check-permission",
+          "contents:read",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--check-permission cannot be used with --url"),
+      );
+    });
+
+    it("should reject an explicit --method without --url", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+          "--method",
+          "POST",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--method can only be used with --url"),
+      );
+    });
+
+    it("should reject unknown connector types without prototype matches", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/repos/owner/repo",
+          "--connector",
+          "constructor",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown connector type: constructor"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("zero connector search 'constructor'"),
+      );
+    });
+  });
+
   describe("re-diagnose hint", () => {
     it("should include re-diagnose hint with check-connector syntax", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
@@ -831,6 +904,469 @@ describe("zero doctor check-connector command", () => {
   });
 
   describe("--url mode", () => {
+    function stubConnectedUrlConnector(type: string, authMethod: string): void {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      server.use(
+        stubAvailableConnectors([type]),
+        http.get(`https://app.vm0.ai/api/zero/connectors/${type}`, () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type,
+            authMethod,
+          });
+        }),
+      );
+    }
+
+    it("should report ambiguous generated routes with explicit selection commands", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.accounts.nintendo.com/2.0.0/users/me?code=secret#private",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Multiple connectors match GET https://api.accounts.nintendo.com/2.0.0/users/me",
+        ),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "nintendo-store, nintendo-switch-parental-controls",
+        ),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "--connector 'nintendo-switch-parental-controls'",
+        ),
+      );
+      expect(mockConsoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining("code=secret"),
+      );
+    });
+
+    it.each([
+      {
+        order: ["nintendo-store", "nintendo-switch-parental-controls"],
+        selected: "nintendo-store",
+        environmentName: "NINTENDO_STORE_TOKEN",
+      },
+      {
+        order: ["nintendo-switch-parental-controls", "nintendo-store"],
+        selected: "nintendo-store",
+        environmentName: "NINTENDO_STORE_TOKEN",
+      },
+      {
+        order: ["nintendo-store", "nintendo-switch-parental-controls"],
+        selected: "nintendo-switch-parental-controls",
+        environmentName: "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
+      },
+      {
+        order: ["nintendo-switch-parental-controls", "nintendo-store"],
+        selected: "nintendo-switch-parental-controls",
+        environmentName: "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
+      },
+    ])(
+      "should select $selected from compact run firewalls in either order",
+      async ({ order, selected, environmentName }) => {
+        vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+        vi.stubEnv("VM0_TOKEN", "test-token");
+        vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+        server.use(
+          stubAvailableConnectors([selected]),
+          http.get(`https://app.vm0.ai/api/zero/connectors/${selected}`, () => {
+            return HttpResponse.json({
+              ...connectedResponse,
+              type: selected,
+              authMethod: "api",
+            });
+          }),
+          http.get(
+            "https://app.vm0.ai/api/zero/runs/run-abc-123/context",
+            () => {
+              return HttpResponse.json({
+                ...runContextResponse,
+                firewalls: order.map((name) => {
+                  return { kind: "builtin", name };
+                }),
+                networkPolicies: null,
+              });
+            },
+          ),
+        );
+
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.accounts.nintendo.com/2.0.0/users/me",
+          "--connector",
+          selected,
+        ]);
+
+        const output = getOutput();
+        expect(output).toContain(`type: ${selected}`);
+        expect(output).toContain(`Environment names: [${environmentName}]`);
+      },
+    );
+
+    it("should reject an unsafe shared route before connector diagnosis", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              { kind: "builtin", name: "nintendo-store" },
+              {
+                kind: "builtin",
+                name: "nintendo-switch-parental-controls",
+              },
+            ],
+            networkPolicies: null,
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.accounts.nintendo.com/2.0.0/users/%2e%2e/me",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("request path contains unsafe syntax"),
+      );
+      expect(getOutput()).not.toContain("Step 2: Connector configuration");
+    });
+
+    it("should report Railway base-only ownership ambiguity", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://backboard.railway.com/graphql/v2",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("railway, railway-project"),
+      );
+    });
+
+    it.each([
+      ["railway", "RAILWAY_TOKEN"],
+      ["railway-project", "RAILWAY_PROJECT_TOKEN"],
+    ])(
+      "should select the %s base-only owner",
+      async (selected, environmentName) => {
+        stubConnectedUrlConnector(selected, "api-token");
+
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://backboard.railway.com/graphql/v2",
+          "--connector",
+          selected,
+        ]);
+
+        const output = getOutput();
+        expect(output).toContain(`type: ${selected}`);
+        expect(output).toContain(`Environment names: [${environmentName}]`);
+      },
+    );
+
+    it("should select an ambiguous connector and derive its route environment", async () => {
+      stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
+      vi.stubEnv(
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
+        "placeholder",
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.accounts.nintendo.com/2.0.0/users/me",
+        "--connector",
+        "nintendo-switch-parental-controls",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "matches the Nintendo Switch Parental Controls connector",
+      );
+      expect(output).toContain(
+        "Environment names: [NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN]",
+      );
+      expect(output).toContain(
+        "Checking process.env.NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN: present",
+      );
+      expect(output).toContain(
+        "--connector 'nintendo-switch-parental-controls'",
+      );
+    });
+
+    it("should derive every environment name used by a unique API route", async () => {
+      stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://app.lp1.znma.srv.nintendo.net/v3/actions/user/fetchOwnedDevices",
+        "--connector",
+        "nintendo-switch-parental-controls",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "Environment names: [NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE, NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID, NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN]",
+      );
+      expect(output).toContain(
+        "Matched permissions: [nintendo-switch-parental-controls-device-credentials-read]",
+      );
+    });
+
+    it("should derive environment names from the winning API within one connector", async () => {
+      stubConnectedUrlConnector("cloudflare", "api-token");
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.cloudflare.com/client/v4/pages/assets/upload",
+        "--method",
+        "POST",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Cloudflare connector");
+      expect(output).toContain("Environment names: []");
+      expect(output).toContain(
+        "The matched API route does not use a sandbox environment name.",
+      );
+      expect(output).toContain("Matched permissions: [page.write]");
+      expect(output).not.toContain("diagnostic-api-");
+    });
+
+    it("should reject an explicit connector that does not own a unique route", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://app.lp1.znma.srv.nintendo.net/v3/actions/user/fetchOwnedDevices",
+          "--connector",
+          "nintendo-store",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Connector nintendo-store does not own GET https://app.lp1.znma.srv.nintendo.net/v3/actions/user/fetchOwnedDevices",
+        ),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "the matching connector is nintendo-switch-parental-controls",
+        ),
+      );
+    });
+
+    it("should reject a base-only selector when another owner has the winning route", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "slack",
+                apis: [
+                  {
+                    base: "https://api.github.com",
+                    permissions: [],
+                  },
+                ],
+              },
+              {
+                name: "github",
+                apis: [
+                  {
+                    base: "https://api.github.com",
+                    permissions: [
+                      {
+                        name: "repository.read",
+                        rules: ["GET /repos/{owner}/{repo}"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: null,
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/repos/owner/repo",
+          "--connector",
+          "slack",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("the matching connector is github"),
+      );
+    });
+
+    it("should reject a connector-owned environment from a different API route", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.accounts.nintendo.com/2.0.0/users/me",
+          "--connector",
+          "nintendo-switch-parental-controls",
+          "--env-name",
+          "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN is not used by the matched API route",
+        ),
+      );
+    });
+
+    it.each(["UNKNOWN_ROUTE_TOKEN", "SLACK_TOKEN"])(
+      "should reject URL environment selection %s outside the selected connector",
+      async (environmentName) => {
+        await expect(async () => {
+          await checkConnectorCommand.parseAsync([
+            "node",
+            "cli",
+            "--url",
+            "https://api.github.com/repos/owner/repo",
+            "--env-name",
+            environmentName,
+          ]);
+        }).rejects.toThrow("process.exit called");
+
+        expect(mockConsoleError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            `${environmentName} is not an environment name for the GitHub connector`,
+          ),
+        );
+      },
+    );
+
+    it("should not fall back to generated routes when a run context exists", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [],
+            networkPolicies: null,
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://api.github.com/repos/owner/repo",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("no firewall in the current run matches"),
+      );
+    });
+
+    it("should report unavailable environment metadata for an unmatched inline API", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["github"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "github",
+                apis: [
+                  {
+                    base: "https://legacy-github.example.com",
+                    permissions: [
+                      {
+                        name: "repository.read",
+                        rules: ["GET /repos/{owner}/{repo}"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              github: {
+                allow: ["repository.read"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://legacy-github.example.com/repos/owner/repo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Environment names: unavailable");
+      expect(output).toContain(
+        "Environment metadata is unavailable for this run's sanitized firewall entry",
+      );
+      expect(output).not.toContain("Checking process.env.GH_TOKEN");
+      expect(output).not.toContain("Checking process.env.GITHUB_TOKEN");
+      expect(output).toContain("Matched permissions: [repository.read]");
+    });
+
     it("should resolve connector from URL and run full diagnostic", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
@@ -862,6 +1398,7 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("matches the GitHub connector");
       expect(output).toContain("Matched base URL: https://api.github.com");
       expect(output).toContain("Relative path:    /repos/owner/repo");
+      expect(output).toContain("Environment names: [GITHUB_TOKEN]");
       expect(output).toContain("Step 1: Sandbox environment name");
       expect(output).toContain("Step 2: Connector configuration");
       expect(output).toContain(
@@ -870,6 +1407,42 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain(
         "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo'",
       );
+    });
+
+    it("should accept a sibling environment alias for the matched route", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      vi.stubEnv("GH_TOKEN", "placeholder");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.github.com/repos/owner/repo",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Environment names: [GH_TOKEN]");
+      expect(output).toContain("Checking process.env.GH_TOKEN: present");
+      expect(output).toContain("--env-name 'GH_TOKEN'");
     });
 
     it("should resolve compact built-in run context firewalls", async () => {
@@ -1600,23 +2173,19 @@ describe("zero doctor check-connector command", () => {
         }),
       );
 
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--url",
-        "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/users/%2e%2e/admin",
-      ]);
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://tenant-123.pr-123.vm6.ai/api/test/oauth-provider/users/%2e%2e/admin",
+        ]);
+      }).rejects.toThrow("process.exit called");
 
-      const output = getOutput();
-      expect(output).toContain(
-        "Permission matching could not complete because the request path contains unsafe path syntax.",
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("request path contains unsafe syntax"),
       );
-      expect(output).toContain(
-        "Result: The request path contains unsafe path syntax, so the request is blocked.",
-      );
-      expect(output).not.toContain(
-        "falls through to the unknown-endpoint policy",
-      );
+      expect(getOutput()).not.toContain("Step 2: Connector configuration");
     });
 
     it("should fail for unrecognized URL", async () => {
@@ -1713,6 +2282,30 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain(
         "zero doctor check-connector --url 'https://api.github.com/repos/owner/repo' --method 'POST'",
       );
+    });
+
+    it("should preserve every URL selector while redacting query and fragment", async () => {
+      stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://app.lp1.znma.srv.nintendo.net/v3/actions/device/updateDeviceLabel?access_token=secret#private",
+        "--connector",
+        "nintendo-switch-parental-controls",
+        "--env-name",
+        "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
+        "--method",
+        "post",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        "zero doctor check-connector --url 'https://app.lp1.znma.srv.nintendo.net/v3/actions/device/updateDeviceLabel' --connector 'nintendo-switch-parental-controls' --env-name 'NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN' --method 'POST'",
+      );
+      expect(output).not.toContain("access_token=secret");
+      expect(output).not.toContain("#private");
     });
   });
 });
