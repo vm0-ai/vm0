@@ -142,9 +142,15 @@ export async function readOrgAdmissionLockState(
   const response = await postAction(context, {
     action: "read-org-admission-lock-state",
   });
+  if (
+    response.admission_lock_held === undefined ||
+    response.admission_lock_waiting === undefined
+  ) {
+    throw new Error("readOrgAdmissionLockState missing lock state");
+  }
   return {
-    held: response.admission_lock_held ?? false,
-    waiting: response.admission_lock_waiting ?? false,
+    held: response.admission_lock_held,
+    waiting: response.admission_lock_waiting,
   };
 }
 

@@ -151,7 +151,11 @@ async function readOrgAdmissionLockState(
       ) AS "waiting"
   `);
   signal.throwIfAborted();
-  return result.rows[0] ?? { held: false, waiting: false };
+  const state = result.rows[0];
+  if (!state) {
+    throw new Error("Failed to read org admission lock state");
+  }
+  return state;
 }
 
 async function seedCompose(
