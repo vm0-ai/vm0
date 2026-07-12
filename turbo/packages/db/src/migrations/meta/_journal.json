@@ -4026,6 +4026,13 @@
       "when": 1783830792266,
       "tag": "0574_solid_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 575,
+      "version": "7",
+      "when": 1783835352818,
+      "tag": "0575_damp_nightshade",
+      "breakpoints": true
     }
   ]
 }
