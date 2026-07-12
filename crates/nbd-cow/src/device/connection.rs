@@ -1,5 +1,15 @@
+use std::time::{Duration, Instant};
+
 use crate::error::{self, Result};
 use crate::{netlink, pool};
+
+use super::create_timing::{NbdNetlinkConnectStage, NbdNetlinkConnectTiming};
+
+struct NetlinkCriticalSectionResult<T> {
+    queue_duration: Duration,
+    queue_success: bool,
+    result: Result<T>,
+}
 
 pub(super) async fn run_netlink_critical_section<T>(
     operation: &'static str,
@@ -8,12 +18,38 @@ pub(super) async fn run_netlink_critical_section<T>(
 where
     T: Send + 'static,
 {
-    match tokio::task::spawn_blocking(f).await {
-        Ok(value) => Ok(value),
+    run_netlink_critical_section_with_queue_timing(operation, f)
+        .await
+        .result
+}
+
+async fn run_netlink_critical_section_with_queue_timing<T>(
+    operation: &'static str,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> NetlinkCriticalSectionResult<T>
+where
+    T: Send + 'static,
+{
+    let submitted_at = Instant::now();
+    match tokio::task::spawn_blocking(move || {
+        let queue_duration = submitted_at.elapsed();
+        (queue_duration, f())
+    })
+    .await
+    {
+        Ok((queue_duration, value)) => NetlinkCriticalSectionResult {
+            queue_duration,
+            queue_success: true,
+            result: Ok(value),
+        },
         Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
-        Err(e) => Err(error::NbdCowError::Io(std::io::Error::other(format!(
-            "{operation} task was cancelled: {e}",
-        )))),
+        Err(e) => NetlinkCriticalSectionResult {
+            queue_duration: submitted_at.elapsed(),
+            queue_success: false,
+            result: Err(error::NbdCowError::Io(std::io::Error::other(format!(
+                "{operation} task was cancelled: {e}",
+            )))),
+        },
     }
 }
 
@@ -47,6 +83,22 @@ pub(super) struct ConnectDeviceOutcome {
     device_index: u32,
     lease: DeferredLease,
     result: Option<std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>>,
+}
+
+pub(super) struct ConnectDeviceCriticalSectionResult {
+    timing: NbdNetlinkConnectTiming,
+    result: std::result::Result<ConnectDeviceOutcome, netlink::ConnectDeviceError>,
+}
+
+impl ConnectDeviceCriticalSectionResult {
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        NbdNetlinkConnectTiming,
+        std::result::Result<ConnectDeviceOutcome, netlink::ConnectDeviceError>,
+    ) {
+        (self.timing, self.result)
+    }
 }
 
 impl ConnectDeviceOutcome {
@@ -124,19 +176,41 @@ pub(super) async fn connect_device_with_state_critical_section(
     block_size: u64,
     pool: pool::DevicePoolHandle,
     lease: pool::DeviceLease,
-) -> std::result::Result<ConnectDeviceOutcome, netlink::ConnectDeviceError> {
+) -> ConnectDeviceCriticalSectionResult {
     let deferred_lease = DeferredLease::new(pool, lease);
-    let outcome = run_netlink_critical_section("NBD connect", move || {
-        ConnectDeviceOutcome::new(
-            device_index,
-            deferred_lease,
-            netlink::connect_device_with_state(device_index, &client_fds, size, block_size),
-        )
-    })
-    .await
-    .map_err(|source| netlink::ConnectDeviceError::NotSent { source })?;
+    let critical_section =
+        run_netlink_critical_section_with_queue_timing("NBD connect", move || {
+            let (result, timing) = netlink::connect_device_with_state_timing(
+                device_index,
+                &client_fds,
+                size,
+                block_size,
+            );
+            (
+                ConnectDeviceOutcome::new(device_index, deferred_lease, result),
+                timing,
+            )
+        })
+        .await;
 
-    Ok(outcome)
+    let mut timing;
+    let result = match critical_section.result {
+        Ok((outcome, inner_timing)) => {
+            timing = inner_timing;
+            Ok(outcome)
+        }
+        Err(source) => {
+            timing = NbdNetlinkConnectTiming::default();
+            Err(netlink::ConnectDeviceError::NotSent { source })
+        }
+    };
+    timing.record_stage_duration(
+        NbdNetlinkConnectStage::BlockingTaskQueue,
+        critical_section.queue_duration,
+        critical_section.queue_success,
+    );
+
+    ConnectDeviceCriticalSectionResult { timing, result }
 }
 
 pub(super) struct DisconnectOutcome {
@@ -392,6 +466,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(value, "connected");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn timed_netlink_critical_section_records_queue_start() {
+        let outcome = run_netlink_critical_section_with_queue_timing(
+            "test netlink operation",
+            || "connected",
+        )
+        .await;
+
+        assert!(outcome.queue_success);
+        assert_eq!(outcome.result.unwrap(), "connected");
     }
 
     #[tokio::test(flavor = "multi_thread")]

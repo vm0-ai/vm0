@@ -40,7 +40,7 @@ pub mod server;
 
 pub use device::{
     DestroyRetryPolicy, KeptCow, NbdCowCreateObserver, NbdCowCreateOutcome, NbdCowCreateStage,
-    NbdCowDevice, PooledDestroyError, PooledNbdCowDevice, is_our_thread,
+    NbdCowDevice, NbdNetlinkConnectStage, PooledDestroyError, PooledNbdCowDevice, is_our_thread,
 };
 
 /// Default block size: 4KB (matches typical filesystem block size and kernel page size).

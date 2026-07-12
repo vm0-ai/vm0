@@ -38,7 +38,7 @@ pub use error::{
 };
 pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,
-    SandboxNbdCowCreateStage,
+    SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
 };
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::Sandbox;
