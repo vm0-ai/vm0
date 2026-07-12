@@ -680,7 +680,7 @@ function checkEnvironmentNames(ctx: DiagContext): void {
   }
   if (environmentPresent) {
     console.log(
-      "A placeholder value is present in the sandbox environment. This value is not the real credential — it is a stand-in that gets replaced at the network boundary when requests are sent to registered base URLs.",
+      "At least one connector value is present in the sandbox environment. These values may be non-secret connector settings or credential placeholders; real credentials are never injected and are resolved at the network boundary for registered base URLs.",
     );
   } else {
     console.log(

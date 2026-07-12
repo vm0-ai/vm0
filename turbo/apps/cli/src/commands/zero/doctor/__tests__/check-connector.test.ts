@@ -157,7 +157,9 @@ describe("zero doctor check-connector command", () => {
 
       const output = getOutput();
       expect(output).toContain("present");
-      expect(output).toContain("placeholder value");
+      expect(output).toContain(
+        "non-secret connector settings or credential placeholders",
+      );
     });
 
     it("should report environment name not present when it is missing", async () => {
@@ -1120,6 +1122,7 @@ describe("zero doctor check-connector command", () => {
 
     it("should derive every environment name used by a unique API route", async () => {
       stubConnectedUrlConnector("nintendo-switch-parental-controls", "api");
+      vi.stubEnv("NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE", "en-US");
 
       await checkConnectorCommand.parseAsync([
         "node",
@@ -1133,6 +1136,12 @@ describe("zero doctor check-connector command", () => {
       const output = getOutput();
       expect(output).toContain(
         "Environment names: [NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE, NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID, NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN]",
+      );
+      expect(output).toContain(
+        "Checking process.env.NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE: present",
+      );
+      expect(output).toContain(
+        "These values may be non-secret connector settings or credential placeholders",
       );
       expect(output).toContain(
         "Matched permissions: [nintendo-switch-parental-controls-device-credentials-read]",
