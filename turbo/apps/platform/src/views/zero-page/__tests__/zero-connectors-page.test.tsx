@@ -2752,6 +2752,9 @@ describe("connectors page", () => {
     click(await screen.findByText("Rename"));
 
     const renameDialog = await screen.findByRole("dialog");
+    await waitFor(() => {
+      expect(renameDialog).toHaveStyle({ pointerEvents: "auto" });
+    });
     await fill(
       within(renameDialog).getByLabelText("Display name"),
       "Acme Billing API",
