@@ -665,10 +665,15 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError
     let mut last_error = None;
 
     for attempt in 1..=MAX_RETRIES {
+        let attempt_start = Instant::now();
         match download_and_extract(url, target_path) {
             Ok(()) => return Ok(()),
             Err(e) => {
-                log_warn!(LOG_TAG, "Attempt {attempt}/{MAX_RETRIES} failed: {e}");
+                log_warn!(
+                    LOG_TAG,
+                    "Attempt {attempt}/{MAX_RETRIES} failed after {}ms: {e}",
+                    attempt_start.elapsed().as_millis()
+                );
                 let should_break = !e.retriable;
                 last_error = Some(e);
                 if should_break {
