@@ -831,6 +831,25 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should reject an empty --check-permission in environment mode", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GH_TOKEN",
+          "--check-permission",
+          " ",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "--check-permission requires a non-empty permission name",
+        ),
+      );
+    });
+
     it("should not ignore an explicitly empty --url", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([

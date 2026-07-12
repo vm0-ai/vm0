@@ -1096,6 +1096,9 @@ function validateCheckConnectorOptions(
       "--check-permission cannot be used with --url because the permission is derived from the request. Remove --check-permission.",
     );
   }
+  if (opts.checkPermission?.trim() === "") {
+    throw new Error("--check-permission requires a non-empty permission name.");
+  }
   if (!hasUrl && command.getOptionValueSource("method") === "cli") {
     throw new Error(
       "--method can only be used with --url. Add --url <URL> or remove --method.",
