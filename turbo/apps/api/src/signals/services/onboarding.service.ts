@@ -19,7 +19,10 @@ import { db$, writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle, tapError } from "../utils";
 import { serverSideZeroAgentCompose$ } from "./agent-compose.service";
-import { userConnectorActionResolver } from "./connector-action-resolver.service";
+import {
+  userConnectorActionResolver,
+  type ConnectorActionResolver,
+} from "./connector-action-resolver.service";
 import { updateUserConnectors } from "./user-connectors.service";
 import { upsertOrgNoSecretModelProvider$ } from "./zero-model-provider.service";
 import { DEFAULT_AGENT_AVATAR_URL } from "./default-agent-profile";
@@ -92,6 +95,19 @@ function unavailableSelectedConnectorsError(
       },
     },
   };
+}
+
+async function selectedConnectorsAvailabilityError(
+  resolver: ConnectorActionResolver,
+  selectedConnectors: readonly ConnectorCatalogRef[],
+): Promise<OnboardingSetupForbiddenResponse | null> {
+  const resolved = await resolver.resolveRefs({
+    connectorRefs: selectedConnectors,
+    requireAvailable: true,
+  });
+  return unavailableSelectedConnectorsError(
+    resolved.ok ? [] : [resolved.connectorRef],
+  );
 }
 
 function nameToSlug(name: string): string {
@@ -579,21 +595,17 @@ export const setupOnboarding$ = command(
     signal: AbortSignal,
   ): Promise<OnboardingSetupResponse> => {
     const selectedConnectors = Array.from(new Set(args.selectedConnectors));
-    const resolver = await get(
-      userConnectorActionResolver(args.orgId, args.userId),
-    );
-    signal.throwIfAborted();
-    const resolved = await resolver.resolveRefs({
-      connectorRefs: selectedConnectors,
-      requireAvailable: true,
-    });
-    signal.throwIfAborted();
-    const availabilityError = unavailableSelectedConnectorsError(
-      resolved.ok ? [] : [resolved.connectorRef],
-    );
-    if (availabilityError) {
-      return availabilityError;
+    if (selectedConnectors.length > 0) {
+      const availabilityError = await selectedConnectorsAvailabilityError(
+        await get(userConnectorActionResolver(args.orgId, args.userId)),
+        selectedConnectors,
+      );
+      signal.throwIfAborted();
+      if (availabilityError) {
+        return availabilityError;
+      }
     }
+    signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
     const existingAgentId = await existingDefaultAgentId(writeDb, args.orgId);
