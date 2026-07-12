@@ -3134,26 +3134,23 @@ describe("chat lifecycle", () => {
       return respond(200, { lastReadAt: null, unreads: [] });
     });
 
-    vi.useFakeTimers();
     try {
       detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(initialPageRequested).toBeTruthy();
       });
-      await vi.advanceTimersByTimeAsync(150);
       expect(beforeIds).toStrictEqual([]);
       expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
 
       initialPageGate.resolve();
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(beforeIds).toStrictEqual([messages[10]!.id]);
       });
     } finally {
       if (!initialPageGate.settled()) {
         initialPageGate.resolve();
       }
-      vi.useRealTimers();
     }
 
     await waitFor(() => {
