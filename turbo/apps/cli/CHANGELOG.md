@@ -1,5 +1,32 @@
 # Changelog
 
+## [9.238.0](https://github.com/vm0-ai/vm0/compare/cli-v9.237.6...cli-v9.238.0) (2026-07-12)
+
+
+### Features
+
+* **cli:** diagnose ambiguous connector routes ([#21122](https://github.com/vm0-ai/vm0/issues/21122)) ([5fdcde1](https://github.com/vm0-ai/vm0/commit/5fdcde1a1265d8f4fb30d2f704d7b04d4576f551))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+
+
+### Refactoring
+
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+    * @vm0/core bumped to 8.425.2
+
 ## [9.237.6](https://github.com/vm0-ai/vm0/compare/cli-v9.237.5...cli-v9.237.6) (2026-07-12)
 
 
