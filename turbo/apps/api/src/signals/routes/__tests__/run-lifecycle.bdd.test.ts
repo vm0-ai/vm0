@@ -2444,6 +2444,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
       readonly mode?: "starting" | "running" | "draining" | "stopping";
+      readonly reusableSandbox?: { readonly profile: string };
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
@@ -2453,6 +2454,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           {
             sessionId: cliAgentSessionId,
             lastCompletedAt: nowDate().toISOString(),
+            ...(args.reusableSandbox
+              ? { reusableSandbox: args.reusableSandbox }
+              : {}),
           },
         ],
         mode: args.mode,
@@ -2576,7 +2580,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     onTestFinished(() => {
       clearMockNow();
     });
-    await heartbeatHolder({ admittableProfiles: ["vm0/default"] });
+    await heartbeatHolder({
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/default" },
+    });
     clearMockNow();
     const staleHolder = await pollFollowUp(
       "continue after holder heartbeat is stale",
@@ -2585,7 +2592,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      admittableProfiles: ["vm0/large"],
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/large" },
     });
     const profileIncompatibleHolder = await pollFollowUp(
       "continue when holder cannot run requested profile",
@@ -2596,7 +2604,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      admittableProfiles: ["vm0/default"],
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/default" },
       mode: "draining",
     });
     const drainingHolder = await pollFollowUp(
@@ -2696,6 +2705,132 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue after affinity protection expires",
     );
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
+  });
+
+  it("prioritizes exact reusable work only for its runner and protection window", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start reusable-priority session",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-reusable-priority-${first.runId}`;
+    const history = `bdd reusable priority history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const affinityRunnerId = randomUUID();
+    const priorityBase = now();
+    mockNow(priorityBase);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+
+    const protectedFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "verify reusable holder protection",
+      modelProvider: "anthropic-api-key",
+    });
+    const protectedPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected reusable-holder poll to return 200");
+    }
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+    await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+
+    const olderGeneric = await api.createRun(actor, {
+      agentId,
+      prompt: "older generic FIFO work",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(priorityBase + 1);
+    const newerReusable = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "newer exact reusable work",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const legacyPriorityPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (legacyPriorityPoll.status !== 200) {
+      throw new Error("Expected legacy FIFO poll to return 200");
+    }
+    expect(legacyPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    const reusablePriorityPoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (reusablePriorityPoll.status !== 200) {
+      throw new Error("Expected reusable-priority poll to return 200");
+    }
+    expect(reusablePriorityPoll.body.job?.runId).toBe(newerReusable.runId);
+
+    mockNow(priorityBase + 60_000);
+    const expiredPriorityPoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (expiredPriorityPoll.status !== 200) {
+      throw new Error("Expected expired reusable-priority poll to return 200");
+    }
+    expect(expiredPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    await api.requestCancelRun(actor, newerReusable.runId, [200]);
+    await api.requestCancelRun(actor, olderGeneric.runId, [200]);
   });
 });
 

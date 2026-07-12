@@ -603,6 +603,7 @@ impl SessionWorkspaceCache {
                 states.push(HeldSessionState {
                     session_id: metadata.session_id,
                     last_completed_at: metadata.last_completed_at,
+                    reusable_sandbox: None,
                 });
             }
             drop(lock);

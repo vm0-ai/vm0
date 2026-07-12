@@ -362,7 +362,7 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn budget_pressure_eviction_clears_status_json_idle_vms() {
+async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
@@ -383,13 +383,41 @@ async fn budget_pressure_eviction_clears_status_json_idle_vms() {
     assert!(completion.is_some(), "job should complete and park");
     assert_eq!(completion.unwrap().exit_code, 0);
 
-    // The single parked VM fills the whole budget, so the Running loop's
-    // pressure path evicts it even without another pending job.
+    // The single parked VM fills the whole budget. It must remain reusable
+    // until a concrete candidate proves that generic capacity is needed.
+    wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.len(),
+        1,
+        "idle VM should be retained"
+    );
+    assert_eq!(
+        status_idle_sessions(&status_path).await,
+        vec!["sess-pressure-status".to_string()],
+        "status.json should retain the reusable idle VM"
+    );
+
+    let generic_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        generic_run_id,
+        "vm0/default",
+        Some(minimal_context(generic_run_id)),
+    );
+    let generic_completion = env
+        .handle
+        .wait_completion(generic_run_id, Duration::from_secs(5))
+        .await;
+    assert!(
+        generic_completion.is_some(),
+        "generic job should run after candidate-aware idle reclamation"
+    );
+
     wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
     assert_eq!(idle_pool.lock().await.len(), 0, "idle pool should be empty");
     assert!(
         status_idle_sessions(&status_path).await.is_empty(),
-        "status.json should clear the pressure-evicted idle VM"
+        "status.json should clear the candidate-reclaimed idle VM"
     );
 
     shutdown(&env, run_handle).await;

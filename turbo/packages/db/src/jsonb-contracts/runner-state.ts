@@ -5,6 +5,9 @@ export interface RunnerHeldSessionState {
   // id that keys runner sandbox reuse affinity.
   readonly sessionId: string;
   readonly lastCompletedAt: string;
+  readonly reusableSandbox?: {
+    readonly profile: string;
+  };
 }
 
 export type RunnerHeldSessionStates = RunnerHeldSessionState[];

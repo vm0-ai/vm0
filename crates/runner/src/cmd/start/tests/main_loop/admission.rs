@@ -9,6 +9,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
+use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
@@ -220,6 +221,56 @@ async fn claim_run_id_mismatch_rolls_back_local_state() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn exact_idle_reservation_is_restored_after_claim_conflict() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&env.idle_pool);
+    let session_id = "sess-conflict-restore";
+    seed_idle_pool(&idle_pool, &budget, session_id, "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let conflict_run_id = RunId::new_v4();
+    env.provider.set_claim_result(conflict_run_id, None);
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(conflict_run_id, session_id))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, conflict_run_id, Duration::from_secs(5)).await;
+    assert_eq!(
+        idle_pool.lock().await.held_sessions(),
+        vec![session_id.to_string()],
+        "claim conflict should restore the exact idle reservation"
+    );
+    assert_eq!(
+        budget.allocated(),
+        (2, 4096, 1),
+        "restored reservation should retain its original budget lease"
+    );
+
+    let followup_run_id = RunId::new_v4();
+    env.provider.set_claim_result(
+        followup_run_id,
+        Some(context_with_session(followup_run_id, session_id)),
+    );
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(followup_run_id, session_id))
+        .unwrap();
+    let completion = env
+        .handle
+        .wait_completion(followup_run_id, Duration::from_secs(5))
+        .await
+        .expect("restored idle reservation should serve the next claim");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn affinity_protected_candidate_without_local_session_defers_before_claim() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
@@ -402,7 +453,7 @@ async fn ready_direct_drain_continues_after_claim_conflict() {
 
 #[tokio::test(start_paused = true)]
 async fn affinity_protected_candidate_with_local_session_claims() {
-    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&env.idle_pool);
     seed_idle_pool(
@@ -414,6 +465,10 @@ async fn affinity_protected_candidate_with_local_session_claims() {
         4096,
     )
     .await;
+    assert!(
+        !budget.can_afford(2, 4096),
+        "the parked sandbox should exhaust all fresh admission capacity"
+    );
 
     let run_handle = tokio::spawn(run(config));
 
@@ -432,11 +487,9 @@ async fn affinity_protected_candidate_with_local_session_claims() {
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
-        .await;
-    assert!(
-        completion.is_some(),
-        "runner holding the protected session should claim and execute the job"
-    );
+        .await
+        .expect("runner holding the protected session should claim and execute the job");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
 
     let claim_candidates = env.handle.claim_candidates();
     let claimed_candidate = claim_candidates
@@ -531,6 +584,73 @@ async fn affinity_protected_candidate_with_workspace_cache_session_claims_from_s
         env.handle.deferred_poll_delays().is_empty(),
         "snapshot-backed local holders should not defer before claim"
     );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn saturated_cache_only_holder_defers_before_reclaiming_unrelated_idle() {
+    let session_id = "sess-cache-saturated";
+    let image_size_bytes = 1024 * 1024;
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 1;
+    let (mut config, env) = mock_run_config(profiles, 2, 4096, 1);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        session_id,
+        "vm0/default",
+        image_size_bytes,
+    )
+    .await;
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    seed_idle_pool(
+        &idle_pool,
+        &budget,
+        "sess-unrelated-idle",
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(affinity_protected_candidate(run_id, session_id))
+        .unwrap();
+
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    assert!(
+        env.handle.claim_candidates().is_empty(),
+        "cache-only affinity must not bypass exhausted fresh admission"
+    );
+    assert_eq!(
+        env.handle.deferred_poll_delays().len(),
+        1,
+        "protected cache-only work should wait for the exact reusable holder"
+    );
+    assert_eq!(
+        idle_pool.lock().await.held_sessions(),
+        vec!["sess-unrelated-idle".to_string()],
+        "affinity deferral must happen before candidate-aware reclamation"
+    );
+    assert_eq!(budget.allocated(), (2, 4096, 1));
 
     shutdown(&env, run_handle).await;
 }
