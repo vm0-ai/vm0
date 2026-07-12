@@ -7,6 +7,66 @@ import jsonl_writer
 from tests.thread_helpers import ThreadUnderTest
 
 
+def test_complete_batch_publishes_aggregate_state_once(tmp_path):
+    class ObservedCondition:
+        def __init__(self) -> None:
+            self._condition = threading.Condition()
+            self.acquisitions = 0
+            self.notifications = 0
+
+        def __enter__(self) -> "ObservedCondition":
+            self.acquisitions += 1
+            self._condition.acquire()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self._condition.release()
+
+        def notify_all(self) -> None:
+            self.notifications += 1
+            self._condition.notify_all()
+
+    pruned_path = str(tmp_path / "pruned.jsonl")
+    waiter_path = str(tmp_path / "waiter.jsonl")
+    later_write_path = str(tmp_path / "later.jsonl")
+    later_line = b'{"message":"later"}\n'
+    items: list[object] = [
+        jsonl_writer._WriteItem(pruned_path, b"a\n", "proxy", 1),
+        jsonl_writer._WriteItem(pruned_path, b"bb\n", "proxy", 2),
+        jsonl_writer._WriteItem(waiter_path, b"ccc\n", "proxy", 1),
+        jsonl_writer._WriteItem(later_write_path, b"dddd\n", "proxy", 1),
+    ]
+    completed_bytes = sum(
+        len(item.line) for item in items if isinstance(item, jsonl_writer._WriteItem)
+    )
+    condition = ObservedCondition()
+
+    jsonl_writer._accepted_by_path.update(
+        {
+            pruned_path: 2,
+            waiter_path: 1,
+            later_write_path: 2,
+        }
+    )
+    jsonl_writer._flush_waiters_by_path[waiter_path] = 1
+    jsonl_writer._pending_bytes = completed_bytes + len(later_line)
+    jsonl_writer._queued_writes = len(items) + 1
+
+    with patch.object(jsonl_writer, "_condition", condition):
+        jsonl_writer._complete_batch(items)
+
+    assert condition.acquisitions == 1
+    assert condition.notifications == 1
+    assert pruned_path not in jsonl_writer._accepted_by_path
+    assert pruned_path not in jsonl_writer._completed_by_path
+    assert jsonl_writer._accepted_by_path[waiter_path] == 1
+    assert jsonl_writer._completed_by_path[waiter_path] == 1
+    assert jsonl_writer._accepted_by_path[later_write_path] == 2
+    assert jsonl_writer._completed_by_path[later_write_path] == 1
+    assert jsonl_writer._pending_bytes == len(later_line)
+    assert jsonl_writer._queued_writes == 1
+
+
 def test_completed_write_prunes_path_state_without_explicit_flush(tmp_path):
     log_path = str(tmp_path / "proxy.jsonl")
 
@@ -126,6 +186,7 @@ def test_concurrent_flushes_prune_after_all_waiters_complete(tmp_path):
 
 def test_shutdown_writer_returns_when_normal_write_backlog_is_full(tmp_path):
     log_path = str(tmp_path / "net.jsonl")
+    line = b'{"action":"ALLOW"}\n'
     append_started = threading.Event()
     release_append = threading.Event()
     shutdown_thread: ThreadUnderTest | None = None
@@ -143,11 +204,15 @@ def test_shutdown_writer_returns_when_normal_write_backlog_is_full(tmp_path):
         patch.object(jsonl_writer, "_append_lines", side_effect=append_lines),
     ):
         try:
-            jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
+            jsonl_writer.write_jsonl_line(log_path, line, "network")
             assert append_started.wait(timeout=1)
 
             for _ in range(jsonl_writer.MAX_PENDING_JSONL_WRITES):
-                jsonl_writer.write_jsonl_line(log_path, b'{"action":"ALLOW"}\n', "network")
+                jsonl_writer.write_jsonl_line(log_path, line, "network")
+
+            assert jsonl_writer._accepted_by_path[log_path] == jsonl_writer.MAX_PENDING_JSONL_WRITES
+            assert jsonl_writer._queued_writes == jsonl_writer.MAX_PENDING_JSONL_WRITES
+            assert jsonl_writer._pending_bytes == jsonl_writer.MAX_PENDING_JSONL_WRITES * len(line)
 
             shutdown_thread = ThreadUnderTest(
                 target=shutdown_writer,
