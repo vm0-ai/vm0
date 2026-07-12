@@ -3035,6 +3035,7 @@ describe("chat lifecycle", () => {
       return makeMessage(`burst-${index}`, `Burst ${index}`);
     });
     let page = 0;
+    let emptyForwardPageRequested = false;
 
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -3053,8 +3054,12 @@ describe("chat lifecycle", () => {
       }
       const startIndex = page * 50;
       page += 1;
+      const messages = burstMessages.slice(startIndex, startIndex + 50);
+      if (messages.length === 0) {
+        emptyForwardPageRequested = true;
+      }
       return respond(200, {
-        messages: burstMessages.slice(startIndex, startIndex + 50),
+        messages,
       });
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
@@ -3071,10 +3076,104 @@ describe("chat lifecycle", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("Burst 119")).toBeInTheDocument();
+      expect(emptyForwardPageRequested).toBeTruthy();
     });
   });
 
-  it("silently loads older chat history after rendering latest messages", async () => {
+  it("loads older pages after a delayed initial remote message page", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000730";
+    const messages = Array.from({ length: 60 }, (_, index) => {
+      const itemNumber = index + 1;
+      return {
+        id: `00000000-0000-4000-8000-${String(itemNumber).padStart(12, "0")}`,
+        role: "assistant" as const,
+        content: `Delayed history reply ${itemNumber}`,
+        createdAt: new Date(Date.UTC(2026, 5, 9, 10, index, 0)).toISOString(),
+      } satisfies PagedChatMessage;
+    });
+    const initialPageGate = context.mocks.deferred<void>();
+    let initialPageRequested = false;
+    const beforeIds: string[] = [];
+    const sinceIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delayed history",
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      async ({ query, respond }) => {
+        if (query.beforeId) {
+          beforeIds.push(query.beforeId);
+          return respond(200, {
+            messages: messages.slice(0, 10),
+            hasHistoryBefore: false,
+          });
+        }
+        if (query.sinceId) {
+          sinceIds.push(query.sinceId);
+          return respond(200, { messages: [] });
+        }
+
+        initialPageRequested = true;
+        await initialPageGate.promise;
+        return respond(200, {
+          messages: messages.slice(10),
+          hasHistoryBefore: true,
+        });
+      },
+    );
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, { lastReadAt: null, unreads: [] });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      await waitFor(() => {
+        expect(initialPageRequested).toBeTruthy();
+      });
+      expect(beforeIds).toStrictEqual([]);
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+
+      initialPageGate.resolve();
+      await waitFor(() => {
+        expect(beforeIds).toStrictEqual([messages[10]!.id]);
+      });
+    } finally {
+      if (!initialPageGate.settled()) {
+        initialPageGate.resolve();
+      }
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("Delayed history reply 1")).toBeInTheDocument();
+      expect(screen.getByText("Delayed history reply 60")).toBeInTheDocument();
+    });
+
+    const forwardRequestCount = sinceIds.length;
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadMessageCreated:${threadId}`,
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
+    await waitFor(() => {
+      expect(sinceIds).toHaveLength(forwardRequestCount + 1);
+    });
+    expect(beforeIds).toStrictEqual([messages[10]!.id]);
+  });
+
+  it("automatically loads older chat history after rendering latest messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
     const beforeHistoryGate = context.mocks.deferred<void>();
 
@@ -3604,7 +3703,9 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Current keyboard thread",
+      );
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");

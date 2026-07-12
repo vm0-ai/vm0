@@ -35,7 +35,6 @@ import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
-  publishChatThreadFollowupsFinished,
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
   publishUserSignal,
@@ -406,7 +405,6 @@ interface ChatThreadForRunRow {
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly triggerSource: string;
 }
 
 interface ChatRunInfo {
@@ -1119,12 +1117,6 @@ async function runCompletedChatCallbackSideEffects(args: {
         recommendedFollowups,
       });
     }
-    if (args.chatThread.triggerSource === "web") {
-      await publishChatThreadFollowupsFinished({
-        userId: args.chatThread.userId,
-        threadId: args.chatThread.chatThreadId,
-      });
-    }
   })();
 
   const pushStep = (async () => {
@@ -1651,7 +1643,6 @@ async function chatThreadForRunFromDb(
       chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
       orgId: agentRuns.orgId,
-      triggerSource: zeroRuns.triggerSource,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -1666,7 +1657,6 @@ async function chatThreadForRunFromDb(
     chatThreadId: row.chatThreadId,
     userId: row.userId,
     orgId: row.orgId,
-    triggerSource: row.triggerSource,
   };
 }
 

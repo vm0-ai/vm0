@@ -1637,7 +1637,9 @@ describe("zero sidebar", () => {
     const composer = await screen.findByPlaceholderText(PLACEHOLDER);
     composer.focus();
     fireEvent.keyDown(composer, {
-      key: "a",
+      key: "A",
+      code: "KeyA",
+      keyCode: 65,
       ctrlKey: true,
       shiftKey: true,
     });
@@ -1768,7 +1770,12 @@ describe("zero sidebar", () => {
 
     composer.focus();
     expect(composer).toHaveFocus();
-    fireEvent.keyDown(composer, { key: "b", ctrlKey: true });
+    fireEvent.keyDown(composer, {
+      key: "b",
+      code: "KeyB",
+      keyCode: 66,
+      ctrlKey: true,
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();

@@ -15,10 +15,6 @@ import type {
 } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 
-export interface LoadHistoryResult {
-  hasMore: boolean;
-}
-
 /** The thread's current active goal, folded from its message stream. */
 export interface ActiveGoalState {
   readonly objective: string;
@@ -101,7 +97,6 @@ export interface ChatThreadSignals {
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // -- Paged messages (sole rendering path) --------------------------------
-  earliestChatMessageId$: Computed<Promise<string | undefined>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
@@ -112,7 +107,6 @@ export interface ChatThreadSignals {
   queuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
   emptyQueuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
   lastAssistantCancelled$: Computed<Promise<boolean>>;
-  hasOlderHistory$: Computed<Promise<boolean>>;
   messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   // The thread's active goal, folded from goal-state marker messages. Null when
@@ -121,8 +115,6 @@ export interface ChatThreadSignals {
   allFinished$: Computed<Promise<boolean>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
-  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;

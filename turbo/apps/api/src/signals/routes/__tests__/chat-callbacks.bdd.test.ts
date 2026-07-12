@@ -484,19 +484,6 @@ function recommendedFollowupMessages(
   });
 }
 
-function publishedChatThreadFollowupsFinished(threadId: string): boolean {
-  return context.mocks.ably.publish.mock.calls.some((call) => {
-    const payload = call[1];
-    return (
-      call[0] === "chatThreadFollowupsFinished" &&
-      payload !== null &&
-      typeof payload === "object" &&
-      "threadId" in payload &&
-      payload.threadId === threadId
-    );
-  });
-}
-
 async function waitForChatThreadMessageCreatedPublish(
   threadId: string,
 ): Promise<void> {
@@ -794,11 +781,6 @@ describe("CHAT-02: completed chat callback", () => {
         'The "prompt" values are shown as plain text, not rendered as Markdown',
       ),
     ]);
-    await expect
-      .poll(() => {
-        return publishedChatThreadFollowupsFinished(first.threadId);
-      })
-      .toBe(true);
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -974,7 +956,6 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.recommendedFollowups).toBeUndefined();
-    expect(publishedChatThreadFollowupsFinished(run.threadId)).toBeTruthy();
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {

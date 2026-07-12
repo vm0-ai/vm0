@@ -20,6 +20,7 @@ export default defineConfig({
       // Mock idb in tests so IndexedDB operations fall through to the
       // remote (MSW-mocked) path on openDB rejection in happy-dom.
       idb: path.resolve(__dirname, "./src/mocks/idb.ts"),
+      "idb-real": path.resolve(__dirname, "./node_modules/idb/build/index.js"),
     },
   },
   define: {
