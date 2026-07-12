@@ -106,6 +106,12 @@ const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
   "claim_route_feature_switch_context",
   "claim_route_secret_materialization",
 ] as const;
+const CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES = [
+  "claim_route_response_resume_session",
+  "claim_route_response_network_policy_refresh",
+] as const;
+type ClaimRouteResponseTimingActionType =
+  (typeof CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES)[number];
 const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
   "claim_route_transition_execute",
 ] as const;
@@ -673,6 +679,46 @@ function singleSandboxOperationEvent(
   });
   expect(matchingEvents).toHaveLength(1);
   return matchingEvents[0]!;
+}
+
+function expectClaimRouteResponseTimingActions(args: {
+  readonly runId: string;
+  readonly expectedActionTypes: readonly ClaimRouteResponseTimingActionType[];
+  readonly forbiddenValues: readonly string[];
+}): void {
+  const events = claimRouteTimingEventsForRun(args.runId);
+  const expectedActionTypes = new Set(args.expectedActionTypes);
+  for (const actionType of CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    if (!expectedActionTypes.has(actionType)) {
+      expect(matchingEvents).toHaveLength(0);
+      continue;
+    }
+
+    expect(matchingEvents).toHaveLength(1);
+    const event = matchingEvents[0];
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        op_type: actionType,
+        sandbox_type: "runner",
+        success: true,
+        run_id: args.runId,
+        span_kind: "nested",
+      }),
+    );
+    expect(event?.duration_ms).toStrictEqual(expect.any(Number));
+    expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of args.forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
 }
 
 function expectCustomConnectorRuntimePhaseTimingEvents(
@@ -2120,6 +2166,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(serialized).not.toContain(historyHash);
       expect(serialized).not.toContain(first.sessionId);
     }
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-timing-cli-${first.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+    expectClaimRouteResponseTimingActions({
+      runId: resumed.runId,
+      expectedActionTypes: ["claim_route_response_resume_session"],
+      forbiddenValues: [
+        history,
+        historyHash,
+        first.sessionId,
+        resumedClaim.sandboxToken,
+      ],
+    });
 
     const checkpointZeroToken = "bdd-checkpoint-zero-token";
     const checkpointRun = await api.createDirectRun(actor, {
@@ -6136,6 +6201,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const grantedContext = await claimSlackContext("granted permissions");
     const granted = grantedContext.policy;
+    expectClaimRouteResponseTimingActions({
+      runId: grantedContext.claim.runId,
+      expectedActionTypes: ["claim_route_response_network_policy_refresh"],
+      forbiddenValues: [
+        "granted permissions",
+        "slack",
+        grantedContext.claim.sandboxToken,
+      ],
+    });
     expect(
       grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
     ).toStrictEqual(expect.any(String));
@@ -6255,6 +6329,88 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("records co-occurring resume and policy response timing", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-claim-response-timing",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+    await api.heartbeatRunner(runnerGroup);
+
+    const firstPrompt = "start combined claim response timing";
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.networkPolicies?.slack).toBeDefined();
+
+    const history = `bdd combined claim history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-combined-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, first.runId);
+    expect(completed.status).toBe("completed");
+
+    const resumedPrompt = "continue combined claim response timing";
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: resumedPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-combined-cli-${first.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+    expect(resumedClaim.networkPolicies?.slack).toBeDefined();
+    expectClaimRouteResponseTimingActions({
+      runId: resumed.runId,
+      expectedActionTypes: [
+        "claim_route_response_resume_session",
+        "claim_route_response_network_policy_refresh",
+      ],
+      forbiddenValues: [
+        firstPrompt,
+        resumedPrompt,
+        history,
+        historyHash,
+        first.sessionId,
+        "slack",
+        "xoxb-bdd-claim-response-timing",
+        resumedClaim.sandboxToken,
+      ],
+    });
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
   it("preserves session agent identity when compose versions are shared", async () => {
@@ -6903,6 +7059,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     }
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
+    expectClaimRouteResponseTimingActions({
+      runId: first.runId,
+      expectedActionTypes: [],
+      forbiddenValues: [firstPrompt, claimed.body.sandboxToken, apiKey.token],
+    });
     const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
     expect(claimRouteTimingEvents).toHaveLength(
       CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
