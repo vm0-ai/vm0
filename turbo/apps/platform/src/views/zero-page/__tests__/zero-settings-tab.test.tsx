@@ -422,7 +422,7 @@ describe("zero settings tab", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
         screen.getByText(
-          /including automations and chats other people created/u,
+          /Deletes the agent, its workflows, automations, and everyone.s chat history/u,
         ),
       ).toBeInTheDocument();
     });
@@ -432,7 +432,7 @@ describe("zero settings tab", () => {
     await waitFor(() => {
       expect(
         screen.queryByText(
-          /including automations and chats other people created/u,
+          /Deletes the agent, its workflows, automations, and everyone.s chat history/u,
         ),
       ).not.toBeInTheDocument();
     });
