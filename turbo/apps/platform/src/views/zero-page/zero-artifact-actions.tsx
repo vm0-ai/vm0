@@ -539,7 +539,10 @@ function GoogleDriveMenuItem({
       <Tooltip>
         <TooltipTrigger asChild>
           <ArtifactDownloadMenuItem
-            disabled={!googleDriveConnector || !googleDriveAuthMethod}
+            disabled={
+              !googleDriveConnected &&
+              (!googleDriveConnector || !googleDriveAuthMethod)
+            }
             onClick={syncOrConnect}
           >
             <IconBrandGoogleDrive size={14} stroke={1.5} />
@@ -635,7 +638,10 @@ function GoogleSlidesMenuItem({
     : "Connect Google Drive";
   return (
     <ArtifactDownloadMenuItem
-      disabled={!googleDriveConnector || !googleDriveAuthMethod}
+      disabled={
+        !googleDriveConnected &&
+        (!googleDriveConnector || !googleDriveAuthMethod)
+      }
       onClick={connectOrUpload}
     >
       <IconPresentation size={14} stroke={1.5} />
