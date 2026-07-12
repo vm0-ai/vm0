@@ -87,6 +87,9 @@ Firewall and auth context
   would normally expose connector credentials. Names only; never values.
 - ``CONNECTOR_DIAGNOSTIC_BASE``: optional ``str`` matched static built-in base
   URL that produced the diagnostic.
+- ``CONNECTOR_ROUTE_REASON``: optional ``str`` connector-route ambiguity reason.
+- ``CONNECTOR_ROUTE_CANDIDATES``: optional ``list[str]`` of config-derived
+  connector owners for an ambiguous route. Never contains the supplied hint.
 - ``AUTH_RESOLVED_SECRETS``: ``list[str]`` from successful auth resolution.
   Read by network-log firewall metadata.
 - ``AUTH_REFRESHED_CONNECTORS``: ``list[str]`` from successful auth resolution.
@@ -191,6 +194,8 @@ CONNECTOR_DIAGNOSTIC_TYPE: Final = "connector_diagnostic_type"
 CONNECTOR_DIAGNOSTIC_REASON: Final = "connector_diagnostic_reason"
 CONNECTOR_DIAGNOSTIC_ENV_NAMES: Final = "connector_diagnostic_env_names"
 CONNECTOR_DIAGNOSTIC_BASE: Final = "connector_diagnostic_base"
+CONNECTOR_ROUTE_REASON: Final = "connector_route_reason"
+CONNECTOR_ROUTE_CANDIDATES: Final = "connector_route_candidates"
 AUTH_RESOLVED_SECRETS: Final = "auth_resolved_secrets"
 AUTH_REFRESHED_CONNECTORS: Final = "auth_refreshed_connectors"
 AUTH_REFRESHED_SECRETS: Final = "auth_refreshed_secrets"

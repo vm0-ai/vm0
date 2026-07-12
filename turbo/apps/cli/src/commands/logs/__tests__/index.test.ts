@@ -3986,6 +3986,42 @@ describe("logs command", () => {
       expect(logCalls).toContain("https://fal.run");
     });
 
+    it("should display ambiguous connector route fields", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/network",
+          () => {
+            return HttpResponse.json({
+              networkLogs: [
+                {
+                  timestamp: "2024-01-15T10:30:00Z",
+                  action: "DENY",
+                  method: "GET",
+                  status: 409,
+                  latency_ms: 2,
+                  request_size: 0,
+                  response_size: 160,
+                  url: "https://shared.example.com/items/123",
+                  firewall_error: "ambiguous_connector_route",
+                  connector_route_reason: "connector_intent_required",
+                  connector_route_candidates: ["auditor", "primary"],
+                },
+              ],
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", RUN_ID, "--network"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("DENY");
+      expect(logCalls).toContain("ambiguous_connector_route");
+      expect(logCalls).toContain("connector_intent_required");
+      expect(logCalls).toContain("auditor, primary");
+    });
+
     it("should display TCP connection logs", async () => {
       server.use(
         http.get(

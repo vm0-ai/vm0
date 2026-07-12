@@ -1698,6 +1698,398 @@
         "reason": "unsafe_path",
         "permissions": []
       }
+    },
+    {
+      "name": "cross-firewall route owners require connector intent",
+      "firewalls": [
+        {
+          "name": "primary",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer primary" } },
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "auditor",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer auditor" } },
+              "permissions": [
+                { "name": "audit-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "primary": {
+          "allow": ["items-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        },
+        "auditor": {
+          "allow": [],
+          "deny": ["audit-read"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "ambiguous",
+        "method": "GET",
+        "path": "/items/123",
+        "candidates": ["auditor", "primary"],
+        "reason": "connector_intent_required"
+      }
+    },
+    {
+      "name": "connector intent selects allowed route owner",
+      "firewalls": [
+        {
+          "name": "auditor",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer auditor" } },
+              "permissions": [
+                { "name": "audit-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "primary",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer primary" } },
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "auditor": {
+          "allow": [],
+          "deny": ["audit-read"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        },
+        "primary": {
+          "allow": ["items-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123",
+        "connectorIntent": { "status": "present", "value": "primary" }
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "primary",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "permission": "items-read",
+        "rule": "GET /items/{id}"
+      }
+    },
+    {
+      "name": "connector intent enforces selected denied route owner",
+      "firewalls": [
+        {
+          "name": "primary",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer primary" } },
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "auditor",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer auditor" } },
+              "permissions": [
+                { "name": "audit-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "primary": {
+          "allow": ["items-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        },
+        "auditor": {
+          "allow": [],
+          "deny": ["audit-read"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123",
+        "connectorIntent": { "status": "present", "value": "auditor" }
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "auditor",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "permission_denied",
+        "permissions": ["audit-read"]
+      }
+    },
+    {
+      "name": "malformed connector intent cannot resolve route owners",
+      "firewalls": [
+        {
+          "name": "alpha",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "beta",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123",
+        "connectorIntent": { "status": "malformed" }
+      },
+      "expected": {
+        "kind": "ambiguous",
+        "method": "GET",
+        "path": "/items/123",
+        "candidates": ["alpha", "beta"],
+        "reason": "malformed_connector_intent"
+      }
+    },
+    {
+      "name": "outside connector intent cannot resolve base-only owners",
+      "firewalls": [
+        {
+          "name": "railway",
+          "apis": [{ "base": "https://backboard.example.com", "auth": {} }]
+        },
+        {
+          "name": "railway-project",
+          "apis": [{ "base": "https://backboard.example.com", "auth": {} }]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "https://backboard.example.com",
+        "connectorIntent": { "status": "present", "value": "other" }
+      },
+      "expected": {
+        "kind": "ambiguous",
+        "method": "POST",
+        "path": "/",
+        "candidates": ["railway", "railway-project"],
+        "reason": "connector_intent_not_candidate"
+      }
+    },
+    {
+      "name": "same-owner conflicting auth fails closed",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer first" } },
+              "permissions": [
+                { "name": "first-read", "rules": ["GET /items/{id}"] }
+              ]
+            },
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer second" } },
+              "permissions": [
+                { "name": "second-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["first-read", "second-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "block",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "reason": "malformed_firewall_config",
+        "permissions": []
+      }
+    },
+    {
+      "name": "irrelevant intent cannot hide a unique route owner",
+      "firewalls": [
+        {
+          "name": "broad",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        },
+        {
+          "name": "specific",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": {},
+              "permissions": [
+                { "name": "items-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "broad": {
+          "allow": [],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "allow"
+        },
+        "specific": {
+          "allow": ["items-read"],
+          "deny": [],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123",
+        "connectorIntent": { "status": "present", "value": "broad" }
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "specific",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "permission": "items-read",
+        "rule": "GET /items/{id}"
+      }
+    },
+    {
+      "name": "connector intent selects a base-only owner",
+      "firewalls": [
+        {
+          "name": "alpha",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        },
+        {
+          "name": "beta",
+          "apis": [{ "base": "https://api.example.com", "auth": {} }]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "https://api.example.com/graphql",
+        "connectorIntent": { "status": "present", "value": "beta" }
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "beta",
+        "base": "https://api.example.com",
+        "relativePath": "/graphql"
+      }
+    },
+    {
+      "name": "same-owner equal routing identity preserves permission behavior",
+      "firewalls": [
+        {
+          "name": "example",
+          "apis": [
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer shared" } },
+              "permissions": [
+                { "name": "first-read", "rules": ["GET /items/{id}"] }
+              ]
+            },
+            {
+              "base": "https://api.example.com",
+              "auth": { "headers": { "Authorization": "Bearer shared" } },
+              "permissions": [
+                { "name": "second-read", "rules": ["GET /items/{id}"] }
+              ]
+            }
+          ]
+        }
+      ],
+      "networkPolicies": {
+        "example": {
+          "allow": ["first-read"],
+          "deny": ["second-read"],
+          "ask": [],
+          "unknownPolicy": "deny"
+        }
+      },
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.com/items/123"
+      },
+      "expected": {
+        "kind": "allow",
+        "firewallName": "example",
+        "base": "https://api.example.com",
+        "relativePath": "/items/123",
+        "permission": "first-read",
+        "rule": "GET /items/{id}"
+      }
     }
   ]
 }

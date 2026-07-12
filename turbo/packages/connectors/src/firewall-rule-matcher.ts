@@ -53,6 +53,20 @@ export type FirewallRequestBlockReason =
   | "malformed_network_policy"
   | "unsafe_path";
 
+export type FirewallConnectorIntent =
+  | {
+      readonly status: "absent" | "malformed";
+    }
+  | {
+      readonly status: "present";
+      readonly value: string;
+    };
+
+export type ConnectorRouteAmbiguityReason =
+  | "connector_intent_required"
+  | "malformed_connector_intent"
+  | "connector_intent_not_candidate";
+
 export type FirewallRequestDecision =
   | {
       readonly kind: "no_match";
@@ -72,6 +86,13 @@ export type FirewallRequestDecision =
       readonly relativePath: string;
       readonly reason: FirewallRequestBlockReason;
       readonly permissions: readonly string[];
+    }
+  | {
+      readonly kind: "ambiguous";
+      readonly method: string;
+      readonly path: string;
+      readonly candidates: readonly string[];
+      readonly reason: ConnectorRouteAmbiguityReason;
     };
 
 interface ApiMatchState {
@@ -115,6 +136,7 @@ interface DecisionApi {
   readonly baseMalformed: boolean;
   readonly authMalformed: boolean;
   readonly hasMalformedRules: boolean;
+  readonly routingIdentity: string | null;
   readonly rules: readonly DecisionRule[];
 }
 
@@ -154,6 +176,27 @@ interface FirewallDecisionState {
   deniedPermissionNames: string[];
   malformedConfigMatch: DecisionBlockMatch | null;
   malformedPolicyMatch: DecisionBlockMatch | null;
+}
+
+interface CollectedApiMatch {
+  readonly order: number;
+  readonly firewall: DecisionFirewall;
+  readonly api: DecisionApi;
+  readonly baseMatch: DecisionBaseMatch;
+  readonly blockMatch: DecisionBlockMatch;
+  readonly score: number;
+}
+
+interface CollectedRuleMatch {
+  readonly apiMatch: CollectedApiMatch;
+  readonly rule: DecisionRule;
+}
+
+interface FirewallMatchCollection {
+  bestBaseScore: number | null;
+  bestRuleSpecificity: PathSpecificity | null;
+  apiMatches: CollectedApiMatch[];
+  ruleMatches: CollectedRuleMatch[];
 }
 
 const VALID_RULE_METHODS = new Set([
@@ -493,6 +536,48 @@ function isValidAuthConfigForDecision(
   }
 }
 
+function canonicalJson(value: unknown): string | undefined {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? JSON.stringify(value) : undefined;
+  }
+  if (Array.isArray(value)) {
+    const items: string[] = [];
+    for (const item of value) {
+      const encoded = canonicalJson(item);
+      if (encoded === undefined) return undefined;
+      items.push(encoded);
+    }
+    return `[${items.join(",")}]`;
+  }
+  if (!isObjectRecord(value)) return undefined;
+
+  const entries: string[] = [];
+  for (const key of Object.keys(value).sort()) {
+    const item = value[key];
+    if (item === undefined) continue;
+    const encoded = canonicalJson(item);
+    if (encoded === undefined) return undefined;
+    entries.push(`${JSON.stringify(key)}:${encoded}`);
+  }
+  return `{${entries.join(",")}}`;
+}
+
+function decisionApiRoutingIdentity(
+  api: Record<string, unknown>,
+): string | null {
+  return (
+    canonicalJson({
+      base: api.base,
+      hostPolicy: api.hostPolicy,
+      auth: api.auth,
+    }) ?? null
+  );
+}
+
 function compileDecisionApi(
   api: Record<string, unknown>,
   serviceName: string,
@@ -507,6 +592,7 @@ function compileDecisionApi(
     baseMalformed = true;
   }
   const authMalformed = !isValidAuthConfigForDecision(api.auth, serviceName);
+  const routingIdentity = decisionApiRoutingIdentity(api);
   const rules: DecisionRule[] = [];
   const seenPermissionNames = new Set<string>();
   let hasMalformedRules = nameMalformed;
@@ -563,6 +649,7 @@ function compileDecisionApi(
     baseMalformed,
     authMalformed,
     hasMalformedRules,
+    routingIdentity,
     rules,
   };
 }
@@ -1237,20 +1324,6 @@ function acceptDecisionBaseMatch(
   return true;
 }
 
-function canRuleSpecificityAffectDecision(
-  state: FirewallDecisionState,
-  specificity: PathSpecificity,
-): boolean {
-  if (state.bestRuleSpecificity === null) return true;
-  const comparison = comparePathSpecificity(
-    specificity,
-    state.bestRuleSpecificity,
-  );
-  if (comparison > 0) return true;
-  if (comparison < 0) return false;
-  return state.allowedMatch === null;
-}
-
 function acceptRuleSpecificity(
   state: FirewallDecisionState,
   specificity: PathSpecificity,
@@ -1395,7 +1468,12 @@ function recordMalformedDecisionState(
   api: DecisionApi,
   blockMatch: DecisionBlockMatch,
 ): void {
-  if (api.baseMalformed || api.authMalformed || api.hasMalformedRules) {
+  if (
+    api.baseMalformed ||
+    api.authMalformed ||
+    api.hasMalformedRules ||
+    api.routingIdentity === null
+  ) {
     state.malformedConfigMatch ??= blockMatch;
   }
 }
@@ -1404,7 +1482,12 @@ function apiCannotEvaluateRules(
   firewall: DecisionFirewall,
   api: DecisionApi,
 ): boolean {
-  return firewall.nameMalformed || api.baseMalformed || api.authMalformed;
+  return (
+    firewall.nameMalformed ||
+    api.baseMalformed ||
+    api.authMalformed ||
+    api.routingIdentity === null
+  );
 }
 
 function policyCannotEvaluateRules(
@@ -1417,123 +1500,249 @@ function policyCannotEvaluateRules(
   );
 }
 
-function evaluateDecisionRule({
-  state,
-  rule,
-  policy,
-  blockMatch,
-  baseMatch,
-  upperMethod,
-}: {
-  readonly state: FirewallDecisionState;
-  readonly rule: DecisionRule;
-  readonly policy: CompiledNetworkPolicy | undefined;
-  readonly blockMatch: DecisionBlockMatch;
-  readonly baseMatch: DecisionBaseMatch;
-  readonly upperMethod: string;
-}): void {
-  if (rule.method !== "ANY" && rule.method !== upperMethod) return;
-  if (!canRuleSpecificityAffectDecision(state, rule.specificity)) return;
+function createMatchCollection(): FirewallMatchCollection {
+  return {
+    bestBaseScore: null,
+    bestRuleSpecificity: null,
+    apiMatches: [],
+    ruleMatches: [],
+  };
+}
 
-  const permissionBlocked =
-    policy !== undefined && policy.blockedPermissions.has(rule.permission);
-  if (matchFirewallPath(baseMatch.relativePath, rule.path) === null) return;
-  if (!acceptRuleSpecificity(state, rule.specificity)) return;
+function acceptCollectedApi(
+  collection: FirewallMatchCollection,
+  match: CollectedApiMatch,
+): boolean {
+  if (
+    collection.bestBaseScore === null ||
+    match.score > collection.bestBaseScore
+  ) {
+    collection.bestBaseScore = match.score;
+    collection.bestRuleSpecificity = null;
+    collection.apiMatches = [];
+    collection.ruleMatches = [];
+  } else if (match.score < collection.bestBaseScore) {
+    return false;
+  }
+  collection.apiMatches.push(match);
+  return true;
+}
 
-  if (permissionBlocked) {
-    recordDeniedRule(state, blockMatch, rule.permission);
+function canRuleAffectCollection(
+  collection: FirewallMatchCollection,
+  specificity: PathSpecificity,
+): boolean {
+  if (collection.bestRuleSpecificity === null) return true;
+  return (
+    comparePathSpecificity(specificity, collection.bestRuleSpecificity) >= 0
+  );
+}
+
+function recordCollectedRule(
+  collection: FirewallMatchCollection,
+  match: CollectedRuleMatch,
+): void {
+  const bestSpecificity = collection.bestRuleSpecificity;
+  if (
+    bestSpecificity === null ||
+    comparePathSpecificity(match.rule.specificity, bestSpecificity) > 0
+  ) {
+    collection.bestRuleSpecificity = match.rule.specificity;
+    collection.ruleMatches = [];
+  } else if (
+    comparePathSpecificity(match.rule.specificity, bestSpecificity) < 0
+  ) {
     return;
   }
-
-  state.allowedMatch ??= {
-    firewallName: baseMatch.firewallName,
-    base: baseMatch.allowBase,
-    relativePath: baseMatch.relativePath,
-    permission: rule.permission,
-    rule: rule.raw,
-  };
+  collection.ruleMatches.push(match);
 }
 
-function evaluateDecisionRules({
-  state,
-  api,
-  policy,
-  blockMatch,
-  baseMatch,
-  upperMethod,
-}: {
-  readonly state: FirewallDecisionState;
-  readonly api: DecisionApi;
-  readonly policy: CompiledNetworkPolicy | undefined;
-  readonly blockMatch: DecisionBlockMatch;
-  readonly baseMatch: DecisionBaseMatch;
-  readonly upperMethod: string;
-}): void {
-  for (const rule of api.rules) {
-    evaluateDecisionRule({
-      state,
-      rule,
-      policy,
-      blockMatch,
-      baseMatch,
-      upperMethod,
-    });
+function collectDecisionRules(
+  collection: FirewallMatchCollection,
+  apiMatch: CollectedApiMatch,
+  upperMethod: string,
+): void {
+  for (const rule of apiMatch.api.rules) {
+    if (rule.method !== "ANY" && rule.method !== upperMethod) continue;
+    if (!canRuleAffectCollection(collection, rule.specificity)) continue;
+    if (
+      matchFirewallPath(apiMatch.baseMatch.relativePath, rule.path) === null
+    ) {
+      continue;
+    }
+    recordCollectedRule(collection, { apiMatch, rule });
   }
 }
 
-function evaluateDecisionApi({
-  state,
-  firewall,
-  api,
-  url,
-  unsafePath,
-  networkPolicies,
-  upperMethod,
-}: {
-  readonly state: FirewallDecisionState;
-  readonly firewall: DecisionFirewall;
-  readonly api: DecisionApi;
-  readonly url: string;
-  readonly unsafePath: boolean;
-  readonly networkPolicies: CompiledNetworkPolicies;
-  readonly upperMethod: string;
-}): FirewallRequestDecision | null {
-  const policy = networkPolicies.policies.get(firewall.name);
-  const baseMatch = matchFirewallBaseUrlForDecision(url, api.rawBase);
-  if (baseMatch === null) return null;
-  if (unsafePath) return unsafePathBlockDecision(firewall, baseMatch);
-
-  const decisionBaseMatch: DecisionBaseMatch = {
-    firewallName: firewall.name,
-    base: baseMatch.displayBase,
-    allowBase: api.rawBase,
-    relativePath: baseMatch.relativePath,
-  };
-  const blockMatch: DecisionBlockMatch = {
-    firewallName: decisionBaseMatch.firewallName,
-    base: decisionBaseMatch.base,
-    relativePath: decisionBaseMatch.relativePath,
-  };
-  if (!acceptDecisionBaseMatch(state, decisionBaseMatch, baseMatch.score)) {
-    return null;
+function winningApiMatches(
+  collection: FirewallMatchCollection,
+): CollectedApiMatch[] {
+  if (collection.ruleMatches.length === 0) {
+    return collection.apiMatches;
   }
 
-  recordMalformedDecisionState(state, api, blockMatch);
-  if (apiCannotEvaluateRules(firewall, api)) return null;
-  if (policyCannotEvaluateRules(networkPolicies, policy)) {
-    state.malformedPolicyMatch ??= blockMatch;
-    return null;
+  const matches: CollectedApiMatch[] = [];
+  const seenOrders = new Set<number>();
+  for (const ruleMatch of collection.ruleMatches) {
+    if (seenOrders.has(ruleMatch.apiMatch.order)) continue;
+    seenOrders.add(ruleMatch.apiMatch.order);
+    matches.push(ruleMatch.apiMatch);
   }
+  return matches;
+}
 
-  evaluateDecisionRules({
-    state,
-    api,
-    policy,
-    blockMatch,
-    baseMatch: decisionBaseMatch,
-    upperMethod,
+function winningOwnerNames(
+  collection: FirewallMatchCollection,
+): readonly string[] {
+  const names = new Set<string>();
+  for (const apiMatch of winningApiMatches(collection)) {
+    if (!apiMatch.firewall.nameMalformed) {
+      names.add(apiMatch.firewall.name);
+    }
+  }
+  return [...names].sort();
+}
+
+function connectorAmbiguityReason(
+  intent: FirewallConnectorIntent,
+): ConnectorRouteAmbiguityReason {
+  if (intent.status === "absent") return "connector_intent_required";
+  if (intent.status === "malformed") return "malformed_connector_intent";
+  return "connector_intent_not_candidate";
+}
+
+type OwnerSelection =
+  | {
+      readonly kind: "selected";
+      readonly name: string | null;
+    }
+  | {
+      readonly kind: "ambiguous";
+      readonly decision: Extract<
+        FirewallRequestDecision,
+        { readonly kind: "ambiguous" }
+      >;
+    };
+
+function selectOwner(
+  collection: FirewallMatchCollection,
+  intent: FirewallConnectorIntent,
+  upperMethod: string,
+  path: string,
+): OwnerSelection {
+  const owners = winningOwnerNames(collection);
+  if (owners.length === 0) return { kind: "selected", name: null };
+  if (owners.length === 1) {
+    const [owner] = owners;
+    if (owner === undefined) throw new Error("missing connector route owner");
+    return { kind: "selected", name: owner };
+  }
+  if (intent.status === "present" && owners.includes(intent.value)) {
+    return { kind: "selected", name: intent.value };
+  }
+  return {
+    kind: "ambiguous",
+    decision: {
+      kind: "ambiguous",
+      method: upperMethod,
+      path,
+      candidates: owners,
+      reason: connectorAmbiguityReason(intent),
+    },
+  };
+}
+
+function conflictingSelectedApiDecision(
+  collection: FirewallMatchCollection,
+  selectedName: string,
+): FirewallRequestDecision | null {
+  const matches = winningApiMatches(collection).filter((match) => {
+    return (
+      match.firewall.name === selectedName &&
+      !match.firewall.nameMalformed &&
+      !match.api.baseMalformed &&
+      !match.api.authMalformed &&
+      match.api.routingIdentity !== null
+    );
   });
-  return null;
+  if (matches.length < 2) return null;
+
+  const [first] = matches;
+  if (first === undefined) return null;
+  if (
+    matches.slice(1).every((match) => {
+      return match.api.routingIdentity === first.api.routingIdentity;
+    })
+  ) {
+    return null;
+  }
+  return {
+    kind: "block",
+    firewallName: selectedName,
+    base: first.blockMatch.base,
+    relativePath: first.blockMatch.relativePath,
+    reason: "malformed_firewall_config",
+    permissions: [],
+  };
+}
+
+function reduceSelectedOwner(
+  collection: FirewallMatchCollection,
+  selectedName: string | null,
+  networkPolicies: CompiledNetworkPolicies,
+): FirewallRequestDecision {
+  if (selectedName !== null) {
+    const conflict = conflictingSelectedApiDecision(collection, selectedName);
+    if (conflict !== null) return conflict;
+  }
+
+  const state = createDecisionState();
+  const evaluableApiOrders = new Set<number>();
+  for (const apiMatch of collection.apiMatches) {
+    const { firewall, api, baseMatch, blockMatch } = apiMatch;
+    if (
+      selectedName !== null &&
+      firewall.name !== selectedName &&
+      !firewall.nameMalformed
+    ) {
+      continue;
+    }
+    const policy = networkPolicies.policies.get(firewall.name);
+    acceptDecisionBaseMatch(state, baseMatch, apiMatch.score);
+    recordMalformedDecisionState(state, api, blockMatch);
+    if (apiCannotEvaluateRules(firewall, api)) continue;
+    if (policyCannotEvaluateRules(networkPolicies, policy)) {
+      state.malformedPolicyMatch ??= blockMatch;
+      continue;
+    }
+    evaluableApiOrders.add(apiMatch.order);
+  }
+
+  for (const ruleMatch of collection.ruleMatches) {
+    const { apiMatch, rule } = ruleMatch;
+    if (!evaluableApiOrders.has(apiMatch.order)) continue;
+    if (selectedName !== null && apiMatch.firewall.name !== selectedName) {
+      continue;
+    }
+    const policy = networkPolicies.policies.get(apiMatch.firewall.name);
+    if (!acceptRuleSpecificity(state, rule.specificity)) continue;
+    if (
+      policy !== undefined &&
+      policy.blockedPermissions.has(rule.permission)
+    ) {
+      recordDeniedRule(state, apiMatch.blockMatch, rule.permission);
+      continue;
+    }
+    state.allowedMatch ??= {
+      firewallName: apiMatch.baseMatch.firewallName,
+      base: apiMatch.baseMatch.allowBase,
+      relativePath: apiMatch.baseMatch.relativePath,
+      permission: rule.permission,
+      rule: rule.raw,
+    };
+  }
+
+  return resolveFirewallDecision(state, networkPolicies);
 }
 
 export function matchFirewallBaseUrl(
@@ -1565,34 +1774,61 @@ export function matchFirewallRequestDecision(
   method: string,
   url: string,
   networkPolicies: unknown = undefined,
+  connectorIntent: FirewallConnectorIntent = { status: "absent" },
 ): FirewallRequestDecision {
   const decisionFirewalls = compileDecisionFirewalls(firewalls);
   if (decisionFirewalls.length === 0) return { kind: "no_match" };
 
   const compiledNetworkPolicies = compileNetworkPolicies(networkPolicies);
   const upperMethod = method.toUpperCase();
-  const state = createDecisionState();
+  const collection = createMatchCollection();
   const unsafePath =
     url.includes("\\") || hasUnsafeFirewallPath(rawPathFromUrl(url));
+  let apiOrder = 0;
 
   for (const firewall of decisionFirewalls) {
     for (const api of firewall.apis) {
-      const immediateDecision = evaluateDecisionApi({
-        state,
+      const order = apiOrder;
+      apiOrder += 1;
+      const baseMatch = matchFirewallBaseUrlForDecision(url, api.rawBase);
+      if (baseMatch === null) continue;
+      if (unsafePath) return unsafePathBlockDecision(firewall, baseMatch);
+
+      const decisionBaseMatch: DecisionBaseMatch = {
+        firewallName: firewall.name,
+        base: baseMatch.displayBase,
+        allowBase: api.rawBase,
+        relativePath: baseMatch.relativePath,
+      };
+      const apiMatch: CollectedApiMatch = {
+        order,
         firewall,
         api,
-        url,
-        unsafePath,
-        networkPolicies: compiledNetworkPolicies,
-        upperMethod,
-      });
-      if (immediateDecision !== null) {
-        return immediateDecision;
-      }
+        baseMatch: decisionBaseMatch,
+        blockMatch: {
+          firewallName: decisionBaseMatch.firewallName,
+          base: decisionBaseMatch.base,
+          relativePath: decisionBaseMatch.relativePath,
+        },
+        score: baseMatch.score,
+      };
+      if (!acceptCollectedApi(collection, apiMatch)) continue;
+      collectDecisionRules(collection, apiMatch, upperMethod);
     }
   }
 
-  return resolveFirewallDecision(state, compiledNetworkPolicies);
+  const selection = selectOwner(
+    collection,
+    connectorIntent,
+    upperMethod,
+    rawPathFromUrl(url),
+  );
+  if (selection.kind === "ambiguous") return selection.decision;
+  return reduceSelectedOwner(
+    collection,
+    selection.name,
+    compiledNetworkPolicies,
+  );
 }
 
 function matchFirewallHostWithParser(

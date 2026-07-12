@@ -31,11 +31,12 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# auth_base_forwarder/body_capture/connector_diagnostics/matching/registry/
+# auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
 # response_encoding_negotiation/response_streaming/terminal_usage/upstream_admission/
 # usage are imported by module (not selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
+#      ``connector_intent.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
 #      ``terminal_usage.X(...)`` / ``upstream_admission.X(...)`` / ``usage.X(...)``,
 #      making the module boundary visible at call sites.
@@ -45,6 +46,7 @@ import auth_base_forwarder
 import body_capture
 import builtin_host_policy
 import connector_diagnostics
+import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_local_responses
@@ -406,7 +408,7 @@ def get_registry_path() -> str:
 def _request_headers_probe_metadata_keys() -> tuple[str, ...]:
     return (
         *request_classification.REQUEST_HEADERS_PROBE_METADATA_KEYS,
-        *connector_diagnostics.REQUEST_HEADERS_PROBE_METADATA_KEYS,
+        *connector_intent.REQUEST_HEADERS_PROBE_METADATA_KEYS,
     )
 
 
@@ -634,7 +636,7 @@ def _restore_request_headers_probe_metadata(
     request_classification.restore_request_headers_probe_metadata(
         flow,
         snapshot,
-        extra_keys=connector_diagnostics.REQUEST_HEADERS_PROBE_METADATA_KEYS,
+        extra_keys=connector_intent.REQUEST_HEADERS_PROBE_METADATA_KEYS,
     )
 
 
@@ -664,6 +666,12 @@ def _http_network_log_entry(
     firewall_error = flow_metadata.firewall_error(flow.metadata)
     if firewall_error is not None:
         entry["firewall_error"] = firewall_error
+    connector_route_reason = flow_metadata.connector_route_reason(flow.metadata)
+    if connector_route_reason is not None:
+        entry["connector_route_reason"] = connector_route_reason
+    connector_route_candidates = flow_metadata.connector_route_candidates(flow.metadata)
+    if connector_route_candidates:
+        entry["connector_route_candidates"] = connector_route_candidates
     entry.update(upstream_admission.upstream_binding_log_fields(flow))
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         entry["browser_user_agent"] = True
@@ -772,7 +780,7 @@ def client_disconnected(client: connection.Client) -> None:
 
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
-    connector_diagnostics.capture_and_strip_connector_intent_header(flow)
+    connector_intent.capture_and_strip(flow)
 
     body_check = _auth_base_body_header_check(flow)
     body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
@@ -959,6 +967,13 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
     http_local_responses.set_firewall_block_response(flow, result)
 
 
+def _set_firewall_ambiguous_response(
+    flow: http.HTTPFlow,
+    result: matching.FirewallAmbiguous,
+) -> None:
+    http_local_responses.set_firewall_ambiguous_response(flow, result)
+
+
 def _block_public_destination_denied(
     flow: http.HTTPFlow,
     denial: request_classification.PublicDestinationDenial,
@@ -985,7 +1000,7 @@ async def request(flow: http.HTTPFlow) -> None:
     2. VM0 API auto-allow (agent must always reach the platform)
     3. Firewall match (inject auth headers for allowed requests)
     """
-    connector_diagnostics.capture_and_strip_connector_intent_header(flow)
+    connector_intent.capture_and_strip(flow)
 
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
@@ -1047,6 +1062,11 @@ async def request(flow: http.HTTPFlow) -> None:
             # business passthrough, not trusted provenance.
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            return
+        if classification.kind == "firewall_ambiguous":
+            firewall_ambiguous = classification.firewall_ambiguous
+            if firewall_ambiguous is not None:
+                _set_firewall_ambiguous_response(flow, firewall_ambiguous)
             return
         if classification.kind == "firewall_block":
             firewall_block = classification.firewall_block
