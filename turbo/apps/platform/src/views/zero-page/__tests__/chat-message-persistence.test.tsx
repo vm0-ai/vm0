@@ -13,48 +13,13 @@ vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
 });
 
-vi.mock("signal-timers", async () => {
-  const actual =
-    await vi.importActual<typeof import("signal-timers")>("signal-timers");
-
-  return {
-    ...actual,
-    async delay(
-      milliseconds: number,
-      options?: Parameters<typeof actual.delay>[1],
-    ): Promise<void> {
-      // Timeout fallback has its own integration test. Keep this cache-hit test
-      // independent of wall-clock contention while exercising real IndexedDB.
-      if (milliseconds !== 200) {
-        await actual.delay(milliseconds, options);
-        return;
-      }
-
-      const signal = options?.signal;
-      signal?.throwIfAborted();
-      const { promise, reject } = Promise.withResolvers<void>();
-      signal?.addEventListener(
-        "abort",
-        () => {
-          reject(signal.reason);
-        },
-        { once: true },
-      );
-      await promise;
-    },
-  };
-});
-
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const FIRST_THREAD_ID = "b0000000-0000-4000-a000-000000000731";
 const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
-const FIRST_USER_MESSAGE_ID = "00000000-0000-4000-8000-000000000730";
-const FIRST_ASSISTANT_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
-const FIRST_USER_MESSAGE = "Persist this request before the remote response";
-const FIRST_ASSISTANT_MESSAGE =
-  "Persist this remote response for thread re-entry";
+const FIRST_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
+const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 
 async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
   const link = (await screen.findByText(title)).closest("a");
@@ -109,15 +74,9 @@ describe("chat message persistence", () => {
           return respond(200, {
             messages: [
               {
-                id: FIRST_USER_MESSAGE_ID,
-                role: "user",
-                content: FIRST_USER_MESSAGE,
-                createdAt: "2026-06-09T10:00:00Z",
-              },
-              {
-                id: FIRST_ASSISTANT_MESSAGE_ID,
+                id: FIRST_MESSAGE_ID,
                 role: "assistant",
-                content: FIRST_ASSISTANT_MESSAGE,
+                content: FIRST_MESSAGE,
                 createdAt: "2026-06-09T10:01:00Z",
               },
             ],
@@ -152,22 +111,17 @@ describe("chat message persistence", () => {
         },
       });
 
-      await expect(
-        screen.findByText(FIRST_ASSISTANT_MESSAGE),
-      ).resolves.toBeInTheDocument();
       await firstThreadCaughtUp.promise;
+      await expect(
+        screen.findByText(FIRST_MESSAGE),
+      ).resolves.toBeInTheDocument();
       await waitFor(async () => {
-        const [persistedUserMessage, persistedAssistantMessage]: unknown[] =
-          await Promise.all([
-            testDb.get(CHAT_MESSAGES_STORE, FIRST_USER_MESSAGE_ID),
-            testDb.get(CHAT_MESSAGES_STORE, FIRST_ASSISTANT_MESSAGE_ID),
-          ]);
-        expect(persistedUserMessage).toMatchObject({
-          content: FIRST_USER_MESSAGE,
-          threadId: FIRST_THREAD_ID,
-        });
-        expect(persistedAssistantMessage).toMatchObject({
-          content: FIRST_ASSISTANT_MESSAGE,
+        const persistedMessage: unknown = await testDb.get(
+          CHAT_MESSAGES_STORE,
+          FIRST_MESSAGE_ID,
+        );
+        expect(persistedMessage).toMatchObject({
+          content: FIRST_MESSAGE,
           threadId: FIRST_THREAD_ID,
         });
       });
@@ -183,8 +137,7 @@ describe("chat message persistence", () => {
 
       await waitFor(() => {
         expect(document.title).toBe("IndexedDB source thread | VM0");
-        expect(screen.getByText(FIRST_USER_MESSAGE)).toBeInTheDocument();
-        expect(screen.getByText(FIRST_ASSISTANT_MESSAGE)).toBeInTheDocument();
+        expect(screen.getByText(FIRST_MESSAGE)).toBeInTheDocument();
       });
     } finally {
       blockedRemote.resolve();

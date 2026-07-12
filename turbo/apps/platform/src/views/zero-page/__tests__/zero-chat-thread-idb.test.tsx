@@ -20,8 +20,11 @@ import { PLACEHOLDER } from "./chat-test-helpers.ts";
 const idbMessageStoreMock = vi.hoisted(() => {
   let cachedMessages: unknown[] = [];
 
-  const readLatestImpl = (_threadId: string, _signal?: AbortSignal) => {
-    return Promise.resolve(cachedMessages);
+  const readLatestImpl = (_threadId: string, limit?: number) => {
+    if (limit === undefined) {
+      return Promise.resolve(cachedMessages);
+    }
+    return Promise.resolve(cachedMessages.slice(-limit));
   };
   const upsertMessagesImpl = (_threadId: string, messages: unknown[]) => {
     for (const message of messages) {
