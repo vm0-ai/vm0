@@ -16,14 +16,6 @@ from body_limits import BODY_CAPTURE_LIMIT
 
 _REDACTED_HEADER_VALUE = "***"
 
-# UTF-8 byte-boundary markers (RFC 3629). Continuation bytes match
-# ``0b10xxxxxx`` via ``(byte & 0xC0) == _UTF8_CONT_MARK``. Lead bytes fall
-# into four ranges by ``lead < _UTF8_LEAD_MAX_{N}BYTE`` for N = 1..3.
-_UTF8_CONT_MARK = 0x80
-_UTF8_LEAD_MAX_1BYTE = 0x80  # ASCII: 0xxxxxxx
-_UTF8_LEAD_MAX_2BYTE = 0xE0  # 2-byte lead: 110xxxxx
-_UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
-
 _TEXT_CONTENT_TYPES = (
     "text/",
     "application/json",
@@ -107,44 +99,28 @@ def _is_text_content(content_type: str) -> bool:
     return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
 
 
-def _truncate_bytes_utf8_safe(data: bytes, max_size: int) -> bytes:
-    """Truncate bytes at a UTF-8 character boundary.
+def _encode_body(
+    content: bytes,
+    content_type: str,
+    *,
+    truncated_at_limit: bool = False,
+) -> tuple[str | None, str | None]:
+    """Encode an exact bounded body prefix without losing invalid bytes.
 
-    After slicing at *max_size*, checks whether the last character is complete.
-    If not, removes the incomplete trailing bytes (at most 4).
+    A known limit-truncated prefix may omit only a terminal incomplete UTF-8
+    sequence. Every other UTF-8 error preserves the exact prefix as base64.
     """
-    if len(data) <= max_size:
-        return data
-    t = data[:max_size]
-    # Find the start of the last character by scanning backwards past
-    # continuation bytes (10xxxxxx = 0x80..0xBF).
-    i = len(t)
-    while i > 0 and (t[i - 1] & 0xC0) == _UTF8_CONT_MARK:
-        i -= 1
-    if i == 0:
-        return t  # all continuation bytes; should not happen in valid UTF-8
-    lead = t[i - 1]
-    if lead < _UTF8_LEAD_MAX_1BYTE:
-        expected = 1
-    elif lead < _UTF8_LEAD_MAX_2BYTE:
-        expected = 2
-    elif lead < _UTF8_LEAD_MAX_3BYTE:
-        expected = 3
-    else:
-        expected = 4
-    actual = len(t) - (i - 1)
-    if actual < expected:
-        return t[: i - 1]
-    return t
-
-
-def _encode_body(content: bytes, content_type: str) -> tuple[str | None, str | None]:
-    """Encode body content. Returns (encoded_string, encoding_type), or None values."""
     if not _is_text_content(content_type):
         return None, None  # skip binary bodies
     try:
         return content.decode("utf-8"), "utf-8"
-    except UnicodeDecodeError:
+    except UnicodeDecodeError as error:
+        if (
+            truncated_at_limit
+            and error.end == len(content)
+            and error.reason == "unexpected end of data"
+        ):
+            return content[: error.start].decode("utf-8"), "utf-8"
         return base64.b64encode(content).decode("ascii"), "base64"
 
 
@@ -271,9 +247,11 @@ def _set_body_fields(
     if not body:
         return
 
+    bounded_body = body[:BODY_CAPTURE_LIMIT]
     encoded, encoding = _encode_body(
-        _truncate_bytes_utf8_safe(body, BODY_CAPTURE_LIMIT) if truncated else body,
+        bounded_body,
         content_type,
+        truncated_at_limit=truncated and len(body) >= BODY_CAPTURE_LIMIT,
     )
     if encoded is None:
         log_entry[f"{side}_body_encoding"] = "binary"
