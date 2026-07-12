@@ -124,6 +124,14 @@ function connectorCardByLabel(label: string): HTMLElement {
   return card;
 }
 
+function connectorIconByLabel(label: string): HTMLImageElement {
+  const icon = connectorCardByLabel(label).querySelector("img");
+  if (!(icon instanceof HTMLImageElement)) {
+    throw new Error(`${label} connector icon not found`);
+  }
+  return icon;
+}
+
 function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
@@ -423,6 +431,33 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("preserves static connector icon rendering during catalog migration", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(queryConnectorCardByLabel("GitHub")).toBeInTheDocument();
+      expect(queryConnectorCardByLabel("Slack")).toBeInTheDocument();
+    });
+
+    const githubIcon = connectorIconByLabel("GitHub");
+    expect(githubIcon).toHaveAttribute(
+      "src",
+      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/github-4a739019d805.svg",
+    );
+    expect(githubIcon).toHaveClass("zero-icon-mono");
+
+    const slackIcon = connectorIconByLabel("Slack");
+    expect(slackIcon).toHaveAttribute(
+      "src",
+      "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+    );
+    expect(slackIcon).not.toHaveClass("zero-icon-mono");
+    expect(slackIcon).toHaveClass("scale-[2.2]");
+    expect(slackIcon.parentElement).toHaveClass("overflow-hidden");
   });
 
   it("renders server-authored connector categories unknown to the browser", async () => {

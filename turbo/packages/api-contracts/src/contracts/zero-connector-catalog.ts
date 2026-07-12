@@ -29,6 +29,12 @@ const publicConnectorCatalogPermissionSummarySchema = z.object({
   hasDefaultPolicyOverrides: z.boolean(),
 });
 
+const publicConnectorCatalogIconSchema = z.object({
+  url: z.url({ protocol: /^https$/u }).max(2048),
+  invertInDarkMode: z.boolean(),
+  scale: z.number().min(1).max(3).optional(),
+});
+
 const publicConnectorCatalogCategoryGroupSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -51,6 +57,7 @@ const publicConnectorCatalogItemSchema = z.object({
   connectorRef: connectorRefSchema,
   label: z.string(),
   description: z.string(),
+  icon: publicConnectorCatalogIconSchema.optional(),
   category: z.string(),
   generation: z.array(z.string()),
   tags: z.array(z.string()),
@@ -171,6 +178,9 @@ export type PublicConnectorCatalogAuthMethodSummary = z.infer<
 >;
 export type PublicConnectorCatalogPermissionSummary = z.infer<
   typeof publicConnectorCatalogPermissionSummarySchema
+>;
+export type PublicConnectorCatalogIcon = z.infer<
+  typeof publicConnectorCatalogIconSchema
 >;
 export type PublicConnectorCatalogCategoryGroup = z.infer<
   typeof publicConnectorCatalogCategoryGroupSchema
