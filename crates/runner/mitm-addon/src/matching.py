@@ -8,6 +8,7 @@ malformed authority metadata so matched malformed configs can fail closed, and
 parameterized hosts are meaningful only for firewall config bases.
 """
 
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -16,6 +17,7 @@ from typing import Literal, NamedTuple
 from typing import TypeAlias as _TypeAlias
 from urllib.parse import urlsplit
 
+import connector_intent
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from firewall_matching import base_url as _firewall_base_url
 from firewall_matching import patterns as _firewall_patterns
@@ -31,7 +33,6 @@ from firewall_matching.base_url import (
 from firewall_matching.patterns import (
     SegmentError,
     SegmentLiteral,
-    _compiled_path_segments_match,
     _match_compiled_path_segments,
     _split_path_segments,
 )
@@ -127,6 +128,7 @@ class _CompiledApiCore(NamedTuple):
     rule_index: _CompiledRuleIndex
     base_malformed: bool
     auth_malformed: bool
+    routing_identity: str | None
     # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
 
@@ -154,6 +156,10 @@ class _CompiledApi(NamedTuple):
     @property
     def auth_malformed(self) -> bool:
         return self.core.auth_malformed
+
+    @property
+    def routing_identity(self) -> str | None:
+        return self.core.routing_identity
 
     @property
     def has_malformed_rules(self) -> bool:
@@ -373,6 +379,25 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
     if "base" in raw_auth and not isinstance(raw_auth["base"], str):
         return False
     return "base" not in raw_auth or _static_auth_base_is_valid(raw_auth["base"])
+
+
+def _api_routing_identity(api_entry: dict) -> str | None:
+    identity = {
+        "base": api_entry.get("base"),
+        "auth": api_entry.get("auth"),
+    }
+    if "hostPolicy" in api_entry:
+        identity["hostPolicy"] = api_entry["hostPolicy"]
+    try:
+        return json.dumps(
+            identity,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 def firewall_api_auth_config_is_valid(api_entry: dict) -> bool:
@@ -771,6 +796,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         base = compiled_config_base.base
         base_malformed = compiled_config_base.malformed
         auth_malformed = not _auth_config_is_valid(api_entry)
+        routing_identity = _api_routing_identity(api_entry)
 
         compiled_permissions: list[_CompiledPermission] = []
         has_malformed_rules = name_malformed
@@ -824,6 +850,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
                 _compile_rule_index(compiled_permissions_tuple),
                 base_malformed,
                 auth_malformed,
+                routing_identity,
                 has_malformed_rules,
             )
         )
@@ -1002,6 +1029,22 @@ class FirewallBlock(NamedTuple):
     reason: FirewallBlockReason
 
 
+ConnectorRouteAmbiguityReason = Literal[
+    "connector_intent_required",
+    "malformed_connector_intent",
+    "connector_intent_not_candidate",
+]
+
+
+class FirewallAmbiguous(NamedTuple):
+    """Multiple connector owners matched and no usable intent selected one."""
+
+    method: str
+    path: str
+    candidates: tuple[str, ...]
+    reason: ConnectorRouteAmbiguityReason
+
+
 class _BaseMatch(NamedTuple):
     base: str
     name: str
@@ -1022,6 +1065,68 @@ class _BlockMatch(NamedTuple):
     name: str
     method: str
     rel_path: str
+
+
+class _MatchedApi(NamedTuple):
+    order: int
+    firewall: _CompiledFirewall
+    api: _CompiledApi
+    rel_path: str
+    base_params: dict[str, str]
+    block_match: _BlockMatch
+
+
+class _MatchedRule(NamedTuple):
+    api_match: _MatchedApi
+    entry: _CompiledRuleEntry
+    params: dict[str, str]
+
+
+class _FirewallMatchCollection:
+    """Winning base and rule records collected before policy evaluation."""
+
+    __slots__ = (
+        "api_matches",
+        "best_base_specificity",
+        "best_rule_specificity",
+        "rule_matches",
+    )
+
+    api_matches: list[_MatchedApi]
+    best_base_specificity: int | None
+    best_rule_specificity: _PathSpecificity | None
+    rule_matches: list[_MatchedRule]
+
+    def __init__(self) -> None:
+        self.api_matches = []
+        self.best_base_specificity = None
+        self.best_rule_specificity = None
+        self.rule_matches = []
+
+    def accept_api(self, match: _MatchedApi) -> bool:
+        specificity = match.api.base.specificity
+        if self.best_base_specificity is None or specificity > self.best_base_specificity:
+            self.best_base_specificity = specificity
+            self.best_rule_specificity = None
+            self.api_matches = []
+            self.rule_matches = []
+        elif specificity < self.best_base_specificity:
+            return False
+
+        self.api_matches.append(match)
+        return True
+
+    def can_rule_affect_collection(self, specificity: _PathSpecificity) -> bool:
+        return self.best_rule_specificity is None or specificity >= self.best_rule_specificity
+
+    def record_rule(self, match: _MatchedRule) -> None:
+        specificity = match.entry.rule.specificity
+        if self.best_rule_specificity is None or specificity > self.best_rule_specificity:
+            self.best_rule_specificity = specificity
+            self.rule_matches = []
+        elif specificity < self.best_rule_specificity:
+            return
+        self.rule_matches.append(match)
 
 
 class _FirewallDecisionState:
@@ -1098,15 +1203,6 @@ class _FirewallDecisionState:
     def record_malformed_policy(self, match: _BlockMatch) -> None:
         if self.malformed_policy_match is None:
             self.malformed_policy_match = match
-
-    def can_rule_specificity_affect_decision(self, specificity: _PathSpecificity) -> bool:
-        if self.best_rule_specificity is None:
-            return True
-        if specificity > self.best_rule_specificity:
-            return True
-        if specificity < self.best_rule_specificity:
-            return False
-        return self.allowed_match is None
 
     def accept_rule_specificity(self, specificity: _PathSpecificity) -> bool:
         if self.best_rule_specificity is None or specificity > self.best_rule_specificity:
@@ -1215,14 +1311,10 @@ def _resolve_firewall_decision(
     )
 
 
-def _evaluate_rule_entries(
+def _collect_rule_entries(
     *,
-    decision: _FirewallDecisionState,
-    api_entry: _CompiledApi,
-    fw_entry: _CompiledFirewall,
-    policy: _CompiledNetworkPolicy | None,
-    block_match: _BlockMatch,
-    rel_path: str,
+    collection: _FirewallMatchCollection,
+    api_match: _MatchedApi,
     rel_path_segs: list[str],
     base_params: dict[str, str],
     upper_method: str,
@@ -1232,37 +1324,213 @@ def _evaluate_rule_entries(
         rule = entry.rule
         if rule.method not in ("ANY", upper_method):
             continue
-        if not decision.can_rule_specificity_affect_decision(rule.specificity):
-            continue
-
-        permission_blocked = policy is not None and entry.permission in policy.blocked_permissions
-        if permission_blocked:
-            if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
-                continue
-            if not decision.accept_rule_specificity(rule.specificity):
-                continue
-            decision.record_denied_rule(block_match, entry.permission)
+        if not collection.can_rule_affect_collection(rule.specificity):
             continue
 
         params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
         if params is None:
             continue
-        if not decision.accept_rule_specificity(rule.specificity):
+        collection.record_rule(
+            _MatchedRule(
+                api_match,
+                entry,
+                {**base_params, **params},
+            )
+        )
+
+
+def _winning_owner_records(
+    collection: _FirewallMatchCollection,
+) -> tuple[_MatchedRule | _MatchedApi, ...]:
+    if collection.rule_matches:
+        return tuple(collection.rule_matches)
+    return tuple(collection.api_matches)
+
+
+def _winning_owner_names(collection: _FirewallMatchCollection) -> tuple[str, ...]:
+    records = _winning_owner_records(collection)
+    names = {
+        record.api_match.firewall.name if isinstance(record, _MatchedRule) else record.firewall.name
+        for record in records
+        if not (
+            record.api_match.firewall.name_malformed
+            if isinstance(record, _MatchedRule)
+            else record.firewall.name_malformed
+        )
+    }
+    return tuple(sorted(names))
+
+
+def _ambiguity_reason(
+    intent: connector_intent.ConnectorIntent,
+) -> ConnectorRouteAmbiguityReason:
+    if intent.status == "absent":
+        return "connector_intent_required"
+    if intent.status == "malformed":
+        return "malformed_connector_intent"
+    return "connector_intent_not_candidate"
+
+
+def _selected_owner_name(
+    collection: _FirewallMatchCollection,
+    intent: connector_intent.ConnectorIntent,
+    *,
+    upper_method: str,
+    path: str,
+) -> str | FirewallAmbiguous | None:
+    owners = _winning_owner_names(collection)
+    if len(owners) == 0:
+        return None
+    if len(owners) == 1:
+        return owners[0]
+    if intent.status == "present" and intent.value in owners:
+        return intent.value
+    return FirewallAmbiguous(
+        upper_method,
+        path,
+        owners,
+        _ambiguity_reason(intent),
+    )
+
+
+def _selected_source_api_matches(
+    collection: _FirewallMatchCollection,
+    selected_name: str,
+) -> list[_MatchedApi]:
+    records = _winning_owner_records(collection)
+    result: list[_MatchedApi] = []
+    seen_orders: set[int] = set()
+    for record in records:
+        api_match = record.api_match if isinstance(record, _MatchedRule) else record
+        if api_match.firewall.name != selected_name or api_match.order in seen_orders:
+            continue
+        seen_orders.add(api_match.order)
+        result.append(api_match)
+    return result
+
+
+def _conflicting_selected_api_block(
+    collection: _FirewallMatchCollection,
+    selected_name: str,
+) -> FirewallBlock | None:
+    matches = [
+        match
+        for match in _selected_source_api_matches(collection, selected_name)
+        if not (
+            match.firewall.name_malformed or match.api.base_malformed or match.api.auth_malformed
+        )
+    ]
+    if len(matches) <= 1:
+        return None
+    first = matches[0]
+    first_identity = first.api.routing_identity
+    if first_identity is None:
+        return FirewallBlock(
+            first.api.base.raw,
+            selected_name,
+            first.block_match.method,
+            first.rel_path,
+            (),
+            "malformed_firewall_config",
+        )
+    if all(match.api.routing_identity == first_identity for match in matches[1:]):
+        return None
+    return FirewallBlock(
+        first.api.base.raw,
+        selected_name,
+        first.block_match.method,
+        first.rel_path,
+        (),
+        "malformed_firewall_config",
+    )
+
+
+def _reduce_selected_owner(
+    collection: _FirewallMatchCollection,
+    *,
+    selected_name: str | None,
+    compiled_network_policies: CompiledNetworkPolicies,
+    upper_method: str,
+) -> FirewallAllow | FirewallBlock | None:
+    if selected_name is not None:
+        conflicting_block = _conflicting_selected_api_block(collection, selected_name)
+        if conflicting_block is not None:
+            return conflicting_block
+
+    decision = _FirewallDecisionState()
+    evaluable_api_orders: set[int] = set()
+    for api_match in collection.api_matches:
+        fw_entry = api_match.firewall
+        if (
+            selected_name is not None
+            and fw_entry.name != selected_name
+            and not fw_entry.name_malformed
+        ):
             continue
 
+        api_entry = api_match.api
+        policy = compiled_network_policies.policies.get(fw_entry.name)
+        decision.accept_base_match(
+            api_entry,
+            name=fw_entry.name,
+            rel_path=api_match.rel_path,
+            base_params=api_match.base_params,
+        )
+        routing_identity_malformed = api_entry.routing_identity is None
+        if (
+            api_entry.base_malformed
+            or api_entry.auth_malformed
+            or api_entry.has_malformed_rules
+            or routing_identity_malformed
+        ):
+            decision.record_malformed_config(api_match.block_match)
+        if (
+            fw_entry.name_malformed
+            or api_entry.base_malformed
+            or api_entry.auth_malformed
+            or routing_identity_malformed
+        ):
+            continue
+        if compiled_network_policies.top_level_malformed or (
+            policy is not None and policy.permission_malformed
+        ):
+            decision.record_malformed_policy(api_match.block_match)
+            continue
+        evaluable_api_orders.add(api_match.order)
+
+    for rule_match in collection.rule_matches:
+        api_match = rule_match.api_match
+        if api_match.order not in evaluable_api_orders:
+            continue
+        fw_entry = api_match.firewall
+        if selected_name is not None and fw_entry.name != selected_name:
+            continue
+        policy = compiled_network_policies.policies.get(fw_entry.name)
+        entry = rule_match.entry
+        if not decision.accept_rule_specificity(entry.rule.specificity):
+            continue
+        if policy is not None and entry.permission in policy.blocked_permissions:
+            decision.record_denied_rule(api_match.block_match, entry.permission)
+            continue
         decision.record_allowed_rule(
             _AllowedRuleMatch(
-                api_entry.raw_api_entry,
+                api_match.api.raw_api_entry,
                 fw_entry.name,
-                rel_path,
+                api_match.rel_path,
                 _CompiledRuleCandidate(
                     entry.permission,
-                    rule.raw,
-                    rule.specificity,
-                    {**base_params, **params},
+                    entry.rule.raw,
+                    entry.rule.specificity,
+                    rule_match.params,
                 ),
             )
         )
+
+    return _resolve_firewall_decision(
+        decision,
+        compiled_network_policies=compiled_network_policies,
+        upper_method=upper_method,
+    )
 
 
 def _match_compiled_firewall_request_with_api_candidates(
@@ -1273,15 +1541,14 @@ def _match_compiled_firewall_request_with_api_candidates(
     compiled_network_policies: CompiledNetworkPolicies,
     api_candidates: tuple[_CompiledApiCandidate, ...],
     indexed_rules: bool,
-) -> FirewallAllow | FirewallBlock | None:
-    decision = _FirewallDecisionState()
+    intent: connector_intent.ConnectorIntent,
+) -> FirewallAllow | FirewallBlock | FirewallAmbiguous | None:
+    collection = _FirewallMatchCollection()
     unsafe_path: bool | None = True if url_has_backslash else None
 
     for candidate in api_candidates:
         fw_entry = candidate.firewall
         api_entry = candidate.api
-        policy = compiled_network_policies.policies.get(fw_entry.name)
-
         base_result = _match_compiled_base_url_parts(url_parts, api_entry.base)
         if base_result is None:
             continue
@@ -1301,28 +1568,21 @@ def _match_compiled_firewall_request_with_api_candidates(
                 "unsafe_path",
             )
 
-        if not decision.accept_base_match(
-            api_entry,
-            name=fw_entry.name,
-            rel_path=rel_path,
-            base_params=base_params,
-        ):
-            continue
-
         block_match = _BlockMatch(
             api_entry.base.raw,
             fw_entry.name,
             upper_method,
             rel_path,
         )
-        if api_entry.base_malformed or api_entry.auth_malformed or api_entry.has_malformed_rules:
-            decision.record_malformed_config(block_match)
-        if fw_entry.name_malformed or api_entry.base_malformed or api_entry.auth_malformed:
-            continue
-        if compiled_network_policies.top_level_malformed or (
-            policy is not None and policy.permission_malformed
-        ):
-            decision.record_malformed_policy(block_match)
+        api_match = _MatchedApi(
+            candidate.order,
+            fw_entry,
+            api_entry,
+            rel_path,
+            base_params,
+            block_match,
+        )
+        if not collection.accept_api(api_match):
             continue
 
         if not api_entry.permissions:
@@ -1334,21 +1594,26 @@ def _match_compiled_firewall_request_with_api_candidates(
             if indexed_rules
             else api_entry.rule_index.all_rules
         )
-        _evaluate_rule_entries(
-            decision=decision,
-            api_entry=api_entry,
-            fw_entry=fw_entry,
-            policy=policy,
-            block_match=block_match,
-            rel_path=rel_path,
+        _collect_rule_entries(
+            collection=collection,
+            api_match=api_match,
             rel_path_segs=rel_path_segs,
             base_params=base_params,
             upper_method=upper_method,
             rule_entries=rule_entries,
         )
 
-    return _resolve_firewall_decision(
-        decision,
+    selected_name = _selected_owner_name(
+        collection,
+        intent,
+        upper_method=upper_method,
+        path=url_parts.path or "/",
+    )
+    if isinstance(selected_name, FirewallAmbiguous):
+        return selected_name
+    return _reduce_selected_owner(
+        collection,
+        selected_name=selected_name,
         compiled_network_policies=compiled_network_policies,
         upper_method=upper_method,
     )
@@ -1384,7 +1649,8 @@ def _match_compiled_firewall_request_linear(
     method: str,
     compiled_firewalls: CompiledFirewallSet | None,
     network_policies: object | None = None,
-) -> FirewallAllow | FirewallBlock | None:
+    intent: connector_intent.ConnectorIntent | None = None,
+) -> FirewallAllow | FirewallBlock | FirewallAmbiguous | None:
     prepared = _prepare_compiled_request_match(
         url,
         method,
@@ -1402,6 +1668,7 @@ def _match_compiled_firewall_request_linear(
         compiled_network_policies=compiled_network_policies,
         api_candidates=compiled_firewalls.linear_api_candidates(),
         indexed_rules=False,
+        intent=intent or connector_intent.ABSENT,
     )
 
 
@@ -1410,7 +1677,8 @@ def match_compiled_firewall_request(
     method: str,
     compiled_firewalls: CompiledFirewallSet | None,
     network_policies: object | None = None,
-) -> FirewallAllow | FirewallBlock | None:
+    intent: connector_intent.ConnectorIntent | None = None,
+) -> FirewallAllow | FirewallBlock | FirewallAmbiguous | None:
     """Match request against production precompiled firewall permissions.
 
     Retained malformed state from the compile functions applies only after the
@@ -1428,6 +1696,7 @@ def match_compiled_firewall_request(
       FirewallAllow — granted permission matched or unknown endpoint allowed
       FirewallBlock — permission denied, unknown endpoint blocked, or matched
         malformed firewall/network policy config or unsafe path failed closed
+      FirewallAmbiguous — multiple connector owners require a usable intent
       None — no base URL match (not a firewall request)
 
     ``unknownPolicy="ask"`` is treated as block at the proxy layer.
@@ -1449,4 +1718,5 @@ def match_compiled_firewall_request(
         compiled_network_policies=compiled_network_policies,
         api_candidates=compiled_firewalls.indexed_api_candidates(url_parts),
         indexed_rules=True,
+        intent=intent or connector_intent.ABSENT,
     )

@@ -769,6 +769,8 @@ const networkLogEntrySchema = z.object({
   connector_diagnostic_reason: z.string().optional(),
   connector_diagnostic_env_names: z.array(z.string()).optional(),
   connector_diagnostic_base: z.string().optional(),
+  connector_route_reason: z.string().optional(),
+  connector_route_candidates: z.array(z.string()).optional(),
   auth_resolved_secrets: z.array(z.string()).optional(),
   auth_refreshed_connectors: z.array(z.string()).optional(),
   auth_refreshed_secrets: z.array(z.string()).optional(),

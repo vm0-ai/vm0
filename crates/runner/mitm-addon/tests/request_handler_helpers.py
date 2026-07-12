@@ -49,6 +49,62 @@ def _single_firewall_vm(
     return vm_info
 
 
+def _shared_route_vm(tmp_path: Path, *, reverse: bool = False) -> dict[str, object]:
+    """Build two credential owners for the same exact route."""
+
+    def firewall(name: str, token: str, permission: str) -> dict[str, object]:
+        return {
+            "kind": "inline",
+            "firewall": {
+                "name": name,
+                "apis": [
+                    {
+                        "base": "https://shared.example.com",
+                        "auth": {
+                            "headers": {"Authorization": f"Bearer ${{{{ secrets.{token} }}}}"}
+                        },
+                        "permissions": [
+                            {
+                                "name": permission,
+                                "rules": ["GET /items/{id}"],
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+
+    firewalls = [
+        firewall("primary", "PRIMARY_TOKEN", "items-read"),
+        firewall("auditor", "AUDITOR_TOKEN", "audit-read"),
+    ]
+    if reverse:
+        firewalls.reverse()
+    return {
+        "runId": "run-shared-route",
+        "sandboxToken": "tok-shared-route",
+        "encryptedSecrets": "iv:tag:data",
+        "networkLogPath": str(tmp_path / "net.jsonl"),
+        "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+        "captureNetworkBodies": True,
+        "firewalls": firewalls,
+        "networkPolicies": {
+            "primary": {
+                "allow": ["items-read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            "auditor": {
+                "allow": ["audit-read"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        },
+    }
+
+
 def _vm_without_firewalls(
     tmp_path: Path,
     *,

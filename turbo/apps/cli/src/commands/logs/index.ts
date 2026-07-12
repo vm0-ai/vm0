@@ -126,6 +126,21 @@ function formatConnectorDiagnosticInfo(entry: NetworkLogEntry): string {
   return ` ${chalk.red(`[connector diagnostic: ${tags.join("; ")}]`)}`;
 }
 
+function formatConnectorRouteInfo(entry: NetworkLogEntry): string {
+  const tags: string[] = [];
+  if (entry.connector_route_reason) {
+    tags.push(entry.connector_route_reason);
+  }
+  if (
+    entry.connector_route_candidates &&
+    entry.connector_route_candidates.length > 0
+  ) {
+    tags.push(`candidates: ${entry.connector_route_candidates.join(", ")}`);
+  }
+  if (tags.length === 0) return "";
+  return ` ${chalk.red(`[connector route: ${tags.join("; ")}]`)}`;
+}
+
 function nonEmptyLogField(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
@@ -151,7 +166,10 @@ function formatNetworkTarget(entry: NetworkLogEntry): string {
 function formatNetworkDeny(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
   const url = formatNetworkTarget(entry);
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${formatConnectorDiagnosticInfo(entry)}`;
+  const error = entry.firewall_error
+    ? ` ${chalk.red(entry.firewall_error)}`
+    : "";
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatConnectorRouteInfo(entry)}`;
 }
 
 /**
@@ -163,7 +181,7 @@ function formatNetworkBlock(entry: NetworkLogEntry): string {
   const error = entry.firewall_error
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.yellow.bold("BLOCK")} ${chalk.dim(target)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatAuthInfo(entry)}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.yellow.bold("BLOCK")} ${chalk.dim(target)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatConnectorRouteInfo(entry)}${formatAuthInfo(entry)}`;
 }
 
 /**
@@ -224,7 +242,7 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatAuthInfo(entry)}`;
+  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatConnectorDiagnosticInfo(entry)}${formatConnectorRouteInfo(entry)}${formatAuthInfo(entry)}`;
 
   line += formatCaptureFields(entry);
 

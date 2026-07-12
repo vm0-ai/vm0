@@ -383,6 +383,24 @@ function addConnectorDiagnosticFields(
   );
 }
 
+function addConnectorRouteFields(
+  out: [string, string][],
+  entry: NetworkLogEntry,
+): void {
+  addField(
+    out,
+    "Connector Route Reason",
+    entry.connector_route_reason,
+    formatValue(entry.connector_route_reason),
+  );
+  addField(
+    out,
+    "Connector Route Candidates",
+    entry.connector_route_candidates,
+    formatValue(entry.connector_route_candidates),
+  );
+}
+
 // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
 // Note: request_headers, request/response body fields are rendered
 // separately by CapturedBodySections below.
@@ -467,6 +485,7 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     formatValue(entry.firewall_error),
   );
   addConnectorDiagnosticFields(out, entry);
+  addConnectorRouteFields(out, entry);
   addField(
     out,
     "Resolved Secrets",

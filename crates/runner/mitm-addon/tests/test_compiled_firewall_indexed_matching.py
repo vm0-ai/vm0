@@ -1,5 +1,6 @@
 """Indexed compiled firewall matcher compatibility and scan guardrails."""
 
+import connector_intent
 import matching
 from tests.firewall_helpers import (
     compile_firewalls_or_fail,
@@ -11,7 +12,7 @@ from tests.firewall_helpers import (
 )
 
 
-def _assert_indexed_matches_linear(url, method, firewalls, network_policies):
+def _assert_indexed_matches_linear(url, method, firewalls, network_policies, intent=None):
     compiled = compile_firewalls_or_fail(firewalls)
 
     indexed = matching.match_compiled_firewall_request(
@@ -19,12 +20,14 @@ def _assert_indexed_matches_linear(url, method, firewalls, network_policies):
         method,
         compiled,
         network_policies,
+        intent,
     )
     linear = matching._match_compiled_firewall_request_linear(
         url,
         method,
         compiled,
         network_policies,
+        intent,
     )
 
     assert indexed == linear
@@ -202,7 +205,7 @@ def test_indexed_matches_linear_for_greedy_and_mixed_rule_specificity():
     assert result.params == {"slug": "readme"}
 
 
-def test_indexed_matches_linear_for_denied_permission_aggregation_order():
+def test_indexed_matches_linear_for_ambiguous_cross_firewall_denials():
     firewalls = [
         firewall_entry(
             "auditor",
@@ -231,8 +234,19 @@ def test_indexed_matches_linear_for_denied_permission_aggregation_order():
         policies,
     )
 
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.permissions == ("audit-read", "items-read")
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.candidates == ("auditor", "primary")
+
+    selected = _assert_indexed_matches_linear(
+        "https://api.example.com/items/123",
+        "GET",
+        firewalls,
+        policies,
+        connector_intent.ConnectorIntent("present", "primary"),
+    )
+    assert isinstance(selected, matching.FirewallBlock)
+    assert selected.name == "primary"
+    assert selected.permissions == ("items-read",)
 
 
 def test_indexed_matching_skips_unrelated_static_authority_base_checks(monkeypatch):
@@ -306,24 +320,13 @@ def test_indexed_matching_skips_unrelated_literal_rule_path_checks(monkeypatch):
     compiled = compile_firewalls_or_fail(firewalls)
     path_match_count = 0
     original_allowed_match = matching._match_compiled_path_segments
-    original_blocked_match = matching._compiled_path_segments_match
 
     def counting_allowed_match(path_segs, pattern_segs):
         nonlocal path_match_count
         path_match_count += 1
         return original_allowed_match(path_segs, pattern_segs)
 
-    def counting_blocked_match(path_segs, pattern_segs):
-        nonlocal path_match_count
-        path_match_count += 1
-        return original_blocked_match(path_segs, pattern_segs)
-
     monkeypatch.setattr(matching, "_match_compiled_path_segments", counting_allowed_match)
-    monkeypatch.setattr(
-        matching,
-        "_compiled_path_segments_match",
-        counting_blocked_match,
-    )
 
     result = matching.match_compiled_firewall_request(
         "https://api.example.com/items/target",

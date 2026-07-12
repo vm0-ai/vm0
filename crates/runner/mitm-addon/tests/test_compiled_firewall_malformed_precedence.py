@@ -1,5 +1,6 @@
 """Compiled firewall malformed config precedence and interaction tests."""
 
+import connector_intent
 import matching
 from tests.firewall_helpers import (
     compile_firewalls_or_fail,
@@ -116,6 +117,7 @@ def test_malformed_config_takes_priority_over_later_unknown_allow():
         "https://api.example.com/items/123",
         fws,
         policies,
+        intent=connector_intent.ConnectorIntent("present", "bad"),
     )
 
     assert isinstance(result, matching.FirewallBlock)
@@ -214,6 +216,7 @@ def test_valid_later_permission_can_still_allow_after_malformed_auth():
         "https://api.example.com/items/123",
         fws,
         policies,
+        intent=connector_intent.ConnectorIntent("present", "specific"),
     )
 
     assert isinstance(result, matching.FirewallAllow)
@@ -271,6 +274,7 @@ def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match():
         "GET",
         compile_firewalls_or_fail(fws),
         policies,
+        connector_intent.ConnectorIntent("present", "specific"),
     )
     assert isinstance(compiled, matching.FirewallAllow)
     assert compiled.name == "specific"

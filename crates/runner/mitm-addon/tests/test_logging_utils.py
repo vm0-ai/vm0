@@ -287,6 +287,8 @@ class TestAddFirewallMetadata:
                 metadata_keys.CONNECTOR_DIAGNOSTIC_REASON: "not_configured_for_run",
                 metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES: ["FAL_TOKEN"],
                 metadata_keys.CONNECTOR_DIAGNOSTIC_BASE: "https://fal.run",
+                metadata_keys.CONNECTOR_ROUTE_REASON: "connector_intent_required",
+                metadata_keys.CONNECTOR_ROUTE_CANDIDATES: ["auditor", "primary"],
             }
         )
         log_entry = {}
@@ -303,6 +305,8 @@ class TestAddFirewallMetadata:
             "connector_diagnostic_reason": "not_configured_for_run",
             "connector_diagnostic_env_names": ["FAL_TOKEN"],
             "connector_diagnostic_base": "https://fal.run",
+            "connector_route_reason": "connector_intent_required",
+            "connector_route_candidates": ["auditor", "primary"],
         }
 
     def test_defaults_missing_required_firewall_metadata(self, real_flow):

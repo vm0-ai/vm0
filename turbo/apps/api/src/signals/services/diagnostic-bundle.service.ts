@@ -800,6 +800,8 @@ function mapNetworkLogs(
       connector_diagnostic_reason: event.connector_diagnostic_reason,
       connector_diagnostic_env_names: event.connector_diagnostic_env_names,
       connector_diagnostic_base: event.connector_diagnostic_base,
+      connector_route_reason: event.connector_route_reason,
+      connector_route_candidates: event.connector_route_candidates,
       auth_resolved_secrets: event.auth_resolved_secrets,
       auth_refreshed_connectors: event.auth_refreshed_connectors,
       auth_refreshed_secrets: event.auth_refreshed_secrets,

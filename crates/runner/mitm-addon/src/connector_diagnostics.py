@@ -30,20 +30,20 @@ Lifecycle:
   from exception-safe cleanup to release diagnostic-private state and detach an
   installed diagnostic stream callback.
 
-``REQUEST_HEADERS_PROBE_METADATA_KEYS`` names provisional connector-intent
-metadata owned by request-header snapshot/restore. Terminal release instead
-owns diagnostic-private snapshot, lookup, candidate, ownership, stream, and log
-guard state. Public diagnostic/firewall metadata used for observable logging and
-generic response-stream state have separate owners.
+Connector-intent capture and request-header probe metadata live in
+``connector_intent``. Terminal release here instead owns diagnostic-private
+snapshot, lookup, candidate, ownership, stream, and log guard state. Public
+diagnostic/firewall metadata used for observable logging and generic response-
+stream state have separate owners.
 """
 
 import json
 import urllib.parse
-from typing import Final
 
 from mitmproxy import http
 
 import builtin_connector_diagnostics
+import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
@@ -54,15 +54,6 @@ from logging_utils import log_proxy_entry
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_FORBIDDEN = 403
 _HTTP_STATUS_FAILED_DEPENDENCY = 424
-
-_CONNECTOR_INTENT_HEADER: Final = "X-VM0-Connector-Intent"
-_CONNECTOR_INTENT_VALUE = "_connector_intent_value"
-_CONNECTOR_INTENT_STATUS = "_connector_intent_status"
-
-REQUEST_HEADERS_PROBE_METADATA_KEYS = (
-    _CONNECTOR_INTENT_VALUE,
-    _CONNECTOR_INTENT_STATUS,
-)
 
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
@@ -115,36 +106,6 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
         "token",
     )
 )
-
-
-def capture_and_strip_connector_intent_header(flow: http.HTTPFlow) -> None:
-    """Capture connector intent once and always remove its private header.
-
-    ``requestheaders()`` and ``request()`` call this before classification. The
-    first call records absent, malformed, or present intent state; later calls
-    preserve that decision. Every call removes ``X-VM0-Connector-Intent`` when
-    present so it cannot be forwarded upstream.
-
-    The recorded fields are request-header probe metadata. A caller whose
-    provisional classification falls through must restore them with the rest of
-    its probe snapshot.
-    """
-    if _CONNECTOR_INTENT_STATUS not in flow.metadata:
-        values = flow.request.headers.get_all(_CONNECTOR_INTENT_HEADER)
-        if not values:
-            flow.metadata[_CONNECTOR_INTENT_STATUS] = "absent"
-        elif len(values) != 1:
-            flow.metadata[_CONNECTOR_INTENT_STATUS] = "malformed"
-        else:
-            value = values[0].strip()
-            if value == "" or "," in value:
-                flow.metadata[_CONNECTOR_INTENT_STATUS] = "malformed"
-            else:
-                flow.metadata[_CONNECTOR_INTENT_STATUS] = "present"
-                flow.metadata[_CONNECTOR_INTENT_VALUE] = value
-
-    if _CONNECTOR_INTENT_HEADER in flow.request.headers:
-        del flow.request.headers[_CONNECTOR_INTENT_HEADER]
 
 
 def record_allow_context(
@@ -270,7 +231,7 @@ def maybe_make_firewall_allow_local_response(
         flow.request.method,
         active_firewall_names=_active_firewall_names(vm_info),
         matched_firewall_name=allow.name,
-        connector_intent=_connector_intent_from_flow(flow),
+        connector_intent=_present_connector_intent_from_flow(flow),
     )
     if resolution is None or resolution.candidate is None:
         return False
@@ -447,9 +408,9 @@ def release_flow_state(flow: http.HTTPFlow) -> None:
         flow.response.stream = False
 
 
-def _connector_intent_from_flow(flow: http.HTTPFlow) -> str | None:
-    value = flow.metadata.get(_CONNECTOR_INTENT_VALUE)
-    return value if isinstance(value, str) else None
+def _present_connector_intent_from_flow(flow: http.HTTPFlow) -> str | None:
+    intent = connector_intent.from_flow(flow)
+    return intent.value if intent.status == "present" else None
 
 
 def _active_firewall_names(vm_info: dict) -> set[str]:
