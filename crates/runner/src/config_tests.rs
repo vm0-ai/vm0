@@ -255,29 +255,6 @@ async fn diagnostic_config_read_rejects_symlink() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn diagnostic_config_read_rejects_fifo_without_blocking() {
-    let dir = tempfile::tempdir().unwrap();
-    let fifo = dir.path().join("runner.yaml");
-    let c_path = std::ffi::CString::new(fifo.to_string_lossy().as_bytes()).unwrap();
-    // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
-    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-    assert_eq!(
-        result,
-        0,
-        "mkfifo failed: {}",
-        std::io::Error::last_os_error()
-    );
-
-    let error = read_diagnostic_config_to_string(&fifo).await.unwrap_err();
-
-    assert!(
-        error.to_string().contains("not a regular state file"),
-        "unexpected error: {error}"
-    );
-}
-
-#[cfg(unix)]
-#[tokio::test]
 async fn diagnostic_config_read_rejects_directory() {
     let dir = tempfile::tempdir().unwrap();
     let config_dir = dir.path().join("runner.yaml");

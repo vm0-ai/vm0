@@ -1,12 +1,33 @@
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Map, Value, json};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tempfile::TempDir;
 
 static RUN_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn read_http_request_path(stream: &mut TcpStream) -> std::io::Result<String> {
+    let mut request = Vec::new();
+    let mut buffer = [0_u8; 512];
+    while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+        let bytes_read = stream.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        request.extend(buffer.iter().take(bytes_read).copied());
+    }
+
+    let request = String::from_utf8_lossy(&request);
+    Ok(request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or_default()
+        .to_owned())
+}
 
 pub(crate) enum TarEntry<'a> {
     File(&'a str, &'a [u8]),

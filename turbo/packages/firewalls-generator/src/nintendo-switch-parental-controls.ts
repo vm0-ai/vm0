@@ -4,6 +4,8 @@
  * Data source: Nintendo Switch Parental Controls app 2.4.0 (build 660).
  */
 
+import { Buffer } from "node:buffer";
+
 import { NINTENDO_SWITCH_PARENTAL_CONTROLS_APP } from "@vm0/connectors/connectors/nintendo-switch-parental-controls";
 import {
   logStats,
@@ -15,11 +17,57 @@ import {
   type PermissionGroup,
 } from "./codegen";
 
-const ID_TOKEN_PLACEHOLDER =
-  "nintendo_switch_parental_controls_id_token_placeholder";
-const ACCOUNT_TOKEN_PLACEHOLDER =
-  "nintendo_switch_parental_controls_account_token_placeholder";
-const SMART_DEVICE_ID_PLACEHOLDER = "00000000-0000-4000-8000-000000000000";
+const SMART_DEVICE_ID_PLACEHOLDER = "c0ffee5a-fe10-4ca1-8c0f-fee5afe10ca1";
+const NINTENDO_JWT_KEY_ID_PLACEHOLDER = "5afe10ca-1c0f-4fee-8afe-10ca1c0ffee5";
+const NINTENDO_ID_TOKEN_JTI_PLACEHOLDER =
+  "10ca1c0f-fee5-4afe-8c0f-fee5afe10ca1";
+const NINTENDO_ACCESS_TOKEN_JTI_PLACEHOLDER =
+  "afe10ca1-c0ff-4ee5-8afe-10ca1c0ffee5";
+const NINTENDO_JWT_ISSUED_AT = 4_102_443_900;
+const NINTENDO_JWT_EXPIRES_AT = NINTENDO_JWT_ISSUED_AT + 900;
+// Nintendo Account ID and access tokens use RS256 with 2048-bit keys from
+// https://accounts.nintendo.com/1.0.0/certificates.
+const NINTENDO_JWT_SIGNATURE = "CoffeeSafeLocal".repeat(23).slice(0, 342);
+
+function nintendoJwtPlaceholder(
+  payload: Readonly<Record<string, unknown>>,
+): string {
+  const encode = (value: unknown): string => {
+    return Buffer.from(JSON.stringify(value)).toString("base64url");
+  };
+  return [
+    encode({
+      alg: "RS256",
+      kid: NINTENDO_JWT_KEY_ID_PLACEHOLDER,
+      jku: "https://accounts.nintendo.com/1.0.0/certificates",
+    }),
+    encode(payload),
+    NINTENDO_JWT_SIGNATURE,
+  ].join(".");
+}
+
+const ID_TOKEN_PLACEHOLDER = nintendoJwtPlaceholder({
+  country: "US",
+  jti: NINTENDO_ID_TOKEN_JTI_PLACEHOLDER,
+  exp: NINTENDO_JWT_EXPIRES_AT,
+  at_hash: "CoffeeSafeLocalCoffeeS",
+  typ: "id_token",
+  iat: NINTENDO_JWT_ISSUED_AT,
+  iss: "https://accounts.nintendo.com",
+  sub: "c0ffee5afe10ca1",
+  aud: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.clientId,
+});
+const ACCOUNT_TOKEN_PLACEHOLDER = nintendoJwtPlaceholder({
+  aud: NINTENDO_SWITCH_PARENTAL_CONTROLS_APP.clientId,
+  typ: "token",
+  sub: "c0ffee5afe10ca1",
+  iat: NINTENDO_JWT_ISSUED_AT,
+  iss: "https://accounts.nintendo.com",
+  "ac:grt": 0,
+  exp: NINTENDO_JWT_EXPIRES_AT,
+  "ac:scp": [0, 8, 17, 320, 321, 325, 322, 323, 324, 326, 327, 328, 329],
+  jti: NINTENDO_ACCESS_TOKEN_JTI_PLACEHOLDER,
+});
 const RUNTIME_ID_TOKEN_SECRET = "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN";
 const RUNTIME_ACCOUNT_TOKEN_SECRET =
   "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN";
