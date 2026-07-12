@@ -1220,7 +1220,7 @@ function printRediagnoseHint(
 export const checkConnectorCommand = new Command()
   .name("check-connector")
   .description(
-    "Diagnose connector health: environment name, connector configuration, and permission policies",
+    "Diagnose connector health: environment names, connector configuration, and permission policies",
   )
   .addOption(
     new Option(
@@ -1231,7 +1231,7 @@ export const checkConnectorCommand = new Command()
   .addOption(
     new Option(
       "--url <URL>",
-      "A full URL to diagnose — auto-detects the connector, environment name, and permission (e.g. https://api.github.com/repos/owner/repo)",
+      "A full URL to diagnose — matches connector ownership, route environment names, and permission (e.g. https://api.github.com/repos/owner/repo)",
     ),
   )
   .addOption(
@@ -1258,7 +1258,7 @@ export const checkConnectorCommand = new Command()
 Examples:
   zero doctor check-connector --env-name GITHUB_TOKEN
   zero doctor check-connector --url https://api.github.com/repos/owner/repo
-  zero doctor check-connector --url https://example.com/api --connector example
+  zero doctor check-connector --url https://api.accounts.nintendo.com/2.0.0/users/me --connector nintendo-store
   zero doctor check-connector --url https://slack.com/api/chat.postMessage --method POST
   zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
 
