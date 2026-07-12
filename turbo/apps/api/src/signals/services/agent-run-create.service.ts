@@ -162,6 +162,7 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatus,
   type ConnectorCredentialStatus,
@@ -5351,6 +5352,7 @@ async function insertRunnerJobQueueRow(
     readonly payload: RunnerJobPayload;
   },
 ): Promise<Date> {
+  const timestamps = runnerJobQueueTimestamps();
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
@@ -5359,7 +5361,7 @@ async function insertRunnerJobQueueRow(
       profile: args.payload.profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
       executionContext: args.payload.executionContext,
-      expiresAt: sql`now() + interval '2 hours'`,
+      ...timestamps,
     })
     .returning({ createdAt: runnerJobQueue.createdAt });
   if (!runnerJob) {

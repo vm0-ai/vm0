@@ -500,7 +500,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
-    .orderBy(runnerJobQueue.createdAt)
+    .orderBy(runnerJobQueue.createdAt, runnerJobQueue.runId)
     .limit(1);
   signal.throwIfAborted();
   const pendingJobLookupFinishedAtMs = now();
