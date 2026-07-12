@@ -5,6 +5,7 @@ import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-th
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { CHAT_MESSAGES_STORE } from "../../../signals/external/chat-idb-schema.ts";
 import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -17,6 +18,7 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const FIRST_THREAD_ID = "b0000000-0000-4000-a000-000000000731";
 const SECOND_THREAD_ID = "b0000000-0000-4000-a000-000000000732";
+const FIRST_MESSAGE_ID = "00000000-0000-4000-8000-000000000731";
 const FIRST_MESSAGE = "Persist this remote response for thread re-entry";
 
 async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
@@ -72,7 +74,7 @@ describe("chat message persistence", () => {
           return respond(200, {
             messages: [
               {
-                id: "00000000-0000-4000-8000-000000000731",
+                id: FIRST_MESSAGE_ID,
                 role: "assistant",
                 content: FIRST_MESSAGE,
                 createdAt: "2026-06-09T10:01:00Z",
@@ -113,6 +115,16 @@ describe("chat message persistence", () => {
         screen.findByText(FIRST_MESSAGE),
       ).resolves.toBeInTheDocument();
       await firstThreadCaughtUp.promise;
+      await waitFor(async () => {
+        const persistedMessage: unknown = await testDb.get(
+          CHAT_MESSAGES_STORE,
+          FIRST_MESSAGE_ID,
+        );
+        expect(persistedMessage).toMatchObject({
+          content: FIRST_MESSAGE,
+          threadId: FIRST_THREAD_ID,
+        });
+      });
 
       await user.click(await findThreadLink("IndexedDB other thread"));
       await waitFor(() => {
