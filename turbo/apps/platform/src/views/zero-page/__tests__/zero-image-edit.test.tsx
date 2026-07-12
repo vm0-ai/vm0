@@ -12,6 +12,7 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorOpenIdStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
 import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
@@ -293,6 +294,7 @@ function mockPendingImageEditGeneration(
 }
 
 function xConnectorStatusItem(args?: {
+  authMethod?: string;
   connected?: boolean;
   connectionStatus?:
     | "not-connected"
@@ -300,9 +302,12 @@ function xConnectorStatusItem(args?: {
     | "scope-mismatch"
     | "reconnect-required";
   externalUsername?: string | null;
+  grantKind?: "auth-code" | "openid-auth";
 }): PublicConnectorCatalogStatusItem {
+  const authMethod = args?.authMethod ?? "oauth";
   const connected = args?.connected ?? false;
   const connectionStatus = args?.connectionStatus ?? "not-connected";
+  const grantKind = args?.grantKind ?? "auth-code";
   return {
     connectorRef: "x",
     label: "X",
@@ -316,10 +321,10 @@ function xConnectorStatusItem(args?: {
     tags: [],
     authMethods: [
       {
-        id: "oauth",
+        id: authMethod,
         label: "OAuth",
         description: null,
-        grantKind: "auth-code",
+        grantKind,
         manualFields: [],
         startOptions: [],
       },
@@ -332,7 +337,7 @@ function xConnectorStatusItem(args?: {
     },
     connection: connected
       ? {
-          authMethod: "oauth",
+          authMethod,
           externalUsername: args?.externalUsername ?? "zero_user",
           externalEmail: null,
           reconnectReason: null,
@@ -343,7 +348,7 @@ function xConnectorStatusItem(args?: {
     scopeMismatch: connectionStatus === "scope-mismatch",
     authMethodSupportsRefresh: true,
     tokenExpiresAt: null,
-    singleAuthCodeAuthMethodId: "oauth",
+    singleAuthCodeAuthMethodId: grantKind === "auth-code" ? authMethod : null,
     connectNotice: null,
   };
 }
@@ -1433,9 +1438,29 @@ describe("image editing", () => {
     expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
   });
 
-  it("opens the X share dialog with a connect action when X is not connected", async () => {
+  it("starts X connection from server catalog auth metadata", async () => {
     const user = userEvent.setup({ delay: null });
-    mockXConnectorStatus({ connected: false });
+    const authMethod = "partner-openid";
+    const authorizationUrl = "https://openid.example.test/x/authorize";
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    mockXConnectorStatus({
+      authMethod,
+      connected: false,
+      grantKind: "openid-auth",
+    });
+    context.mocks.api(
+      zeroConnectorOpenIdStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("x");
+        expect(body.authMethod).toBe(authMethod);
+        return respond(200, { authorizationUrl });
+      },
+    );
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
@@ -1456,6 +1481,11 @@ describe("image editing", () => {
     expect(
       screen.queryByTestId("image-edit-share-x-caption"),
     ).not.toBeInTheDocument();
+    await user.click(getButtonByText("Connect X"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(authorizationUrl);
+    });
   });
 
   it("posts the image to X with native media when X is connected", async () => {

@@ -15,7 +15,10 @@ import {
   reloadConnectors$,
 } from "../external/connectors.ts";
 import { tapError } from "../utils.ts";
-import { connectConnectorOAuthAuthCode$ } from "./settings/connectors.ts";
+import {
+  connectConnectorOAuthAuthCode$,
+  getOnlyAvailableCatalogBrowserAuthMethodDetail,
+} from "./settings/connectors.ts";
 
 const X_IMAGE_SHARE_CARD_TITLE = "Image from Zero";
 const X_IMAGE_SHARE_CARD_DESCRIPTION = "Shared from Zero.";
@@ -94,11 +97,9 @@ export const connectXForImageShare$ = command(
     connector: PublicConnectorCatalogStatusItem | null,
     signal: AbortSignal,
   ): Promise<boolean> => {
-    const authMethod = connector?.authMethods.find((method) => {
-      return (
-        method.grantKind === "auth-code" || method.grantKind === "openid-auth"
-      );
-    });
+    const authMethod = connector
+      ? getOnlyAvailableCatalogBrowserAuthMethodDetail(connector)
+      : null;
     if (!connector || !authMethod) {
       return false;
     }

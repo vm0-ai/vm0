@@ -24,10 +24,7 @@ import {
   zeroConnectorOpenIdStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { accept, ApiError } from "../../lib/accept.ts";
 import {
@@ -56,6 +53,10 @@ import {
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import { uploadPresentationToGoogleSlides$ } from "../../signals/chat-page/artifact-google-slides-upload.ts";
 import {
+  getOnlyAvailableCatalogBrowserAuthMethodDetail,
+  type ConnectorCatalogBrowserAuthMethodDetail,
+} from "../../signals/zero-page/settings/connectors.ts";
+import {
   copyAttachmentLinkToClipboard,
   downloadAttachmentUrl,
   publicAttachmentUrl,
@@ -70,16 +71,6 @@ const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
 const GOOGLE_DRIVE_CONNECTOR_REF = "google-drive";
 const ARTIFACT_FLOATING_LAYER_CLASS =
   "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:translate-y-0 data-[state=open]:opacity-100 data-[state=closed]:translate-y-2 data-[state=closed]:opacity-0";
-
-type BrowserAuthMethodDetail = PublicConnectorCatalogAuthMethodDetail & {
-  readonly grantKind: "auth-code" | "openid-auth";
-};
-
-function isBrowserAuthMethodDetail(
-  method: PublicConnectorCatalogAuthMethodDetail,
-): method is BrowserAuthMethodDetail {
-  return method.grantKind === "auth-code" || method.grantKind === "openid-auth";
-}
 
 function siteSlugFromUrl(value: string): string | null {
   if (!URL.canParse(value)) {
@@ -173,7 +164,7 @@ function runWhenGoogleDriveReady(params: {
 
 function startGoogleDriveConnectAndRun(params: {
   agentId: string | null | undefined;
-  authMethod: BrowserAuthMethodDetail;
+  authMethod: ConnectorCatalogBrowserAuthMethodDetail;
   connector: PublicConnectorCatalogStatusItem;
   createClient: ZeroClientFactory;
   pageSignal: AbortSignal;
@@ -422,15 +413,10 @@ function useGoogleDriveAvailability(
     }) ?? false;
   const googleDriveConnector =
     catalogByRef?.get(GOOGLE_DRIVE_CONNECTOR_REF) ?? null;
-  const browserAuthMethods =
-    googleDriveConnector?.authMethods.filter(isBrowserAuthMethodDetail) ?? [];
   const googleDriveAuthMethod =
-    browserAuthMethods.find((method) => {
-      return method.id === googleDriveConnector?.singleAuthCodeAuthMethodId;
-    }) ??
-    (browserAuthMethods.length === 1
-      ? (browserAuthMethods.at(0) ?? null)
-      : null);
+    googleDriveConnector === null
+      ? null
+      : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
 
   return {
     connectorListLoaded:

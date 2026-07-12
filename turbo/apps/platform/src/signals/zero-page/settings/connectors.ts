@@ -125,6 +125,11 @@ const DAY_MS = 24 * HOUR_MS;
 type ConnectorConnectLaunchMode = "browser-auth" | "no-auth" | "modal";
 type BrowserAuthGrantKind = "auth-code" | "openid-auth";
 
+export type ConnectorCatalogBrowserAuthMethodDetail =
+  PublicConnectorCatalogAuthMethodDetail & {
+    readonly grantKind: BrowserAuthGrantKind;
+  };
+
 export type ConnectorStatusAuthMethodDetail = Omit<
   PublicConnectorCatalogAuthMethodDetail,
   "id"
@@ -151,6 +156,33 @@ function isBrowserAuthGrantKind(
   grantKind: ConnectorStatusGrantKind,
 ): grantKind is BrowserAuthGrantKind {
   return grantKind === "auth-code" || grantKind === "openid-auth";
+}
+
+function isCatalogBrowserAuthMethodDetail(
+  method: PublicConnectorCatalogAuthMethodDetail,
+): method is ConnectorCatalogBrowserAuthMethodDetail {
+  return isBrowserAuthGrantKind(method.grantKind);
+}
+
+export function getOnlyAvailableCatalogBrowserAuthMethodDetail(connector: {
+  readonly authMethods: readonly PublicConnectorCatalogAuthMethodDetail[];
+  readonly singleAuthCodeAuthMethodId: ConnectorAuthMethodId | null;
+}): ConnectorCatalogBrowserAuthMethodDetail | null {
+  const [method] = connector.authMethods;
+  if (
+    connector.authMethods.length !== 1 ||
+    !method ||
+    !isCatalogBrowserAuthMethodDetail(method)
+  ) {
+    return null;
+  }
+  if (
+    method.grantKind === "auth-code" &&
+    connector.singleAuthCodeAuthMethodId !== method.id
+  ) {
+    return null;
+  }
+  return method;
 }
 
 function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
