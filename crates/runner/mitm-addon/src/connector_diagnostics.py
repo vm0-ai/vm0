@@ -1,4 +1,41 @@
-"""Connector diagnostic hook lifecycle owner."""
+"""Connector diagnostic hook lifecycle for mitmproxy HTTP flows.
+
+``mitm_addon`` owns hook orchestration, while this module owns connector-intent
+handling, flow-scoped diagnostic lookup state, response replacement, diagnostic
+proxy logging, and diagnostic stream cleanup. Catalog compilation and matching
+remain in ``builtin_connector_diagnostics``.
+
+Lifecycle:
+
+- ``requestheaders()`` and ``request()`` both capture connector intent before
+  classification and strip the private header before forwarding. A provisional
+  header-phase classification may restore the exported probe metadata when it
+  falls through to the request hook.
+- The header hook may probe an unknown-endpoint firewall allow with
+  ``commit=False``. A miss does not persist a newly selected snapshot, while a
+  successful local diagnostic pins the snapshot it used. Carried-forward
+  ordinary allow flows call ``record_allow_context()`` before request streaming.
+- The request hook uses ``commit=True`` for the committed unknown-endpoint path
+  and calls ``record_allow_context()`` for ordinary allows. These paths pin one
+  diagnostic catalog snapshot so later response and error handling cannot
+  switch catalog generations during the same flow.
+- ``responseheaders()`` offers eligible 401/403 responses to
+  ``install_response_stream_if_needed()`` before installing general response
+  streaming. A diagnostic stream suppresses the upstream body and emits its
+  replacement body once.
+- ``response()`` completes streamed replacement or handles buffered 401/403
+  replacement before network logging. ``error()`` may synthesize a diagnostic
+  response unless response headers already installed a replacement.
+- Terminal response, error, and WebSocket cleanup call ``release_flow_state()``
+  from exception-safe cleanup to release diagnostic-private state and detach an
+  installed diagnostic stream callback.
+
+``REQUEST_HEADERS_PROBE_METADATA_KEYS`` names provisional connector-intent
+metadata owned by request-header snapshot/restore. Terminal release instead
+owns diagnostic-private snapshot, lookup, candidate, ownership, stream, and log
+guard state. Public diagnostic/firewall metadata used for observable logging and
+generic response-stream state have separate owners.
+"""
 
 import json
 import urllib.parse
@@ -81,6 +118,17 @@ _AUTH_SCHEMES_REQUIRING_CREDENTIAL = frozenset(
 
 
 def capture_and_strip_connector_intent_header(flow: http.HTTPFlow) -> None:
+    """Capture connector intent once and always remove its private header.
+
+    ``requestheaders()`` and ``request()`` call this before classification. The
+    first call records absent, malformed, or present intent state; later calls
+    preserve that decision. Every call removes ``X-VM0-Connector-Intent`` when
+    present so it cannot be forwarded upstream.
+
+    The recorded fields are request-header probe metadata. A caller whose
+    provisional classification falls through must restore them with the rest of
+    its probe snapshot.
+    """
     if _CONNECTOR_INTENT_STATUS not in flow.metadata:
         values = flow.request.headers.get_all(_CONNECTOR_INTENT_HEADER)
         if not values:
@@ -103,6 +151,18 @@ def record_allow_context(
     flow: http.HTTPFlow,
     classification: request_classification.RequestClassification,
 ) -> None:
+    """Pin diagnostic lookup context for an eligible ordinary allow flow.
+
+    Request-header callers use this before carrying a streamed ``allow``
+    classification into ``request()``; request callers use it before immediate
+    or deferred diagnostic resolution. A non-allow classification, browser
+    flow, existing diagnostic, or incomplete VM/original-URL context is a
+    no-op.
+
+    On success, the flow records diagnostic eligibility, active firewall names,
+    and one classification-compatible catalog snapshot. Response and error
+    phases resolve candidates only from that pinned snapshot.
+    """
     if classification.kind != "allow":
         return
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
@@ -127,6 +187,18 @@ def maybe_make_local_response(
     *,
     original_url: str,
 ) -> bool:
+    """Create an immediate diagnostic for an ordinary allow request.
+
+    Call this from the committed request phase after ``record_allow_context()``
+    and only when request streaming has not deferred the decision. It uses the
+    pinned catalog candidate and preserves upstream handling for browser flows,
+    missing candidates, or requests carrying configured or generic auth
+    material.
+
+    Return ``True`` only after installing a local HTTP 424 response, recording
+    failure/timing/firewall metadata, and emitting the diagnostic proxy entry.
+    The caller must treat that response as terminal for request dispatch.
+    """
     if _is_browser_diagnostic_skip(flow):
         return False
     candidate = _resolve_candidate(flow, original_url=original_url)
@@ -157,6 +229,24 @@ def maybe_make_firewall_allow_local_response(
     *,
     commit: bool,
 ) -> bool:
+    """Diagnose an inactive shared-base owner for an unknown endpoint.
+
+    This applies only to a non-browser ``firewall_allow`` whose matched firewall
+    has no permission/rule for the endpoint and whose VM and original-URL
+    context is complete. ``requestheaders()`` passes ``commit=False`` for its
+    provisional probe; ``request()`` passes ``commit=True`` for the committed
+    path.
+
+    ``commit`` controls catalog snapshot retention, not response construction.
+    Once snapshot selection is reached, the committed path pins that snapshot
+    even when ownership resolution misses or request auth material suppresses a
+    diagnostic. The provisional path pins only when it actually builds the
+    local response.
+
+    Return ``True`` only after installing and logging a local HTTP 424 response
+    and recording the selected candidate and ownership metadata. The caller
+    must stop normal request dispatch on ``True``.
+    """
     if classification.kind != "firewall_allow":
         return False
     if _is_browser_diagnostic_skip(flow):
@@ -210,6 +300,18 @@ def maybe_make_firewall_allow_local_response(
 
 
 def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
+    """Install diagnostic replacement during the response-header phase.
+
+    ``responseheaders()`` must call this before general response streaming. For
+    an eligible unauthenticated 401/403, it replaces the response body and its
+    framing headers, caches the diagnostic body, and installs a callback that
+    discards upstream chunks and emits that body once at end-of-stream.
+
+    Return ``True`` only when this module owns ``flow.response.stream``; the
+    caller must then skip installing another stream callback. ``False`` means no
+    diagnostic callback was installed, although candidate lookup may have
+    populated flow-private cache state.
+    """
     if not _should_stream_response(flow):
         return False
     return _install_response_stream(flow)
@@ -220,6 +322,17 @@ def maybe_replace_response(
     *,
     original_url: str,
 ) -> None:
+    """Complete connector diagnostic handling during the response hook.
+
+    Call this before response sizing, network logging, and usage finalization.
+    If response headers already installed diagnostic streaming, this clears
+    trailers, restores the cached body when the stream did not emit it, and
+    records the proxy entry at most once. Otherwise it may replace a buffered
+    401/403 body for an eligible request without user auth material.
+
+    Non-401/403 responses, browser flows, missing candidates, and authenticated
+    requests keep their upstream response unchanged.
+    """
     if flow.response is None:
         return
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
@@ -270,6 +383,14 @@ def maybe_make_error_response(
     *,
     original_url: str,
 ) -> None:
+    """Create a connector diagnostic response during the error hook.
+
+    Call this before writing the flow's network-error entry. If response headers
+    already installed diagnostic replacement, it does not create or log another
+    diagnostic and clears trailers when a response exists. Otherwise an
+    eligible non-browser request without auth material receives a local HTTP 424
+    response with upstream status zero and one diagnostic proxy entry.
+    """
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
         if flow.response is not None:
             flow.response.trailers = None
@@ -295,6 +416,18 @@ def maybe_make_error_response(
 
 
 def release_flow_state(flow: http.HTTPFlow) -> None:
+    """Release diagnostic-private state after a terminal flow hook.
+
+    ``response()``, ``error()``, and terminal WebSocket cleanup call this from a
+    ``finally`` path after diagnostic processing. It removes the pinned catalog,
+    lookup/candidate/auth context, ownership details, stream replacement state,
+    and proxy-log guard. It detaches ``flow.response.stream`` only when the
+    installed callback is the one owned by this module.
+
+    Request-header connector-intent probe metadata and public diagnostic or
+    firewall metadata are not release-owned here. General response-stream state
+    is released separately by its own lifecycle owner.
+    """
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_ELIGIBLE, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES, None)
