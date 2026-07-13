@@ -14,6 +14,7 @@ from tests.registry_helpers import (
     builtin_vm,
     inline_vm,
     write_multi_vm_registry,
+    write_trusted_catalog_cache_text,
 )
 
 
@@ -76,7 +77,8 @@ def _write_catalog_cache(
     version: str,
     firewalls: dict[str, dict],
 ) -> None:
-    path.write_text(
+    write_trusted_catalog_cache_text(
+        path,
         json.dumps(
             {
                 "schemaVersion": 1,
@@ -86,7 +88,7 @@ def _write_catalog_cache(
                 "firewalls": firewalls,
             },
             sort_keys=True,
-        )
+        ),
     )
 
 
@@ -554,7 +556,7 @@ class TestRegistryBuiltinCache:
     def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        cache_path.write_text('{"schemaVersion":1}')
+        write_trusted_catalog_cache_text(cache_path, '{"schemaVersion":1}')
         write_multi_vm_registry(
             registry_path,
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
