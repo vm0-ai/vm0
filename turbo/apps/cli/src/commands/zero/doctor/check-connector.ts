@@ -66,6 +66,21 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
+function rawUrlAuthorityHasUserinfo(url: string): boolean {
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd === -1) return false;
+
+  const authorityStart = schemeEnd + 3;
+  let authorityEnd = url.length;
+  for (const delimiter of ["/", "?", "#"]) {
+    const delimiterIndex = url.indexOf(delimiter, authorityStart);
+    if (delimiterIndex !== -1) {
+      authorityEnd = Math.min(authorityEnd, delimiterIndex);
+    }
+  }
+  return url.slice(authorityStart, authorityEnd).includes("@");
+}
+
 function shellQuoteArg(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
@@ -90,6 +105,10 @@ function validateCheckConnectorOptions(
   command: Command,
 ): asserts opts is ValidatedCheckConnectorOptions {
   const hasUrl = opts.url !== undefined;
+  // Reject embedded credentials before the diagnostic request leaves the client.
+  if (opts.url !== undefined && rawUrlAuthorityHasUserinfo(opts.url)) {
+    throw unsafeInputError("invalid-url");
+  }
   if (opts.connector !== undefined && !hasUrl) {
     throw new Error(
       "--connector can only be used with --url. Add --url <URL> or remove --connector.",

@@ -311,6 +311,30 @@ describe("zero doctor check-connector command", () => {
       expect(getErrorOutput()).not.toContain("access_token=secret");
     });
 
+    it("rejects URL userinfo before transport or output", async () => {
+      let diagnosticRequested = false;
+      server.use(
+        http.post(diagnosticEndpoint(), () => {
+          diagnosticRequested = true;
+          return HttpResponse.json(resolvedUrl());
+        }),
+      );
+
+      await expectCommandFailure([
+        "--url",
+        "https://sensitive-user:sensitive-password@api.github.com/repos/vm0-ai/vm0",
+      ]);
+
+      expect(diagnosticRequested).toBe(false);
+      expect(getErrorOutput()).toContain(
+        "requires --url to be a valid absolute http or https URL",
+      );
+      expect(getOutput()).not.toContain("sensitive-user");
+      expect(getOutput()).not.toContain("sensitive-password");
+      expect(getErrorOutput()).not.toContain("sensitive-user");
+      expect(getErrorOutput()).not.toContain("sensitive-password");
+    });
+
     it("sends an environment request with the explicit permission", async () => {
       let capturedBody: unknown;
       stubDiagnostic(
