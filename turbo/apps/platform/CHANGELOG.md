@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.595.1](https://github.com/vm0-ai/vm0/compare/app-v0.595.0...app-v0.595.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* align image edit toolbar layer and accent color ([#20965](https://github.com/vm0-ai/vm0/issues/20965)) ([d4a18c5](https://github.com/vm0-ai/vm0/commit/d4a18c5e80b6495f88be6b0b3bda1e8d717c3414))
+
 ## [0.595.0](https://github.com/vm0-ai/vm0/compare/app-v0.594.0...app-v0.595.0) (2026-07-13)
 
 
