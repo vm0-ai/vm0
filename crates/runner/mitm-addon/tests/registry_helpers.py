@@ -2,8 +2,14 @@
 
 import json
 import os
+from pathlib import Path
 
 _FIXED_MTIME_NS = 1_700_000_000_000_000_000
+
+
+def write_trusted_catalog_cache_text(path: Path, content: str) -> None:
+    path.write_text(content)
+    path.chmod(0o600)
 
 
 def write_simple_registry(path, *, run_id="run-one"):

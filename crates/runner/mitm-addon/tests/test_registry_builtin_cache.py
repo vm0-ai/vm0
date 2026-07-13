@@ -2,7 +2,6 @@
 
 import json
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +14,7 @@ from tests.registry_helpers import (
     builtin_vm,
     inline_vm,
     write_multi_vm_registry,
+    write_trusted_catalog_cache_text,
 )
 
 
@@ -70,19 +70,14 @@ def _zendesk_cache_firewall() -> dict:
     }
 
 
-def _write_trusted_catalog_cache_text(path: Path, content: str) -> None:
-    path.write_text(content)
-    path.chmod(0o600)
-
-
 def _write_catalog_cache(
-    path: Path,
+    path,
     *,
     digest: str,
     version: str,
     firewalls: dict[str, dict],
 ) -> None:
-    _write_trusted_catalog_cache_text(
+    write_trusted_catalog_cache_text(
         path,
         json.dumps(
             {
@@ -561,7 +556,7 @@ class TestRegistryBuiltinCache:
     def test_malformed_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-        _write_trusted_catalog_cache_text(cache_path, '{"schemaVersion":1}')
+        write_trusted_catalog_cache_text(cache_path, '{"schemaVersion":1}')
         write_multi_vm_registry(
             registry_path,
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},

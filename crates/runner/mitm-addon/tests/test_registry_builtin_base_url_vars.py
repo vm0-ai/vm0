@@ -10,6 +10,9 @@ import registry
 from tests.registry_helpers import (
     write_builtin_firewall_registry as _write_builtin_firewall_registry,
 )
+from tests.registry_helpers import (
+    write_trusted_catalog_cache_text,
+)
 
 _TEST_BUILTIN_FIREWALLS: dict[str, dict] = {}
 
@@ -48,7 +51,8 @@ def _cache_path_for_registry(path):
 
 
 def _write_catalog_cache(path, firewalls: dict[str, dict]) -> None:
-    path.write_text(
+    write_trusted_catalog_cache_text(
+        path,
         json.dumps(
             {
                 "schemaVersion": 1,
@@ -60,7 +64,7 @@ def _write_catalog_cache(path, firewalls: dict[str, dict]) -> None:
                 "firewalls": firewalls,
             },
             sort_keys=True,
-        )
+        ),
     )
 
 
