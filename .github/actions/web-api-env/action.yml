@@ -270,6 +270,7 @@ runs:
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
           add_env E2E_SLACK_MOCK_ENABLED "1"
           add_env E2E_TELEGRAM_MOCK_ENABLED "1"
+          add_env E2E_TEAMS_MOCK_ENABLED "1"
         fi
         add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
         if [[ "$INPUT_APP" == "web" && "$INPUT_ENVIRONMENT" == "production" ]]; then

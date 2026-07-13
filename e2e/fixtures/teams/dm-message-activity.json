@@ -1,0 +1,30 @@
+{
+  "type": "message",
+  "id": "{{ACTIVITY_ID}}",
+  "timestamp": "2026-07-13T00:00:00.000Z",
+  "serviceUrl": "{{SERVICE_URL}}",
+  "channelId": "msteams",
+  "conversation": {
+    "id": "{{CONVERSATION_ID}}",
+    "conversationType": "personal"
+  },
+  "channelData": {
+    "tenant": {
+      "id": "{{TENANT_ID}}",
+      "name": "{{TENANT_NAME}}"
+    },
+    "teamsAppId": "{{BOT_ID}}"
+  },
+  "from": {
+    "id": "{{USER_ID}}",
+    "name": "{{USER_NAME}}",
+    "aadObjectId": "{{USER_AAD_ID}}",
+    "userPrincipalName": "{{USER_PRINCIPAL_NAME}}"
+  },
+  "recipient": {
+    "id": "{{BOT_ID}}",
+    "name": "{{BOT_NAME}}"
+  },
+  "text": "echo HELLO_FROM_TEAMS_E2E",
+  "entities": []
+}
