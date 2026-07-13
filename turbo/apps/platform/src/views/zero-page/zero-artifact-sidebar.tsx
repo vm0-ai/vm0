@@ -162,7 +162,6 @@ import {
   ArtifactShareButton,
   type ArtifactDownloadSyncTarget,
 } from "./zero-artifact-actions.tsx";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
@@ -2005,161 +2004,646 @@ function ArtifactImageBody({
 
 const IMAGE_STYLE_TRANSFER_TEMPLATES = [
   {
-    id: "warm-film",
-    label: "Warm film",
-    description: "Soft grain and golden-hour color.",
+    id: "illustration",
+    label: "Illustration",
+    description: "Clean vector shapes.",
     prompt:
-      "Warm analog film look with soft grain, golden-hour color, gentle contrast and natural skin tones.",
-    thumbnailClassName:
-      "bg-[linear-gradient(180deg,#fbbf24_0_48%,#78350f_49%_70%,#fef3c7_71%)] before:absolute before:left-2 before:top-2 before:h-3 before:w-3 before:rounded-full before:bg-[#fff7cc] before:shadow-[18px_20px_0_4px_rgba(146,64,14,.65)] after:absolute after:inset-0 after:bg-[repeating-linear-gradient(90deg,rgba(255,255,255,.3)_0_1px,transparent_1px_7px)]",
+      "Clean vector illustration style with simple friendly shapes, crisp contours, balanced color blocks and polished editorial composition.",
+    thumbnail: "illustration",
   },
   {
-    id: "ink-wash",
-    label: "Ink wash",
-    description: "Monochrome brush texture.",
+    id: "anime-cell",
+    label: "Anime cell",
+    description: "Cel color.",
     prompt:
-      "Elegant black ink wash illustration with subtle paper texture, expressive brush edges and preserved subject detail.",
-    thumbnailClassName:
-      "bg-[linear-gradient(180deg,#f8fafc,#e5e7eb)] before:absolute before:inset-x-1 before:bottom-2 before:h-7 before:bg-[linear-gradient(135deg,transparent_0_18%,#111827_19%_40%,transparent_41%),linear-gradient(45deg,transparent_0_24%,rgba(17,24,39,.72)_25%_58%,transparent_59%)] after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_28%_58%,rgba(17,24,39,.4)_0_8%,transparent_9%),linear-gradient(116deg,transparent_0_53%,rgba(17,24,39,.72)_54%_60%,transparent_61%)]",
-  },
-  {
-    id: "clay",
-    label: "Clay",
-    description: "Matte 3D hand-crafted form.",
-    prompt:
-      "Matte clay 3D render style with soft studio lighting, rounded hand-crafted forms and tactile surface detail.",
-    thumbnailClassName:
-      "bg-[linear-gradient(180deg,#fed7aa,#fdba74)] before:absolute before:left-2 before:top-3 before:h-6 before:w-6 before:rounded-full before:bg-[radial-gradient(circle_at_32%_24%,#ffedd5,#fb923c_58%,#c2410c)] before:shadow-[13px_8px_0_-3px_rgba(234,88,12,.55),10px_-2px_0_-7px_#9a3412] after:absolute after:left-3 after:bottom-2 after:h-2 after:w-8 after:rounded-full after:bg-[#9a3412]/25 after:blur-sm",
+      "Modern anime cel-shaded style with clean expressive linework, flat vibrant color blocks, soft gradients and preserved character detail.",
+    thumbnail: "animeCell",
   },
   {
     id: "watercolor",
     label: "Watercolor",
-    description: "Light pigment and paper bloom.",
+    description: "Pigment bloom.",
     prompt:
       "Delicate watercolor painting with translucent pigment, clean paper texture, soft edges and airy highlights.",
-    thumbnailClassName:
-      "bg-[#f8fafc] before:absolute before:inset-1 before:bg-[radial-gradient(circle_at_42%_34%,rgba(56,189,248,.55)_0_18%,transparent_38%),radial-gradient(circle_at_61%_50%,rgba(244,114,182,.48)_0_16%,transparent_34%),radial-gradient(circle_at_35%_62%,rgba(134,239,172,.55)_0_17%,transparent_36%)] before:blur-[1px] after:absolute after:left-5 after:top-3 after:h-8 after:w-4 after:rounded-full after:border-l-2 after:border-b-2 after:border-[#65a30d]/60 after:rotate-[-28deg]",
-  },
-  {
-    id: "illustration-soft-vector",
-    label: "Soft Vector",
-    description: "Rounded shapes and gentle gradients.",
-    prompt:
-      "Soft Vector illustration template style with clean rounded vector shapes, gentle gradients, tidy negative space and polished editorial composition.",
-    previewImage: illustrationTemplatePreviewImage("soft-vector"),
-    thumbnailClassName:
-      "bg-[#eef2ff] before:absolute before:left-2 before:top-2 before:h-5 before:w-7 before:rounded-full before:bg-[#93c5fd] after:absolute after:bottom-2 after:right-2 after:h-7 after:w-5 after:rounded-full after:bg-[#f9a8d4]",
-  },
-  {
-    id: "illustration-grain-poster",
-    label: "Grain Poster",
-    description: "Graphic blocks with print texture.",
-    prompt:
-      "Grain Poster illustration template style with bold simplified forms, poster-like color blocks, tactile print grain and crisp graphic silhouettes.",
-    previewImage: illustrationTemplatePreviewImage("grain-poster"),
-    thumbnailClassName:
-      "bg-[#fef3c7] before:absolute before:inset-2 before:bg-[linear-gradient(135deg,#ef4444_0_42%,#111827_43%_58%,#22c55e_59%)] after:absolute after:inset-0 after:bg-[radial-gradient(circle,rgba(17,24,39,.22)_0_1px,transparent_1px)] after:bg-[length:5px_5px]",
-  },
-  {
-    id: "illustration-sunlit-gouache",
-    label: "Sunlit Gouache",
-    description: "Warm painted light and soft texture.",
-    prompt:
-      "Sunlit Gouache illustration template style with warm painted light, soft hand-rendered edges, gentle texture and calm storybook atmosphere.",
-    previewImage: illustrationTemplatePreviewImage("sunlit-gouache"),
-    thumbnailClassName:
-      "bg-[#fef9c3] before:absolute before:left-1.5 before:top-1.5 before:h-6 before:w-6 before:rounded-full before:bg-[#facc15]/80 after:absolute after:bottom-2 after:right-1.5 after:h-6 after:w-8 after:rounded-t-full after:bg-[#86efac]",
-  },
-  {
-    id: "illustration-notion",
-    label: "Notion Illustration",
-    description: "Minimal friendly monochrome linework.",
-    prompt:
-      "Notion Illustration template style with minimal friendly linework, soft monochrome shading, quiet whitespace and simple cozy everyday details.",
-    previewImage: illustrationTemplatePreviewImage("notion-illustration"),
-    thumbnailClassName:
-      "bg-[#f8fafc] before:absolute before:left-2 before:top-2 before:h-6 before:w-6 before:rounded-full before:border-2 before:border-[#111827] after:absolute after:bottom-2 after:right-2 after:h-5 after:w-7 after:rounded-sm after:border-2 after:border-[#111827]",
-  },
-  {
-    id: "editorial",
-    label: "Editorial",
-    description: "Crisp lighting and polished finish.",
-    prompt:
-      "Premium editorial campaign style with crisp lighting, restrained contrast, clean color grading and polished detail.",
-    thumbnailClassName:
-      "bg-[linear-gradient(180deg,#f8fafc,#e2e8f0)] before:absolute before:left-2 before:top-2 before:h-8 before:w-6 before:bg-[linear-gradient(180deg,#0f172a_0_50%,#f8fafc_51%_62%,#ef4444_63%)] before:shadow-[16px_0_0_-4px_#cbd5e1] after:absolute after:right-2 after:top-2 after:h-2 after:w-5 after:bg-[#0f172a]",
-  },
-  {
-    id: "neon-noir",
-    label: "Neon noir",
-    description: "Cinematic glow and rain-slick contrast.",
-    prompt:
-      "Cinematic neon noir style with saturated city lights, glossy reflections, moody shadows and high-contrast color grading.",
-    thumbnailClassName:
-      "bg-[linear-gradient(180deg,#020617_0_64%,#172554_65%)] before:absolute before:left-2 before:top-2 before:h-7 before:w-2 before:bg-[#22d3ee] before:shadow-[8px_5px_0_#a855f7,17px_0_0_#f43f5e,26px_9px_0_#38bdf8] after:absolute after:inset-x-1 after:bottom-2 after:h-2 after:bg-[linear-gradient(90deg,transparent,#22d3ee,#a855f7,#f43f5e,transparent)] after:blur-sm",
-  },
-  {
-    id: "studio-product",
-    label: "Studio product",
-    description: "Clean commercial lighting.",
-    prompt:
-      "High-end commercial product photography style with clean studio lighting, crisp material detail, controlled shadows and polished realism.",
-    thumbnailClassName:
-      "bg-[radial-gradient(circle_at_50%_16%,#ffffff_0_14%,#e2e8f0_42%,#cbd5e1)] before:absolute before:left-[18px] before:top-2 before:h-7 before:w-4 before:rounded-md before:bg-[linear-gradient(180deg,#f8fafc,#64748b)] before:shadow-[0_0_0_1px_rgba(15,23,42,.12)] after:absolute after:left-3 after:bottom-2 after:h-2 after:w-7 after:rounded-full after:bg-black/10 after:blur-sm",
-  },
-  {
-    id: "anime-cel",
-    label: "Anime cel",
-    description: "Clean linework and bold color.",
-    prompt:
-      "Modern anime cel-shaded style with clean expressive linework, flat vibrant color blocks, soft gradients and preserved character detail.",
-    thumbnailClassName:
-      "bg-[#dbeafe] before:absolute before:left-2 before:top-2 before:h-7 before:w-7 before:rounded-full before:border-2 before:border-[#111827] before:bg-[radial-gradient(circle_at_34%_44%,#111827_0_7%,transparent_8%),radial-gradient(circle_at_66%_44%,#111827_0_7%,transparent_8%),linear-gradient(180deg,#f9a8d4_0_38%,#fde68a_39%)] after:absolute after:left-2 after:top-1 after:h-4 after:w-7 after:rounded-t-full after:bg-[#2563eb]",
+    thumbnail: "watercolor",
   },
   {
     id: "risograph",
     label: "Risograph",
-    description: "Ink grain and offset layers.",
+    description: "Layered ink.",
     prompt:
       "Risograph print style with limited spot colors, visible ink grain, slight registration offsets and tactile poster texture.",
-    thumbnailClassName:
-      "bg-[#fef3c7] before:absolute before:left-2 before:top-2 before:h-8 before:w-7 before:bg-[radial-gradient(circle_at_50%_32%,#ef4444_0_22%,transparent_23%),linear-gradient(180deg,transparent_0_42%,#22c55e_43%)] before:opacity-80 after:absolute after:inset-0 after:bg-[radial-gradient(circle,#111827_0_1px,transparent_1px)] after:bg-[length:5px_5px] after:opacity-25",
+    thumbnail: "risograph",
   },
   {
-    id: "vintage-comic",
-    label: "Vintage comic",
-    description: "Halftone dots and bold inks.",
-    prompt:
-      "Vintage comic book style with bold ink outlines, halftone dot shading, saturated print colors and dramatic panel lighting.",
-    thumbnailClassName:
-      "bg-[#fde047] before:absolute before:inset-1 before:border-2 before:border-[#111827] before:bg-[radial-gradient(circle_at_50%_48%,#f8fafc_0_18%,#ef4444_19%_36%,transparent_37%),linear-gradient(135deg,#facc15,#ef4444)] after:absolute after:inset-0 after:bg-[radial-gradient(circle,#111827_0_1px,transparent_1px)] after:bg-[length:5px_5px] after:opacity-35",
-  },
-  {
-    id: "paper-cut",
-    label: "Paper cut",
-    description: "Layered edges and soft shadows.",
+    id: "papercut",
+    label: "Papercut",
+    description: "Layered paper.",
     prompt:
       "Layered paper cutout illustration style with crisp paper edges, subtle fibers, dimensional shadows and handcrafted composition.",
-    thumbnailClassName:
-      "bg-[#ecfeff] before:absolute before:inset-x-1 before:bottom-2 before:h-7 before:bg-[radial-gradient(circle_at_24%_28%,#ffffff_0_11%,transparent_12%),linear-gradient(135deg,transparent_0_32%,#14b8a6_33%_61%,transparent_62%),linear-gradient(45deg,transparent_0_38%,#f9a8d4_39%_72%,transparent_73%)] before:drop-shadow-sm after:absolute after:left-3 after:top-2 after:h-3 after:w-3 after:rounded-full after:bg-[#facc15]",
+    thumbnail: "papercut",
+  },
+  {
+    id: "studio-production",
+    label: "Studio production",
+    description: "Studio lighting.",
+    prompt:
+      "Polished studio production style with soft commercial lighting, controlled shadows, clean backdrop, crisp detail and premium finished presentation.",
+    thumbnail: "studioProduction",
+  },
+  {
+    id: "notion",
+    label: "Notion",
+    description: "Workspace illustration.",
+    prompt:
+      "Notion-style workspace illustration with clean black linework, simple geometric props, quiet whitespace and soft supporting color blocks.",
+    thumbnail: "notion",
+  },
+  {
+    id: "ink-wash",
+    label: "Ink wash",
+    description: "Ink texture.",
+    prompt:
+      "Elegant black ink wash illustration with subtle paper texture, expressive brush edges and preserved subject detail.",
+    thumbnail: "inkWash",
+  },
+  {
+    id: "clay",
+    label: "Clay",
+    description: "Clay form.",
+    prompt:
+      "Matte clay 3D render style with soft studio lighting, rounded hand-crafted forms and tactile surface detail.",
+    thumbnail: "clay",
   },
 ] as const;
 const IMAGE_EDIT_UPLOAD_ACCEPT =
   "image/avif,image/bmp,image/gif,image/jpeg,image/png,image/webp";
 
-type ImageStyleTransferTemplateId =
-  (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number]["id"];
 type ImageStyleTransferTemplate =
   (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number];
+type ImageStyleTransferThumbnail =
+  (typeof IMAGE_STYLE_TRANSFER_TEMPLATES)[number]["thumbnail"];
 
-function illustrationTemplatePreviewImage(slug: string): string {
-  const item = ILLUSTRATION_TEMPLATE_ITEMS.find((template) => {
-    return template.slug === slug;
-  });
-  if (!item) {
-    throw new Error(`Missing illustration template: ${slug}`);
-  }
-  return item.cardPreviewImage ?? item.previewImage;
+function InkWashStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="#f8fafc"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <circle cx="30" cy="29" r="9" fill="#111827" opacity=".84" />
+      <path
+        d="M18 72l25-34 16 18 20-30"
+        fill="none"
+        stroke="#111827"
+        strokeWidth="11"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 72l25-34 16 18 20-30"
+        fill="none"
+        stroke="#4b5563"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity=".52"
+      />
+      <path
+        d="M27 78c17-28 33-47 49-61"
+        fill="none"
+        stroke="#111827"
+        strokeWidth="6"
+        strokeLinecap="round"
+        opacity=".22"
+      />
+    </svg>
+  );
+}
+
+function ClayStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <radialGradient id="image-style-clay-main" cx=".35" cy=".28" r=".7">
+          <stop offset="0" stopColor="#fff1d4" />
+          <stop offset=".25" stopColor="#ffbd76" />
+          <stop offset=".78" stopColor="#ee7628" />
+          <stop offset="1" stopColor="#bd4f1a" />
+        </radialGradient>
+        <linearGradient id="image-style-clay-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffe2b6" />
+          <stop offset="1" stopColor="#ffb064" />
+        </linearGradient>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="url(#image-style-clay-bg)"
+      />
+      <path
+        d="M18 70c15-24 29-33 47-32 10 1 16 7 19 14-7 13-17 23-31 27-13 4-25 0-35-9z"
+        fill="url(#image-style-clay-main)"
+      />
+      <path
+        d="M24 69c13-22 26-30 42-29"
+        fill="none"
+        stroke="#a74618"
+        strokeWidth="6"
+        strokeLinecap="round"
+        opacity=".42"
+      />
+      <circle cx="33" cy="34" r="12" fill="#ffe5bd" />
+      <ellipse cx="36" cy="51" rx="12" ry="7" fill="#fff2db" opacity=".45" />
+    </svg>
+  );
+}
+
+function WatercolorStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <filter id="image-style-watercolor-blur">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="#fbfdff"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <circle
+        cx="34"
+        cy="38"
+        r="19"
+        fill="#55c7f3"
+        opacity=".55"
+        filter="url(#image-style-watercolor-blur)"
+      />
+      <circle
+        cx="35"
+        cy="61"
+        r="20"
+        fill="#7ce6a2"
+        opacity=".45"
+        filter="url(#image-style-watercolor-blur)"
+      />
+      <circle
+        cx="61"
+        cy="52"
+        r="18"
+        fill="#ff75ac"
+        opacity=".46"
+        filter="url(#image-style-watercolor-blur)"
+      />
+      <path
+        d="M18 70c18-28 34-34 60-38"
+        fill="none"
+        stroke="#7fae55"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M19 70c18-28 34-34 60-38"
+        fill="none"
+        stroke="#35a7e7"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        opacity=".7"
+      />
+      <circle cx="30" cy="31" r="10" fill="#fff7c7" opacity=".8" />
+    </svg>
+  );
+}
+
+function AnimeCellStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <linearGradient id="image-style-anime-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#dff4ff" />
+          <stop offset="1" stopColor="#fff1b8" />
+        </linearGradient>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="url(#image-style-anime-sky)"
+        stroke="#1f2937"
+        strokeWidth="2.5"
+      />
+      <path
+        d="M18 70l25-34 16 18 20-30v46z"
+        fill="#8fd3ff"
+        stroke="#1f2937"
+        strokeWidth="4.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M43 36l16 18 20-30v46H59z" fill="#ffb6c8" />
+      <path
+        d="M18 70l25-34 16 18 20-30"
+        fill="none"
+        stroke="#1f2937"
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="31"
+        cy="29"
+        r="9"
+        fill="#ffd95a"
+        stroke="#1f2937"
+        strokeWidth="2.5"
+      />
+      <path
+        d="M16 18h24"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="4"
+        strokeLinecap="round"
+        opacity=".78"
+      />
+    </svg>
+  );
+}
+
+function RisographStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <pattern
+          id="image-style-riso-dots"
+          width="6"
+          height="6"
+          patternUnits="userSpaceOnUse"
+        >
+          <circle cx="1.5" cy="1.5" r="1.1" fill="#1f2937" opacity=".18" />
+        </pattern>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="#fff7d6"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="url(#image-style-riso-dots)"
+      />
+      <circle cx="31" cy="30" r="11" fill="#ff4f8b" opacity=".82" />
+      <circle cx="27" cy="33" r="11" fill="#ffd23f" opacity=".72" />
+      <path
+        d="M18 72l25-34 16 18 20-30"
+        fill="none"
+        stroke="#006d77"
+        strokeWidth="9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity=".92"
+      />
+      <path
+        d="M22 68l25-34 16 18 20-30"
+        fill="none"
+        stroke="#ff4f8b"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity=".72"
+      />
+      <path
+        d="M16 76h62"
+        fill="none"
+        stroke="#ffd23f"
+        strokeWidth="6"
+        strokeLinecap="round"
+        opacity=".72"
+      />
+    </svg>
+  );
+}
+
+function PapercutStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <filter
+          id="image-style-paper-shadow"
+          x="-20%"
+          y="-20%"
+          width="140%"
+          height="140%"
+        >
+          <feDropShadow
+            dx="0"
+            dy="2"
+            stdDeviation="1.4"
+            floodColor="#475569"
+            floodOpacity=".24"
+          />
+        </filter>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="#fffaf0"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <circle
+        cx="30"
+        cy="31"
+        r="10"
+        fill="#ffd166"
+        filter="url(#image-style-paper-shadow)"
+      />
+      <path
+        d="M18 72l25-35 16 19 20-31v47z"
+        fill="#8bd3dd"
+        filter="url(#image-style-paper-shadow)"
+      />
+      <path
+        d="M43 37l16 19 20-31v47H59z"
+        fill="#f9a8d4"
+        filter="url(#image-style-paper-shadow)"
+      />
+      <path
+        d="M18 72l25-35 16 19 20-31"
+        fill="none"
+        stroke="#334155"
+        strokeWidth="5.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15 75h65"
+        fill="none"
+        stroke="#facc15"
+        strokeWidth="6"
+        strokeLinecap="round"
+        opacity=".55"
+      />
+    </svg>
+  );
+}
+
+function NotionStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="#ffffff"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <rect
+        x="18"
+        y="18"
+        width="22"
+        height="15"
+        rx="4"
+        fill="#fde68a"
+        opacity=".8"
+      />
+      <rect
+        x="57"
+        y="19"
+        width="18"
+        height="18"
+        rx="5"
+        fill="#bfdbfe"
+        opacity=".82"
+      />
+      <rect
+        x="56"
+        y="59"
+        width="20"
+        height="13"
+        rx="4"
+        fill="#fecaca"
+        opacity=".82"
+      />
+      <circle
+        cx="30"
+        cy="32"
+        r="7"
+        fill="#fbbf24"
+        stroke="#111827"
+        strokeWidth="2.5"
+      />
+      <path
+        d="M18 70l25-34 16 18 20-30"
+        fill="none"
+        stroke="#111827"
+        strokeWidth="4.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19 71c8-7 17-8 27-4 10 4 20 3 31-5"
+        fill="none"
+        stroke="#111827"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        opacity=".28"
+      />
+      <path
+        d="M21 78h51"
+        fill="none"
+        stroke="#111827"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        opacity=".36"
+      />
+    </svg>
+  );
+}
+
+function IllustrationStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <linearGradient
+          id="image-style-illustration-bg"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <stop offset="0" stopColor="#e0f2fe" />
+          <stop offset="1" stopColor="#fff7ed" />
+        </linearGradient>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="url(#image-style-illustration-bg)"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <circle cx="30" cy="31" r="10" fill="#facc15" />
+      <path d="M18 72l25-34 16 18 20-30v46z" fill="#38bdf8" opacity=".92" />
+      <path d="M43 38l16 18 20-30v46H59z" fill="#fb7185" opacity=".9" />
+      <path
+        d="M18 72l25-34 16 18 20-30"
+        fill="none"
+        stroke="#334155"
+        strokeWidth="5.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18 72h62"
+        fill="none"
+        stroke="#22c55e"
+        strokeWidth="6"
+        strokeLinecap="round"
+        opacity=".65"
+      />
+    </svg>
+  );
+}
+
+function StudioProductionStyleThumbnail() {
+  return (
+    <svg viewBox="0 0 96 96" aria-hidden="true" className="h-full w-full">
+      <defs>
+        <radialGradient id="image-style-studio-light" cx=".5" cy=".22" r=".78">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset=".58" stopColor="#eef2f7" />
+          <stop offset="1" stopColor="#cbd5e1" />
+        </radialGradient>
+        <linearGradient
+          id="image-style-studio-card"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#e2e8f0" />
+        </linearGradient>
+        <filter
+          id="image-style-studio-shadow"
+          x="-30%"
+          y="-30%"
+          width="160%"
+          height="160%"
+        >
+          <feDropShadow
+            dx="0"
+            dy="5"
+            stdDeviation="3"
+            floodColor="#0f172a"
+            floodOpacity=".28"
+          />
+        </filter>
+      </defs>
+      <rect
+        x="8"
+        y="8"
+        width="80"
+        height="80"
+        rx="10"
+        fill="url(#image-style-studio-light)"
+        stroke="#d7dee8"
+        strokeWidth="2"
+      />
+      <ellipse cx="48" cy="74" rx="27" ry="7" fill="#0f172a" opacity=".18" />
+      <g filter="url(#image-style-studio-shadow)">
+        <rect
+          x="21"
+          y="22"
+          width="54"
+          height="43"
+          rx="9"
+          fill="url(#image-style-studio-card)"
+        />
+        <circle cx="34" cy="34" r="7" fill="#f8c14a" />
+        <path
+          d="M28 56l16-20 12 14 14-21"
+          fill="none"
+          stroke="#475569"
+          strokeWidth="5.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M24 63h48"
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth="3"
+          strokeLinecap="round"
+          opacity=".8"
+        />
+      </g>
+      <path
+        d="M24 18h49"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+        opacity=".9"
+      />
+    </svg>
+  );
+}
+
+const IMAGE_STYLE_TRANSFER_THUMBNAILS = {
+  animeCell: AnimeCellStyleThumbnail,
+  clay: ClayStyleThumbnail,
+  illustration: IllustrationStyleThumbnail,
+  inkWash: InkWashStyleThumbnail,
+  notion: NotionStyleThumbnail,
+  papercut: PapercutStyleThumbnail,
+  risograph: RisographStyleThumbnail,
+  studioProduction: StudioProductionStyleThumbnail,
+  watercolor: WatercolorStyleThumbnail,
+} satisfies Record<ImageStyleTransferThumbnail, () => ReactNode>;
+
+function ImageStyleTransferThumbnailSvg({
+  thumbnail,
+}: {
+  thumbnail: ImageStyleTransferThumbnail;
+}) {
+  const Thumbnail = IMAGE_STYLE_TRANSFER_THUMBNAILS[thumbnail];
+  return <Thumbnail />;
 }
 
 function ImageStyleTemplateVisual({
@@ -2169,91 +2653,78 @@ function ImageStyleTemplateVisual({
 }) {
   return (
     <span
-      className={cn(
-        "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border/70",
-        template.thumbnailClassName,
-      )}
+      className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-border/70 bg-background"
       aria-hidden="true"
+      data-testid={`image-edit-style-template-preview-${template.id}`}
     >
-      {"previewImage" in template ? (
-        <img
-          src={template.previewImage}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          data-testid={`image-edit-style-template-preview-${template.id}`}
-          onError={(event) => {
-            event.currentTarget.hidden = true;
-          }}
-        />
-      ) : null}
+      <ImageStyleTransferThumbnailSvg thumbnail={template.thumbnail} />
     </span>
   );
 }
 
 function ImageStyleTemplateOption({
-  defaultChecked,
   template,
 }: {
-  defaultChecked: boolean;
   template: ImageStyleTransferTemplate;
 }) {
   return (
     <label
-      className="group relative flex min-h-16 cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-background p-1.5 pr-2 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+      className="group relative flex min-h-[92px] cursor-pointer flex-col items-start gap-1.5 rounded-lg border border-border/70 bg-muted/20 p-1.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
       data-testid={`image-edit-style-template-${template.id}`}
     >
       <input
         type="radio"
-        name="styleTemplate"
+        name="styleMode"
         value={template.id}
-        defaultChecked={defaultChecked}
         className="peer sr-only"
       />
       <ImageStyleTemplateVisual template={template} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-semibold text-foreground">
+        <span className="block text-[11px] font-bold leading-3 text-foreground">
           {template.label}
         </span>
-        <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+        <span className="mt-0.5 block text-[10px] leading-3 text-muted-foreground">
           {template.description}
         </span>
       </span>
-      <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary opacity-0 transition-opacity group-has-[:checked]:opacity-100" />
+      <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary opacity-0 transition-opacity group-has-[:checked]:opacity-100" />
     </label>
   );
 }
 
 function ImageStyleTemplateList() {
-  const defaultTemplateId = IMAGE_STYLE_TRANSFER_TEMPLATES[0].id;
   return (
-    <div className="mt-2 grid max-h-72 gap-1.5 overflow-y-auto pr-1">
+    <div className="mt-2 grid grid-cols-3 gap-1.5">
       {IMAGE_STYLE_TRANSFER_TEMPLATES.map((template) => {
         return (
-          <ImageStyleTemplateOption
-            key={template.id}
-            defaultChecked={template.id === defaultTemplateId}
-            template={template}
-          />
+          <ImageStyleTemplateOption key={template.id} template={template} />
         );
       })}
     </div>
   );
 }
 
-function imageStylePromptFromForm(form: HTMLFormElement): string {
+function imageStylePromptFromForm(form: HTMLFormElement): string | null {
   const data = new FormData(form);
+  const selectedMode = String(data.get("styleMode") ?? "");
   const customStyle = String(data.get("customStyle") ?? "").trim();
-  if (customStyle) {
-    return customStyle;
+  if (selectedMode === "custom") {
+    return customStyle || null;
   }
-  const templateId = String(
-    data.get("styleTemplate") ?? "warm-film",
-  ) as ImageStyleTransferTemplateId;
-  const template =
-    IMAGE_STYLE_TRANSFER_TEMPLATES.find((item) => {
-      return item.id === templateId;
-    }) ?? IMAGE_STYLE_TRANSFER_TEMPLATES[0];
-  return template.prompt;
+  const template = IMAGE_STYLE_TRANSFER_TEMPLATES.find((item) => {
+    return item.id === selectedMode;
+  });
+  return template?.prompt ?? null;
+}
+
+function syncImageStyleApplyButton(form: HTMLFormElement): void {
+  const button = form.querySelector('[data-testid="image-edit-apply-style"]');
+  if (button instanceof HTMLButtonElement) {
+    button.setAttribute(
+      "aria-disabled",
+      imageStylePromptFromForm(form) === null ? "true" : "false",
+    );
+  }
 }
 
 function ArtifactImageEditToolbarButton({
@@ -2283,7 +2754,7 @@ function ArtifactImageEditToolbarButton({
               ? "h-9 w-9 rounded-none border-0 bg-transparent p-0 text-muted-foreground shadow-none hover:bg-gray-100 hover:text-foreground"
               : "h-9 w-9 rounded-lg border-border/70 bg-gray-50 p-0 text-muted-foreground hover:bg-gray-100 hover:text-foreground",
             active &&
-              "border-blue-500 bg-blue-600 text-white hover:bg-blue-700 hover:text-white",
+              "border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
           )}
           data-testid={testId}
           aria-label={label}
@@ -2307,7 +2778,11 @@ function ArtifactImageStyleTransferPopover({
   onApply: (stylePrompt: string, item: EditableImageCanvasItem) => void;
 }) {
   const applyStyle = (form: HTMLFormElement) => {
-    onApply(imageStylePromptFromForm(form), item);
+    const stylePrompt = imageStylePromptFromForm(form);
+    if (!stylePrompt) {
+      return;
+    }
+    onApply(stylePrompt, item);
   };
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2344,30 +2819,72 @@ function ArtifactImageStyleTransferPopover({
         onOpenAutoFocus={(event) => {
           event.preventDefault();
         }}
-        className="z-[10000] max-h-[min(620px,calc(100vh-120px))] w-[360px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg border-border/70 p-3 shadow-lg"
+        className="z-[10000] max-h-[min(620px,calc(100vh-120px))] w-[420px] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg border-border/70 p-3 shadow-lg"
         data-testid="image-edit-style-popover"
       >
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form
+          onChange={(event) => {
+            syncImageStyleApplyButton(event.currentTarget);
+          }}
+          onSubmit={handleSubmit}
+          className="space-y-3"
+        >
           <p className="text-sm font-bold text-foreground">Style Transfer</p>
           <ImageStyleTemplateList />
-          <p className="px-0.5 text-xs font-semibold text-muted-foreground">
-            Custom style
-          </p>
-          <textarea
-            className="min-h-16 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
-            name="customStyle"
-            placeholder="Describe a custom style..."
-            data-testid="image-edit-style-custom-input"
-          />
+          <label
+            className="group block cursor-text rounded-lg border border-border/70 bg-muted/20 p-2 transition-colors hover:border-primary/40 hover:bg-muted/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-[0_0_0_3px_hsl(var(--primary)/0.1)]"
+            data-testid="image-edit-style-custom-option"
+          >
+            <span className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Custom style
+              </span>
+              <span className="h-2 w-2 rounded-full bg-primary opacity-0 transition-opacity group-has-[:checked]:opacity-100" />
+            </span>
+            <input
+              type="radio"
+              name="styleMode"
+              value="custom"
+              className="peer sr-only"
+            />
+            <textarea
+              className="min-h-16 w-full resize-none rounded-md border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30"
+              name="customStyle"
+              placeholder="Describe a custom style..."
+              data-testid="image-edit-style-custom-input"
+              onFocus={(event) => {
+                const form = event.currentTarget.form;
+                const customStyleRadio = form?.querySelector(
+                  'input[name="styleMode"][value="custom"]',
+                );
+                if (customStyleRadio instanceof HTMLInputElement) {
+                  customStyleRadio.checked = true;
+                }
+                if (form) {
+                  syncImageStyleApplyButton(form);
+                }
+              }}
+              onChange={(event) => {
+                const form = event.currentTarget.form;
+                if (form) {
+                  syncImageStyleApplyButton(form);
+                }
+              }}
+            />
+          </label>
           <PopoverClose asChild>
             <Button
               type="button"
-              className="h-8 w-full rounded-md text-sm font-medium"
+              className="h-8 w-full rounded-md text-sm font-medium aria-disabled:pointer-events-none aria-disabled:opacity-50"
               data-testid="image-edit-apply-style"
+              aria-disabled="true"
               onClick={(event) => {
-                if (event.currentTarget.form) {
-                  applyStyle(event.currentTarget.form);
+                const form = event.currentTarget.form;
+                if (!form || imageStylePromptFromForm(form) === null) {
+                  event.preventDefault();
+                  return;
                 }
+                applyStyle(form);
               }}
             >
               Apply style
@@ -2984,7 +3501,7 @@ function ArtifactImageEditRegionSendButton({
     <Button
       type="button"
       size="sm"
-      className="h-9 gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-blue-600/60 disabled:text-white/75"
+      className="h-9 gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:bg-primary/60 disabled:text-primary-foreground/75"
       disabled={imageUploading}
       data-testid="image-edit-region-send"
       aria-label="Send edit instruction"
@@ -3072,7 +3589,7 @@ function ArtifactImageEditRegionComment({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-9 w-9 rounded-full border border-blue-200 bg-background/95 p-0 text-blue-600 shadow-lg backdrop-blur hover:bg-background hover:text-blue-700"
+        className="h-9 w-9 rounded-full border border-primary/20 bg-background/95 p-0 text-primary shadow-lg backdrop-blur hover:bg-background hover:text-primary"
         data-testid="image-edit-region-comment-edit"
         aria-label="Edit region comment"
         title="Edit"
