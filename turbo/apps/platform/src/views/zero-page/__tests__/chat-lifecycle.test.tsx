@@ -3515,9 +3515,7 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
     });
 
-    const currentThreadLink = screen.getByRole("link", {
-      name: "Current keyboard thread",
-    });
+    const currentThreadLink = linkByText("Current keyboard thread");
     currentThreadLink.focus();
     expect(currentThreadLink).toHaveFocus();
     expect(
