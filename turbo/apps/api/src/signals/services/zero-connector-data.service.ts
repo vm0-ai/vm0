@@ -188,9 +188,6 @@ function storedConnectorRowToResponse(
   authMethod: ConnectorAuthMethodId,
   now: Date,
 ): ExecutableConnectorResponse {
-  if (!getConnectorAuthMethod(type, authMethod)) {
-    throw new Error("Invalid stored connector auth method");
-  }
   const credentialStatus = connectorCredentialStatus({
     type,
     authMethod,
