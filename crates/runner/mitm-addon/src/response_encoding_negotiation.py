@@ -16,18 +16,23 @@ _Q_VALUE_PATTERN = re.compile(r"(?:0(?:\.[0-9]{1,3})?|1(?:\.0{1,3})?)")
 _HTTP_OWS_CHARS = " \t"
 
 
-def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool:
-    """Restrict Accept-Encoding to safe values for response-body inspection.
+def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> None:
+    """Best-effort restriction of Accept-Encoding for body inspection.
 
     The proxy inspects selected upstream responses for usage/billing.  For those
     requests, avoid negotiating encodings whose Python streaming decoders cannot
-    provide the needed bounded-output behavior.  The helper still respects an
-    explicit requester rejection of ``identity``.
+    provide the needed bounded-output behavior.
+
+    The helper preserves explicit requester rejections.  When ``identity`` and
+    every supported compression coding are rejected, the original header remains
+    unchanged and the actual response might not support bounded streaming
+    inspection.  Callers must use the response's ``Content-Encoding`` to decide
+    whether incremental body inspection is available.
     """
     values = headers.get_all(_ACCEPT_ENCODING)
     if not values:
         headers[_ACCEPT_ENCODING] = _IDENTITY
-        return True
+        return
 
     accepted_safe: dict[str, str | None] = {}
     rejected_safe: set[str] = set()
@@ -88,12 +93,13 @@ def normalize_accept_encoding_for_body_inspection(headers: http.Headers) -> bool
         rewritten = ", ".join(
             _format_coding(name, q_text) for name, q_text in accepted_safe.items()
         )
-        return _set_if_changed(headers, values, rewritten)
+        _set_if_changed(headers, values, rewritten)
+        return
 
     if identity_rejected:
-        return False
+        return
 
-    return _set_if_changed(headers, values, _IDENTITY)
+    _set_if_changed(headers, values, _IDENTITY)
 
 
 def _parse_coding(raw_coding: str) -> tuple[str, Decimal | None]:
@@ -156,8 +162,7 @@ def _add_wildcard_safe_compression_encodings(
             accepted_safe[name] = wildcard_q_text
 
 
-def _set_if_changed(headers: http.Headers, original_values: list[str], value: str) -> bool:
+def _set_if_changed(headers: http.Headers, original_values: list[str], value: str) -> None:
     if len(original_values) == 1 and original_values[0] == value:
-        return False
+        return
     headers[_ACCEPT_ENCODING] = value
-    return True

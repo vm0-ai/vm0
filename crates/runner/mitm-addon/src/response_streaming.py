@@ -28,8 +28,14 @@ import flow_metadata_keys as metadata_keys
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
+from usage.underbilling import log_usage_underbilling
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
+_HTTP_STATUS_OK_MIN = 200
+_HTTP_STATUS_NO_CONTENT = 204
+_HTTP_STATUS_RESET_CONTENT = 205
+_HTTP_STATUS_REDIRECT_MIN = 300
+_HTTP_STATUS_NOT_MODIFIED = 304
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
@@ -101,11 +107,48 @@ def _make_model_sse_parse_error_logger(
     return log_parse_error
 
 
+def _response_can_have_body(flow: http.HTTPFlow, response: http.Response) -> bool:
+    """Return whether HTTP semantics permit content on this response."""
+    status_code = response.status_code
+    if status_code < _HTTP_STATUS_OK_MIN or status_code in (
+        _HTTP_STATUS_NO_CONTENT,
+        _HTTP_STATUS_RESET_CONTENT,
+        _HTTP_STATUS_NOT_MODIFIED,
+    ):
+        return False
+    method = flow.request.method.upper()
+    if method == "HEAD":
+        return False
+    return method != "CONNECT" or status_code >= _HTTP_STATUS_REDIRECT_MIN
+
+
+def _maybe_log_response_encoding_inspection_risk(
+    flow: http.HTTPFlow,
+    response: http.Response,
+) -> None:
+    if not _response_can_have_body(flow, response):
+        return
+    skip_reason = body_decoding.stream_decode_skip_reason(response.headers)
+    if skip_reason is None:
+        return
+    log_usage_underbilling(
+        flow_metadata.proxy_log_path(flow.metadata),
+        "Response encoding prevents incremental usage inspection",
+        "response_encoding_not_stream_decodable",
+        "risk",
+        run_id=flow_metadata.run_id(flow.metadata),
+        firewall_name=flow_metadata.firewall_name(flow.metadata),
+        status_code=response.status_code,
+        decode_skip_reason=skip_reason,
+    )
+
+
 def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParser | None:
     # Set up usage extraction for response classes that need body inspection.
     # The forensic stream_buffer remains capped; usage parsers consume chunks
     # separately so a large response cannot grow that buffer.
-    if not flow.response:
+    response = flow.response
+    if response is None:
         return None
 
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
@@ -124,7 +167,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return None
     if is_observable_model_provider:
-        content_type = flow.response.headers.get("content-type", "").lower()
+        content_type = response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             if uses_openai_responses_usage_protocol(flow):
                 usage_protocol = "openai_responses_sse"
@@ -144,8 +187,9 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor(
                     on_parse_error=log_parse_error
                 )
-            decode_session = _make_response_decode_session(parser_fn, flow.response.headers)
+            decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
+                _maybe_log_response_encoding_inspection_risk(flow, response)
                 return None
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
 
@@ -164,8 +208,9 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
             extractor = usage.create_openai_responses_json_usage_extractor()
         else:
             extractor = usage.create_anthropic_messages_json_usage_extractor()
-        decode_session = _make_response_decode_session(extractor.feed, flow.response.headers)
+        decode_session = _make_response_decode_session(extractor.feed, response.headers)
         if decode_session is None:
+            _maybe_log_response_encoding_inspection_risk(flow, response)
             return None
 
         def finish_json_usage() -> tuple[dict | None, str | None]:
@@ -179,11 +224,17 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
 
     if not is_billable_flow:
         return None
-    if not body_decoding.can_stream_decode_usage(flow.response.headers):
+    if not body_decoding.can_stream_decode_usage(response.headers):
+        firewall_name = flow_metadata.firewall_name(flow.metadata)
+        if (
+            _HTTP_STATUS_OK_MIN <= response.status_code < _HTTP_STATUS_REDIRECT_MIN
+            and usage.has_connector_response_parser(firewall_name)
+        ):
+            _maybe_log_response_encoding_inspection_risk(flow, response)
         return None
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
-        decode_session = _make_response_decode_session(connector_parser.feed, flow.response.headers)
+        decode_session = _make_response_decode_session(connector_parser.feed, response.headers)
         if decode_session is None:
             return None
         if connector_parser.finish is not None or connector_parser.finish_decode_error is not None:
