@@ -10,6 +10,7 @@ import {
   chatThreadsContract,
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
+  pagedChatMessageSchema,
 } from "../chat-threads";
 
 const legacyModelSelection = {
@@ -21,6 +22,26 @@ const legacyProviderPinnedModelSelection = {
   modelProviderId: "11111111-1111-4111-8111-111111111111",
   selectedModel: "claude-sonnet-4-6",
 };
+
+describe("chat message response contract", () => {
+  it("rejects legacy automation metadata", () => {
+    const parsed = pagedChatMessageSchema.safeParse({
+      id: "message-1",
+      role: "user",
+      content: "Run the workflow",
+      createdAt: "2026-07-13T00:00:00.000Z",
+      automationId: "legacy-automation-id",
+      automationTitle: "Legacy automation",
+      automationSnapshot: {
+        id: "legacy-automation-id",
+        title: "Legacy automation",
+        description: null,
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+});
 
 describe("chat thread model request compatibility", () => {
   it("normalizes legacy thread create modelSelection bodies to model", () => {
