@@ -124,7 +124,7 @@ describe("works page", () => {
     });
   });
 
-  it("falls back to the Microsoft Teams tenant id when names are unavailable", async () => {
+  it("does not show the Microsoft Teams tenant id when names are unavailable", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({
       isConnected: true,
@@ -139,7 +139,10 @@ describe("works page", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Microsoft Teams")).toBeInTheDocument();
-      expect(screen.getByText("Connected (tenant-123)")).toBeInTheDocument();
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Connected (tenant-123)"),
+      ).not.toBeInTheDocument();
     });
   });
 
