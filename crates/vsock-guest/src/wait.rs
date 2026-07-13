@@ -69,25 +69,6 @@ pub(crate) fn await_drain_deadline(
     completed
 }
 
-/// Wait for `child` to exit, optionally killing it after `timeout_ms`.
-/// `timeout_ms == 0` means "no timeout".
-///
-/// This **does not touch stdout/stderr** — caller must take them off the
-/// `Child` and drain them concurrently (see [`drain_until_eof_or_cancelled`]),
-/// otherwise a child producing more than the kernel pipe buffer (~64 KB) will
-/// deadlock on its next write while we wait.
-#[cfg(test)]
-pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitOutcome {
-    if timeout_ms == 0 {
-        return match child.wait() {
-            Ok(status) => WaitOutcome::Exited(status),
-            Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-        };
-    }
-
-    wait_with_kill_timeout_and_pre_reap_cleanup(child, timeout_ms, || false)
-}
-
 /// Wait for `child` with an optional timeout, allowing the caller to request
 /// process-tree cleanup after natural exit is observed but before the direct
 /// child is reaped.
@@ -106,28 +87,6 @@ pub(crate) fn wait_with_kill_timeout_and_pre_reap_cleanup(
         timeout_ms,
         || false,
         pre_reap_cleanup,
-    )
-}
-
-/// Wait for `child` to exit, killing and reaping it when either the configured
-/// timeout expires or `cancel` is signalled.
-///
-/// `timeout_ms == 0` still means "no timeout"; cancellation remains active so
-/// work tied to a disconnected host connection cannot outlive that connection
-/// indefinitely.
-#[cfg(test)]
-pub(crate) fn wait_with_kill_timeout_or_cancelled(
-    child: Child,
-    timeout_ms: u32,
-    cancel: &AtomicBool,
-) -> WaitOutcome {
-    let kill_target = process_tree_kill_target(child.id());
-    wait_with_kill_timeout_or_cancelled_by(
-        child,
-        kill_target,
-        timeout_ms,
-        || cancel.load(Ordering::Acquire),
-        || false,
     )
 }
 
@@ -440,13 +399,20 @@ mod tests {
         let mut timed_total = Duration::default();
 
         fn wait_for_fast_child(timeout_ms: u32) -> Duration {
-            let child = Command::new("true")
+            let mut child = Command::new("true")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
                 .unwrap();
             let start = Instant::now();
-            let outcome = wait_with_kill_timeout(child, timeout_ms);
+            let outcome = if timeout_ms == 0 {
+                match child.wait() {
+                    Ok(status) => WaitOutcome::Exited(status),
+                    Err(e) => WaitOutcome::WaitFailed(e.to_string()),
+                }
+            } else {
+                wait_with_kill_timeout_and_pre_reap_cleanup(child, timeout_ms, || false)
+            };
             let elapsed = start.elapsed();
             assert!(
                 matches!(outcome, WaitOutcome::Exited(status) if status.success()),
@@ -480,6 +446,7 @@ mod tests {
     fn timeout_zero_child_is_cancelled_by_external_cancel() {
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
+        let other_cancel = AtomicBool::new(false);
         let mut command = Command::new("sleep");
         command
             .arg("60")
@@ -491,12 +458,20 @@ mod tests {
             command.process_group(0);
         }
         let child = command.spawn().unwrap();
+        let kill_target = process_tree_kill_target(child.id());
 
         let cancel_thread = thread::spawn(move || {
             cancel_for_thread.store(true, Ordering::Release);
         });
 
-        let outcome = wait_with_kill_timeout_or_cancelled(child, 0, &cancel);
+        let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
+            child,
+            kill_target,
+            0,
+            &cancel,
+            &other_cancel,
+            || false,
+        );
         cancel_thread.join().unwrap();
 
         assert!(matches!(outcome, WaitOutcome::Cancelled));
@@ -505,6 +480,7 @@ mod tests {
     #[test]
     fn nonzero_timeout_child_is_cancelled_by_pre_signalled_cancel() {
         let cancel = AtomicBool::new(true);
+        let other_cancel = AtomicBool::new(false);
         let mut command = Command::new("sleep");
         command
             .arg("60")
@@ -516,8 +492,16 @@ mod tests {
             command.process_group(0);
         }
         let child = command.spawn().unwrap();
+        let kill_target = process_tree_kill_target(child.id());
 
-        let outcome = wait_with_kill_timeout_or_cancelled(child, 30_000, &cancel);
+        let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
+            child,
+            kill_target,
+            30_000,
+            &cancel,
+            &other_cancel,
+            || false,
+        );
 
         assert!(matches!(outcome, WaitOutcome::Cancelled));
     }

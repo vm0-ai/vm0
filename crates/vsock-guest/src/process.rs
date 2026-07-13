@@ -234,7 +234,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     use crate::test_support::{kill_pidfd_and_wait, open_pidfd, wait_for_pidfd_exit};
-    use crate::wait::{WaitOutcome, wait_with_kill_timeout};
+    use crate::wait::{WaitOutcome, wait_with_kill_timeout_and_pre_reap_cleanup};
 
     struct TempDirGuard(PathBuf);
 
@@ -536,7 +536,8 @@ mod tests {
             }
         };
 
-        let outcome = wait_with_kill_timeout(child.take().unwrap(), 100);
+        let outcome =
+            wait_with_kill_timeout_and_pre_reap_cleanup(child.take().unwrap(), 100, || false);
         if !matches!(outcome, WaitOutcome::TimedOut) {
             kill_pidfd_and_wait(&background_pidfd)
                 .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));
