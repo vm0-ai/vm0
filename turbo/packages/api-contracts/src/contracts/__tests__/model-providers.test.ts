@@ -446,8 +446,8 @@ describe("model-first canonical catalog", () => {
       "gpt-5.6-terra",
       "gpt-5.6-luna",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("gpt-5.6-terra");
-    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("gpt-5.6-terra");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("gpt-5.6-luna");
+    expect(LIMITED_FREE1_DEFAULT_RUN_MODEL).toBe("gpt-5.6-luna");
     expect(getDefaultModel("vm0")).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {

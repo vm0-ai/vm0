@@ -185,6 +185,7 @@ pub(super) fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'
     match bare {
         "gpt-5.6-sol" => Some("xhigh"),
         "gpt-5.6-terra" => Some("low"),
+        "gpt-5.6-luna" => Some("ultra"),
         "gpt-5.5" => Some("xhigh"),
         _ => None,
     }
@@ -685,14 +686,19 @@ mod tests {
     }
 
     #[test]
+    fn build_codex_args_gpt_5_6_luna_defaults_reasoning_effort_ultra() {
+        for model in ["gpt-5.6-luna", "openai/gpt-5.6-luna"] {
+            let args = build_codex_args_for_test(model, "", "p");
+            assert!(codex_args_have_config(
+                &args,
+                "model_reasoning_effort=ultra"
+            ));
+        }
+    }
+
+    #[test]
     fn build_codex_args_models_without_overrides_omit_reasoning_effort() {
-        for model in [
-            "gpt-5.6-luna",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "openai/gpt-5.4",
-            "",
-        ] {
+        for model in ["gpt-5.4", "gpt-5.4-mini", "openai/gpt-5.4", ""] {
             let args = build_codex_args_for_test(model, "", "p");
             assert!(
                 !args
