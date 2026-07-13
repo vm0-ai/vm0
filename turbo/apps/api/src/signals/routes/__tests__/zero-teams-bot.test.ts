@@ -7,14 +7,12 @@ import {
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { db } from "../../../lib/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
@@ -2115,17 +2113,16 @@ describe("POST /api/zero/teams/bot", () => {
     context.mocks.ably.publish.mockResolvedValue(undefined);
     await installTeamsForTest(context.signal, fixture);
     await connectTeamsFixture(fixture);
-    await db()
-      .insert(orgMembersCache)
-      .values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        role: "admin",
-      })
-      .onConflictDoUpdate({
-        target: [orgMembersCache.orgId, orgMembersCache.userId],
-        set: { role: "admin" },
-      });
+    const actor = authOrgApi.user({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+    });
+    authOrgApi.mockClerkOrg(actor);
+    await authOrgApi.requestReadOrgWithBearer(
+      zeroToken({ userId: fixture.userId, orgId: fixture.orgId }),
+      [200],
+    );
     context.mocks.ably.publish.mockClear();
     clearTeamsBotAuthCacheForTest();
     botFrameworkHandlers();
