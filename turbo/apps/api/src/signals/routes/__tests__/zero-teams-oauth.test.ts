@@ -83,12 +83,17 @@ function mockMicrosoftOAuth(args: {
   readonly aadObjectId: string;
   readonly displayName?: string;
   readonly userPrincipalName?: string;
+  readonly expectedRedirectUri?: string;
 }): void {
   server.use(
     http.post(MICROSOFT_TOKEN_URL, async ({ request }) => {
       const body = new URLSearchParams(await request.text());
       expect(body.get("client_id")).toBe("test-microsoft-client-id");
       expect(body.get("client_secret")).toBe("test-microsoft-client-secret");
+      expect(body.get("redirect_uri")).toBe(
+        args.expectedRedirectUri ??
+          `${API_ORIGIN}/api/zero/teams/oauth/callback`,
+      );
       expect(body.get("grant_type")).toBe("authorization_code");
       return HttpResponse.json({
         access_token: "ms-access-token",
@@ -144,7 +149,7 @@ describe("Teams OAuth API routes", () => {
   });
 
   beforeEach(() => {
-    setupTeamsConnectTestEnv(APP_ORIGIN);
+    setupTeamsConnectTestEnv(APP_ORIGIN, API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
     mockEnv("MICROSOFT_OAUTH_CLIENT_ID", "test-microsoft-client-id");
     mockEnv("MICROSOFT_OAUTH_CLIENT_SECRET", "test-microsoft-client-secret");
@@ -164,7 +169,7 @@ describe("Teams OAuth API routes", () => {
       "test-microsoft-client-id",
     );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/zero/teams/oauth/callback`,
+      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
     expect(redirectUrl.searchParams.get("scope")).toBe(
       "openid profile email User.Read",
@@ -176,19 +181,19 @@ describe("Teams OAuth API routes", () => {
     expect(state).toStrictEqual({ orgId: "org_1", vm0UserId: "user_1" });
   });
 
-  it("uses the web rewrite origin for callback URLs", async () => {
+  it("keeps API-host connect requests on the API callback origin", async () => {
     const response = await appRequest(
       "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
-      {
-        origin: API_ORIGIN,
-        headers: { "x-vm0-web-origin": WEB_ORIGIN },
-      },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
     const redirectUrl = new URL(response.headers.get("location")!);
+    expect(redirectUrl.origin + redirectUrl.pathname).toBe(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    );
     expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-      `${WEB_ORIGIN}/api/zero/teams/oauth/callback`,
+      `${API_ORIGIN}/api/zero/teams/oauth/callback`,
     );
   });
 
@@ -215,7 +220,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
@@ -267,7 +272,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
@@ -318,7 +323,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);
@@ -340,7 +345,7 @@ describe("Teams OAuth API routes", () => {
         code: "valid-code",
         state: { orgId: fixture.orgId, vm0UserId: fixture.userId },
       }),
-      { origin: WEB_ORIGIN },
+      { origin: API_ORIGIN },
     );
 
     expect(response.status).toBe(307);

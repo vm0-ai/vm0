@@ -89,7 +89,7 @@ function teamsInstallUrl(): string {
 }
 
 function teamsOauthConnectUrl(fixture: TeamsConnectFixture): string {
-  const url = new URL("https://www.vm0.test/api/zero/teams/oauth/connect");
+  const url = new URL("https://api.vm0.test/api/zero/teams/oauth/connect");
   url.searchParams.set("orgId", fixture.orgId);
   url.searchParams.set("vm0UserId", fixture.userId);
   return url.toString();
