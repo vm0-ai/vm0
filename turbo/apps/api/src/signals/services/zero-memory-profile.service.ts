@@ -13,7 +13,7 @@ import {
   memorySourceLinks,
   memorySources,
 } from "@vm0/db/schema/memory-substrate";
-import { and, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { logger } from "../../lib/log";
@@ -22,6 +22,10 @@ import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
   embedZeroMemoryText,
+  type LoadedMemoryEmbedding,
+  type MemoryEmbeddingCacheResult,
+  type MemoryEmbeddingLoader,
+  type MemoryEmbeddingResult,
   memoryEmbeddingSqlLiteral,
 } from "./zero-memory-embedding.service";
 import {
@@ -34,8 +38,8 @@ import {
 
 const log = logger("zero-memory-profile");
 const SEMANTIC_SCORE_THRESHOLD = 0.24;
-const LEXICAL_QUERY_MAX_CHARACTERS = 128;
-const LEXICAL_QUERY_MAX_TOKENS = 8;
+const EXACT_IDENTITY_LIMIT = 8;
+const EXACT_IDENTITY_ALIAS_SCORE = 0.88;
 
 interface MemoryScope {
   readonly orgId: string;
@@ -83,6 +87,7 @@ interface ProfileParams extends MemoryScope {
   readonly includeGraphExpansion: boolean;
   readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
   readonly timing?: ZeroMemoryTimingObserver;
+  readonly semanticEmbeddingLoader?: MemoryEmbeddingLoader;
 }
 
 interface SearchParams extends MemoryScope {
@@ -92,6 +97,7 @@ interface SearchParams extends MemoryScope {
   readonly includeGraphExpansion: boolean;
   readonly entityTypes?: readonly MemoryInjectionItem["entity"]["type"][];
   readonly timing?: ZeroMemoryTimingObserver;
+  readonly semanticEmbeddingLoader?: MemoryEmbeddingLoader;
 }
 
 interface CandidateScore {
@@ -105,16 +111,9 @@ interface CandidateScore {
 type MemoryProfileRow = Omit<ZeroMemoryProfileItem, "sources">;
 type MemoryProfilePhase = "static" | "dynamic" | "search";
 
-interface LexicalCandidateRow {
-  readonly id: string;
-  readonly kind: MemoryKind;
-  readonly text: string;
-  readonly confidence: number;
-  readonly lastSeenAt: Date;
-  readonly displayName: string;
-  readonly aliasValue: string | null;
-  readonly relationshipType: string | null;
-  readonly relationshipSummary: string | null;
+interface ExactIdentityAlias {
+  readonly aliasType: "email" | "domain";
+  readonly aliasValue: string;
 }
 
 const relationshipEmailAliases = alias(
@@ -141,8 +140,6 @@ const relationshipLastInteractionProfiles = alias(
   memoryProfiles,
   "profile_relationship_last_interaction_profiles",
 );
-const lexicalAliases = alias(memoryEntityAliases, "profile_lexical_aliases");
-
 function countDimension(
   dimensionName: string,
   count: number,
@@ -219,7 +216,7 @@ function clamp01(value: number): number {
 function tokenize(value: string): readonly string[] {
   return value
     .toLowerCase()
-    .split(/[^\p{L}\p{N}@._-]+/u)
+    .split(/[^\p{L}\p{N}@._%+-]+/u)
     .map((token) => {
       return token.trim();
     })
@@ -233,8 +230,10 @@ function containsQuery(value: string | null, query: string): boolean {
   return normalizedValue.length > 0 && normalizedValue.includes(query);
 }
 
-function tokenMatchScore(values: readonly (string | null)[], query: string) {
-  const tokens = tokenize(query);
+function tokenMatchScore(
+  values: readonly (string | null)[],
+  tokens: readonly string[],
+): number {
   if (tokens.length === 0) {
     return 0;
   }
@@ -245,57 +244,70 @@ function tokenMatchScore(values: readonly (string | null)[], query: string) {
   return matched / tokens.length;
 }
 
-function hasMoreThanCharacters(value: string, maxCharacters: number): boolean {
-  let characterCount = 0;
-  for (const _character of value) {
-    characterCount += 1;
-    if (characterCount > maxCharacters) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function isLexicalQueryEligible(normalizedQuery: string): boolean {
-  if (!normalizedQuery) {
-    return false;
-  }
-  if (hasMoreThanCharacters(normalizedQuery, LEXICAL_QUERY_MAX_CHARACTERS)) {
-    return false;
-  }
-  if (/\r|\n/.test(normalizedQuery)) {
-    return false;
-  }
-  const tokens = tokenize(normalizedQuery);
-  return tokens.length > 0 && tokens.length <= LEXICAL_QUERY_MAX_TOKENS;
-}
-
-function lexicalScore(row: LexicalCandidateRow, normalizedQuery: string) {
+function literalScore(
+  row: MemoryProfileRow,
+  normalizedQuery: string,
+  queryTokens: readonly string[],
+): number {
   if (containsQuery(row.text, normalizedQuery)) {
     return 1;
   }
-  if (containsQuery(row.displayName, normalizedQuery)) {
+  if (containsQuery(row.entity.displayName, normalizedQuery)) {
     return 0.92;
   }
-  if (containsQuery(row.aliasValue, normalizedQuery)) {
+  if (
+    containsQuery(row.entity.primaryEmail, normalizedQuery) ||
+    containsQuery(row.entity.domain, normalizedQuery)
+  ) {
     return 0.88;
   }
-  if (containsQuery(row.relationshipSummary, normalizedQuery)) {
+  if (containsQuery(row.relationship.summary, normalizedQuery)) {
     return 0.76;
   }
-  if (containsQuery(row.relationshipType, normalizedQuery)) {
+  if (containsQuery(row.relationship.relationshipType, normalizedQuery)) {
     return 0.68;
   }
   return tokenMatchScore(
     [
       row.text,
-      row.displayName,
-      row.aliasValue,
-      row.relationshipSummary,
-      row.relationshipType,
+      row.entity.displayName,
+      row.entity.primaryEmail,
+      row.entity.domain,
+      row.relationship.summary,
+      row.relationship.relationshipType,
     ],
-    normalizedQuery,
+    queryTokens,
   );
+}
+
+function exactIdentityAliases(query: string): readonly ExactIdentityAlias[] {
+  const emailPattern = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/u;
+  const domainPattern =
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u;
+  const aliases: ExactIdentityAlias[] = [];
+  const seen = new Set<string>();
+
+  for (const rawToken of query.split(/[^\p{L}\p{N}@._%+-]+/u)) {
+    const token = rawToken.replace(/\.+$/u, "");
+    const aliasType = emailPattern.test(token)
+      ? "email"
+      : domainPattern.test(token)
+        ? "domain"
+        : null;
+    if (!aliasType) {
+      continue;
+    }
+    const key = `${aliasType}:${token}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    aliases.push({ aliasType, aliasValue: token });
+    seen.add(key);
+    if (aliases.length === EXACT_IDENTITY_LIMIT) {
+      break;
+    }
+  }
+  return aliases;
 }
 
 function entityScore(row: MemoryProfileRow, normalizedQuery: string): number {
@@ -455,19 +467,6 @@ function baseMemoryFilters(args: {
     filters.push(inArray(memoryEntities.type, [...args.entityTypes]));
   }
   return filters;
-}
-
-function queryFilter(query: string): SQL {
-  const pattern = `%${query}%`;
-  return (
-    or(
-      ilike(memories.text, pattern),
-      ilike(memoryEntities.displayName, pattern),
-      ilike(lexicalAliases.aliasValue, pattern),
-      ilike(relationshipTypeProfiles.content, pattern),
-      ilike(relationshipSummaryProfiles.content, pattern),
-    ) ?? sql`false`
-  );
 }
 
 function sourceMetadataValue(
@@ -752,42 +751,31 @@ async function loadProfileWindow(
   });
 }
 
-async function loadLexicalCandidates(
+async function loadExactIdentityCandidates(
   db: ReadonlyDb,
-  args: SearchParams & { readonly normalizedQuery: string },
+  args: SearchParams & { readonly aliases: readonly ExactIdentityAlias[] },
 ): Promise<readonly CandidateScore[]> {
-  if (!args.normalizedQuery) {
+  const identityFilter = or(
+    ...args.aliases.map((identity) => {
+      return and(
+        eq(memoryEntityAliases.aliasType, identity.aliasType),
+        eq(memoryEntityAliases.aliasValue, identity.aliasValue),
+      );
+    }),
+  );
+  if (!identityFilter) {
     return [];
   }
   const rows = await db
     .select({
       id: memories.id,
-      kind: memories.kind,
-      text: memories.text,
-      confidence: memories.confidence,
-      lastSeenAt: memories.lastSeenAt,
-      displayName: memoryEntities.displayName,
-      aliasValue: lexicalAliases.aliasValue,
-      relationshipType: relationshipTypeProfiles.content,
-      relationshipSummary: relationshipSummaryProfiles.content,
     })
-    .from(memories)
-    .innerJoin(memoryEntities, eq(memoryEntities.id, memories.entityId))
-    .leftJoin(lexicalAliases, eq(lexicalAliases.entityId, memoryEntities.id))
-    .leftJoin(
-      relationshipTypeProfiles,
-      and(
-        eq(relationshipTypeProfiles.entityId, memoryEntities.id),
-        eq(relationshipTypeProfiles.section, "relationship_type"),
-      ),
+    .from(memoryEntityAliases)
+    .innerJoin(
+      memoryEntities,
+      eq(memoryEntities.id, memoryEntityAliases.entityId),
     )
-    .leftJoin(
-      relationshipSummaryProfiles,
-      and(
-        eq(relationshipSummaryProfiles.entityId, memoryEntities.id),
-        eq(relationshipSummaryProfiles.section, "relationship_summary"),
-      ),
-    )
+    .innerJoin(memories, eq(memories.entityId, memoryEntities.id))
     .where(
       and(
         ...baseMemoryFilters({
@@ -795,7 +783,9 @@ async function loadLexicalCandidates(
           kinds: args.kinds,
           entityTypes: args.entityTypes,
         }),
-        queryFilter(args.normalizedQuery),
+        eq(memoryEntityAliases.orgId, args.orgId),
+        eq(memoryEntityAliases.userId, args.userId),
+        identityFilter,
       ),
     )
     .orderBy(
@@ -807,58 +797,73 @@ async function loadLexicalCandidates(
 
   const candidates = new Map<string, CandidateScore>();
   for (const row of rows) {
-    const score = lexicalScore(row, args.normalizedQuery);
     mergeCandidate(candidates, {
       id: row.id,
       semanticScore: 0,
-      lexicalScore: score,
-      entityScore: 0,
+      lexicalScore: EXACT_IDENTITY_ALIAS_SCORE,
+      entityScore: 1,
       expansionScore: 0,
     });
   }
   return [...candidates.values()];
 }
 
-async function embedQuery(query: string) {
-  const result = await settle(embedZeroMemoryText(query));
+async function embedQuery(args: {
+  readonly query: string;
+  readonly loader?: MemoryEmbeddingLoader;
+}): Promise<LoadedMemoryEmbedding> {
+  const result = await settle(
+    args.loader
+      ? args.loader(args.query)
+      : (async (): Promise<LoadedMemoryEmbedding> => {
+          return { embedding: await embedZeroMemoryText(args.query) };
+        })(),
+  );
   if (result.ok) {
     return result.value;
   }
   log.warn("Failed to embed zero memory query", { error: result.error });
-  return null;
+  return { embedding: null };
 }
 
-async function loadSemanticCandidates(
-  db: ReadonlyDb,
+async function loadSemanticQueryEmbedding(
   args: SearchParams & { readonly normalizedQuery: string },
-): Promise<readonly CandidateScore[]> {
-  if (!args.normalizedQuery) {
-    return [];
-  }
+): Promise<MemoryEmbeddingResult | null> {
   let embeddingResult = "empty";
-  const embedded = await measureZeroMemoryTiming(
+  let cacheResult: MemoryEmbeddingCacheResult | undefined;
+  return await measureZeroMemoryTiming(
     args.timing,
     "profile_search_semantic_embedding",
     async () => {
-      const result = await embedQuery(args.normalizedQuery);
-      embeddingResult = result ? "present" : "empty";
-      return result;
+      const loaded = await embedQuery({
+        query: args.normalizedQuery,
+        loader: args.semanticEmbeddingLoader,
+      });
+      embeddingResult = loaded.embedding ? "present" : "empty";
+      cacheResult = loaded.cacheResult;
+      return loaded.embedding;
     },
     () => {
       return {
         memory_profile_semantic_embedding_result: embeddingResult,
+        ...(cacheResult
+          ? { memory_profile_semantic_embedding_cache_result: cacheResult }
+          : {}),
       };
     },
   );
-  if (!embedded) {
-    return [];
-  }
+}
+
+async function loadSemanticCandidates(
+  db: ReadonlyDb,
+  args: SearchParams & { readonly embedded: MemoryEmbeddingResult },
+): Promise<readonly CandidateScore[]> {
   return await measureMemoryList(
     args.timing,
     "profile_search_semantic_query",
     "memory_profile_semantic_candidate_count_bucket",
     async () => {
-      const queryVector = sql`${memoryEmbeddingSqlLiteral(embedded.embedding)}::vector`;
+      const queryVector = sql`${memoryEmbeddingSqlLiteral(args.embedded.embedding)}::vector`;
       const distance = sql<number>`${memorySearchEntries.embedding} <=> ${queryVector}`;
       const rows = await db
         .select({
@@ -873,7 +878,7 @@ async function loadSemanticCandidates(
             eq(memorySearchEntries.orgId, args.orgId),
             eq(memorySearchEntries.userId, args.userId),
             eq(memorySearchEntries.status, "active"),
-            eq(memorySearchEntries.embeddingModel, embedded.model),
+            eq(memorySearchEntries.embeddingModel, args.embedded.model),
             eq(memorySearchEntries.entryKind, "memory_text"),
             ...baseMemoryFilters({
               scope: args,
@@ -1009,6 +1014,7 @@ async function rankCandidates(
     return candidate.id;
   });
   const rowsById = await loadRowsByIds(db, args, candidateIds);
+  const queryTokens = tokenize(args.normalizedQuery);
   const ranked = args.candidates
     .map((candidate) => {
       const row = rowsById.get(candidate.id);
@@ -1017,7 +1023,17 @@ async function rankCandidates(
       }
       return {
         row,
-        score: compositeScore(row, candidate, args.normalizedQuery),
+        score: compositeScore(
+          row,
+          {
+            ...candidate,
+            lexicalScore: Math.max(
+              candidate.lexicalScore,
+              literalScore(row, args.normalizedQuery, queryTokens),
+            ),
+          },
+          args.normalizedQuery,
+        ),
       };
     })
     .filter(
@@ -1062,32 +1078,39 @@ async function loadSearchResults(
   }
 
   const candidates = new Map<string, CandidateScore>();
-  const lexicalQueryEligible = isLexicalQueryEligible(normalizedQuery);
-  const lexicalCandidates = await measureMemoryList(
-    args.timing,
-    "profile_search_lexical",
-    "memory_profile_lexical_candidate_count_bucket",
-    async () => {
-      if (!lexicalQueryEligible) {
-        return [];
-      }
-      return await loadLexicalCandidates(db, {
-        ...args,
-        normalizedQuery,
-      });
-    },
-    {
-      memory_profile_lexical_query_eligible: String(lexicalQueryEligible),
-    },
-  );
-  for (const candidate of lexicalCandidates) {
+  const aliases = exactIdentityAliases(normalizedQuery);
+  const [exactIdentityCandidates, embedded] = await Promise.all([
+    measureMemoryList(
+      args.timing,
+      "profile_search_exact_identity",
+      "memory_profile_exact_identity_candidate_count_bucket",
+      async () => {
+        return await loadExactIdentityCandidates(db, {
+          ...args,
+          aliases,
+        });
+      },
+      {
+        memory_profile_exact_identity_query_eligible: String(
+          aliases.length > 0,
+        ),
+      },
+    ),
+    loadSemanticQueryEmbedding({
+      ...args,
+      normalizedQuery,
+    }),
+  ]);
+  for (const candidate of exactIdentityCandidates) {
     mergeCandidate(candidates, candidate);
   }
-  for (const candidate of await loadSemanticCandidates(db, {
-    ...args,
-    normalizedQuery,
-  })) {
-    mergeCandidate(candidates, candidate);
+  if (embedded) {
+    for (const candidate of await loadSemanticCandidates(db, {
+      ...args,
+      embedded,
+    })) {
+      mergeCandidate(candidates, candidate);
+    }
   }
 
   const seedRows = await measureMemoryList(

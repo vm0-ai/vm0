@@ -120,7 +120,12 @@ We use a real database in tests, not a mock. This catches:
 - Transaction issues
 - Migration problems
 
-The database runs locally in Docker, so tests are fast and reliable. We clean up test data between tests using unique user IDs, not by mocking the database layer.
+The database runs locally in Docker, so tests are fast and reliable. Isolate most
+test data with unique user and organization IDs, not by mocking the database
+layer. `testContext()` resets runtime state and mocks; it does not roll back
+persisted rows. When a test must use a fixed shared identity or another
+quota-limited scope, register every resource it creates for teardown through the
+production API instead of deleting database rows directly.
 
 ### Why Real Filesystem?
 

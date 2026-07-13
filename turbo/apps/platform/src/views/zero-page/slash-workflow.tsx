@@ -2,89 +2,47 @@
 // composer. Kept in its own module so the textarea composer and the TipTap
 // workflow composer can both reuse them without an import cycle.
 import { IconChevronRight, IconFileText } from "@tabler/icons-react";
-import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
 import { cn, PopoverContent } from "@vm0/ui";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
-import { matchesWorkflowNameQuery } from "./slash-workflow-match.ts";
+import type { ComposerSlashWorkflow } from "../../signals/zero-page/workflow-composer-domain.ts";
 
-export interface SlashWorkflowRange {
-  readonly start: number;
-  readonly end: number;
-  readonly query: string;
-}
-
-export interface ComposerSlashWorkflow {
-  readonly name: string;
-  readonly displayName: string | null;
-  readonly description: string | null;
-  readonly token: string;
-}
-
-export function findActiveSlashWorkflowRange(
-  value: string,
-  caretIndex: number,
-): SlashWorkflowRange | null {
-  const beforeCaret = value.slice(0, caretIndex);
-  const match = /(?:^|\s)\/([a-z0-9-]*)$/i.exec(beforeCaret);
-  if (!match) {
-    return null;
-  }
-
-  const query = match[1] ?? "";
-  const slashOffset = match[0].lastIndexOf("/");
-  const start = beforeCaret.length - match[0].length + slashOffset;
-  return { start, end: caretIndex, query };
-}
-
-export function matchesWorkflowQuery(
-  workflow: ComposerSlashWorkflow,
-  query: string,
-): boolean {
-  return matchesWorkflowNameQuery(workflow.name, query);
-}
-
-export function workflowTokenPattern(
-  workflowNames: readonly string[],
-): RegExp | null {
-  if (workflowNames.length === 0) {
-    return null;
-  }
-
-  const escaped = workflowNames.map((name) => {
-    return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  });
-  return new RegExp(`/(?:${escaped.join("|")})(?=$|\\s)`, "g");
-}
-
-export function buildComposerSlashWorkflows({
-  agentId,
-  workflows,
-}: {
-  readonly agentId: string | null | undefined;
-  readonly workflows: readonly ZeroWorkflowSummary[];
-}): readonly ComposerSlashWorkflow[] {
-  if (!agentId) {
-    return [];
-  }
-
-  return workflows
-    .filter((workflow) => {
-      return workflow.agentId === agentId;
-    })
-    .map((workflow) => {
-      const name = workflow.name;
-      return {
-        name,
-        displayName: workflow.displayName,
-        description: workflow.description,
-        token: `/${name}`,
-      };
-    });
-}
+export {
+  buildComposerSlashWorkflows,
+  findActiveSlashWorkflowRange,
+  matchesWorkflowQuery,
+  workflowTokenPattern,
+  type ComposerSlashWorkflow,
+  type SlashWorkflowRange,
+} from "../../signals/zero-page/workflow-composer-domain.ts";
 
 function slashWorkflowOptionId(workflowName: string): string {
   return `slash-workflow-option-${workflowName}`;
+}
+
+const SLASH_WORKFLOW_COLLISION_GAP = 12;
+
+function safeAreaCollisionPadding():
+  | number
+  | { top: number; right: number; bottom: number; left: number } {
+  // The global safe-area vars are applied as #root padding, while Radix portals
+  // the menu to body. Read the resolved pixel values from #root so collision
+  // detection keeps the portal inside the same visible content boundary.
+  const root = document.getElementById("root");
+  if (!root) {
+    return SLASH_WORKFLOW_COLLISION_GAP;
+  }
+  const styles = window.getComputedStyle(root);
+  const inset = (value: string): number => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return {
+    top: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingTop),
+    right: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingRight),
+    bottom: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingBottom),
+    left: SLASH_WORKFLOW_COLLISION_GAP + inset(styles.paddingLeft),
+  };
 }
 
 export function scrollSlashWorkflowIntoView(
@@ -122,14 +80,14 @@ export function SlashWorkflowMenu({
       side="top"
       align="start"
       sideOffset={8}
-      collisionPadding={12}
+      collisionPadding={safeAreaCollisionPadding()}
       updatePositionStrategy="always"
       // Keep focus in the TipTap editor: the menu's keyboard navigation is
       // handled there, so the popover must never steal focus when it opens.
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex max-h-80 w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0"
+      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
       data-testid="slash-workflow-menu"
     >
       <div className="px-2.5 pt-2 pb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-muted-foreground">

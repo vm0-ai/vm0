@@ -4,7 +4,6 @@ import { ZeroActivityDetailPage } from "../../views/zero-page/zero-activity-deta
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { setupActivityLogLoop$ } from "./activity-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -18,10 +17,7 @@ export const setupActivityDetailPage$ = command(
       return;
     }
 
-    await Promise.all([
-      set(setupActivityLogLoop$, signal),
-      set(reloadChatThreads$),
-    ]);
+    await set(setupActivityLogLoop$, signal);
     signal.throwIfAborted();
   },
 );

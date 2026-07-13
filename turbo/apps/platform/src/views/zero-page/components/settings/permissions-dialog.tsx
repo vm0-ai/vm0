@@ -22,8 +22,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
+import type {
+  PublicConnectorCatalogIcon,
+  PublicConnectorCatalogPermissionDetail,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { groupFirewallMetadataPermissionsByCategory } from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -183,15 +186,16 @@ function buildInitialPermissionDrawerState({
 }
 
 function PermissionsDrawerHeader({
-  connectorType,
+  icon,
   connectorLabel,
   displayName,
   targetKind = "agent",
   surface,
 }: Pick<
   PermissionsDrawerProps,
-  "connectorType" | "connectorLabel" | "displayName" | "targetKind"
+  "connectorLabel" | "displayName" | "targetKind"
 > & {
+  readonly icon: PublicConnectorCatalogIcon | undefined;
   readonly surface: PermissionsSurface;
 }) {
   const title = (
@@ -211,7 +215,7 @@ function PermissionsDrawerHeader({
     return (
       <DialogHeader>
         <div className="flex items-center gap-3">
-          <ConnectorIcon type={connectorType} size={24} />
+          <ConnectorIcon icon={icon} size={24} />
           <DialogTitle className="text-base">{title}</DialogTitle>
         </div>
         <DialogDescription>{description}</DialogDescription>
@@ -222,7 +226,7 @@ function PermissionsDrawerHeader({
   return (
     <SheetHeader>
       <div className="flex items-center gap-3">
-        <ConnectorIcon type={connectorType} size={24} />
+        <ConnectorIcon icon={icon} size={24} />
         <SheetTitle className="text-base">{title}</SheetTitle>
       </div>
       <SheetDescription>{description}</SheetDescription>
@@ -1550,7 +1554,7 @@ function PermissionsContent({
   return (
     <>
       <PermissionsDrawerHeader
-        connectorType={props.connectorType}
+        icon={loadedMetadata?.icon}
         connectorLabel={props.connectorLabel}
         displayName={props.displayName}
         targetKind={props.targetKind}

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+import { extractFirewallTemplateReferences } from "@vm0/connectors/firewall-types";
 import {
   generatedFirewallExportName,
   generatedConnectorMetadataFileName,
@@ -29,10 +30,6 @@ const GENERATOR_SOURCE_BOUNDARY_FILES = [
   "../lazy-loader-renderer.ts",
   "../connector-firewall-manifest.ts",
   "../connector-firewall-sources.ts",
-  "../python-builtin-firewall-catalog-composition.ts",
-] as const;
-const GENERATOR_RENDERER_BOUNDARY_FILES = [
-  "../python-builtin-firewall-catalog.ts",
 ] as const;
 const ALLOWED_GENERATOR_CONNECTOR_IMPORTS = new Set([
   "@vm0/connectors/connectors",
@@ -128,8 +125,12 @@ function routingMetadataFromSource(source: ConnectorFirewallSource): unknown {
     type: source.type,
     label: source.label,
     apis: source.firewall.apis.map((api) => {
+      const references = extractFirewallTemplateReferences([api]);
       return {
         base: api.base,
+        environmentNames: [
+          ...new Set([...references.secrets, ...references.vars]),
+        ].sort(compareStrings),
         routes: (api.permissions ?? []).flatMap((permission) => {
           return permission.rules.map((rule) => {
             return {
@@ -245,30 +246,6 @@ describe("firewall metadata generator", () => {
     expect(unexpectedScripts).toStrictEqual([]);
   });
 
-  it("keeps Python builtin firewall rendering detached from source composition", () => {
-    for (const file of GENERATOR_RENDERER_BOUNDARY_FILES) {
-      const source = fs.readFileSync(
-        path.resolve(import.meta.dirname, file),
-        "utf-8",
-      );
-      const specifiers = [
-        ...staticValueModuleSpecifiers(source),
-        ...dynamicImportSpecifiers(source),
-      ];
-
-      for (const specifier of specifiers) {
-        expect(specifier, file).not.toBe("@vm0/api-contracts");
-        expect(specifier, file).not.toBe("@vm0/connectors");
-        expect(specifier, file).not.toBe("@vm0/connectors/firewalls/all");
-        expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
-      }
-      expect(source, file).not.toContain("@vm0/api-contracts");
-      expect(source, file).not.toContain("@vm0/connectors");
-      expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
-      expect(source, file).not.toMatch(/\.\.\/\.\.\/connectors\/src\//);
-    }
-  });
-
   it(
     "loads connector sources with sorted and registry order preserved",
     async () => {
@@ -357,6 +334,52 @@ describe("firewall metadata generator", () => {
         ).rejects.toThrow(
           "Generated firewall config contains unknown keys at github.apis[0].auth: header",
         );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects auth.base with SigV4 at the generated source boundary",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://api.github.com",',
+          "      auth: {",
+          '        base: "https://hooks.example.com/secret",',
+          "        awsSigv4: {",
+          '          accessKeyId: "${{ secrets.AWS_ACCESS_KEY_ID }}",',
+          '          secretAccessKey: "${{ secrets.AWS_SECRET_ACCESS_KEY }}",',
+          "        },",
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow("auth.base cannot be combined with auth.awsSigv4");
       } finally {
         writeOutput("github", previousSource);
       }
@@ -724,6 +747,7 @@ describe("firewall metadata generator", () => {
     expect(source).toContain('"daytona"');
     expect(source).toContain('"modal"');
     expect(sourceHasObjectKey(source, "base")).toBe(true);
+    expect(sourceHasObjectKey(source, "environmentNames")).toBe(false);
     expect(sourceHasObjectKey(source, "routes")).toBe(false);
     expect(sourceHasObjectKey(source, "permissionName")).toBe(false);
     expect(sourceHasObjectKey(source, "rule")).toBe(false);
@@ -775,6 +799,9 @@ describe("firewall metadata generator", () => {
     expect(slackDetailSource).toContain("JSON.parse");
     expect(slackDetailSource).toContain(
       "firewallRoutingMetadataValue as FirewallRoutingMetadata",
+    );
+    expect(sourceHasObjectKey(slackDetailSource, "environmentNames")).toBe(
+      true,
     );
     expect(slackDetailSource).toContain('\\"base\\"');
     expect(slackDetailSource).toContain('\\"routes\\"');

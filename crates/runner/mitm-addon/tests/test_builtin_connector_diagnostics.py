@@ -1,102 +1,122 @@
-"""Tests for built-in connector diagnostic URL classification."""
+"""Tests for server-catalog connector diagnostic URL classification."""
 
 import builtin_connector_diagnostics
-import generated.builtin_firewalls
+import builtin_firewall_cache
+
+_TEST_FILE_KEY: builtin_firewall_cache.CatalogFileKey = (
+    "/test/catalog.json",
+    1,
+    1,
+    1,
+    1,
+)
 
 
-def _shared_base_firewall(
-    name,
-    token_name,
+def _firewall(
+    name: str,
+    token_name: str,
     *,
-    permissions=None,
-    base="https://shared.example.com",
-):
+    permissions: list[dict] | None = None,
+    base: str = "https://shared.example.com",
+    auth: dict | None = None,
+) -> dict:
+    resolved_auth = (
+        {
+            "headers": {
+                "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
+            }
+        }
+        if auth is None
+        else auth
+    )
     return {
         "name": name,
         "apis": [
             {
                 "base": base,
-                "envNames": [token_name],
-                "authHeaderNames": ["Authorization"],
-                "authQueryParamNames": [],
+                "auth": resolved_auth,
                 "permissions": permissions or [],
             }
         ],
     }
 
 
-def _patch_connector_diagnostics(monkeypatch, firewalls):
-    monkeypatch.setattr(builtin_connector_diagnostics, "CONNECTOR_DIAGNOSTIC_FIREWALLS", firewalls)
-    monkeypatch.setattr(builtin_connector_diagnostics, "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS", [])
-    builtin_connector_diagnostics.reset_cache_for_tests()
+def _diagnostic_snapshot(
+    firewalls: list[dict],
+) -> builtin_connector_diagnostics.DiagnosticCatalogSnapshot:
+    raw_snapshot = builtin_firewall_cache.BuiltinFirewallCatalogSnapshot(
+        dependency_file_key=_TEST_FILE_KEY,
+        catalog=builtin_firewall_cache.BuiltinFirewallCatalog(
+            identity=("cache", "sha256:" + "0" * 64, "test", _TEST_FILE_KEY),
+            firewalls={firewall["name"]: firewall for firewall in firewalls},
+        ),
+        cache_path=_TEST_FILE_KEY[0],
+    )
+    return builtin_connector_diagnostics._compile_diagnostic_snapshot(raw_snapshot)
 
 
-def test_classifies_static_builtin_connector_url():
+def test_classifies_static_connector_without_permission_method_enforcement():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "catalog-connector",
+                "SERVICE_TOKEN",
+                base="https://service.example.com/api",
+                auth={
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.SERVICE_TOKEN }}",
+                    },
+                    "query": {"tenant": "${{ vars.TENANT_ID }}"},
+                },
+                permissions=[{"name": "read", "rules": ["GET /items/{id}"]}],
+            )
+        ]
+    )
+
     candidate = builtin_connector_diagnostics.find_candidate(
-        "https://fal.run/fal-ai/nano-banana-pro",
+        snapshot,
+        "https://service.example.com/api/unlisted",
         "POST",
         active_firewall_names=set(),
     )
 
     assert candidate is not None
-    assert candidate.connector_type == "fal"
+    assert candidate.connector_type == "catalog-connector"
     assert candidate.reason == "not_configured_for_run"
-    assert candidate.base == "https://fal.run"
-    assert candidate.env_names == ("FAL_TOKEN",)
+    assert candidate.base == "https://service.example.com/api"
+    assert candidate.env_names == ("SERVICE_TOKEN", "TENANT_ID")
     assert candidate.auth_header_names == ("Authorization",)
-    assert candidate.auth_query_param_names == ()
-
-
-def test_classification_does_not_load_full_builtin_catalog(monkeypatch):
-    def fail_load_json_parts(_name):
-        raise AssertionError("connector diagnostics should not load full firewall JSON")
-
-    monkeypatch.setattr(generated.builtin_firewalls, "load_json_parts", fail_load_json_parts)
-    builtin_connector_diagnostics.reset_cache_for_tests()
-
-    candidate = builtin_connector_diagnostics.find_candidate(
-        "https://fal.run/fal-ai/nano-banana-pro",
-        "POST",
-        active_firewall_names=set(),
-    )
-
-    assert candidate is not None
-    assert candidate.connector_type == "fal"
+    assert candidate.auth_query_param_names == ("tenant",)
 
 
 def test_skips_active_connector_name():
-    candidate = builtin_connector_diagnostics.find_candidate(
-        "https://fal.run/fal-ai/nano-banana-pro",
-        "POST",
-        active_firewall_names={"fal"},
+    snapshot = _diagnostic_snapshot(
+        [_firewall("active", "ACTIVE_TOKEN", base="https://active.example.com")]
     )
 
-    assert candidate is None
-
-
-def test_skips_dynamic_template_base_urls():
     candidate = builtin_connector_diagnostics.find_candidate(
-        "https://acme.zendesk.com/api/v2/tickets",
+        snapshot,
+        "https://active.example.com/items",
         "GET",
-        active_firewall_names=set(),
+        active_firewall_names={"active"},
     )
 
     assert candidate is None
 
 
-def test_classifies_static_base_with_literal_unbalanced_brace(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_classifies_static_base_with_literal_unbalanced_brace():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall(
+            _firewall(
                 "literal-brace",
                 "LITERAL_BRACE_TOKEN",
                 base="https://literal.example.com/{literal",
             )
-        ],
+        ]
     )
 
     candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
         "https://literal.example.com/{literal/item",
         "GET",
         active_firewall_names=set(),
@@ -107,19 +127,19 @@ def test_classifies_static_base_with_literal_unbalanced_brace(monkeypatch):
     assert candidate.env_names == ("LITERAL_BRACE_TOKEN",)
 
 
-def test_skips_parameterized_manifest_base_urls(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_skips_parameterized_catalog_base_urls():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall(
+            _firewall(
                 "parameterized",
                 "PARAMETERIZED_TOKEN",
                 base="https://parameterized.example.com/{tenant}",
             )
-        ],
+        ]
     )
 
     candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
         "https://parameterized.example.com/acme/item",
         "GET",
         active_firewall_names=set(),
@@ -128,82 +148,74 @@ def test_skips_parameterized_manifest_base_urls(monkeypatch):
     assert candidate is None
 
 
-def test_skips_parameterized_base_urls():
-    for url in (
-        "https://s3.amazonaws.com/my-bucket/private-object",
-        "https://raw.githubusercontent.com/vm0-ai/vm0/main/README.md",
-        "https://eth-mainnet.g.alchemy.com/v2/demo",
-    ):
-        candidate = builtin_connector_diagnostics.find_candidate(
-            url,
-            "GET",
-            active_firewall_names=set(),
-        )
+def test_skips_static_connector_without_injectable_auth_references():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "literal-auth",
+                "UNUSED_TOKEN",
+                base="https://literal-auth.example.com",
+                auth={"headers": {"Authorization": "Bearer fixed"}},
+            )
+        ]
+    )
 
-        assert candidate is None
-
-
-def test_skips_static_connector_urls_without_injectable_auth_references():
     candidate = builtin_connector_diagnostics.find_candidate(
-        "https://test.api.amadeus.com/v1/security/oauth2/token",
-        "POST",
+        snapshot,
+        "https://literal-auth.example.com/items",
+        "GET",
         active_firewall_names=set(),
     )
 
     assert candidate is None
 
 
-def test_skips_model_provider_firewalls():
-    for url in (
-        "https://api.anthropic.com/v1/messages",
-        "https://api.openai.com/v1/responses",
-        "https://openrouter.ai/api/v1/chat/completions",
-        "https://api.deepseek.com/anthropic/v1/messages",
-        "https://api.minimax.io/anthropic/v1/messages",
-    ):
-        candidate = builtin_connector_diagnostics.find_candidate(
-            url,
-            "POST",
-            active_firewall_names=set(),
-        )
+def test_model_provider_route_excludes_connector_on_same_host():
+    snapshot = _diagnostic_snapshot(
+        [
+            _firewall(
+                "catalog-connector",
+                "CONNECTOR_TOKEN",
+                base="https://provider.example.com",
+                permissions=[{"name": "agents", "rules": ["GET /v1/agents"]}],
+            ),
+            _firewall(
+                "model-provider:synthetic",
+                "PROVIDER_TOKEN",
+                base="https://provider.example.com",
+                permissions=[{"name": "messages", "rules": ["POST /v1/messages"]}],
+            ),
+        ]
+    )
 
-        assert candidate is None
-
-
-def test_connector_diagnostic_matches_static_base_without_permission_method_enforcement():
-    candidate = builtin_connector_diagnostics.find_candidate(
-        "https://slack.com/api/conversations.list",
+    excluded = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://provider.example.com/v1/messages",
         "POST",
         active_firewall_names=set(),
     )
-
-    assert candidate is not None
-    assert candidate.connector_type == "slack"
-    assert candidate.base == "https://slack.com/api"
-
-
-def test_classifies_connector_permission_path_on_model_provider_host():
-    candidate = builtin_connector_diagnostics.find_candidate(
-        "https://api.anthropic.com/v1/agents",
+    connector = builtin_connector_diagnostics.find_candidate(
+        snapshot,
+        "https://provider.example.com/v1/agents",
         "GET",
         active_firewall_names=set(),
     )
 
-    assert candidate is not None
-    assert candidate.connector_type == "anthropic-managed-agents"
-    assert candidate.env_names == ("ANTHROPIC_MANAGED_AGENTS_TOKEN",)
+    assert excluded is None
+    assert connector is not None
+    assert connector.connector_type == "catalog-connector"
 
 
-def test_find_candidate_suppresses_shared_base_only_candidate(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_find_candidate_suppresses_shared_base_only_candidates():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall("first", "FIRST_TOKEN"),
-            _shared_base_firewall("second", "SECOND_TOKEN"),
-        ],
+            _firewall("first", "FIRST_TOKEN"),
+            _firewall("second", "SECOND_TOKEN"),
+        ]
     )
 
     candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
         "https://shared.example.com/messages/123",
         "GET",
         active_firewall_names=set(),
@@ -212,20 +224,20 @@ def test_find_candidate_suppresses_shared_base_only_candidate(monkeypatch):
     assert candidate is None
 
 
-def test_find_candidate_selects_shared_base_route_specific_inactive_owner(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_find_candidate_selects_unique_shared_base_route_owner():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall("active", "ACTIVE_TOKEN"),
-            _shared_base_firewall(
+            _firewall("active", "ACTIVE_TOKEN"),
+            _firewall(
                 "inactive",
                 "INACTIVE_TOKEN",
-                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /messages/{id}"]}],
             ),
-        ],
+        ]
     )
 
     candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
         "https://shared.example.com/messages/123",
         "GET",
         active_firewall_names={"active"},
@@ -236,46 +248,24 @@ def test_find_candidate_selects_shared_base_route_specific_inactive_owner(monkey
     assert candidate.env_names == ("INACTIVE_TOKEN",)
 
 
-def test_find_candidate_suppresses_shared_base_active_route_owner(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_find_candidate_suppresses_multiple_shared_base_route_owners():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall(
-                "active",
-                "ACTIVE_TOKEN",
-                permissions=[{"name": "active-read", "rules": ["GET /messages/{id}"]}],
-            ),
-            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
-        ],
-    )
-
-    candidate = builtin_connector_diagnostics.find_candidate(
-        "https://shared.example.com/messages/123",
-        "GET",
-        active_firewall_names={"active"},
-    )
-
-    assert candidate is None
-
-
-def test_find_candidate_suppresses_shared_base_multiple_route_owners(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
-        [
-            _shared_base_firewall(
+            _firewall(
                 "first",
                 "FIRST_TOKEN",
-                permissions=[{"name": "first-read", "rules": ["GET /messages/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /messages/{id}"]}],
             ),
-            _shared_base_firewall(
+            _firewall(
                 "second",
                 "SECOND_TOKEN",
-                permissions=[{"name": "second-read", "rules": ["GET /messages/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /messages/{id}"]}],
             ),
-        ],
+        ]
     )
 
     candidate = builtin_connector_diagnostics.find_candidate(
+        snapshot,
         "https://shared.example.com/messages/123",
         "GET",
         active_firewall_names=set(),
@@ -284,63 +274,24 @@ def test_find_candidate_suppresses_shared_base_multiple_route_owners(monkeypatch
     assert candidate is None
 
 
-def test_find_candidate_suppresses_current_graph_mail_and_calendar_base_only_diagnostics():
-    for url in (
-        "https://graph.microsoft.com/v1.0/me/messages",
-        "https://graph.microsoft.com/v1.0/me/events",
-    ):
-        candidate = builtin_connector_diagnostics.find_candidate(
-            url,
-            "GET",
-            active_firewall_names=set(),
-        )
-
-        assert candidate is None
-
-
-def test_find_candidate_keeps_current_graph_route_specific_microsoft_365_diagnostic():
-    candidate = builtin_connector_diagnostics.find_candidate(
-        "https://graph.microsoft.com/v1.0/teams",
-        "GET",
-        active_firewall_names=set(),
-    )
-
-    assert candidate is not None
-    assert candidate.connector_type == "microsoft-365"
-
-
-def test_find_candidate_suppresses_current_shared_base_only_diagnostics():
-    for url, method in (
-        ("https://backboard.railway.com/graphql/v2", "POST"),
-        ("https://graph.facebook.com/v22.0/123/ads_posts", "GET"),
-    ):
-        candidate = builtin_connector_diagnostics.find_candidate(
-            url,
-            method,
-            active_firewall_names=set(),
-        )
-
-        assert candidate is None
-
-
-def test_shared_base_ownership_selects_route_specific_inactive_sibling(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_shared_base_ownership_selects_route_specific_inactive_sibling():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall(
+            _firewall(
                 "active",
                 "ACTIVE_TOKEN",
-                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /active/{id}"]}],
             ),
-            _shared_base_firewall(
+            _firewall(
                 "inactive",
                 "INACTIVE_TOKEN",
-                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /messages/{id}"]}],
             ),
-        ],
+        ]
     )
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        snapshot,
         "https://shared.example.com/messages/123",
         "GET",
         active_firewall_names={"active"},
@@ -352,19 +303,18 @@ def test_shared_base_ownership_selects_route_specific_inactive_sibling(monkeypat
     assert resolution.hint_status == "absent"
     assert resolution.candidate is not None
     assert resolution.candidate.connector_type == "inactive"
-    assert resolution.candidate.env_names == ("INACTIVE_TOKEN",)
 
 
-def test_shared_base_ownership_suppresses_base_only_candidate(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_shared_base_ownership_suppresses_base_only_candidate():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall("active", "ACTIVE_TOKEN"),
-            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
-        ],
+            _firewall("active", "ACTIVE_TOKEN"),
+            _firewall("inactive", "INACTIVE_TOKEN"),
+        ]
     )
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        snapshot,
         "https://shared.example.com/messages/123",
         "GET",
         active_firewall_names={"active"},
@@ -376,16 +326,16 @@ def test_shared_base_ownership_suppresses_base_only_candidate(monkeypatch):
     assert resolution.reason == "base_only"
 
 
-def test_shared_base_ownership_uses_intent_inside_candidate_set(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_shared_base_ownership_uses_intent_inside_candidate_set():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall("active", "ACTIVE_TOKEN"),
-            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
-        ],
+            _firewall("active", "ACTIVE_TOKEN"),
+            _firewall("inactive", "INACTIVE_TOKEN"),
+        ]
     )
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        snapshot,
         "https://shared.example.com/graphql/v2",
         "POST",
         active_firewall_names={"active"},
@@ -400,16 +350,16 @@ def test_shared_base_ownership_uses_intent_inside_candidate_set(monkeypatch):
     assert resolution.candidate.connector_type == "inactive"
 
 
-def test_shared_base_ownership_ignores_intent_outside_candidate_set(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_shared_base_ownership_ignores_intent_outside_candidate_set():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall("active", "ACTIVE_TOKEN"),
-            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
-        ],
+            _firewall("active", "ACTIVE_TOKEN"),
+            _firewall("inactive", "INACTIVE_TOKEN"),
+        ]
     )
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        snapshot,
         "https://shared.example.com/graphql/v2",
         "POST",
         active_firewall_names={"active"},
@@ -423,20 +373,20 @@ def test_shared_base_ownership_ignores_intent_outside_candidate_set(monkeypatch)
     assert resolution.hint_status == "outside_candidate_set"
 
 
-def test_shared_base_ownership_route_specific_active_overrides_conflicting_intent(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_shared_base_active_route_owner_overrides_conflicting_intent():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall(
+            _firewall(
                 "active",
                 "ACTIVE_TOKEN",
-                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /active/{id}"]}],
             ),
-            _shared_base_firewall("inactive", "INACTIVE_TOKEN"),
-        ],
+            _firewall("inactive", "INACTIVE_TOKEN"),
+        ]
     )
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        snapshot,
         "https://shared.example.com/active/123",
         "GET",
         active_firewall_names={"active"},
@@ -450,26 +400,26 @@ def test_shared_base_ownership_route_specific_active_overrides_conflicting_inten
     assert resolution.hint_status == "ignored"
 
 
-def test_shared_base_ownership_normalizes_static_base_keys(monkeypatch):
-    _patch_connector_diagnostics(
-        monkeypatch,
+def test_shared_base_ownership_normalizes_static_base_keys():
+    snapshot = _diagnostic_snapshot(
         [
-            _shared_base_firewall(
+            _firewall(
                 "active",
                 "ACTIVE_TOKEN",
                 base="https://Shared.Example.com.:443/api/",
-                permissions=[{"name": "active-read", "rules": ["GET /active/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /active/{id}"]}],
             ),
-            _shared_base_firewall(
+            _firewall(
                 "inactive",
                 "INACTIVE_TOKEN",
                 base="https://shared.example.com/api",
-                permissions=[{"name": "inactive-read", "rules": ["GET /messages/{id}"]}],
+                permissions=[{"name": "read", "rules": ["GET /messages/{id}"]}],
             ),
-        ],
+        ]
     )
 
     resolution = builtin_connector_diagnostics.resolve_shared_base_ownership(
+        snapshot,
         "https://shared.example.com/api/messages/123",
         "GET",
         active_firewall_names={"active"},

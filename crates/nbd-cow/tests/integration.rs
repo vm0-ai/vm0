@@ -21,6 +21,74 @@ mod nbd_fixture;
 
 use nbd_fixture::{NbdTestFixture, default_device_pool};
 
+#[derive(Default)]
+struct RecordingCreateObserver {
+    stages: Vec<(nbd_cow::NbdCowCreateStage, Duration, bool)>,
+    netlink_connect_stages: Vec<(nbd_cow::NbdNetlinkConnectStage, Duration, bool)>,
+    outcomes: Vec<nbd_cow::NbdCowCreateOutcome>,
+}
+
+impl nbd_cow::NbdCowCreateObserver for RecordingCreateObserver {
+    fn record_stage(
+        &mut self,
+        stage: nbd_cow::NbdCowCreateStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        self.stages.push((stage, duration, success));
+    }
+
+    fn record_netlink_connect_stage(
+        &mut self,
+        stage: nbd_cow::NbdNetlinkConnectStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        self.netlink_connect_stages.push((stage, duration, success));
+    }
+
+    fn record_outcome(&mut self, outcome: nbd_cow::NbdCowCreateOutcome) {
+        self.outcomes.push(outcome);
+    }
+}
+
+impl RecordingCreateObserver {
+    fn stage_duration(&self, expected: nbd_cow::NbdCowCreateStage) -> Duration {
+        let matches: Vec<_> = self
+            .stages
+            .iter()
+            .filter(|(stage, _, _)| *stage == expected)
+            .collect();
+        assert_eq!(matches.len(), 1, "stage {expected:?}: {:?}", self.stages);
+        let (_, duration, success) = matches[0];
+        assert!(*success, "stage {expected:?} should succeed");
+        *duration
+    }
+
+    fn netlink_connect_stage_duration(
+        &self,
+        expected: nbd_cow::NbdNetlinkConnectStage,
+    ) -> Duration {
+        let matches: Vec<_> = self
+            .netlink_connect_stages
+            .iter()
+            .filter(|(stage, _, _)| *stage == expected)
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "netlink connect stage {expected:?}: {:?}",
+            self.netlink_connect_stages,
+        );
+        let (_, duration, success) = matches[0];
+        assert!(
+            *success,
+            "netlink connect stage {expected:?} should succeed"
+        );
+        *duration
+    }
+}
+
 fn nbd_test_available() -> bool {
     if !nix::unistd::getuid().is_root() {
         eprintln!("skipping: requires root");
@@ -85,10 +153,87 @@ async fn create_and_destroy() {
     let cow = fixture.cow_path("cow.img");
 
     let pool = default_device_pool();
+    let mut observer = RecordingCreateObserver::default();
     let device = pool
-        .create_cow_device(fixture.base(), &cow, fixture.size())
+        .create_cow_device_with_observer(fixture.base(), &cow, fixture.size(), &mut observer)
         .await
         .expect("create");
+
+    for stage in [
+        nbd_cow::NbdCowCreateStage::CowLayerCreate,
+        nbd_cow::NbdCowCreateStage::DeviceAcquire,
+        nbd_cow::NbdCowCreateStage::DeviceScan,
+        nbd_cow::NbdCowCreateStage::DispatchSetup,
+        nbd_cow::NbdCowCreateStage::NetlinkConnect,
+        nbd_cow::NbdCowCreateStage::SizeVerify,
+    ] {
+        observer.stage_duration(stage);
+    }
+    assert!(
+        observer.stage_duration(nbd_cow::NbdCowCreateStage::DeviceScan)
+            <= observer.stage_duration(nbd_cow::NbdCowCreateStage::DeviceAcquire),
+        "device scan is nested inside device acquire: {:?}",
+        observer.stages,
+    );
+    let netlink_child_duration: Duration = nbd_cow::NbdNetlinkConnectStage::ALL
+        .into_iter()
+        .map(|stage| observer.netlink_connect_stage_duration(stage))
+        .sum();
+    assert!(
+        netlink_child_duration
+            <= observer.stage_duration(nbd_cow::NbdCowCreateStage::NetlinkConnect),
+        "netlink connect children are nested inside their parent: {:?}",
+        observer.netlink_connect_stages,
+    );
+    assert!(
+        observer
+            .outcomes
+            .contains(&nbd_cow::NbdCowCreateOutcome::AcquireSourceDemandScan)
+    );
+    assert!(
+        observer
+            .outcomes
+            .contains(&nbd_cow::NbdCowCreateOutcome::EbusyRetriesNone)
+    );
+    assert_eq!(
+        observer
+            .outcomes
+            .iter()
+            .filter(|outcome| {
+                matches!(
+                    outcome,
+                    nbd_cow::NbdCowCreateOutcome::EbusyRetriesNone
+                        | nbd_cow::NbdCowCreateOutcome::EbusyRetriesOne
+                        | nbd_cow::NbdCowCreateOutcome::EbusyRetriesMultiple
+                )
+            })
+            .count(),
+        1,
+        "expected one EBUSY retry bucket: {:?}",
+        observer.outcomes,
+    );
+    assert!(
+        observer
+            .outcomes
+            .contains(&nbd_cow::NbdCowCreateOutcome::SizeZeroRetriesNone)
+    );
+    assert_eq!(
+        observer
+            .outcomes
+            .iter()
+            .filter(|outcome| {
+                matches!(
+                    outcome,
+                    nbd_cow::NbdCowCreateOutcome::SizeZeroRetriesNone
+                        | nbd_cow::NbdCowCreateOutcome::SizeZeroRetriesOne
+                        | nbd_cow::NbdCowCreateOutcome::SizeZeroRetriesMultiple
+                )
+            })
+            .count(),
+        1,
+        "expected one size-zero retry bucket: {:?}",
+        observer.outcomes,
+    );
 
     let dev_path = device.device_path().to_owned();
     assert!(dev_path.exists(), "device should exist: {dev_path:?}");

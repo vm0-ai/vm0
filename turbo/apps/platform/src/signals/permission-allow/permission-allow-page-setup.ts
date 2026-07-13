@@ -5,7 +5,6 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { currentAgentId$, rememberLastUsedAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupPermissionAllowPage$ = command(
@@ -23,7 +22,5 @@ export const setupPermissionAllowPage$ = command(
     if (await set(onboardGuard$, signal)) {
       return;
     }
-
-    set(reloadChatThreads$);
   },
 );

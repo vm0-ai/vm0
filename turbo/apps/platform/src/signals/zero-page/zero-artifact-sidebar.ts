@@ -564,7 +564,6 @@ export const loadHtmlEditSnapshotRestoreDraft$ = command(
           fetchOptions: { signal: loadSignal },
         }),
         [200],
-        { toast: false },
       ),
       markDetachedErrorHandled,
     );
@@ -663,7 +662,6 @@ export const deleteHtmlEditSnapshotDraft$ = command(
         fetchOptions: { signal },
       }),
       [204],
-      { toast: false },
     );
     signal.throwIfAborted();
 

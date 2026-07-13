@@ -9,19 +9,14 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import {
-  reloadChatThreadsCounter$,
-  reloadChatUnreadStateCounter$,
-} from "./chat-thread-list-reload.ts";
+import { reloadChatUnreadStateCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
-  eventDrivenActiveRunChatThreadIds$,
+  sidebarActiveThreadIds$,
   chatThreadMetaMap$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
 import type { EventDrivenChatThread } from "./chat-page/chat-thread-event-replay.ts";
-
-export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
 const internalChatAgentId$ = state<string | null>(null);
 
@@ -138,17 +133,15 @@ const eventDrivenFilteredChatThreads$ = computed(
 const eventDrivenVisibleChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
-    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
 
     return threads.map((thread) => {
-      return eventDrivenThreadToListItem(thread, activeRunThreadIds);
+      return eventDrivenThreadToListItem(thread);
     });
   },
 );
 
 export const chatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    get(reloadChatThreadsCounter$);
     return await get(eventDrivenVisibleChatThreads$);
   },
 );
@@ -164,7 +157,7 @@ export const currentChatThreadListIds$ = computed(
 
 function eventDrivenThreadToListItem(
   thread: EventDrivenChatThread,
-  activeRunThreadIds: ReadonlySet<string>,
+  running = false,
 ): ChatThreadListItem {
   return {
     id: thread.id,
@@ -175,7 +168,7 @@ function eventDrivenThreadToListItem(
     },
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
-    running: activeRunThreadIds.has(thread.id),
+    running,
     pinnedAt: thread.pinnedAt,
     renamedAt: thread.renamedAt,
   };
@@ -183,9 +176,12 @@ function eventDrivenThreadToListItem(
 
 export const allChatThreadListItems$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
+    const activeRunThreadIds = await get(sidebarActiveThreadIds$);
     return (await get(eventDrivenChatThreads$)).map((thread) => {
-      return eventDrivenThreadToListItem(thread, activeRunThreadIds);
+      return eventDrivenThreadToListItem(
+        thread,
+        activeRunThreadIds.has(thread.id),
+      );
     });
   },
 );

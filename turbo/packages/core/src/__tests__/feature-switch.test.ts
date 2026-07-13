@@ -123,6 +123,9 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
@@ -151,6 +154,9 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.NintendoStoreConnector]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
       false,

@@ -7,10 +7,15 @@ use tokio_util::sync::CancellationToken;
 
 mod connection;
 mod create;
+mod create_timing;
 mod finalizer;
 mod pooled;
 
 pub use connection::is_our_thread;
+pub(crate) use create_timing::NbdNetlinkConnectTiming;
+pub use create_timing::{
+    NbdCowCreateObserver, NbdCowCreateOutcome, NbdCowCreateStage, NbdNetlinkConnectStage,
+};
 pub use pooled::{DestroyRetryPolicy, KeptCow, PooledDestroyError, PooledNbdCowDevice};
 
 use connection::{

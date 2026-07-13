@@ -21,13 +21,12 @@ import {
   loadRunnerRuntimeFirewalls,
 } from "@vm0/connectors/firewall-metadata/runner-runtime";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, inArray, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -47,7 +46,7 @@ import {
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
 import { env } from "../../lib/env";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
@@ -58,7 +57,6 @@ import {
   networkPolicyRefreshConnectorRefs,
   resolveActiveNetworkPolicyRefreshes,
 } from "../services/zero-user-permission-grants.service";
-import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   type CompressedSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
@@ -67,6 +65,7 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  runnerReusableSessionPollPriority,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
 } from "../services/runner-session-affinity";
@@ -132,20 +131,19 @@ type ClaimRouteTimingActionType =
   | "claim_route_request_prepare"
   | "claim_route_lookup_authorization"
   | "claim_route_context_parse"
-  | "claim_route_feature_switch_context"
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
+  | "claim_route_response_network_policy_refresh"
+  | "claim_route_response_resume_session"
   | "claim_route_transition_running"
-  | "claim_route_transition_lock_run"
-  | "claim_route_transition_lock_queue_job"
-  | "claim_route_transition_update_run"
-  | "claim_route_transition_delete_queue_job";
+  | "claim_route_transition_execute";
 
 interface ClaimRouteTimingRecord {
   readonly actionType: ClaimRouteTimingActionType;
   readonly spanKind: ClaimRouteTimingSpanKind;
   readonly durationMs: number;
   readonly timestamp: string;
+  readonly fallbackReason?: "invalid_keys";
 }
 
 class ClaimRouteTimingCollector {
@@ -173,6 +171,22 @@ class ClaimRouteTimingCollector {
     const startedAt = now();
     return operation().finally(() => {
       this.recordElapsed(actionType, spanKind, startedAt);
+    });
+  }
+
+  measureInvalidKeySecretMaterialization<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = now();
+    return operation().finally(() => {
+      const finishedAt = now();
+      this.records.push({
+        actionType: "claim_route_secret_materialization",
+        spanKind: "top_level",
+        durationMs: Math.max(0, finishedAt - startedAt),
+        timestamp: new Date(finishedAt).toISOString(),
+        fallbackReason: "invalid_keys",
+      });
     });
   }
 
@@ -209,6 +223,9 @@ class ClaimRouteTimingCollector {
           dimensions: {
             ...dimensions,
             span_kind: record.spanKind,
+            ...(record.fallbackReason
+              ? { fallback_reason: record.fallbackReason }
+              : {}),
           },
         };
       }),
@@ -299,6 +316,13 @@ function canonicalizeHeldSessionStates(
     return {
       sessionId: cliAgentSessionId,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+      ...(state.reusableSandbox
+        ? {
+            reusableSandbox: {
+              profile: state.reusableSandbox.profile,
+            },
+          }
+        : {}),
     };
   });
 }
@@ -453,7 +477,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const supportedProfiles = body.data.supportedProfiles;
   const whereConditions: SQL<unknown>[] = [
     eq(runnerJobQueue.runnerGroup, group),
-    isNull(runnerJobQueue.claimedAt),
     gt(runnerJobQueue.expiresAt, sql`now()`),
     eq(agentRuns.status, "pending"),
   ];
@@ -472,6 +495,18 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   whereConditions.push(inArray(runnerJobQueue.profile, supportedProfiles));
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
+  const currentDate = nowDate();
+  const reusableSessionPriorityOrder = body.data.runnerId
+    ? [
+        desc(
+          runnerReusableSessionPollPriority({
+            runnerId: body.data.runnerId,
+            runnerGroup: group,
+            currentDate,
+          }),
+        ),
+      ]
+    : [];
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -487,7 +522,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
-    .orderBy(runnerJobQueue.createdAt)
+    .orderBy(
+      ...reusableSessionPriorityOrder,
+      runnerJobQueue.createdAt,
+      runnerJobQueue.runId,
+    )
     .limit(1);
   signal.throwIfAborted();
   const pendingJobLookupFinishedAtMs = now();
@@ -503,7 +542,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       profile: pendingJob.profile,
       cliAgentSessionId: pendingJob.cliAgentSessionId,
       createdAt: pendingJob.createdAt,
-      currentDate: nowDate(),
+      currentDate,
     }),
     signal,
   );
@@ -561,7 +600,10 @@ const builtinFirewallsResolveBody$ = bodyResultOf(
 );
 
 interface ClaimableJob {
-  readonly job: typeof runnerJobQueue.$inferSelect;
+  readonly job: Pick<
+    typeof runnerJobQueue.$inferSelect,
+    "runnerGroup" | "profile" | "executionContext" | "createdAt"
+  >;
   readonly run: ClaimedRun;
 }
 
@@ -569,6 +611,7 @@ interface ClaimedRun {
   readonly id: string;
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string | null;
   readonly agentComposeVersionId: string | null;
@@ -583,10 +626,7 @@ interface ActiveRunNetworkPolicyScope {
   readonly agentId: string;
 }
 
-type ClaimLookupResult =
-  | ClaimableJob
-  | ReturnType<typeof conflict>
-  | ReturnType<typeof notFound>;
+type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
 
 function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
@@ -602,13 +642,10 @@ async function getActiveRunNetworkPolicyScope(
       runId: agentRuns.id,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      agentId: agentComposeVersions.composeId,
+      agentId: agentSessions.agentComposeId,
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
-    )
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
     .limit(1);
   signal.throwIfAborted();
@@ -634,11 +671,17 @@ async function getClaimableJob(
 ): Promise<ClaimLookupResult> {
   const [jobWithRun] = await db
     .select({
-      job: runnerJobQueue,
+      job: {
+        runnerGroup: runnerJobQueue.runnerGroup,
+        profile: runnerJobQueue.profile,
+        executionContext: runnerJobQueue.executionContext,
+        createdAt: runnerJobQueue.createdAt,
+      },
       run: {
         id: agentRuns.id,
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
+        agentId: agentSessions.agentComposeId,
         prompt: agentRuns.prompt,
         appendSystemPrompt: agentRuns.appendSystemPrompt,
         agentComposeVersionId: agentRuns.agentComposeVersionId,
@@ -648,10 +691,10 @@ async function getClaimableJob(
     })
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(
       and(
         eq(runnerJobQueue.runId, runId),
-        isNull(runnerJobQueue.claimedAt),
         gt(runnerJobQueue.expiresAt, sql`now()`),
       ),
     )
@@ -661,21 +704,7 @@ async function getClaimableJob(
   if (jobWithRun) {
     return jobWithRun;
   }
-
-  const [existingJob] = await db
-    .select({
-      runId: runnerJobQueue.runId,
-      isExpired: sql<boolean>`${runnerJobQueue.expiresAt} <= now()`,
-    })
-    .from(runnerJobQueue)
-    .where(eq(runnerJobQueue.runId, runId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (!existingJob || existingJob.isExpired) {
-    return notFound("Job not found in queue");
-  }
-  return conflict("Job already claimed");
+  return notFound("Job not found in queue");
 }
 
 function claimAuthorizationError(
@@ -698,7 +727,6 @@ function claimAuthorizationError(
 
 type ClaimTransitionResult =
   | { readonly status: "claimed"; readonly claimedAt: Date }
-  | { readonly status: "conflict" }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
 type ClaimedTransitionResult = Extract<
@@ -716,9 +744,6 @@ interface LockedClaimRunRow extends Record<string, unknown> {
 }
 
 function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
-  if (result.status === "conflict") {
-    return conflict("Job was claimed by another runner");
-  }
   if (result.status === "job-not-found") {
     return notFound("Job not found in queue");
   }
@@ -727,8 +752,12 @@ function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
 
 interface LockedRunnerJobRow extends Record<string, unknown> {
   readonly runId: string;
-  readonly claimedAt: Date | null;
   readonly isExpired: boolean;
+}
+
+interface ClaimTransitionSqlRow extends Record<string, unknown> {
+  readonly status: ClaimTransitionResult["status"] | "invariant-error";
+  readonly claimedAtMs: number | null;
 }
 
 async function lockClaimRun(
@@ -753,7 +782,6 @@ async function lockRunnerJob(
   const rows = await db.execute<LockedRunnerJobRow>(sql`
     SELECT
       ${runnerJobQueue.runId} AS "runId",
-      ${runnerJobQueue.claimedAt} AS "claimedAt",
       ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
     FROM ${runnerJobQueue}
     WHERE ${runnerJobQueue.runId} = ${runId}
@@ -769,83 +797,124 @@ async function transitionClaimedJobToRunning(
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
   return await db.transaction(async (tx) => {
-    const run = await timing.measure(
-      "claim_route_transition_lock_run",
+    const result = await timing.measure(
+      "claim_route_transition_execute",
       "nested",
       async () => {
-        return await lockClaimRun(tx, runId);
+        // Materialized outputs make the row locks depend on run, then queue.
+        return await tx.execute<ClaimTransitionSqlRow>(sql`
+          WITH locked_run AS MATERIALIZED (
+            SELECT
+              ${agentRuns.id} AS "id",
+              ${agentRuns.status} AS "status"
+            FROM ${agentRuns}
+            WHERE ${agentRuns.id} = ${runId}
+            FOR UPDATE
+          ),
+          locked_job AS MATERIALIZED (
+            SELECT
+              ${runnerJobQueue.runId} AS "runId",
+              ${runnerJobQueue.expiresAt} <= now() AS "isExpired"
+            FROM ${runnerJobQueue}
+            INNER JOIN locked_run
+              ON locked_run."id" = ${runnerJobQueue.runId}
+            FOR UPDATE OF ${runnerJobQueue}
+          ),
+          claim_clock AS MATERIALIZED (
+            SELECT
+              date_trunc(
+                'milliseconds',
+                clock_timestamp() AT TIME ZONE 'UTC'
+              ) AS "claimedAt"
+            FROM locked_run
+            INNER JOIN locked_job
+              ON locked_job."runId" = locked_run."id"
+            WHERE
+              locked_run."status" = 'pending'
+              AND NOT locked_job."isExpired"
+          ),
+          updated_run AS (
+            UPDATE ${agentRuns}
+            SET
+              status = 'running',
+              started_at = claim_clock."claimedAt",
+              last_heartbeat_at = claim_clock."claimedAt"
+            FROM locked_run
+            INNER JOIN locked_job
+              ON locked_job."runId" = locked_run."id"
+            CROSS JOIN claim_clock
+            WHERE
+              ${agentRuns.id} = locked_run."id"
+              AND ${agentRuns.status} = 'pending'
+            RETURNING
+              ${agentRuns.id} AS "id",
+              ${agentRuns.startedAt} AS "claimedAt"
+          ),
+          deleted_job AS (
+            DELETE FROM ${runnerJobQueue}
+            USING locked_run, locked_job
+            WHERE
+              ${runnerJobQueue.runId} = locked_job."runId"
+              AND locked_job."runId" = locked_run."id"
+              AND (
+                locked_run."status" <> 'pending'
+                OR EXISTS (
+                  SELECT 1
+                  FROM updated_run
+                  WHERE updated_run."id" = locked_run."id"
+                )
+              )
+            RETURNING ${runnerJobQueue.runId} AS "runId"
+          )
+          SELECT
+            CASE
+              WHEN NOT EXISTS (SELECT 1 FROM locked_run)
+                THEN 'run-not-found'
+              WHEN EXISTS (
+                SELECT 1
+                FROM locked_run
+                WHERE locked_run."status" <> 'pending'
+              )
+                THEN 'run-not-found'
+              WHEN NOT EXISTS (SELECT 1 FROM locked_job)
+                OR EXISTS (
+                  SELECT 1
+                  FROM locked_job
+                  WHERE locked_job."isExpired"
+                )
+                THEN 'job-not-found'
+              WHEN EXISTS (SELECT 1 FROM updated_run)
+                AND EXISTS (SELECT 1 FROM deleted_job)
+                THEN 'claimed'
+              ELSE 'invariant-error'
+            END AS "status",
+            (
+              SELECT
+                (
+                  EXTRACT(EPOCH FROM updated_run."claimedAt") * 1000
+                )::double precision
+              FROM updated_run
+            ) AS "claimedAtMs"
+        `);
       },
     );
     signal.throwIfAborted();
-    if (!run) {
-      return { status: "run-not-found" };
+    const row = result.rows[0];
+    if (!row || row.status === "invariant-error") {
+      throw new Error("Runner job claim transition violated its invariant");
     }
-    if (run.status !== "pending") {
-      await timing.measure(
-        "claim_route_transition_delete_queue_job",
-        "nested",
-        async () => {
-          await tx
-            .delete(runnerJobQueue)
-            .where(eq(runnerJobQueue.runId, runId));
-        },
-      );
-      signal.throwIfAborted();
-      return { status: "run-not-found" };
+    if (row.status === "claimed") {
+      if (row.claimedAtMs === null) {
+        throw new Error("Claimed runner job is missing its transition time");
+      }
+      return { status: "claimed", claimedAt: new Date(row.claimedAtMs) };
     }
-
-    const job = await timing.measure(
-      "claim_route_transition_lock_queue_job",
-      "nested",
-      async () => {
-        return await lockRunnerJob(tx, runId);
-      },
-    );
-    signal.throwIfAborted();
-    if (!job || job.isExpired) {
-      return { status: "job-not-found" };
-    }
-    if (job.claimedAt) {
-      return { status: "conflict" };
-    }
-
-    const claimedAt = nowDate();
-    const [updatedRun] = await timing.measure(
-      "claim_route_transition_update_run",
-      "nested",
-      async () => {
-        return await tx
-          .update(agentRuns)
-          .set({
-            status: "running",
-            startedAt: claimedAt,
-            lastHeartbeatAt: claimedAt,
-          })
-          .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "pending")))
-          .returning({ id: agentRuns.id });
-      },
-    );
-    signal.throwIfAborted();
-    if (!updatedRun) {
-      throw new Error("Locked pending run was not claimed");
-    }
-
-    await timing.measure(
-      "claim_route_transition_delete_queue_job",
-      "nested",
-      async () => {
-        await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
-      },
-    );
-    signal.throwIfAborted();
-
-    return { status: "claimed" as const, claimedAt };
+    return { status: row.status };
   });
 }
 
 type PoisonJobResult =
   | { readonly status: "failed" }
-  | { readonly status: "conflict" }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
 type FailedPoisonJobResult = Exclude<
@@ -854,9 +923,6 @@ type FailedPoisonJobResult = Exclude<
 >;
 
 function poisonJobErrorResponse(result: FailedPoisonJobResult) {
-  if (result.status === "conflict") {
-    return conflict("Job was claimed by another runner");
-  }
   if (result.status === "job-not-found") {
     return notFound("Job not found in queue");
   }
@@ -886,9 +952,6 @@ async function failPoisonQueuedJob(
     if (!job || job.isExpired) {
       return { status: "job-not-found" };
     }
-    if (job.claimedAt) {
-      return { status: "conflict" };
-    }
 
     const failedAt = nowDate();
     const [updatedRun] = await tx
@@ -912,46 +975,72 @@ async function failPoisonQueuedJob(
   });
 }
 
-async function secretValuesForRunner(
+type PreparedSecretValuesResult =
+  | {
+      readonly status: "resolved";
+      readonly secretValues: string[] | null;
+    }
+  | {
+      readonly status: "invalid-keys";
+    };
+
+function preparedSecretValuesForRunner(
   storedContext: StoredExecutionContext,
-  featureSwitchContext: FeatureSwitchContext,
-): Promise<string[] | null> {
-  const secretsMap = await decryptPersistentSecretsMap(
-    storedContext.encryptedSecrets,
-    featureSwitchContext,
-  );
-  if (!secretsMap) {
-    return null;
+): PreparedSecretValuesResult {
+  const keys = storedContext.secretValueEnvironmentKeys;
+  if (keys === null) {
+    return { status: "resolved", secretValues: null };
   }
 
-  const envValues = storedContext.environment
-    ? new Set(Object.values(storedContext.environment))
-    : new Set<string>();
-  return Object.values(secretsMap).filter((value) => {
-    return envValues.has(value);
-  });
+  const secretValues: string[] = [];
+  for (const key of keys) {
+    if (
+      !storedContext.environment ||
+      !Object.hasOwn(storedContext.environment, key)
+    ) {
+      return { status: "invalid-keys" };
+    }
+    const value = storedContext.environment[key];
+    if (typeof value !== "string") {
+      return { status: "invalid-keys" };
+    }
+    secretValues.push(value);
+  }
+  return { status: "resolved", secretValues };
 }
 
-async function agentIdForRun(
-  db: Pick<Db, "select">,
-  run: Pick<ClaimedRun, "agentComposeVersionId">,
-): Promise<string | undefined> {
-  if (!run.agentComposeVersionId) {
-    return undefined;
+async function secretValuesForRunner(
+  storedContext: StoredExecutionContext,
+  timing: ClaimRouteTimingCollector,
+): Promise<string[] | null> {
+  const prepared = preparedSecretValuesForRunner(storedContext);
+  if (prepared.status === "resolved") {
+    return prepared.secretValues;
   }
 
-  const [version] = await db
-    .select({ agentId: agentComposeVersions.composeId })
-    .from(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, run.agentComposeVersionId))
-    .limit(1);
-  return version?.agentId ?? undefined;
+  return await timing.measureInvalidKeySecretMaterialization(async () => {
+    const secretsMap = await decryptPersistentSecretsMap(
+      storedContext.encryptedSecrets,
+      {},
+    );
+    if (!secretsMap) {
+      return null;
+    }
+
+    const envValues = storedContext.environment
+      ? new Set(Object.values(storedContext.environment))
+      : new Set<string>();
+    return Object.values(secretsMap).filter((value) => {
+      return envValues.has(value);
+    });
+  });
 }
 
 async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly timing: ClaimRouteTimingCollector;
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
@@ -965,30 +1054,28 @@ async function refreshClaimNetworkPolicies(args: {
     };
   }
 
-  const agentId = await agentIdForRun(args.db, args.run);
-  if (!agentId) {
-    return {
-      networkPolicies: args.storedContext.networkPolicies,
-      networkPolicyRefreshes: undefined,
-    };
-  }
-
-  const refreshes = await resolveActiveNetworkPolicyRefreshes(
-    args.db,
-    {
-      orgId: args.run.orgId,
-      userId: args.run.userId,
-      agentId,
+  return await args.timing.measure(
+    "claim_route_response_network_policy_refresh",
+    "nested",
+    async () => {
+      const refreshes = await resolveActiveNetworkPolicyRefreshes(
+        args.db,
+        {
+          orgId: args.run.orgId,
+          userId: args.run.userId,
+          agentId: args.run.agentId,
+        },
+        connectorRefs,
+      );
+      return {
+        networkPolicies: mergeNetworkPolicyRefreshes(
+          args.storedContext.networkPolicies,
+          refreshes,
+        ),
+        networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
+      };
     },
-    connectorRefs,
   );
-  return {
-    networkPolicies: mergeNetworkPolicyRefreshes(
-      args.storedContext.networkPolicies,
-      refreshes,
-    ),
-    networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
-  };
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -1212,6 +1299,7 @@ const loadIdentityResumeSessionHistoryRepresentation$ = command(
 
 async function resolveResumeSessionForClaim(args: {
   readonly resumeSession: StoredExecutionContext["resumeSession"];
+  readonly timing: ClaimRouteTimingCollector;
   readonly loadIdentityRepresentation: (
     hash: string,
   ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
@@ -1229,63 +1317,67 @@ async function resolveResumeSessionForClaim(args: {
     return resumeSession;
   }
 
-  const { sessionId, historyRef } = resumeSession;
-  const encoding = historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
-  if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
-    const compressedRepresentation = await args.loadCompressedRepresentation(
-      historyRef.hash,
-      encoding,
-    );
-    if (compressedRepresentation === undefined) {
-      throw invalidResumeSessionHistoryError(
-        historyRef.hash,
-        new Error(`${encoding} session history metadata is missing`),
-      );
-    }
-    validateCompressedResumeSessionHistoryRepresentation(
-      historyRef.hash,
-      compressedRepresentation,
-    );
-    const url = await args.generateResumeSessionHistoryObjectUrl(
-      compressedRepresentation.objectKey,
-    );
-    return {
-      sessionId,
-      historyRef: {
-        kind: historyRef.kind,
-        hash: historyRef.hash,
-        url,
-        encoding: compressedRepresentation.encoding,
-        rawSize: compressedRepresentation.rawSize,
-        encodedSize: compressedRepresentation.encodedSize,
-        downloadSource: compressedRepresentation.downloadSource,
-      },
-    };
-  }
+  return await args.timing.measure(
+    "claim_route_response_resume_session",
+    "nested",
+    async () => {
+      const { sessionId, historyRef } = resumeSession;
+      const encoding = historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+      if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
+        const compressedRepresentation =
+          await args.loadCompressedRepresentation(historyRef.hash, encoding);
+        if (compressedRepresentation === undefined) {
+          throw invalidResumeSessionHistoryError(
+            historyRef.hash,
+            new Error(`${encoding} session history metadata is missing`),
+          );
+        }
+        validateCompressedResumeSessionHistoryRepresentation(
+          historyRef.hash,
+          compressedRepresentation,
+        );
+        const url = await args.generateResumeSessionHistoryObjectUrl(
+          compressedRepresentation.objectKey,
+        );
+        return {
+          sessionId,
+          historyRef: {
+            kind: historyRef.kind,
+            hash: historyRef.hash,
+            url,
+            encoding: compressedRepresentation.encoding,
+            rawSize: compressedRepresentation.rawSize,
+            encodedSize: compressedRepresentation.encodedSize,
+            downloadSource: compressedRepresentation.downloadSource,
+          },
+        };
+      }
 
-  const identityRepresentation = await args.loadIdentityRepresentation(
-    historyRef.hash,
-  );
-  if (identityRepresentation === undefined) {
-    throw new ResumeSessionHistoryLoadError(
-      historyRef.hash,
-      RESUME_SESSION_HISTORY_LOAD_ERROR,
-      new Error("identity session history metadata is missing"),
-    );
-  }
-  const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
-  return {
-    sessionId,
-    historyRef: {
-      kind: historyRef.kind,
-      hash: historyRef.hash,
-      url,
-      encoding: identityRepresentation.encoding,
-      rawSize: identityRepresentation.rawSize,
-      encodedSize: identityRepresentation.encodedSize,
-      downloadSource: identityRepresentation.downloadSource,
+      const identityRepresentation = await args.loadIdentityRepresentation(
+        historyRef.hash,
+      );
+      if (identityRepresentation === undefined) {
+        throw new ResumeSessionHistoryLoadError(
+          historyRef.hash,
+          RESUME_SESSION_HISTORY_LOAD_ERROR,
+          new Error("identity session history metadata is missing"),
+        );
+      }
+      const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
+      return {
+        sessionId,
+        historyRef: {
+          kind: historyRef.kind,
+          hash: historyRef.hash,
+          url,
+          encoding: identityRepresentation.encoding,
+          rawSize: identityRepresentation.rawSize,
+          encodedSize: identityRepresentation.encodedSize,
+          downloadSource: identityRepresentation.downloadSource,
+        },
+      };
     },
-  };
+  );
 }
 
 async function buildClaimResponseBody(args: {
@@ -1306,24 +1398,9 @@ async function buildClaimResponseBody(args: {
     objectKey: string,
   ) => Promise<string>;
 }): Promise<ExecutionContext> {
-  const featureSwitchContext = await args.timing.measure(
-    "claim_route_feature_switch_context",
-    "top_level",
-    () => {
-      return loadUserFeatureSwitchContext(
-        args.db,
-        args.run.orgId,
-        args.run.userId,
-      );
-    },
-  );
-  args.signal.throwIfAborted();
-  const secretValues = await args.timing.measure(
-    "claim_route_secret_materialization",
-    "top_level",
-    () => {
-      return secretValuesForRunner(args.storedContext, featureSwitchContext);
-    },
+  const secretValues = await secretValuesForRunner(
+    args.storedContext,
+    args.timing,
   );
   args.signal.throwIfAborted();
   return await args.timing.measure(
@@ -1332,6 +1409,7 @@ async function buildClaimResponseBody(args: {
     async () => {
       const resumeSession = await resolveResumeSessionForClaim({
         resumeSession: args.storedContext.resumeSession,
+        timing: args.timing,
         loadIdentityRepresentation(hash: string) {
           return args.loadIdentityRepresentation(hash);
         },
@@ -1355,10 +1433,15 @@ async function buildClaimResponseBody(args: {
         db: args.db,
         run: args.run,
         storedContext: args.storedContext,
+        timing: args.timing,
       });
       args.signal.throwIfAborted();
+      const {
+        secretValueEnvironmentKeys: _secretValueEnvironmentKeys,
+        ...runnerStoredContext
+      } = args.storedContext;
       return {
-        ...args.storedContext,
+        ...runnerStoredContext,
         runId: args.run.id,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,

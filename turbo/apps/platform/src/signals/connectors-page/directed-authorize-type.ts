@@ -1,5 +1,8 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import {
+  connectorCatalogRefSchema,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
@@ -17,7 +20,10 @@ import {
 export const directedAuthorizeType$ = computed((get): string | null => {
   const params = get(pathParams$);
   const type = params?.type;
-  return typeof type === "string" ? type.toLowerCase() : null;
+  const parsed = connectorCatalogRefSchema.safeParse(
+    typeof type === "string" ? type.toLowerCase() : null,
+  );
+  return parsed.success ? parsed.data : null;
 });
 
 /**
@@ -51,7 +57,7 @@ export const agentEnabledTypes$ = computed(async (get) => {
 });
 
 export type DirectedAuthorizeConnectModalKey = {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorCatalogRef;
   readonly agentId: string;
   readonly signal: AbortSignal;
 };
@@ -68,7 +74,7 @@ export const setDirectedAuthorizeConnectModalKey$ = command(
 );
 
 function connectorAgentAuthorizationKey(args: {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorCatalogRef;
   readonly agentId: string;
 }): string {
   return `${args.agentId}:${args.connectorType}`;
@@ -85,7 +91,7 @@ export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
 export const authorizeConnector$ = command(
   async (
     { get, set },
-    connectorType: ConnectorType,
+    connectorType: ConnectorCatalogRef,
     agentId: string,
     signal: AbortSignal,
   ) => {
@@ -120,7 +126,7 @@ export const authorizeConnector$ = command(
 export function isJustAuthorizedConnectorAgent(
   justAuthorizedKeys: ReadonlySet<string>,
   args: {
-    readonly connectorType: ConnectorType;
+    readonly connectorType: ConnectorCatalogRef;
     readonly agentId: string;
   },
 ): boolean {

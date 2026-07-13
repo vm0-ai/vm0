@@ -266,21 +266,11 @@ async function handleMissingCheckpoint(
   });
   signal.throwIfAborted();
 
-  return {
-    status: 404,
-    body: {
-      error: {
-        message: error,
-        code: "NOT_FOUND",
-      },
-    },
-    sideEffects: {
-      runId: input.body.runId,
-      orgId: run.orgId,
-      status: "failed",
-      error,
-    },
-  };
+  L.warn("Run failed because checkpoint was not found", {
+    runId: input.body.runId,
+    error,
+  });
+  return successResponse(input.body.runId, run.orgId, "failed", error);
 }
 
 async function handleSuccessfulCompletion(

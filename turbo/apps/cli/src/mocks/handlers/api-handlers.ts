@@ -18,6 +18,7 @@ import {
   getConnectorGenerationTypes,
   getConnectorTags,
 } from "@vm0/connectors/connector-utils";
+import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -124,6 +125,7 @@ function defaultPublicCatalogItem(
     connectorRef: type,
     label: config.label,
     description: config.helpText,
+    icon: getStaticConnectorIconMetadata(type),
     category: config.category,
     generation: [...getConnectorGenerationTypes(type)],
     tags: [...getConnectorTags(type)],

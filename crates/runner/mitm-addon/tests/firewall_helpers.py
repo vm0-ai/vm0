@@ -65,12 +65,13 @@ def compile_firewalls_or_fail(firewalls):
     return compiled
 
 
-def match_compiled_firewalls(url, firewalls, network_policies, *, method="GET"):
+def match_compiled_firewalls(url, firewalls, network_policies, *, method="GET", intent=None):
     return matching.match_compiled_firewall_request(
         url,
         method,
         compile_firewalls_or_fail(firewalls),
         network_policies,
+        intent,
     )
 
 

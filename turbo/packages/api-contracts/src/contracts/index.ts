@@ -1072,6 +1072,7 @@ export {
   type ZeroConnectorsSearchContract,
 } from "./zero-connectors";
 export {
+  publicConnectorCatalogIconSchema,
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogAuthMethodDetail,
   type PublicConnectorCatalogAuthMethodSummary,
@@ -1080,6 +1081,7 @@ export {
   type PublicConnectorCatalogConnection,
   type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogItem,
+  type PublicConnectorCatalogIcon,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogManualField,
   type PublicConnectorCatalogPermissionDetail,
@@ -1091,6 +1093,14 @@ export {
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
+export {
+  CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
+  CONNECTOR_CATALOG_REF_MAX_LENGTH,
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "./connector-identity";
 export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
@@ -1598,6 +1608,14 @@ export {
   type ZeroImageIoInterpretMarksResult,
   type ZeroImageIoInterpretMarksResponse,
 } from "./zero-image-io-interpret-marks";
+export {
+  zeroImageShareXContract,
+  zeroImageShareXRequestSchema,
+  zeroImageShareXResponseSchema,
+  type ZeroImageShareXContract,
+  type ZeroImageShareXRequest,
+  type ZeroImageShareXResponse,
+} from "./zero-image-share-x";
 export {
   zeroBankingContract,
   zeroBankingProviderSchema,

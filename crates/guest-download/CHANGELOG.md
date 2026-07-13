@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.59](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.58...guest-download-v0.20.59) (2026-07-12)
+
+
+### Bug Fixes
+
+* **runner:** classify guest download transport errors ([#21076](https://github.com/vm0-ai/vm0/issues/21076)) ([a0dce43](https://github.com/vm0-ai/vm0/commit/a0dce43f3aeb398465625195950af57e35aae3ff))
+
 ## [0.20.58](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.57...guest-download-v0.20.58) (2026-07-10)
 
 

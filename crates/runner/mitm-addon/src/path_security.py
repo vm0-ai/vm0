@@ -19,6 +19,28 @@ def has_unsafe_path(path: str) -> bool:
     return any(_segment_has_unsafe_path(raw_segment) for raw_segment in path.split("/"))
 
 
+def has_unsafe_url_path(url: str) -> bool:
+    """Return whether a raw absolute URL contains an unsafe path."""
+    scheme_end = url.find("://")
+    if scheme_end == -1:
+        return False
+    after_scheme = url[scheme_end + len("://") :]
+    component_start = len(after_scheme)
+    for delimiter in ("/", "?", "#"):
+        delimiter_index = after_scheme.find(delimiter)
+        if delimiter_index != -1:
+            component_start = min(component_start, delimiter_index)
+    if component_start == len(after_scheme) or after_scheme[component_start] != "/":
+        return False
+    path_and_after = after_scheme[component_start:]
+    path_end = len(path_and_after)
+    for delimiter in ("?", "#"):
+        delimiter_index = path_and_after.find(delimiter)
+        if delimiter_index != -1:
+            path_end = min(path_end, delimiter_index)
+    return has_unsafe_path(path_and_after[:path_end])
+
+
 def _segment_has_unsafe_path(raw_segment: str) -> bool:
     segment = raw_segment
     for _ in range(_MAX_PERCENT_DECODE_PASSES):

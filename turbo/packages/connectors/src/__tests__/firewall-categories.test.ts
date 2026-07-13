@@ -25,6 +25,7 @@ const EXPECTED_CATEGORIZED_CONNECTORS = [
   "google-meet",
   "google-search-console",
   "google-sheets",
+  "nintendo-switch-parental-controls",
   "slack",
   "stripe",
   "vercel",

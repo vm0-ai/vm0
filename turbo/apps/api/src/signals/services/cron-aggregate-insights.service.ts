@@ -3,8 +3,8 @@ import {
   loadFirewallPermissionIndex,
   type FirewallServerMetadataConnectorType,
 } from "@vm0/connectors/firewall-metadata/server";
-import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -901,11 +901,8 @@ async function queryCompletedRunCounts(
       runs: sql<number>`COUNT(DISTINCT ${agentRuns.id})::int`.as("runs"),
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .innerJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(
       and(
         inArray(agentRuns.orgId, orgIds),
@@ -967,11 +964,8 @@ async function queryUsageEventCreditRows(
       eq(usageAllowanceAllocations.usageEventId, usageEvent.id),
     )
     .leftJoin(agentRuns, eq(usageEvent.runId, agentRuns.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+    .leftJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
     .where(
       and(
         inArray(usageEvent.orgId, orgIds),
@@ -1018,14 +1012,8 @@ async function queryNetworkRunAgentRows(
             ),
         })
         .from(agentRuns)
-        .innerJoin(
-          agentComposeVersions,
-          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-        )
-        .innerJoin(
-          zeroAgents,
-          eq(agentComposeVersions.composeId, zeroAgents.id),
-        )
+        .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
+        .innerJoin(zeroAgents, eq(agentSessions.agentComposeId, zeroAgents.id))
         .where(
           and(
             inArray(agentRuns.orgId, orgIds),

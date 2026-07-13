@@ -287,7 +287,7 @@ async fn run_with_firecracker(
 ) -> Result<SnapshotConfig, SnapshotError> {
     // 5. Wait for API socket ready.
     let api_sock = sock_paths.api_sock();
-    let client = ApiClient::new(&api_sock);
+    let client = ApiClient::new(&api_sock)?;
     client.wait_for_ready(API_READY_TIMEOUT).await?;
     set_private_runtime_socket_mode(&api_sock)?;
 
@@ -430,7 +430,7 @@ fn prewarm_failure_detail(stderr: &str, diagnostic: &str) -> String {
 }
 
 async fn configure_snapshot_vm(
-    client: &ApiClient<'_>,
+    client: &ApiClient,
     config: &SnapshotCreateConfig,
     paths: &SandboxPaths,
     sock_paths: &SockPaths,
@@ -637,7 +637,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = SandboxPaths::new(dir.path().join("work"));
         let sock_paths = SockPaths::new(dir.path().join("sock"));
-        let client = ApiClient::new(api.socket_path());
+        let client = ApiClient::new(api.socket_path()).unwrap();
         let config = snapshot_create_config(dir.path().join("snapshot-output"));
         let inv = InvariantConfig::new();
 

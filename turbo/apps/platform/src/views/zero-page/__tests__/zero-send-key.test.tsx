@@ -76,7 +76,7 @@ describe("zero send key", () => {
     expect(textarea.textContent ?? "").toContain("Composing text");
   });
 
-  it("avoids accidental sends on touch devices", async () => {
+  it("keeps plain Enter as a newline but sends with modified Enter on touch devices", async () => {
     const user = userEvent.setup({ delay: null });
     context.mocks.browser.matchMedia((query) => {
       return query === "(pointer: coarse)";
@@ -84,10 +84,33 @@ describe("zero send key", () => {
     const touchTextarea = await openComposer("enter");
     await fill(touchTextarea, "Touch device draft");
     await user.keyboard("{Enter}");
-    await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     expect(touchTextarea.textContent ?? "").toContain("Touch device draft");
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Touch device draft")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("avoids accidental modified sends during IME composition on touch devices", async () => {
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)";
+    });
+    const textarea = await openComposer("enter");
+
+    await fill(textarea, "Composing on touch device");
+    fireEvent.keyDown(textarea, {
+      key: "Enter",
+      ctrlKey: true,
+      keyCode: 229,
+    });
+
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(textarea.textContent ?? "").toContain("Composing on touch device");
   });
 
   it("sends with Enter on touch devices with a fine pointer", async () => {
@@ -102,6 +125,22 @@ describe("zero send key", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Send from Magic Keyboard")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("always sends with modified Enter on touch devices with a fine pointer", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)" || query === "(any-pointer: fine)";
+    });
+    const keyboardTextarea = await openComposer("enter");
+
+    await fill(keyboardTextarea, "Send with modified Enter");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Send with modified Enter")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
   });

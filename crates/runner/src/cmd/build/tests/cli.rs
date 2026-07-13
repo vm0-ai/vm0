@@ -1,10 +1,12 @@
 use super::fixtures::*;
 use super::*;
+use clap::CommandFactory;
+use std::collections::BTreeSet;
 
 #[test]
 fn build_args_parse_warm_rootfs_cache_flag() {
-    let mut args = build_args().to_vec();
-    args.push("--warm-rootfs-cache");
+    let mut args = build_args();
+    args.push("--warm-rootfs-cache".to_string());
 
     let cli = <TestBuildCli as clap::Parser>::try_parse_from(args).unwrap();
 
@@ -15,7 +17,7 @@ fn build_args_parse_warm_rootfs_cache_flag() {
 
 #[test]
 fn build_args_parse_warm_rootfs_cache_without_guest_binaries() {
-    let cli = <TestBuildCli as clap::Parser>::try_parse_from([
+    let mut cli = <TestBuildCli as clap::Parser>::try_parse_from([
         "runner-build",
         "--profile",
         "vm0/default",
@@ -24,13 +26,50 @@ fn build_args_parse_warm_rootfs_cache_without_guest_binaries() {
     .unwrap();
 
     assert_eq!(BuildMode::from_args(&cli.args), BuildMode::WarmRootfsCache);
-    assert!(cli.args.guest_agent.is_none());
-    assert!(cli.args.guest_download.is_none());
-    assert!(cli.args.guest_init.is_none());
-    assert!(cli.args.guest_mock_claude.is_none());
-    assert!(cli.args.guest_mock_codex.is_none());
-    assert!(cli.args.guest_reseed.is_none());
-    assert!(cli.args.guest_write_file.is_none());
+    for definition in guest_definitions() {
+        assert!(cli.args.take_guest_path(definition.name).is_none());
+    }
+}
+
+#[test]
+fn guest_cli_flags_match_inventory() {
+    let command = TestBuildCli::command();
+    let actual: BTreeSet<_> = command
+        .get_arguments()
+        .filter_map(|arg| arg.get_long())
+        .filter(|flag| flag.starts_with("guest-"))
+        .map(str::to_owned)
+        .collect();
+    let expected: BTreeSet<_> = guest_definitions()
+        .iter()
+        .map(|definition| definition.name.to_string())
+        .collect();
+
+    assert_eq!(actual, expected);
+}
+
+#[tokio::test]
+async fn explicit_guest_paths_resolve_every_inventory_entry() {
+    let source_dir = tempfile::tempdir().unwrap();
+    let mut argv = vec!["runner-build".to_string()];
+    for definition in guest_definitions() {
+        let source = source_dir.path().join(definition.name);
+        std::fs::write(&source, definition.name).unwrap();
+        argv.push(format!("--{}", definition.name));
+        argv.push(source.to_string_lossy().into_owned());
+    }
+    argv.extend(["--profile".to_string(), "vm0/default".to_string()]);
+
+    let mut cli = <TestBuildCli as clap::Parser>::try_parse_from(argv).unwrap();
+    let guests = GuestBinaries::resolve(&mut cli.args).await.unwrap();
+
+    assert_eq!(guests.entries.len(), guest_definitions().len());
+    for guest in guests.iter() {
+        assert_eq!(
+            std::fs::read_to_string(&guest.path).unwrap(),
+            guest.definition.name
+        );
+    }
 }
 
 #[test]

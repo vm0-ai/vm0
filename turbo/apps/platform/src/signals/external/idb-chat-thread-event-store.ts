@@ -24,11 +24,6 @@ interface StoredChatThreadSnapshot extends ChatThreadSnapshotRecord {
   readonly id: typeof SINGLETON_ID;
 }
 
-interface StoredChatThreadEventSync {
-  readonly id: typeof SINGLETON_ID;
-  readonly latestEventId: string | null;
-}
-
 type GetDb = ReturnType<typeof createGetDb>;
 
 function createGetDb(userId: string, orgId: string) {
@@ -94,26 +89,6 @@ function createReadStore(getDb: GetDb) {
         signal,
       );
     },
-
-    async readLatestEventId(signal?: AbortSignal) {
-      return await chatIdbReadOr(
-        "threadEvents:readLatestEventId",
-        async () => {
-          const db = await getDb();
-          signal?.throwIfAborted();
-          const raw = (await db
-            .transaction(CHAT_THREAD_EVENT_SYNC_STORE, "readonly")
-            .store.get(SINGLETON_ID)) as
-            | Partial<StoredChatThreadEventSync>
-            | undefined;
-          return typeof raw?.latestEventId === "string"
-            ? raw.latestEventId
-            : null;
-        },
-        null,
-        signal,
-      );
-    },
   };
 }
 
@@ -129,11 +104,7 @@ function createWriteStore(getDb: GetDb) {
           const db = await getDb();
           signal?.throwIfAborted();
           const tx = db.transaction(
-            [
-              CHAT_THREAD_SNAPSHOT_STORE,
-              CHAT_THREAD_EVENTS_STORE,
-              CHAT_THREAD_EVENT_SYNC_STORE,
-            ],
+            [CHAT_THREAD_SNAPSHOT_STORE, CHAT_THREAD_EVENTS_STORE],
             "readwrite",
           );
           await tx.objectStore(CHAT_THREAD_EVENTS_STORE).clear();
@@ -142,10 +113,6 @@ function createWriteStore(getDb: GetDb) {
             chatThreads: [...snapshot.chatThreads],
             latestEventId: snapshot.latestEventId,
           } satisfies StoredChatThreadSnapshot);
-          await tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE).put({
-            id: SINGLETON_ID,
-            latestEventId: snapshot.latestEventId,
-          } satisfies StoredChatThreadEventSync);
           await tx.done;
         },
         signal,
@@ -164,19 +131,12 @@ function createWriteStore(getDb: GetDb) {
         async () => {
           const db = await getDb();
           signal?.throwIfAborted();
-          const tx = db.transaction(
-            [CHAT_THREAD_EVENTS_STORE, CHAT_THREAD_EVENT_SYNC_STORE],
-            "readwrite",
-          );
-          const eventStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
+          const tx = db.transaction(CHAT_THREAD_EVENTS_STORE, "readwrite");
+          const eventStore = tx.store;
           for (const event of events) {
             signal?.throwIfAborted();
             await eventStore.put(event);
           }
-          await tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE).put({
-            id: SINGLETON_ID,
-            latestEventId: events[events.length - 1]!.id,
-          } satisfies StoredChatThreadEventSync);
           await tx.done;
         },
         signal,

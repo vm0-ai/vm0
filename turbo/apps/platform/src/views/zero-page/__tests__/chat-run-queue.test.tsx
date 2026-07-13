@@ -9,7 +9,7 @@ import {
   fill,
 } from "../../../__tests__/page-helper.ts";
 import {
-  activeRunTextarea,
+  activeRunComposer,
   expectQueuedMessages,
   mockChatLifecycle,
   PLACEHOLDER,
@@ -39,9 +39,9 @@ interface QueuedMessageCapture {
 
 async function startActiveRun(
   user: ReturnType<typeof userEvent.setup>,
-): Promise<HTMLTextAreaElement> {
+): Promise<HTMLElement> {
   const textarea = await waitFor(() => {
-    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    return screen.getByRole("textbox", { name: "Message" });
   });
   await sendMessageInUI(user, textarea, "Start the active run");
 
@@ -49,7 +49,7 @@ async function startActiveRun(
     expect(screen.getByLabelText("Stop")).toBeInTheDocument();
   });
 
-  return activeRunTextarea();
+  return activeRunComposer();
 }
 
 function mockActiveRunThread(threadId: string): void {
@@ -151,12 +151,12 @@ describe("chat run queue", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByPlaceholderText(/Type your next message/),
+        screen.getByRole("textbox", { name: "Message" }),
       ).toHaveTextContent("First queued follow-up");
     });
 
     await fill(
-      screen.getByPlaceholderText(/Type your next message/),
+      screen.getByRole("textbox", { name: "Message" }),
       "Replayed follow-up",
     );
     await user.keyboard("{Enter}");

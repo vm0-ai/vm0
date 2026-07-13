@@ -124,23 +124,6 @@ async fn test_exec_sequential() {
     h.finish();
 }
 
-#[tokio::test]
-async fn test_exec_sudo() {
-    let h = Harness::new().await;
-
-    // In debug mode, sudo=true uses `sudo sh -c`, which may fail if sudo is
-    // not installed. We only verify the flag is correctly sent through the
-    // protocol and the guest attempts the right code path (non-panic, returns
-    // a result). In release/production the process runs as root so sudo=true
-    // just uses `sh -c` directly.
-    let result = run_exec(h.host(), "whoami", 5000, &[], true)
-        .await
-        .expect("exec sudo failed");
-    // Don't assert exit_code — depends on whether sudo is available
-    let _ = result;
-    h.finish();
-}
-
 /// Core concurrency test: exec works while supervised exec wait is pending.
 ///
 /// This is the exact production scenario that motivated the VsockHost refactor —

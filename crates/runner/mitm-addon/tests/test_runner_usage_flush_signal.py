@@ -155,6 +155,82 @@ class TestRunnerUsageFlushSignal:
             flush_request_id="request-1",
         )
 
+    def test_done_folds_signal_received_during_shutdown_into_acknowledgements(
+        self, runner_usage_flush_files: RunnerUsageFlushFiles
+    ):
+        shutdown_flush_started = threading.Event()
+        release_shutdown_flush = threading.Event()
+        calls: list[str] = []
+        runner_usage_flush_files.write_usage_flush_request()
+        log_path = runner_usage_flush_files.write_jsonl_flush_request()
+
+        def flush_usage_events(*, trigger: str) -> int:
+            calls.append(f"flush:{trigger}")
+            if trigger == "shutdown":
+                shutdown_flush_started.set()
+                assert release_shutdown_flush.wait(timeout=2)
+            return 0
+
+        def shutdown_usage_executor(*, wait: bool) -> None:
+            calls.append(f"executor:shutdown:{wait}")
+            assert_pending(
+                runner_usage_flush_files.pending_path,
+                flows=0,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+            state = json.loads(runner_usage_flush_files.jsonl_flush_state_path.read_text())
+            assert state["flushRequestId"] == "jsonl-request-1"
+            assert state["path"] == str(log_path)
+            assert state["pending"] == 0
+            assert not mitm_addon._usage_flush_requested.is_set()
+
+        mock_executor = MagicMock()
+        mock_executor.shutdown.side_effect = shutdown_usage_executor
+        done_thread = ThreadUnderTest(target=mitm_addon.done)
+
+        with (
+            patch.object(mitm_addon, "__file__", str(runner_usage_flush_files.addon_file)),
+            patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
+            patch.object(usage.webhook, "usage_executor", mock_executor),
+            patch.object(
+                mitm_addon.auth_base_forwarder,
+                "shutdown_forward_request_workers",
+                lambda *, wait: calls.append(f"auth-base:shutdown:{wait}"),
+            ),
+            patch.object(mitm_addon, "shutdown_log_writer", lambda: calls.append("jsonl:shutdown")),
+        ):
+            try:
+                done_thread.start()
+                wait_for_event(
+                    shutdown_flush_started,
+                    timeout=1,
+                    threads=(done_thread,),
+                    message="done did not start the shutdown usage flush",
+                )
+
+                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                state_before_release = json.loads(runner_usage_flush_files.pending_path.read_text())
+                assert "flushRequestId" not in state_before_release
+                assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
+                release_shutdown_flush.set()
+                done_thread.join_and_raise(timeout=1)
+            finally:
+                release_shutdown_flush.set()
+                done_thread.join(timeout=1)
+
+        assert not done_thread.is_alive()
+        assert calls == [
+            "flush:shutdown",
+            "flush:runner",
+            "executor:shutdown:True",
+            "auth-base:shutdown:False",
+            "jsonl:shutdown",
+        ]
+        assert not mitm_addon._usage_flush_requested.is_set()
+
     def test_signal_handler_writes_snapshot_when_flush_fails(
         self, runner_usage_flush_files: RunnerUsageFlushFiles
     ):

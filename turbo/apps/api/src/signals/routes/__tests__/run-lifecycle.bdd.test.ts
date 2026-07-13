@@ -27,8 +27,11 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { seedLexicalRelationshipMemory } from "../../../test-fixtures/relationship-memory";
-import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  deleteUsagePricingRows,
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import {
   createBddApi,
   expectApiError,
@@ -42,6 +45,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
@@ -50,8 +54,12 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
+  holdOrgAdmissionLock,
+  mutateRunnerJobSecretValueEnvironmentKeys,
   readAutomationComposeHeadVersion,
   readAutomationsFakeKmsDecryptCallCount,
+  readOrgAdmissionLockState,
+  releaseOrgAdmissionLock,
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -91,16 +99,21 @@ const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
   "claim_route_lookup_authorization",
   "claim_route_context_parse",
-  "claim_route_feature_switch_context",
-  "claim_route_secret_materialization",
   "claim_route_response_assembly",
   "claim_route_transition_running",
 ] as const;
+const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
+  "claim_route_feature_switch_context",
+  "claim_route_secret_materialization",
+] as const;
+const CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES = [
+  "claim_route_response_resume_session",
+  "claim_route_response_network_policy_refresh",
+] as const;
+type ClaimRouteResponseTimingActionType =
+  (typeof CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES)[number];
 const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
-  "claim_route_transition_lock_run",
-  "claim_route_transition_lock_queue_job",
-  "claim_route_transition_update_run",
-  "claim_route_transition_delete_queue_job",
+  "claim_route_transition_execute",
 ] as const;
 const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
@@ -216,11 +229,18 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
 const API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
 ] as const;
+const API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_memory_document_search",
+  "api_dispatch_pre_create_zero_memory_document_search_lexical",
+  "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+  "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+  "api_dispatch_pre_create_zero_memory_document_search_hydrate",
+] as const;
 const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_memory_profile_static",
   "api_dispatch_pre_create_zero_memory_profile_dynamic",
   "api_dispatch_pre_create_zero_memory_profile_search",
-  "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+  "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
   "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
   "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
   "api_dispatch_pre_create_zero_memory_profile_search_graph_expansion",
@@ -232,10 +252,15 @@ const API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES = [
 const ZERO_MEMORY_TIMING_BUCKET_DIMENSION_KEYS = [
   "memory_runtime_prompt_length_bucket",
   "memory_runtime_search_query_length_bucket",
+  "memory_document_search_result_count_bucket",
+  "memory_document_lexical_candidate_count_bucket",
+  "memory_document_semantic_candidate_count_bucket",
+  "memory_document_hydration_candidate_count_bucket",
+  "memory_document_hydrated_result_count_bucket",
   "memory_profile_static_result_count_bucket",
   "memory_profile_dynamic_result_count_bucket",
   "memory_profile_search_result_count_bucket",
-  "memory_profile_lexical_candidate_count_bucket",
+  "memory_profile_exact_identity_candidate_count_bucket",
   "memory_profile_semantic_candidate_count_bucket",
   "memory_profile_expansion_candidate_count_bucket",
   "memory_profile_seed_ranked_count_bucket",
@@ -370,6 +395,8 @@ const FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS = [
   "environment",
   "execution_context",
   "stored_context",
+  "secret_value_environment_keys",
+  "secretValueEnvironmentKeys",
   "sandbox_token",
   "sandboxToken",
   "presigned_url",
@@ -549,6 +576,19 @@ function sandboxOperationEventsForRun(
   });
 }
 
+function sandboxOperationDurationForRun(
+  runId: string,
+  actionType: string,
+): number {
+  const event = sandboxOperationEventsForRun(runId).find((candidate) => {
+    return candidate.op_type === actionType;
+  });
+  if (!event || typeof event.duration_ms !== "number") {
+    throw new Error(`Missing ${actionType} duration for run ${runId}`);
+  }
+  return event.duration_ms;
+}
+
 function claimRouteTimingEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -639,6 +679,46 @@ function singleSandboxOperationEvent(
   });
   expect(matchingEvents).toHaveLength(1);
   return matchingEvents[0]!;
+}
+
+function expectClaimRouteResponseTimingActions(args: {
+  readonly runId: string;
+  readonly expectedActionTypes: readonly ClaimRouteResponseTimingActionType[];
+  readonly forbiddenValues: readonly string[];
+}): void {
+  const events = claimRouteTimingEventsForRun(args.runId);
+  const expectedActionTypes = new Set(args.expectedActionTypes);
+  for (const actionType of CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    if (!expectedActionTypes.has(actionType)) {
+      expect(matchingEvents).toHaveLength(0);
+      continue;
+    }
+
+    expect(matchingEvents).toHaveLength(1);
+    const event = matchingEvents[0];
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        op_type: actionType,
+        sandbox_type: "runner",
+        success: true,
+        run_id: args.runId,
+        span_kind: "nested",
+      }),
+    );
+    expect(event?.duration_ms).toStrictEqual(expect.any(Number));
+    expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of args.forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
 }
 
 function expectCustomConnectorRuntimePhaseTimingEvents(
@@ -1068,8 +1148,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (!actor.orgId) {
       throw new Error("Memory runtime timing test requires an org");
     }
-    const prompt = "security review answer";
-    const seededMemoryText = "Send the security review answer to the customer.";
+    const prompt = "find customer@example.com security review";
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
@@ -1078,12 +1157,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
       },
     );
-    const seeded = await seedLexicalRelationshipMemory({
-      fixture: { orgId: actor.orgId, userId: actor.userId },
-      displayName: "Security Review",
-      kind: "preference",
-      text: seededMemoryText,
-    });
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
 
     const created = await api.createRun(actor, {
       agentId,
@@ -1106,25 +1180,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    const expectedProfileActionTypes =
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES.filter((actionType) => {
-        return (
-          actionType !==
-          "api_dispatch_pre_create_zero_memory_profile_search_semantic_query"
-        );
-      });
-    expectApiDispatchActions(timingEvents, expectedProfileActionTypes);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    );
     expectApiDispatchEventsSpanKind(
       timingEvents,
       [
         ...API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
-        ...expectedProfileActionTypes,
+        ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
       ],
       "nested",
     );
-    expectNoApiDispatchActions(timingEvents, [
-      "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
-    ]);
+    for (const event of memoryTimingEvents) {
+      expect(event).toStrictEqual(
+        expect.objectContaining({
+          zero_run_origin: "zero_run",
+          trigger_source: "web",
+        }),
+      );
+    }
 
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
@@ -1142,12 +1221,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+        "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_lexical_candidate_count_bucket: "1",
-        memory_profile_lexical_query_eligible: "true",
+        memory_profile_exact_identity_candidate_count_bucket: "0",
+        memory_profile_exact_identity_query_eligible: "true",
       }),
     );
     expect(
@@ -1167,7 +1246,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_semantic_embedding_result: "empty",
+        memory_profile_semantic_embedding_result: "present",
       }),
     );
     expectZeroMemoryTimingBucketDimensions(memoryTimingEvents);
@@ -1176,15 +1255,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       agentId,
       actor.userId,
       actor.orgId,
-      seeded.entityId,
-      seeded.memoryId,
-      seededMemoryText,
+      "vm0-ai/vm0",
+      "source-search-fixture",
+      "https://github.com/vm0-ai/vm0/issues/1",
+      "#1",
     ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("skips runtime memory lexical search for long noisy zero run prompts", async () => {
+  it("skips exact identity lookup for long noisy zero run prompts", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
     if (!actor.orgId) {
@@ -1230,12 +1310,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+        "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_lexical_candidate_count_bucket: "0",
-        memory_profile_lexical_query_eligible: "false",
+        memory_profile_exact_identity_candidate_count_bucket: "0",
+        memory_profile_exact_identity_query_eligible: "false",
       }),
     );
     expect(
@@ -1250,6 +1330,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_pre_create_zero_memory_profile_search_semantic_query",
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
     ]);
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       prompt,
@@ -1261,7 +1342,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("keeps short Unicode runtime memory queries eligible for lexical search", async () => {
+  it("does not treat short Unicode runtime queries as exact identities", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
     if (!actor.orgId) {
@@ -1299,12 +1380,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(
       singleApiDispatchEvent(
         timingEvents,
-        "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+        "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
       ),
     ).toStrictEqual(
       expect.objectContaining({
-        memory_profile_lexical_candidate_count_bucket: "0",
-        memory_profile_lexical_query_eligible: "true",
+        memory_profile_exact_identity_candidate_count_bucket: "0",
+        memory_profile_exact_identity_query_eligible: "false",
       }),
     );
 
@@ -1345,10 +1426,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         memory_runtime_search_query_length_bucket: "0",
       }),
     );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
-    );
+    expectNoApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
 
     await api.requestCancelRun(actor, created.runId, [200]);
   });
@@ -1380,10 +1461,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_MEMORY_RUNTIME_ACTION_TYPES,
     );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
-    );
+    expectNoApiDispatchActions(timingEvents, [
+      ...API_DISPATCH_ZERO_MEMORY_DOCUMENT_ACTION_TYPES,
+      ...API_DISPATCH_ZERO_MEMORY_PROFILE_ACTION_TYPES,
+    ]);
     const runtimeEvent = singleApiDispatchEvent(
       timingEvents,
       "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
@@ -2085,6 +2166,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(serialized).not.toContain(historyHash);
       expect(serialized).not.toContain(first.sessionId);
     }
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-timing-cli-${first.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+    expectClaimRouteResponseTimingActions({
+      runId: resumed.runId,
+      expectedActionTypes: ["claim_route_response_resume_session"],
+      forbiddenValues: [
+        history,
+        historyHash,
+        first.sessionId,
+        resumedClaim.sandboxToken,
+      ],
+    });
 
     const checkpointZeroToken = "bdd-checkpoint-zero-token";
     const checkpointRun = await api.createDirectRun(actor, {
@@ -2239,6 +2339,40 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiError(uncancellable.body);
   });
 
+  it("allows exactly one concurrent runner claim", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim concurrently",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const claims = await Promise.all([
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+    ]);
+    expect(
+      claims
+        .map((claim) => {
+          return claim.status;
+        })
+        .sort((left, right) => {
+          return left - right;
+        }),
+    ).toStrictEqual([200, 404]);
+
+    const running = await api.readRun(actor, run.runId);
+    expect(running.status).toBe("running");
+    expect(running.startedAt).toBeDefined();
+
+    const laterClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(laterClaim.body);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("filters runner polls by supported profiles without widening malformed polls", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2375,6 +2509,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
       readonly mode?: "starting" | "running" | "draining" | "stopping";
+      readonly reusableSandbox?: { readonly profile: string };
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
@@ -2384,6 +2519,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           {
             sessionId: cliAgentSessionId,
             lastCompletedAt: nowDate().toISOString(),
+            ...(args.reusableSandbox
+              ? { reusableSandbox: args.reusableSandbox }
+              : {}),
           },
         ],
         mode: args.mode,
@@ -2507,7 +2645,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     onTestFinished(() => {
       clearMockNow();
     });
-    await heartbeatHolder({ admittableProfiles: ["vm0/default"] });
+    await heartbeatHolder({
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/default" },
+    });
     clearMockNow();
     const staleHolder = await pollFollowUp(
       "continue after holder heartbeat is stale",
@@ -2516,7 +2657,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      admittableProfiles: ["vm0/large"],
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/large" },
     });
     const profileIncompatibleHolder = await pollFollowUp(
       "continue when holder cannot run requested profile",
@@ -2527,7 +2669,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      admittableProfiles: ["vm0/default"],
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/default" },
       mode: "draining",
     });
     const drainingHolder = await pollFollowUp(
@@ -2539,12 +2682,39 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
     });
-    const protectedFollowUp = await api.createRun(actor, {
+    if (!actor.orgId) {
+      throw new Error("Expected affinity actor to have an organization");
+    }
+    const requestStartedAt = now();
+    const queueInsertedAt = requestStartedAt + 5000;
+    mockNow(requestStartedAt);
+    const admissionLockRequest = holdOrgAdmissionLock(context, actor.orgId);
+    onTestFinished(async () => {
+      clearMockNow();
+      await releaseOrgAdmissionLock(context);
+      await admissionLockRequest;
+    });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).held;
+      })
+      .toBe(true);
+
+    const protectedFollowUpRequest = api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
       prompt: "continue affinity-protected session",
       modelProvider: "anthropic-api-key",
     });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).waiting;
+      })
+      .toBe(true);
+    mockNow(queueInsertedAt);
+    await releaseOrgAdmissionLock(context);
+    await admissionLockRequest;
+    const protectedFollowUp = await protectedFollowUpRequest;
 
     const protectedPoll = await api.requestPollRunner(
       true,
@@ -2556,12 +2726,29 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
     expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toBe(
+      new Date(queueInsertedAt + 2000).toISOString(),
     );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    const apiToRunnerQueueMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "api_to_runner_queue",
+    );
+    const runnerQueueToClaimRequestMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "runner_queue_to_claim_request",
+    );
+    const apiToClaimRequestMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "api_to_claim_request",
+    );
+    expect(apiToRunnerQueueMs).toBe(queueInsertedAt - requestStartedAt);
+    expect(runnerQueueToClaimRequestMs).toBe(0);
+    expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
+      apiToClaimRequestMs,
+    );
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
 
     const expiredFollowUp = await api.createRun(actor, {
@@ -2583,6 +2770,132 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue after affinity protection expires",
     );
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
+  });
+
+  it("prioritizes exact reusable work only for its runner and protection window", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start reusable-priority session",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-reusable-priority-${first.runId}`;
+    const history = `bdd reusable priority history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const affinityRunnerId = randomUUID();
+    const priorityBase = now();
+    mockNow(priorityBase);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+
+    const protectedFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "verify reusable holder protection",
+      modelProvider: "anthropic-api-key",
+    });
+    const protectedPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected reusable-holder poll to return 200");
+    }
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+    await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+
+    const olderGeneric = await api.createRun(actor, {
+      agentId,
+      prompt: "older generic FIFO work",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(priorityBase + 1);
+    const newerReusable = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "newer exact reusable work",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const legacyPriorityPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (legacyPriorityPoll.status !== 200) {
+      throw new Error("Expected legacy FIFO poll to return 200");
+    }
+    expect(legacyPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    const reusablePriorityPoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (reusablePriorityPoll.status !== 200) {
+      throw new Error("Expected reusable-priority poll to return 200");
+    }
+    expect(reusablePriorityPoll.body.job?.runId).toBe(newerReusable.runId);
+
+    mockNow(priorityBase + 60_000);
+    const expiredPriorityPoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (expiredPriorityPoll.status !== 200) {
+      throw new Error("Expected expired reusable-priority poll to return 200");
+    }
+    expect(expiredPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    await api.requestCancelRun(actor, newerReusable.runId, [200]);
+    await api.requestCancelRun(actor, olderGeneric.runId, [200]);
   });
 });
 
@@ -2682,9 +2995,83 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("keeps runner expiry on the database clock", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockNow(now() - 3 * 60 * 60 * 1000);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "runner ttl should use the database insertion clock",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const poll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (poll.status !== 200) {
+      throw new Error("Expected runner expiry poll to succeed");
+    }
+    expect(poll.body.job?.runId).toBe(run.runId);
+    await api.claimRunnerJob(run.runId);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("orders equal runner queue timestamps deterministically", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockNow(now());
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "same timestamp runner job one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "same timestamp runner job two",
+      modelProvider: "anthropic-api-key",
+    });
+    const orderedRunIds = [first.runId, second.runId].sort();
+
+    const firstPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (firstPoll.status !== 200) {
+      throw new Error("Expected first deterministic runner poll to succeed");
+    }
+    expect(firstPoll.body.job?.runId).toBe(orderedRunIds[0]);
+    if (!orderedRunIds[0]) {
+      throw new Error("Expected a first ordered runner job");
+    }
+    await api.claimRunnerJob(orderedRunIds[0]);
+
+    const secondPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (secondPoll.status !== 200) {
+      throw new Error("Expected second deterministic runner poll to succeed");
+    }
+    expect(secondPoll.body.job?.runId).toBe(orderedRunIds[1]);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
 
     const first = await api.createRun(actor, {
       agentId,
@@ -2711,15 +3098,45 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(queued.body.queue).toHaveLength(1);
     expect(queued.body.queue[0]?.runId).toBe(third.runId);
 
+    const promotedAt = now() + 5000;
+    mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
 
     const promoted = await waitForRunStatus(api, actor, third.runId, "pending");
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    const decryptCountBeforeClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
     expect(thirdClaim.prompt).toBe("queued run three");
+    const zeroToken = thirdClaim.environment?.ZERO_TOKEN;
+    if (!zeroToken) {
+      throw new Error("Expected the promoted claim to expose the zero token");
+    }
+    expect(thirdClaim.secretValues).toContain(zeroToken);
+    expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const apiToRunnerQueueMs = sandboxOperationDurationForRun(
+      third.runId,
+      "api_to_runner_queue",
+    );
+    const runnerQueueToClaimRequestMs = sandboxOperationDurationForRun(
+      third.runId,
+      "runner_queue_to_claim_request",
+    );
+    const apiToClaimRequestMs = sandboxOperationDurationForRun(
+      third.runId,
+      "api_to_claim_request",
+    );
+    expect(apiToRunnerQueueMs).toBe(0);
+    expect(runnerQueueToClaimRequestMs).toBe(0);
+    expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
+      apiToClaimRequestMs,
+    );
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeClaim,
+    );
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
@@ -4852,20 +5269,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("resolves compose secret references into direct run environments", async () => {
+  it("restores prepared masking values from direct run environments", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
-    const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
-
-    await authOrg.setSecret(actor, {
-      name: "SHARED_TOKEN",
-      value: "user-shared-secret",
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
     });
     const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
@@ -4875,7 +5290,8 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
           framework: "claude-code",
           environment: {
             ANTHROPIC_API_KEY: "bdd-inline-key",
-            EXTERNAL_TOKEN: `\${{ secrets.SHARED_TOKEN }}`,
+            FIRST_TOKEN: `\${{ secrets.FIRST_TOKEN }}`,
+            SECOND_TOKEN: `\${{ secrets.SECOND_TOKEN }}`,
           },
         },
       },
@@ -4883,17 +5299,150 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
-      prompt: "resolve referenced secrets",
+      prompt: "restore prepared masking values",
+      secrets: {
+        FIRST_TOKEN: "first-secret-value",
+        SECOND_TOKEN: "second-secret-value",
+        REPEATED_TOKEN: "first-secret-value",
+        UNUSED_TOKEN: "unused-secret-value",
+      },
     });
+    const decryptCountBeforeClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
     const claim = await api.claimRunnerJob(run.runId);
-    expect(claim.environment?.EXTERNAL_TOKEN).toBe("user-shared-secret");
-    expect(claim.secretValues).toContain("user-shared-secret");
+    expect(claim.environment?.FIRST_TOKEN).toBe("first-secret-value");
+    expect(claim.environment?.SECOND_TOKEN).toBe("second-secret-value");
+    expect(claim.secretValues).toStrictEqual([
+      "first-secret-value",
+      "second-secret-value",
+      "first-secret-value",
+    ]);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeClaim,
+    );
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const claimActionTypes = new Set(
+      claimRouteTimingEventsForRun(run.runId).map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES) {
+      expect(claimActionTypes).not.toContain(actionType);
+    }
     expect(claim.firewalls ?? []).toStrictEqual([]);
     expect(claim.networkPolicies ?? {}).toStrictEqual({});
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("rejects missing masking metadata but falls back completely for invalid keys", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
+    const composeName = `bdd-secret-fallback-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            FIRST_TOKEN: `\${{ secrets.FIRST_TOKEN }}`,
+            SECOND_TOKEN: `\${{ secrets.SECOND_TOKEN }}`,
+          },
+        },
+      },
+    });
+
+    const missingRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "reject missing masking metadata",
+      secrets: {
+        FIRST_TOKEN: "first-missing-secret",
+        SECOND_TOKEN: "second-missing-secret",
+      },
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      missingRun.runId,
+      "remove",
+    );
+    const decryptCountBeforeMissingClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
+
+    const missingClaim = await api.requestClaimRunnerJob(
+      true,
+      missingRun.runId,
+      [400],
+    );
+    expectApiError(missingClaim.body);
+    expect(missingClaim.body.error.message).toBe(
+      "Job missing execution context",
+    );
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeMissingClaim,
+    );
+    const failedMissingRun = await api.readRun(actor, missingRun.runId);
+    expect(failedMissingRun.status).toBe("failed");
+    expect(failedMissingRun.error).toBe(
+      "Runner job missing valid execution context",
+    );
+
+    const invalidRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "materialize invalid masking metadata",
+      secrets: {
+        FIRST_TOKEN: "first-fallback-secret",
+        SECOND_TOKEN: "second-fallback-secret",
+      },
+    });
+    await mutateRunnerJobSecretValueEnvironmentKeys(
+      context,
+      invalidRun.runId,
+      "invalid",
+    );
+    const decryptCountBeforeInvalidClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
+
+    const claim = await api.claimRunnerJob(invalidRun.runId);
+
+    expect(claim.secretValues).toStrictEqual([
+      "first-fallback-secret",
+      "second-fallback-secret",
+    ]);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeInvalidClaim + 1,
+    );
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const materializationEvent = singleSandboxOperationEvent(
+      claimRouteTimingEventsForRun(invalidRun.runId),
+      "claim_route_secret_materialization",
+    );
+    expect(materializationEvent).toStrictEqual(
+      expect.objectContaining({
+        fallback_reason: "invalid_keys",
+        span_kind: "top_level",
+      }),
+    );
+    expect(
+      claimRouteTimingEventsForRun(invalidRun.runId).some((event) => {
+        return event.op_type === "claim_route_feature_switch_context";
+      }),
+    ).toBeFalsy();
+
+    await api.requestCancelRun(actor, invalidRun.runId, [200]);
   });
 });
 
@@ -4952,6 +5501,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       `Bearer \${{ secrets.${secretKey} }}`,
     );
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
+    expect(claim.secretValues).not.toContain("custom-secret-value");
 
     const resolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -5651,6 +6201,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const grantedContext = await claimSlackContext("granted permissions");
     const granted = grantedContext.policy;
+    expectClaimRouteResponseTimingActions({
+      runId: grantedContext.claim.runId,
+      expectedActionTypes: ["claim_route_response_network_policy_refresh"],
+      forbiddenValues: [
+        "granted permissions",
+        "slack",
+        grantedContext.claim.sandboxToken,
+      ],
+    });
     expect(
       grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
     ).toStrictEqual(expect.any(String));
@@ -5768,6 +6327,246 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    const drained = await api.readRunQueue(actor);
+    expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("records co-occurring resume and policy response timing", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-claim-response-timing",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+    await api.heartbeatRunner(runnerGroup);
+
+    const firstPrompt = "start combined claim response timing";
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.networkPolicies?.slack).toBeDefined();
+
+    const history = `bdd combined claim history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-combined-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, first.runId);
+    expect(completed.status).toBe("completed");
+
+    const resumedPrompt = "continue combined claim response timing";
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: resumedPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-combined-cli-${first.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+    expect(resumedClaim.networkPolicies?.slack).toBeDefined();
+    expectClaimRouteResponseTimingActions({
+      runId: resumed.runId,
+      expectedActionTypes: [
+        "claim_route_response_resume_session",
+        "claim_route_response_network_policy_refresh",
+      ],
+      forbiddenValues: [
+        firstPrompt,
+        resumedPrompt,
+        history,
+        historyHash,
+        first.sessionId,
+        "slack",
+        "xoxb-bdd-claim-response-timing",
+        resumedClaim.sandboxToken,
+      ],
+    });
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
+  });
+
+  it("preserves session agent identity when compose versions are shared", async () => {
+    const bdd = createBddApi(context);
+    const authOrg = createAuthOrgAgentsBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const reads = createRunReadsApi(context);
+    const foreignActor = bdd.user();
+    const actor = bdd.user();
+
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+
+    const foreignStatus = await bdd.requestReadOnboardingStatus(
+      foreignActor,
+      [200],
+    );
+    if (foreignStatus.status !== 200) {
+      throw new Error("Expected foreign onboarding status");
+    }
+    const foreignAgentId = foreignStatus.body.defaultAgentId;
+    if (!foreignAgentId) {
+      throw new Error("Expected foreign default agent bootstrap");
+    }
+
+    const currentStatus = await bdd.requestReadOnboardingStatus(actor, [200]);
+    if (currentStatus.status !== 200) {
+      throw new Error("Expected current onboarding status");
+    }
+    const agentId = currentStatus.body.defaultAgentId;
+    if (!agentId) {
+      throw new Error("Expected current default agent bootstrap");
+    }
+    expect(agentId).not.toBe(foreignAgentId);
+
+    const foreignCompose = await authOrg.readComposeById(
+      foreignActor,
+      foreignAgentId,
+    );
+    const currentCompose = await authOrg.readComposeById(actor, agentId);
+    expect(foreignCompose.headVersionId).toStrictEqual(expect.any(String));
+    expect(currentCompose.headVersionId).toBe(foreignCompose.headVersionId);
+
+    await bdd.updateAgentMetadata(foreignActor, foreignAgentId, {
+      displayName: "Foreign shared agent",
+    });
+    await bdd.updateAgentMetadata(actor, agentId, {
+      displayName: "Current shared agent",
+    });
+
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-shared-version",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+
+    await api.applyUserPermissionGrant(foreignActor, {
+      agentId: foreignAgentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "chat:write",
+      action: "allow",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const parent = await api.createRun(actor, {
+      agentId,
+      prompt: "shared version parent run",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(parent.runId);
+    const claimedPolicy = claim.networkPolicies?.slack;
+    if (!claimedPolicy) {
+      throw new Error("Expected shared-version Slack policy");
+    }
+    expect(claimedPolicy.allow).toContain("chat:write");
+    expect(claimedPolicy.deny).not.toContain("chat:write");
+    expect(claimedPolicy.deny).toContain("files:write");
+    expect(claimedPolicy.allow).not.toContain("files:write");
+
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.runningTasks).toContainEqual(
+      expect.objectContaining({
+        runId: parent.runId,
+        agentDisplayName: "Current shared agent",
+      }),
+    );
+    expect(queue.body.runningTasks).not.toContainEqual(
+      expect.objectContaining({
+        agentDisplayName: "Foreign shared agent",
+      }),
+    );
+
+    context.mocks.ably.publish.mockClear();
+    await api.applyUserPermissionGrant(actor, {
+      agentId,
+      connectorRef: "slack",
+      permission: "files:write",
+      action: "allow",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "network-policy-refresh",
+      { runId: parent.runId, connectorRef: "slack" },
+    );
+
+    const refreshed = await api.refreshRunnerNetworkPolicy(
+      parent.runId,
+      "slack",
+    );
+    expect(refreshed.networkPolicy.allow).toContain("chat:write");
+    expect(refreshed.networkPolicy.allow).toContain("files:write");
+    expect(refreshed.networkPolicy.deny).not.toContain("files:write");
+
+    const parentToken = api.zeroTokenForRunWithCapabilities(
+      actor,
+      parent.runId,
+      ["agent-run:write"],
+    );
+    const child = await api.requestCreateRunAs(
+      `Bearer ${parentToken}`,
+      {
+        agentId,
+        prompt: "shared version child run",
+        modelProvider: "anthropic-api-key",
+      },
+      [201],
+    );
+    if (child.status !== 201) {
+      throw new Error("Expected shared-version child run creation");
+    }
+    const childLog = await reads.requestReadLogById(
+      actor,
+      child.body.runId,
+      [200],
+    );
+    expect(childLog.body).toMatchObject({
+      id: child.body.runId,
+      agentId,
+      displayName: "Current shared agent",
+      triggerSource: "agent",
+      triggerAgentName: "Current shared agent",
+    });
+
+    await api.requestCancelRun(actor, child.body.runId, [200]);
+    await api.requestCancelRun(actor, parent.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
   });
@@ -6187,6 +6986,30 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
   });
+
+  it("serializes concurrent claim and cancellation without deadlock", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "claim while cancelling",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const [claim, cancellation] = await Promise.all([
+      api.requestClaimRunnerJob(true, run.runId, [200, 404]),
+      api.requestCancelRun(actor, run.runId, [200]),
+    ]);
+    expect([200, 404]).toContain(claim.status);
+    expect(cancellation.status).toBe(200);
+
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+
+    const laterClaim = await api.requestClaimRunnerJob(true, run.runId, [404]);
+    expectApiError(laterClaim.body);
+  });
 });
 
 describe("RUN-03: user-runner protocol and runner authentication", () => {
@@ -6236,6 +7059,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     }
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
+    expectClaimRouteResponseTimingActions({
+      runId: first.runId,
+      expectedActionTypes: [],
+      forbiddenValues: [firstPrompt, claimed.body.sandboxToken, apiKey.token],
+    });
     const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
     expect(claimRouteTimingEvents).toHaveLength(
       CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
@@ -6247,6 +7075,9 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     );
     for (const actionType of CLAIM_ROUTE_TIMING_ACTION_TYPES) {
       expect(observedClaimRouteActionTypes).toContain(actionType);
+    }
+    for (const actionType of CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES) {
+      expect(observedClaimRouteActionTypes).not.toContain(actionType);
     }
     for (const actionType of CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES) {
       const events = claimRouteTimingEvents.filter((event) => {
@@ -6287,6 +7118,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
       expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
       expect(["top_level", "nested"]).toContain(event.span_kind);
+      expect(event).not.toHaveProperty("fallback_reason");
       for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
         expect(event).not.toHaveProperty(forbiddenKey);
       }
@@ -6602,6 +7434,10 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
+    });
 
     // A plain compose carries inline environment values but no body, model
     // provider, or connector secrets, so no encrypted secrets map is stored
@@ -6623,13 +7459,34 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(run.status).toBe("pending");
 
+    const decryptCountBeforeNullClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.secretValues).toBeNull();
     expect(claim.prompt).toBe("claim without stored secrets");
+    expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeNullClaim,
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+
+    const emptyRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "claim without matching environment secrets",
+      secrets: { UNUSED_TOKEN: "unused-secret-value" },
+    });
+    const decryptCountBeforeEmptyClaim =
+      await readAutomationsFakeKmsDecryptCallCount(context);
+    const emptyClaim = await api.claimRunnerJob(emptyRun.runId);
+    expect(emptyClaim.secretValues).toStrictEqual([]);
+    expect(emptyClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      decryptCountBeforeEmptyClaim,
+    );
+    await api.requestCancelRun(actor, emptyRun.runId, [200]);
 
     // A compose pinned to a non-vm0 runner group fails dispatch at creation.
     const foreignName = `bdd-foreign-${randomUUID().slice(0, 8)}`;
@@ -7225,6 +8082,24 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     expect(beforeUsage.body.period).not.toBeNull();
     expect(beforeUsage.body.members).toStrictEqual([]);
 
+    const imageProvider = `bdd-member-usage-${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "image",
+        provider: imageProvider,
+        categories: ["output_image.low.standard"],
+      });
+    });
+    await seedUsagePricingRows([
+      {
+        kind: "image",
+        provider: imageProvider,
+        category: "output_image.low.standard",
+        unitPrice: 7,
+        unitSize: 1,
+      },
+    ]);
+
     const member = bdd.user({ orgId: actor.orgId });
     const memberAgent = await bdd.createAgent(member, {
       displayName: "BDD member usage agent",
@@ -7253,7 +8128,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "image",
-            provider: "gpt-image-2",
+            provider: imageProvider,
             category: "output_image.low.standard",
             quantity: 1,
           },
@@ -7269,7 +8144,7 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "image",
-            provider: "gpt-image-2",
+            provider: imageProvider,
             category: "output_image.low.standard",
             quantity: 2,
           },
@@ -7571,7 +8446,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
 });
 
 describe("RUN-03: sandbox completion reports against missing checkpoints and settled runs", () => {
-  it("fails a clean exit whose run never reported a checkpoint", async () => {
+  it("acknowledges a clean exit whose missing checkpoint fails the run", async () => {
     const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -7588,10 +8463,14 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     const missing = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
       sandboxHeaders,
-      [404],
+      [200],
     );
-    expectApiError(missing.body);
-    expect(missing.body.error.message).toBe("Checkpoint for run not found");
+    if (missing.status !== 200) {
+      throw new Error(
+        "Expected the missing checkpoint failure to be acknowledged",
+      );
+    }
+    expect(missing.body).toStrictEqual({ success: true, status: "failed" });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `run:changed:${run.runId}`,
       { status: "failed" },

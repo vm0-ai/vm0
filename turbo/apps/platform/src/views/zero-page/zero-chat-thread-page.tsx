@@ -14,6 +14,7 @@ import {
   useLastResolved,
   useLoadable,
 } from "ccstate-react";
+import { equalArrays } from "../../lib/equality.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -152,10 +153,7 @@ import type { PermissionActionBlock } from "../../signals/chat-page/permission-a
 import type { ComputerUseAuthorizationBlock } from "../../signals/chat-page/computer-use-authorization-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "./components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { lightboxUrl$ as attachmentLightboxUrl$ } from "../../signals/zero-page/zero-attachment-chips.ts";
@@ -274,7 +272,8 @@ import { openRenameChatThreadDialogForThreadId$ } from "../../signals/chat-page/
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
-  ZeroChatComposer,
+  useZeroChatComposer,
+  type ZeroChatComposerProps,
   type QueuedComposerItem,
   type ComposerFeedback,
 } from "./zero-chat-composer.tsx";
@@ -3635,9 +3634,12 @@ function ChatThreadSkeletonOverlay({
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
+  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$, {
+    equalityFn: equalArrays,
+  });
   const renderedGroupsLoadable = useLastLoadable(
     thread.renderedGroupedChatMessages$,
+    { equalityFn: equalArrays },
   );
   const threadMetaLoadable = useLastLoadable(thread.threadMeta$);
   const sessionError = resolveSessionError(threadMetaLoadable, groupsLoadable);
@@ -3843,7 +3845,7 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const [, sendMessage] = useLoadableSet(thread.sendMessage$);
-  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const selectedModel = useLastResolved(thread.selectedModel$) ?? null;
   const rootSignal = useGet(rootSignal$);
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
@@ -3862,7 +3864,7 @@ function RecommendedFollowupList({
     detach(
       sendMessage(
         followup.prompt,
-        modelSelection,
+        selectedModel ? { selectedModel } : null,
         {
           includeDraftAttachments: false,
         },
@@ -3991,18 +3993,15 @@ function resolveChatComposerModelPicker(params: {
 
 function useChatComposerQueue(
   thread: ChatThreadSignals,
-  groups: GroupedChatMessageGroup[],
+  queuedUserMessages: readonly EnrichedChatMessage[],
 ) {
   const recallMessage = useSet(thread.recallMessage$);
   const focusInput = useSet(thread.focusInput$);
   const pageSignal = useGet(pageSignal$);
 
-  const { queuedGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const queuedMessagesById = new Map(
-    queuedGroups.flatMap((group) => {
-      return group.messages.map((message) => {
-        return [message.id, message] as const;
-      });
+    queuedUserMessages.map((message) => {
+      return [message.id, message] as const;
     }),
   );
   const queuedItems: QueuedComposerItem[] = Array.from(
@@ -4058,9 +4057,11 @@ function useChatComposerModel(
   // Per-thread composer selection comes from the event projection. Read with
   // useLastResolved so the picker keeps the previous value while realtime
   // callbacks refetch the thread detail for non-selection fields.
-  const modelSelectionResolved = useLastResolved(thread.modelSelection$);
+  const selectedModelResolved = useLastResolved(thread.selectedModel$);
   const threadDetail = useLastResolved(thread.remoteThreadDetail$);
-  const baseModelSelection = modelSelectionResolved ?? null;
+  const baseModelSelection = selectedModelResolved
+    ? { selectedModel: selectedModelResolved }
+    : null;
   const modelSelection =
     baseModelSelection && threadDetail?.codexServiceTier
       ? {
@@ -4085,7 +4086,7 @@ function useChatComposerModel(
         disabled: false,
       })
     : undefined;
-  const modelPickerLoading = modelSelectionResolved === undefined;
+  const modelPickerLoading = selectedModelResolved === undefined;
   const submitBlockerProps = modelSelection
     ? resolveChatComposerSubmitBlocker({
         personalModelProvider,
@@ -4151,9 +4152,24 @@ function useChatThreadComposerSendState({
     );
   };
 
+  const handleFeedbackSend = (text: string) => {
+    detach(
+      send(
+        text,
+        modelSelection,
+        {
+          includeDraftAttachments: true,
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
   return {
     handleSend,
     handleQueue,
+    handleFeedbackSend,
     sendLoading: sendLoadable.state === "loading",
     templatePicker: {
       value: generationTemplate,
@@ -4169,11 +4185,10 @@ function useChatThreadComputerUse(
   pageSignal: AbortSignal,
 ) {
   const computerUseHostsLoadable = useLastLoadable(computerUseHosts$);
-  const lastResolvedComputerUseHosts = useLastResolved(computerUseHosts$) ?? [];
   const computerUseHosts =
     computerUseHostsLoadable.state === "hasData"
       ? computerUseHostsLoadable.data
-      : lastResolvedComputerUseHosts;
+      : [];
   const storedComputerUseHostId = useLastResolved(thread.computerUseHostId$);
   const computerUseHostIdExplicit = useGet(thread.computerUseHostIdExplicit$);
   const selectedComputerUseHostId =
@@ -4219,7 +4234,7 @@ function useChatThreadComputerUse(
 // keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
-  modelSelection: ModelProviderSelection | null,
+  sendFeedback: (prompt: string) => void,
 ): ComposerFeedback | undefined {
   const items = useGet(feedbackItemsValue$);
   const feedbackThreadId = useGet(feedbackThreadIdValue$);
@@ -4228,8 +4243,6 @@ function useChatThreadComposerFeedback(
   const removeItem = useSet(removeFeedbackItem$);
   const compose = useSet(submitFeedback$);
   const dismiss = useSet(dismissFeedback$);
-  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
-  const rootSignal = useGet(rootSignal$);
 
   // Feedback is owned by the thread it was drafted in; other threads keep their
   // own composer textarea so a draft never bleeds across chats.
@@ -4250,17 +4263,7 @@ function useChatThreadComposerFeedback(
       if (prompt === null) {
         return;
       }
-      detach(
-        sendMessage(
-          prompt,
-          modelSelection,
-          {
-            includeDraftAttachments: true,
-          },
-          rootSignal,
-        ),
-        Reason.DomCallback,
-      );
+      sendFeedback(prompt);
       dismiss();
     },
     onDismiss: () => {
@@ -4271,11 +4274,9 @@ function useChatThreadComposerFeedback(
 
 function useChatThreadComposerWorkflowPrompt({
   thread,
-  input,
   pageSignal,
 }: {
   thread: ChatThreadSignals;
-  input: string;
   pageSignal: AbortSignal;
 }): {
   onCreateWorkflowPrompt: (() => void) | undefined;
@@ -4284,6 +4285,7 @@ function useChatThreadComposerWorkflowPrompt({
   onReplaceDialogOpenChange: (open: boolean) => void;
 } {
   const attachments = useGet(thread.draft.attachments$);
+  const readInput = useSet(thread.draft.readInput$);
   const setInput = useSet(thread.draft.setInput$);
   const clearDraft = useSet(thread.draft.clear$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
@@ -4291,7 +4293,6 @@ function useChatThreadComposerWorkflowPrompt({
   const replaceDraftTarget = useGet(replaceWorkflowPromptDraftTarget$);
   const setReplaceDraftTarget = useSet(setReplaceWorkflowPromptDraftTarget$);
   const workflowPromptDraftTarget = `composer:${thread.threadId}`;
-  const hasComposerDraft = input.trim().length > 0 || attachments.length > 0;
   const replaceDraftDialogOpen =
     replaceDraftTarget === workflowPromptDraftTarget;
 
@@ -4303,7 +4304,7 @@ function useChatThreadComposerWorkflowPrompt({
   };
 
   const handleCreateWorkflowPrompt = () => {
-    if (hasComposerDraft) {
+    if (readInput().trim().length > 0 || attachments.length > 0) {
       setReplaceDraftTarget(workflowPromptDraftTarget);
       return;
     }
@@ -4327,51 +4328,29 @@ function useChatThreadComposerWorkflowPrompt({
   };
 }
 
-function resolveChatThreadComposerActivity({
-  groups,
-  sending,
-}: {
-  groups: readonly GroupedChatMessageGroup[];
-  sending: boolean;
-}): {
-  composerSending: boolean;
-  queueWhileSending: boolean;
-} {
-  const lastGroup = groups[groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const composerSending = sending && !lastAssistantCancelled;
-  return {
-    composerSending,
-    queueWhileSending: canQueueMessage({
-      sending: composerSending,
-    }),
-  };
+const EMPTY_QUEUED_USER_MESSAGES: readonly EnrichedChatMessage[] = [];
+
+function useQueuedUserMessages(thread: ChatThreadSignals) {
+  const hasQueuedUserMessages =
+    useLastResolved(thread.hasQueuedUserMessages$) ?? false;
+  const queuedUserMessages$ = hasQueuedUserMessages
+    ? thread.queuedUserMessages$
+    : thread.emptyQueuedUserMessages$;
+  return (
+    useLastResolved(queuedUserMessages$, { equalityFn: equalArrays }) ??
+    EMPTY_QUEUED_USER_MESSAGES
+  );
 }
 
-function ChatThreadComposer({
-  thread,
-  autoFocus: autoFocusProp = true,
-}: {
-  thread: ChatThreadSignals;
-  autoFocus?: boolean;
-}) {
-  const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
-  const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
-  const hasMessages = groups.length > 0;
+function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
+  const queuedUserMessages = useQueuedUserMessages(thread);
+  const hasMessagesResolved = useLastResolved(thread.hasChatGroups$);
+  const hasMessages = hasMessagesResolved ?? false;
+  const lastAssistantCancelled =
+    useLastResolved(thread.lastAssistantCancelled$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  // useLastResolved (not useLastLoadable) so refetches keep the previously
-  // resolved value instead of flipping `sending` and the placeholder.
   const allFinished = useLastResolved(thread.allFinished$)!;
-  const input = useGet(thread.draft.input$);
-  const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
-  const setInputRef = useSet(thread.setInputRef$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
   const {
@@ -4382,10 +4361,8 @@ function ChatThreadComposer({
 
   const { queuedItems, onRemoveQueuedItem } = useChatComposerQueue(
     thread,
-    groups,
+    queuedUserMessages,
   );
-  // The active goal row above the composer, with its cancel handler folded from
-  // the thread's message stream, no separate resource poll.
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
@@ -4396,86 +4373,80 @@ function ChatThreadComposer({
     submitBlockerProps,
     modelSelection,
   } = useChatComposerModel(thread, pageSignal);
-  const { handleSend, handleQueue, sendLoading, templatePicker } =
-    useChatThreadComposerSendState({
-      thread,
-      modelSelection,
-      computerUseHostIdForSend,
-      clearComputerUseHostOverride,
-    });
+  const {
+    handleSend,
+    handleQueue,
+    handleFeedbackSend,
+    sendLoading,
+    templatePicker,
+  } = useChatThreadComposerSendState({
+    thread,
+    modelSelection,
+    computerUseHostIdForSend,
+    clearComputerUseHostOverride,
+  });
   const sending = !allFinished || sendLoading;
-  const skeletonVisible = groupsLoadable.state === "loading";
-  const { composerSending, queueWhileSending } =
-    resolveChatThreadComposerActivity({
-      groups,
-      sending,
-    });
-
-  const handleInputChange = (text: string) => {
-    setInput(text);
-    detach(queueDraftSync(pageSignal), Reason.DomCallback);
-  };
+  const skeletonVisible = hasMessagesResolved === undefined;
+  const composerSending = sending && !lastAssistantCancelled;
+  const queueWhileSending = canQueueMessage({ sending: composerSending });
 
   const handleDraftChange = () => {
     detach(queueDraftSync(pageSignal), Reason.DomCallback);
   };
 
-  const feedback = useChatThreadComposerFeedback(thread, modelSelection);
+  const feedback = useChatThreadComposerFeedback(thread, handleFeedbackSend);
   const workflowPrompt = useChatThreadComposerWorkflowPrompt({
     thread,
-    input,
     pageSignal,
   });
+  const composerOptions: ZeroChatComposerProps = {
+    composer: thread.workflowComposer,
+    onSend: handleSend,
+    onQueue: handleQueue,
+    sending: composerSending,
+    queueWhileSending,
+    onCancel:
+      !allFinished || sendLoading
+        ? () => {
+            detach(cancelRun(pageSignal), Reason.DomCallback);
+          }
+        : undefined,
+    displayName,
+    className: "w-full min-w-0",
+    autoFocus: shouldAutoFocusComposer({
+      autoFocus: true,
+      hasMessages,
+    }),
+    enableMobileSingleLine: true,
+    onDraftChange: handleDraftChange,
+    draft: thread.draft,
+    composerFileInput$: thread.composerFileInput$,
+    setComposerFileInput$: thread.setComposerFileInput$,
+    chatThreadId: thread.threadId,
+    actionsLoading: skeletonVisible,
+    modelPicker,
+    templatePicker,
+    onCreateWorkflowPrompt: workflowPrompt.onCreateWorkflowPrompt,
+    computerUse,
+    modelPickerLoading,
+    submitBlocker: submitBlockerProps,
+    queuedItems,
+    onRemoveQueuedItem,
+    activeGoal,
+    onCancelActiveGoal,
+    feedback,
+  };
+  const composer = useZeroChatComposer(composerOptions);
 
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 bg-[hsl(var(--background))]"
-      style={{ paddingBottom: "max(0.5rem, var(--sab))" }}
+      className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
         <div className="mx-auto max-w-[900px]">
-          <ZeroChatComposer
-            className="w-full min-w-0"
-            input={input}
-            onInputChange={handleInputChange}
-            onSend={handleSend}
-            onQueue={handleQueue}
-            sending={composerSending}
-            queueWhileSending={queueWhileSending}
-            onCancel={
-              !allFinished || sendLoading
-                ? () => {
-                    detach(cancelRun(pageSignal), Reason.DomCallback);
-                  }
-                : undefined
-            }
-            displayName={displayName}
-            autoFocus={shouldAutoFocusComposer({
-              autoFocus: autoFocusProp,
-              hasMessages,
-            })}
-            enableMobileSingleLine
-            onDraftChange={handleDraftChange}
-            draft={thread.draft}
-            composerFileInput$={thread.composerFileInput$}
-            setComposerFileInput$={thread.setComposerFileInput$}
-            setInputRef={setInputRef}
-            chatThreadId={thread.threadId}
-            actionsLoading={skeletonVisible}
-            modelPicker={modelPicker}
-            templatePicker={templatePicker}
-            onCreateWorkflowPrompt={workflowPrompt.onCreateWorkflowPrompt}
-            computerUse={computerUse}
-            modelPickerLoading={modelPickerLoading}
-            submitBlocker={submitBlockerProps}
-            queuedItems={queuedItems}
-            onRemoveQueuedItem={onRemoveQueuedItem}
-            activeGoal={activeGoal}
-            onCancelActiveGoal={onCancelActiveGoal}
-            feedback={feedback}
-          />
+          {composer}
           <ReplaceComposerDraftDialog
             open={workflowPrompt.replaceDraftDialogOpen}
             onOpenChange={workflowPrompt.onReplaceDialogOpenChange}
@@ -5065,13 +5036,9 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
   const displayMetadata = useLastResolved(block.displayMetadata$);
   const [activateLoadable, activate] = useLoadableSet(block.activate$);
   const activating = activateLoadable.state === "loading";
-  const connectorType = block.connectorType;
-
   if (!available || !displayMetadata) {
     return null;
   }
-
-  const canActivate = connectorType !== null;
 
   return (
     <div
@@ -5080,11 +5047,7 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          {connectorType ? (
-            <ConnectorIcon type={connectorType} size={22} />
-          ) : (
-            <IconPackage size={22} />
-          )}
+          <ConnectorIcon icon={displayMetadata.icon} size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5097,14 +5060,14 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       </div>
       <button
         type="button"
-        disabled={complete || activating || !canActivate}
+        disabled={complete || activating}
         onClick={() => {
           detach(activate(pageSignal), Reason.DomCallback);
         }}
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
-        {!canActivate ? "Unavailable" : complete ? "Connected" : "Connect"}
+        {complete ? "Connected" : "Connect"}
       </button>
     </div>
   );
@@ -5593,6 +5556,7 @@ function createPermissionActionHandler(params: {
 
 function PermissionActionCardContent({
   block,
+  icon,
   connectorLabel,
   actionLabel,
   permissionName,
@@ -5604,6 +5568,7 @@ function PermissionActionCardContent({
   onClick,
 }: {
   block: PermissionActionBlock;
+  icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;
@@ -5614,11 +5579,6 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
-  const connectorIcon = isConnectorIconType(block.connectorRef) ? (
-    <ConnectorIcon type={block.connectorRef} size={22} />
-  ) : (
-    <IconPackage size={22} />
-  );
   const expiryText = expirationAvailable
     ? permissionGrantExpiryText(expiresAt)
     : null;
@@ -5634,7 +5594,7 @@ function PermissionActionCardContent({
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          {connectorIcon}
+          <ConnectorIcon icon={icon} size={22} />
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
@@ -5730,6 +5690,7 @@ function PermissionActionCardForTarget({
   return (
     <PermissionActionCardContent
       block={block}
+      icon={permissionMetadata?.icon}
       connectorLabel={permissionMetadata?.label ?? block.connectorRef}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}

@@ -372,6 +372,25 @@ fn is_sha256_hex(value: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn session_history_identity_verify_exit_codes_are_stable() {
+        assert_eq!(
+            [
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+            ],
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        );
+    }
+
     fn valid_identity() -> FinalSessionHistoryIdentity {
         FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,

@@ -4,7 +4,6 @@ use std::net::IpAddr;
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
-use uuid::Uuid;
 
 use api_contracts::generated::types::runners::storage::StorageManifest;
 
@@ -40,9 +39,15 @@ pub struct Job {
 
 // ---------------------------------------------------------------------------
 // Claim (execution context)
-// Keep in sync with TS: turbo/packages/api-contracts/src/contracts/runners.ts → executionContextSchema
 // ---------------------------------------------------------------------------
 
+/// Normalized inputs consumed by API-claimed and locally submitted jobs.
+///
+/// API claim responses deserialize directly into this type. It intentionally models only the
+/// runner-owned subset of the response, and unknown top-level fields are ignored for forward
+/// compatibility. The canonical producer schema is
+/// `runnersJobClaimContract.claim.responses[200]` in
+/// `turbo/packages/api-contracts/src/contracts/runners.ts`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContext {
@@ -50,17 +55,9 @@ pub struct ExecutionContext {
     pub prompt: String,
     #[serde(default)]
     pub append_system_prompt: Option<String>,
-    // Agent compose version ID (full SHA-256 content hash).
-    // Deserialized for forward compatibility but not consumed by runner.
-    #[serde(default, rename = "agentComposeVersionId")]
-    pub _agent_compose_version_id: Option<String>,
     // Vars are passed to the proxy registry for auth header template resolution.
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
-    // Checkpoint resume not yet implemented
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub checkpoint_id: Option<Uuid>,
     pub sandbox_token: String,
     #[serde(default)]
     pub storage_manifest: Option<StorageManifest>,
@@ -109,10 +106,6 @@ pub struct ExecutionContext {
     pub tools: Option<Vec<String>>,
     #[serde(default)]
     pub settings: Option<String>,
-    // Profile selection — handled by api provider at discover time, not read on ExecutionContext
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub experimental_profile: Option<String>,
     // Feature flags evaluated at job creation time (all switch states for user/org)
     #[serde(default)]
     pub feature_flags: Option<HashMap<String, bool>>,
@@ -427,6 +420,17 @@ fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     if raw_syntax_target.contains('#') {
         return Err("base URL must not contain fragment".to_string());
     }
+    let raw_path = if template_syntax_target.is_some() && !raw_syntax_target.contains("://") {
+        raw_syntax_target
+            .strip_prefix("template")
+            .filter(|suffix| suffix.starts_with('/'))
+            .unwrap_or("")
+    } else {
+        raw_url_path(raw_syntax_target)
+    };
+    if path_has_unsafe_segments_for_cache(raw_path) {
+        return Err("base URL must not contain unsafe path".to_string());
+    }
     if template_syntax_target.is_some() {
         if (raw_syntax_target.contains('{') || raw_syntax_target.contains('}'))
             && raw_syntax_target.contains("://")
@@ -732,7 +736,7 @@ pub struct FirewallAuth {
     #[serde(default)]
     pub headers: std::collections::HashMap<String, String>,
     /// Optional base URL template for URL rewriting (e.g. webhook-url connectors).
-    /// When set, the proxy rewrites the request URL instead of injecting headers.
+    /// When set, the proxy rewrites the request URL before applying resolved auth.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
     /// Optional query parameters with secret/var templates for query-param auth.
@@ -753,6 +757,9 @@ impl FirewallAuth {
             return Ok(());
         };
         aws_sigv4.validate_for_cache()?;
+        if self.base.is_some() {
+            return Err("auth.base cannot be combined with auth.awsSigv4".to_string());
+        }
         if !self.headers.is_empty() {
             return Err("auth.headers cannot be combined with auth.awsSigv4".to_string());
         }
@@ -979,9 +986,12 @@ fn raw_url_path(value: &str) -> &str {
     let Some(rest) = value.split_once("://").map(|(_, rest)| rest) else {
         return "";
     };
-    let Some(path_start) = rest.find('/') else {
+    let Some(path_start) = rest.find(['/', '?', '#']) else {
         return "";
     };
+    if !rest[path_start..].starts_with('/') {
+        return "";
+    }
     let path_and_after = &rest[path_start..];
     let path_end = path_and_after
         .find(['?', '#'])
@@ -1157,6 +1167,12 @@ impl ExecutionContext {
 // Heartbeat
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReusableSandboxState {
+    pub profile: String,
+}
+
 /// Runner state snapshot sent to the server via heartbeat.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -1165,6 +1181,8 @@ pub struct HeldSessionState {
     /// Claude/Codex CLI agent session id used for sandbox reuse affinity.
     pub session_id: String,
     pub last_completed_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reusable_sandbox: Option<ReusableSandboxState>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1242,6 +1260,17 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn raw_url_path_does_not_treat_query_or_fragment_content_as_path() {
+        assert_eq!(raw_url_path("https://api.example.com?next=/../"), "");
+        assert_eq!(raw_url_path("https://api.example.com#next=/../"), "");
+    }
+
+    #[test]
+    fn firewall_auth_base_allows_path_syntax_in_query() {
+        validate_auth_base_for_cache("https://api.example.com?next=/../").unwrap();
+    }
+
+    #[test]
     fn poll_response_with_job() {
         let json = json!({
             "job": {
@@ -1274,119 +1303,6 @@ mod tests {
         });
         let job: Job = serde_json::from_value(json).unwrap();
         assert!(job.experimental_profile.is_none());
-    }
-
-    #[test]
-    fn execution_context_minimal() {
-        let json = json!({
-            "runId": "550e8400-e29b-41d4-a716-446655440000",
-            "prompt": "hello",
-            "sandboxToken": "tok-123",
-            "cliAgentType": "claude_code",
-            "billableFirewalls": []
-        });
-        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert_eq!(ctx.prompt, "hello");
-        assert_eq!(ctx.sandbox_token, "tok-123");
-        assert_eq!(ctx.cli_agent_type, "claude_code");
-        assert!(ctx.append_system_prompt.is_none());
-        assert!(ctx.vars.is_none());
-        assert!(ctx.firewalls.is_none());
-        assert!(ctx.secret_values.is_none());
-        assert!(ctx.local_secret_env_keys.is_none());
-        assert!(ctx.billable_firewalls.is_empty());
-        assert!(ctx.model_usage_provider.is_none());
-    }
-
-    #[test]
-    fn execution_context_all_optional_fields() {
-        let json = json!({
-            "runId": "550e8400-e29b-41d4-a716-446655440000",
-            "prompt": "analyze code",
-            "sandboxToken": "tok-456",
-            "cliAgentType": "claude_code",
-            "appendSystemPrompt": "be concise",
-            "agentComposeVersionId": "sha256-abc",
-            "vars": {"API_KEY": "secret"},
-            "checkpointId": "660e8400-e29b-41d4-a716-446655440000",
-            "storageManifest": {
-                "storages": [{
-                    "name": "data",
-                    "mountPath": "/data",
-                    "vasStorageName": "data",
-                    "vasVersionId": "v1",
-                    "archiveUrl": "https://s3/archive.tar.gz"
-                }],
-                "artifacts": [{
-                    "mountPath": "/artifacts",
-                    "archiveUrl": "https://s3/artifact.tar.gz",
-                    "vasStorageName": "art-1",
-                    "vasStorageId": "sid-1",
-                    "vasVersionId": "v1"
-                }]
-            },
-            "environment": {"NODE_ENV": "production"},
-            "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
-            "secretValues": ["s1", "s2"],
-            "localSecretEnvKeys": ["ANTHROPIC_API_KEY"],
-            "encryptedSecrets": "enc-blob",
-            "secretConnectorMap": {"GITHUB_TOKEN": "github"},
-            "secretConnectorMetadataMap": {
-                "CHATGPT_ACCESS_TOKEN": {
-                    "sourceType": "model-provider",
-                    "sourceUserId": "user-123",
-                    "metadataKey": "codex-oauth-token"
-                }
-            },
-            "realAgentInPreview": true,
-            "apiStartTime": 1_700_000_000_000u64,
-            "userTimezone": "America/New_York",
-            "firewalls": [{"kind": "builtin", "name": "github"}],
-            "disallowedTools": ["CronCreate"],
-            "tools": ["Bash", "Read"],
-            "settings": "{\"hooks\":{}}",
-            "experimentalProfile": "browser",
-            "featureFlags": {"computerUse": true, "audioOutput": false},
-            "billableFirewalls": ["model-provider:vm0"],
-            "modelUsageProvider": "claude-sonnet-4-6"
-        });
-        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
-        assert_eq!(ctx.vars.as_ref().unwrap()["API_KEY"], "secret");
-        assert_eq!(ctx.environment.as_ref().unwrap()["NODE_ENV"], "production");
-        assert_eq!(
-            ctx.resume_session.as_ref().unwrap().cli_agent_session_id,
-            "sess-1"
-        );
-        assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
-        assert!(ctx.local_secret_env_keys.is_none());
-        assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
-        let metadata = ctx.secret_connector_metadata_map.as_ref().unwrap();
-        assert_eq!(
-            metadata["CHATGPT_ACCESS_TOKEN"].source_user_id.as_deref(),
-            Some("user-123")
-        );
-        assert!(ctx.real_agent_in_preview.unwrap());
-        assert_eq!(ctx.api_start_time, Some(1_700_000_000_000));
-        let FirewallEntry::Builtin { name, .. } = &ctx.firewalls.as_ref().unwrap()[0] else {
-            panic!("expected builtin firewall entry");
-        };
-        assert_eq!(name, "github");
-        assert_eq!(ctx.disallowed_tools.as_ref().unwrap(), &["CronCreate"]);
-        assert_eq!(ctx.tools.as_ref().unwrap(), &["Bash", "Read"]);
-        assert_eq!(ctx.settings.as_deref(), Some("{\"hooks\":{}}"));
-        assert!(ctx.storage_manifest.is_some());
-        let flags = ctx.feature_flags.as_ref().unwrap();
-        assert_eq!(flags.get("computerUse"), Some(&true));
-        assert_eq!(flags.get("audioOutput"), Some(&false));
-        assert_eq!(
-            ctx.billable_firewalls,
-            vec!["model-provider:vm0".to_string()]
-        );
-        assert_eq!(
-            ctx.model_usage_provider.as_deref(),
-            Some("claude-sonnet-4-6")
-        );
     }
 
     #[test]
@@ -1963,6 +1879,9 @@ mod tests {
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
+                reusable_sandbox: Some(ReusableSandboxState {
+                    profile: "vm0/default".into(),
+                }),
             }],
             mode: "running".into(),
         };
@@ -1982,9 +1901,25 @@ mod tests {
             json["heldSessionStates"],
             json!([{
                 "sessionId": "session-abc",
-                "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
+                "reusableSandbox": {
+                    "profile": "vm0/default"
+                }
             }])
         );
         assert_eq!(json["mode"], "running");
+    }
+
+    #[test]
+    fn held_session_state_accepts_legacy_shape_and_omits_absent_capability() {
+        let state: HeldSessionState = serde_json::from_value(json!({
+            "sessionId": "session-legacy",
+            "lastCompletedAt": "2026-05-28T00:00:00.000Z"
+        }))
+        .unwrap();
+        assert!(state.reusable_sandbox.is_none());
+
+        let serialized = serde_json::to_value(state).unwrap();
+        assert!(serialized.get("reusableSandbox").is_none());
     }
 }

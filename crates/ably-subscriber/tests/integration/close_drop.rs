@@ -98,10 +98,6 @@ async fn drop_subscription_sends_close() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 13: non-retriable DISCONNECTED still triggers reconnect
-// ---------------------------------------------------------------------------
-
 /// ably-js always reconnects on mid-session DISCONNECTED regardless of
 /// retriability — the server may send 429 or 401 but still expect the
 /// client to backoff-and-retry. Only connection-level ERROR is fatal.
@@ -140,10 +136,6 @@ async fn server_sends_closed() {
         .unwrap();
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 17: server-initiated AUTH (action 17) → client renews token
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn error_during_event_loop() {
@@ -189,10 +181,6 @@ async fn error_during_event_loop() {
         .unwrap();
     join_server_task(server_task, "mock server").await.unwrap();
 }
-
-// ---------------------------------------------------------------------------
-// Test 15: DETACHED with a client error still follows ably-js re-attach flow
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn close_during_hanging_reconnect_attempt_closes_socket() {

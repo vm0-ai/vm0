@@ -4,12 +4,14 @@ import json
 
 import pytest
 
-import builtin_connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
 import request_streaming
 import upstream_destination_binding
+from tests.connector_diagnostic_helpers import (
+    write_connector_diagnostic_catalog_cache,
+)
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
     _single_firewall_vm,
@@ -73,96 +75,54 @@ def _write_shared_base_active_firewall_registry(
     )
 
 
-def _shared_base_diagnostic_firewall(
+def _shared_base_catalog_firewall(
     name: str,
     token_name: str,
     *,
     permissions: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
+) -> dict:
     return {
         "name": name,
         "apis": [
             {
                 "base": "https://shared.example.com",
-                "envNames": [token_name],
-                "authHeaderNames": ["Authorization"],
-                "authQueryParamNames": ["api_key"],
+                "hostPolicy": {
+                    "kind": "providerOwned",
+                    "exactHosts": ["shared.example.com"],
+                },
+                "auth": {
+                    "headers": {
+                        "Authorization": f"Bearer ${{{{ secrets.{token_name} }}}}",
+                    },
+                    "query": {
+                        "api_key": f"${{{{ secrets.{token_name} }}}}",
+                    },
+                },
                 "permissions": permissions or [],
             }
         ],
     }
 
 
-def _patch_shared_base_diagnostic_catalog(
-    monkeypatch,
+def _write_shared_base_diagnostic_catalog(
+    tmp_path,
     *,
     active_permissions: list[dict[str, object]] | None = None,
     inactive_permissions: list[dict[str, object]] | None = None,
 ) -> None:
-    monkeypatch.setattr(
-        builtin_connector_diagnostics,
-        "CONNECTOR_DIAGNOSTIC_FIREWALLS",
-        [
-            _shared_base_diagnostic_firewall(
-                "active-shared",
-                "ACTIVE_TOKEN",
-                permissions=active_permissions,
-            ),
-            _shared_base_diagnostic_firewall(
-                "inactive-shared",
-                "INACTIVE_TOKEN",
-                permissions=inactive_permissions,
-            ),
-        ],
-    )
-    monkeypatch.setattr(
-        builtin_connector_diagnostics,
-        "MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS",
-        [],
-    )
-    builtin_connector_diagnostics.reset_cache_for_tests()
-
-
-def _write_fal_catalog_cache(tmp_path) -> str:
-    cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
-    cache_path.write_text(
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "catalogDigest": (
-                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                ),
-                "catalogVersion": "catalog-test",
-                "updatedAt": "2026-07-07T00:00:00.000Z",
-                "firewalls": {
-                    "fal": {
-                        "name": "fal",
-                        "apis": [
-                            {
-                                "base": "https://fal.run",
-                                "hostPolicy": {
-                                    "kind": "providerOwned",
-                                    "exactHosts": ["fal.run"],
-                                },
-                                "auth": {
-                                    "headers": {"Authorization": "Bearer ${{ secrets.FAL_TOKEN }}"}
-                                },
-                                "permissions": [
-                                    {
-                                        "name": "run",
-                                        "rules": ["POST /fal-ai/{model}"],
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                },
-            },
-            sort_keys=True,
-        )
-    )
-    cache_path.chmod(0o600)
-    return str(cache_path)
+    firewalls = {
+        "active-shared": _shared_base_catalog_firewall(
+            "active-shared",
+            "ACTIVE_TOKEN",
+            permissions=active_permissions,
+        ),
+        "inactive-shared": _shared_base_catalog_firewall(
+            "inactive-shared",
+            "INACTIVE_TOKEN",
+            permissions=inactive_permissions,
+        ),
+    }
+    write_connector_diagnostic_catalog_cache(tmp_path, firewalls=firewalls)
 
 
 def _assert_shared_base_inactive_diagnostic(flow):
@@ -190,10 +150,10 @@ def _assert_shared_base_inactive_diagnostic(flow):
 
 
 async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _patch_shared_base_diagnostic_catalog(
-        monkeypatch,
+    _write_shared_base_diagnostic_catalog(
+        tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
     )
@@ -228,9 +188,9 @@ async def test_shared_base_unknown_endpoint_diagnoses_inactive_sibling_before_au
 
 
 async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_before_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _patch_shared_base_diagnostic_catalog(monkeypatch)
+    _write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -262,10 +222,10 @@ async def test_shared_base_connector_intent_diagnoses_inside_candidate_set_befor
 
 
 async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_path(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _patch_shared_base_diagnostic_catalog(
-        monkeypatch,
+    _write_shared_base_diagnostic_catalog(
+        tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
     )
@@ -296,9 +256,9 @@ async def test_shared_base_unknown_endpoint_with_user_auth_keeps_active_auth_pat
 
 
 async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _patch_shared_base_diagnostic_catalog(monkeypatch)
+    _write_shared_base_diagnostic_catalog(tmp_path)
     reg_path = _write_shared_base_active_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -326,10 +286,10 @@ async def test_shared_base_malformed_connector_intent_is_ignored_and_stripped(
 
 
 async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, monkeypatch
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
-    _patch_shared_base_diagnostic_catalog(
-        monkeypatch,
+    _write_shared_base_diagnostic_catalog(
+        tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-read", "rules": ["GET /inactive"]}],
     )
@@ -356,10 +316,10 @@ async def test_shared_base_known_permission_skips_pre_auth_diagnostic(
 
 
 async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    _patch_shared_base_diagnostic_catalog(
-        monkeypatch,
+    _write_shared_base_diagnostic_catalog(
+        tmp_path,
         active_permissions=[{"name": "active-read", "rules": ["GET /active"]}],
         inactive_permissions=[{"name": "inactive-write", "rules": ["POST /inactive"]}],
     )
@@ -400,6 +360,7 @@ async def test_shared_base_requestheaders_diagnoses_before_stream_safe_auth(
 async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
     tmp_path, real_flow, mitm_ctx
 ):
+    write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
@@ -439,6 +400,7 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
 async def test_inactive_builtin_connector_url_with_empty_auth_gets_local_diagnostic(
     tmp_path, real_flow, mitm_ctx, headers, path, request_header_pairs
 ):
+    write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
@@ -461,6 +423,7 @@ async def test_inactive_builtin_connector_url_with_empty_auth_gets_local_diagnos
 async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
     tmp_path, real_flow, mitm_ctx, headers
 ):
+    write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
@@ -486,6 +449,7 @@ async def test_inactive_builtin_connector_url_with_user_auth_allows_upstream(
 async def test_streamed_inactive_builtin_connector_request_waits_for_response_fallback(
     tmp_path, real_flow, mitm_ctx
 ):
+    write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(
         tmp_path,
         vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
@@ -516,6 +480,7 @@ async def test_streamed_inactive_builtin_connector_request_waits_for_response_fa
 async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidate(
     tmp_path, real_flow, mitm_ctx, headers
 ):
+    write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(tmp_path, vm_info=_vm_without_firewalls(tmp_path))
     flow = real_flow(
         with_response=False,
@@ -544,7 +509,7 @@ async def test_browser_builtin_connector_url_does_not_record_diagnostic_candidat
 async def test_active_builtin_connector_url_uses_firewall_path(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
-    cache_path = _write_fal_catalog_cache(tmp_path)
+    cache_path = write_connector_diagnostic_catalog_cache(tmp_path)
     reg_path = _write_registry(
         tmp_path,
         vm_info={
@@ -565,7 +530,7 @@ async def test_active_builtin_connector_url_uses_firewall_path(
         mitm_ctx(
             registry_path=str(reg_path),
             api_url="https://api.vm0.ai",
-            builtin_firewall_catalog_cache_path=cache_path,
+            builtin_firewall_catalog_cache_path=str(cache_path),
         ),
         fake_firewall_headers(),
     ):

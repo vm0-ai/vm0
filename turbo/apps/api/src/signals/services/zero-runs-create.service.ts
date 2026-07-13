@@ -46,6 +46,7 @@ import {
   buildZeroMemoryRuntimeInjection,
   zeroMemoryRuntimeRetrievalQuery,
 } from "./zero-memory-injection.service";
+import { loadGoalMemoryEmbedding } from "./zero-goal-memory-embedding.service";
 import {
   measureZeroMemoryTiming,
   type ZeroMemoryTimingObserver,
@@ -525,11 +526,20 @@ function zeroRunTimingDimensions(args: {
 const ZERO_MEMORY_TIMING_ACTION_TYPES = {
   runtime_injection:
     "api_dispatch_pre_create_zero_build_create_run_args_memory_runtime_injection",
+  document_search: "api_dispatch_pre_create_zero_memory_document_search",
+  document_search_lexical:
+    "api_dispatch_pre_create_zero_memory_document_search_lexical",
+  document_search_semantic_embedding:
+    "api_dispatch_pre_create_zero_memory_document_search_semantic_embedding",
+  document_search_semantic_query:
+    "api_dispatch_pre_create_zero_memory_document_search_semantic_query",
+  document_search_hydrate:
+    "api_dispatch_pre_create_zero_memory_document_search_hydrate",
   profile_static: "api_dispatch_pre_create_zero_memory_profile_static",
   profile_dynamic: "api_dispatch_pre_create_zero_memory_profile_dynamic",
   profile_search: "api_dispatch_pre_create_zero_memory_profile_search",
-  profile_search_lexical:
-    "api_dispatch_pre_create_zero_memory_profile_search_lexical",
+  profile_search_exact_identity:
+    "api_dispatch_pre_create_zero_memory_profile_search_exact_identity",
   profile_search_semantic_embedding:
     "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding",
   profile_search_semantic_query:
@@ -693,6 +703,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly prompt: string;
     readonly retrievalQuery?: string;
     readonly timing?: ZeroMemoryTimingObserver;
+    readonly goalId?: string;
   },
 ): Promise<string | undefined> {
   const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
@@ -703,6 +714,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
       if (!args.enabled) {
         return undefined;
       }
+      const goalId = args.goalId;
       const result = await buildZeroMemoryRuntimeInjection(db, {
         orgId: args.orgId,
         userId: args.userId,
@@ -711,6 +723,16 @@ async function loadMemoryRuntimeAppendSystemPrompt(
           ? { retrievalQuery: args.retrievalQuery }
           : {}),
         timing: args.timing,
+        ...(goalId
+          ? {
+              semanticEmbeddingLoader: async (query: string) => {
+                return await loadGoalMemoryEmbedding(db, {
+                  goalId,
+                  query,
+                });
+              },
+            }
+          : {}),
       });
       return result.appendSystemPrompt || undefined;
     },
@@ -734,12 +756,9 @@ async function triggerAgentIdForAuth(
   }
 
   const [parentRun] = await db
-    .select({ agentComposeId: agentComposeVersions.composeId })
+    .select({ agentComposeId: agentSessions.agentComposeId })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
-    )
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
     .where(eq(agentRuns.id, auth.runId))
     .limit(1);
 
@@ -934,6 +953,9 @@ async function buildZeroCreateAgentRunArgs(args: {
         ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
         : {}),
       timing: memoryTiming,
+      ...(command.zeroRunMetadata?.goalId
+        ? { goalId: command.zeroRunMetadata.goalId }
+        : {}),
     });
   return {
     userId: command.auth.userId,

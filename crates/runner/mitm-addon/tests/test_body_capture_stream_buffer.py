@@ -1,5 +1,6 @@
 """Tests for body capture request and response stream-buffer contracts."""
 
+import base64
 import gzip
 
 import pytest
@@ -44,6 +45,21 @@ class TestBodyCaptureStreamBuffer:
         assert entry["request_body_encoding"] == "utf-8"
         assert entry["request_body_truncated"] is True
 
+    def test_truncated_request_stream_buffer_trims_incomplete_utf8(self, real_flow):
+        body = b"x" * (STREAM_BUFFER_LIMIT - 1) + b"\xe2"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body"] == "x" * (STREAM_BUFFER_LIMIT - 1)
+        assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
     def test_incomplete_request_stream_buffer_marks_truncation(self, real_flow):
         body = b'{"partial": true}'
         flow = real_flow(
@@ -57,6 +73,21 @@ class TestBodyCaptureStreamBuffer:
         add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"partial": true}'
         assert entry["request_body_encoding"] == "utf-8"
+        assert entry["request_body_truncated"] is True
+
+    def test_incomplete_request_at_limit_preserves_partial_utf8(self, real_flow):
+        body = b"x" * (STREAM_BUFFER_LIMIT - 1) + b"\xe2"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, body, complete=False)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == body
         assert entry["request_body_truncated"] is True
 
     def test_empty_incomplete_request_stream_buffer_marks_truncation(self, real_flow):
@@ -356,6 +387,43 @@ class TestBodyCaptureStreamBuffer:
         set_response_stream_buffer(flow, body, truncated=True)
         entry = {}
         add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+
+    def test_truncated_response_stream_buffer_trims_incomplete_utf8(self, real_flow):
+        body = b"y" * (STREAM_BUFFER_LIMIT - 2) + "𝄞".encode()[:2]
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="text/plain",
+            include_request_id=True,
+        )
+        set_response_stream_buffer(flow, body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body"] == "y" * (STREAM_BUFFER_LIMIT - 2)
+        assert entry["response_body_encoding"] == "utf-8"
+        assert entry["response_body_truncated"] is True
+
+    def test_invalid_stream_boundaries_preserve_truncated_base64(self, real_flow):
+        request_body = b"r" * (STREAM_BUFFER_LIMIT - 1) + b"\xff"
+        response_body = b"s" * (STREAM_BUFFER_LIMIT - 1) + b"\xf5"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            response_content_type="text/plain",
+            include_request_id=True,
+        )
+        set_request_stream_buffer(flow, request_body, truncated=True)
+        set_response_stream_buffer(flow, response_body, truncated=True)
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == request_body
+        assert entry["request_body_truncated"] is True
+        assert entry["response_body_encoding"] == "base64"
+        assert base64.b64decode(entry["response_body"]) == response_body
         assert entry["response_body_truncated"] is True
 
     def test_binary_stream_buffer_exactly_at_limit_not_truncated(self, real_flow):

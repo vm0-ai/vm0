@@ -1,0 +1,51 @@
+[
+  {
+    "package": "guest-agent",
+    "binary": "guest-agent",
+    "pathEnv": "GUEST_AGENT_PATH",
+    "bundledEnv": "BUNDLED_GUEST_AGENT",
+    "destination": "/usr/local/bin/guest-agent"
+  },
+  {
+    "package": "guest-download",
+    "binary": "guest-download",
+    "pathEnv": "GUEST_DOWNLOAD_PATH",
+    "bundledEnv": "BUNDLED_GUEST_DOWNLOAD",
+    "destination": "/usr/local/bin/guest-download"
+  },
+  {
+    "package": "guest-init",
+    "binary": "guest-init",
+    "pathEnv": "GUEST_INIT_PATH",
+    "bundledEnv": "BUNDLED_GUEST_INIT",
+    "destination": "/sbin/guest-init"
+  },
+  {
+    "package": "guest-reseed",
+    "binary": "guest-reseed",
+    "pathEnv": "GUEST_RESEED_PATH",
+    "bundledEnv": "BUNDLED_GUEST_RESEED",
+    "destination": "/sbin/guest-reseed"
+  },
+  {
+    "package": "guest-write-file",
+    "binary": "guest-write-file",
+    "pathEnv": "GUEST_WRITE_FILE_PATH",
+    "bundledEnv": "BUNDLED_GUEST_WRITE_FILE",
+    "destination": "/sbin/guest-write-file"
+  },
+  {
+    "package": "guest-mock-claude",
+    "binary": "guest-mock-claude",
+    "pathEnv": "GUEST_MOCK_CLAUDE_PATH",
+    "bundledEnv": "BUNDLED_GUEST_MOCK_CLAUDE",
+    "destination": "/usr/local/bin/guest-mock-claude"
+  },
+  {
+    "package": "guest-mock-codex",
+    "binary": "guest-mock-codex",
+    "pathEnv": "GUEST_MOCK_CODEX_PATH",
+    "bundledEnv": "BUNDLED_GUEST_MOCK_CODEX",
+    "destination": "/usr/local/bin/guest-mock-codex"
+  }
+]

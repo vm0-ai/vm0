@@ -17,7 +17,6 @@ import threading
 import urllib.parse
 from concurrent.futures import Future, InvalidStateError
 from contextlib import suppress
-from functools import cache
 from typing import NamedTuple, Protocol
 
 from mitmproxy import http
@@ -31,7 +30,6 @@ from authority_utils import (
     percent_decode_host,
     raw_authority_host,
 )
-from generated.builtin_firewalls import BUILTIN_FIREWALLS
 from host_normalization import normalize_idna_hostname
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
@@ -47,60 +45,6 @@ HOP_BY_HOP: frozenset[str] = frozenset(
         "trailer",
         "upgrade",
     )
-)
-_RESOLVED_AUTH_HEADER_EXCLUDED: frozenset[str] = HOP_BY_HOP | frozenset(
-    ("host", "content-length", "transfer-encoding")
-)
-_CLIENT_CREDENTIAL_HEADER_NAMES: frozenset[str] = frozenset(
-    (
-        "access-token",
-        "api-key",
-        "api_access_token",
-        "api_key",
-        "apikey",
-        "app_id",
-        "app_key",
-        "authorization",
-        "chatgpt-account-id",
-        "cookie",
-        "developer-token",
-        "mailsac-key",
-        "private-token",
-        "project-access-token",
-        "x-access-token",
-        "x-amz-security-token",
-        "x-api-key",
-        "x-api-secret",
-        "x-api-token",
-        "x-apikey",
-        "x-auth-token",
-        "x-bb-api-key",
-        "x-browser-use-api-key",
-        "x-cg-demo-api-key",
-        "x-cg-pro-api-key",
-        "x-faire-access-token",
-        "x-figma-token",
-        "x-goog-api-key",
-        "x-hume-api-key",
-        "x-key",
-        "x-luma-api-key",
-        "x-manus-api-key",
-        "x-modal-token-id",
-        "x-modal-token-secret",
-        "x-moss-project-id",
-        "x-n8n-api-key",
-        "x-rapidapi-key",
-        "x-secret-api-key",
-        "x-server-id",
-        "x-shopify-access-token",
-        "x-subscription-token",
-        "x-user-id",
-        "xi-api-key",
-    )
-)
-_AWS_SIGV4_AUTHORIZATION_PREFIXES: tuple[str, ...] = (
-    "AWS4-HMAC-SHA256 ",
-    "AWS4-ECDSA-P256-SHA256 ",
 )
 DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
@@ -130,18 +74,6 @@ _forward_request_active_closeables: set["_Closeable"] = set()
 _forward_request_active_closeables_lock = threading.Lock()
 _https_context: ssl.SSLContext | None = None
 _https_context_lock = threading.Lock()
-
-
-@cache
-def _templated_builtin_auth_header_names() -> frozenset[str]:
-    names: set[str] = set()
-    for firewall in BUILTIN_FIREWALLS.values():
-        for api in firewall.get("apis", []):
-            auth_headers = api.get("auth", {}).get("headers", {})
-            for name, value in auth_headers.items():
-                if isinstance(name, str) and isinstance(value, str) and "${{" in value:
-                    names.add(name.lower())
-    return frozenset(names)
 
 
 class _Closeable(Protocol):
@@ -277,6 +209,10 @@ class UnsafeAuthBaseDestinationError(Exception):
 
 class InvalidResolvedAuthHeaderError(Exception):
     """Raised when resolved auth data contains an invalid HTTP header."""
+
+
+class InvalidAuthBaseRequestHeadersError(Exception):
+    """Raised when client representation headers cannot be forwarded safely."""
 
 
 class AuthBaseForwardingAdmission:
@@ -469,40 +405,21 @@ def forwarded_request_header_pairs(headers) -> list[tuple[str, str]]:
     )
 
 
-def _is_aws_sigv4_authorization(value: str) -> bool:
-    return value.startswith(_AWS_SIGV4_AUTHORIZATION_PREFIXES)
-
-
 def forwarded_auth_base_client_header_pairs(
     headers,
-    *,
-    preserve_aws_sigv4_authorization: bool = False,
-    extra_excluded_names: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
-    """Return client headers allowed to cross an auth.base rewrite.
+    """Select representation metadata allowed to cross an auth.base rewrite."""
+    raw_pairs = header_pairs(headers)
+    content_type_count = sum(1 for name, _value in raw_pairs if name.lower() == "content-type")
+    if content_type_count > 1:
+        raise InvalidAuthBaseRequestHeadersError(
+            "auth.base requests must contain at most one Content-Type header"
+        )
 
-    This applies forwarded request filtering, then strips client
-    credential-like headers named by ``_CLIENT_CREDENTIAL_HEADER_NAMES`` so
-    placeholder-scoped credentials do not cross the rewrite. Within that
-    stripped set, the only exception is ``Authorization`` when
-    ``preserve_aws_sigv4_authorization`` is enabled and the value is a
-    supported AWS SigV4 authorization value.
-    """
-    pairs = forwarded_request_header_pairs(headers)
-    excluded_names = (
-        _CLIENT_CREDENTIAL_HEADER_NAMES
-        | _templated_builtin_auth_header_names()
-        | extra_excluded_names
-    )
     return [
         (name, value)
-        for name, value in pairs
-        if name.lower() not in excluded_names
-        or (
-            preserve_aws_sigv4_authorization
-            and name.lower() == "authorization"
-            and _is_aws_sigv4_authorization(value)
-        )
+        for name, value in forwarded_request_header_pairs(raw_pairs)
+        if name.lower() in {"content-type", "content-encoding"}
     ]
 
 
@@ -523,17 +440,18 @@ def resolved_auth_header_pairs(headers) -> list[tuple[str, str]]:
     """Validate and filter resolved auth headers before outbound injection.
 
     Each resolved header name and value is validated before any pair is
-    returned; invalid pairs raise ``InvalidResolvedAuthHeaderError``. Headers
-    excluded by ``_RESOLVED_AUTH_HEADER_EXCLUDED`` are then dropped. This
-    helper does not merge with or replace client headers; callers that combine
-    resolved and client headers own that policy.
+    returned; invalid pairs raise ``InvalidResolvedAuthHeaderError``. Transport,
+    authority, and framing headers are then dropped. This helper does not merge
+    with or replace client headers; callers that combine resolved and client
+    headers own that policy.
     """
     pairs = header_pairs(headers)
     for name, value in pairs:
         _validate_resolved_auth_header_pair(name, value)
-    return [
-        (name, value) for name, value in pairs if name.lower() not in _RESOLVED_AUTH_HEADER_EXCLUDED
-    ]
+    return _filter_header_pairs(
+        pairs,
+        extra_excluded={"host", "content-length", "transfer-encoding"},
+    )
 
 
 def trusted_request_header_pairs(headers) -> list[tuple[str, str]]:

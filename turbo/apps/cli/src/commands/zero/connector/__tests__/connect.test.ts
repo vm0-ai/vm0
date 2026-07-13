@@ -13,12 +13,17 @@ import chalk from "chalk";
 
 import { server } from "../../../../mocks/server";
 import { connectCommand } from "../connect";
+import {
+  catalogStatusItem,
+  manualAuthMethod,
+  stubConnectorCatalogStatus,
+} from "../../__tests__/helpers/connector-catalog";
 
-function connectorResponse(type: string) {
+function connectorResponse(type: string, authMethod = "api-token") {
   return {
     id: "00000000-0000-4000-8000-000000000001",
     type,
-    authMethod: "api-token",
+    authMethod,
     externalId: null,
     externalUsername: null,
     externalEmail: null,
@@ -116,6 +121,44 @@ describe("zero connector connect command", () => {
       values: {
         apiKey: "sk-test",
       },
+    });
+  });
+
+  it("uses server-authored connector and auth method identities", async () => {
+    const connectorRef = "server-authored-connector";
+    const authMethod = "partner-token";
+    let receivedType: string | undefined;
+    let receivedBody: unknown;
+    server.use(
+      stubConnectorCatalogStatus([
+        catalogStatusItem({
+          connectorRef,
+          label: "Partner Connector",
+          authMethods: [manualAuthMethod(authMethod)],
+        }),
+      ]),
+      http.post(
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        async ({ params, request }) => {
+          receivedType = String(params.type);
+          receivedBody = await request.json();
+          return HttpResponse.json(connectorResponse(connectorRef, authMethod));
+        },
+      ),
+    );
+
+    await connectCommand.parseAsync([
+      "node",
+      "cli",
+      connectorRef,
+      "--value",
+      "apiKey=secret-token",
+    ]);
+
+    expect(receivedType).toBe(connectorRef);
+    expect(receivedBody).toStrictEqual({
+      authMethod,
+      values: { apiKey: "secret-token" },
     });
   });
 

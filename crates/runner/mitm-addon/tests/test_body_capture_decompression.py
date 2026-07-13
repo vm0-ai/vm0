@@ -1,5 +1,6 @@
 """Tests for capture-level response body decompression behavior."""
 
+import base64
 import gzip
 import zlib
 
@@ -96,7 +97,7 @@ class TestDecompression:
         assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
     def test_brotli_truncation_preserves_utf8_boundary(self, real_flow):
-        original = b"x" * BODY_CAPTURE_LIMIT + "\u20ac".encode("utf-8")
+        original = b"x" * (BODY_CAPTURE_LIMIT - 1) + "€".encode()
         compressed = brotli.compress(original)
         assert len(compressed) < BODY_CAPTURE_LIMIT
         flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
@@ -104,7 +105,18 @@ class TestDecompression:
         add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
         assert entry["response_body_encoding"] == "utf-8"
-        assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
+        assert entry["response_body"] == "x" * (BODY_CAPTURE_LIMIT - 1)
+
+    def test_brotli_invalid_boundary_preserves_truncated_base64(self, real_flow):
+        original = b"x" * (BODY_CAPTURE_LIMIT - 1) + b"\xffz"
+        compressed = brotli.compress(original)
+        assert len(compressed) < BODY_CAPTURE_LIMIT
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+        assert entry["response_body_encoding"] == "base64"
+        assert base64.b64decode(entry["response_body"]) == original[:BODY_CAPTURE_LIMIT]
 
     def test_brotli_large_text_uses_adaptive_chunks(self, real_flow, monkeypatch):
         original = pseudo_random_ascii(BODY_CAPTURE_LIMIT // 2)

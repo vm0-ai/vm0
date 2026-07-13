@@ -181,6 +181,40 @@ function mockNavigatorUserAgent(userAgent: string): () => void {
   };
 }
 
+function mockIPadOSNavigator(): () => void {
+  const userAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+  const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
+  const maxTouchPoints = Object.getOwnPropertyDescriptor(
+    navigator,
+    "maxTouchPoints",
+  );
+  Object.defineProperties(navigator, {
+    userAgent: {
+      configurable: true,
+      value:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
+        "AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15",
+    },
+    platform: { configurable: true, value: "MacIntel" },
+    maxTouchPoints: { configurable: true, value: 5 },
+  });
+  const restore = (
+    property: "userAgent" | "platform" | "maxTouchPoints",
+    descriptor: PropertyDescriptor | undefined,
+  ) => {
+    if (descriptor) {
+      Object.defineProperty(navigator, property, descriptor);
+    } else {
+      delete (navigator as Partial<Record<typeof property, unknown>>)[property];
+    }
+  };
+  return () => {
+    restore("userAgent", userAgent);
+    restore("platform", platform);
+    restore("maxTouchPoints", maxTouchPoints);
+  };
+}
+
 function buildProvider(
   overrides: Partial<ModelProviderResponse> & {
     id: string;
@@ -379,8 +413,14 @@ function mockThread(options?: {
           : [],
     });
   });
-  context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
-    return respond(200, { messages: options?.messages ?? [] });
+  context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
+    if (query.sinceId || query.beforeId) {
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    }
+    return respond(200, {
+      messages: options?.messages ?? [],
+      hasHistoryBefore: false,
+    });
   });
 }
 
@@ -594,13 +634,7 @@ async function openTemplatePicker(
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-
-  await fill(screen.getByLabelText("Search templates"), "no matching deck");
-  await waitFor(() => {
-    expect(screen.getByText("No matches")).toBeInTheDocument();
-  });
-
-  await fill(screen.getByLabelText("Search templates"), template.title);
+  expect(screen.queryByLabelText("Search connectors")).toBeNull();
   await waitFor(() => {
     expect(screen.getByText(template.title)).toBeInTheDocument();
   });
@@ -784,6 +818,23 @@ beforeEach(() => {
 });
 
 describe("chat composer models", () => {
+  it("does not autofocus the agent chat composer on iPadOS", async () => {
+    const restoreNavigator = mockIPadOSNavigator();
+    try {
+      mockOrgModelRoutes("kimi-k2.7-code");
+      mockAgent();
+
+      detachedSetupPage({
+        context,
+        path: `/agents/${AGENT_ID}/chat`,
+      });
+
+      await expect(findComposerEditor()).resolves.not.toHaveFocus();
+    } finally {
+      restoreNavigator();
+    }
+  });
+
   it("keeps the agent chat composer at three-line height", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -846,6 +897,93 @@ describe("chat composer models", () => {
     expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
   });
 
+  it("positions the slash workflow menu from the caret inside the viewport safe area", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const root = document.createElement("div");
+    root.id = "root";
+    root.style.padding = "44px 6px 8px 10px";
+    document.body.append(root);
+
+    const originalVisualViewport = Object.getOwnPropertyDescriptor(
+      window,
+      "visualViewport",
+    );
+    const visualViewport = Object.assign(new EventTarget(), {
+      height: 800,
+      offsetLeft: 0,
+      offsetTop: 100,
+      onresize: null,
+      onscroll: null,
+      pageLeft: 0,
+      pageTop: 100,
+      scale: 1,
+      width: 390,
+    }) as VisualViewport;
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+
+    const caretRect = new DOMRect(20, 300, 0, 24);
+    const getClientRects = vi
+      .spyOn(Range.prototype, "getClientRects")
+      .mockReturnValue([caretRect] as unknown as DOMRectList);
+    const getBoundingClientRect = vi
+      .spyOn(Range.prototype, "getBoundingClientRect")
+      .mockReturnValue(caretRect);
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+
+    const menu = await screen.findByTestId("slash-workflow-menu");
+    const wrapper = menu.parentElement;
+    if (!(wrapper instanceof HTMLElement)) {
+      throw new Error("Slash workflow menu wrapper not found");
+    }
+    await waitFor(() => {
+      expect(wrapper.style.transform).not.toContain("-200%");
+    });
+    const transform = wrapper.style.transform;
+    const availableWidth = wrapper.style.getPropertyValue(
+      "--radix-popper-available-width",
+    );
+    const availableHeight = wrapper.style.getPropertyValue(
+      "--radix-popper-available-height",
+    );
+
+    getClientRects.mockRestore();
+    getBoundingClientRect.mockRestore();
+    root.remove();
+    if (originalVisualViewport) {
+      Object.defineProperty(window, "visualViewport", originalVisualViewport);
+    } else {
+      delete (window as { visualViewport?: VisualViewport }).visualViewport;
+    }
+
+    expect(transform).toBe("translate(20px, 392px)");
+    expect(availableWidth).toBe("350px");
+    expect(availableHeight).toBe("236px");
+  });
+
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
@@ -896,6 +1034,15 @@ describe("chat composer models", () => {
     // cross-browser placement), so it lives outside the composer element.
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
     expect(slashWorkflowMenu).toBeInTheDocument();
+    expect(slashWorkflowMenu).toHaveClass(
+      "h-[min(16rem,var(--radix-popover-content-available-height))]",
+      "md:h-[min(20rem,var(--radix-popover-content-available-height))]",
+    );
+    expect(slashWorkflowMenu).not.toHaveClass(
+      "max-h-[min(16rem,var(--radix-popover-content-available-height))]",
+      "md:max-h-[min(20rem,var(--radix-popover-content-available-height))]",
+    );
+    expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 
     await user.keyboard("sales");
 
@@ -917,6 +1064,81 @@ describe("chat composer models", () => {
         return element.tagName.toLowerCase() === "span";
       });
     expect(highlightedWorkflow).toHaveClass("text-primary");
+  });
+
+  it("closes the slash workflow menu when focus leaves the composer input", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/");
+    await expect(
+      screen.findByTestId("slash-workflow-menu"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Template"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("slash-workflow-menu"),
+      ).not.toBeInTheDocument();
+    });
+    expect(editor).not.toHaveFocus();
+  });
+
+  it("closes the slash workflow menu with Escape after a non-empty query", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, [
+        workflowSummary({
+          name: "sales-research",
+          displayName: "Sales Research",
+          description: "Find account context before outreach",
+          agentId: AGENT_ID,
+        }),
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("/sales");
+    await expect(
+      screen.findByTestId("slash-workflow-menu"),
+    ).resolves.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("slash-workflow-menu"),
+      ).not.toBeInTheDocument();
+    });
+    expect(editor).toHaveTextContent("/sales");
+    expect(editor).toHaveFocus();
   });
 
   it("does not suggest workflows that are not attached to the current agent", async () => {
@@ -2598,7 +2820,6 @@ describe("chat composer templates", () => {
           return screen.getByLabelText("Template");
         }),
       );
-      await fill(screen.getByLabelText("Search templates"), template.title);
       expect(
         screen.queryByLabelText(`View template ${template.title}`),
       ).not.toBeInTheDocument();
@@ -2653,10 +2874,6 @@ describe("chat composer templates", () => {
         createObjectUrlCountBeforeLeave,
       );
 
-      await fill(
-        screen.getByLabelText("Search templates"),
-        prismTemplate.title,
-      );
       const currentPrismPreviewFrame = () => {
         return screen.getByTestId(`${prismTemplate.title} card HTML preview`);
       };
@@ -2773,7 +2990,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     const preview = screen.getByLabelText(
       `Preview ${template.title} at current slide`,
     ).parentElement;
@@ -2865,7 +3081,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     expect(
       screen.queryByLabelText(`Change theme for ${template.title}`),
     ).not.toBeInTheDocument();
@@ -2970,7 +3185,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     expect(
       screen.queryByLabelText(`Change theme for ${template.title}`),
     ).not.toBeInTheDocument();
@@ -3059,7 +3273,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
 
     const preview = screen.getByLabelText(
       `Preview ${template.title} at current slide`,
@@ -3224,7 +3437,6 @@ describe("chat composer templates", () => {
           return screen.getByLabelText("Template");
         }),
       );
-      await fill(screen.getByLabelText("Search templates"), template.title);
       click(
         screen.getByLabelText(`Preview ${template.title} at current slide`),
       );
@@ -3342,7 +3554,6 @@ describe("chat composer templates", () => {
         return screen.getByLabelText("Template");
       }),
     );
-    await fill(screen.getByLabelText("Search templates"), template.title);
     click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     const templateDialog = screen.getByRole("dialog");
@@ -3607,12 +3818,7 @@ describe("chat composer templates", () => {
       expect(screen.getByAltText(heroAlt)).toHaveAttribute("src", heroSrc(0));
     });
 
-    await fill(screen.getByLabelText("Search templates"), "no matching style");
-    await waitFor(() => {
-      expect(screen.getByText("No matches")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Search templates"), "ink");
+    expect(screen.queryByLabelText("Search connectors")).toBeNull();
     click(
       screen.getByLabelText(`Select template ${illustrationTemplate.title}`),
     );
@@ -4068,14 +4274,10 @@ describe("chat composer templates", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
     await selectTemplate(user, template);
-    const queuedTextarea = await screen.findByPlaceholderText(
-      /Type your next message/,
-    );
-    await sendMessageInUI(
-      user,
-      queuedTextarea as HTMLTextAreaElement,
-      "Queue a matching deck",
-    );
+    const queuedComposer = await screen.findByRole("textbox", {
+      name: "Message",
+    });
+    await sendMessageInUI(user, queuedComposer, "Queue a matching deck");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Queued message")).toHaveTextContent(
@@ -4108,9 +4310,7 @@ describe("chat composer templates", () => {
     await selectTemplate(user, template);
     await sendMessageInUI(
       user,
-      (await screen.findByPlaceholderText(
-        /Type your next message/,
-      )) as HTMLTextAreaElement,
+      await screen.findByRole("textbox", { name: "Message" }),
       "Queue a matching deck",
     );
 
@@ -4164,12 +4364,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "no matching style");
-    await waitFor(() => {
-      expect(screen.getByText("No matches")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Search templates"), "luxury");
+    expect(screen.queryByLabelText("Search connectors")).toBeNull();
     click(screen.getByLabelText(`Select video template ${videoStyle.title}`));
 
     await waitFor(() => {
@@ -4229,12 +4424,16 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "no workflow match");
+    expect(screen.getByLabelText("Search connectors")).toHaveAttribute(
+      "placeholder",
+      "Search connector...",
+    );
+    await fill(screen.getByLabelText("Search connectors"), "no workflow match");
     await waitFor(() => {
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
 
-    await fill(screen.getByLabelText("Search templates"), "auto-inbox");
+    await fill(screen.getByLabelText("Search connectors"), "auto-inbox");
     click(
       screen.getByLabelText(
         `Select workflow template ${workflowTemplate.title}`,
@@ -4255,9 +4454,7 @@ describe("chat composer templates", () => {
     });
 
     const editor = await findComposerEditor();
-    await user.click(editor);
-    await user.keyboard("Create this inbox workflow");
-    await user.keyboard("{Enter}");
+    await sendMessageInUI(user, editor, "Create this inbox workflow");
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({
@@ -4279,6 +4476,10 @@ describe("chat composer templates", () => {
   it("selects and sends a website template behind the feature switch", async () => {
     const user = userEvent.setup({ delay: null });
     const websiteTemplate = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const websiteTemplatePreviewImageUrl = r2ImageTransformUrl(
+      websiteTemplate.previewImageUrl,
+      { width: 480, height: 270 },
+    );
     let submittedTemplate: GenerationTemplateRequest | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -4311,7 +4512,7 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
-      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`)
           .tagName,
@@ -4320,16 +4521,7 @@ describe("chat composer templates", () => {
       expect(screen.queryByText(websiteTemplate.resourceId)).toBeNull();
       expect(screen.queryByText("Saas Landing")).not.toBeInTheDocument();
     });
-
-    await fill(screen.getByLabelText("Search templates"), "no website match");
-    await waitFor(() => {
-      expect(screen.getByText("No matches")).toBeInTheDocument();
-    });
-
-    await fill(
-      screen.getByLabelText("Search templates"),
-      websiteTemplate.title,
-    );
+    expect(screen.queryByLabelText("Search connectors")).toBeNull();
     click(
       screen.getByLabelText(`Select website template ${websiteTemplate.title}`),
     );
@@ -4356,7 +4548,7 @@ describe("chat composer templates", () => {
       expect(tabByText("Website")).toHaveAttribute("aria-selected", "true");
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`),
-      ).toHaveAttribute("src", websiteTemplate.previewImageUrl);
+      ).toHaveAttribute("src", websiteTemplatePreviewImageUrl);
       expect(
         screen.getByTitle(`${websiteTemplate.title} website template preview`)
           .tagName,

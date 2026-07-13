@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import {
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+} from "./connector-identity";
 
 /**
  * Connector response schema
@@ -26,8 +29,8 @@ export type ConnectorReconnectReason = z.infer<
 
 export const connectorResponseSchema = z.object({
   id: z.uuid(),
-  type: connectorTypeSchema,
-  authMethod: z.string(),
+  type: connectorCatalogRefSchema,
+  authMethod: connectorCatalogAuthMethodIdSchema,
   externalId: z.string().nullable(),
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
@@ -61,8 +64,8 @@ export const connectorProvidedBindingSourceSchema = z.discriminatedUnion(
 );
 
 export const connectorProvidedBindingSchema = z.object({
-  connectorType: connectorTypeSchema,
-  authMethod: z.string(),
+  connectorType: connectorCatalogRefSchema,
+  authMethod: connectorCatalogAuthMethodIdSchema,
   namespace: connectorProvidedBindingNamespaceSchema,
   name: z.string(),
   optional: z.boolean(),
@@ -99,7 +102,7 @@ export function guaranteedConnectorProvidedBindingNames(args: {
  */
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
-  configuredTypes: z.array(connectorTypeSchema),
+  configuredTypes: z.array(connectorCatalogRefSchema),
   connectorProvidedBindings: z
     .array(connectorProvidedBindingSchema)
     .default([]),
@@ -130,7 +133,7 @@ export type ConnectorOauthStartResponse = z.infer<
 export const connectorOauthDeviceAuthSessionStartResponseSchema = z.object({
   sessionId: z.uuid(),
   sessionToken: z.string(),
-  type: connectorTypeSchema,
+  type: connectorCatalogRefSchema,
   status: z.literal("pending"),
   userCode: z.string(),
   verificationUri: z.string(),
@@ -185,7 +188,7 @@ export type ConnectorOauthDeviceAuthSessionPollResponse = z.infer<
 export const connectorExternalCodeSessionStartResponseSchema = z.object({
   sessionId: z.uuid(),
   sessionToken: z.string(),
-  type: connectorTypeSchema,
+  type: connectorCatalogRefSchema,
   status: z.literal("pending"),
   authorizationUrl: z.string(),
   expiresIn: z.number(),

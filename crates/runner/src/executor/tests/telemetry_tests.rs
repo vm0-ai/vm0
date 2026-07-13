@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use sandbox::{
     ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxConfig, SandboxCreateObserver,
     SandboxCreateStage, SandboxError, SandboxFactory, SandboxId, SandboxInitializationPhase,
+    SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
 };
 use sandbox_mock::MockSandboxFactory;
 
@@ -101,6 +102,8 @@ fn assert_action_outcome(
 struct ObservedMockSandboxFactory {
     inner: MockSandboxFactory,
     failed_stage: Option<SandboxCreateStage>,
+    failed_nbd_cow_stage: Option<SandboxNbdCowCreateStage>,
+    failed_nbd_netlink_connect_stage: Option<SandboxNbdNetlinkConnectStage>,
 }
 
 impl ObservedMockSandboxFactory {
@@ -108,6 +111,8 @@ impl ObservedMockSandboxFactory {
         Self {
             inner: MockSandboxFactory::new(),
             failed_stage: None,
+            failed_nbd_cow_stage: None,
+            failed_nbd_netlink_connect_stage: None,
         }
     }
 
@@ -115,6 +120,26 @@ impl ObservedMockSandboxFactory {
         Self {
             inner: MockSandboxFactory::new(),
             failed_stage: Some(stage),
+            failed_nbd_cow_stage: None,
+            failed_nbd_netlink_connect_stage: None,
+        }
+    }
+
+    fn with_failed_nbd_cow_stage(stage: SandboxNbdCowCreateStage) -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: None,
+            failed_nbd_cow_stage: Some(stage),
+            failed_nbd_netlink_connect_stage: None,
+        }
+    }
+
+    fn with_failed_nbd_netlink_connect_stage(stage: SandboxNbdNetlinkConnectStage) -> Self {
+        Self {
+            inner: MockSandboxFactory::new(),
+            failed_stage: None,
+            failed_nbd_cow_stage: None,
+            failed_nbd_netlink_connect_stage: Some(stage),
         }
     }
 }
@@ -146,8 +171,60 @@ impl SandboxFactory for ObservedMockSandboxFactory {
             });
         }
 
+        if let Some(stage) = self.failed_nbd_cow_stage {
+            observer.record_nbd_cow_stage(stage, Duration::from_millis(1), false);
+            observer.record_stage(
+                SandboxCreateStage::NbdCowCreate,
+                Duration::from_millis(2),
+                false,
+            );
+            return Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: "observed mock NBD COW detail failure".to_string(),
+            });
+        }
+
+        if let Some(stage) = self.failed_nbd_netlink_connect_stage {
+            observer.record_nbd_netlink_connect_stage(stage, Duration::from_millis(1), false);
+            observer.record_nbd_cow_stage(
+                SandboxNbdCowCreateStage::NetlinkConnect,
+                Duration::from_millis(2),
+                false,
+            );
+            observer.record_stage(
+                SandboxCreateStage::NbdCowCreate,
+                Duration::from_millis(3),
+                false,
+            );
+            return Err(SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: "observed mock NBD netlink detail failure".to_string(),
+            });
+        }
+
         for (index, stage) in SandboxCreateStage::ALL.iter().copied().enumerate() {
             observer.record_stage(stage, Duration::from_millis(index as u64 + 1), true);
+        }
+        for (index, stage) in SandboxNbdCowCreateStage::ALL.iter().copied().enumerate() {
+            observer.record_nbd_cow_stage(stage, Duration::from_millis(index as u64 + 10), true);
+        }
+        for (index, stage) in SandboxNbdNetlinkConnectStage::ALL
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            observer.record_nbd_netlink_connect_stage(
+                stage,
+                Duration::from_millis(index as u64 + 20),
+                true,
+            );
+        }
+        for outcome in [
+            SandboxNbdCowCreateOutcome::AcquireSourceDemandScan,
+            SandboxNbdCowCreateOutcome::EbusyRetriesNone,
+            SandboxNbdCowCreateOutcome::SizeZeroRetriesNone,
+        ] {
+            observer.record_nbd_cow_outcome(outcome);
         }
         self.inner.create(config).await
     }
@@ -170,6 +247,30 @@ const FRESH_SANDBOX_FACTORY_STAGE_ACTIONS: &[&str] = &[
     "runner_fresh_sandbox_factory_sock_dir_prepare",
     "runner_fresh_sandbox_factory_netns_acquire",
     "runner_fresh_sandbox_factory_nbd_cow_create",
+];
+
+const FRESH_SANDBOX_FACTORY_NBD_COW_STAGE_ACTIONS: &[&str] = &[
+    "runner_fresh_sandbox_factory_nbd_cow_layer_create",
+    "runner_fresh_sandbox_factory_nbd_device_acquire",
+    "runner_fresh_sandbox_factory_nbd_device_scan",
+    "runner_fresh_sandbox_factory_nbd_dispatch_setup",
+    "runner_fresh_sandbox_factory_nbd_netlink_connect",
+    "runner_fresh_sandbox_factory_nbd_size_verify",
+    "runner_fresh_sandbox_factory_nbd_retry_cleanup",
+    "runner_fresh_sandbox_factory_nbd_retry_delay",
+];
+
+const FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT_STAGE_ACTIONS: &[&str] = &[
+    "runner_fresh_sandbox_factory_nbd_netlink_blocking_task_queue",
+    "runner_fresh_sandbox_factory_nbd_netlink_socket_setup",
+    "runner_fresh_sandbox_factory_nbd_netlink_family_resolve",
+    "runner_fresh_sandbox_factory_nbd_netlink_connect_command",
+];
+
+const FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS: &[&str] = &[
+    "runner_fresh_sandbox_factory_nbd_acquire_source_demand_scan",
+    "runner_fresh_sandbox_factory_nbd_ebusy_retries_none",
+    "runner_fresh_sandbox_factory_nbd_size_zero_retries_none",
 ];
 
 const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
@@ -359,6 +460,24 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     for action in FRESH_SANDBOX_FACTORY_STAGE_ACTIONS {
         assert_action_success(&telemetry, action, true);
     }
+    for action in FRESH_SANDBOX_FACTORY_NBD_COW_STAGE_ACTIONS {
+        assert_action_success(&telemetry, action, true);
+    }
+    for action in FRESH_SANDBOX_FACTORY_NBD_NETLINK_CONNECT_STAGE_ACTIONS {
+        assert_action_success(&telemetry, action, true);
+    }
+    for action in FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS {
+        assert_action_success(&telemetry, action, true);
+    }
+    let operations = telemetry.pending_ops_with_duration_snapshot();
+    for action in FRESH_SANDBOX_FACTORY_NBD_COW_OUTCOME_ACTIONS {
+        let matching: Vec<_> = operations
+            .iter()
+            .filter(|operation| operation.0 == *action)
+            .collect();
+        assert_eq!(matching.len(), 1, "outcome {action}: {operations:?}");
+        assert_eq!(matching[0].1, 0, "outcome {action} duration");
+    }
     assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_fresh_workspace_image_prepare");
@@ -399,6 +518,90 @@ async fn execute_job_records_failed_fresh_sandbox_factory_stage_timing() {
     );
     assert_action_success(&telemetry, "vm_create", false);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_start");
+}
+
+#[tokio::test]
+async fn execute_job_records_failed_nbd_cow_detail_and_parent_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::with_failed_nbd_cow_stage(
+        SandboxNbdCowCreateStage::NetlinkConnect,
+    );
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_nbd_netlink_connect",
+        false,
+        Some("sandbox_factory_create_stage_failed"),
+    );
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_nbd_cow_create",
+        false,
+        Some("sandbox_factory_create_stage_failed"),
+    );
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        false,
+        Some("sandbox_factory_create_failed"),
+    );
+}
+
+#[tokio::test]
+async fn execute_job_records_failed_nbd_netlink_detail_and_parent_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let factory = ObservedMockSandboxFactory::with_failed_nbd_netlink_connect_stage(
+        SandboxNbdNetlinkConnectStage::ConnectCommand,
+    );
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (_outcome, telemetry) = execute_job(
+        &factory,
+        minimal_context(),
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    for action in [
+        "runner_fresh_sandbox_factory_nbd_netlink_connect_command",
+        "runner_fresh_sandbox_factory_nbd_netlink_connect",
+        "runner_fresh_sandbox_factory_nbd_cow_create",
+    ] {
+        assert_action_outcome(
+            &telemetry,
+            action,
+            false,
+            Some("sandbox_factory_create_stage_failed"),
+        );
+    }
+    assert_action_outcome(
+        &telemetry,
+        "runner_fresh_sandbox_factory_create",
+        false,
+        Some("sandbox_factory_create_failed"),
+    );
 }
 
 #[tokio::test]

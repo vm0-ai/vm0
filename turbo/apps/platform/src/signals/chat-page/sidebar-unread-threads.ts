@@ -15,7 +15,7 @@ import {
 } from "../chat-thread-list-reload.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
-  eventDrivenActiveRunChatThreadIds$,
+  sidebarActiveThreadIds$,
   eventDrivenChatThreads$,
 } from "./chat-thread-event-sourcing.ts";
 
@@ -93,9 +93,7 @@ export const unreadAgentIds$ = computed(
       return new Set();
     }
     const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(client.unreadAgents(), [200], {
-      toast: false,
-    });
+    const result = await accept(client.unreadAgents(), [200]);
     return new Set(result.body.agentIds);
   },
 );
@@ -114,7 +112,7 @@ export const currentAgentUnreadChatThreads$ = computed(
     if (unreadThreadIds.size === 0) {
       return [];
     }
-    const activeRunThreadIds = get(eventDrivenActiveRunChatThreadIds$);
+    const activeRunThreadIds = await get(sidebarActiveThreadIds$);
     return (await get(eventDrivenChatThreads$))
       .filter((thread) => {
         return thread.agentId === agentId && unreadThreadIds.has(thread.id);

@@ -185,6 +185,32 @@ describe("app auth pages", () => {
     );
   });
 
+  it("keeps app-hosted auth pages scrollable inside the root safe area", async () => {
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    const layout = await screen.findByTestId("app-auth-layout");
+
+    expect(layout).toHaveClass("h-full");
+    expect(layout).toHaveClass("min-h-0");
+    expect(layout).toHaveClass("overflow-y-auto");
+    expect(layout).toHaveClass("overflow-x-hidden");
+    expect(layout).toHaveClass("p-6");
+    expect(layout).not.toHaveClass("overflow-hidden");
+    expect(layout.className).not.toContain("var(--sat)");
+    expect(layout.className).not.toContain("var(--sab)");
+
+    const logo = screen.getByAltText("VM0").closest("a");
+    expect(logo).toHaveClass("left-6");
+    expect(logo).toHaveClass("top-6");
+    expect(logo?.className).not.toContain("var(--sat)");
+
+    const themeToggle = screen.getByLabelText("Toggle theme");
+    expect(themeToggle.className).toContain("var(--sat)");
+    expect(themeToggle.className).toContain("var(--sar)");
+  });
+
   it("routes ad-attributed sign-up visits through onboarding", async () => {
     const path = "/sign-up?gclid=click-123&utm_campaign=summer";
     setBrowserUrl(`https://app.vm0.ai${path}`);

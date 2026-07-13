@@ -36,9 +36,92 @@ impl SandboxCreateStage {
     ];
 }
 
+/// Fixed NBD COW details nested under [`SandboxCreateStage::NbdCowCreate`].
+///
+/// [`Self::DeviceScan`] is nested inside [`Self::DeviceAcquire`]. Every other
+/// duration is a peer contribution to the NBD create parent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxNbdCowCreateStage {
+    CowLayerCreate,
+    DeviceAcquire,
+    DeviceScan,
+    DispatchSetup,
+    NetlinkConnect,
+    SizeVerify,
+    RetryCleanup,
+    RetryDelay,
+}
+
+impl SandboxNbdCowCreateStage {
+    /// All NBD COW detail stages in stable telemetry order.
+    pub const ALL: [Self; 8] = [
+        Self::CowLayerCreate,
+        Self::DeviceAcquire,
+        Self::DeviceScan,
+        Self::DispatchSetup,
+        Self::NetlinkConnect,
+        Self::SizeVerify,
+        Self::RetryCleanup,
+        Self::RetryDelay,
+    ];
+}
+
+/// Fixed details nested under [`SandboxNbdCowCreateStage::NetlinkConnect`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxNbdNetlinkConnectStage {
+    BlockingTaskQueue,
+    SocketSetup,
+    FamilyResolve,
+    ConnectCommand,
+}
+
+impl SandboxNbdNetlinkConnectStage {
+    /// All NBD netlink connect stages in stable telemetry order.
+    pub const ALL: [Self; 4] = [
+        Self::BlockingTaskQueue,
+        Self::SocketSetup,
+        Self::FamilyResolve,
+        Self::ConnectCommand,
+    ];
+}
+
+/// Fixed low-cardinality NBD COW outcomes for sandbox-create telemetry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxNbdCowCreateOutcome {
+    AcquireSourceDemandScan,
+    AcquireSourceCooledClaim,
+    EbusyRetriesNone,
+    EbusyRetriesOne,
+    EbusyRetriesMultiple,
+    SizeZeroRetriesNone,
+    SizeZeroRetriesOne,
+    SizeZeroRetriesMultiple,
+}
+
 /// Receives low-cardinality sandbox factory create stage timings.
 pub trait SandboxCreateObserver: Send {
     fn record_stage(&mut self, stage: SandboxCreateStage, duration: Duration, success: bool);
+
+    /// Record one aggregate NBD COW detail stage.
+    fn record_nbd_cow_stage(
+        &mut self,
+        _stage: SandboxNbdCowCreateStage,
+        _duration: Duration,
+        _success: bool,
+    ) {
+    }
+
+    /// Record one aggregate stage nested inside NBD netlink connect.
+    fn record_nbd_netlink_connect_stage(
+        &mut self,
+        _stage: SandboxNbdNetlinkConnectStage,
+        _duration: Duration,
+        _success: bool,
+    ) {
+    }
+
+    /// Record one bounded NBD COW outcome.
+    fn record_nbd_cow_outcome(&mut self, _outcome: SandboxNbdCowCreateOutcome) {}
 }
 
 /// Creates and owns the normal teardown path for sandboxes in one profile.

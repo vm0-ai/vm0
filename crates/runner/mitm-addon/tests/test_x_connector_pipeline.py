@@ -126,7 +126,7 @@ class TestXConnectorResponsePipeline:
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate", "br", "zstd"])
     def test_full_response_pipeline_truncated_compressed_x_json_does_not_bill(
-        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, encoding_case
+        self, tmp_path, real_flow, mitm_ctx, encoding_case
     ):
         flow = make_x_pipeline_flow(
             real_flow,
@@ -227,9 +227,7 @@ class TestXConnectorResponsePipeline:
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
 
-    def test_full_streaming_pipeline_filtered_stream(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
-    ):
+    def test_full_streaming_pipeline_filtered_stream(self, tmp_path, real_flow, mitm_ctx, headers):
         """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
 
@@ -254,7 +252,6 @@ class TestXConnectorResponsePipeline:
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
         payloads = webhook.usage_events()
@@ -265,7 +262,7 @@ class TestXConnectorResponsePipeline:
         assert by_cat["user.read"] == 3
 
     def test_full_streaming_pipeline_counts_final_line_without_newline(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """End-to-end: response() finalizes a complete NDJSON row without trailing newline."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
@@ -278,7 +275,6 @@ class TestXConnectorResponsePipeline:
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
@@ -286,7 +282,7 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
 
     def test_full_pipeline_compressed_stream_error_does_not_bill_unverified_rows(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
         assert flow.response is not None
@@ -305,7 +301,6 @@ class TestXConnectorResponsePipeline:
         with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 0
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
@@ -318,7 +313,7 @@ class TestXConnectorResponsePipeline:
         assert lost_visibility_entries[0]["parse_error"] == "incomplete compressed body"
 
     def test_full_streaming_pipeline_ignores_malformed_include_values(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """Malformed include values are ignored while valid siblings still bill."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
@@ -343,7 +338,6 @@ class TestXConnectorResponsePipeline:
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
@@ -357,7 +351,7 @@ class TestXConnectorResponsePipeline:
         ],
     )
     def test_full_streaming_pipeline_continues_after_json_parser_failure(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, failed_line
+        self, tmp_path, real_flow, mitm_ctx, headers, failed_line
     ):
         """A hostile NDJSON row must not stop later valid rows from billing."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
@@ -376,14 +370,13 @@ class TestXConnectorResponsePipeline:
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
         assert by_cat == {"posts.read": 1, "user.read": 1}
 
     def test_full_streaming_pipeline_bounds_unknown_include_categories(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers
     ):
         """Long-lived streams fold unknown include overflow into one fallback-priced bucket."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
@@ -406,7 +399,6 @@ class TestXConnectorResponsePipeline:
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
@@ -419,9 +411,7 @@ class TestXConnectorResponsePipeline:
         assert len(by_cat) == 67
         assert all(len(category) <= 100 for category in by_cat)
 
-    def test_response_logs_incremental_x_json_parse_error(
-        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
-    ):
+    def test_response_logs_incremental_x_json_parse_error(self, tmp_path, real_flow, mitm_ctx):
         """Full response hook should audit parse errors from the incremental X JSON parser."""
         flow = make_x_pipeline_flow(
             real_flow,
@@ -454,7 +444,7 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
 
     def test_response_logs_x_json_parse_error_after_forensic_buffer_truncates(
-        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+        self, tmp_path, real_flow, mitm_ctx
     ):
         """The X JSON parser should stay authoritative after the forensic buffer fills."""
         flow = make_x_pipeline_flow(
@@ -487,7 +477,7 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
 
     def test_response_uses_request_hints_for_incremental_x_json_parse_error(
-        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+        self, tmp_path, real_flow, mitm_ctx
     ):
         """Incremental X JSON parser failures should still bill from URL hints."""
         flow = make_x_pipeline_flow(
@@ -520,8 +510,12 @@ class TestXConnectorResponsePipeline:
 class TestXConnectorErrorPipeline:
     """Tests for X connector usage through responseheaders -> error."""
 
+    @pytest.fixture(autouse=True)
+    def _sync_executor(self, sync_usage_executor):
+        """Run delivery inline for error-pipeline behavior tests."""
+
     def test_error_logs_connector_usage_for_x_stream(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
         """Mid-flight stream crash: partial counts still reported (issue #9534)."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
@@ -537,7 +531,6 @@ class TestXConnectorErrorPipeline:
         with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count > 0
         payloads = webhook.usage_events()
@@ -546,7 +539,7 @@ class TestXConnectorErrorPipeline:
         assert by_cat["user.read"] == 5
 
     def test_full_pipeline_stream_error_midflight(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
         """End-to-end: responseheaders -> partial chunks -> error() logs observed counts.
 
@@ -572,7 +565,6 @@ class TestXConnectorErrorPipeline:
         with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
         payloads = webhook.usage_events()
@@ -581,7 +573,7 @@ class TestXConnectorErrorPipeline:
         assert by_cat["user.read"] == 1
 
     def test_full_pipeline_stream_error_counts_complete_final_line_without_newline(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api
     ):
         """Connection error finalizes a complete NDJSON row without trailing newline."""
         flow = make_x_stream_pipeline_flow(real_flow, tmp_path)
@@ -595,7 +587,6 @@ class TestXConnectorErrorPipeline:
         with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}

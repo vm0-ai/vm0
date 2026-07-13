@@ -28,7 +28,7 @@ use super::{
     PreLocalAdmissionOutcome,
 };
 use crate::duration::duration_ms;
-use crate::error::{RunnerError, RunnerResult};
+use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::run_cancellation::SharedRunCancellationMap;
@@ -111,6 +111,7 @@ enum DiscoveryWakeup {
 /// - **Complete**: `POST /api/webhooks/agent/complete` with per-job sandbox token
 pub struct ApiProvider {
     api: ApiClient,
+    runner_id: String,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -133,17 +134,27 @@ pub struct BuiltinFirewallCatalogCachePaths {
     pub lock_path: PathBuf,
 }
 
+pub struct ApiProviderConfig {
+    pub runner_id: String,
+    pub group: String,
+    pub supported_profiles: Vec<String>,
+}
+
 impl ApiProvider {
     /// Create a new API-backed provider.
     pub fn new(
         http: HttpClient,
         token: String,
-        group: String,
-        supported_profiles: Vec<String>,
+        config: ApiProviderConfig,
         builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
+        let ApiProviderConfig {
+            runner_id,
+            group,
+            supported_profiles,
+        } = config;
         let api = ApiClient::new(http, token);
         let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
         let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshController::new(
@@ -160,6 +171,7 @@ impl ApiProvider {
 
         Arc::new(Self {
             api,
+            runner_id,
             group,
             supported_profiles,
             poll_wakeups,
@@ -313,7 +325,12 @@ impl JobProvider for ApiProvider {
                     }
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.supported_profiles, reason) => result,
+                result = self.api.poll(
+                    &self.runner_id,
+                    &self.group,
+                    &self.supported_profiles,
+                    reason,
+                ) => result,
             };
 
             match poll_result {
@@ -466,12 +483,68 @@ impl JobProvider for ApiProvider {
                 .await
             {
                 Ok(()) => return,
-                Err(e) if attempt < MAX_ATTEMPTS => {
-                    warn!(run_id = %run_id, error = %e, "completion report failed, retrying");
-                    tokio::time::sleep(RETRY_DELAY).await;
-                }
                 Err(e) => {
-                    error!(run_id = %run_id, error = %e, "failed to report completion after retry");
+                    let (retryable, status, failure_kind) = match &e {
+                        RunnerError::ApiStatus(api_error) => {
+                            let status = api_error.status;
+                            (
+                                matches!(
+                                    status,
+                                    StatusCode::REQUEST_TIMEOUT
+                                        | StatusCode::MISDIRECTED_REQUEST
+                                        | StatusCode::TOO_EARLY
+                                        | StatusCode::TOO_MANY_REQUESTS
+                                ) || status.is_server_error(),
+                                api_error.status.as_str(),
+                                "http_status",
+                            )
+                        }
+                        RunnerError::ApiTransport(api_error) => {
+                            (true, "", api_error.failure_kind.as_str())
+                        }
+                        _ => (false, "", "local"),
+                    };
+                    let will_retry = retryable && attempt < MAX_ATTEMPTS;
+
+                    if will_retry {
+                        warn!(
+                            run_id = %run_id,
+                            error = %e,
+                            attempt,
+                            max_attempts = MAX_ATTEMPTS,
+                            will_retry,
+                            status,
+                            failure_kind,
+                            "completion report failed, retrying"
+                        );
+                        tokio::time::sleep(RETRY_DELAY).await;
+                        continue;
+                    }
+
+                    if attempt > 1 {
+                        error!(
+                            run_id = %run_id,
+                            error = %e,
+                            attempt,
+                            max_attempts = MAX_ATTEMPTS,
+                            will_retry,
+                            status,
+                            failure_kind,
+                            "failed to report completion after retry"
+                        );
+                    } else {
+                        error!(
+                            run_id = %run_id,
+                            error = %e,
+                            attempt,
+                            max_attempts = MAX_ATTEMPTS,
+                            will_retry,
+                            status,
+                            failure_kind,
+                            "failed to report completion"
+                        );
+                    }
+                    return;
                 }
             }
         }
@@ -535,11 +608,12 @@ impl ApiClient {
     /// Poll for a pending job. The response contains `job: None` when no work is available.
     async fn poll(
         &self,
+        runner_id: &str,
         group: &str,
         supported_profiles: &[String],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(group, supported_profiles, reason);
+        let body = poll_request_body(runner_id, group, supported_profiles, reason);
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -575,11 +649,9 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
-    /// HTTP 409 (job row still present, already claimed) and HTTP 404 (job
-    /// row already dequeued by the winner) so callers can continue gracefully.
-    /// Both outcomes are normal contention signals when multiple runners race
-    /// for the same job.
+    /// Claim a job for execution. Treats the current HTTP 404 unavailable
+    /// response and the legacy HTTP 409 conflict response as
+    /// [`RunnerError::AlreadyClaimed`] so callers can continue gracefully.
     async fn claim(&self, candidate: &JobCandidate) -> RunnerResult<ExecutionContext> {
         let run_id = candidate.run_id();
         let body = claim_request_body(candidate);
@@ -639,11 +711,7 @@ impl ApiClient {
         )
         .await?;
 
-        if !resp.status().is_success() {
-            let (status, body) = read_api_error(resp).await;
-            warn!(status = %status, "complete request failed: {body}");
-            return Err(api_status_error("complete", status, &body));
-        }
+        check_api_status(resp, "complete").await?;
 
         Ok(())
     }
@@ -786,11 +854,13 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
 }
 
 fn poll_request_body(
+    runner_id: &str,
     group: &str,
     supported_profiles: &[String],
     reason: PollReason,
 ) -> serde_json::Value {
     serde_json::json!({
+        "runnerId": runner_id,
         "group": group,
         "supportedProfiles": supported_profiles,
         "telemetry": {
@@ -817,7 +887,7 @@ async fn send_api(req: ApiRequestBuilder, label: &'static str) -> RunnerResult<R
     }
 }
 
-async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response> {
+async fn check_api_status(resp: Response, label: &'static str) -> RunnerResult<Response> {
     let status = resp.status();
     if !status.is_success() {
         let (status, body) = read_api_error(resp).await;
@@ -840,8 +910,12 @@ async fn read_api_error(resp: Response) -> (StatusCode, String) {
     (status, body)
 }
 
-fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
-    RunnerError::Api(format!("{label} {status}: {body}"))
+fn api_status_error(label: &'static str, status: StatusCode, body: &str) -> RunnerError {
+    RunnerError::ApiStatus(Box::new(ApiStatusError {
+        endpoint_label: label,
+        status,
+        body: body.to_string(),
+    }))
 }
 
 fn decode_api_json_bytes<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
@@ -1098,6 +1172,11 @@ mod tests {
 
     use crate::http::HttpClientConfig;
 
+    const RUNNER_CLAIM_RESPONSE_FIXTURE: &str = include_str!(
+        "../../../../turbo/packages/api-contracts/src/contracts/__tests__/fixtures/runner-claim-response.json"
+    );
+    const RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID: &str = "00000000-0000-4000-8000-000000020985";
+
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         ApiClient::new(
             HttpClient::new(HttpClientConfig {
@@ -1254,11 +1333,25 @@ mod tests {
         mock.assert_async().await;
     }
 
-    fn assert_api_error(err: RunnerError, expected: &str) {
+    fn assert_api_status_error(
+        err: RunnerError,
+        endpoint_label: &'static str,
+        status: StatusCode,
+        body: &str,
+    ) {
+        let display = err.to_string();
         match err {
-            RunnerError::Api(message) => assert_eq!(message, expected),
-            other => panic!("expected RunnerError::Api, got {other:?}"),
+            RunnerError::ApiStatus(error) => {
+                assert_eq!(error.endpoint_label, endpoint_label);
+                assert_eq!(error.status, status);
+                assert_eq!(error.body, body);
+            }
+            other => panic!("expected RunnerError::ApiStatus, got {other:?}"),
         }
+        assert_eq!(
+            display,
+            format!("api error: {endpoint_label} {status}: {body}")
+        );
     }
 
     fn api_provider_for_test(
@@ -1279,6 +1372,7 @@ mod tests {
             network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
+            runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -1340,6 +1434,7 @@ mod tests {
             held_session_states: vec![crate::types::HeldSessionState {
                 session_id: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+                reusable_sandbox: None,
             }],
             mode: "running".to_string(),
         }
@@ -1421,8 +1516,8 @@ mod tests {
             for status in statuses {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let request = read_http_request_text(&mut socket).await;
-                request_tx.send(request).unwrap();
                 write_http_status_response(&mut socket, status).await;
+                request_tx.send(request).unwrap();
             }
         });
         (api_url, request_rx, server_task)
@@ -1507,8 +1602,14 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
-        let body = poll_request_body("vm0/test", &profiles, PollReason::Immediate);
+        let body = poll_request_body(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "vm0/test",
+            &profiles,
+            PollReason::Immediate,
+        );
 
+        assert_eq!(body["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(body["group"], "vm0/test");
         assert_eq!(
             body["supportedProfiles"][0],
@@ -1910,6 +2011,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::runners::poll::POLL.path)
                     .json_body(serde_json::json!({
+                        "runnerId": "550e8400-e29b-41d4-a716-446655440000",
                         "group": "default",
                         "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
@@ -1978,6 +2080,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::runners::poll::POLL.path)
                     .json_body(serde_json::json!({
+                        "runnerId": "550e8400-e29b-41d4-a716-446655440000",
                         "group": "default",
                         "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
@@ -2150,11 +2253,21 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], PollReason::Immediate)
+            .poll(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "default",
+                &[],
+                PollReason::Immediate,
+            )
             .await
             .unwrap_err();
 
-        assert_api_error(err, "poll 503 Service Unavailable: poll unavailable");
+        assert_api_status_error(
+            err,
+            "poll",
+            StatusCode::SERVICE_UNAVAILABLE,
+            "poll unavailable",
+        );
         mock.assert_async().await;
     }
 
@@ -2170,7 +2283,12 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], PollReason::Immediate)
+            .poll(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "default",
+                &[],
+                PollReason::Immediate,
+            )
             .await
             .unwrap_err();
 
@@ -2185,7 +2303,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_conflict_or_not_found_is_already_claimed() {
+    async fn api_client_claim_not_found_or_legacy_conflict_is_already_claimed() {
         for status in [409_u16, 404] {
             let server = MockServer::start_async().await;
             let run_id = RunId::nil();
@@ -2420,6 +2538,7 @@ mod tests {
 
         let err = api
             .poll(
+                "550e8400-e29b-41d4-a716-446655440000",
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
                 PollReason::Immediate,
@@ -2458,8 +2577,192 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_api_error(err, "complete 500 Internal Server Error: complete failed");
+        assert_api_status_error(
+            err,
+            "complete",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "complete failed",
+        );
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_accepts_shared_current_response_fixture() {
+        let server = MockServer::start_async().await;
+        let run_id: RunId = RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID.parse().unwrap();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(RUNNER_CLAIM_RESPONSE_FIXTURE);
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("shared current claim response should decode");
+        let context = claimed.context();
+
+        assert_eq!(context.run_id, run_id);
+        assert_eq!(context.prompt, "Inspect the fixture repository");
+        assert_eq!(
+            context.append_system_prompt.as_deref(),
+            Some("Use the shared contract fixture")
+        );
+        assert_eq!(
+            context.vars.as_ref().unwrap()["FIXTURE_REGION"],
+            "test-region"
+        );
+        assert_eq!(context.storage_manifest.as_ref().unwrap().storages.len(), 1);
+        assert_eq!(context.cli_agent_session_id(), Some("fixture-session-id"));
+        assert_eq!(
+            context.environment.as_ref().unwrap()["FIXTURE_MODEL"],
+            "fixture-model"
+        );
+        assert_eq!(
+            context.secret_values.as_deref(),
+            Some(["fixture-secret-value-not-real".to_string()].as_slice())
+        );
+        assert!(context.local_secret_env_keys.is_none());
+        assert_eq!(
+            context.secret_connector_metadata_map.as_ref().unwrap()["FIXTURE_API_KEY"]
+                .source_user_id
+                .as_deref(),
+            Some("fixture-user-id")
+        );
+        assert_eq!(context.capture_network_bodies, Some(true));
+        assert_eq!(context.user_timezone.as_deref(), Some("UTC"));
+        assert_eq!(
+            context.network_policies.as_ref().unwrap()["model-provider:fixture"].unknown_policy,
+            "deny"
+        );
+        assert_eq!(
+            context.billable_firewalls,
+            ["model-provider:fixture".to_string()]
+        );
+        assert_eq!(
+            context.codex_runtime_config.as_ref().unwrap().provider_id,
+            "fixture_provider"
+        );
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_accepts_previous_minimal_response() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "previous response",
+                    "sandboxToken": "previous-sandbox-token",
+                    "cliAgentType": "claude_code"
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("previous minimal claim response should remain compatible");
+        let context = claimed.context();
+
+        assert_eq!(context.prompt, "previous response");
+        assert!(context.append_system_prompt.is_none());
+        assert!(context.billable_firewalls.is_empty());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_ignores_additive_unknown_top_level_fields() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "response with additive field",
+                    "sandboxToken": "additive-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "futureClaimMetadata": {"version": 2}
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("additive unknown claim fields should be ignored");
+
+        assert_eq!(claimed.context().prompt, "response with additive field");
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_ignores_api_local_secret_env_keys() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "attempt local secret trust",
+                    "sandboxToken": "local-secret-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "localSecretEnvKeys": ["ANTHROPIC_API_KEY"]
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("API local secret metadata should be ignored");
+
+        assert!(claimed.context().local_secret_env_keys.is_none());
+        claim_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]
@@ -2725,16 +3028,127 @@ mod tests {
         mock.assert_calls_async(0).await;
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn api_provider_complete_retries_once_after_failure_and_succeeds() {
-        let (api_url, mut requests, server_task) = complete_sequence_server(vec![500, 200]).await;
+    #[tokio::test]
+    async fn api_provider_complete_does_not_retry_permanent_http_failure() {
+        let (api_url, mut requests, server_task) = complete_sequence_server(vec![400]).await;
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
             CancellationToken::new(),
             Arc::new(PollWakeups::new(false)),
         );
+        let ((), events) = tokio::time::timeout(
+            Duration::from_secs(1),
+            capture_api_provider_events(async move {
+                provider
+                    .complete(
+                        run_id,
+                        0,
+                        None,
+                        None,
+                        None,
+                        CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+                    )
+                    .await;
+            }),
+        )
+        .await
+        .expect("permanent completion failure should not wait for the retry delay");
 
+        let request = next_request(&mut requests).await;
+        assert_complete_authorization(&request, "sandbox-token");
+        server_task.await.unwrap();
+        assert!(
+            requests.recv().await.is_none(),
+            "permanent completion failure should send one request"
+        );
+
+        let run_id = run_id.to_string();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.fields.get("run_id") == Some(&run_id))
+                .count(),
+            1,
+            "one failed request should produce one provider event: {events:#?}"
+        );
+        let event = captured_event(&events, "failed to report completion");
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(event_field(event, "attempt"), "1");
+        assert_eq!(event_field(event, "max_attempts"), "2");
+        assert_eq!(event_field(event, "will_retry"), "false");
+        assert_eq!(event_field(event, "status"), "400");
+        assert_eq!(event_field(event, "failure_kind"), "http_status");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn api_provider_complete_retries_transient_http_failures() {
+        for status in [
+            StatusCode::REQUEST_TIMEOUT,
+            StatusCode::MISDIRECTED_REQUEST,
+            StatusCode::TOO_EARLY,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            let (api_url, mut requests, server_task) =
+                complete_sequence_server(vec![status.as_u16(), 200]).await;
+            let run_id = RunId::nil();
+            let provider = api_provider_for_test(
+                api_url,
+                CancellationToken::new(),
+                Arc::new(PollWakeups::new(false)),
+            );
+            let complete_task = tokio::spawn(async move {
+                provider
+                    .complete(
+                        run_id,
+                        0,
+                        None,
+                        None,
+                        None,
+                        CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+                    )
+                    .await;
+            });
+
+            let first_request = next_request(&mut requests).await;
+            assert_complete_authorization(&first_request, "sandbox-token");
+            tokio::task::yield_now().await;
+            assert!(
+                requests.try_recv().is_err(),
+                "status {status} should wait before the retry"
+            );
+            tokio::time::advance(Duration::from_secs(2)).await;
+            let second_request = next_request(&mut requests).await;
+            assert_complete_authorization(&second_request, "sandbox-token");
+
+            complete_task.await.unwrap();
+            server_task.await.unwrap();
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn api_provider_complete_retries_transport_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let (request_tx, mut requests) = mpsc::unbounded_channel();
+        let server_task = tokio::spawn(async move {
+            let (mut first_socket, _) = listener.accept().await.unwrap();
+            let first_request = read_http_request_text(&mut first_socket).await;
+            drop(first_socket);
+            request_tx.send(first_request).unwrap();
+
+            let (mut second_socket, _) = listener.accept().await.unwrap();
+            let second_request = read_http_request_text(&mut second_socket).await;
+            write_http_status_response(&mut second_socket, 200).await;
+            request_tx.send(second_request).unwrap();
+        });
+        let run_id = RunId::nil();
+        let provider = api_provider_for_test(
+            api_url,
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
         let complete_task = tokio::spawn(async move {
             provider
                 .complete(
@@ -2750,6 +3164,11 @@ mod tests {
 
         let first_request = next_request(&mut requests).await;
         assert_complete_authorization(&first_request, "sandbox-token");
+        tokio::task::yield_now().await;
+        assert!(
+            requests.try_recv().is_err(),
+            "transport failure should wait before the retry"
+        );
         tokio::time::advance(Duration::from_secs(2)).await;
         let second_request = next_request(&mut requests).await;
         assert_complete_authorization(&second_request, "sandbox-token");
@@ -2759,9 +3178,38 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn api_provider_complete_stops_after_two_failures() {
-        let (api_url, mut requests, server_task) =
-            complete_sequence_server(vec![500, 500, 200]).await;
+    async fn api_provider_complete_does_not_retry_local_request_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        let run_id = RunId::nil();
+        let provider = api_provider_for_test(
+            api_url,
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+        let ((), events) = capture_api_provider_events(provider.complete(
+            run_id,
+            0,
+            None,
+            None,
+            None,
+            CompletionAuth::sandbox_token(run_id, "invalid\nheader".to_string()),
+        ))
+        .await;
+
+        let event = captured_event(&events, "failed to report completion");
+        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(event_field(event, "attempt"), "1");
+        assert_eq!(event_field(event, "will_retry"), "false");
+        assert_eq!(event_field(event, "status"), "");
+        assert_eq!(event_field(event, "failure_kind"), "local");
+        assert!(event_field(event, "error").contains("build API request"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn api_provider_complete_stops_after_two_transient_failures() {
+        let (api_url, mut requests, server_task) = complete_sequence_server(vec![500, 500]).await;
         let run_id = RunId::nil();
         let provider = api_provider_for_test(
             api_url,
@@ -2770,16 +3218,15 @@ mod tests {
         );
 
         let complete_task = tokio::spawn(async move {
-            provider
-                .complete(
-                    run_id,
-                    1,
-                    Some("boom"),
-                    None,
-                    None,
-                    CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
-                )
-                .await;
+            capture_api_provider_events(provider.complete(
+                run_id,
+                1,
+                Some("boom"),
+                None,
+                None,
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            ))
+            .await
         });
 
         let first_request = next_request(&mut requests).await;
@@ -2788,12 +3235,34 @@ mod tests {
         let second_request = next_request(&mut requests).await;
         assert_complete_authorization(&second_request, "sandbox-token");
 
-        complete_task.await.unwrap();
+        let ((), events) = complete_task.await.unwrap();
+        server_task.await.unwrap();
         assert!(
-            requests.try_recv().is_err(),
+            requests.recv().await.is_none(),
             "completion should stop after the retry"
         );
-        server_task.abort();
-        let _ = server_task.await;
+
+        let run_id = run_id.to_string();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.fields.get("run_id") == Some(&run_id))
+                .count(),
+            2,
+            "two failed requests should produce two provider events: {events:#?}"
+        );
+        let retry_event = captured_event(&events, "completion report failed, retrying");
+        assert_eq!(retry_event.level, Level::WARN);
+        assert_eq!(event_field(retry_event, "attempt"), "1");
+        assert_eq!(event_field(retry_event, "will_retry"), "true");
+        assert_eq!(event_field(retry_event, "status"), "500");
+        assert_eq!(event_field(retry_event, "failure_kind"), "http_status");
+
+        let final_event = captured_event(&events, "failed to report completion after retry");
+        assert_eq!(final_event.level, Level::ERROR);
+        assert_eq!(event_field(final_event, "attempt"), "2");
+        assert_eq!(event_field(final_event, "will_retry"), "false");
+        assert_eq!(event_field(final_event, "status"), "500");
+        assert_eq!(event_field(final_event, "failure_kind"), "http_status");
     }
 }

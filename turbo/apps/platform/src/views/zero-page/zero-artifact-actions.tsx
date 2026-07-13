@@ -18,10 +18,13 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import type { ConnectorAuthMethodIdsByGrantKind } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorOpenIdStartContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { accept, ApiError } from "../../lib/accept.ts";
 import {
@@ -29,7 +32,10 @@ import {
   zeroClient$,
   type ZeroClientFactory,
 } from "../../signals/api-client.ts";
-import { connectors$ } from "../../signals/external/connectors.ts";
+import {
+  connectorCatalogStatusByRef$,
+  connectors$,
+} from "../../signals/external/connectors.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason, tapError, withCleanup } from "../../signals/utils.ts";
@@ -47,6 +53,10 @@ import {
 } from "../../signals/chat-page/artifact-google-drive-sync.ts";
 import { uploadPresentationToGoogleSlides$ } from "../../signals/chat-page/artifact-google-slides-upload.ts";
 import {
+  getOnlyAvailableCatalogBrowserAuthMethodDetail,
+  type ConnectorCatalogBrowserAuthMethodDetail,
+} from "../../signals/zero-page/settings/connectors.ts";
+import {
   copyAttachmentLinkToClipboard,
   downloadAttachmentUrl,
   publicAttachmentUrl,
@@ -58,11 +68,7 @@ import {
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
-const GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD =
-  "oauth" satisfies ConnectorAuthMethodIdsByGrantKind<
-    "google-drive",
-    "auth-code"
-  >;
+const GOOGLE_DRIVE_CONNECTOR_REF = "google-drive";
 const ARTIFACT_FLOATING_LAYER_CLASS =
   "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:translate-y-0 data-[state=open]:opacity-100 data-[state=closed]:translate-y-2 data-[state=closed]:opacity-0";
 
@@ -158,6 +164,8 @@ function runWhenGoogleDriveReady(params: {
 
 function startGoogleDriveConnectAndRun(params: {
   agentId: string | null | undefined;
+  authMethod: ConnectorCatalogBrowserAuthMethodDetail;
+  connector: PublicConnectorCatalogStatusItem;
   createClient: ZeroClientFactory;
   pageSignal: AbortSignal;
   run: GoogleDriveReadyRun;
@@ -179,17 +187,29 @@ function startGoogleDriveConnectAndRun(params: {
   }
   detach(
     (async () => {
-      const client = params.createClient(zeroConnectorOauthStartContract, {
-        apiBase: OAUTH_WEB_API_BASE,
-      });
-      const result = await accept(
-        client.start({
-          params: { type: "google-drive" },
-          body: { authMethod: GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD },
-          fetchOptions: { signal: params.pageSignal },
-        }),
-        [200],
-      );
+      const request = {
+        params: { type: params.connector.connectorRef },
+        body: { authMethod: params.authMethod.id },
+        fetchOptions: { signal: params.pageSignal },
+      };
+      const result =
+        params.authMethod.grantKind === "openid-auth"
+          ? await accept(
+              params
+                .createClient(zeroConnectorOpenIdStartContract, {
+                  apiBase: "api",
+                })
+                .start(request),
+              [200],
+            )
+          : await accept(
+              params
+                .createClient(zeroConnectorOauthStartContract, {
+                  apiBase: OAUTH_WEB_API_BASE,
+                })
+                .start(request),
+              [200],
+            );
       params.pageSignal.throwIfAborted();
       authWindow.location.href = result.body.authorizationUrl;
     })(),
@@ -370,23 +390,41 @@ function useGoogleDriveAvailability(
 ) {
   const connectorListLoadable = useLoadable(connectors$);
   const lastConnectorList = useLastResolved(connectors$);
+  const catalogByRefLoadable = useLoadable(connectorCatalogStatusByRef$);
+  const lastCatalogByRef = useLastResolved(connectorCatalogStatusByRef$);
   const connectorList =
     connectorListLoadable.state === "hasData"
       ? connectorListLoadable.data
       : connectorListLoadable.state === "loading"
         ? lastConnectorList
         : undefined;
+  const catalogByRef =
+    catalogByRefLoadable.state === "hasData"
+      ? catalogByRefLoadable.data
+      : catalogByRefLoadable.state === "loading"
+        ? lastCatalogByRef
+        : undefined;
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
       return (
-        connector.type === "google-drive" &&
+        connector.type === GOOGLE_DRIVE_CONNECTOR_REF &&
         connector.connectionStatus === "connected"
       );
     }) ?? false;
+  const googleDriveConnector =
+    catalogByRef?.get(GOOGLE_DRIVE_CONNECTOR_REF) ?? null;
+  const googleDriveAuthMethod =
+    googleDriveConnector === null
+      ? null
+      : getOnlyAvailableCatalogBrowserAuthMethodDetail(googleDriveConnector);
 
   return {
-    connectorListLoaded: connectorList !== undefined,
+    connectorListLoaded:
+      connectorList !== undefined &&
+      (googleDriveConnected || catalogByRef !== undefined),
+    googleDriveAuthMethod,
     googleDriveConnected,
+    googleDriveConnector,
     googleDriveReady: googleDriveConnected && syncTarget?.disconnected !== true,
   };
 }
@@ -398,8 +436,13 @@ function GoogleDriveMenuItem({
   closeMenu: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
 }) {
-  const { connectorListLoaded, googleDriveConnected, googleDriveReady } =
-    useGoogleDriveAvailability(syncTarget);
+  const {
+    connectorListLoaded,
+    googleDriveAuthMethod,
+    googleDriveConnected,
+    googleDriveConnector,
+    googleDriveReady,
+  } = useGoogleDriveAvailability(syncTarget);
   const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
   const waitForGoogleDriveAuthorization = useSet(
@@ -467,8 +510,13 @@ function GoogleDriveMenuItem({
       });
       return;
     }
+    if (!googleDriveConnector || !googleDriveAuthMethod) {
+      return;
+    }
     startGoogleDriveConnectAndRun({
       agentId: syncTarget.agentId,
+      authMethod: googleDriveAuthMethod,
+      connector: googleDriveConnector,
       createClient,
       pageSignal,
       run,
@@ -490,7 +538,13 @@ function GoogleDriveMenuItem({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <ArtifactDownloadMenuItem onClick={syncOrConnect}>
+          <ArtifactDownloadMenuItem
+            disabled={
+              !googleDriveConnected &&
+              (!googleDriveConnector || !googleDriveAuthMethod)
+            }
+            onClick={syncOrConnect}
+          >
             <IconBrandGoogleDrive size={14} stroke={1.5} />
             Connect Google Drive
           </ArtifactDownloadMenuItem>
@@ -516,8 +570,13 @@ function GoogleSlidesMenuItem({
   threadId: string;
   url: string;
 }) {
-  const { connectorListLoaded, googleDriveConnected, googleDriveReady } =
-    useGoogleDriveAvailability(syncTarget);
+  const {
+    connectorListLoaded,
+    googleDriveAuthMethod,
+    googleDriveConnected,
+    googleDriveConnector,
+    googleDriveReady,
+  } = useGoogleDriveAvailability(syncTarget);
   const createClient = useGet(zeroClient$);
   const pageSignal = useGet(pageSignal$);
   const upload = useSet(uploadPresentationToGoogleSlides$);
@@ -559,8 +618,13 @@ function GoogleSlidesMenuItem({
       });
       return;
     }
+    if (!googleDriveConnector || !googleDriveAuthMethod) {
+      return;
+    }
     startGoogleDriveConnectAndRun({
       agentId: syncTarget.agentId,
+      authMethod: googleDriveAuthMethod,
+      connector: googleDriveConnector,
       createClient,
       pageSignal,
       run,
@@ -573,7 +637,13 @@ function GoogleSlidesMenuItem({
     ? "Upload to Google Slides"
     : "Connect Google Drive";
   return (
-    <ArtifactDownloadMenuItem onClick={connectOrUpload}>
+    <ArtifactDownloadMenuItem
+      disabled={
+        !googleDriveConnected &&
+        (!googleDriveConnector || !googleDriveAuthMethod)
+      }
+      onClick={connectOrUpload}
+    >
       <IconPresentation size={14} stroke={1.5} />
       {label}
     </ArtifactDownloadMenuItem>

@@ -26,7 +26,6 @@ export const zeroActivityContext$ = computed(async (get) => {
   const result = await accept(
     client.getContext({ params: { id: runId } }),
     [200, 404],
-    { toast: false },
   );
   if (result.status === 404) {
     return {

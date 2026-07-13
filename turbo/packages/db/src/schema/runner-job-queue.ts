@@ -6,7 +6,6 @@ import {
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import type { RunnerJobQueueExecutionContext } from "@vm0/db/jsonb-contracts/runner-job-queue";
 
@@ -38,28 +37,24 @@ export const runnerJobQueue = pgTable(
     // first-turn jobs before the guest reports a CLI agent session).
     cliAgentSessionId: varchar("session_id", { length: 255 }),
 
-    // Claim status
-    claimedAt: timestamp("claimed_at"),
-
     // Execution context (secrets encrypted with persistent-secret envelope)
     executionContext: jsonb("execution_context")
       .$type<RunnerJobQueueExecutionContext>()
       .notNull(),
 
-    // Lifecycle management
+    // Lifecycle management. Current API writers provide an application-clock
+    // insertion time; the default keeps older writers compatible.
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    // Current API writers use the database clock during the insert statement.
     expiresAt: timestamp("expires_at").notNull(), // TTL for auto-cleanup
   },
   (table) => {
     return [
-      // Index for polling unclaimed jobs by group and profile
-      index("runner_job_queue_group_profile_unclaimed_idx")
-        .on(table.runnerGroup, table.profile)
-        .where(sql`claimed_at IS NULL`),
-      // Index for session affinity routing on unclaimed jobs
-      index("runner_job_queue_session_id_unclaimed_idx")
-        .on(table.cliAgentSessionId)
-        .where(sql`claimed_at IS NULL AND session_id IS NOT NULL`),
+      // Predicate-free index used by current poll queries.
+      index("runner_job_queue_group_profile_idx").on(
+        table.runnerGroup,
+        table.profile,
+      ),
       // Index for TTL cleanup
       index("runner_job_queue_expires_at_idx").on(table.expiresAt),
     ];

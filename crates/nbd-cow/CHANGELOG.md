@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.60](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.59...nbd-cow-v0.4.60) (2026-07-12)
+
+
+### Performance Improvements
+
+* attribute nbd netlink connect latency ([#21121](https://github.com/vm0-ai/vm0/issues/21121)) ([7ff85a6](https://github.com/vm0-ai/vm0/commit/7ff85a6d10e757e24534f5f9a00a1cab1342eb4d))
+
+## [0.4.59](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.58...nbd-cow-v0.4.59) (2026-07-11)
+
+
+### Performance Improvements
+
+* **runner:** attribute nbd cow creation latency ([#21065](https://github.com/vm0-ai/vm0/issues/21065)) ([7d97c9a](https://github.com/vm0-ai/vm0/commit/7d97c9a0e83e09645f97675c2594fad08b54bfc7))
+
 ## [0.4.58](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.57...nbd-cow-v0.4.58) (2026-07-09)
 
 

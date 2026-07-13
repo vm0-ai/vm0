@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -79,10 +79,16 @@ function mockCloudflareScreenshot(): ScreenshotRequest[] {
   return requests;
 }
 
-function mockCloudflareVideoFrame(status = 200): MediaFrameRequest[] {
+function mockCloudflareVideoFrame(
+  userId: string,
+  status = 200,
+): MediaFrameRequest[] {
   const requests: MediaFrameRequest[] = [];
   server.use(
     http.get(CLOUDFLARE_MEDIA_FRAME_URL, ({ request }) => {
+      if (!request.url.includes(`/artifacts/${userId}/`)) {
+        return new HttpResponse("foreign test artifact", { status: 415 });
+      }
       requests.push({ url: request.url });
       if (status !== 200) {
         return new HttpResponse("unsupported video", { status });
@@ -456,7 +462,7 @@ describe("GET /api/cron/artifact-preview", () => {
     }
     mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
-    const frameRequests = mockCloudflareVideoFrame();
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
       owner,
@@ -536,7 +542,7 @@ describe("GET /api/cron/artifact-preview", () => {
       );
     }
     mockEnv("CRON_SECRET", CRON_SECRET);
-    const frameRequests = mockCloudflareVideoFrame();
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
       owner,
@@ -587,7 +593,7 @@ describe("GET /api/cron/artifact-preview", () => {
       );
     }
     mockEnv("CRON_SECRET", CRON_SECRET);
-    const frameRequests = mockCloudflareVideoFrame(415);
+    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId, 415);
 
     const videoArtifact = await createRunUploadedFile({
       owner,
@@ -609,6 +615,15 @@ describe("GET /api/cron/artifact-preview", () => {
         [FeatureSwitchKey.ArtifactVideoPreview]: true,
       },
     );
+    onTestFinished(async () => {
+      await updateFeatureSwitchesForUser(
+        context,
+        featureSwitchActor(owner.actor),
+        {
+          [FeatureSwitchKey.ArtifactVideoPreview]: false,
+        },
+      );
+    });
 
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/runner-image-target.sh"
+. "${SCRIPT_DIR}/runner-guest-binaries.sh"
 
 require_env() {
   local name=$1
@@ -58,24 +59,24 @@ done
 
 mkdir -p "$(dirname "$MANIFEST_PATH")"
 
+runner_guest_binaries_load
+guest_cargo_args=()
+guest_env=()
+for index in "${!RUNNER_GUEST_PACKAGES[@]}"; do
+  guest_cargo_args+=("-p" "${RUNNER_GUEST_PACKAGES[$index]}")
+  guest_env+=("${RUNNER_GUEST_PATH_ENVS[$index]}=target/$TARGET_TRIPLE/ci/${RUNNER_GUEST_BINARIES[$index]}")
+done
+
 echo "=== Cross-compiling guest binaries for ${TARGET_TRIPLE} ==="
 (
   cd crates
-  cargo build --profile ci --target "$TARGET_TRIPLE" \
-    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed -p guest-write-file
+  cargo build --profile ci --target "$TARGET_TRIPLE" "${guest_cargo_args[@]}"
 )
 
 echo "=== Cross-compiling runner with embedded guests for ${TARGET_TRIPLE} ==="
 (
   cd crates
-  GUEST_AGENT_PATH="target/$TARGET_TRIPLE/ci/guest-agent" \
-  GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/ci/guest-download" \
-  GUEST_INIT_PATH="target/$TARGET_TRIPLE/ci/guest-init" \
-  GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/ci/guest-mock-claude" \
-  GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/ci/guest-mock-codex" \
-  GUEST_RESEED_PATH="target/$TARGET_TRIPLE/ci/guest-reseed" \
-  GUEST_WRITE_FILE_PATH="target/$TARGET_TRIPLE/ci/guest-write-file" \
-  cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
+  env "${guest_env[@]}" cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 )
 
 sha_file() {
@@ -83,23 +84,11 @@ sha_file() {
 }
 
 runner_sha=$(sha_file "${TARGET_DIR}/runner")
-guest_sha_json=$(jq -n \
-  --arg guest_agent "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-agent")" \
-  --arg guest_download "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-download")" \
-  --arg guest_init "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-init")" \
-  --arg guest_mock_claude "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-mock-claude")" \
-  --arg guest_mock_codex "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-mock-codex")" \
-  --arg guest_reseed "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-reseed")" \
-  --arg guest_write_file "$(sha_file "crates/target/${TARGET_TRIPLE}/ci/guest-write-file")" \
-  '{
-    "guest-agent": $guest_agent,
-    "guest-download": $guest_download,
-    "guest-init": $guest_init,
-    "guest-mock-claude": $guest_mock_claude,
-    "guest-mock-codex": $guest_mock_codex,
-    "guest-reseed": $guest_reseed,
-    "guest-write-file": $guest_write_file
-  }')
+guest_sha_json=$(jq -n '{}')
+for binary in "${RUNNER_GUEST_BINARIES[@]}"; do
+  guest_sha=$(sha_file "crates/target/${TARGET_TRIPLE}/ci/${binary}")
+  guest_sha_json=$(jq -c --arg binary "$binary" --arg sha "$guest_sha" '. + {($binary): $sha}' <<<"$guest_sha_json")
+done
 
 prepare_host() {
   local host=$1

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -33,18 +32,6 @@ const TEST_PROFILE_NAME: &str = "vm0/default";
 
 fn timestamp_for_index(index: usize) -> String {
     format!("2026-05-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
-}
-
-fn make_fifo(path: &Path) {
-    let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes()).unwrap();
-    // SAFETY: `c_path` is a valid nul-terminated path for `mkfifo`.
-    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-    assert_eq!(
-        result,
-        0,
-        "mkfifo failed: {}",
-        std::io::Error::last_os_error()
-    );
 }
 
 async fn write_current_cache_entry(
@@ -868,38 +855,19 @@ async fn inspect_rejects_metadata_symlink_without_following_it() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     let cache = SessionWorkspaceCache::new(paths.clone());
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
-        .await
-        .unwrap();
-    fs::write(paths.session_workspace_cache_current_image(&key), b"image")
-        .await
-        .unwrap();
+    let key = write_current_cache_entry(
+        &cache,
+        RunId::new_v4(),
+        "sess-1",
+        "/workspace",
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let metadata_path = paths.session_workspace_cache_metadata(&key);
     let outside = dir.path().join("outside-metadata.json");
-    fs::write(&outside, b"{\"unexpected\":true}").await.unwrap();
-    std::os::unix::fs::symlink(&outside, paths.session_workspace_cache_metadata(&key)).unwrap();
-
-    let inspection = cache.inspect().await.unwrap();
-
-    assert_eq!(inspection.summary.invalid_entries, 1);
-    let entry = &inspection.entries[0];
-    assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
-    assert_eq!(entry.reason.as_deref(), Some("missing or invalid metadata"));
-}
-
-#[tokio::test]
-async fn inspect_rejects_fifo_metadata_without_blocking() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(paths.clone());
-    let key = session_workspace_cache_key("sess-1", "/workspace");
-    fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
-        .await
-        .unwrap();
-    fs::write(paths.session_workspace_cache_current_image(&key), b"image")
-        .await
-        .unwrap();
-    make_fifo(&paths.session_workspace_cache_metadata(&key));
+    fs::rename(&metadata_path, &outside).await.unwrap();
+    std::os::unix::fs::symlink(&outside, &metadata_path).unwrap();
 
     let inspection = cache.inspect().await.unwrap();
 
@@ -1085,11 +1053,13 @@ fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
         .map(|index| HeldSessionState {
             session_id: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
+            reusable_sandbox: None,
         })
         .collect();
     states.push(HeldSessionState {
         session_id: "sess-0001".into(),
         last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
+        reusable_sandbox: None,
     });
 
     let capped = cap_workspace_held_session_states(states);

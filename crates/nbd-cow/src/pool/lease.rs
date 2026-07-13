@@ -1,10 +1,61 @@
 #[cfg(test)]
 use std::path::Path;
+use std::time::Duration;
 
 use crate::device_lock::NbdDeviceClaim;
 use tokio::sync::{mpsc, oneshot};
 
 use super::actor::{DevicePoolCommand, LeaseReturnAction};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DeviceAcquireSource {
+    DemandScan,
+    CooledClaim,
+}
+
+pub(crate) struct DeviceAcquisition {
+    lease: DeviceLease,
+    source: DeviceAcquireSource,
+    scan_duration: Option<Duration>,
+}
+
+impl DeviceAcquisition {
+    pub(super) fn new(
+        lease: DeviceLease,
+        source: DeviceAcquireSource,
+        scan_duration: Option<Duration>,
+    ) -> Self {
+        Self {
+            lease,
+            source,
+            scan_duration,
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (DeviceLease, DeviceAcquireSource, Option<Duration>) {
+        (self.lease, self.source, self.scan_duration)
+    }
+
+    #[cfg(test)]
+    pub(super) fn index(&self) -> u32 {
+        self.lease.index()
+    }
+
+    #[cfg(test)]
+    pub(super) fn into_lease(self) -> DeviceLease {
+        self.lease
+    }
+
+    #[cfg(test)]
+    pub(super) fn source(&self) -> DeviceAcquireSource {
+        self.source
+    }
+
+    #[cfg(test)]
+    pub(super) fn scan_duration(&self) -> Option<Duration> {
+        self.scan_duration
+    }
+}
 
 /// Owned authority for a checked-out NBD device.
 ///

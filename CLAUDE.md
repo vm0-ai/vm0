@@ -173,7 +173,7 @@ For detailed patterns and examples, use `/testing`.
 - **Lint:** `cd turbo && pnpm turbo run lint` - Check for code style and quality issues
 - **Type Check:** `cd turbo && pnpm check-types` - Verify TypeScript type safety
 - **Format:** `cd turbo && pnpm format` - Auto-format code according to project standards
-- **Test:** `cd turbo && pnpm vitest` - Run all tests to ensure functionality
+- **Test:** `cd turbo && pnpm vitest run --maxWorkers=4 --silent=passed-only` - Run all tests without overloading local workers
 - **Knip:** `cd turbo && pnpm knip` - Find and fix unused dependencies, exports, and files
 
 ### Before Committing:
@@ -193,6 +193,11 @@ For detailed patterns and examples, use `/testing`.
    pnpm -F @vm0/app exec vitest
    ```
    Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/cli`, `@vm0/api`).
+3. **Limit full-suite worker concurrency** - When an all-workspace run is necessary, cap file workers to avoid resource-contention timeouts:
+   ```
+   pnpm vitest run --maxWorkers=4 --silent=passed-only
+   ```
+   Do not increase test timeouts to compensate for excessive local concurrency.
 
 ### CRITICAL: Never run checks in background
 **All pre-commit checks (lint, format, typecheck, test, knip) MUST run in the foreground.** Never use `run_in_background` for these commands. The results must be available immediately so the commit can proceed — background execution defeats this purpose.
@@ -223,6 +228,10 @@ For detailed patterns and examples, use `/testing`.
 ## PR Checks
 
 **All pull requests must pass CI checks before merging.** These checks are defined in `.github/workflows/turbo.yml` and run automatically on every PR, including lint, test, deploy, and cli-e2e.
+
+### GitHub Actions Shell Compatibility
+
+GitHub Actions container jobs run `run` steps with `sh` by default. Any step that uses Bash syntax or sources a Bash helper must set `shell: bash`, or the job must set `defaults.run.shell: bash`. A sourced script's shebang does not select the shell because the calling shell parses it.
 
 ### Zero Tolerance for Skipping Tests
 

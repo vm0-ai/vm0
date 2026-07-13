@@ -4,7 +4,6 @@ import { NetworkInsightsPage } from "../../views/network-insights/network-insigh
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { reloadChatThreads$ } from "../agent-chat.ts";
 import {
   reloadInsights$,
   syncUsageRangeFromInsights$,
@@ -22,7 +21,6 @@ export const setupNetworkInsightsPage$ = command(
       return;
     }
 
-    set(reloadChatThreads$);
     set(reloadInsights$);
   },
 );

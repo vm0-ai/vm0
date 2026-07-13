@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -232,7 +232,6 @@ function LoadingAgents() {
 
 function ConnectorAccessDialog({
   onClose,
-  connectorType,
   connectorLabel,
   rows,
   rowsLoaded,
@@ -244,7 +243,6 @@ function ConnectorAccessDialog({
   onManage,
 }: {
   readonly onClose: () => void;
-  readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
@@ -269,7 +267,7 @@ function ConnectorAccessDialog({
         <DialogHeader className="shrink-0 gap-2">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <ConnectorIcon type={connectorType} size={22} />
+              <ConnectorIcon icon={metadata?.icon} size={22} />
             </span>
             <div className="min-w-0">
               <DialogTitle className="text-base">
@@ -426,7 +424,6 @@ export function ConnectorAccessManagementDialog({
     <>
       <ConnectorAccessDialog
         onClose={onClose}
-        connectorType={connectorType}
         connectorLabel={connectorLabel}
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoadable.state === "hasData"}

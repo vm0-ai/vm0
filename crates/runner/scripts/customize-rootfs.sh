@@ -14,13 +14,8 @@
 #     --rootfs /path/to/rootfs.ext4.staging \
 #     --ca-dir /path/to/ca \
 #     --dns-nameserver 8.8.8.8 \
-#     --guest-agent /path/to/guest-agent \
-#     --guest-download /path/to/guest-download \
-#     --guest-init /path/to/guest-init \
-#     --guest-mock-claude /path/to/guest-mock-claude \
-#     --guest-mock-codex /path/to/guest-mock-codex \
-#     --guest-reseed /path/to/guest-reseed \
-#     --guest-write-file /path/to/guest-write-file
+#     --guest /path/to/guest-agent /usr/local/bin/guest-agent \
+#     [--guest SOURCE DESTINATION ...]
 
 set -euo pipefail
 
@@ -40,13 +35,8 @@ shift
 ROOTFS=""
 CA_DIR=""
 DNS_NAMESERVER=""
-GUEST_AGENT=""
-GUEST_DOWNLOAD=""
-GUEST_INIT=""
-GUEST_MOCK_CLAUDE=""
-GUEST_MOCK_CODEX=""
-GUEST_RESEED=""
-GUEST_WRITE_FILE=""
+GUEST_SOURCES=()
+GUEST_DESTINATIONS=()
 MOUNT_DIR=""
 CHROOT_TMP=""
 CHROOT_TMP_HOST=""
@@ -102,23 +92,25 @@ while [[ $# -gt 0 ]]; do
     --rootfs)             ROOTFS="$2";             shift 2 ;;
     --ca-dir)             CA_DIR="$2";             shift 2 ;;
     --dns-nameserver)     DNS_NAMESERVER="$2";     shift 2 ;;
-    --guest-agent)        GUEST_AGENT="$2";        shift 2 ;;
-    --guest-download)     GUEST_DOWNLOAD="$2";     shift 2 ;;
-    --guest-init)         GUEST_INIT="$2";         shift 2 ;;
-    --guest-mock-claude)  GUEST_MOCK_CLAUDE="$2";  shift 2 ;;
-    --guest-mock-codex)   GUEST_MOCK_CODEX="$2";   shift 2 ;;
-    --guest-reseed)       GUEST_RESEED="$2";       shift 2 ;;
-    --guest-write-file)   GUEST_WRITE_FILE="$2";   shift 2 ;;
+    --guest)
+      GUEST_SOURCES+=("$2")
+      GUEST_DESTINATIONS+=("$3")
+      shift 3
+      ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in ROOTFS CA_DIR DNS_NAMESERVER GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_MOCK_CODEX GUEST_RESEED GUEST_WRITE_FILE; do
+for var in ROOTFS CA_DIR DNS_NAMESERVER; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
   fi
 done
+if [[ ${#GUEST_SOURCES[@]} -eq 0 ]]; then
+  echo "error: at least one --guest SOURCE DESTINATION is required" >&2
+  exit 1
+fi
 
 missing=()
 for cmd in sudo unshare mount umount mountpoint chroot mktemp sed grep; do
@@ -259,13 +251,9 @@ printf '%s\n' \
   "::1 localhost" \
   | install_inline_file "/etc/hosts" 644
 
-install_host_file "$GUEST_AGENT" "/usr/local/bin/guest-agent" 755
-install_host_file "$GUEST_DOWNLOAD" "/usr/local/bin/guest-download" 755
-install_host_file "$GUEST_INIT" "/sbin/guest-init" 755
-install_host_file "$GUEST_MOCK_CLAUDE" "/usr/local/bin/guest-mock-claude" 755
-install_host_file "$GUEST_MOCK_CODEX" "/usr/local/bin/guest-mock-codex" 755
-install_host_file "$GUEST_RESEED" "/sbin/guest-reseed" 755
-install_host_file "$GUEST_WRITE_FILE" "/sbin/guest-write-file" 755
+for index in "${!GUEST_SOURCES[@]}"; do
+  install_host_file "${GUEST_SOURCES[$index]}" "${GUEST_DESTINATIONS[$index]}" 755
+done
 
 install_host_file "$ca_cert" "/${CA_ROOTFS_DEST}" 644
 

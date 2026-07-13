@@ -16,8 +16,10 @@ from logging_utils import log_proxy_entry
 from url_utils import AuthorityValidationError
 
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
+_AMBIGUOUS_CONNECTOR_ROUTE_ERROR: Final = "ambiguous_connector_route"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
+_HTTP_STATUS_CONFLICT = 409
 
 
 def block_authority_validation_error(
@@ -232,6 +234,9 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
     flow_metadata.set_firewall_decision(flow.metadata, "DENY")
     flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = (
+        result.permissions[0] if len(result.permissions) == 1 else ""
+    )
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     diagnostic_parts = urllib.parse.urlsplit(original_url)
     diagnostic_url = urllib.parse.urlunsplit(
@@ -253,6 +258,50 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
     flow.response = http.Response.make(
         403,
         error_body.encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def set_firewall_ambiguous_response(
+    flow: http.HTTPFlow,
+    result: matching.FirewallAmbiguous,
+) -> None:
+    """Return a local conflict before any connector credential is selected."""
+    proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+    candidates = list(result.candidates)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        f"Ambiguous connector route for {result.method} {result.path}",
+        type="firewall_ambiguous",
+        reason=result.reason,
+        candidates=candidates,
+    )
+    flow_metadata.set_firewall_decision(
+        flow.metadata,
+        "DENY",
+        error=_AMBIGUOUS_CONNECTOR_ROUTE_ERROR,
+    )
+    flow.metadata[metadata_keys.CONNECTOR_ROUTE_REASON] = result.reason
+    flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] = candidates
+    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    diagnostic_parts = urllib.parse.urlsplit(original_url)
+    diagnostic_url = urllib.parse.urlunsplit(
+        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
+    )
+    flow.response = http.Response.make(
+        _HTTP_STATUS_CONFLICT,
+        json.dumps(
+            {
+                "error": _AMBIGUOUS_CONNECTOR_ROUTE_ERROR,
+                "message": "Request blocked: connector route requires explicit intent",
+                "reason": result.reason,
+                "method": result.method,
+                "path": result.path,
+                "url": diagnostic_url,
+                "candidates": candidates,
+            }
+        ).encode(),
         {"Content-Type": "application/json"},
     )
 

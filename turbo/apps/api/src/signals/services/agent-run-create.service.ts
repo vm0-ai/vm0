@@ -162,6 +162,7 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import {
   connectorRuntimeCredentialStatus,
   type ConnectorCredentialStatus,
@@ -4782,23 +4783,36 @@ async function buildStoredExecutionContext(args: {
   const secretValues = executionSecrets.secrets
     ? Object.values(executionSecrets.secrets)
     : [];
+  const environment = {
+    ...expandEnvironment({
+      content: args.resolved.content,
+      vars: args.body.vars,
+      secrets: executionSecrets.secrets,
+      additionalEnvironment: args.modelProvider?.environment,
+      environmentSecretPlaceholders: permissions?.environmentSecretPlaceholders,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+      connectorVars: args.connectorContext.vars,
+    }),
+    ...args.extraEnvironment,
+  };
+  const environmentKeyByValue = new Map<string, string>();
+  for (const [key, value] of Object.entries(environment)) {
+    if (!environmentKeyByValue.has(value)) {
+      environmentKeyByValue.set(value, key);
+    }
+  }
+  const secretValueEnvironmentKeys = executionSecrets.secrets
+    ? secretValues.flatMap((value) => {
+        const key = environmentKeyByValue.get(value);
+        return key === undefined ? [] : [key];
+      })
+    : null;
 
   return {
     context: {
       storageManifest: args.storageManifest,
-      environment: {
-        ...expandEnvironment({
-          content: args.resolved.content,
-          vars: args.body.vars,
-          secrets: executionSecrets.secrets,
-          additionalEnvironment: args.modelProvider?.environment,
-          environmentSecretPlaceholders:
-            permissions?.environmentSecretPlaceholders,
-          storedConnectorEnvironment: args.connectorContext.storedEnvironment,
-          connectorVars: args.connectorContext.vars,
-        }),
-        ...args.extraEnvironment,
-      },
+      environment,
+      secretValueEnvironmentKeys,
       vars: args.connectorContext.vars ?? null,
       resumeSession: args.resolved.resumeSession ?? null,
       encryptedSecrets: await encryptPersistentSecretsMap(
@@ -5338,6 +5352,7 @@ async function insertRunnerJobQueueRow(
     readonly payload: RunnerJobPayload;
   },
 ): Promise<Date> {
+  const timestamps = runnerJobQueueTimestamps();
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
@@ -5346,7 +5361,7 @@ async function insertRunnerJobQueueRow(
       profile: args.payload.profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
       executionContext: args.payload.executionContext,
-      expiresAt: sql`now() + interval '2 hours'`,
+      ...timestamps,
     })
     .returning({ createdAt: runnerJobQueue.createdAt });
   if (!runnerJob) {

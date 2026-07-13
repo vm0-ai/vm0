@@ -26,10 +26,7 @@ import {
   redirectToConfiguredOnboarding$,
 } from "../zero-page/onboard-guard.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
-import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  resolveModelFirstUserDefaultSelection,
-} from "../zero-page/model-default-selection.ts";
+import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 
 function templateIdFromSearchParam(
   template: string | null,
@@ -242,7 +239,6 @@ export const setupPromptPage$ = command(
     signal.throwIfAborted();
     const modelSelection = isSupportedRunModel(requestedModel)
       ? {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: requestedModel,
         }
       : resolveModelFirstUserDefaultSelection({

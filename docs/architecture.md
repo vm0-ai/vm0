@@ -114,10 +114,9 @@ The orchestration layer coordinates job execution between web API and runners.
 1. Subscribe to Ably channel `runner-group:{org}/{name}`
 2. Receive job notification and wake HTTP poll
 3. Select the next job via `/api/runners/poll`
-4. Claim job atomically via `/api/runners/jobs/{id}/claim` (sets `claimed_at`)
+4. Claim job atomically via `/api/runners/jobs/{id}/claim` (transitions the run and consumes its queue row)
 5. Execute in Firecracker VM
-6. Report completion via webhook
-7. Job deleted from queue
+6. Report completion via webhook, which finalizes the run state
 
 #### Runner Groups
 

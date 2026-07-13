@@ -593,6 +593,24 @@ class TestRegistryBuiltinCache:
         firewall["apis"][0]["base"] = "not-a-url"
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
 
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://api.example.com/a/../admin",
+            "https://api.example.com/%252e%252e/admin",
+            "https://api.example.com/..;version=1/admin",
+            "https://api.example.com/%255cadmin",
+            "https://api.example.com/v1/../{org}",
+            "https://${{ vars.TENANT }}.example.com/v1/../items",
+            "${{ vars.API_BASE_URL }}/v1/%2e%2e/items",
+        ],
+    )
+    def test_unsafe_base_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx, base):
+        firewall = _cache_firewall("fallback", base)
+        firewall["apis"][0].pop("hostPolicy")
+
+        _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
     def test_malformed_parameterized_base_runner_catalog_cache_fails_closed(
         self, tmp_path, mitm_ctx
     ):
@@ -1104,7 +1122,7 @@ class TestRegistryBuiltinCache:
         second_cache_key = next(iter(registry._registry_state.builtin_firewall_core_cache))
         assert second_cache_key[0] == "cache-b"
 
-    def test_builtin_core_cache_is_cleared_when_registry_becomes_unavailable(
+    def test_registry_unavailable_clears_compiled_core_but_retains_shared_catalog(
         self, tmp_path, mitm_ctx
     ):
         path = tmp_path / "registry.json"
@@ -1124,7 +1142,8 @@ class TestRegistryBuiltinCache:
             context = registry.get_vm_context("10.200.0.1", str(path))
             assert context is not None
             assert len(registry._registry_state.builtin_firewall_core_cache) == 1
-            assert builtin_firewall_cache._cache_state.catalog is not None
+            retained_catalog = builtin_firewall_cache._cache_state.catalog
+            assert retained_catalog is not None
 
             path.write_text("{ broken")
             unavailable = registry.load_registry_state(str(path))
@@ -1132,11 +1151,9 @@ class TestRegistryBuiltinCache:
         assert isinstance(unavailable, registry.RegistryUnavailable)
         assert unavailable.reason == "parse_failed"
         assert registry._registry_state.builtin_firewall_core_cache == {}
-        assert builtin_firewall_cache._cache_state.catalog is None
+        assert builtin_firewall_cache._cache_state.catalog is retained_catalog
 
-    def test_builtin_catalog_cache_is_cleared_when_registry_drops_builtin_entries(
-        self, tmp_path, mitm_ctx
-    ):
+    def test_registry_dropping_builtin_entries_retains_shared_catalog(self, tmp_path, mitm_ctx):
         path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         _write_catalog_cache(
@@ -1154,16 +1171,17 @@ class TestRegistryBuiltinCache:
         ):
             context = registry.get_vm_context("10.200.0.1", str(path))
             assert context is not None
-            assert builtin_firewall_cache._cache_state.catalog is not None
+            retained_catalog = builtin_firewall_cache._cache_state.catalog
+            assert retained_catalog is not None
 
             write_multi_vm_registry(path, {"10.200.0.1": inline_vm("run-inline")})
             os.utime(path, ns=(1_700_000_000_000_000_001, 1_700_000_000_000_000_001))
             inline_context = registry.get_vm_context("10.200.0.1", str(path))
 
         assert inline_context is not None
-        assert builtin_firewall_cache._cache_state.catalog is None
+        assert builtin_firewall_cache._cache_state.catalog is retained_catalog
 
-    def test_no_builtin_registry_fast_path_clears_catalog_cache(self, tmp_path, mitm_ctx):
+    def test_no_builtin_registry_fast_path_retains_shared_catalog(self, tmp_path, mitm_ctx):
         path = tmp_path / "registry.json"
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         _write_catalog_cache(
@@ -1184,12 +1202,13 @@ class TestRegistryBuiltinCache:
 
             snapshot = registry_firewalls.load_catalog_snapshot(str(cache_path))
             assert snapshot.catalog is not None
-            assert builtin_firewall_cache._cache_state.catalog is not None
+            retained_catalog = builtin_firewall_cache._cache_state.catalog
+            assert retained_catalog is snapshot.catalog
 
             second_context = registry.get_vm_context("10.200.0.1", str(path))
 
         assert second_context is not None
-        assert builtin_firewall_cache._cache_state.catalog is None
+        assert builtin_firewall_cache._cache_state.catalog is retained_catalog
 
     def test_inline_firewalls_do_not_share_compiled_core(self, tmp_path):
         path = tmp_path / "registry.json"

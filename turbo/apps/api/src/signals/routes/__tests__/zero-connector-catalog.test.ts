@@ -231,6 +231,47 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
   });
 
+  it("returns shared public icon descriptors across catalog views", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const headers = { authorization: "Bearer clerk-session" };
+    const listResponse = await accept(client.list({ headers }), [200]);
+    const statusResponse = await accept(client.status({ headers }), [200]);
+    const detailResponse = await accept(
+      client.get({ params: { connectorRef: "openai" }, headers }),
+      [200],
+    );
+
+    const openai = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    const openaiStatus = statusResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    expect(openai?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
+      invertInDarkMode: true,
+    });
+    expect(openaiStatus?.icon).toStrictEqual(openai?.icon);
+    expect(detailResponse.body.connector.icon).toStrictEqual(openai?.icon);
+
+    const slack = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "slack";
+    });
+    const slackWebhook = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "slack-webhook";
+    });
+    expect(slack?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+      invertInDarkMode: false,
+      scale: 2.2,
+    });
+    expect(slackWebhook?.icon).toStrictEqual(slack?.icon);
+  });
+
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
@@ -503,6 +544,59 @@ describe("GET /api/zero/connector-catalog", () => {
         label: "Nintendo sign-in",
         description:
           "Sign in with Nintendo. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
+        grantKind: "external-code",
+        manualFields: [],
+        startOptions: [],
+      },
+    ]);
+  });
+
+  it("hides Nintendo Switch Parental Controls until its connector switch is enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const hidden = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      hidden.body.connectors.some((connector) => {
+        return connector.connectorRef === "nintendo-switch-parental-controls";
+      }),
+    ).toBeFalsy();
+
+    await enableConnectorFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: true,
+    });
+    const visible = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(visible.body);
+    const connector = visible.body.connectors.find((entry) => {
+      return entry.connectorRef === "nintendo-switch-parental-controls";
+    });
+    expect(connector).toMatchObject({
+      connectorRef: "nintendo-switch-parental-controls",
+      label: "Nintendo Switch Parental Controls",
+      connected: false,
+      connectionStatus: "not-connected",
+      permissionSummary: {
+        hasPermissions: true,
+        permissionCount: 15,
+        hasCategories: true,
+        hasDefaultPolicyOverrides: true,
+      },
+    });
+    expect(connector?.authMethods).toStrictEqual([
+      {
+        id: "api",
+        label: "Nintendo sign-in",
+        description:
+          "Sign in with the adult Nintendo Account used by the Nintendo Switch Parental Controls app. After signing in, right-click the redirect button and copy its link address, then paste the full `npf...://auth` redirect URL or the `session_token_code` value.",
         grantKind: "external-code",
         manualFields: [],
         startOptions: [],
@@ -887,9 +981,19 @@ describe("GET /api/zero/connector-catalog", () => {
       }),
       [200],
     );
+    const detailResponse = await accept(
+      client.get({
+        params: { connectorRef: "google-docs" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     expect(response.body.permissions.connectorRef).toBe("google-docs");
+    expect(response.body.permissions.icon).toStrictEqual(
+      detailResponse.body.connector.icon,
+    );
     expect(response.body.permissions.permissionCount).toBeGreaterThan(0);
     expect(response.body.permissions.permissions).toHaveLength(
       response.body.permissions.permissionCount,

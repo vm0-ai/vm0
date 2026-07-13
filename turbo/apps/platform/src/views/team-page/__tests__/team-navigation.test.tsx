@@ -171,6 +171,10 @@ function axiomCatalogStatusItem(
     connectorRef: "axiom",
     label: "Axiom",
     description: "Observability and log analytics",
+    icon: {
+      url: "https://icons.example.test/axiom.svg",
+      invertInDarkMode: false,
+    },
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],

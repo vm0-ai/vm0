@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.2...ably-subscriber-v1.0.3) (2026-07-11)
+
+
+### Documentation
+
+* **ably-subscriber:** remove obsolete integration test numbering ([#21039](https://github.com/vm0-ai/vm0/issues/21039)) ([29e99ad](https://github.com/vm0-ai/vm0/commit/29e99adf55e2e386f96e9d3083008c9d4b2bfc6c))
+
 ## [1.0.2](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.1...ably-subscriber-v1.0.2) (2026-06-25)
 
 

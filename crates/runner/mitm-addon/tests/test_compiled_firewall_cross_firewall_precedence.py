@@ -2,7 +2,7 @@
 
 import pytest
 
-import generated.builtin_firewalls as builtin_firewalls
+import connector_intent
 import matching
 from tests.firewall_helpers import (
     compile_firewalls_or_fail,
@@ -148,62 +148,6 @@ def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
     assert result.api_entry["auth"] == {}
 
 
-def test_cloudflare_upload_api_preserves_auth_without_shadowing_normal_api():
-    fws = [builtin_firewalls.BUILTIN_FIREWALLS["cloudflare"]]
-    policies = {
-        "cloudflare": {
-            "allow": ["page.write", "workers-scripts.write"],
-            "deny": [],
-            "unknownPolicy": "deny",
-        }
-    }
-    compiled = compile_firewalls_or_fail(fws)
-
-    normal_result = matching.match_compiled_firewall_request(
-        "https://api.cloudflare.com/client/v4/accounts/account-id/pages/projects/project-name/deployments",
-        "POST",
-        compiled,
-        policies,
-    )
-    assert isinstance(normal_result, matching.FirewallAllow)
-    assert normal_result.permission == "page.write"
-    assert normal_result.api_entry["auth"]["headers"]["Authorization"] == (
-        "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"
-    )
-
-    upload_token_result = matching.match_compiled_firewall_request(
-        "https://api.cloudflare.com/client/v4/accounts/account-id/pages/projects/project-name/upload-token",
-        "GET",
-        compiled,
-        policies,
-    )
-    assert isinstance(upload_token_result, matching.FirewallAllow)
-    assert upload_token_result.permission == "page.write"
-    assert upload_token_result.api_entry["auth"]["headers"]["Authorization"] == (
-        "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"
-    )
-
-    pages_upload_result = matching.match_compiled_firewall_request(
-        "https://api.cloudflare.com/client/v4/pages/assets/check-missing",
-        "POST",
-        compiled,
-        policies,
-    )
-    assert isinstance(pages_upload_result, matching.FirewallAllow)
-    assert pages_upload_result.permission == "page.write"
-    assert pages_upload_result.api_entry["auth"] == {}
-
-    workers_upload_result = matching.match_compiled_firewall_request(
-        "https://api.cloudflare.com/client/v4/accounts/account-id/workers/assets/upload?base64=true",
-        "POST",
-        compiled,
-        policies,
-    )
-    assert isinstance(workers_upload_result, matching.FirewallAllow)
-    assert workers_upload_result.permission == "workers-scripts.write"
-    assert workers_upload_result.api_entry["auth"] == {}
-
-
 def test_later_denied_firewall_wins_after_earlier_unknown_allow():
     fws = [
         _broad_firewall(),
@@ -222,7 +166,7 @@ def test_later_denied_firewall_wins_after_earlier_unknown_allow():
     assert result.reason == "permission_denied"
 
 
-def test_later_allowed_firewall_wins_after_earlier_denied_permission_match():
+def test_equal_route_owners_require_connector_intent():
     fws = [
         _auditor_firewall(),
         _primary_firewall(),
@@ -234,24 +178,30 @@ def test_later_allowed_firewall_wins_after_earlier_denied_permission_match():
 
     result = match_compiled_firewalls(ITEMS_URL, fws, policies)
 
-    assert isinstance(result, matching.FirewallAllow)
-    assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
-    assert result.name == "primary"
-    assert result.permission == "items-read"
-    assert result.rule == "GET /items/{id}"
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.candidates == ("auditor", "primary")
+    assert result.reason == "connector_intent_required"
 
 
-def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match():
-    fws = [
-        _primary_firewall(),
-        _auditor_firewall(),
-    ]
+@pytest.mark.parametrize(
+    "fws",
+    [
+        [_auditor_firewall(), _primary_firewall()],
+        [_primary_firewall(), _auditor_firewall()],
+    ],
+)
+def test_connector_intent_selects_allowed_route_owner_in_both_orders(fws):
     policies = {
         "primary": network_policy(allow=[ITEMS_READ_PERMISSION]),
         "auditor": network_policy(deny=[AUDIT_READ_PERMISSION]),
     }
 
-    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
+    result = match_compiled_firewalls(
+        ITEMS_URL,
+        fws,
+        policies,
+        intent=connector_intent.ConnectorIntent("present", "primary"),
+    )
 
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
@@ -260,7 +210,7 @@ def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match
     assert result.rule == "GET /items/{id}"
 
 
-def test_denied_permission_names_collect_across_firewalls():
+def test_connector_intent_enforces_selected_denied_owner_without_fallback():
     fws = [
         _auditor_firewall(),
         _primary_firewall(),
@@ -270,9 +220,38 @@ def test_denied_permission_names_collect_across_firewalls():
         "primary": network_policy(deny=[ITEMS_READ_PERMISSION]),
     }
 
-    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
+    result = match_compiled_firewalls(
+        ITEMS_URL,
+        fws,
+        policies,
+        intent=connector_intent.ConnectorIntent("present", "auditor"),
+    )
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.name == "auditor"
-    assert result.permissions == ("audit-read", "items-read")
+    assert result.permissions == ("audit-read",)
     assert result.reason == "permission_denied"
+
+
+@pytest.mark.parametrize(
+    ("intent", "reason"),
+    [
+        (connector_intent.MALFORMED, "malformed_connector_intent"),
+        (
+            connector_intent.ConnectorIntent("present", "inactive"),
+            "connector_intent_not_candidate",
+        ),
+    ],
+)
+def test_unusable_connector_intent_fails_closed(intent, reason):
+    fws = [_primary_firewall(), _auditor_firewall()]
+    policies = {
+        "primary": network_policy(allow=[ITEMS_READ_PERMISSION]),
+        "auditor": network_policy(allow=[AUDIT_READ_PERMISSION]),
+    }
+
+    result = match_compiled_firewalls(ITEMS_URL, fws, policies, intent=intent)
+
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.reason == reason
+    assert result.candidates == ("auditor", "primary")

@@ -1,6 +1,6 @@
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::error::{self, Result};
 use crate::{
@@ -15,6 +15,9 @@ use super::connection::{
     disconnect_connected_if_owned, disconnect_connected_if_owned_result_critical_section,
     disconnect_connected_if_owned_result_with_lease_critical_section,
     disconnect_device_with_lease_critical_section,
+};
+use super::create_timing::{
+    NbdCowCreateObserver, NbdCowCreateStage, NbdCowCreateTiming, NbdNetlinkConnectTiming,
 };
 
 const MAX_SIZE_RETRIES: u32 = 5;
@@ -42,6 +45,11 @@ enum CreateDisconnectStatus {
     Uncertain,
 }
 
+struct ConnectAttemptResult {
+    timing: NbdNetlinkConnectTiming,
+    result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
+}
+
 impl CreateDisconnectStatus {
     fn from_owned_result(result: &Result<OwnedDisconnectState>) -> Self {
         match result {
@@ -64,36 +72,46 @@ impl CreateDisconnectStatus {
     }
 }
 
-struct CreateContext<'a> {
+struct CreateContext<'a, 'observer> {
     device_pool: &'a pool::DevicePoolHandle,
     cow_file: &'a Path,
     cow: cow_io::CowIo,
     size: u64,
+    timing: &'a mut NbdCowCreateTiming<'observer>,
 }
 
-impl<'a> CreateContext<'a> {
+impl<'a, 'observer> CreateContext<'a, 'observer> {
     fn new(
         device_pool: &'a pool::DevicePoolHandle,
         cow_file: &'a Path,
         cow: cow_io::CowIo,
         size: u64,
+        timing: &'a mut NbdCowCreateTiming<'observer>,
     ) -> Self {
         Self {
             device_pool,
             cow_file,
             cow,
             size,
+            timing,
         }
     }
 
-    async fn create_with_size_retries(&self) -> Result<(NbdCowDevice, pool::DeviceLease)> {
+    async fn create_with_size_retries(&mut self) -> Result<(NbdCowDevice, pool::DeviceLease)> {
         let mut last_err_idx: u32 = 0;
 
         for size_attempt in 0..=MAX_SIZE_RETRIES {
             let attempt = self.acquire_connected_attempt().await?;
             let device_index = attempt.device_index();
 
-            if netlink::verify_device_size(device_index, self.size).await {
+            let verify_started_at = Instant::now();
+            let size_matches = netlink::verify_device_size(device_index, self.size).await;
+            self.timing.record_stage(
+                NbdCowCreateStage::SizeVerify,
+                verify_started_at,
+                size_matches,
+            );
+            if size_matches {
                 return attempt.into_device(self.cow_file, self.cow.clone());
             }
 
@@ -102,11 +120,18 @@ impl<'a> CreateContext<'a> {
                 attempt = size_attempt + 1,
                 "device size 0 after connect, disconnecting and retrying"
             );
+            let cleanup_started_at = Instant::now();
             attempt.disconnect_and_release().await;
+            self.timing
+                .record_stage(NbdCowCreateStage::RetryCleanup, cleanup_started_at, true);
             last_err_idx = device_index;
 
             if size_attempt < MAX_SIZE_RETRIES {
+                self.timing.record_size_zero_retry();
+                let delay_started_at = Instant::now();
                 tokio::time::sleep(SIZE_RETRY_DELAY).await;
+                self.timing
+                    .record_stage(NbdCowCreateStage::RetryDelay, delay_started_at, true);
             }
         }
 
@@ -117,15 +142,31 @@ impl<'a> CreateContext<'a> {
         ))))
     }
 
-    async fn acquire_connected_attempt(&self) -> Result<CreateAttemptGuard> {
+    async fn acquire_connected_attempt(&mut self) -> Result<CreateAttemptGuard> {
         let mut ebusy_count: u32 = 0;
 
         loop {
-            let lease = self.device_pool.acquire().await?;
+            let acquire_started_at = Instant::now();
+            let acquisition = self.device_pool.acquire().await;
+            self.timing.record_stage(
+                NbdCowCreateStage::DeviceAcquire,
+                acquire_started_at,
+                acquisition.is_ok(),
+            );
+            let acquisition = acquisition?;
+            let (lease, source, scan_duration) = acquisition.into_parts();
+            self.timing.record_acquisition(source, scan_duration);
             let mut attempt = CreateAttemptGuard::new(self.device_pool.clone(), lease);
             let device_index = attempt.device_index();
 
-            let client_fds = match self.setup_dispatch_servers(&mut attempt) {
+            let setup_started_at = Instant::now();
+            let setup_result = self.setup_dispatch_servers(&mut attempt);
+            self.timing.record_stage(
+                NbdCowCreateStage::DispatchSetup,
+                setup_started_at,
+                setup_result.is_ok(),
+            );
+            let client_fds = match setup_result {
                 Ok(client_fds) => client_fds,
                 Err(e) => {
                     // Release device back — connect was never attempted, device
@@ -136,7 +177,19 @@ impl<'a> CreateContext<'a> {
                 }
             };
 
-            match self.connect_attempt(&mut attempt, client_fds).await {
+            let connect_started_at = Instant::now();
+            let connect_attempt = self.connect_attempt(&mut attempt, client_fds).await;
+            // End the existing parent before merging child timing so its
+            // before/after boundary remains comparable.
+            self.timing.record_stage(
+                NbdCowCreateStage::NetlinkConnect,
+                connect_started_at,
+                connect_attempt.result.is_ok(),
+            );
+            self.timing
+                .record_netlink_connect_timing(connect_attempt.timing);
+            let connect_result = connect_attempt.result;
+            match connect_result {
                 Ok(connected) => {
                     attempt.mark_connected(connected.connect_tid);
                     return Ok(attempt);
@@ -151,13 +204,26 @@ impl<'a> CreateContext<'a> {
                         "EBUSY on connect, trying next device"
                     );
                     if ebusy_count > MAX_EBUSY_RETRIES {
+                        let cleanup_started_at = Instant::now();
                         attempt.discard().await;
+                        self.timing.record_stage(
+                            NbdCowCreateStage::RetryCleanup,
+                            cleanup_started_at,
+                            true,
+                        );
                         return Err(error::NbdCowError::NoFreeDevice);
                     }
+                    self.timing.record_ebusy_retry();
                     // Device is owned by another process or otherwise busy.
                     // Stop tracking without cooldown; a future demand scan
                     // will rediscover it once it frees.
+                    let cleanup_started_at = Instant::now();
                     attempt.discard().await;
+                    self.timing.record_stage(
+                        NbdCowCreateStage::RetryCleanup,
+                        cleanup_started_at,
+                        true,
+                    );
                 }
                 Err(netlink::ConnectDeviceError::AmbiguousAfterSend {
                     connect_tid,
@@ -203,20 +269,23 @@ impl<'a> CreateContext<'a> {
     }
 
     async fn connect_attempt(
-        &self,
+        &mut self,
         attempt: &mut CreateAttemptGuard,
         client_fds: Vec<OwnedFd>,
-    ) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
+    ) -> ConnectAttemptResult {
         let device_index = attempt.device_index();
         let Some(lease) = attempt.take_lease() else {
-            return Err(netlink::ConnectDeviceError::NotSent {
-                source: error::NbdCowError::Io(std::io::Error::other(
-                    "pool lease missing during NBD connect",
-                )),
-            });
+            return ConnectAttemptResult {
+                timing: NbdNetlinkConnectTiming::default(),
+                result: Err(netlink::ConnectDeviceError::NotSent {
+                    source: error::NbdCowError::Io(std::io::Error::other(
+                        "pool lease missing during NBD connect",
+                    )),
+                }),
+            };
         };
 
-        match connect_device_with_state_critical_section(
+        let critical_section = connect_device_with_state_critical_section(
             device_index,
             client_fds,
             self.size,
@@ -224,8 +293,9 @@ impl<'a> CreateContext<'a> {
             self.device_pool.clone(),
             lease,
         )
-        .await
-        {
+        .await;
+        let (timing, critical_result) = critical_section.into_parts();
+        let result = match critical_result {
             Ok(outcome) => match outcome.into_parts() {
                 Ok((lease, result)) => {
                     attempt.restore_lease(lease);
@@ -234,7 +304,9 @@ impl<'a> CreateContext<'a> {
                 Err(e) => Err(e),
             },
             Err(e) => Err(e),
-        }
+        };
+
+        ConnectAttemptResult { timing, result }
     }
 }
 
@@ -639,19 +711,31 @@ impl NbdCowDevice {
         cow_file: &Path,
         size: u64,
         device_pool: &pool::DevicePoolHandle,
+        observer: Option<&mut dyn NbdCowCreateObserver>,
     ) -> Result<(Self, pool::DeviceLease)> {
-        // Create COW layer
-        let cow_layer = cow::CowLayer::new(
-            base_image,
-            cow_file,
-            size,
-            BLOCK_SIZE,
-            DEFAULT_FLUSH_THRESHOLD,
-        )?;
-        let cow = cow_io::CowIo::new(cow_layer);
-        let context = CreateContext::new(device_pool, cow_file, cow, size);
+        let mut timing = NbdCowCreateTiming::new(observer);
+        let result = async {
+            let cow_started_at = Instant::now();
+            let cow_layer = cow::CowLayer::new(
+                base_image,
+                cow_file,
+                size,
+                BLOCK_SIZE,
+                DEFAULT_FLUSH_THRESHOLD,
+            );
+            timing.record_stage(
+                NbdCowCreateStage::CowLayerCreate,
+                cow_started_at,
+                cow_layer.is_ok(),
+            );
+            let cow = cow_io::CowIo::new(cow_layer?);
+            let mut context = CreateContext::new(device_pool, cow_file, cow, size, &mut timing);
 
-        context.create_with_size_retries().await
+            context.create_with_size_retries().await
+        }
+        .await;
+        timing.finish(result.is_ok());
+        result
     }
 }
 

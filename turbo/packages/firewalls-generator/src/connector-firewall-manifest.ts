@@ -151,6 +151,7 @@ export const FIREWALL_CONNECTOR_TYPES = [
   "neon",
   "netdata",
   "nintendo-store",
+  "nintendo-switch-parental-controls",
   "notion",
   "novita",
   "onyx",

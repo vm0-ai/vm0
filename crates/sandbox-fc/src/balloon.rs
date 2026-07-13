@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::Duration;
 
 use tokio::sync::watch;
@@ -43,9 +42,9 @@ pub(crate) struct ControllerHandle {
 }
 
 impl ControllerHandle {
-    fn spawn(api_sock: PathBuf, memory_mb: u32, state_rx: watch::Receiver<SandboxState>) -> Self {
+    fn spawn(client: ApiClient, memory_mb: u32, state_rx: watch::Receiver<SandboxState>) -> Self {
         Self {
-            task: Some(tokio::spawn(run_loop(api_sock, memory_mb, state_rx))),
+            task: Some(tokio::spawn(run_loop(client, memory_mb, state_rx))),
         }
     }
 
@@ -94,15 +93,14 @@ impl Drop for ControllerHandle {
 
 /// Spawn the balloon controller loop.
 pub(crate) fn spawn(
-    api_sock: PathBuf,
+    client: ApiClient,
     memory_mb: u32,
     state_rx: watch::Receiver<SandboxState>,
 ) -> ControllerHandle {
-    ControllerHandle::spawn(api_sock, memory_mb, state_rx)
+    ControllerHandle::spawn(client, memory_mb, state_rx)
 }
 
-async fn run_loop(api_sock: PathBuf, memory_mb: u32, mut state_rx: watch::Receiver<SandboxState>) {
-    let client = ApiClient::new(&api_sock);
+async fn run_loop(client: ApiClient, memory_mb: u32, mut state_rx: watch::Receiver<SandboxState>) {
     let max_inflate = memory_mb.saturating_sub(MIN_GUEST_MIB);
     if max_inflate == 0 {
         info!(
@@ -162,7 +160,7 @@ async fn wait_for_crash_or_stop(state_rx: &mut watch::Receiver<SandboxState>) {
 /// - Inflate when `free_memory > TARGET_FREE + INFLATE_HYSTERESIS`
 /// - Deflate when `available_memory < TARGET_FREE - DEFLATE_HYSTERESIS`
 /// - No action in between to prevent oscillation
-async fn tick(client: &ApiClient<'_>, max_inflate: u32, tick_count: u64) {
+async fn tick(client: &ApiClient, max_inflate: u32, tick_count: u64) {
     let stats = match client.get_balloon_statistics().await {
         Ok(s) => s,
         Err(e) => {
@@ -247,6 +245,8 @@ fn parse_meminfo(content: &str) -> Option<(u64, u64)> {
 mod tests {
     use super::*;
 
+    use std::path::PathBuf;
+
     use crate::api::test_support::{MockFirecrackerApi, MockRequest, MockResponse};
 
     const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(1);
@@ -311,7 +311,7 @@ mod tests {
             MockResponse::no_content(),
         ]);
         let sock_path = api.socket_path().to_path_buf();
-        let client = ApiClient::new(&sock_path);
+        let client = ApiClient::new(&sock_path).unwrap();
         tick(&client, max_inflate, tick_count).await;
 
         let requests = api.drain_requests();
@@ -418,15 +418,17 @@ mod tests {
             let (_dir, sock_path) = missing_api_sock_path();
             let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
             let context = format!("small-memory balloon controller ({memory_mb} MiB)");
+            let client = ApiClient::new(&sock_path).unwrap();
 
-            await_controller_exit(spawn(sock_path, memory_mb, state_rx), &context).await;
+            await_controller_exit(spawn(client, memory_mb, state_rx), &context).await;
         }
     }
 
     async fn assert_spawn_exits_on_state(state: SandboxState) {
         let (_dir, sock_path) = missing_api_sock_path();
         let (state_tx, state_rx) = watch::channel(SandboxState::Running);
-        let handle = spawn(sock_path, MIN_GUEST_MIB + 1, state_rx);
+        let client = ApiClient::new(&sock_path).unwrap();
+        let handle = spawn(client, MIN_GUEST_MIB + 1, state_rx);
 
         state_tx.send(state).unwrap();
         let context = format!("balloon controller after {state:?}");
@@ -580,7 +582,7 @@ mod tests {
             MockResponse::no_content(),
         ]);
         let sock_path = api.socket_path().to_path_buf();
-        let client = ApiClient::new(&sock_path);
+        let client = ApiClient::new(&sock_path).unwrap();
         // Should not panic — just logs warning and returns.
         tick(&client, 1536, 0).await;
 

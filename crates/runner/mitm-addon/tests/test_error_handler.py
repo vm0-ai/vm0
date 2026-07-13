@@ -594,7 +594,7 @@ class TestErrorHandler:
         assert "#frag" not in entry["message"]
 
     def test_full_path_error_to_webhook(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, usage_webhook_api
     ):
         """Integration: error() -> _maybe_report -> _enqueue -> _retry -> webhook.
 
@@ -619,7 +619,6 @@ class TestErrorHandler:
         with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
-            usage.webhook.usage_executor.shutdown(wait=True)
 
         assert webhook.request_count == 2
         requests_by_path = {request.path: request for request in webhook.requests}

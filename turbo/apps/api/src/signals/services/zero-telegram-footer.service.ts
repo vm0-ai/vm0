@@ -4,11 +4,9 @@ import {
   getFrameworkForType,
   modelProviderTypeSchema,
 } from "@vm0/api-contracts/contracts/model-providers";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
@@ -175,13 +173,10 @@ async function resolveRunAgentLabel(
       composeName: agentComposes.name,
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
+    .innerJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
     .innerJoin(
       agentComposes,
-      eq(agentComposeVersions.composeId, agentComposes.id),
+      eq(agentSessions.agentComposeId, agentComposes.id),
     )
     .leftJoin(zeroAgents, eq(zeroAgents.id, agentComposes.id))
     .where(eq(agentRuns.id, runId))

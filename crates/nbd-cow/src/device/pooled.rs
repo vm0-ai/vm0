@@ -113,7 +113,30 @@ impl pool::DevicePoolHandle {
         cow_file: &Path,
         size: u64,
     ) -> Result<PooledNbdCowDevice> {
-        let (device, lease) = NbdCowDevice::create_inner(base_image, cow_file, size, self).await?;
+        let (device, lease) =
+            NbdCowDevice::create_inner(base_image, cow_file, size, self, None).await?;
+        Ok(PooledNbdCowDevice {
+            device,
+            lease: LeaseGuard::new(lease, self.clone()),
+            pool: self.clone(),
+        })
+    }
+
+    /// Create a pooled NBD COW device and report aggregate creation stages.
+    ///
+    /// The observer receives fixed, low-cardinality records after creation
+    /// returns success or an ordinary error. Cancellation preserves the same
+    /// cleanup behavior as [`Self::create_cow_device`] and does not invoke the
+    /// observer from `Drop`.
+    pub async fn create_cow_device_with_observer(
+        &self,
+        base_image: &Path,
+        cow_file: &Path,
+        size: u64,
+        observer: &mut dyn super::NbdCowCreateObserver,
+    ) -> Result<PooledNbdCowDevice> {
+        let (device, lease) =
+            NbdCowDevice::create_inner(base_image, cow_file, size, self, Some(observer)).await?;
         Ok(PooledNbdCowDevice {
             device,
             lease: LeaseGuard::new(lease, self.clone()),

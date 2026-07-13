@@ -20,12 +20,14 @@ from typing import Literal, Protocol
 from mitmproxy import http
 
 import connection_endpoints
+import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_network_log
 import matching
 import public_destination
 import registry
+import registry_firewalls
 import upstream_destination_binding
 from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
 
@@ -69,6 +71,7 @@ RequestClassificationKind = Literal[
     "authority_denied",
     "api_allow",
     "browser_allow",
+    "firewall_ambiguous",
     "firewall_block",
     "firewall_allow",
     "public_destination_denied",
@@ -110,10 +113,14 @@ class RequestClassification:
     - `invalid_registry_vm`: `invalid_vm`.
     - `authority_denied`: `vm_info` and `authority_error`.
     - `firewall_block`: `vm_info` and `firewall_block`.
+    - `firewall_ambiguous`: `vm_info` and `firewall_ambiguous`.
     - `firewall_allow`: `vm_info` and `firewall_allow`.
     - `public_destination_denied`: `vm_info` and
       `public_destination_denial`.
     - `api_allow`, `browser_allow`, and `allow`: `vm_info`.
+    - `firewall_allow` and `allow` may also carry
+      `builtin_firewall_catalog_snapshot` when registry compilation depended on
+      a catalog snapshot.
     - `stale_tls_admission`: `stale_tls_reason`; `vm_info` is present only
       when the stale admission is detected after a VM entry is found.
     - `no_client_ip` and `pass_through`: no additional payload.
@@ -124,9 +131,13 @@ class RequestClassification:
     registry_unavailable: registry.RegistryUnavailable | None = None
     invalid_vm: registry.InvalidVmEntry | None = None
     authority_error: AuthorityValidationError | None = None
+    firewall_ambiguous: matching.FirewallAmbiguous | None = None
     firewall_block: matching.FirewallBlock | None = None
     firewall_allow: matching.FirewallAllow | None = None
     public_destination_denial: PublicDestinationDenial | None = None
+    builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = (
+        None
+    )
     stale_tls_reason: str = ""
 
 
@@ -295,7 +306,14 @@ def classify_request(
             flow.request.method,
             compiled_firewalls,
             compiled_network_policies,
+            connector_intent.from_flow(flow),
         )
+        if isinstance(result, matching.FirewallAmbiguous):
+            return RequestClassification(
+                kind="firewall_ambiguous",
+                vm_info=vm_info,
+                firewall_ambiguous=result,
+            )
         if isinstance(result, matching.FirewallBlock):
             return RequestClassification(
                 kind="firewall_block",
@@ -319,9 +337,16 @@ def classify_request(
                 kind="firewall_allow",
                 vm_info=vm_info,
                 firewall_allow=result,
+                builtin_firewall_catalog_snapshot=(
+                    registry_state.builtin_firewall_catalog_snapshot
+                ),
             )
 
-    return RequestClassification(kind="allow", vm_info=vm_info)
+    return RequestClassification(
+        kind="allow",
+        vm_info=vm_info,
+        builtin_firewall_catalog_snapshot=registry_state.builtin_firewall_catalog_snapshot,
+    )
 
 
 def classification_needs_request_timing(classification: RequestClassification) -> bool:
@@ -329,6 +354,7 @@ def classification_needs_request_timing(classification: RequestClassification) -
         "authority_denied",
         "api_allow",
         "browser_allow",
+        "firewall_ambiguous",
         "firewall_block",
         "firewall_allow",
         "public_destination_denied",

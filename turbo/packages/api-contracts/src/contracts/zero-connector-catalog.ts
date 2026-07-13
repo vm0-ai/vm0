@@ -1,14 +1,17 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
+import {
+  connectorCatalogAuthMethodIdSchema,
+  connectorCatalogRefSchema,
+} from "./connector-identity";
 import { connectorReconnectReasonSchema } from "./connector-schemas";
-import { connectorRefSchema } from "./connector-ref";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
 const publicConnectorCatalogAuthMethodSummarySchema = z.object({
-  id: z.string(),
+  id: connectorCatalogAuthMethodIdSchema,
   label: z.string(),
   description: z.string().nullable(),
   grantKind: z.enum([
@@ -27,6 +30,12 @@ const publicConnectorCatalogPermissionSummarySchema = z.object({
   permissionCount: z.number().int().nonnegative(),
   hasCategories: z.boolean(),
   hasDefaultPolicyOverrides: z.boolean(),
+});
+
+export const publicConnectorCatalogIconSchema = z.object({
+  url: z.url({ protocol: /^https$/u }).max(2048),
+  invertInDarkMode: z.boolean(),
+  scale: z.number().min(1).max(3).optional(),
 });
 
 const publicConnectorCatalogCategoryGroupSchema = z.object({
@@ -48,9 +57,10 @@ const publicConnectorCatalogCategoryMetadataSchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorRef: connectorCatalogRefSchema,
   label: z.string(),
   description: z.string(),
+  icon: publicConnectorCatalogIconSchema,
   category: z.string(),
   generation: z.array(z.string()),
   tags: z.array(z.string()),
@@ -108,7 +118,7 @@ const publicConnectorCatalogConnectionStatusSchema = z.enum([
 ]);
 
 const publicConnectorCatalogConnectionSchema = z.object({
-  authMethod: z.string(),
+  authMethod: connectorCatalogAuthMethodIdSchema,
   externalUsername: z.string().nullable(),
   externalEmail: z.string().nullable(),
   reconnectReason: connectorReconnectReasonSchema.nullable(),
@@ -122,7 +132,7 @@ const publicConnectorCatalogStatusItemSchema =
     scopeMismatch: z.boolean(),
     authMethodSupportsRefresh: z.boolean(),
     tokenExpiresAt: z.string().nullable(),
-    singleAuthCodeAuthMethodId: z.string().nullable(),
+    singleAuthCodeAuthMethodId: connectorCatalogAuthMethodIdSchema.nullable(),
     connectNotice: z.enum(["google-security-warning"]).nullable(),
   });
 
@@ -150,8 +160,9 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorRef: connectorCatalogRefSchema,
   label: z.string(),
+  icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),
   permissions: z.array(publicConnectorCatalogPermissionSchema),
   categories: publicConnectorCatalogPermissionCategoriesSchema.nullable(),
@@ -163,7 +174,7 @@ const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
 });
 
 const connectorCatalogPathParamsSchema = z.object({
-  connectorRef: connectorRefSchema,
+  connectorRef: connectorCatalogRefSchema,
 });
 
 export type PublicConnectorCatalogAuthMethodSummary = z.infer<
@@ -171,6 +182,9 @@ export type PublicConnectorCatalogAuthMethodSummary = z.infer<
 >;
 export type PublicConnectorCatalogPermissionSummary = z.infer<
   typeof publicConnectorCatalogPermissionSummarySchema
+>;
+export type PublicConnectorCatalogIcon = z.infer<
+  typeof publicConnectorCatalogIconSchema
 >;
 export type PublicConnectorCatalogCategoryGroup = z.infer<
   typeof publicConnectorCatalogCategoryGroupSchema

@@ -41,11 +41,7 @@ import {
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
-
 export interface ModelProviderSelection {
-  modelProviderId: string;
   selectedModel: string;
   codexServiceTier?: CodexServiceTier;
 }
@@ -217,7 +213,6 @@ function resolveModelFirstDefault(
       );
     })
       ? {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: userPreference.selectedModel,
         }
       : null;
@@ -229,7 +224,6 @@ function resolveModelFirstDefault(
     validUserDefault ??
     (validWorkspaceDefault
       ? {
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel: validWorkspaceDefault.model,
         }
       : null)
@@ -402,7 +396,6 @@ function modelFirstSelectionFromRaw(
     return null;
   }
   return {
-    modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
     selectedModel: raw,
   };
 }
@@ -607,7 +600,6 @@ function CodexFastModeSelectControl({
       selectedModel={selectedModel}
       onCheckedChange={(checked) => {
         onChange({
-          modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
           selectedModel,
           ...(checked ? { codexServiceTier: "fast" as const } : {}),
         });

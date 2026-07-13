@@ -1,12 +1,12 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 
 export interface AgentConnectorAuthorizations {
   readonly agentId: string;
-  readonly enabledTypes: readonly string[];
+  readonly enabledTypes: readonly ConnectorCatalogRef[];
 }
 
 const internalAgentConnectorAuthorizationsReload$ = state(0);
@@ -50,9 +50,7 @@ function createAuthorizationsAtom(
     const request = client.get({ params: { id: agentId } });
     const result =
       options.missing === "null"
-        ? await accept(request, [200, 404], {
-            toast: false,
-          })
+        ? await accept(request, [200, 404])
         : await accept(request, [200]);
     if (result.status === 404) {
       return null;
@@ -118,7 +116,7 @@ function createAgentConnectorAuthorizationsFactory(): AgentConnectorAuthorizatio
 
 function createAgentConnectorAuthorizedFactory(): (params: {
   readonly agentId: string;
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorCatalogRef;
 }) => Computed<Promise<boolean>> {
   const cache = new Map<string, Computed<Promise<boolean>>>();
   return (params) => {

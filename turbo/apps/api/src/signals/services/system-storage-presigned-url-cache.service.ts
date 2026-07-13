@@ -6,7 +6,7 @@ import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
-import { nowDate } from "../external/time";
+import { nowDate, timestampWithoutTimeZone } from "../external/time";
 
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type StoragePresignedUrlCacheScope =
@@ -26,7 +26,7 @@ export const SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_TTL_SECONDS = 2 * 60 * 60;
 const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_CACHE_POLICY =
   "workflow-skill-storage-url-v1";
-export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 3;
+export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_REFRESH_LIMIT = 32;
 export const WORKFLOW_SKILL_STORAGE_PRESIGNED_URL_PRUNE_LIMIT = 100;
 
 type StoragePresignedUrlCacheStatus =
@@ -183,11 +183,6 @@ function activeCutoff(issuedAt: Date): Date {
     issuedAt.getTime() -
       SYSTEM_STORAGE_PRESIGNED_URL_ACTIVE_WINDOW_SECONDS * 1000,
   );
-}
-
-function timestampWithoutTimeZone(value: Date): string {
-  // Raw SQL Date params compare as timestamptz; these columns store UTC timestamp.
-  return value.toISOString().replace("T", " ").replace("Z", "");
 }
 
 function storagePresignedUrlCacheScope(
@@ -516,11 +511,12 @@ async function refreshDueStoragePresignedUrls(args: {
       asc(systemStoragePresignedUrlCache.refreshAfter),
       asc(systemStoragePresignedUrlCache.expiresAt),
     )
-    .limit(args.limit);
+    .limit(args.limit + 1);
   args.signal?.throwIfAborted();
 
+  const rowsToRefresh = rows.slice(0, args.limit);
   const freshValues = await Promise.all(
-    rows.map((row) => {
+    rowsToRefresh.map((row) => {
       return signCacheValue({
         get: args.get,
         cacheKey: row.cacheKey,

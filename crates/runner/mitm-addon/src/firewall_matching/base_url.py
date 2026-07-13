@@ -26,6 +26,7 @@ from host_normalization import (
     normalize_idna_hostname,
     translate_idna_dot_separators,
 )
+from path_security import has_unsafe_url_path
 from url_syntax import (
     has_raw_whitespace,
     has_unsafe_runtime_url_syntax,
@@ -394,6 +395,7 @@ def _compile_firewall_config_base(raw_base: str) -> _CompiledFirewallConfigBase 
         or base.parts.host_malformed
         or base.parts.has_userinfo
         or base.parts.port_malformed
+        or has_unsafe_url_path(raw_base)
         or not _compiled_base_params_are_valid(base),
     )
 

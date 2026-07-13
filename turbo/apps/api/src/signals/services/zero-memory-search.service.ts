@@ -24,6 +24,13 @@ import {
   memoryEmbeddingSqlLiteral,
 } from "./zero-memory-embedding.service";
 import { recallZeroMemory } from "./zero-memory-recall.service";
+import {
+  measureZeroMemoryTiming,
+  zeroMemoryCountBucket,
+  type ZeroMemoryTimingDimensions,
+  type ZeroMemoryTimingObserver,
+  type ZeroMemoryTimingStage,
+} from "./zero-memory-timing.service";
 
 const log = logger("zero-memory-search");
 const SEMANTIC_SCORE_THRESHOLD = 0.2;
@@ -46,6 +53,7 @@ interface SearchParams extends MemoryScope {
   readonly occurredAfter?: string;
   readonly occurredBefore?: string;
   readonly limit: number;
+  readonly timing?: ZeroMemoryTimingObserver;
 }
 
 interface DocumentCandidate {
@@ -60,6 +68,31 @@ type DocumentSearchResult = Extract<
   MemorySearchResult,
   { readonly kind: "document_chunk" }
 >;
+
+async function measureDocumentList<T>(
+  observer: ZeroMemoryTimingObserver | undefined,
+  stage: ZeroMemoryTimingStage,
+  dimensionName: string,
+  operation: () => readonly T[] | Promise<readonly T[]>,
+  dimensions: ZeroMemoryTimingDimensions = {},
+): Promise<readonly T[]> {
+  let count = 0;
+  return await measureZeroMemoryTiming(
+    observer,
+    stage,
+    async () => {
+      const result = await operation();
+      count = result.length;
+      return result;
+    },
+    () => {
+      return {
+        ...dimensions,
+        [dimensionName]: zeroMemoryCountBucket(count),
+      };
+    },
+  );
+}
 
 function clamp01(value: number): number {
   if (value < 0) {
@@ -266,56 +299,80 @@ async function loadSemanticDocumentCandidates(
   db: ReadonlyDb,
   args: SearchParams & { readonly normalizedQuery: string },
 ): Promise<readonly DocumentCandidate[]> {
-  const embedded = await embedQuery(args.normalizedQuery);
+  let embeddingResult = "empty";
+  const embedded = await measureZeroMemoryTiming(
+    args.timing,
+    "document_search_semantic_embedding",
+    async () => {
+      const result = await embedQuery(args.normalizedQuery);
+      embeddingResult = result ? "present" : "empty";
+      return result;
+    },
+    () => {
+      return {
+        memory_document_semantic_embedding_result: embeddingResult,
+      };
+    },
+  );
   if (!embedded) {
     return [];
   }
 
-  const queryVector = sql`${memoryEmbeddingSqlLiteral(embedded.embedding)}::vector`;
-  const distance = sql<number>`${memoryDocumentSearchEntries.embedding} <=> ${queryVector}`;
-  const rows = await db
-    .select({
-      chunkId: memoryDocumentSearchEntries.chunkId,
-      semanticScore: sql<number>`1 - (${distance})`,
-    })
-    .from(memoryDocumentSearchEntries)
-    .innerJoin(
-      memoryDocumentChunks,
-      eq(memoryDocumentChunks.id, memoryDocumentSearchEntries.chunkId),
-    )
-    .innerJoin(
-      memoryDocuments,
-      eq(memoryDocuments.id, memoryDocumentSearchEntries.documentId),
-    )
-    .innerJoin(
-      memoryContextSpaces,
-      eq(memoryContextSpaces.id, memoryDocumentSearchEntries.contextSpaceId),
-    )
-    .where(
-      and(
-        eq(memoryDocumentSearchEntries.orgId, args.orgId),
-        eq(memoryDocumentSearchEntries.userId, args.userId),
-        eq(memoryDocumentSearchEntries.status, "active"),
-        eq(memoryDocumentSearchEntries.embeddingModel, embedded.model),
-        ...documentFilters(args),
-      ),
-    )
-    .orderBy(distance)
-    .limit(Math.max(args.limit * 10, 80));
+  return await measureDocumentList(
+    args.timing,
+    "document_search_semantic_query",
+    "memory_document_semantic_candidate_count_bucket",
+    async () => {
+      const queryVector = sql`${memoryEmbeddingSqlLiteral(embedded.embedding)}::vector`;
+      const distance = sql<number>`${memoryDocumentSearchEntries.embedding} <=> ${queryVector}`;
+      const rows = await db
+        .select({
+          chunkId: memoryDocumentSearchEntries.chunkId,
+          semanticScore: sql<number>`1 - (${distance})`,
+        })
+        .from(memoryDocumentSearchEntries)
+        .innerJoin(
+          memoryDocumentChunks,
+          eq(memoryDocumentChunks.id, memoryDocumentSearchEntries.chunkId),
+        )
+        .innerJoin(
+          memoryDocuments,
+          eq(memoryDocuments.id, memoryDocumentSearchEntries.documentId),
+        )
+        .innerJoin(
+          memoryContextSpaces,
+          eq(
+            memoryContextSpaces.id,
+            memoryDocumentSearchEntries.contextSpaceId,
+          ),
+        )
+        .where(
+          and(
+            eq(memoryDocumentSearchEntries.orgId, args.orgId),
+            eq(memoryDocumentSearchEntries.userId, args.userId),
+            eq(memoryDocumentSearchEntries.status, "active"),
+            eq(memoryDocumentSearchEntries.embeddingModel, embedded.model),
+            ...documentFilters(args),
+          ),
+        )
+        .orderBy(distance)
+        .limit(Math.max(args.limit * 10, 80));
 
-  return rows
-    .map((row, index) => {
-      return {
-        chunkId: row.chunkId,
-        semanticScore: clamp01(row.semanticScore),
-        lexicalScore: 0,
-        semanticRank: index + 1,
-        lexicalRank: null,
-      };
-    })
-    .filter((candidate) => {
-      return candidate.semanticScore >= SEMANTIC_SCORE_THRESHOLD;
-    });
+      return rows
+        .map((row, index) => {
+          return {
+            chunkId: row.chunkId,
+            semanticScore: clamp01(row.semanticScore),
+            lexicalScore: 0,
+            semanticRank: index + 1,
+            lexicalRank: null,
+          };
+        })
+        .filter((candidate) => {
+          return candidate.semanticScore >= SEMANTIC_SCORE_THRESHOLD;
+        });
+    },
+  );
 }
 
 function serializeDate(value: Date | null): string | null {
@@ -420,19 +477,50 @@ async function searchMemoryDocuments(
   db: ReadonlyDb,
   args: SearchParams,
 ): Promise<readonly DocumentSearchResult[]> {
-  const query = normalizedQuery(args.q);
-  const candidates = new Map<string, DocumentCandidate>();
-  const [lexicalCandidates, semanticCandidates] = await Promise.all([
-    loadLexicalDocumentCandidates(db, { ...args, normalizedQuery: query }),
-    loadSemanticDocumentCandidates(db, { ...args, normalizedQuery: query }),
-  ]);
-  for (const candidate of [...lexicalCandidates, ...semanticCandidates]) {
-    mergeDocumentCandidate(candidates, candidate);
-  }
-  return await hydrateDocumentResults(db, {
-    ...args,
-    candidates: [...candidates.values()],
-  });
+  return await measureDocumentList(
+    args.timing,
+    "document_search",
+    "memory_document_search_result_count_bucket",
+    async () => {
+      const query = normalizedQuery(args.q);
+      const candidates = new Map<string, DocumentCandidate>();
+      const [lexicalCandidates, semanticCandidates] = await Promise.all([
+        measureDocumentList(
+          args.timing,
+          "document_search_lexical",
+          "memory_document_lexical_candidate_count_bucket",
+          async () => {
+            return await loadLexicalDocumentCandidates(db, {
+              ...args,
+              normalizedQuery: query,
+            });
+          },
+        ),
+        loadSemanticDocumentCandidates(db, {
+          ...args,
+          normalizedQuery: query,
+        }),
+      ]);
+      for (const candidate of [...lexicalCandidates, ...semanticCandidates]) {
+        mergeDocumentCandidate(candidates, candidate);
+      }
+      return await measureDocumentList(
+        args.timing,
+        "document_search_hydrate",
+        "memory_document_hydrated_result_count_bucket",
+        async () => {
+          return await hydrateDocumentResults(db, {
+            ...args,
+            candidates: [...candidates.values()],
+          });
+        },
+        {
+          memory_document_hydration_candidate_count_bucket:
+            zeroMemoryCountBucket(candidates.size),
+        },
+      );
+    },
+  );
 }
 
 function memoryResultScore(memory: MemoryRecallItem, index: number): number {
@@ -527,7 +615,10 @@ export async function searchZeroMemory(
   args: SearchParams,
 ): Promise<MemorySearchResponse> {
   const includeMemories = args.mode === "hybrid" || args.mode === "memories";
-  const includeDocuments = args.mode === "hybrid" || args.mode === "documents";
+  // Connector content remains with the connector. Until connector-native
+  // retrieval is available, hybrid search intentionally returns durable facts
+  // only instead of reading a locally persisted raw-content index.
+  const includeDocuments = false;
   const candidateLimit = Math.max(args.limit * 4, 20);
   const [memoryResults, documentResults] = await Promise.all([
     includeMemories

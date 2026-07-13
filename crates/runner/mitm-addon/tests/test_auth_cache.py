@@ -53,10 +53,11 @@ class TestFirewallHeaderCache:
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             started = [asyncio.Event() for _ in range(3)]
             cache_key = auth_cache_key()
+            auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
 
             async def fetch_headers(started_event: asyncio.Event) -> dict:
                 started_event.set()
-                return await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+                return await auth_cache.get_firewall_headers(cache_key, auth_request)
 
             tasks = [asyncio.create_task(fetch_headers(started_event)) for started_event in started]
             try:
@@ -102,9 +103,10 @@ class TestFirewallHeaderCache:
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             first_key = auth_cache_key(api_id="api-1")
             second_key = auth_cache_key(api_id="api-2")
+            auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
             first, second = await asyncio.gather(
-                auth_cache.get_firewall_headers(first_key, _firewall_auth_request()),
-                auth_cache.get_firewall_headers(second_key, _firewall_auth_request()),
+                auth_cache.get_firewall_headers(first_key, auth_request),
+                auth_cache.get_firewall_headers(second_key, auth_request),
             )
 
         assert endpoint.request_count == 2
@@ -138,8 +140,9 @@ class TestFirewallHeaderCache:
         default_key = auth_cache_key(auth_identity="default-permission")
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
-            explicit = await auth_cache.get_firewall_headers(explicit_key, _firewall_auth_request())
-            default = await auth_cache.get_firewall_headers(default_key, _firewall_auth_request())
+            auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+            explicit = await auth_cache.get_firewall_headers(explicit_key, auth_request)
+            default = await auth_cache.get_firewall_headers(default_key, auth_request)
 
         assert endpoint.request_count == 2
         assert explicit["headers"] == {"Authorization": "Bearer explicit"}
@@ -190,21 +193,22 @@ class TestFirewallHeaderCache:
                 "expiresAt": time.time() + 3600,
             }
         )
+        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
             with pytest.raises(urllib.error.HTTPError):
-                await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+                await auth_cache.get_firewall_headers(cache_key, auth_request)
 
             assert endpoint.request_count == 1
             assert cached_headers(cache_key) is None
 
-            retry = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            retry = await auth_cache.get_firewall_headers(cache_key, auth_request)
             assert retry["headers"] == {"Authorization": "Bearer retry"}
             assert retry["cache_hit"] is False
             assert endpoint.request_count == 2
             assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer retry"}
 
-            cached = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            cached = await auth_cache.get_firewall_headers(cache_key, auth_request)
             assert cached["headers"] == {"Authorization": "Bearer retry"}
             assert cached["cache_hit"] is True
             assert endpoint.request_count == 2

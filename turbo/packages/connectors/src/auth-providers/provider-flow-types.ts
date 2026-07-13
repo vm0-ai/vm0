@@ -219,6 +219,7 @@ export type ConnectorAuthProviderRevokeArgs<
     ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
 > = ConnectorAuthMethodClientArgs<T, Method> & {
   readonly inputs: ConnectorRevokeInputValues<T, Method>;
+  readonly signal: AbortSignal;
 };
 
 export type ConnectorDeviceAuthorizationStartArgs<

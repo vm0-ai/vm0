@@ -9,7 +9,7 @@ use crate::error::{NbdCowError, Result};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
-use super::scan::scan_and_claim_with;
+use super::scan::{ScannedDeviceClaim, scan_and_claim_with};
 use super::state::CooldownSlot;
 
 fn always_free(_: u32) -> bool {
@@ -34,19 +34,28 @@ fn test_pool(
     )
 }
 
-fn pending_scan_result(result: Result<NbdDeviceClaim>) -> JoinSet<Result<NbdDeviceClaim>> {
+fn scanned(claim: NbdDeviceClaim) -> ScannedDeviceClaim {
+    ScannedDeviceClaim::new(claim, Duration::from_millis(1))
+}
+
+fn pending_scan_result(result: Result<NbdDeviceClaim>) -> JoinSet<Result<ScannedDeviceClaim>> {
     let mut pending = JoinSet::new();
-    pending.spawn(async move { result });
+    pending.spawn(async move { result.map(scanned) });
     pending
 }
 
 fn pending_controlled_scan() -> (
-    JoinSet<Result<NbdDeviceClaim>>,
+    JoinSet<Result<ScannedDeviceClaim>>,
     oneshot::Sender<Result<NbdDeviceClaim>>,
 ) {
     let mut pending = JoinSet::new();
     let (complete, complete_rx) = oneshot::channel();
-    pending.spawn(async move { complete_rx.await.unwrap_or(Err(NbdCowError::NoFreeDevice)) });
+    pending.spawn(async move {
+        complete_rx
+            .await
+            .unwrap_or(Err(NbdCowError::NoFreeDevice))
+            .map(scanned)
+    });
     (pending, complete)
 }
 

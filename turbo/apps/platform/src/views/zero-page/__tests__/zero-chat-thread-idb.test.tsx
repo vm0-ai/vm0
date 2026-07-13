@@ -26,21 +26,6 @@ const idbMessageStoreMock = vi.hoisted(() => {
     }
     return Promise.resolve(cachedMessages.slice(-limit));
   };
-  const readBeforeImpl = () => {
-    return Promise.resolve([]);
-  };
-  const messageExistsImpl = (_threadId: string, messageId: string) => {
-    return Promise.resolve(
-      cachedMessages.some((message) => {
-        return (
-          typeof message === "object" &&
-          message !== null &&
-          "id" in message &&
-          message.id === messageId
-        );
-      }),
-    );
-  };
   const upsertMessagesImpl = (_threadId: string, messages: unknown[]) => {
     for (const message of messages) {
       if (
@@ -67,14 +52,10 @@ const idbMessageStoreMock = vi.hoisted(() => {
     return Promise.resolve();
   };
   const readLatest = vi.fn(readLatestImpl);
-  const readBefore = vi.fn(readBeforeImpl);
-  const messageExists = vi.fn(messageExistsImpl);
   const upsertMessages = vi.fn(upsertMessagesImpl);
 
   return {
     readLatest,
-    readBefore,
-    messageExists,
     upsertMessages,
     setMessages(messages: unknown[]) {
       cachedMessages = messages;
@@ -83,10 +64,6 @@ const idbMessageStoreMock = vi.hoisted(() => {
       cachedMessages = [];
       readLatest.mockReset();
       readLatest.mockImplementation(readLatestImpl);
-      readBefore.mockReset();
-      readBefore.mockImplementation(readBeforeImpl);
-      messageExists.mockReset();
-      messageExists.mockImplementation(messageExistsImpl);
       upsertMessages.mockReset();
       upsertMessages.mockImplementation(upsertMessagesImpl);
     },
@@ -102,9 +79,6 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
 
   const readSnapshot = vi.fn(() => {
     return Promise.resolve(snapshot);
-  });
-  const readLatestEventId = vi.fn(() => {
-    return Promise.resolve(snapshot?.latestEventId ?? null);
   });
   const readEvents = vi.fn(() => {
     return Promise.resolve(events);
@@ -134,7 +108,6 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
 
   return {
     readSnapshot,
-    readLatestEventId,
     readEvents,
     replaceFromSnapshot,
     upsertEvents,
@@ -152,7 +125,6 @@ const idbThreadEventStoreMock = vi.hoisted(() => {
       snapshot = null;
       events = [];
       readSnapshot.mockClear();
-      readLatestEventId.mockClear();
       readEvents.mockClear();
       replaceFromSnapshot.mockClear();
       upsertEvents.mockClear();
@@ -166,8 +138,6 @@ vi.mock("../../../signals/external/idb-message-store.ts", () => {
       return {
         readStore: {
           readLatest: idbMessageStoreMock.readLatest,
-          readBefore: idbMessageStoreMock.readBefore,
-          messageExists: idbMessageStoreMock.messageExists,
         },
         writeStore: {
           upsertMessages: idbMessageStoreMock.upsertMessages,
@@ -183,7 +153,6 @@ vi.mock("../../../signals/external/idb-chat-thread-event-store.ts", () => {
       return {
         readStore: {
           readSnapshot: idbThreadEventStoreMock.readSnapshot,
-          readLatestEventId: idbThreadEventStoreMock.readLatestEventId,
           readEvents: idbThreadEventStoreMock.readEvents,
         },
         writeStore: {
@@ -351,8 +320,11 @@ describe("zero chat thread IndexedDB fallback", () => {
     mockSidebarThread();
 
     let messageListRequests = 0;
-    context.mocks.api(chatThreadMessagesContract.list, ({ respond }) => {
+    context.mocks.api(chatThreadMessagesContract.list, ({ query, respond }) => {
       messageListRequests += 1;
+      if (query.sinceId) {
+        return respond(200, { messages: [] });
+      }
       return respond(200, {
         messages: [
           {
@@ -390,7 +362,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     expect(messageListRequests).toBeGreaterThan(0);
   });
 
-  it("keeps the chat skeleton visible while the initial message list is blocked after an IndexedDB miss", async () => {
+  it("renders the empty chat shell while remote messages are blocked after an IndexedDB miss", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -408,9 +380,9 @@ describe("zero chat thread IndexedDB fallback", () => {
 
       await waitFor(() => {
         expect(messageListRequests).toBeGreaterThan(0);
-        expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
       });
-      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     } finally {
       initialMessageList.resolve();
     }

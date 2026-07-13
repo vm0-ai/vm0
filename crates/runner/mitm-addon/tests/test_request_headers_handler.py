@@ -17,6 +17,7 @@ import upstream_admission
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
+    _shared_route_vm,
     _single_firewall_vm,
     _vm_without_firewalls,
     _write_github_firewall_registry,
@@ -1011,6 +1012,83 @@ async def test_firewall_allow_header_auth_requestheaders_strips_connector_intent
     assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_shared_route_intent_selects_requestheaders_auth_in_both_orders(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, reverse
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_shared_route_vm(tmp_path, reverse=reverse),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        method="GET",
+        path="/items/123",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "primary"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved-primary"}) as auth_fetch,
+    ):
+        result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(result)
+
+        assert callable(flow.request.stream)
+        assert flow.request.headers["Authorization"] == "Bearer resolved-primary"
+        assert "X-VM0-Connector-Intent" not in flow.request.headers
+        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "primary"
+        assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "items-read"
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    auth_request = auth_fetch.await_args.args[1]
+    assert auth_request.auth_headers == {"Authorization": "Bearer ${{ secrets.PRIMARY_TOKEN }}"}
+    assert flow.response is None
+
+
+async def test_ambiguous_shared_route_requestheaders_never_fetches_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        method="GET",
+        path="/items/123",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        result = mitm_addon.requestheaders(flow)
+        assert result is None
+
+        _assert_no_request_stream(flow)
+        assert flow.response is None
+        auth_fetch.assert_not_awaited()
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstream_is_unbound(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -1212,8 +1290,20 @@ async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
+@pytest.mark.parametrize(
+    "peername",
+    [
+        pytest.param(("203.0.113.99", 443), id="ip-mismatch"),
+        pytest.param(("198.18.20.34", 8443), id="port-mismatch"),
+    ],
+)
 async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    peername: tuple[str, int],
 ):
     reg_path = _write_github_firewall_registry(
         tmp_path,
@@ -1231,8 +1321,8 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
-    flow.server_conn.peername = ("203.0.113.99", 443)
-    flow.server_conn.address = ("203.0.113.99", 443)
+    flow.server_conn.peername = peername
+    flow.server_conn.address = ("api.github.com", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.client_conn.sockname = ("198.18.20.34", 443)
 

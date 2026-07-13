@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,31 @@ def _violations_expected_fixture_name() -> str:
     return "violations.expected.py310.txt"
 
 
+def _run_check_script(
+    check_script: Path, addon_root: Path, executable_dir: Path
+) -> subprocess.CompletedProcess[str]:
+    python3 = executable_dir / "python3"
+    python3.symlink_to(Path(sys.executable).resolve())
+    env = {
+        **os.environ,
+        "LC_ALL": "C",
+        "PATH": f"{executable_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+        "PYTHONCOERCECLOCALE": "0",
+        "PYTHONUTF8": "0",
+    }
+
+    # Trusted workspace tooling with constant argv; no user-controlled shell input.
+    return subprocess.run(  # noqa: S603
+        [str(check_script)],
+        cwd=addon_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=_CLI_TIMEOUT_SECONDS,
+    )
+
+
 def test_registered_flow_metadata_keys_are_unique():
     assert flow_metadata_key_linter.duplicate_registered_metadata_keys() == {}
 
@@ -50,29 +76,48 @@ def test_registered_flow_metadata_keys_use_registry_constants():
 
 
 def test_check_flow_metadata_keys_cli_passes_current_repository(tmp_path):
-    python3 = tmp_path / "python3"
-    python3.symlink_to(Path(sys.executable).resolve())
-    env = {
-        **os.environ,
-        "LC_ALL": "C",
-        "PATH": f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}",
-        "PYTHONCOERCECLOCALE": "0",
-        "PYTHONUTF8": "0",
-    }
-
-    # Trusted workspace tooling with constant argv; no user-controlled shell input.
-    result = subprocess.run(  # noqa: S603
-        [str(_CHECK_SCRIPT)],
-        cwd=_ADDON_ROOT,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=_CLI_TIMEOUT_SECONDS,
-    )
+    result = _run_check_script(_CHECK_SCRIPT, _ADDON_ROOT, tmp_path)
 
     assert result.returncode == 0
     assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def test_check_flow_metadata_keys_cli_reports_configured_registry_path(tmp_path):
+    addon_root = tmp_path / "mitm-addon"
+    scripts_root = addon_root / "scripts"
+    scripts_root.mkdir(parents=True)
+    check_script = scripts_root / _CHECK_SCRIPT.name
+    shutil.copy2(_CHECK_SCRIPT, check_script)
+    shutil.copy2(
+        _ADDON_ROOT / "scripts" / "flow_metadata_key_linter.py",
+        scripts_root / "flow_metadata_key_linter.py",
+    )
+    shutil.copytree(
+        _ADDON_ROOT / "scripts" / "flow_metadata_linter",
+        scripts_root / "flow_metadata_linter",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+
+    paths_file = scripts_root / "flow_metadata_linter" / "paths.py"
+    paths_file.write_text(
+        paths_file.read_text(encoding="utf-8").replace(
+            '"flow_metadata_keys.py"', '"renamed_flow_metadata_keys.py"'
+        ),
+        encoding="utf-8",
+    )
+    src_root = addon_root / "src"
+    src_root.mkdir()
+    (src_root / "renamed_flow_metadata_keys.py").write_text(
+        'FIRST = "duplicate"\nSECOND = "duplicate"\n', encoding="utf-8"
+    )
+
+    result = _run_check_script(check_script, addon_root, tmp_path)
+
+    assert result.returncode == 1
+    assert result.stdout == (
+        "src/renamed_flow_metadata_keys.py: duplicate metadata key 'duplicate': FIRST, SECOND\n"
+    )
     assert result.stderr == ""
 
 

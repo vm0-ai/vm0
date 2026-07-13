@@ -3,6 +3,8 @@
 import base64
 import gzip
 
+import pytest
+
 from body_capture import add_capture_fields
 from body_limits import BODY_CAPTURE_LIMIT
 
@@ -459,9 +461,25 @@ class TestAddCaptureFields:
         assert "response_body_truncated" not in entry
         assert len(entry["response_body"]) == BODY_CAPTURE_LIMIT
 
-    def test_truncation_preserves_utf8_boundary(self, real_flow):
-        # Body is BODY_CAPTURE_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
-        body = b"x" * BODY_CAPTURE_LIMIT + "\u20ac".encode("utf-8")
+    def test_complete_body_at_limit_with_incomplete_utf8_uses_base64(self, real_flow):
+        body = b"x" * (BODY_CAPTURE_LIMIT - 1) + b"\xe2"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=body,
+            request_content_type="text/plain",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == body
+        assert "request_body_truncated" not in entry
+
+    @pytest.mark.parametrize("character", ["é", "€", "𝄞"])
+    def test_truncation_preserves_utf8_boundary(self, real_flow, character):
+        body = b"x" * (BODY_CAPTURE_LIMIT - 1) + character.encode()
         flow = real_flow(
             method="POST",
             host="api.example.com",
@@ -473,9 +491,8 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
-        # Should be valid UTF-8 (truncated at char boundary, not mid-char)
         assert entry["request_body_encoding"] == "utf-8"
-        assert len(entry["request_body"]) == BODY_CAPTURE_LIMIT  # all ASCII before the €
+        assert entry["request_body"] == "x" * (BODY_CAPTURE_LIMIT - 1)
 
     def test_text_request_with_binary_response(self, real_flow):
         flow = real_flow(
@@ -567,3 +584,60 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "base64"
         assert base64.b64decode(entry["response_body"]) == response_body[:BODY_CAPTURE_LIMIT]
         assert entry["response_body_truncated"] is True
+
+    def test_invalid_boundary_bytes_preserve_truncated_base64(self, real_flow):
+        request_body = b"r" * (BODY_CAPTURE_LIMIT - 1) + b"\xff" + b"x"
+        response_body = b"s" * (BODY_CAPTURE_LIMIT - 1) + b"\xfe" + b"y"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_body=request_body,
+            request_content_type="text/plain",
+            response_body=response_body,
+            response_content_type="text/plain",
+            include_request_id=True,
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == request_body[:BODY_CAPTURE_LIMIT]
+        assert entry["request_body_truncated"] is True
+        assert entry["response_body_encoding"] == "base64"
+        assert base64.b64decode(entry["response_body"]) == response_body[:BODY_CAPTURE_LIMIT]
+        assert entry["response_body_truncated"] is True
+
+    @pytest.mark.parametrize(
+        "invalid_suffix",
+        [b"\xc0", b"\xf5", b"\xe0\x80", b"\xed\xa0", b"\xf0\x80", b"\xf4\x90"],
+    )
+    def test_invalid_utf8_suffix_preserves_truncated_base64(self, real_flow, invalid_suffix):
+        body = b"x" * (BODY_CAPTURE_LIMIT - len(invalid_suffix)) + invalid_suffix + b"z"
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_body=body,
+            request_content_type="text/plain",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == body[:BODY_CAPTURE_LIMIT]
+        assert entry["request_body_truncated"] is True
+
+    def test_earlier_invalid_byte_preserves_split_utf8_suffix_in_base64(self, real_flow):
+        body = b"\xff" + b"x" * (BODY_CAPTURE_LIMIT - 2) + "€".encode()
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_body=body,
+            request_content_type="text/plain",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_body_encoding"] == "base64"
+        assert base64.b64decode(entry["request_body"]) == body[:BODY_CAPTURE_LIMIT]
+        assert entry["request_body_truncated"] is True

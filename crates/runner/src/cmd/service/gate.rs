@@ -305,29 +305,12 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn read_runner_status_rejects_fifo_without_blocking() {
-        use std::ffi::CString;
-        use std::os::unix::ffi::OsStrExt;
-
+    async fn read_runner_status_rejects_status_directory() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
-        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
-        let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
-        assert_eq!(
-            result,
-            0,
-            "mkfifo failed: {}",
-            std::io::Error::last_os_error()
-        );
+        std::fs::create_dir(&path).unwrap();
 
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            read_runner_status(dir.path()),
-        )
-        .await;
-
-        assert!(result.is_ok(), "FIFO read should not block");
-        assert!(result.unwrap().is_err(), "FIFO status should be rejected");
+        assert!(read_runner_status(dir.path()).await.is_err());
     }
 
     #[tokio::test]

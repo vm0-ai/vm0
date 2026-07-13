@@ -13,6 +13,7 @@ import mitm_addon
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
+    _shared_route_vm,
     _single_firewall_vm,
     _write_github_firewall_registry,
     _write_registry,
@@ -40,6 +41,126 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, reverse
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_shared_route_vm(tmp_path, reverse=reverse),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/items/123",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "primary"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved-primary"}) as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    auth_request = auth_fetch.await_args.args[1]
+    assert auth_request.auth_headers == {"Authorization": "Bearer ${{ secrets.PRIMARY_TOKEN }}"}
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved-primary"
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "primary"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "items-read"
+
+
+@pytest.mark.parametrize(
+    ("intent_headers", "reason"),
+    [
+        ((), "connector_intent_required"),
+        (
+            (
+                ("X-VM0-Connector-Intent", "primary"),
+                ("X-VM0-Connector-Intent", "auditor"),
+            ),
+            "malformed_connector_intent",
+        ),
+        (
+            (("X-VM0-Connector-Intent", "primary,auditor"),),
+            "malformed_connector_intent",
+        ),
+        (
+            (("X-VM0-Connector-Intent", ""),),
+            "malformed_connector_intent",
+        ),
+        (
+            (("X-VM0-Connector-Intent", "   "),),
+            "malformed_connector_intent",
+        ),
+        (
+            (("X-VM0-Connector-Intent", "inactive"),),
+            "connector_intent_not_candidate",
+        ),
+    ],
+)
+async def test_ambiguous_connector_route_fails_before_auth_and_logs_candidates(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    intent_headers,
+    reason,
+):
+    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/items/123?sensitive=query",
+        request_headers=headers(("Host", "shared.example.com"), *intent_headers),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+        mitm_addon.response(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    assert "X-VM0-Connector-Intent" not in flow.request.headers
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_PERMISSION not in flow.metadata
+    body = json.loads(flow.response.content)
+    assert body == {
+        "error": "ambiguous_connector_route",
+        "message": "Request blocked: connector route requires explicit intent",
+        "reason": reason,
+        "method": "GET",
+        "path": "/items/123",
+        "url": "https://shared.example.com/items/123",
+        "candidates": ["auditor", "primary"],
+    }
+    proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
+    assert proxy_log_entry["type"] == "firewall_ambiguous"
+    assert proxy_log_entry["reason"] == reason
+    assert proxy_log_entry["candidates"] == ["auditor", "primary"]
+    assert "intent" not in proxy_log_entry
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["status"] == 409
+    assert network_log_entry["firewall_error"] == "ambiguous_connector_route"
+    assert network_log_entry["connector_route_reason"] == reason
+    assert network_log_entry["connector_route_candidates"] == ["auditor", "primary"]
+    assert "firewall_name" not in network_log_entry
 
 
 async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ctx, headers):
@@ -334,6 +455,7 @@ async def test_firewall_permission_denied_block_reports_reason(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
+        mitm_addon.response(flow)
 
     assert flow.response is not None
     assert flow.response.status_code == 403
@@ -344,6 +466,11 @@ async def test_firewall_permission_denied_block_reports_reason(
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "permission_denied"
+    network_log_entry = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")[0]
+    assert network_log_entry["action"] == "DENY"
+    assert network_log_entry["status"] == 403
+    assert network_log_entry["firewall_permission"] == "read-repos"
+    assert network_log_entry["firewall_rule_match"] == ""
 
 
 async def test_firewall_block_response_url_preserves_raw_encoded_path_without_query(
@@ -956,3 +1083,55 @@ async def test_firewall_unsafe_path_blocks_before_auth_injection(
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unsafe_path"
+
+
+async def test_unsafe_firewall_base_still_blocks_before_auth_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Unsafe request paths take precedence over malformed base configuration."""
+    unsafe_base = "https://api.github.com/repos/%2e%2e"
+    path = "/repos/%2e%2e/admin"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": unsafe_base,
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "full-access",
+                        "rules": ["ANY /{path+}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path=path,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == unsafe_base
+    assert "Authorization" not in flow.request.headers
+    body = json.loads(flow.response.content)
+    assert body["reason"] == "unsafe_path"
+    assert body["base"] == unsafe_base

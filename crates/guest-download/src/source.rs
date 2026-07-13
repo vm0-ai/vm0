@@ -38,16 +38,69 @@ pub(crate) fn open_archive(url: &str) -> Result<ArchiveSource, DownloadError> {
     }
 
     let response = HTTP_AGENT.get(url).call().map_err(|e| {
-        let (retriable, message) = match &e {
-            // Retry on server errors (5xx) and rate limiting (429)
-            ureq::Error::StatusCode(code) => {
-                (*code >= 500 || *code == 429, format!("HTTP status {code}"))
-            }
-            _ => (true, "HTTP transport error".to_string()), // network/timeout errors are retriable
-        };
+        let (retriable, message) = classify_http_error(&e);
         DownloadError::transport(message, retriable)
     })?;
     Ok(ArchiveSource::http(response.into_body().into_reader()))
+}
+
+fn classify_http_error(error: &ureq::Error) -> (bool, String) {
+    // Never render the raw error: URI-bearing variants can expose presigned credentials.
+    match error {
+        // Retry on server errors (5xx) and rate limiting (429).
+        ureq::Error::StatusCode(code) => {
+            (*code >= 500 || *code == 429, format!("HTTP status {code}"))
+        }
+        ureq::Error::HostNotFound => request_error("dns"),
+        ureq::Error::Timeout(timeout) => (
+            true,
+            format!(
+                "HTTP request error (kind=timeout phase={})",
+                timeout_phase(*timeout)
+            ),
+        ),
+        ureq::Error::ConnectionFailed => request_error("connection"),
+        ureq::Error::Io(error) => (
+            true,
+            format!("HTTP request error (kind=io io_kind={:?})", error.kind()),
+        ),
+        ureq::Error::Tls(_)
+        | ureq::Error::Pem(_)
+        | ureq::Error::Rustls(_)
+        | ureq::Error::TlsRequired => request_error("tls"),
+        ureq::Error::InvalidProxyUrl | ureq::Error::ConnectProxyFailed(_) => request_error("proxy"),
+        ureq::Error::Protocol(_)
+        | ureq::Error::RedirectFailed
+        | ureq::Error::BodyExceedsLimit(_)
+        | ureq::Error::TooManyRedirects
+        | ureq::Error::LargeResponseHeader(_, _)
+        | ureq::Error::Decompress(_, _)
+        | ureq::Error::BodyStalled => request_error("protocol"),
+        ureq::Error::Http(_) | ureq::Error::BadUri(_) | ureq::Error::RequireHttpsOnly(_) => {
+            request_error("invalid_request")
+        }
+        ureq::Error::Other(_) => request_error("unknown"),
+        _ => request_error("unknown"),
+    }
+}
+
+fn request_error(kind: &'static str) -> (bool, String) {
+    (true, format!("HTTP request error (kind={kind})"))
+}
+
+fn timeout_phase(timeout: ureq::Timeout) -> &'static str {
+    match timeout {
+        ureq::Timeout::Global => "global",
+        ureq::Timeout::PerCall => "per_call",
+        ureq::Timeout::Resolve => "resolve",
+        ureq::Timeout::Connect => "connect",
+        ureq::Timeout::SendRequest => "send_request",
+        ureq::Timeout::Await100 => "await_100",
+        ureq::Timeout::SendBody => "send_body",
+        ureq::Timeout::RecvResponse => "recv_response",
+        ureq::Timeout::RecvBody => "recv_body",
+        _ => "unknown",
+    }
 }
 
 pub(crate) struct ArchiveSource {

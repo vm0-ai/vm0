@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "base64",
  "futures-util",
@@ -699,9 +699,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.66"
+version = "1.2.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5d6cac793997bd970000024b2934968efe83b382de4fdcf4fcb46b6ee4ad996"
+checksum = "e17dd265a7d0f31ef544e1b20e03add05d3b45b491b633b10d67145d2acc1a38"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1255,7 +1255,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.50.2"
+version = "0.50.4"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.58"
+version = "0.20.59"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1350,7 +1350,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "chrono",
  "clap",
@@ -1455,7 +1455,7 @@ dependencies = [
  "http 1.4.2",
  "httpdate",
  "mime",
- "sha1 0.10.6",
+ "sha1 0.10.7",
 ]
 
 [[package]]
@@ -2058,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.58"
+version = "0.4.60"
 dependencies = [
  "bitvec",
  "libc",
@@ -2379,9 +2379,9 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rand"
-version = "0.9.4"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
+checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
 dependencies = [
  "rand_chacha",
  "rand_core 0.9.5",
@@ -2566,7 +2566,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.143.5"
+version = "0.144.0"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.17"
+version = "0.19.19"
 dependencies = [
  "async-trait",
  "serde",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.104"
+version = "0.37.108"
 dependencies = [
  "async-trait",
  "base64",
@@ -2798,6 +2798,7 @@ dependencies = [
  "libc",
  "nbd-cow",
  "nix",
+ "reqwest",
  "sandbox",
  "serde",
  "serde_json",
@@ -2817,7 +2818,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.26"
+version = "0.8.28"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -2899,7 +2900,7 @@ version = "0.48.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8c44ee52fa3d30581f951b57aec754ef9cd70186df5fb788367804360c48097"
 dependencies = [
- "rand 0.9.4",
+ "rand 0.9.5",
  "sentry-types",
  "serde",
  "serde_json",
@@ -2924,7 +2925,7 @@ checksum = "1be93ef0435a5ab91f88178fb7681249437e875d004f996ecb35be94dc99a0e0"
 dependencies = [
  "debugid",
  "hex",
- "rand 0.9.4",
+ "rand 0.9.5",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3019,9 +3020,9 @@ dependencies = [
 
 [[package]]
 name = "sha1"
-version = "0.10.6"
+version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
@@ -3293,9 +3294,9 @@ dependencies = [
 
 [[package]]
 name = "thread_local"
-version = "1.1.9"
+version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
 dependencies = [
  "cfg-if",
 ]
@@ -3342,9 +3343,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e61e67053d25a4e82c844e8424039d9745781b3fc4f32b8d55ed50f5f667ef3"
+checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
 dependencies = [
  "tinyvec_macros",
 ]
@@ -3395,9 +3396,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.29.0"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f72a05e828585856dacd553fba484c242c46e391fb0e58917c942ee9202915c"
+checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
 dependencies = [
  "futures-util",
  "log",
@@ -3571,19 +3572,19 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tungstenite"
-version = "0.29.0"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8"
+checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
 dependencies = [
  "bytes",
  "data-encoding",
  "http 1.4.2",
  "httparse",
  "log",
- "rand 0.9.4",
+ "rand 0.10.2",
  "rustls",
  "rustls-pki-types",
- "sha1 0.10.6",
+ "sha1 0.11.0",
  "thiserror 2.0.18",
 ]
 

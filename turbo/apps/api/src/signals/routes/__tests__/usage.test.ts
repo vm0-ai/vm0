@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { cronAggregateUsageContract } from "@vm0/api-contracts/contracts/cron";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -16,6 +17,11 @@ const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
 
+/*
+ * This file owns valid aggregate-usage cron coverage. The fixed clock keeps
+ * its previous-day global sweep outside wall-clock windows used by parallel
+ * test files, while unique actors keep user-visible assertions isolated.
+ */
 const FIXED_NOW_ISO = "2026-05-12T12:00:00.000Z";
 
 interface UsageActor {
@@ -37,6 +43,10 @@ function apiClient() {
   return setupApp({ context })(usageContract);
 }
 
+function aggregateUsageClient() {
+  return setupApp({ context })(cronAggregateUsageContract);
+}
+
 async function entitledUsageActor(): Promise<UsageActor> {
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
@@ -53,11 +63,11 @@ async function entitledUsageActor(): Promise<UsageActor> {
 }
 
 /**
- * Drives a run through its production lifecycle at a mocked clock: creation
- * and the runner claim happen at `createdAt` (stamping created_at/started_at),
- * and the sandbox completion webhook fires `durationMs` later (stamping
- * completed_at). The failure-path completion is used because it terminates a
- * run without checkpoint plumbing; /api/usage aggregates every finished run.
+ * Drives a run through its production lifecycle at a mocked clock. Creation
+ * happens at `createdAt`, while runner claim time comes from PostgreSQL. The
+ * sandbox completion clock is aligned to the persisted claim time plus
+ * `durationMs`. The failure path terminates the run without checkpoint
+ * plumbing; /api/usage aggregates every finished run.
  */
 async function runFinishedRun(
   fixture: UsageActor,
@@ -70,11 +80,16 @@ async function runFinishedRun(
     modelProvider: "anthropic-api-key",
   });
   await api.heartbeatRunner(fixture.runnerGroup);
-  const claim = await api.claimRunnerJob(run.runId);
-  mockNow(new Date(args.createdAt.getTime() + args.durationMs));
+  await api.claimRunnerJob(run.runId);
+  const running = await api.readRun(fixture.actor, run.runId);
+  if (!running.startedAt) {
+    throw new Error("Claimed usage run is missing startedAt");
+  }
+  mockNow(new Date(new Date(running.startedAt).getTime() + args.durationMs));
+  const sandboxToken = api.sandboxTokenForRun(fixture.actor, run.runId);
   await webhooks.requestAgentComplete(
     { runId: run.runId, exitCode: 1, error: "bdd usage summary run" },
-    { authorization: `Bearer ${claim.sandboxToken}` },
+    { authorization: `Bearer ${sandboxToken}` },
     [200],
   );
   mockNow(new Date(FIXED_NOW_ISO));
@@ -401,5 +416,33 @@ describe("GET /api/usage", () => {
       total_runs: 1,
       total_run_time_ms: 5000,
     });
+  });
+});
+
+describe("GET /api/cron/aggregate-usage", () => {
+  beforeEach(() => {
+    mockNow(new Date(FIXED_NOW_ISO));
+  });
+
+  afterEach(() => {
+    clearMockNow();
+  });
+
+  it("aggregates the previous day's completed runs", async () => {
+    const fixture = await entitledUsageActor();
+    await runFinishedRun(fixture, {
+      createdAt: new Date("2026-05-11T10:00:00.000Z"),
+      durationMs: 5000,
+    });
+
+    const response = await accept(
+      aggregateUsageClient().aggregate({
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+      [200],
+    );
+
+    expect(response.body.date).toBe("2026-05-11");
+    expect(response.body.aggregated).toBeGreaterThan(0);
   });
 });

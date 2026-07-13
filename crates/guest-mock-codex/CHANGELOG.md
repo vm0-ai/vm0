@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.3...guest-mock-codex-v0.6.4) (2026-07-11)
+
+
+### Refactoring
+
+* **guest-mock-codex:** split integration tests ([#21053](https://github.com/vm0-ai/vm0/issues/21053)) ([3b85669](https://github.com/vm0-ai/vm0/commit/3b856694441630772f1c27999ad4e6f7283db626))
+
 ## [0.6.3](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.2...guest-mock-codex-v0.6.3) (2026-07-08)
 
 

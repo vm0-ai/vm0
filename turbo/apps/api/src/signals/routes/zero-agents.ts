@@ -9,10 +9,6 @@ import {
   type ZeroAgentVisibility,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import {
-  connectorTypeSchema,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -42,10 +38,7 @@ import {
   zeroAgentList,
   visibleJoinedZeroAgentCondition,
 } from "../services/zero-agent-data.service";
-import {
-  unavailableUserConnectorTypes,
-  userConnectorAvailability,
-} from "../services/connector-availability.service";
+import { userConnectorActionResolver } from "../services/connector-action-resolver.service";
 import {
   updateUserConnectors,
   updateUserCustomConnectors,
@@ -492,20 +485,19 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
       agentId: params.id,
     }),
   );
-  // Filter out connector types that are no longer available to the user (e.g.
-  // a connector gated behind a feature switch that has since been turned off).
-  // The update endpoint validates the entire submitted set and rejects it
-  // wholesale if any one type is unavailable; since the client replays the set
-  // returned here when authorizing a new connector, a stale unavailable type
-  // would otherwise block the user from authorizing any other connector on
-  // this agent.
-  const availability = await get(
-    userConnectorAvailability(auth.orgId, auth.userId),
+  const resolver = await get(
+    userConnectorActionResolver(auth.orgId, auth.userId),
   );
-  const availableEnabledTypes = enabledTypes.filter((type) => {
-    const parsed = connectorTypeSchema.safeParse(type);
-    return parsed.success && availability.isConnectorTypeAvailable(parsed.data);
-  });
+  const availableEnabledTypes: (typeof enabledTypes)[number][] = [];
+  for (const connectorRef of enabledTypes) {
+    const resolved = await resolver.resolveRef({
+      connectorRef,
+      requireAvailable: true,
+    });
+    if (resolved.ok) {
+      availableEnabledTypes.push(connectorRef);
+    }
+  }
   return {
     status: 200 as const,
     body: { enabledTypes: availableEnabledTypes },
@@ -827,35 +819,25 @@ const updateAgentUserConnectorsInner$ = command(
     }
 
     const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
-    const parsedTypes: ConnectorType[] = [];
-    const invalidTypes: string[] = [];
-    for (const type of uniqueTypes) {
-      const parsed = connectorTypeSchema.safeParse(type);
-      if (parsed.success) {
-        parsedTypes.push(parsed.data);
-      } else {
-        invalidTypes.push(type);
-      }
-    }
-    if (invalidTypes.length > 0) {
-      return validationError(
-        `Invalid connector types: ${invalidTypes.join(", ")}`,
-      );
-    }
-
     const operation = body.data.operation ?? "replace";
     if (operation !== "remove") {
-      const availability = await get(
-        userConnectorAvailability(auth.orgId, auth.userId),
+      const resolver = await get(
+        userConnectorActionResolver(auth.orgId, auth.userId),
       );
       signal.throwIfAborted();
-      const unavailableTypes = unavailableUserConnectorTypes(
-        availability,
-        parsedTypes,
-      );
-      if (unavailableTypes.length > 0) {
+      const resolved = await resolver.resolveRefs({
+        connectorRefs: uniqueTypes,
+        requireAvailable: true,
+      });
+      signal.throwIfAborted();
+      if (!resolved.ok) {
+        if (resolved.reason === "unavailable_connector") {
+          return validationError(
+            `Connector types are not available: ${resolved.connectorRef}`,
+          );
+        }
         return validationError(
-          `Connector types are not available: ${unavailableTypes.join(", ")}`,
+          `Invalid connector types: ${resolved.connectorRef}`,
         );
       }
     }
@@ -864,12 +846,12 @@ const updateAgentUserConnectorsInner$ = command(
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      enabledTypes: parsedTypes,
+      enabledTypes: uniqueTypes,
       operation,
       allowMissingZeroAgentForEmptyReplace:
         operation === "replace" &&
         agent.zeroAgentId === null &&
-        parsedTypes.length === 0,
+        uniqueTypes.length === 0,
     });
     signal.throwIfAborted();
     if (updated.status === "agentNotFound") {

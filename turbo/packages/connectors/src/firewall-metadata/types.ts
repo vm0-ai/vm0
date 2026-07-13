@@ -74,6 +74,7 @@ export interface FirewallRoutingIndexMetadata {
 
 export interface FirewallRoutingApiMetadata {
   readonly base: string;
+  readonly environmentNames: readonly string[];
   readonly routes: readonly FirewallRoutingRouteMetadata[];
 }
 

@@ -18,6 +18,8 @@ pub use actor::DevicePoolHandle;
 pub use lease::DeviceLease;
 pub use state::{DevicePool, DevicePoolConfig};
 
+pub(crate) use lease::DeviceAcquireSource;
+
 /// Maximum blocking NBD scans running concurrently.
 const MAX_PENDING: usize = 4;
 

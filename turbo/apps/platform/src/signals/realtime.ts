@@ -4,7 +4,6 @@ import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
-import { clerk$ } from "./auth.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import { createDeferredPromise, setLoop, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
@@ -369,13 +368,6 @@ const runWithChannelPayload$ = command(
  */
 export const setupRealtime$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-
-    if (!clerk.user) {
-      return;
-    }
-
     const createClient = get(zeroClient$);
     const client = createClient(platformRealtimeTokenContract);
 

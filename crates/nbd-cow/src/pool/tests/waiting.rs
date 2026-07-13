@@ -70,7 +70,7 @@ async fn separate_pools_do_not_claim_same_locked_index() {
     let second_result = second.acquire().await;
     assert!(matches!(second_result, Err(NbdCowError::NoFreeDevice)));
 
-    first.discard(first_lease).await;
+    first.discard(first_lease.into_lease()).await;
     first.cleanup().await;
     second.cleanup().await;
 }
@@ -100,6 +100,8 @@ async fn demand_error_waits_for_pending_success_before_failing_waiter() {
 
     let first_lease = first_rx.await.unwrap().unwrap();
     assert_eq!(first_lease.index(), 4);
+    assert_eq!(first_lease.source(), DeviceAcquireSource::DemandScan);
+    assert!(first_lease.scan_duration().is_some());
     assert!(matches!(
         second_rx.await.unwrap(),
         Err(NbdCowError::NoFreeDevice)
@@ -141,10 +143,12 @@ fn scan_success_skips_cancelled_waiter_without_leaking_lock() {
     pool.waiting_acquires.push_back(cancelled_tx);
     pool.waiting_acquires.push_back(active_tx);
 
-    pool.handle_scan_join(Some(Ok(Ok(claim(4, dir.path())))));
+    pool.handle_scan_join(Some(Ok(Ok(scanned(claim(4, dir.path()))))));
 
     let lease = active_rx.try_recv().unwrap().unwrap();
     assert_eq!(lease.index(), 4);
+    assert_eq!(lease.source(), DeviceAcquireSource::DemandScan);
+    assert!(lease.scan_duration().is_some());
     assert!(pool.waiting_acquires.is_empty());
     assert!(pool.in_flight.contains(&4));
 }
@@ -157,7 +161,7 @@ fn cancelled_waiter_after_scan_completion_drops_claim() {
     drop(cancelled_rx);
     pool.waiting_acquires.push_back(cancelled_tx);
 
-    pool.handle_scan_join(Some(Ok(Ok(claim(4, dir.path())))));
+    pool.handle_scan_join(Some(Ok(Ok(scanned(claim(4, dir.path()))))));
 
     assert!(pool.waiting_acquires.is_empty());
     assert!(pool.in_flight.is_empty());
@@ -217,6 +221,6 @@ async fn handle_acquire_waiting_for_scan_does_not_block_release() {
         .expect("acquire task panicked")
         .expect("acquire failed");
     assert_eq!(lease.index(), 4);
-    handle.discard(lease).await;
+    handle.discard(lease.into_lease()).await;
     handle.cleanup().await;
 }

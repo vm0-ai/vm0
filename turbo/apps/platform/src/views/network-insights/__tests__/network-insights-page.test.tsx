@@ -29,11 +29,15 @@ function publicConnectorStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> &
     Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
 ): PublicConnectorCatalogStatusItem {
-  const { connectorRef, label, ...rest } = overrides;
+  const { connectorRef, label, icon, ...rest } = overrides;
   return {
     connectorRef,
     label,
     description: `${label} public help text`,
+    icon: icon ?? {
+      url: `https://icons.example.test/${connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],

@@ -145,6 +145,7 @@ export const runnerGroupSchema = z
   );
 
 const runnersPollBodySchema = z.object({
+  runnerId: z.uuid().optional(),
   group: runnerGroupSchema,
   supportedProfiles: runnerSupportedProfileListSchema,
   telemetry: runnerPollTelemetrySchema.optional(),
@@ -174,6 +175,11 @@ export const heldSessionStateSchema = z.object({
   // session id used to route work toward a runner with a reusable sandbox.
   sessionId: z.string(),
   lastCompletedAt: z.string().datetime({ offset: true }),
+  reusableSandbox: z
+    .object({
+      profile: z.string(),
+    })
+    .optional(),
 });
 
 /**
@@ -360,6 +366,11 @@ export const secretConnectorMetadataMapSchema = z.record(
 export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
+  // API-only references used to reconstruct runner masking values from the
+  // stored environment. Null means no persistent secret map, and array
+  // order/repetition follows secret-map values.
+  // This field must not be included in the runner-facing ExecutionContext.
+  secretValueEnvironmentKeys: z.array(z.string()).nullable(),
   // Connector-owned runtime vars used by proxy/firewall template resolution.
   // User-provided run vars stay in agent_runs.vars and are merged at claim time.
   vars: z.record(z.string(), z.string()).nullable().optional(),
@@ -419,7 +430,9 @@ export const storedExecutionContextSchema = z.object({
 /**
  * Execution context returned when claiming a job.
  *
- * Keep in sync with Rust: crates/runner/src/types.rs → ExecutionContext
+ * This is the canonical producer schema. The runner's `ExecutionContext` is a
+ * tolerant consumer projection and intentionally does not mirror every field.
+ * See `crates/runner/src/types.rs`.
  */
 export const executionContextSchema = z.object({
   runId: z.uuid(),
@@ -511,7 +524,6 @@ export const runnersJobClaimContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema, // Job does not belong to user
       404: apiErrorSchema,
-      409: apiErrorSchema, // Already claimed
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",

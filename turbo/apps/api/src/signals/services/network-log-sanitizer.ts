@@ -114,6 +114,10 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
       event.connector_diagnostic_env_names,
     ),
     connector_diagnostic_base: stringValue(event.connector_diagnostic_base),
+    connector_route_reason: stringValue(event.connector_route_reason),
+    connector_route_candidates: stringArrayValue(
+      event.connector_route_candidates,
+    ),
     auth_resolved_secrets: stringArrayValue(event.auth_resolved_secrets),
     auth_refreshed_connectors: stringArrayValue(
       event.auth_refreshed_connectors,

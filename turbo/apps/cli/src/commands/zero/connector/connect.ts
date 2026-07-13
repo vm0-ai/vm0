@@ -8,8 +8,6 @@ import { withErrorHandler } from "../../../lib/command";
 import {
   availableConnectorRefs,
   findConnectorStatusItem,
-  parseConnectorAuthMethodIdForAction,
-  parseConnectorTypeForAction,
   resolveManualGrantAuthMethod,
 } from "./public-catalog";
 
@@ -82,16 +80,13 @@ export const connectCommand = new Command()
         });
       }
 
-      const connectorType = parseConnectorTypeForAction(
-        connectorMetadata.connectorRef,
-      );
       const authMethod = resolveManualGrantAuthMethod(
         connectorMetadata,
         options.authMethod,
       );
       const connector = await connectZeroConnectorManualGrant(
-        connectorType,
-        parseConnectorAuthMethodIdForAction(authMethod.id),
+        connectorMetadata.connectorRef,
+        authMethod.id,
         values,
       );
 

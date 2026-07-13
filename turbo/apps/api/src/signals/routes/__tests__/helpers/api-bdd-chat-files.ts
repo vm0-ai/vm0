@@ -1222,6 +1222,24 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async requestUploadThreadArtifactGoogleSlidesFromUpload(
+      actor: ApiTestUser | null,
+      threadId: string,
+      uploadId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
+    ) {
+      const formData = new FormData();
+      formData.append("uploadId", uploadId);
+      return await accept(
+        threadArtifactsClient().uploadGoogleSlides({
+          headers: authenticate(context, actor),
+          params: { threadId },
+          body: formData,
+        }),
+        statuses,
+      );
+    },
+
     async requestSendMessage(
       actor: ApiTestUser | null,
       body: BddSendMessageBody,

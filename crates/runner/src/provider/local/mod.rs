@@ -153,11 +153,8 @@ impl JobProvider for LocalProvider {
             queue.claim_job_sync(run_id, &partition_profile, &job_file_for_claim)
         })
         .await;
-        let (req, request_profile) = match claim_result {
-            Ok(LocalClaimResult::Claimed {
-                request,
-                request_profile,
-            }) => (*request, request_profile),
+        let req = match claim_result {
+            Ok(LocalClaimResult::Claimed { request }) => *request,
             Ok(LocalClaimResult::NotClaimed) => return None,
             Err(e) => {
                 warn!(run_id = %run_id, error = %e, "local: blocking claim failed");
@@ -171,9 +168,7 @@ impl JobProvider for LocalProvider {
             run_id,
             prompt: req.prompt,
             append_system_prompt: None,
-            _agent_compose_version_id: None,
             vars: req.vars,
-            checkpoint_id: None,
             sandbox_token: String::new(),
             storage_manifest: None,
             environment: environment_merge.environment,
@@ -197,7 +192,6 @@ impl JobProvider for LocalProvider {
             disallowed_tools: None,
             tools: None,
             settings: None,
-            experimental_profile: Some(request_profile),
             feature_flags: req.feature_flags,
             billable_firewalls: vec![],
             model_usage_provider: None,

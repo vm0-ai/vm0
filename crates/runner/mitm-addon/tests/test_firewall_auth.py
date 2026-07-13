@@ -453,7 +453,10 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            result = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            result = await auth_cache.get_firewall_headers(
+                cache_key,
+                _firewall_auth_request(auth_base="${{ secrets.WEBHOOK_URL }}"),
+            )
 
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         assert result["cache_hit"] is True
@@ -470,10 +473,16 @@ class TestGetFirewallHeaders:
                 query=cached_query,
             )
         )
+        request = _firewall_auth_request(
+            auth_query={
+                "api_key": "${{ secrets.QUERY_KEY }}",
+                "empty_auth": "${{ vars.EMPTY }}",
+            }
+        )
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            first = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
-            second = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            first = await auth_cache.get_firewall_headers(cache_key, request)
+            second = await auth_cache.get_firewall_headers(cache_key, request)
 
         assert first["query"] == cached_query
         assert first["cache_hit"] is False
@@ -494,10 +503,17 @@ class TestGetFirewallHeaders:
                 query=cached_query,
             )
         )
+        request = _firewall_auth_request(
+            auth_base="${{ secrets.WEBHOOK_URL }}",
+            auth_query={
+                "api_key": "${{ secrets.QUERY_KEY }}",
+                "empty_auth": "${{ vars.EMPTY }}",
+            },
+        )
 
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            first = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
-            second = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            first = await auth_cache.get_firewall_headers(cache_key, request)
+            second = await auth_cache.get_firewall_headers(cache_key, request)
 
         assert first["base"] == cached_base
         assert first["query"] == cached_query
@@ -522,7 +538,12 @@ class TestGetFirewallHeaders:
 
         mock_fetch = AsyncMock()
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
-            result = await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+            result = await auth_cache.get_firewall_headers(
+                cache_key,
+                _firewall_auth_request(
+                    auth_headers={"Authorization": "Bearer ${{ secrets.TOKEN }}"}
+                ),
+            )
 
         assert "base" not in result
         assert result["cache_hit"] is True
@@ -942,7 +963,27 @@ class TestHandleFirewallRequest:
             path="/repos?existing=1",
         )
         api_entry = _api_entry(
-            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+            auth_config={
+                "headers": dict.fromkeys(
+                    (
+                        "Connection",
+                        "Host",
+                        "Content-Length",
+                        "Transfer-Encoding",
+                        "Keep-Alive",
+                        "Proxy-Authenticate",
+                        "Proxy-Authorization",
+                        "Proxy-Connection",
+                        "TE",
+                        "Trailer",
+                        "Upgrade",
+                        "Authorization",
+                        "X-Injected",
+                    ),
+                    "${{ secrets.VALUE }}",
+                ),
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
         )
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
@@ -984,8 +1025,8 @@ class TestHandleFirewallRequest:
         assert "te" not in header_names
         assert "trailer" not in header_names
         assert "upgrade" not in header_names
-        assert flow.request.headers["Authorization"] == "Bearer real-token"
-        assert flow.request.headers["X-Injected"] == "trusted"
+        assert "authorization" not in header_names
+        assert "x-injected" not in header_names
         assert flow.request.query["existing"] == "1"
         assert flow.request.query["api_key"] == "secret"
 
@@ -1236,6 +1277,45 @@ class TestHandleFirewallRequest:
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
         mock_resp.__exit__.assert_called_once()
+
+    async def test_strategy_inconsistent_success_returns_502_without_auth_mutation(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "base": "${{ secrets.WEBHOOK_URL }}",
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        mock_resp = _json_response(
+            {
+                "headers": {"Authorization": "Bearer resolved"},
+                "query": {"api_key": "resolved-key"},
+            }
+        )
+
+        with (
+            patch("firewall_auth_client.urllib.request.urlopen", return_value=mock_resp),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert json.loads(flow.response.content)["error"] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        assert cached_headers(flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]) is None
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
 
     async def test_oversized_success_response_returns_502_without_auth_mutation(
         self,
@@ -1763,11 +1843,6 @@ class TestFetchFirewallHeaders:
                 },
                 "base": "https://example.com/webhook/secret",
                 "query": {"api_key": "resolved-key"},
-                "awsSigv4": {
-                    "accessKeyId": "access-key-id",
-                    "secretAccessKey": "secret-access-key",
-                    "sessionToken": "session-token",
-                },
                 "expiresAt": expires_at,
                 "resolvedSecrets": ["API_TOKEN"],
                 "refreshedConnectors": ["notion"],
@@ -1781,7 +1856,16 @@ class TestFetchFirewallHeaders:
             mitm_ctx(api_url=endpoint.api_url),
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
-            result = await auth_client.fetch_firewall_headers(_firewall_auth_request())
+            result = await auth_client.fetch_firewall_headers(
+                _firewall_auth_request(
+                    auth_headers={
+                        "Authorization": "Bearer ${{ secrets.TOKEN }}",
+                        "X-Custom": "${{ secrets.CUSTOM }}",
+                    },
+                    auth_base="${{ secrets.WEBHOOK_URL }}",
+                    auth_query={"api_key": "${{ secrets.API_KEY }}"},
+                )
+            )
 
         assert result.payload.headers == {
             "Authorization": "Bearer tok",
@@ -1789,20 +1873,179 @@ class TestFetchFirewallHeaders:
         }
         assert result.payload.base == "https://example.com/webhook/secret"
         assert result.payload.query == {"api_key": "resolved-key"}
-        assert result.payload.aws_sigv4 == AwsSigV4Credentials(
-            "access-key-id",
-            "secret-access-key",
-            "session-token",
-        )
+        assert result.payload.aws_sigv4 is None
         assert result.expires_at == expires_at
         assert result.payload.resolved_secrets == ["API_TOKEN"]
         assert result.refreshed_connectors == ["notion"]
         assert result.refreshed_secrets == ["NOTION_TOKEN"]
         assert not hasattr(result, "futureField")
 
+    async def test_sigv4_success_response_shape_is_mapped(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "headers": {},
+                "awsSigv4": {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": "session-token",
+                },
+            }
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+        ):
+            result = await auth_client.fetch_firewall_headers(
+                _firewall_auth_request(
+                    auth_aws_sigv4={
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                    }
+                )
+            )
+
+        assert result.payload.aws_sigv4 == AwsSigV4Credentials(
+            "access-key-id",
+            "secret-access-key",
+            "session-token",
+        )
+
+    @pytest.mark.parametrize(
+        ("auth_request", "response"),
+        [
+            (
+                _firewall_auth_request(auth_base="${{ secrets.WEBHOOK_URL }}"),
+                {"headers": {}},
+            ),
+            (
+                _firewall_auth_request(),
+                {"headers": {}, "base": "https://hooks.example.com/secret"},
+            ),
+            (
+                _firewall_auth_request(auth_base="${{ secrets.WEBHOOK_URL }}"),
+                {"headers": {}, "base": ""},
+            ),
+            (
+                _firewall_auth_request(
+                    auth_aws_sigv4={
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    }
+                ),
+                {"headers": {}},
+            ),
+            (
+                _firewall_auth_request(),
+                {
+                    "headers": {},
+                    "awsSigv4": {
+                        "accessKeyId": "access-key-id",
+                        "secretAccessKey": "secret-access-key",
+                    },
+                },
+            ),
+            (
+                _firewall_auth_request(
+                    auth_aws_sigv4={
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                    }
+                ),
+                {
+                    "headers": {},
+                    "awsSigv4": {
+                        "accessKeyId": "access-key-id",
+                        "secretAccessKey": "secret-access-key",
+                        "sessionToken": "session-token",
+                    },
+                },
+            ),
+            (
+                _firewall_auth_request(
+                    auth_aws_sigv4={
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                    }
+                ),
+                {
+                    "headers": {},
+                    "awsSigv4": {
+                        "accessKeyId": "access-key-id",
+                        "secretAccessKey": "secret-access-key",
+                    },
+                },
+            ),
+            (
+                _firewall_auth_request(auth_headers={"Authorization": "template"}),
+                {"headers": {"X-Unexpected": "value"}},
+            ),
+            (
+                _firewall_auth_request(auth_query={"api_key": "template"}),
+                {"headers": {}, "query": {"unexpected": "value"}},
+            ),
+        ],
+        ids=[
+            "missing-base",
+            "unexpected-base",
+            "empty-base",
+            "missing-sigv4",
+            "unexpected-sigv4",
+            "unexpected-session-token",
+            "missing-session-token",
+            "header-name-mismatch",
+            "query-name-mismatch",
+        ],
+    )
+    async def test_rejects_response_inconsistent_with_request(
+        self,
+        mitm_ctx,
+        auth_request: auth_client.FirewallAuthRequest,
+        response: dict[str, object],
+    ):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(response)
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX),
+        ):
+            await auth_client.fetch_firewall_headers(auth_request)
+
+    async def test_inconsistent_response_is_not_cached(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response({"headers": {}})
+        cache_key = auth_cache_key()
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX),
+        ):
+            await auth_cache.get_firewall_headers(
+                cache_key,
+                _firewall_auth_request(auth_base="${{ secrets.WEBHOOK_URL }}"),
+            )
+
+        assert cached_headers(cache_key) is None
+
     async def test_sends_optional_request_body_fields(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {}, "expiresAt": time.time() + 30})
+        endpoint.queue_json_response(
+            {
+                "headers": {},
+                "base": "https://hooks.example.com/secret",
+                "query": {"api_key": "resolved-key"},
+                "expiresAt": time.time() + 30,
+            }
+        )
 
         with (
             endpoint.run(),
@@ -1816,11 +2059,6 @@ class TestFetchFirewallHeaders:
                     vars_map={"TEAM": "vm0"},
                     auth_base="${{ secrets.WEBHOOK_URL }}",
                     auth_query={"api_key": "${{ secrets.API_KEY }}"},
-                    auth_aws_sigv4={
-                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
-                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-                    },
                     firewall_billable=True,
                 ),
                 force_refresh=True,
@@ -1834,17 +2072,51 @@ class TestFetchFirewallHeaders:
         assert body["vars"] == {"TEAM": "vm0"}
         assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
         assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
-        assert body["authAwsSigv4"] == {
-            "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
-            "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-            "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
-        }
+        assert "authAwsSigv4" not in body
         assert body["firewallBillable"] is True
         assert body["forceRefresh"] is True
         assert "firewallName" not in body
         assert "modelUsageProvider" not in body
 
-    async def test_omits_falsey_optional_request_body_fields(self, mitm_ctx):
+    async def test_sends_sigv4_request_body(self, mitm_ctx):
+        endpoint = FakeAuthEndpoint()
+        endpoint.queue_json_response(
+            {
+                "headers": {},
+                "awsSigv4": {
+                    "accessKeyId": "access-key-id",
+                    "secretAccessKey": "secret-access-key",
+                    "sessionToken": "session-token",
+                },
+            }
+        )
+
+        with (
+            endpoint.run(),
+            mitm_ctx(api_url=endpoint.api_url),
+            patch.object(platform_api, "VERCEL_BYPASS", ""),
+        ):
+            await auth_client.fetch_firewall_headers(
+                _firewall_auth_request(
+                    auth_aws_sigv4={
+                        "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                        "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                        "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+                    }
+                ),
+            )
+
+        assert endpoint.requests[0].json_body() == {
+            "encryptedSecrets": "iv:tag:data",
+            "authHeaders": {},
+            "authAwsSigv4": {
+                "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+                "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
+            },
+        }
+
+    async def test_omits_empty_optional_request_body_fields(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response({"headers": {}})
 
@@ -1855,9 +2127,7 @@ class TestFetchFirewallHeaders:
         ):
             await auth_client.fetch_firewall_headers(
                 _firewall_auth_request(
-                    auth_base="",
                     auth_query={},
-                    auth_aws_sigv4={},
                     secret_connector_map={},
                     secret_connector_metadata_map={},
                     vars_map={},
@@ -2175,7 +2445,11 @@ class TestFetchFirewallHeaders:
             patch.object(platform_api, "VERCEL_BYPASS", ""),
         ):
             result = await auth_client.fetch_firewall_headers(
-                _firewall_auth_request(encrypted_secrets="enc", sandbox_auth="sandbox-tok")
+                _firewall_auth_request(
+                    encrypted_secrets="enc",
+                    auth_headers={"Auth": "${{ secrets.TOKEN }}"},
+                    sandbox_auth="sandbox-tok",
+                )
             )
 
         assert result.payload.headers == {"Auth": "tok"}
@@ -2194,6 +2468,7 @@ class TestFirewallAuthSuccessParser:
             pytest.param({"headers": []}, id="headers-array"),
             pytest.param({"headers": {"Authorization": 123}}, id="header-value-number"),
             pytest.param({"headers": {}, "base": []}, id="base-array"),
+            pytest.param({"headers": {}, "base": ""}, id="base-empty"),
             pytest.param({"headers": {}, "query": []}, id="query-array"),
             pytest.param({"headers": {}, "query": {"api_key": 123}}, id="query-value-number"),
             pytest.param({"headers": {}, "resolvedSecrets": "TOKEN"}, id="resolved-secrets-string"),
@@ -2209,7 +2484,7 @@ class TestFirewallAuthSuccessParser:
     )
     def test_malformed_success_response_shape_raises_value_error(self, body: object):
         with pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX):
-            auth_client._parse_firewall_auth_success(body)
+            auth_client._parse_firewall_auth_success(body, _firewall_auth_request())
 
 
 class TestFirewallAuthResponseBodyReader:

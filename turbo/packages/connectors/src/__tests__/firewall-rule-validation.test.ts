@@ -4,6 +4,7 @@ import { getFirewallExecutionMetadata } from "../firewall-metadata/server";
 import {
   matchFirewallHost,
   matchFirewallBaseUrl,
+  matchFirewallRequestDecision,
 } from "../firewall-rule-matcher";
 import {
   UNKNOWN_PERMISSION_GRANT,
@@ -42,7 +43,15 @@ const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
   "outlook-calendar[0] https://graph.microsoft.com <-> outlook-mail[0] https://graph.microsoft.com",
   // Railway account/workspace and project tokens hit the same public API origin.
   "railway[0] https://backboard.railway.com <-> railway-project[0] https://backboard.railway.com",
+  // Nintendo apps share the Nintendo Account profile endpoint but use separate app tokens.
+  "nintendo-store[0] https://api.accounts.nintendo.com <-> nintendo-switch-parental-controls[0] https://api.accounts.nintendo.com",
 ]);
+
+interface ExactRouteCollision {
+  readonly base: string;
+  readonly rule: string;
+  readonly owners: readonly string[];
+}
 
 function firewallWithPermissionName(name: string): FirewallConfig {
   return {
@@ -194,6 +203,40 @@ function findBuiltinFirewallBaseOverlaps(
   return [...overlaps].sort();
 }
 
+function findExactCrossFirewallRouteCollisions(
+  firewalls: readonly (readonly [string, FirewallConfig])[],
+): ExactRouteCollision[] {
+  const ownersByRoute = new Map<string, Set<string>>();
+  for (const [connectorType, firewall] of firewalls) {
+    for (const api of firewall.apis) {
+      for (const permission of api.permissions ?? []) {
+        for (const rule of permission.rules) {
+          const key = `${api.base}\0${rule}`;
+          const owners = ownersByRoute.get(key) ?? new Set<string>();
+          owners.add(connectorType);
+          ownersByRoute.set(key, owners);
+        }
+      }
+    }
+  }
+
+  const collisions: ExactRouteCollision[] = [];
+  for (const [key, owners] of ownersByRoute) {
+    if (owners.size < 2) continue;
+    const separator = key.indexOf("\0");
+    collisions.push({
+      base: key.slice(0, separator),
+      rule: key.slice(separator + 1),
+      owners: [...owners].sort(),
+    });
+  }
+  return collisions.sort((left, right) => {
+    return `${left.base} ${left.rule}`.localeCompare(
+      `${right.base} ${right.rule}`,
+    );
+  });
+}
+
 /**
  * Validate that every builtin connector firewall passes the same full
  * validation pipeline as custom (user-supplied) firewalls: base URLs,
@@ -316,6 +359,97 @@ describe("builtin firewall base overlap guard", () => {
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
+
+  it(
+    "requires explicit review for exact cross-firewall route collisions",
+    async () => {
+      expect(
+        findExactCrossFirewallRouteCollisions(
+          await loadRuntimeFirewallEntries(),
+        ),
+      ).toEqual([
+        {
+          base: "https://api.accounts.nintendo.com",
+          rule: "GET /2.0.0/users/me",
+          owners: ["nintendo-store", "nintendo-switch-parental-controls"],
+        },
+      ]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it("resolves the generated Railway base-only owners with connector intent", async () => {
+    const railway = await loadRequiredConnectorFirewall("railway");
+    const railwayProject =
+      await loadRequiredConnectorFirewall("railway-project");
+    const firewalls = [railwayProject, railway];
+    const url = "https://backboard.railway.com/graphql/v2";
+
+    expect(matchFirewallRequestDecision(firewalls, "POST", url)).toEqual({
+      kind: "ambiguous",
+      method: "POST",
+      path: "/graphql/v2",
+      candidates: ["railway", "railway-project"],
+      reason: "connector_intent_required",
+    });
+    expect(
+      matchFirewallRequestDecision(firewalls, "POST", url, undefined, {
+        status: "present",
+        value: "railway",
+      }),
+    ).toMatchObject({ kind: "allow", firewallName: "railway" });
+    expect(
+      matchFirewallRequestDecision(firewalls, "POST", url, undefined, {
+        status: "present",
+        value: "railway-project",
+      }),
+    ).toMatchObject({ kind: "allow", firewallName: "railway-project" });
+  });
+
+  it("resolves the generated Nintendo profile route with connector intent", async () => {
+    const nintendoStore = await loadRequiredConnectorFirewall("nintendo-store");
+    const parentalControls = await loadRequiredConnectorFirewall(
+      "nintendo-switch-parental-controls",
+    );
+    const firewalls = [parentalControls, nintendoStore];
+    const url = "https://api.accounts.nintendo.com/2.0.0/users/me";
+    const policies = {
+      "nintendo-store": {
+        allow: ["nintendo-account-profile-read"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "deny",
+      },
+      "nintendo-switch-parental-controls": {
+        allow: ["nintendo-switch-parental-controls-account-read"],
+        deny: [],
+        ask: [],
+        unknownPolicy: "deny",
+      },
+    };
+
+    expect(
+      matchFirewallRequestDecision(firewalls, "GET", url, policies),
+    ).toMatchObject({
+      kind: "ambiguous",
+      candidates: ["nintendo-store", "nintendo-switch-parental-controls"],
+    });
+    expect(
+      matchFirewallRequestDecision(firewalls, "GET", url, policies, {
+        status: "present",
+        value: "nintendo-store",
+      }),
+    ).toMatchObject({ kind: "allow", firewallName: "nintendo-store" });
+    expect(
+      matchFirewallRequestDecision(firewalls, "GET", url, policies, {
+        status: "present",
+        value: "nintendo-switch-parental-controls",
+      }),
+    ).toMatchObject({
+      kind: "allow",
+      firewallName: "nintendo-switch-parental-controls",
+    });
+  });
 });
 
 describe("known endpoint-scoped firewall bases", () => {
@@ -572,11 +706,10 @@ describe("known endpoint-scoped firewall bases", () => {
 
     expect(bases).toContain("https://api.xero.com/Connections");
     expect(bases).not.toContain("https://api.xero.com");
-    expect(connectionsApi?.permissions).toEqual([
-      {
-        name: "connections",
-        rules: ["GET /", "DELETE /{id}"],
-      },
-    ]);
+    expect(connectionsApi?.permissions).toHaveLength(1);
+    expect(connectionsApi?.permissions?.[0]).toMatchObject({
+      name: "connections",
+      rules: ["GET /", "DELETE /{id}"],
+    });
   });
 });

@@ -12,9 +12,11 @@ import {
   useGet,
   useSet,
   useLoadable,
+  useLoadableState,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconAlertTriangle,
@@ -87,18 +89,10 @@ import {
   openChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { WorkflowComposerSignals } from "../../signals/zero-page/tiptap-workflow-composer.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
 import {
-  zeroChatAttachments$ as singletonAttachments$,
-  zeroChatAttachmentUploadSummary$ as singletonAttachmentUploadSummary$,
-  uploadZeroAttachment$ as singletonUpload$,
-  restoreZeroAttachments$ as singletonRestore$,
-  removeZeroAttachment$ as singletonRemove$,
-  appendZeroChatInput$ as singletonAppendInput$,
-  canSendZeroChat$ as singletonCanSend$,
-  zeroDragOver$ as singletonDragOver$,
-  setZeroDragOver$ as singletonSetDragOver$,
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
@@ -134,17 +128,14 @@ import {
   type WorkflowTemplateItem,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "./components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -260,9 +251,8 @@ function shouldLoadTemplateDetailHtmlPreviewInHappyDom(): boolean {
 // Props
 // ---------------------------------------------------------------------------
 
-interface ZeroChatComposerProps {
-  input: string;
-  onInputChange: (value: string) => void;
+export interface ZeroChatComposerProps {
+  composer: WorkflowComposerSignals;
   onSend: (
     message: string,
     generationTemplate: GenerationTemplateRequest | undefined,
@@ -287,7 +277,7 @@ interface ZeroChatComposerProps {
   /** When set, reduces this instance to a single-line resting height on mobile. */
   enableMobileSingleLine?: boolean;
   /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
-  draft?: DraftSignals;
+  draft: DraftSignals;
   /** Composer file input element reference. When omitted, falls back to singleton. */
   composerFileInput$?: Computed<HTMLElement | null>;
   /** Set the composer file input element. When omitted, falls back to singleton. */
@@ -295,8 +285,6 @@ interface ZeroChatComposerProps {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  /** Register the textarea element for external focus control. */
-  setInputRef?: (el: HTMLElement | null) => void;
   /** Current chat thread id. Used by thread-scoped goal controls. */
   chatThreadId?: string;
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
@@ -428,6 +416,7 @@ interface ComposerConnectorItem {
   type: ConnectorType;
   label: string;
   helpText: string;
+  icon: ConnectorTypeWithStatus["icon"];
   tags: readonly string[];
   connected: boolean;
   authorized: boolean;
@@ -501,21 +490,15 @@ function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
 }
 
 function resolveComposerCanSend({
-  draftCanSend,
-  input,
+  hasInput,
   visibleAttachmentCount,
   uploadsReady,
 }: {
-  draftCanSend: boolean;
-  input: string;
+  hasInput: boolean;
   visibleAttachmentCount: number;
   uploadsReady: boolean;
 }): boolean {
-  return (
-    uploadsReady &&
-    draftCanSend &&
-    (input.trim() !== "" || visibleAttachmentCount > 0)
-  );
+  return uploadsReady && (hasInput || visibleAttachmentCount > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,42 +993,6 @@ function selectedIllustrationTemplateItem(
   });
 }
 
-function formatPresentationRunbookKind(templateId: string): string {
-  const label = templateId
-    .replace(/^template:/, "")
-    .replace(/^html-ppt-/, "")
-    .replace(/-/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function presentationTemplateMatchesSearch(
-  item: PresentationTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [
-    item.title,
-    item.templateId,
-    formatPresentationRunbookKind(item.templateId),
-  ].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
-}
-
-function illustrationTemplateMatchesSearch(
-  item: IllustrationTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [item.title, item.illustrationStyleId].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
-}
-
 function isSelectedVideoTemplate(
   item: VideoTemplateItem,
   value: GenerationTemplateRequest | undefined,
@@ -1072,24 +1019,6 @@ function selectedVideoTemplateItem(
     return undefined;
   }
   return findVideoTemplateItem(value.selection.stylePresetId);
-}
-
-function videoTemplateMatchesSearch(
-  item: VideoTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [
-    item.title,
-    item.id,
-    item.slug,
-    item.description,
-    item.sourcePath,
-  ].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
 }
 
 function isSelectedWorkflowTemplate(
@@ -1164,24 +1093,8 @@ function selectedWebsiteTemplateItem(
   return findWebsiteTemplateItem(value.selection.websiteTemplateId);
 }
 
-function websiteTemplateMatchesSearch(
-  item: WebsiteTemplateItem,
-  query: string,
-): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return true;
-  }
-  const searchable = [
-    item.title,
-    item.id,
-    item.slug,
-    item.description,
-    item.resourceId,
-    item.sourcePath,
-    item.templateId,
-  ].join(" ");
-  return searchable.toLowerCase().includes(normalizedQuery);
+function websiteTemplateCardImageUrl(item: WebsiteTemplateItem): string {
+  return r2ImageTransformUrl(item.previewImageUrl, TEMPLATE_CARD_PREVIEW_SIZE);
 }
 
 function playVideoTemplatePreview(video: HTMLVideoElement | null): void {
@@ -1389,6 +1302,7 @@ function WebsiteTemplateCard({
   onSelect: (item: WebsiteTemplateItem) => void;
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
+  const previewImageUrl = websiteTemplateCardImageUrl(item);
   const preview = () => {
     onPreview(item);
   };
@@ -1415,9 +1329,10 @@ function WebsiteTemplateCard({
         <img
           alt={`${item.title} website template preview`}
           title={`${item.title} website template preview`}
-          src={item.previewImageUrl}
-          loading="lazy"
+          src={previewImageUrl}
+          loading="eager"
           decoding="async"
+          fetchPriority="high"
           draggable={false}
           className="pointer-events-none h-full w-full bg-background object-cover"
         />
@@ -1482,49 +1397,62 @@ function WorkflowTemplateConnectorIcons({
   connectors,
   compact = false,
   limit = compact ? 3 : 5,
+  withDivider = false,
 }: {
-  // Loosely typed: the curated catalog stores connectors as plain strings;
-  // isConnectorIconType narrows to the ones that actually have an icon.
   connectors: readonly string[];
   compact?: boolean;
   limit?: number;
+  withDivider?: boolean;
 }) {
-  const connectorIconTypes = connectors.filter(isConnectorIconType);
-  if (connectorIconTypes.length === 0) {
+  const catalogConnectors = useLastResolved(allConnectorTypes$);
+  const visibleConnectors = connectors.flatMap((connectorRef) => {
+    const connector = catalogConnectors?.find((candidate) => {
+      return candidate.type === connectorRef;
+    });
+    return connector ? [connector] : [];
+  });
+  if (visibleConnectors.length === 0) {
     return null;
   }
 
-  const visibleConnectorTypes = connectorIconTypes.slice(0, limit);
-  const remainingCount =
-    connectorIconTypes.length - visibleConnectorTypes.length;
+  const displayedConnectors = visibleConnectors.slice(0, limit);
+  const remainingCount = visibleConnectors.length - displayedConnectors.length;
   return (
-    <span
-      className={cn("flex min-w-0 items-center", compact ? "gap-1" : "gap-1.5")}
-    >
-      {visibleConnectorTypes.map((type) => {
-        return (
+    <>
+      {withDivider ? (
+        <span className="h-3.5 w-px shrink-0 bg-border/70" />
+      ) : null}
+      <span
+        className={cn(
+          "flex min-w-0 items-center",
+          compact ? "gap-1" : "gap-1.5",
+        )}
+      >
+        {displayedConnectors.map((connector) => {
+          return (
+            <span
+              key={connector.type}
+              className={cn(
+                "flex shrink-0 items-center justify-center border border-border/60 bg-background",
+                compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+              )}
+            >
+              <ConnectorIcon icon={connector.icon} size={compact ? 12 : 14} />
+            </span>
+          );
+        })}
+        {remainingCount > 0 ? (
           <span
-            key={type}
             className={cn(
-              "flex shrink-0 items-center justify-center border border-border/60 bg-background",
-              compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
+              "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
+              compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
             )}
           >
-            <ConnectorIcon type={type} size={compact ? 12 : 14} />
+            +{remainingCount}
           </span>
-        );
-      })}
-      {remainingCount > 0 ? (
-        <span
-          className={cn(
-            "flex shrink-0 items-center justify-center rounded border border-border/60 bg-background text-[10px] font-medium text-muted-foreground",
-            compact ? "h-5 min-w-5 px-1" : "h-7 min-w-7 px-1.5",
-          )}
-        >
-          +{remainingCount}
-        </span>
-      ) : null}
-    </span>
+        ) : null}
+      </span>
+    </>
   );
 }
 
@@ -1853,6 +1781,14 @@ function videoPreviewImageUrlsForItems(
   });
 }
 
+function websitePreviewImageUrlsForItems(
+  items: readonly WebsiteTemplateItem[],
+): string[] {
+  return items.map((item) => {
+    return websiteTemplateCardImageUrl(item);
+  });
+}
+
 function initialTemplatePreviewImageUrlsForCategory({
   category,
   hasPptTab,
@@ -1884,7 +1820,7 @@ function initialTemplatePreviewImageUrlsForCategory({
     return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
   }
   if (category === "website" && hasWebsiteTab) {
-    return [];
+    return websitePreviewImageUrlsForItems(WEBSITE_TEMPLATE_ITEMS);
   }
   return [];
 }
@@ -4819,20 +4755,10 @@ function TemplatePickerDialog({
       ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto"
       : "flex h-[min(82vh,760px)] max-w-4xl flex-col",
   );
-  const filteredPptItems = presentationItems.filter((item) => {
-    return presentationTemplateMatchesSearch(item, search);
-  });
-  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS.filter(
-    (item) => {
-      return illustrationTemplateMatchesSearch(item, search);
-    },
-  );
-  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS.filter((item) => {
-    return videoTemplateMatchesSearch(item, search);
-  });
-  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS.filter((item) => {
-    return websiteTemplateMatchesSearch(item, search);
-  });
+  const filteredPptItems = presentationItems;
+  const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
+  const filteredVideoItems = VIDEO_TEMPLATE_ITEMS;
+  const filteredWebsiteItems = WEBSITE_TEMPLATE_ITEMS;
   // The persona catalog rolls out behind a feature switch, and a persona pill
   // filters the grid, ideation-gallery style. resolveWorkflowCatalog() keeps
   // that branching out of this component to stay under the complexity budget.
@@ -4856,55 +4782,31 @@ function TemplatePickerDialog({
     hasWorkflowTab,
   });
 
-  const filteredIllustrationItemsForSearch = (value: string) => {
-    return ILLUSTRATION_TEMPLATE_ITEMS.filter((item) => {
-      return illustrationTemplateMatchesSearch(item, value);
-    });
-  };
-
-  const filteredPresentationItemsForSearch = (value: string) => {
-    return presentationItems.filter((item) => {
-      return presentationTemplateMatchesSearch(item, value);
-    });
-  };
-
-  const filteredVideoItemsForSearch = (value: string) => {
-    return VIDEO_TEMPLATE_ITEMS.filter((item) => {
-      return videoTemplateMatchesSearch(item, value);
-    });
-  };
-
-  const previewImageUrlsForCategory = (
-    targetCategory: string,
-    query: string,
-  ) => {
+  const previewImageUrlsForCategory = (targetCategory: string) => {
     if (targetCategory === "slides" && hasPptTab) {
       return presentationPreviewImageUrlsForItems(
-        filteredPresentationItemsForSearch(query),
+        presentationItems,
         cardThemeIdBySlug,
       );
     }
     if (targetCategory === "illustration" && hasIllustrationTab) {
       return illustrationPreviewImageUrlsForItems({
-        items: filteredIllustrationItemsForSearch(query),
+        items: ILLUSTRATION_TEMPLATE_ITEMS,
         variantIndexBySlug: illustrationVariantIndex,
       });
     }
     if (targetCategory === "video" && hasVideoTab) {
-      return videoPreviewImageUrlsForItems(filteredVideoItemsForSearch(query));
+      return videoPreviewImageUrlsForItems(VIDEO_TEMPLATE_ITEMS);
     }
     if (targetCategory === "website" && hasWebsiteTab) {
-      return [];
+      return websitePreviewImageUrlsForItems(WEBSITE_TEMPLATE_ITEMS);
     }
     return [];
   };
 
-  const prewarmTemplatePreviewsForCategory = (
-    targetCategory: string,
-    query = search,
-  ) => {
+  const prewarmTemplatePreviewsForCategory = (targetCategory: string) => {
     prewarmTemplatePreviewImages(
-      previewImageUrlsForCategory(targetCategory, query),
+      previewImageUrlsForCategory(targetCategory),
       templatePreviewPrewarmImageCountForCategory(targetCategory),
     );
   };
@@ -5048,7 +4950,7 @@ function TemplatePickerDialog({
   const handleSearchChange = (value: string) => {
     setSearch(value);
     if (!isPreviewing) {
-      prewarmTemplatePreviewsForCategory(selectedCategory, value);
+      prewarmTemplatePreviewsForCategory(selectedCategory);
     }
   };
 
@@ -5099,7 +5001,7 @@ function TemplatePickerDialog({
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
               <DialogTitle>Create with template</DialogTitle>
             </DialogHeader>
-            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 pt-3 sm:flex-row sm:items-center sm:justify-between">
               <TemplatePickerTabs
                 selectedCategory={selectedCategory}
                 hasPptTab={hasPptTab}
@@ -5109,22 +5011,33 @@ function TemplatePickerDialog({
                 hasWorkflowTab={hasWorkflowTab}
                 onChange={handleCategoryChange}
               />
-              <div className="w-full pb-3 sm:w-64">
-                <div className="relative">
-                  <IconSearch
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    stroke={1.8}
-                  />
-                  <Input
-                    aria-label="Search templates"
-                    className="h-8 pl-9 text-sm"
-                    value={search}
-                    onChange={(event) => {
-                      handleSearchChange(event.target.value);
-                    }}
-                    placeholder="Search templates"
-                  />
-                </div>
+              <div
+                className={cn(
+                  "pb-3 pt-2 sm:w-64",
+                  selectedCategory === "workflow"
+                    ? "w-full"
+                    : "hidden sm:block",
+                )}
+              >
+                {selectedCategory === "workflow" ? (
+                  <div className="relative">
+                    <IconSearch
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                      stroke={1.8}
+                    />
+                    <Input
+                      aria-label="Search connectors"
+                      className="h-8 pl-9 text-sm"
+                      value={search}
+                      onChange={(event) => {
+                        handleSearchChange(event.target.value);
+                      }}
+                      placeholder="Search connector..."
+                    />
+                  </div>
+                ) : (
+                  <div aria-hidden="true" className="h-8" />
+                )}
               </div>
             </div>
             <TemplatePickerCategoryContent
@@ -5610,7 +5523,6 @@ function SelectedWorkflowTemplateChip({
   onOpen: () => void;
   onRemove: () => void;
 }) {
-  const hasConnectorIcons = item.connectors.some(isConnectorIconType);
   return (
     <div className="px-4 pt-3">
       <div className="flex">
@@ -5631,15 +5543,11 @@ function SelectedWorkflowTemplateChip({
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
               Workflow
             </span>
-            {hasConnectorIcons ? (
-              <>
-                <span className="h-3.5 w-px shrink-0 bg-border/70" />
-                <WorkflowTemplateConnectorIcons
-                  connectors={item.connectors}
-                  compact
-                />
-              </>
-            ) : null}
+            <WorkflowTemplateConnectorIcons
+              connectors={item.connectors}
+              compact
+              withDivider
+            />
             <span className="h-3.5 w-px shrink-0 bg-border/70" />
             <span className="min-w-0 truncate text-xs font-medium">
               {item.title}
@@ -6020,7 +5928,7 @@ function ConnectorTriggerIcons({
         return (
           <span key={c.type} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon type={c.type} size={16} />
+              <ConnectorIcon icon={c.icon} size={16} />
             </span>
           </span>
         );
@@ -6097,7 +6005,7 @@ function AddConnectorsDialog({
                 >
                   <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                      <ConnectorIcon type={item.type} size={20} />
+                      <ConnectorIcon icon={item.icon} size={20} />
                     </span>
                     <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
                       {item.label}
@@ -6363,7 +6271,7 @@ function ConnectorsPopoverButton({
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon type={item.type} size={16} />
+                        <ConnectorIcon icon={item.icon} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
@@ -6575,7 +6483,7 @@ function MicButton({
   onTranscribed: (text: string) => void;
 }) {
   const available = useLastResolved(audioInputAvailable$) ?? false;
-  const quotaLoadable = useLoadable(audioInputQuota$);
+  const quotaState = useLoadableState(audioInputQuota$);
   const quota = useLastResolved(audioInputQuota$) ?? null;
   const quotaResolved = quota !== null;
   const recording = useGet(sttRecording$);
@@ -6592,7 +6500,7 @@ function MicButton({
     recording,
     starting,
     transcribing,
-    quotaLoading: quotaLoadable.state === "loading" && !quotaResolved,
+    quotaLoading: quotaState === "loading" && !quotaResolved,
   };
 
   if (!available) {
@@ -6703,12 +6611,12 @@ function ComposerAttachButton({
 }
 
 function ComposerUploadMenu({
-  input,
+  readInput,
   onDraftChange,
   onInputChange,
   onSelectFile,
 }: {
-  readonly input: string;
+  readonly readInput: () => string;
   readonly onDraftChange?: () => void;
   readonly onInputChange: (value: string) => void;
   readonly onSelectFile: () => void;
@@ -6725,6 +6633,7 @@ function ComposerUploadMenu({
       return;
     }
     const normalized = new URL(trimmed).toString();
+    const input = readInput();
     const base = input.trimEnd();
     onInputChange(base ? `${base}\n${normalized}` : normalized);
     onDraftChange?.();
@@ -6812,48 +6721,32 @@ function ComposerUploadMenu({
 // ---------------------------------------------------------------------------
 
 function useResolvedComposerSignals(
-  input: string,
-  draft: DraftSignals | undefined,
+  draft: DraftSignals,
   composerFileInputProp$: Computed<HTMLElement | null> | undefined,
   setComposerFileInputProp$:
     | Command<(() => void) | undefined, [HTMLElement | null]>
     | undefined,
 ) {
-  const attachments = useGet(
-    draft ? draft.attachments$ : singletonAttachments$,
-  );
-  const attachmentUploadSummary = useLoadable(
-    draft ? draft.attachmentUploadSummary$ : singletonAttachmentUploadSummary$,
-  );
-  const canSendSingleton = useGet(singletonCanSend$);
-  const canSend = draft
-    ? input.trim() !== "" || attachments.length > 0
-    : canSendSingleton;
-  const uploadAttachment = useSet(
-    draft ? draft.uploadAttachment$ : singletonUpload$,
-  );
-  const restoreAttachments = useSet(
-    draft ? draft.restoreAttachments$ : singletonRestore$,
-  );
-  const removeAttachment = useSet(
-    draft ? draft.removeAttachment$ : singletonRemove$,
-  );
+  const attachments = useGet(draft.attachments$);
+  const attachmentUploadSummary = useLoadable(draft.attachmentUploadSummary$);
+  const readInput = useSet(draft.readInput$);
+  const setInput = useSet(draft.setInput$);
+  const uploadAttachment = useSet(draft.uploadAttachment$);
+  const restoreAttachments = useSet(draft.restoreAttachments$);
+  const removeAttachment = useSet(draft.removeAttachment$);
   const fileInputEl = useGet(
     composerFileInputProp$ ?? singletonComposerFileInput$,
   );
   const setFileInputEl = useSet(
     setComposerFileInputProp$ ?? singletonSetComposerFileInput$,
   );
-  const dragOver = useGet(draft ? draft.dragOver$ : singletonDragOver$);
-  const setDragOver = useSet(
-    draft ? draft.setDragOver$ : singletonSetDragOver$,
-  );
-  const appendInput = useSet(
-    draft ? draft.appendInput$ : singletonAppendInput$,
-  );
+  const dragOver = useGet(draft.dragOver$);
+  const setDragOver = useSet(draft.setDragOver$);
+  const appendInput = useSet(draft.appendInput$);
 
   return {
-    canSend,
+    readInput,
+    setInput,
     attachments,
     attachmentUploadSummary,
     uploadAttachment,
@@ -6910,23 +6803,19 @@ function toPersistedAttachments(
 type KeyboardSendAction = "none" | "send" | "queue";
 
 function ComposerInputSlot({
-  input,
-  onInputChange,
+  composer,
   onDraftChange,
   sending,
   autoFocus,
   enableMobileSingleLine,
-  setInputRef,
   onKeyDown,
   onPaste,
 }: {
-  readonly input: string;
-  readonly onInputChange: (value: string) => void;
+  readonly composer: WorkflowComposerSignals;
   readonly onDraftChange: (() => void) | undefined;
   readonly sending: boolean | undefined;
   readonly autoFocus: boolean | undefined;
   readonly enableMobileSingleLine: boolean;
-  readonly setInputRef: ((el: HTMLElement | null) => void) | undefined;
   readonly onKeyDown: (e: KeyboardEventLike) => void;
   readonly onPaste: (e: ComposerPasteEvent) => void;
 }) {
@@ -6934,12 +6823,10 @@ function ComposerInputSlot({
 
   return (
     <TiptapWorkflowComposer
-      input={input}
-      onInputChange={onInputChange}
+      composer={composer}
       onDraftChange={onDraftChange}
       sending={sending}
       autoFocus={autoFocus}
-      setInputRef={setInputRef}
       onKeyDown={onKeyDown}
       onPaste={onPaste}
       singleLineOnMobile={singleLineOnMobile}
@@ -7026,6 +6913,53 @@ function ComposerSendButton({
       <IconArrowUp size={18} stroke={2} />
     </Button>
   );
+}
+
+function ComposerSendControl({
+  draft,
+  visibleAttachmentCount,
+  uploadsReady,
+  submitBlocked,
+  sending,
+  queueWhileSending,
+  hasQueueHandler,
+  onCancel,
+  activeFeedback,
+  actionsLoading,
+  onSend,
+}: {
+  draft: DraftSignals;
+  visibleAttachmentCount: number;
+  uploadsReady: boolean;
+  submitBlocked: boolean;
+  sending: boolean | undefined;
+  queueWhileSending: boolean;
+  hasQueueHandler: boolean;
+  onCancel: (() => void) | undefined;
+  activeFeedback: ComposerFeedback | null;
+  actionsLoading: boolean;
+  onSend: () => void;
+}) {
+  const hasInput = useGet(draft.hasInput$);
+  const canSend = resolveComposerCanSend({
+    hasInput,
+    visibleAttachmentCount,
+    uploadsReady,
+  });
+  const sendAction = resolveKeyboardSendAction({
+    canSend: canSend && !submitBlocked,
+    sending,
+    queueWhileSending,
+    hasQueueHandler,
+  });
+  const state = resolveSendButtonStateForActionsLoading({
+    actionsLoading,
+    showStopButton: Boolean(sending && onCancel) && !canSend,
+    onCancel,
+    activeFeedback,
+    sendAction,
+  });
+  return <ComposerSendButton {...state} onSend={onSend} />;
 }
 
 function resolveSendButtonStateForActionsLoading({
@@ -7143,19 +7077,21 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function useCodexFastModeEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.CodexFastMode] ?? false;
+function resolveComposerFeatures(
+  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+) {
+  return {
+    codexFastModeEnabled: features?.[FeatureSwitchKey.CodexFastMode] ?? false,
+    uploadPopoverEnabled:
+      features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false,
+  };
 }
 
-function useUploadPopoverEnabled(): boolean {
-  const features = useLastResolved(featureSwitch$);
-  return features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false;
-}
-
-export function ZeroChatComposer({
-  input,
-  onInputChange,
+// The thread route invokes this hook from its ccstate-connected composer so
+// dynamic bindings do not cross another React component boundary. The agent
+// landing page uses the component wrapper below for its separate signal scope.
+export function useZeroChatComposer({
+  composer,
   onSend,
   onQueue,
   sending,
@@ -7168,7 +7104,6 @@ export function ZeroChatComposer({
   draft,
   composerFileInput$: composerFileInputProp$,
   setComposerFileInput$: setComposerFileInputProp$,
-  setInputRef,
   chatThreadId,
   onDraftChange,
   actionsLoading = false,
@@ -7189,17 +7124,18 @@ export function ZeroChatComposer({
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const codexFastModeEnabled = useCodexFastModeEnabled();
-  const uploadPopoverEnabled = useUploadPopoverEnabled();
+  const features = useLastResolved(featureSwitch$);
+  const { codexFastModeEnabled, uploadPopoverEnabled } =
+    resolveComposerFeatures(features);
 
   const resolved = useResolvedComposerSignals(
-    input,
     draft,
     composerFileInputProp$,
     setComposerFileInputProp$,
   );
   const {
-    canSend: draftCanSend,
+    readInput,
+    setInput,
     attachments,
     attachmentUploadSummary,
     uploadAttachment,
@@ -7220,16 +7156,10 @@ export function ZeroChatComposer({
     attachments,
     visualAttachmentUnsupported,
   );
-  const canSend = resolveComposerCanSend({
-    draftCanSend,
-    input,
-    visibleAttachmentCount: visibleAttachments.length,
-    uploadsReady:
-      attachmentUploadSummary.state === "hasData" &&
-      attachmentUploadSummary.data.readyCount ===
-        attachmentUploadSummary.data.attachmentCount,
-  });
-  const canSubmit = canSend && !submitBlocker;
+  const uploadsReady =
+    attachmentUploadSummary.state === "hasData" &&
+    attachmentUploadSummary.data.readyCount ===
+      attachmentUploadSummary.data.attachmentCount;
 
   // When feedback fragments are present the composer is in "feedback mode": the
   // textarea is replaced by the stacked quote + note rows and Send dispatches
@@ -7238,6 +7168,7 @@ export function ZeroChatComposer({
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ComposerPasteEvent) => {
+    const input = readInput();
     if (!e.clipboardData) {
       return;
     }
@@ -7265,7 +7196,7 @@ export function ZeroChatComposer({
           chatPayload.text,
         );
         if (nextInput !== input) {
-          onInputChange(nextInput);
+          setInput(nextInput);
         }
         if (allowedAttachments.length > 0) {
           restoreAttachments(allowedAttachments);
@@ -7287,7 +7218,7 @@ export function ZeroChatComposer({
       }
       const nextInput = insertPastedText(e.currentTarget, input, plainText);
       if (nextInput !== input) {
-        onInputChange(nextInput);
+        setInput(nextInput);
       }
       pastedPlainText = true;
     };
@@ -7358,6 +7289,7 @@ export function ZeroChatComposer({
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const authorizedConnectorsLoadable = useLastLoadable(
     zeroAuthorizedConnectors$,
+    { equalityFn: equalArrays },
   );
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
@@ -7405,6 +7337,7 @@ export function ZeroChatComposer({
       type: c.type,
       label: c.label,
       helpText: c.helpText,
+      icon: c.icon,
       tags: c.tags,
       connected,
       authorized,
@@ -7445,14 +7378,17 @@ export function ZeroChatComposer({
     setSavingType(null);
   };
 
-  const sendAction = resolveKeyboardSendAction({
-    canSend: canSubmit,
-    sending,
-    queueWhileSending,
-    hasQueueHandler: onQueue !== undefined,
-  });
-
   const handleSend = () => {
+    const input = readInput();
+    const sendAction = resolveKeyboardSendAction({
+      canSend:
+        uploadsReady &&
+        (input.trim().length > 0 || visibleAttachments.length > 0) &&
+        !submitBlocker,
+      sending,
+      queueWhileSending,
+      hasQueueHandler: onQueue !== undefined,
+    });
     if (sendAction === "send") {
       // Fire-and-forget: request push permission on first send, never blocks
       detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
@@ -7464,21 +7400,10 @@ export function ZeroChatComposer({
     }
   };
 
-  // Stop button replaces Send only when there is nothing to dispatch — i.e.
-  // the composer is empty during an active run. With draft content present
-  // the Send button stays visible so the click can queue the message.
-  const showStopButton = Boolean(sending && onCancel) && !canSend;
-  const sendButtonState = resolveSendButtonStateForActionsLoading({
-    actionsLoading,
-    showStopButton,
-    onCancel,
-    activeFeedback,
-    sendAction,
-  });
-
   // Routes a button click to the queue path while the current thread is sending,
   // otherwise to the normal send path.
   const handleButtonSend = () => {
+    const input = readInput();
     if (submitBlocker) {
       return;
     }
@@ -7494,18 +7419,20 @@ export function ZeroChatComposer({
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
 
   const handleKeyDown = (e: KeyboardEventLike) => {
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
     const isTouchOnlyDevice =
-      window.matchMedia("(pointer: coarse)").matches &&
-      !window.matchMedia("(any-pointer: fine)").matches;
-    if (isTouchOnlyDevice) {
-      return;
-    }
+      isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
     const send = () => {
       handleSend();
     };
+    if (isTouchOnlyDevice) {
+      processShortcut({ "mod+enter": send }, e);
+      return;
+    }
     processShortcut(
       {
         ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
+        ...(isTouchDevice && sendMode === "enter" ? { "mod+enter": send } : {}),
         escape: () => {
           (e.target as HTMLElement).blur();
         },
@@ -7617,13 +7544,11 @@ export function ZeroChatComposer({
               ) : (
                 <>
                   <ComposerInputSlot
-                    input={input}
-                    onInputChange={onInputChange}
+                    composer={composer}
                     onDraftChange={onDraftChange}
                     sending={sending}
                     autoFocus={autoFocus}
                     enableMobileSingleLine={enableMobileSingleLine}
-                    setInputRef={setInputRef}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                   />
@@ -7633,9 +7558,9 @@ export function ZeroChatComposer({
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
                   {uploadPopoverEnabled ? (
                     <ComposerUploadMenu
-                      input={input}
+                      readInput={readInput}
                       onDraftChange={onDraftChange}
-                      onInputChange={onInputChange}
+                      onInputChange={setInput}
                       onSelectFile={handleFileSelect}
                     />
                   ) : (
@@ -7673,8 +7598,17 @@ export function ZeroChatComposer({
                       onDraftChange?.();
                     }}
                   />
-                  <ComposerSendButton
-                    {...sendButtonState}
+                  <ComposerSendControl
+                    draft={draft}
+                    visibleAttachmentCount={visibleAttachments.length}
+                    uploadsReady={uploadsReady}
+                    submitBlocked={submitBlocker !== undefined}
+                    sending={sending}
+                    queueWhileSending={queueWhileSending}
+                    hasQueueHandler={onQueue !== undefined}
+                    onCancel={onCancel}
+                    activeFeedback={activeFeedback}
+                    actionsLoading={actionsLoading}
                     onSend={handleButtonSend}
                   />
                 </div>
@@ -7720,4 +7654,8 @@ export function ZeroChatComposer({
       )}
     </>
   );
+}
+
+export function ZeroChatComposer(props: ZeroChatComposerProps) {
+  return useZeroChatComposer(props);
 }

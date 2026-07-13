@@ -55,6 +55,36 @@ const NINTENDO_STORE_PROFILE_URL =
   "https://api.accounts.nintendo.com/2.0.0/users/me";
 const NINTENDO_STORE_REDIRECT_URI = "npf5c38e31cd085304b://auth";
 const NINTENDO_STORE_CLIENT_ID = "5c38e31cd085304b";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI =
+  "npf54789befb391a838://auth";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_CLIENT_ID = "54789befb391a838";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL =
+  "https://app.lp1.znma.srv.nintendo.net/v3/actions/federation";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL =
+  "https://app.lp1.znma.srv.nintendo.net/v2/actions/logout";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_SCOPES = [
+  "openid",
+  "user",
+  "user.mii",
+  "moonUser:administration",
+  "moonDevice:create",
+  "moonOwnedDevice:administration",
+  "moonParentalControlSetting",
+  "moonParentalControlSetting:update",
+  "moonParentalControlSettingState",
+  "moonPairingState",
+  "moonSmartDevice:administration",
+  "moonDailySummary",
+  "moonMonthlySummary",
+] as const;
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE =
+  "bdd-switch-parental-controls-code";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN_CODE =
+  "bdd-switch-parental-controls-replacement-code";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN =
+  "bdd-switch-parental-controls-session-token";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN =
+  "bdd-switch-parental-controls-replacement-session-token";
 
 async function awsActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
@@ -123,6 +153,157 @@ function mockNintendoStoreExternalCodeProvider(): {
   );
 
   return { sessionTokenBodies, tokenBodies };
+}
+
+function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
+  readonly federatedSmartDeviceIds: string[];
+  readonly federationBodies: unknown[];
+  readonly failLogout: () => void;
+  readonly initialIdToken: string;
+  readonly logoutAuthorizations: (string | null)[];
+  readonly logoutBodies: unknown[];
+  readonly replacementIdToken: string;
+  readonly sessionTokenBodies: URLSearchParams[];
+  readonly tokenBodies: Readonly<Record<string, unknown>>[];
+} {
+  const federatedSmartDeviceIds: string[] = [];
+  const federationBodies: unknown[] = [];
+  const initialIdToken = jwtPayload({
+    sub: "bdd-switch-parental-controls-account-id",
+    preferred_username: "bdd-nintendo-parent",
+    email: "bdd-nintendo-parent@example.test",
+  });
+  const logoutAuthorizations: (string | null)[] = [];
+  const logoutBodies: unknown[] = [];
+  const replacementIdToken = jwtPayload({
+    sub: "bdd-switch-parental-controls-replacement-account-id",
+    preferred_username: "bdd-nintendo-replacement-parent",
+    email: "bdd-nintendo-replacement-parent@example.test",
+  });
+  const sessionTokenBodies: URLSearchParams[] = [];
+  const tokenBodies: Readonly<Record<string, unknown>>[] = [];
+  let logoutStatus = 204;
+
+  server.use(
+    http.post(NINTENDO_STORE_SESSION_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      sessionTokenBodies.push(body);
+      const sessionTokenCode = body.get("session_token_code");
+      if (
+        sessionTokenCode ===
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE
+      ) {
+        return HttpResponse.json({
+          session_token:
+            NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+        });
+      }
+      if (
+        sessionTokenCode ===
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN_CODE
+      ) {
+        return HttpResponse.json({
+          session_token:
+            NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN,
+        });
+      }
+      throw new Error(
+        `Unexpected Nintendo Switch Parental Controls session token code: ${sessionTokenCode}`,
+      );
+    }),
+    http.post(NINTENDO_STORE_TOKEN_URL, async ({ request }) => {
+      const body: unknown = await request.json();
+      if (!isRecord(body)) {
+        throw new Error(
+          "Expected Nintendo Switch Parental Controls token body object",
+        );
+      }
+      tokenBodies.push(body);
+      const sessionToken = body["session_token"];
+      if (
+        sessionToken !==
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN &&
+        sessionToken !==
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN
+      ) {
+        throw new Error(
+          "Expected a known Nintendo Switch Parental Controls session token",
+        );
+      }
+      const isReplacement =
+        sessionToken ===
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN;
+      return HttpResponse.json({
+        access_token: isReplacement
+          ? "bdd-switch-parental-controls-replacement-access-token"
+          : "bdd-switch-parental-controls-access-token",
+        expires_in: 3600,
+        id_token: isReplacement ? replacementIdToken : initialIdToken,
+        token_type: "Bearer",
+        scope: NINTENDO_SWITCH_PARENTAL_CONTROLS_SCOPES.join(" "),
+      });
+    }),
+    http.get(NINTENDO_STORE_PROFILE_URL, () => {
+      return HttpResponse.json({ country: "US", language: "en" });
+    }),
+    http.post(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_FEDERATION_URL,
+      async ({ request }) => {
+        const body: unknown = await request.json();
+        if (
+          !isRecord(body) ||
+          !isRecord(body["smartDeviceInfo"]) ||
+          typeof body["smartDeviceInfo"]["id"] !== "string"
+        ) {
+          throw new Error("Expected Nintendo smart-device federation body");
+        }
+        federationBodies.push(body);
+        federatedSmartDeviceIds.push(body["smartDeviceInfo"]["id"]);
+        return HttpResponse.json({
+          loginInfo: {
+            ownedDevices: [
+              {
+                deviceId: "bdd-switch-device-id",
+                label: "Family room",
+                device: {
+                  serialNumber: "bdd-serial-must-not-leak",
+                  synchronizedUnlockCode: "1234",
+                },
+              },
+            ],
+          },
+          nextStep: "COMPLETED",
+        });
+      },
+    ),
+    http.post(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL,
+      async ({ request }) => {
+        logoutAuthorizations.push(request.headers.get("authorization"));
+        logoutBodies.push(await request.json());
+        return logoutStatus === 204
+          ? new HttpResponse(null, { status: 204 })
+          : HttpResponse.json(
+              { error: "temporarily unavailable" },
+              { status: logoutStatus },
+            );
+      },
+    ),
+  );
+
+  return {
+    federatedSmartDeviceIds,
+    federationBodies,
+    failLogout: () => {
+      logoutStatus = 503;
+    },
+    initialIdToken,
+    logoutAuthorizations,
+    logoutBodies,
+    replacementIdToken,
+    sessionTokenBodies,
+    tokenBodies,
+  };
 }
 
 describe("CONN-02: external-code session lifecycle", () => {
@@ -510,6 +691,200 @@ describe("CONN-02: external-code session lifecycle", () => {
     expectNoVisibleSecret(secretList, "bdd-nintendo-access-token");
 
     await connectorsApi.deleteConnectorByType(actor, "nintendo-store");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("replaces the remote Nintendo registration and keeps local deletion resilient", async () => {
+    const provider = mockNintendoSwitchParentalControlsExternalCodeProvider();
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.NintendoSwitchParentalControlsConnector]: true,
+    });
+
+    const session = await connectorsApi.startExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      "api",
+    );
+    expect(session).toMatchObject({
+      type: "nintendo-switch-parental-controls",
+      status: "pending",
+      expiresIn: 600,
+    });
+    const authorizationUrl = new URL(session.authorizationUrl);
+    expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
+      NINTENDO_STORE_AUTHORIZE_URL,
+    );
+    expect(authorizationUrl.searchParams.get("client_id")).toBe(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_CLIENT_ID,
+    );
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI,
+    );
+    expect(authorizationUrl.searchParams.get("scope")).toBe(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_SCOPES.join(" "),
+    );
+    const state = authorizationUrl.searchParams.get("state");
+    if (!state) {
+      throw new Error(
+        "Expected Nintendo Switch Parental Controls authorization state",
+      );
+    }
+
+    const complete = await connectorsApi.completeExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      {
+        sessionId: session.sessionId,
+        sessionToken: session.sessionToken,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=${NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE}&state=${state}`,
+      },
+    );
+
+    expect(provider.sessionTokenBodies).toHaveLength(1);
+    expect(provider.sessionTokenBodies[0]?.get("client_id")).toBe(
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_CLIENT_ID,
+    );
+    expect(provider.tokenBodies).toStrictEqual([
+      {
+        client_id: NINTENDO_SWITCH_PARENTAL_CONTROLS_CLIENT_ID,
+        session_token: NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token",
+      },
+    ]);
+    expect(provider.federationBodies).toHaveLength(1);
+    expect(provider.federationBodies[0]).toMatchObject({
+      smartDeviceInfo: {
+        id: expect.any(String),
+        bundleId: "com.nintendo.znma",
+        notificationToken: null,
+      },
+    });
+    expect(complete.connector).toMatchObject({
+      type: "nintendo-switch-parental-controls",
+      authMethod: "api",
+      externalId: "bdd-switch-parental-controls-account-id",
+      externalUsername: "bdd-nintendo-parent",
+      oauthScopes: NINTENDO_SWITCH_PARENTAL_CONTROLS_SCOPES,
+    });
+    expect(complete.connector.tokenExpiresAt).not.toBeNull();
+    expectNoVisibleSecret(
+      complete,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+    );
+    expectNoVisibleSecret(
+      complete,
+      "bdd-switch-parental-controls-access-token",
+    );
+    expectNoVisibleSecret(complete, "bdd-serial-must-not-leak");
+    expectNoVisibleSecret(complete, "1234");
+
+    const listed = await connectorsApi.listConnectors(actor);
+    for (const name of [
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_TOKEN",
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCOUNT_TOKEN",
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID",
+    ]) {
+      expect(listed.connectorProvidedBindings).toContainEqual(
+        expect.objectContaining({
+          connectorType: "nintendo-switch-parental-controls",
+          authMethod: "api",
+          namespace: "secrets",
+          name,
+        }),
+      );
+    }
+    for (const name of [
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_LANGUAGE",
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_DEVICE_CATALOG",
+    ]) {
+      expect(listed.connectorProvidedBindings).toContainEqual(
+        expect.objectContaining({
+          connectorType: "nintendo-switch-parental-controls",
+          authMethod: "api",
+          namespace: "vars",
+          name,
+        }),
+      );
+    }
+
+    const secretList = await authOrgApi.listSecrets(actor);
+    const connectorSecretNames = secretList.secrets
+      .filter((secret) => {
+        return secret.type === "connector";
+      })
+      .map((secret) => {
+        return secret.name;
+      });
+    expect(connectorSecretNames.sort()).toStrictEqual([
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_ACCESS_TOKEN",
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_ID_TOKEN",
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_SESSION_TOKEN",
+      "NINTENDO_SWITCH_PARENTAL_CONTROLS_SMART_DEVICE_ID",
+    ]);
+
+    const replacementSession = await connectorsApi.startExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      "api",
+    );
+    const replacementAuthorizationUrl = new URL(
+      replacementSession.authorizationUrl,
+    );
+    const replacementState =
+      replacementAuthorizationUrl.searchParams.get("state");
+    if (!replacementState) {
+      throw new Error("Expected replacement Nintendo authorization state");
+    }
+    await connectorsApi.completeExternalCode(
+      actor,
+      "nintendo-switch-parental-controls",
+      {
+        sessionId: replacementSession.sessionId,
+        sessionToken: replacementSession.sessionToken,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=${NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN_CODE}&state=${replacementState}`,
+      },
+    );
+    expect(provider.federatedSmartDeviceIds).toHaveLength(2);
+    expect(provider.federatedSmartDeviceIds[1]).not.toBe(
+      provider.federatedSmartDeviceIds[0],
+    );
+    expect(provider.logoutBodies).toStrictEqual([
+      { smartDeviceId: provider.federatedSmartDeviceIds[0] },
+    ]);
+
+    provider.failLogout();
+    await connectorsApi.deleteConnectorByType(
+      actor,
+      "nintendo-switch-parental-controls",
+    );
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body["session_token"];
+      }),
+    ).toStrictEqual([
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN,
+    ]);
+    expect(provider.logoutAuthorizations).toStrictEqual([
+      `Bearer ${provider.initialIdToken}`,
+      `Bearer ${provider.replacementIdToken}`,
+    ]);
+    expect(provider.logoutBodies).toStrictEqual([
+      { smartDeviceId: provider.federatedSmartDeviceIds[0] },
+      { smartDeviceId: provider.federatedSmartDeviceIds[1] },
+    ]);
+    const afterDelete = await connectorsApi.requestReadConnectorByType(
+      actor,
+      "nintendo-switch-parental-controls",
+      [404],
+    );
+    expectApiError(afterDelete.body);
+    expect(afterDelete.body.error.code).toBe("NOT_FOUND");
     await connectorsApi.deleteFeatureSwitches(actor);
   });
 

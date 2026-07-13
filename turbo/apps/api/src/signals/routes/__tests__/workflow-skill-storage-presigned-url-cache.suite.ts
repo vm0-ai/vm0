@@ -12,7 +12,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
+import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -23,6 +23,8 @@ const context = testContext();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const WORKFLOW_CACHE_TTL_SECONDS = 2 * 60 * 60;
+const WORKFLOW_CACHE_REFRESH_LIMIT = 32;
+const ISOLATED_CACHE_CRON_NOW = Date.parse("2000-01-02T00:00:00.000Z");
 
 interface CacheRow {
   readonly cache_key: string;
@@ -464,34 +466,18 @@ describe("workflow skill storage presigned URL cache", () => {
   });
 
   it("refreshes bounded active cache rows and prunes inactive expired rows from cron", async () => {
+    mockNow(ISOLATED_CACHE_CRON_NOW);
     const prefix = `org_${randomUUID()}/volume/workflow-cache-cron-${randomUUID()}`;
     await withCacheCleanup(prefix, async () => {
-      // The refresh cron sweeps the shared cache table with a bounded
-      // per-tick budget, oldest refresh_after first. Rows left behind by
-      // other tests and earlier runs mature into "due" over time and would
-      // starve this fixture's rows out of every tick, so first tick the cron
-      // until the global backlog is drained.
-      for (let tick = 0; tick < 120; tick += 1) {
-        const drainTick = await accept(
-          cronClient().refresh({ headers: cronHeaders() }),
-          [200],
-        );
-        if (
-          drainTick.body.workflowSkill.due === 0 &&
-          drainTick.body.workflowSkill.pruned === 0
-        ) {
-          break;
-        }
-      }
-
       const now = nowDate();
       const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
       const expiredAt = new Date(now.getTime() - 60 * 60 * 1000);
       const refreshAfter = new Date(now.getTime() - 60 * 1000);
       const inactiveRequestedAt = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-      for (let index = 0; index < 5; index += 1) {
-        const versionId = `${index}`.repeat(64).slice(0, 64);
+      const activeRowCount = WORKFLOW_CACHE_REFRESH_LIMIT + 2;
+      for (let index = 0; index < activeRowCount; index += 1) {
+        const versionId = index.toString(36).padStart(2, "0").repeat(32);
         await seedCacheRow({
           bucket: BUCKET,
           objectKey: `${prefix}/${versionId}/archive.tar.gz`,
@@ -538,35 +524,49 @@ describe("workflow skill storage presigned URL cache", () => {
         cronClient().refresh({ headers: cronHeaders() }),
         [200],
       );
-      expect(firstTick.body.success).toBeTruthy();
-      // The per-tick refresh budget is bounded no matter how many rows are
-      // due — the counter is global, so this holds even when concurrently
-      // running files contribute due rows of their own.
-      expect(firstTick.body.workflowSkill.refreshed).toBeLessThanOrEqual(3);
+      expect(firstTick.body).toStrictEqual({
+        success: true,
+        system: expect.objectContaining({
+          due: expect.any(Number),
+          refreshed: expect.any(Number),
+          pruned: expect.any(Number),
+        }),
+        workflowSkill: {
+          due: WORKFLOW_CACHE_REFRESH_LIMIT + 1,
+          refreshed: WORKFLOW_CACHE_REFRESH_LIMIT,
+          pruned: 2,
+        },
+      });
 
-      // Each tick's budget is shared with other files' due rows, so this
-      // fixture's rows converge over repeated ticks exactly as production
-      // does: active due rows get refreshed, inactive expired rows get
-      // pruned, and the inactive fresh row is never touched.
-      await expect
-        .poll(async () => {
-          await accept(cronClient().refresh({ headers: cronHeaders() }), [200]);
-          const rows = await readCacheRowsByObjectKeyPrefix(prefix);
-          return {
-            total: rows.length,
-            refreshed: rows.filter((row) => {
-              return row.presigned_url.includes("?sig=");
-            }).length,
-            inactiveFreshUrl: rows.find((row) => {
-              return row.storage_version_id === inactiveFreshVersionId;
-            })?.presigned_url,
-          };
-        })
-        .toStrictEqual({
-          total: 6,
-          refreshed: 5,
-          inactiveFreshUrl: "https://r2.example.com/inactive-fresh-old",
-        });
+      const rowsAfterFirstTick = await readCacheRowsByObjectKeyPrefix(prefix);
+      expect(
+        rowsAfterFirstTick.filter((row) => {
+          return row.presigned_url.includes("?sig=");
+        }),
+      ).toHaveLength(WORKFLOW_CACHE_REFRESH_LIMIT);
+
+      const secondTick = await accept(
+        cronClient().refresh({ headers: cronHeaders() }),
+        [200],
+      );
+      expect(secondTick.body.workflowSkill).toStrictEqual({
+        due: 2,
+        refreshed: 2,
+        pruned: 0,
+      });
+
+      const rows = await readCacheRowsByObjectKeyPrefix(prefix);
+      expect(rows).toHaveLength(activeRowCount + 1);
+      expect(
+        rows.filter((row) => {
+          return row.presigned_url.includes("?sig=");
+        }),
+      ).toHaveLength(activeRowCount);
+      expect(
+        rows.find((row) => {
+          return row.storage_version_id === inactiveFreshVersionId;
+        })?.presigned_url,
+      ).toBe("https://r2.example.com/inactive-fresh-old");
     });
   });
 });

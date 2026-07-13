@@ -1,5 +1,93 @@
 # Changelog
 
+## [8.425.2](https://github.com/vm0-ai/vm0/compare/core-v8.425.1...core-v8.425.2) (2026-07-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+
+## [8.425.1](https://github.com/vm0-ai/vm0/compare/core-v8.425.0...core-v8.425.1) (2026-07-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.4
+    * @vm0/connectors bumped to 1.155.1
+
+## [8.425.0](https://github.com/vm0-ai/vm0/compare/core-v8.424.5...core-v8.425.0) (2026-07-11)
+
+
+### Features
+
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+    * @vm0/connectors bumped to 1.155.0
+
+## [8.424.5](https://github.com/vm0-ai/vm0/compare/core-v8.424.4...core-v8.424.5) (2026-07-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.2
+
+## [8.424.4](https://github.com/vm0-ai/vm0/compare/core-v8.424.3...core-v8.424.4) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.1
+    * @vm0/connectors bumped to 1.154.3
+
+## [8.424.3](https://github.com/vm0-ai/vm0/compare/core-v8.424.2...core-v8.424.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* refresh frosted scatter archive ([#20972](https://github.com/vm0-ai/vm0/issues/20972)) ([518cccc](https://github.com/vm0-ai/vm0/commit/518cccc4d4231a3009319381269eaf19fd8a18a5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.0
+    * @vm0/connectors bumped to 1.154.2
+
+## [8.424.2](https://github.com/vm0-ai/vm0/compare/core-v8.424.1...core-v8.424.2) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.1
+    * @vm0/connectors bumped to 1.154.1
+
+## [8.424.1](https://github.com/vm0-ai/vm0/compare/core-v8.424.0...core-v8.424.1) (2026-07-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.0
+
 ## [8.424.0](https://github.com/vm0-ai/vm0/compare/core-v8.423.0...core-v8.424.0) (2026-07-10)
 
 

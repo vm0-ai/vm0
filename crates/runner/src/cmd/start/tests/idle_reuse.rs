@@ -14,6 +14,19 @@ use crate::paths::RunnerPaths;
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
+const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
+
+fn reusable_candidate(
+    run_id: RunId,
+    profile_name: &str,
+    session_id: &str,
+) -> crate::provider::JobCandidate {
+    crate::provider::JobCandidate::new(run_id, profile_name.to_string()).with_affinity_metadata(
+        Some(session_id.to_string()),
+        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+    )
+}
+
 // -----------------------------------------------------------------------
 // Test 9: idle pool park/take is gated on session ID availability
 //
@@ -420,7 +433,7 @@ async fn session_affinity_reuses_idle_vm() {
 
 #[tokio::test(start_paused = true)]
 async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates() {
-    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let (mut config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
     let budget = Arc::clone(&config.capacity.budget);
     let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
@@ -450,12 +463,12 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
 
     let run_handle = tokio::spawn(run(config));
     let run_id = RunId::new_v4();
-    push_job(
-        &env,
-        run_id,
-        "vm0/default",
-        Some(context_with_session(run_id, session_id)),
-    );
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(reusable_candidate(run_id, "vm0/default", session_id))
+        .unwrap();
 
     let completion = env
         .handle

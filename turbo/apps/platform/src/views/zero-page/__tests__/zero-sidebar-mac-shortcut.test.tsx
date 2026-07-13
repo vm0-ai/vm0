@@ -14,8 +14,6 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
-const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
-
 type SidebarThread = ChatThreadListItem;
 
 const restoreNavigator = vi.hoisted(() => {
@@ -140,11 +138,7 @@ describe("zero sidebar mac shortcuts", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const composerRoot = await screen.findByPlaceholderText(PLACEHOLDER);
-    const composer = composerRoot.querySelector('[contenteditable="true"]');
-    if (!(composer instanceof HTMLElement)) {
-      throw new Error("Chat composer editor not found");
-    }
+    const composer = await screen.findByRole("textbox", { name: "Message" });
     await waitFor(() => {
       expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
       expect(screen.queryByLabelText("Expand sidebar")).not.toBeInTheDocument();
@@ -152,7 +146,12 @@ describe("zero sidebar mac shortcuts", () => {
 
     composer.focus();
     expect(composer).toHaveFocus();
-    fireEvent.keyDown(composer, { key: "b", metaKey: true });
+    fireEvent.keyDown(composer, {
+      key: "b",
+      code: "KeyB",
+      keyCode: 66,
+      metaKey: true,
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();

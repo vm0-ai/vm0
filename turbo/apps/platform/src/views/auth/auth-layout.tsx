@@ -357,7 +357,10 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <>
       <style suppressHydrationWarning>{CLERK_CSS}</style>
-      <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
+      <div
+        className="relative flex h-full min-h-0 overflow-x-hidden overflow-y-auto bg-background p-6"
+        data-testid="app-auth-layout"
+      >
         {/* Background grid pattern - medium grid with subtle visibility */}
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--primary)/0.06)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--primary)/0.06)_1px,transparent_1px)] bg-[size:3rem_3rem]" />
 
@@ -378,7 +381,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           onClick={() => {
             setTheme(theme === "dark" ? "light" : "dark");
           }}
-          className="fixed right-6 top-6 z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
+          className="fixed right-[calc(1.5rem+var(--sar))] top-[calc(1.5rem+var(--sat))] z-50 flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-muted"
           aria-label="Toggle theme"
         >
           {theme === "dark" ? (
@@ -398,7 +401,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           />
         </a>
 
-        {children}
+        <div className="relative z-10 m-auto flex w-full min-w-0 justify-center">
+          {children}
+        </div>
       </div>
     </>
   );

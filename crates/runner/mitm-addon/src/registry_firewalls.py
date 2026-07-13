@@ -66,6 +66,11 @@ def clear_catalog_cache() -> None:
     builtin_firewall_cache.clear_cache()
 
 
+def configured_catalog_cache_path() -> str | None:
+    """Return the runner-configured builtin catalog cache path."""
+    return builtin_firewall_cache.configured_catalog_cache_path()
+
+
 def catalog_file_key(
     cache_path: str | None,
 ) -> builtin_firewall_cache.CatalogFileKey | None:

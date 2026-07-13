@@ -45,6 +45,7 @@ def _github_policies(*, unknown_policy="allow"):
         {"headers": {123: "Bearer token"}},
         {"base": None},
         {"base": 123},
+        {"base": ""},
         {"base": "ftp://example.com/hook"},
         {"base": "http://example.com/hook"},
         {"base": "http://${{ vars.WEBHOOK_HOST }}/hook"},
@@ -79,6 +80,18 @@ def _github_policies(*, unknown_policy="allow"):
         {"query": "api_key"},
         {"query": {"api_key": 123}},
         {"query": {123: "token"}},
+        {
+            "headers": {"Authorization": "token"},
+            "awsSigv4": {"accessKeyId": "key", "secretAccessKey": "secret"},
+        },
+        {
+            "query": {"api_key": "token"},
+            "awsSigv4": {"accessKeyId": "key", "secretAccessKey": "secret"},
+        },
+        {
+            "base": "https://hooks.example.com/secret",
+            "awsSigv4": {"accessKeyId": "key", "secretAccessKey": "secret"},
+        },
     ],
 )
 def test_malformed_auth_config_fails_closed_after_base_match(auth_config):
@@ -118,6 +131,51 @@ def test_malformed_auth_config_fails_closed_after_base_match(auth_config):
     ],
 )
 def test_valid_auth_base_config_can_match(auth_config):
+    result = match_compiled_firewalls(
+        REPO_URL,
+        _github_firewalls_with_auth(auth_config),
+        _github_policies(unknown_policy="deny"),
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "repo-read"
+
+
+@pytest.mark.parametrize(
+    "auth_config",
+    [
+        {"headers": {"Authorization": "token"}},
+        {"query": {"api_key": "token"}},
+        {
+            "headers": {"Authorization": "token"},
+            "query": {"api_key": "token"},
+        },
+        {
+            "base": "https://hooks.example.com/secret",
+            "headers": {"Authorization": "token"},
+        },
+        {
+            "base": "https://hooks.example.com/secret",
+            "query": {"api_key": "token"},
+        },
+        {
+            "base": "https://hooks.example.com/secret",
+            "headers": {"Authorization": "token"},
+            "query": {"api_key": "token"},
+        },
+        {
+            "base": "https://hooks.example.com/secret",
+            "headers": {},
+            "query": {},
+        },
+        {
+            "headers": {},
+            "query": {},
+            "awsSigv4": {"accessKeyId": "key", "secretAccessKey": "secret"},
+        },
+    ],
+)
+def test_valid_auth_strategy_config_can_match(auth_config):
     result = match_compiled_firewalls(
         REPO_URL,
         _github_firewalls_with_auth(auth_config),

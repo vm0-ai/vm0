@@ -10,6 +10,8 @@ import { setLogErrorHandler } from "./signals/log.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
+// (no-op Platform release marker refreshed 2026-07-12 to trigger a release)
+
 // Initialize Sentry before bootstrap so errors during startup are captured
 initSentry();
 initPostHog();

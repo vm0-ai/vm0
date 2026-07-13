@@ -76,7 +76,7 @@ const promiseChainAllowlist = [
   // pg/OTel instrumentation: needs .then chains around the wrapped pg.query
   // call to attach span lifecycle without forcing an async wrapper around
   // every callback-style overload.
-  "src/lib/db.ts",
+  "src/lib/db-instrumentation.ts",
   // Logger flush: detached `?.catch(() => {})` on Sentry flush in process exit
   // path; cannot use signals/utils helpers because lib/ must not import them.
   "src/lib/log.ts",

@@ -1,5 +1,166 @@
 # Changelog
 
+## [0.594.0](https://github.com/vm0-ai/vm0/compare/app-v0.593.1...app-v0.594.0) (2026-07-12)
+
+
+### Features
+
+* expose connector catalog icon descriptors ([#21092](https://github.com/vm0-ai/vm0/issues/21092)) ([c0b8e0f](https://github.com/vm0-ai/vm0/commit/c0b8e0f4c485c69884cae063c2c15dd68ea5c112))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+
+
+### Refactoring
+
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* **platform:** remove custom chat pagination loops ([#21119](https://github.com/vm0-ai/vm0/issues/21119)) ([41284bf](https://github.com/vm0-ai/vm0/commit/41284bfa5480aba96e69815e0087c7ec4ed3c76d))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* **platform:** simplify chat message persistence ([#21059](https://github.com/vm0-ai/vm0/issues/21059)) ([756abcf](https://github.com/vm0-ai/vm0/commit/756abcf36614f1d7236d85e6d706e3a0e089456e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+    * @vm0/core bumped to 8.425.2
+
+## [0.593.1](https://github.com/vm0-ai/vm0/compare/app-v0.593.0...app-v0.593.1) (2026-07-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.4
+    * @vm0/connectors bumped to 1.155.1
+    * @vm0/core bumped to 8.425.1
+
+## [0.593.0](https://github.com/vm0-ai/vm0/compare/app-v0.592.4...app-v0.593.0) (2026-07-11)
+
+
+### Features
+
+* add nintendo switch parental controls connector ([#21016](https://github.com/vm0-ai/vm0/issues/21016)) ([a06a01c](https://github.com/vm0-ai/vm0/commit/a06a01ce0798d7d38efd183345c1559c1bdd7bc5))
+
+
+### Performance Improvements
+
+* **platform:** reduce chat and composer renders ([#21034](https://github.com/vm0-ai/vm0/issues/21034)) ([9c4458d](https://github.com/vm0-ai/vm0/commit/9c4458d75456653a68aaf076b603b3ac48360ee3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.3
+    * @vm0/connectors bumped to 1.155.0
+    * @vm0/core bumped to 8.425.0
+
+## [0.592.4](https://github.com/vm0-ai/vm0/compare/app-v0.592.3...app-v0.592.4) (2026-07-11)
+
+
+### Bug Fixes
+
+* prevent gray chrome above mobile artifact previews ([#21035](https://github.com/vm0-ai/vm0/issues/21035)) ([c2d5b56](https://github.com/vm0-ai/vm0/commit/c2d5b56bdfa7ed16ad2dc03c2438f28be89d1e0f))
+
+## [0.592.3](https://github.com/vm0-ai/vm0/compare/app-v0.592.2...app-v0.592.3) (2026-07-11)
+
+
+### Performance Improvements
+
+* **platform:** reduce chat render commits ([#21023](https://github.com/vm0-ai/vm0/issues/21023)) ([6d37bf9](https://github.com/vm0-ai/vm0/commit/6d37bf9b62748da09db8405df2ee4d289ad6d01c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.2
+    * @vm0/core bumped to 8.424.5
+
+## [0.592.2](https://github.com/vm0-ai/vm0/compare/app-v0.592.1...app-v0.592.2) (2026-07-11)
+
+
+### Bug Fixes
+
+* keep mobile slash menu within the ios safe viewport ([#20982](https://github.com/vm0-ai/vm0/issues/20982)) ([a522877](https://github.com/vm0-ai/vm0/commit/a52287735e40ec03566b9e884bd4be65fce9da6e))
+
+## [0.592.1](https://github.com/vm0-ai/vm0/compare/app-v0.592.0...app-v0.592.1) (2026-07-10)
+
+
+### Performance Improvements
+
+* stabilize chat thread event state ([#20979](https://github.com/vm0-ai/vm0/issues/20979)) ([b3af853](https://github.com/vm0-ai/vm0/commit/b3af853a0d1aaf1f67985e64b06f98b82c90701f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.1
+    * @vm0/connectors bumped to 1.154.3
+    * @vm0/core bumped to 8.424.4
+
+## [0.592.0](https://github.com/vm0-ai/vm0/compare/app-v0.591.1...app-v0.592.0) (2026-07-10)
+
+
+### Features
+
+* **image-editor:** share edited images to x ([#20836](https://github.com/vm0-ai/vm0/issues/20836)) ([fca6111](https://github.com/vm0-ai/vm0/commit/fca611179fda0489a8f92b0edecd5532cbf6ca0d))
+
+
+### Bug Fixes
+
+* centralize mobile safe areas at the root ([#20976](https://github.com/vm0-ai/vm0/issues/20976)) ([115432e](https://github.com/vm0-ai/vm0/commit/115432e73ac9575c4f35d7bf14fd327d8473ac3b))
+* constrain and dismiss the mobile slash workflow menu ([#20978](https://github.com/vm0-ai/vm0/issues/20978)) ([04a5f6e](https://github.com/vm0-ai/vm0/commit/04a5f6ef9bf14dc700d7777652334952125cb7b5))
+* remove play icon from video artifact posters ([#20980](https://github.com/vm0-ai/vm0/issues/20980)) ([2c173fd](https://github.com/vm0-ai/vm0/commit/2c173fd51cacc541ab38b599cd6f36a2ab64b1c1))
+* upload large presentations to google slides ([#20974](https://github.com/vm0-ai/vm0/issues/20974)) ([e4e15e8](https://github.com/vm0-ai/vm0/commit/e4e15e8d99a627fd4c5a0e837e16ba424d78c7d2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.0
+    * @vm0/connectors bumped to 1.154.2
+    * @vm0/core bumped to 8.424.3
+
+## [0.591.1](https://github.com/vm0-ai/vm0/compare/app-v0.591.0...app-v0.591.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* improve template picker previews ([#20967](https://github.com/vm0-ai/vm0/issues/20967)) ([19a7b60](https://github.com/vm0-ai/vm0/commit/19a7b60c90cf5602f6ce05b8e988091929696013))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.1
+    * @vm0/connectors bumped to 1.154.1
+    * @vm0/core bumped to 8.424.2
+
+## [0.591.0](https://github.com/vm0-ai/vm0/compare/app-v0.590.2...app-v0.591.0) (2026-07-10)
+
+
+### Features
+
+* add microsoft teams cli support ([#20489](https://github.com/vm0-ai/vm0/issues/20489)) ([c908d0a](https://github.com/vm0-ai/vm0/commit/c908d0a502222793856de48bb90b5fdadd079a49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.183.0
+    * @vm0/core bumped to 8.424.1
+
 ## [0.590.2](https://github.com/vm0-ai/vm0/compare/app-v0.590.1...app-v0.590.2) (2026-07-10)
 
 

@@ -187,6 +187,14 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_BASE),
         ),
         (
+            "connector_route_reason",
+            _metadata_optional_str(meta, metadata_keys.CONNECTOR_ROUTE_REASON),
+        ),
+        (
+            "connector_route_candidates",
+            _metadata_str_list(meta, metadata_keys.CONNECTOR_ROUTE_CANDIDATES),
+        ),
+        (
             "auth_resolved_secrets",
             _metadata_str_list(meta, metadata_keys.AUTH_RESOLVED_SECRETS),
         ),

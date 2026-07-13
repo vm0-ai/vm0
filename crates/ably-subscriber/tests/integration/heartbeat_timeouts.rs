@@ -135,10 +135,6 @@ async fn zero_max_idle_interval_disables_heartbeat_timeout() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 20: retry continues indefinitely and enters suspended after TTL expiry
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
     let http = MockServer::start();
@@ -243,10 +239,6 @@ async fn channel_retry_timers_do_not_extend_heartbeat_deadline() {
     join_server_task(server_task, "mock server").await.unwrap();
 }
 
-// ---------------------------------------------------------------------------
-// Test 24: connect_timeout fires when server hangs during handshake
-// ---------------------------------------------------------------------------
-
 #[tokio::test]
 async fn connect_timeout_fires() {
     let http = MockServer::start();
@@ -276,10 +268,6 @@ async fn connect_timeout_fires() {
         Ok(_) => panic!("expected error, got Ok"),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Test 25: reconnect_timeout retries until connection state becomes suspended
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn reconnect_timeout_retries_until_suspended() {

@@ -1,16 +1,15 @@
 # Firewalls Generator
 
-Generates connector firewall artifacts from generator-owned sources. The full generator writes:
+Generates connector firewall artifacts from generator-owned sources. The full
+generator writes derived metadata under
+`packages/connectors/src/firewall-metadata/`, including:
 
-- browser-safe permission metadata under
-  `packages/connectors/src/firewall-metadata/`
-- the runner Python builtin firewall package under
-  `../crates/runner/mitm-addon/src/generated/builtin_firewalls/`
+- browser-safe permission and routing metadata;
+- server-side connector selection and execution metadata; and
+- the runner-runtime firewall catalog served by the API.
 
-The metadata output is for UI, routing lookup, and server-side connector
-selection. It only contains narrow projections of the full firewall definitions.
-The Python package is the runner runtime catalog. Full connector firewall config
-source is not written into `@vm0/connectors`.
+The runner fetches its runtime catalog from the API; the generator does not
+write a bundled Python catalog into the runner.
 
 ## Usage
 

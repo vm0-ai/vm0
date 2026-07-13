@@ -13,7 +13,7 @@ import { openHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 const workflowQueueReload$ = state(0);
 
 /** Bump to force the workflow queue panel to refetch. */
-export const reloadWorkflowQueue$ = command(({ get, set }) => {
+const reloadWorkflowQueue$ = command(({ get, set }) => {
   set(workflowQueueReload$, get(workflowQueueReload$) + 1);
 });
 
@@ -115,7 +115,7 @@ const lastPendingCounts$ = state<Readonly<Record<string, number>>>({});
  * auto-expand the Automations panel only when the backlog transitions from
  * empty to non-empty, so it never fights a user who closed the panel.
  */
-export const handleWorkflowQueueChanged$ = command(
+const handleWorkflowQueueChanged$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     set(reloadWorkflowQueue$);
     const queue = await get(workflowQueueForThread(threadId));

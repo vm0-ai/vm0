@@ -15,12 +15,13 @@ import type {
   FirewallRoutingMetadata,
 } from "@vm0/connectors/firewall-metadata/routing";
 import type { FirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
-import type {
-  FirewallConfig,
-  Firewall,
-  FirewallBaseHostPolicy,
-  FirewallPolicy,
-  FirewallPolicyValue,
+import {
+  extractFirewallTemplateReferences,
+  type FirewallConfig,
+  type Firewall,
+  type FirewallBaseHostPolicy,
+  type FirewallPolicy,
+  type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
@@ -626,8 +627,13 @@ function buildRoutingMetadata(
     type: source.type as FirewallConnectorType & ConnectorType,
     label: source.label,
     apis: source.firewall.apis.map((api) => {
+      const references = extractFirewallTemplateReferences([api]);
       return {
         base: api.base,
+        environmentNames: sortedStrings([
+          ...references.secrets,
+          ...references.vars,
+        ]),
         routes: (api.permissions ?? []).flatMap((permission) => {
           return permission.rules.map((rule) => {
             return {

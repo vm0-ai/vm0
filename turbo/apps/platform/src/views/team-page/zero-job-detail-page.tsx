@@ -21,7 +21,7 @@ import {
   IconWand,
   IconRoute,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
@@ -362,7 +362,7 @@ function PermissionRow({
   return (
     <>
       <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors">
-        <ConnectorIcon type={connector.type} size={20} />
+        <ConnectorIcon icon={connector.icon} size={20} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-foreground">

@@ -5,8 +5,8 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 
 const ZERO_MEMORY_EMBEDDING_DIMENSIONS = 1536;
-const ZERO_MEMORY_EMBEDDING_MODEL =
-  optionalEnv("ZERO_MEMORY_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+const DEFAULT_ZERO_MEMORY_EMBEDDING_MODEL = "text-embedding-3-small";
+const TEST_ZERO_MEMORY_EMBEDDING_MODEL = "test-deterministic-embedding";
 
 const openAiEmbeddingResponseSchema = z.object({
   data: z
@@ -18,10 +18,28 @@ const openAiEmbeddingResponseSchema = z.object({
     .min(1),
 });
 
-interface MemoryEmbeddingResult {
+export interface MemoryEmbeddingResult {
   readonly model: string;
   readonly embedding: readonly number[];
 }
+
+export type MemoryEmbeddingCacheResult =
+  | "hit"
+  | "miss_absent"
+  | "miss_model_changed"
+  | "miss_query_changed"
+  | "miss_invalid"
+  | "miss_read_failed"
+  | "miss_write_failed";
+
+export interface LoadedMemoryEmbedding {
+  readonly embedding: MemoryEmbeddingResult | null;
+  readonly cacheResult?: MemoryEmbeddingCacheResult;
+}
+
+export type MemoryEmbeddingLoader = (
+  text: string,
+) => Promise<LoadedMemoryEmbedding>;
 
 function assertEmbeddingDimensions(embedding: readonly number[]): void {
   if (embedding.length !== ZERO_MEMORY_EMBEDDING_DIMENSIONS) {
@@ -34,6 +52,15 @@ function assertEmbeddingDimensions(embedding: readonly number[]): void {
       throw new Error("Memory embedding contains a non-finite value");
     }
   }
+}
+
+export function isValidMemoryEmbedding(embedding: readonly number[]): boolean {
+  return (
+    embedding.length === ZERO_MEMORY_EMBEDDING_DIMENSIONS &&
+    embedding.every((value) => {
+      return Number.isFinite(value);
+    })
+  );
 }
 
 function deterministicUnitVector(seed: string): readonly number[] {
@@ -88,6 +115,13 @@ function shouldUseDeterministicTestEmbeddings(): boolean {
   return optionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER") === "test";
 }
 
+export function zeroMemoryEmbeddingModel(): string {
+  return shouldUseDeterministicTestEmbeddings()
+    ? TEST_ZERO_MEMORY_EMBEDDING_MODEL
+    : (optionalEnv("ZERO_MEMORY_EMBEDDING_MODEL") ??
+        DEFAULT_ZERO_MEMORY_EMBEDDING_MODEL);
+}
+
 function shouldCallOpenAiEmbeddingApi(): boolean {
   if (shouldUseDeterministicTestEmbeddings()) {
     return false;
@@ -105,7 +139,7 @@ export async function embedZeroMemoryText(
 
   if (shouldUseDeterministicTestEmbeddings()) {
     return {
-      model: "test-deterministic-embedding",
+      model: zeroMemoryEmbeddingModel(),
       embedding: createDeterministicMemoryEmbeddingForTest(input),
     };
   }
@@ -114,6 +148,8 @@ export async function embedZeroMemoryText(
     return null;
   }
 
+  const model = zeroMemoryEmbeddingModel();
+
   const response = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: {
@@ -121,7 +157,7 @@ export async function embedZeroMemoryText(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: ZERO_MEMORY_EMBEDDING_MODEL,
+      model,
       input,
     }),
   });
@@ -139,5 +175,5 @@ export async function embedZeroMemoryText(
     throw new Error("OpenAI embeddings response did not include an embedding");
   }
   assertEmbeddingDimensions(embedding);
-  return { model: ZERO_MEMORY_EMBEDDING_MODEL, embedding };
+  return { model, embedding };
 }

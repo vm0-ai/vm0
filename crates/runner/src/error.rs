@@ -1,11 +1,16 @@
 use std::time::Duration;
 
+use reqwest::StatusCode;
+
 use crate::ids::RunId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {
     #[error("api error: {0}")]
     Api(String),
+
+    #[error("api error: {0}")]
+    ApiStatus(Box<ApiStatusError>),
 
     #[error("api error: {0}")]
     ApiTransport(Box<ApiTransportError>),
@@ -119,6 +124,19 @@ pub fn format_short_duration(d: Duration) -> String {
 }
 
 pub type RunnerResult<T> = Result<T, RunnerError>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiStatusError {
+    pub endpoint_label: &'static str,
+    pub status: StatusCode,
+    pub body: String,
+}
+
+impl std::fmt::Display for ApiStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}: {}", self.endpoint_label, self.status, self.body)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiRequestContext {

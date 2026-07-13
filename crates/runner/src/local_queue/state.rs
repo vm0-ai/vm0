@@ -16,10 +16,7 @@ pub(crate) struct LocalDiscoveredJob {
 }
 
 pub(crate) enum LocalClaimResult {
-    Claimed {
-        request: Box<JobRequest>,
-        request_profile: String,
-    },
+    Claimed { request: Box<JobRequest> },
     NotClaimed,
 }
 
@@ -433,10 +430,10 @@ impl LocalQueue {
             return LocalClaimResult::NotClaimed;
         }
 
-        let request_profile = match request.profile.clone() {
+        let request_profile = match request.profile.as_deref() {
             Some(profile) => profile,
             None if partition_profile == crate::profile::DEFAULT_PROFILE => {
-                crate::profile::DEFAULT_PROFILE.to_owned()
+                crate::profile::DEFAULT_PROFILE
             }
             None => {
                 let error =
@@ -457,7 +454,6 @@ impl LocalQueue {
 
         LocalClaimResult::Claimed {
             request: Box::new(request),
-            request_profile,
         }
     }
 

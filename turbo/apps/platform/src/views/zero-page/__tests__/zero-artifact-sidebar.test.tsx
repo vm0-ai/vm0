@@ -15,6 +15,8 @@ import {
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorOpenIdStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -306,6 +308,85 @@ function presentationPptxBlob(): Promise<Blob> {
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="${RELATIONSHIPS_NS}"/>`,
   );
   return zip.generateAsync({ type: "blob" });
+}
+
+const PRESENTATION_PPTX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const PRESENTATION_UPLOAD_ID = "123e4567-e89b-42d3-a456-426614174000";
+
+interface PresentationUploadCapture {
+  finalizedUploadId: string | null;
+  legacyUploaded: File | null;
+  prepared: {
+    readonly contentType: string;
+    readonly filename: string;
+    readonly size: number;
+  } | null;
+  uploaded: Blob | null;
+}
+
+function mockPresentationGoogleSlidesUpload(options: {
+  readonly beforeFinalize?: () => void;
+  readonly previousApi?: boolean;
+  readonly response: {
+    readonly id: string;
+    readonly name: string;
+    readonly webViewLink: string | null;
+  };
+}): PresentationUploadCapture {
+  const capture: PresentationUploadCapture = {
+    finalizedUploadId: null,
+    legacyUploaded: null,
+    prepared: null,
+    uploaded: null,
+  };
+  const uploadUrl = `https://mock-upload.example.com/${PRESENTATION_UPLOAD_ID}`;
+
+  context.mocks.http.post("*/api/zero/uploads/prepare", async ({ request }) => {
+    const body = (await request.json()) as {
+      contentType: string;
+      filename: string;
+      size: number;
+    };
+    capture.prepared = body;
+    return HttpResponse.json({
+      ...body,
+      id: PRESENTATION_UPLOAD_ID,
+      uploadUrl,
+      url: `https://cdn.vm7.io/artifacts/test/${PRESENTATION_UPLOAD_ID}/${body.filename}`,
+    });
+  });
+  context.mocks.http.put(uploadUrl, async ({ request }) => {
+    capture.uploaded = await request.blob();
+    return new HttpResponse(null, { status: 200 });
+  });
+  context.mocks.http.post(
+    "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
+    async ({ request }) => {
+      options.beforeFinalize?.();
+      const formData = await request.formData();
+      const uploadId = formData.get("uploadId");
+      if (typeof uploadId === "string") {
+        capture.finalizedUploadId = uploadId;
+      }
+      if (options.previousApi && typeof uploadId === "string") {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "BAD_REQUEST",
+              message: "No presentation file provided",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      const legacyUploaded = formData.get("file");
+      capture.legacyUploaded =
+        legacyUploaded instanceof File ? legacyUploaded : null;
+      return HttpResponse.json(options.response);
+    },
+  );
+  return capture;
 }
 
 function captureDownloads(signal: AbortSignal): string[] {
@@ -1745,6 +1826,94 @@ describe("zero artifact sidebar", () => {
     });
   });
 
+  it("starts Google Drive connection from server catalog auth metadata", async () => {
+    const markdownUrl =
+      "https://cdn.vm7.io/artifacts/test/run-1/server-authored.md";
+    const authMethod = "partner-openid";
+    const authorizationUrl =
+      "https://openid.example.test/google-drive/authorize";
+    const authWindow = context.mocks.browser.authWindow();
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+    context.mocks.data.connectors([]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          {
+            connectorRef: "google-drive",
+            label: "Google Drive",
+            description: "Google Drive artifact storage",
+            icon: {
+              url: "https://icons.example.test/google-drive.svg",
+              invertInDarkMode: false,
+            },
+            category: "productivity",
+            generation: [],
+            tags: [],
+            authMethods: [
+              {
+                id: authMethod,
+                label: "Partner OpenID",
+                description: null,
+                grantKind: "openid-auth",
+                manualFields: [],
+                startOptions: [],
+              },
+            ],
+            permissionSummary: {
+              hasPermissions: false,
+              permissionCount: 0,
+              hasCategories: false,
+              hasDefaultPolicyOverrides: false,
+            },
+            connection: null,
+            connected: false,
+            connectionStatus: "not-connected",
+            scopeMismatch: false,
+            authMethodSupportsRefresh: false,
+            tokenExpiresAt: null,
+            singleAuthCodeAuthMethodId: null,
+            connectNotice: null,
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroConnectorOpenIdStartContract.start,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("google-drive");
+        expect(body.authMethod).toBe(authMethod);
+        return respond(200, { authorizationUrl });
+      },
+    );
+    context.mocks.http.get(markdownUrl, () => {
+      return new Response("# Server-authored connector", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+    setupChatThread({
+      artifactFiles: [artifactFile(markdownUrl)],
+      content: `[Server-authored connector](${markdownUrl})`,
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(markdownUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+    });
+    click(screen.getByLabelText("Download artifact"));
+    await waitFor(() => {
+      expect(menuItemByText("Connect Google Drive")).toBeEnabled();
+    });
+    click(menuItemByText("Connect Google Drive"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(authorizationUrl);
+    });
+  });
+
   it("shows download progress while downloading an HTML artifact", async () => {
     const user = userEvent.setup({ delay: null });
     const siteUrl = "https://launch.sites.vm7.io/launch-plan.html";
@@ -1881,6 +2050,9 @@ describe("zero artifact sidebar", () => {
       }),
     ];
     context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
     context.mocks.http.get(markdownUrl, () => {
       return new Response("# Agent notes\n\nThe artifact is ready.", {
         headers: { "Content-Type": "text/plain" },
@@ -2045,25 +2217,15 @@ describe("zero artifact sidebar", () => {
       context.mocks.browser.authWindow(),
     );
     const successToast = vi.spyOn(toast, "success");
-    const upload = { file: null as File | null };
     context.mocks.data.connectors([googleDriveConnector()]);
-    context.mocks.http.post(
-      "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
-      async ({ request }) => {
-        const formData = await request.formData();
-        const file = formData.get("file");
-        if (!(file instanceof File)) {
-          throw new Error("Google Slides upload did not include a file");
-        }
-        upload.file = file;
-        return HttpResponse.json({
-          id: "slides-file-quarterly-roadmap",
-          name: "quarterly-roadmap",
-          webViewLink:
-            "https://docs.google.com/presentation/d/slides-file-quarterly-roadmap/edit",
-        });
+    const upload = mockPresentationGoogleSlidesUpload({
+      response: {
+        id: "slides-file-quarterly-roadmap",
+        name: "quarterly-roadmap",
+        webViewLink:
+          "https://docs.google.com/presentation/d/slides-file-quarterly-roadmap/edit",
       },
-    );
+    });
     setupPresentationArtifactThread(presentationUrl, presentationHtml(), {
       featureSwitches: {
         [FeatureSwitchKey.PresentationGoogleSlidesUpload]: true,
@@ -2091,10 +2253,11 @@ describe("zero artifact sidebar", () => {
       });
       expect(openMock.calls).toStrictEqual([]);
 
-      completePresentationPptxExport(exportFrame, await presentationPptxBlob());
+      const pptx = await presentationPptxBlob();
+      completePresentationPptxExport(exportFrame, pptx);
 
       await waitFor(() => {
-        expect(upload.file).not.toBeNull();
+        expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
         expect(successToast).toHaveBeenCalledWith("Uploaded to Google Slides", {
           id: expect.anything(),
         });
@@ -2102,14 +2265,13 @@ describe("zero artifact sidebar", () => {
           document.querySelector('iframe[title="Presentation PPTX export"]'),
         ).not.toBeInTheDocument();
       });
-      if (!upload.file) {
-        throw new Error("Google Slides upload did not send a file");
-      }
-      expect(upload.file.name).toBe("quarterly-roadmap.pptx");
-      expect(upload.file.type).toBe(
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      );
-      expect(upload.file.size).toBeGreaterThan(0);
+      expect(upload.prepared).toStrictEqual({
+        contentType: PRESENTATION_PPTX_MIME_TYPE,
+        filename: "quarterly-roadmap.pptx",
+        size: upload.uploaded?.size,
+      });
+      expect(upload.uploaded?.size).toBeGreaterThanOrEqual(pptx.size);
+      expect(upload.uploaded?.type).toBe(PRESENTATION_PPTX_MIME_TYPE);
       expect(openMock.calls).toStrictEqual([]);
     } finally {
       successToast.mockRestore();
@@ -2158,6 +2320,9 @@ describe("zero artifact sidebar", () => {
       }),
     ];
     context.mocks.data.connectors([googleDriveConnector()]);
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      return respond(200, { connectors: [] });
+    });
     context.mocks.http.get(presentationUrl, () => {
       return new Response(presentationHtml(), {
         headers: { "Content-Type": "text/html" },
@@ -2169,7 +2334,6 @@ describe("zero artifact sidebar", () => {
       });
     });
     let agentAuthorized = false;
-    let slidesUploaded = false;
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ body, params, respond }) => {
@@ -2182,20 +2346,17 @@ describe("zero artifact sidebar", () => {
         return respond(200, { enabledTypes: ["google-drive"] });
       },
     );
-    context.mocks.http.post(
-      "*/api/zero/chat-threads/:threadId/artifacts/google-slides",
-      async ({ request }) => {
+    const upload = mockPresentationGoogleSlidesUpload({
+      beforeFinalize: () => {
         expect(agentAuthorized).toBeTruthy();
-        const file = (await request.formData()).get("file");
-        expect(file).toBeInstanceOf(File);
-        slidesUploaded = true;
-        return HttpResponse.json({
-          id: "slides-file-quarterly-roadmap",
-          name: "quarterly-roadmap",
-          webViewLink: null,
-        });
       },
-    );
+      previousApi: true,
+      response: {
+        id: "slides-file-quarterly-roadmap",
+        name: "quarterly-roadmap",
+        webViewLink: null,
+      },
+    });
     setupChatThread({
       artifactFiles,
       content: `[Quarterly roadmap](${presentationUrl})`,
@@ -2228,8 +2389,11 @@ describe("zero artifact sidebar", () => {
     completePresentationPptxExport(exportFrame, await presentationPptxBlob());
 
     await waitFor(() => {
-      expect(slidesUploaded).toBeTruthy();
+      expect(upload.legacyUploaded).toBeInstanceOf(File);
     });
+    expect(upload.finalizedUploadId).toBe(PRESENTATION_UPLOAD_ID);
+    expect(upload.legacyUploaded?.name).toBe("quarterly-roadmap.pptx");
+    expect(upload.legacyUploaded?.size).toBeGreaterThan(0);
   });
 
   it("preserves deck-level slide backgrounds for editable PPTX export", async () => {

@@ -1,13 +1,10 @@
-import type { Command, Computed } from "ccstate";
+import type { Command } from "ccstate";
 import type {
   ChatRunOptionsRequest,
   CodexServiceTier,
-  ChatThreadDraft,
   GenerationTemplateRequest,
-  PagedChatMessage,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ChatThread } from "../agent-chat.ts";
 
 export interface ChatThreadRealtimeHandlers {
   onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
@@ -21,13 +18,6 @@ export interface ChatThreadRealtimeHandlers {
   onSubscribed$?: Command<Promise<void> | void, [AbortSignal]>;
 }
 
-export interface InitialPage {
-  messages: PagedChatMessage[];
-  hasHistoryBefore: boolean;
-  needsHistoryBackfill?: boolean;
-  fetchedFromRemote?: boolean;
-}
-
 export interface PatchDraftArgs {
   threadId: string;
   content: string | null;
@@ -37,7 +27,6 @@ export interface PatchDraftArgs {
 export interface PatchModelSelectionArgs {
   threadId: string;
   modelSelection: {
-    readonly modelProviderId: string;
     readonly selectedModel: string;
     readonly codexServiceTier?: CodexServiceTier;
   } | null;
@@ -102,46 +91,4 @@ export interface MarkReadArgs {
 export interface SubscribeRealtimeArgs {
   threadId: string;
   handlers: ChatThreadRealtimeHandlers;
-}
-
-export interface ChatThreadDataSource {
-  remoteThreadDetail$: Computed<Promise<ChatThread | null>>;
-  threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
-  reloadThread$: Command<void, []>;
-  initialPage$: Computed<Promise<InitialPage>>;
-  patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
-  patchModelSelection$: Command<
-    Promise<void>,
-    [PatchModelSelectionArgs, AbortSignal]
-  >;
-  patchComputerUseHost$: Command<
-    Promise<void>,
-    [PatchComputerUseHostArgs, AbortSignal]
-  >;
-  appendQueuedMessage$: Command<
-    Promise<PagedChatMessage>,
-    [AppendQueuedMessageArgs, AbortSignal]
-  >;
-  recallMessage$: Command<
-    Promise<PagedChatMessage>,
-    [RecallMessageArgs, AbortSignal]
-  >;
-  listMessagesAfter$: Command<
-    Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>,
-    [ListMessagesAfterArgs, AbortSignal]
-  >;
-  listMessagesBefore$: Command<
-    Promise<{ messages: PagedChatMessage[]; hasMore: boolean }>,
-    [ListMessagesBeforeArgs, AbortSignal]
-  >;
-  getMessage$: Command<
-    Promise<PagedChatMessage | null>,
-    [GetMessageArgs, AbortSignal]
-  >;
-  cancelRuns$: Command<Promise<void>, [CancelRunsArgs, AbortSignal]>;
-  markRead$: Command<Promise<string | null>, [MarkReadArgs, AbortSignal]>;
-  subscribeRealtime$: Command<
-    Promise<void>,
-    [SubscribeRealtimeArgs, AbortSignal]
-  >;
 }

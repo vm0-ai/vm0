@@ -1,6 +1,8 @@
 """Authority validation request hook integration tests."""
 
+import ipaddress
 import json
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -889,8 +891,22 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_endp
     assert "Authorization" not in flow.request.headers
 
 
-async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_loopback_endpoint(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+@pytest.mark.parametrize(
+    "client_sockname",
+    [
+        pytest.param(cast(tuple[str, int], ("203.0.113.10",)), id="malformed"),
+        pytest.param(("127.0.0.1", 443), id="loopback"),
+        pytest.param((str(ipaddress.IPv4Address(0)), 443), id="unspecified-ipv4"),
+        pytest.param(("::", 443), id="unspecified-ipv6"),
+    ],
+)
+async def test_matching_sni_and_host_blocks_non_authoritative_connected_endpoint(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    client_sockname: tuple[str, int],
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
@@ -906,7 +922,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_loopbac
         sni="api.github.com",
         server_address=("api.github.com", 443),
         peername=None,
-        client_sockname=("127.0.0.1", 443),
+        client_sockname=client_sockname,
     )
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
@@ -923,7 +939,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_loopbac
         patch.object(
             upstream_admission.socket,
             "getaddrinfo",
-            side_effect=AssertionError("unverified loopback endpoint must not use fresh DNS"),
+            side_effect=AssertionError("non-authoritative endpoint must not use fresh DNS"),
         ),
     ):
         await mitm_addon.request(flow)
@@ -933,6 +949,53 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_loopbac
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
+
+
+async def test_matching_sni_and_host_allows_equivalent_ipv6_binding_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    mark_connected_tls_upstream(
+        flow,
+        sni="api.github.com",
+        server_address=("api.github.com", 443),
+        peername=None,
+    )
+    flow.server_conn.peername = cast(
+        tuple[str, int],
+        ("2001:4860:4860:0:0:0:0:8888", 443, 0, 0),
+    )
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("2001:4860:4860::8888", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            upstream_admission.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("equivalent connected IPv6 peer must not use fresh DNS"),
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
 
 
 async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_stale_binding_peer(

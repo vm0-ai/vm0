@@ -1079,7 +1079,7 @@ function WorkflowConnectorReadinessRow({
     <li className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50">
-          <ConnectorIcon type={entry.connectorRef} size={18} />
+          <ConnectorIcon icon={entry.icon} size={18} />
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">

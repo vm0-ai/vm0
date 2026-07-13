@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { jsonParseOr } from "../utils.ts";
 
@@ -51,6 +51,16 @@ export const slashWorkflowCaretIndex$ = computed((get) => {
 export const setSlashWorkflowCaretIndex$ = command(
   ({ set }, caretIndex: number) => {
     set(internalSlashWorkflowCaretIndex$, caretIndex);
+  },
+);
+
+const internalSlashWorkflowEditorFocused$ = state(false);
+export const slashWorkflowEditorFocused$ = computed((get) => {
+  return get(internalSlashWorkflowEditorFocused$);
+});
+export const setSlashWorkflowEditorFocused$ = command(
+  ({ set }, focused: boolean) => {
+    set(internalSlashWorkflowEditorFocused$, focused);
   },
 );
 

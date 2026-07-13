@@ -431,8 +431,18 @@ function getTurnErrorMessage(
 }
 
 function getUsage(event: JsonRecord): JsonRecord {
+  const eventUsage = asRecord(event.usage);
+  if (eventUsage !== null) {
+    return eventUsage;
+  }
+
   const turn = getTurnRecord(event);
-  return asRecord(event.usage) ?? (turn ? asRecord(turn.usage) : null) ?? {};
+  if (turn === null) {
+    return {};
+  }
+
+  const turnUsage = asRecord(turn.usage);
+  return turnUsage === null ? {} : turnUsage;
 }
 
 function getTurnDurationMs(event: JsonRecord, turn: JsonRecord | null): number {

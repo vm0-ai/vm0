@@ -2,6 +2,8 @@
 
 import uuid
 
+import pytest
+
 import usage
 import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_current_pending
@@ -236,6 +238,72 @@ def test_source_preserving_atomic_group_rejects_when_member_key_was_seen(tmp_pat
             }
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("buffer_events", "url"),
+    [
+        pytest.param(
+            usage.buffer_source_usage_events,
+            "https://api.test/api/webhooks/agent/usage-event",
+            id="usage-event",
+        ),
+        pytest.param(
+            usage.buffer_source_model_usage_observations,
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            id="model-usage-observation",
+        ),
+    ],
+)
+def test_source_preserving_atomic_group_rejects_duplicate_member_keys(tmp_path, buffer_events, url):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+
+    assert (
+        buffer_events(
+            url,
+            "token-a",
+            "run-1",
+            [
+                event(source_key="source-duplicate", quantity=10),
+                event(
+                    source_key="source-duplicate",
+                    category="tokens.cache_read",
+                    quantity=4,
+                ),
+            ],
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 0
+    )
+    assert usage.flush_usage_events(trigger="test") == 0
+    enqueue.assert_not_called()
+
+    assert (
+        buffer_events(
+            url,
+            "token-a",
+            "run-1",
+            [
+                event(source_key="source-input", quantity=10),
+                event(
+                    source_key="source-cache-read",
+                    category="tokens.cache_read",
+                    quantity=4,
+                ),
+            ],
+            proxy_log_path,
+            atomic_source_key="input-partition-1",
+        )
+        == 2
+    )
+    assert usage.flush_usage_events(trigger="test") == 1
+    enqueue.assert_called_once()
+    assert [
+        flushed_event["idempotencyKey"] for flushed_event in enqueue.last_call.payload["events"]
+    ] == ["source-input", "source-cache-read"]
 
 
 def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):

@@ -17,7 +17,7 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -52,8 +52,9 @@ import {
   permissionDialog$,
   isStandaloneMode,
   getAvailableStatusAuthCodeAuthMethod,
-  getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
+  getConnectorStatusAuthMethod,
   getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
@@ -683,7 +684,7 @@ function GlobalConnectorCard({
     <div className="zero-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon type={connector.type} size={20} />
+          <ConnectorIcon icon={connector.icon} size={20} />
         </span>
         <span
           data-testid="connector-card-label"
@@ -775,7 +776,7 @@ function AvailableConnectorCard({
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          <ConnectorIcon type={connector.type} size={20} />
+          <ConnectorIcon icon={connector.icon} size={20} />
         </span>
         <span
           data-testid="connector-card-label"
@@ -958,6 +959,11 @@ export function ZeroConnectorsPage() {
       : undefined;
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const permissionDialogConnector = permissionDialog
+    ? allConnectors.find((connector) => {
+        return connector.type === permissionDialog.type;
+      })
+    : undefined;
   const managedConnectorLabel = connectorLabelForType(
     allConnectors,
     managedConnectorType,
@@ -977,7 +983,7 @@ export function ZeroConnectorsPage() {
       return;
     }
     if (launchMode === "browser-auth") {
-      const authMethod = getOnlyAvailableStatusBrowserAuthMethod(ct);
+      const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(ct);
       if (!authMethod) {
         setSelected(type);
         return;
@@ -1174,10 +1180,13 @@ export function ZeroConnectorsPage() {
               setSelected(type);
               return;
             }
-            const authMethod = getAvailableStatusAuthCodeAuthMethod(
+            const authMethodId = getAvailableStatusAuthCodeAuthMethod(
               connector,
               connection.authMethod,
             );
+            const authMethod = authMethodId
+              ? getConnectorStatusAuthMethod(connector, authMethodId)
+              : null;
             if (!authMethod) {
               setSelected(type);
               return;
@@ -1202,6 +1211,7 @@ export function ZeroConnectorsPage() {
         <ConnectorPermissionDialog
           connectorType={permissionDialog.type}
           connectorLabel={permissionDialog.label}
+          icon={permissionDialogConnector?.icon}
           onClose={closePermissionDialog}
         />
       )}

@@ -1,7 +1,11 @@
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use sandbox::SandboxCreateStage;
+use nbd_cow::{NbdCowCreateOutcome, NbdCowCreateStage, NbdNetlinkConnectStage};
+use sandbox::{
+    SandboxCreateStage, SandboxNbdCowCreateOutcome, SandboxNbdCowCreateStage,
+    SandboxNbdNetlinkConnectStage,
+};
 use tracing::{info, warn};
 
 use crate::duration::duration_ms;
@@ -173,6 +177,10 @@ impl<'a> SandboxCreateTiming<'a> {
         self.workspace_seed_image_used = true;
     }
 
+    pub(super) fn has_observer(&self) -> bool {
+        self.observer.is_some()
+    }
+
     pub(super) fn record_stage_result<T, E>(
         &mut self,
         stage: SandboxCreateStage,
@@ -250,6 +258,85 @@ impl<'a> SandboxCreateTiming<'a> {
             return;
         }
         emit_success_summary_event!(warn, self, total_elapsed, "slow sandbox create");
+    }
+}
+
+impl nbd_cow::NbdCowCreateObserver for SandboxCreateTiming<'_> {
+    fn record_stage(&mut self, stage: NbdCowCreateStage, duration: Duration, success: bool) {
+        let Some(observer) = self.observer.as_deref_mut() else {
+            return;
+        };
+        observer.record_nbd_cow_stage(sandbox_nbd_cow_stage(stage), duration, success);
+    }
+
+    fn record_netlink_connect_stage(
+        &mut self,
+        stage: NbdNetlinkConnectStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        let Some(observer) = self.observer.as_deref_mut() else {
+            return;
+        };
+        observer.record_nbd_netlink_connect_stage(
+            sandbox_nbd_netlink_connect_stage(stage),
+            duration,
+            success,
+        );
+    }
+
+    fn record_outcome(&mut self, outcome: NbdCowCreateOutcome) {
+        let Some(observer) = self.observer.as_deref_mut() else {
+            return;
+        };
+        observer.record_nbd_cow_outcome(sandbox_nbd_cow_outcome(outcome));
+    }
+}
+
+fn sandbox_nbd_cow_stage(stage: NbdCowCreateStage) -> SandboxNbdCowCreateStage {
+    match stage {
+        NbdCowCreateStage::CowLayerCreate => SandboxNbdCowCreateStage::CowLayerCreate,
+        NbdCowCreateStage::DeviceAcquire => SandboxNbdCowCreateStage::DeviceAcquire,
+        NbdCowCreateStage::DeviceScan => SandboxNbdCowCreateStage::DeviceScan,
+        NbdCowCreateStage::DispatchSetup => SandboxNbdCowCreateStage::DispatchSetup,
+        NbdCowCreateStage::NetlinkConnect => SandboxNbdCowCreateStage::NetlinkConnect,
+        NbdCowCreateStage::SizeVerify => SandboxNbdCowCreateStage::SizeVerify,
+        NbdCowCreateStage::RetryCleanup => SandboxNbdCowCreateStage::RetryCleanup,
+        NbdCowCreateStage::RetryDelay => SandboxNbdCowCreateStage::RetryDelay,
+    }
+}
+
+fn sandbox_nbd_netlink_connect_stage(
+    stage: NbdNetlinkConnectStage,
+) -> SandboxNbdNetlinkConnectStage {
+    match stage {
+        NbdNetlinkConnectStage::BlockingTaskQueue => {
+            SandboxNbdNetlinkConnectStage::BlockingTaskQueue
+        }
+        NbdNetlinkConnectStage::SocketSetup => SandboxNbdNetlinkConnectStage::SocketSetup,
+        NbdNetlinkConnectStage::FamilyResolve => SandboxNbdNetlinkConnectStage::FamilyResolve,
+        NbdNetlinkConnectStage::ConnectCommand => SandboxNbdNetlinkConnectStage::ConnectCommand,
+    }
+}
+
+fn sandbox_nbd_cow_outcome(outcome: NbdCowCreateOutcome) -> SandboxNbdCowCreateOutcome {
+    match outcome {
+        NbdCowCreateOutcome::AcquireSourceDemandScan => {
+            SandboxNbdCowCreateOutcome::AcquireSourceDemandScan
+        }
+        NbdCowCreateOutcome::AcquireSourceCooledClaim => {
+            SandboxNbdCowCreateOutcome::AcquireSourceCooledClaim
+        }
+        NbdCowCreateOutcome::EbusyRetriesNone => SandboxNbdCowCreateOutcome::EbusyRetriesNone,
+        NbdCowCreateOutcome::EbusyRetriesOne => SandboxNbdCowCreateOutcome::EbusyRetriesOne,
+        NbdCowCreateOutcome::EbusyRetriesMultiple => {
+            SandboxNbdCowCreateOutcome::EbusyRetriesMultiple
+        }
+        NbdCowCreateOutcome::SizeZeroRetriesNone => SandboxNbdCowCreateOutcome::SizeZeroRetriesNone,
+        NbdCowCreateOutcome::SizeZeroRetriesOne => SandboxNbdCowCreateOutcome::SizeZeroRetriesOne,
+        NbdCowCreateOutcome::SizeZeroRetriesMultiple => {
+            SandboxNbdCowCreateOutcome::SizeZeroRetriesMultiple
+        }
     }
 }
 
@@ -339,6 +426,9 @@ mod tests {
     #[derive(Default)]
     struct RecordingCreateObserver {
         records: Vec<(sandbox::SandboxCreateStage, Duration, bool)>,
+        nbd_cow_records: Vec<(sandbox::SandboxNbdCowCreateStage, Duration, bool)>,
+        nbd_netlink_connect_records: Vec<(sandbox::SandboxNbdNetlinkConnectStage, Duration, bool)>,
+        nbd_cow_outcomes: Vec<sandbox::SandboxNbdCowCreateOutcome>,
     }
 
     impl sandbox::SandboxCreateObserver for RecordingCreateObserver {
@@ -349,6 +439,29 @@ mod tests {
             success: bool,
         ) {
             self.records.push((stage, duration, success));
+        }
+
+        fn record_nbd_cow_stage(
+            &mut self,
+            stage: sandbox::SandboxNbdCowCreateStage,
+            duration: Duration,
+            success: bool,
+        ) {
+            self.nbd_cow_records.push((stage, duration, success));
+        }
+
+        fn record_nbd_netlink_connect_stage(
+            &mut self,
+            stage: sandbox::SandboxNbdNetlinkConnectStage,
+            duration: Duration,
+            success: bool,
+        ) {
+            self.nbd_netlink_connect_records
+                .push((stage, duration, success));
+        }
+
+        fn record_nbd_cow_outcome(&mut self, outcome: sandbox::SandboxNbdCowCreateOutcome) {
+            self.nbd_cow_outcomes.push(outcome);
         }
     }
 
@@ -632,6 +745,84 @@ mod tests {
             ]
         );
         assert!(observer.records.iter().all(|record| record.2));
+    }
+
+    #[test]
+    fn nbd_cow_details_map_to_external_observer() {
+        let mut observer = RecordingCreateObserver::default();
+        {
+            let mut timing = SandboxCreateTiming::new(
+                "sandbox-1".into(),
+                "vm0/default".into(),
+                Some(&mut observer),
+            );
+            for stage in NbdCowCreateStage::ALL {
+                nbd_cow::NbdCowCreateObserver::record_stage(
+                    &mut timing,
+                    stage,
+                    Duration::from_millis(5),
+                    stage != NbdCowCreateStage::NetlinkConnect,
+                );
+            }
+            for stage in NbdNetlinkConnectStage::ALL {
+                nbd_cow::NbdCowCreateObserver::record_netlink_connect_stage(
+                    &mut timing,
+                    stage,
+                    Duration::from_millis(3),
+                    stage != NbdNetlinkConnectStage::FamilyResolve,
+                );
+            }
+            for outcome in [
+                NbdCowCreateOutcome::AcquireSourceDemandScan,
+                NbdCowCreateOutcome::AcquireSourceCooledClaim,
+                NbdCowCreateOutcome::EbusyRetriesNone,
+                NbdCowCreateOutcome::EbusyRetriesOne,
+                NbdCowCreateOutcome::EbusyRetriesMultiple,
+                NbdCowCreateOutcome::SizeZeroRetriesNone,
+                NbdCowCreateOutcome::SizeZeroRetriesOne,
+                NbdCowCreateOutcome::SizeZeroRetriesMultiple,
+            ] {
+                nbd_cow::NbdCowCreateObserver::record_outcome(&mut timing, outcome);
+            }
+        }
+
+        assert_eq!(
+            observer
+                .nbd_cow_records
+                .iter()
+                .map(|record| record.0)
+                .collect::<Vec<_>>(),
+            SandboxNbdCowCreateStage::ALL,
+        );
+        assert!(
+            observer.nbd_cow_records.iter().all(|record| {
+                record.2 == (record.0 != SandboxNbdCowCreateStage::NetlinkConnect)
+            })
+        );
+        assert_eq!(
+            observer
+                .nbd_netlink_connect_records
+                .iter()
+                .map(|record| record.0)
+                .collect::<Vec<_>>(),
+            SandboxNbdNetlinkConnectStage::ALL,
+        );
+        assert!(observer.nbd_netlink_connect_records.iter().all(|record| {
+            record.2 == (record.0 != SandboxNbdNetlinkConnectStage::FamilyResolve)
+        }));
+        assert_eq!(
+            observer.nbd_cow_outcomes,
+            vec![
+                SandboxNbdCowCreateOutcome::AcquireSourceDemandScan,
+                SandboxNbdCowCreateOutcome::AcquireSourceCooledClaim,
+                SandboxNbdCowCreateOutcome::EbusyRetriesNone,
+                SandboxNbdCowCreateOutcome::EbusyRetriesOne,
+                SandboxNbdCowCreateOutcome::EbusyRetriesMultiple,
+                SandboxNbdCowCreateOutcome::SizeZeroRetriesNone,
+                SandboxNbdCowCreateOutcome::SizeZeroRetriesOne,
+                SandboxNbdCowCreateOutcome::SizeZeroRetriesMultiple,
+            ],
+        );
     }
 
     #[test]

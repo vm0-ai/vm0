@@ -44,6 +44,21 @@ export const testAutomationsStateActionBodySchema = z.discriminatedUnion(
     z.object({
       action: z.literal("read-fake-kms-state"),
     }),
+    z.object({
+      action: z.literal("mutate-runner-job-secret-value-environment-keys"),
+      run_id: z.uuid(),
+      mode: z.enum(["remove", "invalid"]),
+    }),
+    z.object({
+      action: z.literal("hold-org-admission-lock"),
+      org_id: z.string(),
+    }),
+    z.object({
+      action: z.literal("read-org-admission-lock-state"),
+    }),
+    z.object({
+      action: z.literal("release-org-admission-lock"),
+    }),
   ],
 );
 
@@ -53,6 +68,8 @@ export const testAutomationsStateActionResponseSchema = z.object({
   head_version_id: z.string().nullable().optional(),
   selected_model: z.string().optional(),
   decrypt_call_count: z.number().optional(),
+  admission_lock_held: z.boolean().optional(),
+  admission_lock_waiting: z.boolean().optional(),
 });
 
 export const testAutomationsStateContract = c.router({

@@ -29,13 +29,12 @@ import {
 } from "./sidebar-unread-threads.ts";
 import {
   chatThreadMetaMap$,
+  optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
 } from "./chat-thread-event-sourcing.ts";
 import type { ChatThread } from "../agent-chat.ts";
 import type {
   CancelRunsArgs,
-  ChatThreadDataSource,
-  InitialPage,
   AppendQueuedMessageArgs,
   GetMessageArgs,
   ListMessagesAfterArgs,
@@ -236,7 +235,7 @@ const listMessagesAfter$ = command(
       [200],
     );
     signal.throwIfAborted();
-    L.debug("fetchNextPage$", {
+    L.debug("listMessagesAfter$", {
       threadId,
       sinceId,
       count: result.body.messages.length,
@@ -254,7 +253,7 @@ const listMessagesAfter$ = command(
     });
     return {
       messages: result.body.messages,
-      reachedEnd: result.body.messages.length < 50,
+      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
   },
 );
@@ -277,7 +276,7 @@ const listMessagesBefore$ = command(
     signal.throwIfAborted();
     return {
       messages: result.body.messages,
-      hasMore: result.body.hasHistoryBefore ?? false,
+      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
     };
   },
 );
@@ -477,14 +476,17 @@ function createSubscribeRealtime() {
   );
 }
 
-export function createRemoteChatThreadDataSource(
-  threadId: string,
-): ChatThreadDataSource {
+export function createRemoteChatThreadDataSource(threadId: string) {
   const reloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
 
   const remoteThreadDetail$ = computed(
     async (get): Promise<ChatThread | null> => {
+      if (get(optimisticCreateUnsettled$)) {
+        return null;
+      }
       get(reloadCounter$);
       const threadClient = get(zeroClient$)(chatThreadByIdContract);
       const threadResult = await accept(
@@ -504,6 +506,9 @@ export function createRemoteChatThreadDataSource(
   );
 
   const threadDraft$ = computed(async (get) => {
+    if (get(optimisticCreateUnsettled$)) {
+      return null;
+    }
     const client = get(zeroClient$)(chatThreadDraftContract);
     const result = await accept(
       client.get({ params: { id: threadId } }),
@@ -521,35 +526,10 @@ export function createRemoteChatThreadDataSource(
     });
   });
 
-  const initialPage$ = computed(async (get): Promise<InitialPage> => {
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.list({ params: { threadId }, query: { limit: 50 } }),
-      [200, 404],
-    );
-    if (result.status === 404) {
-      // Thread metadata owns not-found routing; returning an empty page keeps
-      // the messages stream from rejecting in parallel.
-      return { messages: [], hasHistoryBefore: false };
-    }
-    const hasHistoryBefore = result.body.hasHistoryBefore ?? false;
-    L.debug("initialPage$", {
-      threadId,
-      count: result.body.messages.length,
-      hasHistoryBefore,
-    });
-    return {
-      messages: result.body.messages,
-      hasHistoryBefore,
-      fetchedFromRemote: true,
-    };
-  });
-
   return {
     remoteThreadDetail$,
     threadDraft$,
     reloadThread$,
-    initialPage$,
     patchDraft$,
     patchModelSelection$,
     patchComputerUseHost$,

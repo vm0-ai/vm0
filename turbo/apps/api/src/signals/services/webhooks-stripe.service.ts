@@ -13,7 +13,7 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { now, nowDate } from "../../lib/time";
+import { now, nowDate, timestampWithoutTimeZone } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
@@ -3103,7 +3103,7 @@ async function expireActiveUsageAllowanceWindows(
       return db
         .update(orgUsageAllowanceWindows)
         .set({
-          expiresAt: sql<Date>`GREATEST(${args.at}, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
+          expiresAt: sql<Date>`GREATEST(${timestampWithoutTimeZone(args.at)}::timestamp, ${orgUsageAllowanceWindows.startsAt} + INTERVAL '1 millisecond')`,
           updatedAt: args.updatedAt,
         })
         .where(

@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 
+import type StripeSDK from "stripe";
+
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { getApiTestMocks } from "../../../../__tests__/mocks";
 import { createAppWithRoutes } from "../../../../app-factory-core";
+import { mockStripeClient } from "../../../external/stripe-client";
 import { webhooksStripeRoutes } from "../../webhooks-stripe";
 
 const TEST_PRICE_PRO = "price_test_pro";
@@ -71,6 +74,7 @@ export function subscriptionCredits(tier: "pro" | "team"): number {
 }
 
 function configureBillingWebhookEnv(): void {
+  mockStripeClient(getApiTestMocks().stripe as unknown as StripeSDK);
   mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
   mockEnv("ZERO_PRICE_TEAM", TEST_PRICE_TEAM);
   mockEnv("ZERO_PRICE_CONCURRENCY", TEST_PRICE_CONCURRENCY);

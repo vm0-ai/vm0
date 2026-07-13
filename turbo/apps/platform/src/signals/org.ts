@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
-import { user$ } from "./auth.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 
@@ -8,15 +7,10 @@ const reloadOrg$ = state(0);
 
 /**
  * Current user's default org.
- * Returns undefined if user has no org or is not authenticated.
+ * Returns undefined when the API reports that the user has no org.
  */
 export const org$ = computed(async (get) => {
   get(reloadOrg$);
-  const user = await get(user$);
-  if (!user) {
-    return undefined;
-  }
-
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgContract);
   // 404 is a valid response: a newly-signed-up user has no org yet.

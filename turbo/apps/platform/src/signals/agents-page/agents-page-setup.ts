@@ -4,7 +4,6 @@ import { AgentsPage } from "../../views/agents-page/agents-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupAgentsPage$ = command(
@@ -16,7 +15,5 @@ export const setupAgentsPage$ = command(
     if (await set(onboardGuard$, signal)) {
       return;
     }
-
-    set(reloadChatThreads$);
   },
 );

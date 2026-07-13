@@ -155,6 +155,7 @@ import { generate as generateN8n } from "./n8n";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNetdata } from "./netdata";
 import { generate as generateNintendoStore } from "./nintendo-store";
+import { generate as generateNintendoSwitchParentalControls } from "./nintendo-switch-parental-controls";
 import { generate as generateNotion } from "./notion";
 import { generate as generateNovita } from "./novita";
 import { generate as generateNyne } from "./nyne";
@@ -277,7 +278,6 @@ import { generate as generateSnowflake } from "./snowflake";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 import { generate as generateGoogleDrive } from "./google-drive";
 import { generateFirewallMetadata } from "./metadata";
-import { generatePythonBuiltinFirewallCatalogPackage } from "./python-builtin-firewall-catalog-package";
 import {
   FIREWALL_CONNECTOR_TYPES,
   type FirewallConnectorType,
@@ -436,6 +436,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   neon: generateNeon,
   netdata: generateNetdata,
   "nintendo-store": generateNintendoStore,
+  "nintendo-switch-parental-controls": generateNintendoSwitchParentalControls,
   notion: generateNotion,
   novita: generateNovita,
   onyx: generateOnyx,
@@ -588,7 +589,6 @@ async function main(): Promise<void> {
     await gen();
     if (isFirewallConnectorType(target)) {
       await generateFirewallMetadata();
-      await generatePythonBuiltinFirewallCatalogPackage();
     }
   } else {
     // Run all generators
@@ -600,7 +600,6 @@ async function main(): Promise<void> {
     // Metadata summarizes the complete generated registry, so only rebuild it
     // after every registered firewall has been regenerated.
     await generateFirewallMetadata();
-    await generatePythonBuiltinFirewallCatalogPackage();
   }
 
   console.error("\nDone.");
