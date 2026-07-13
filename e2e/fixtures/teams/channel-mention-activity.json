@@ -1,0 +1,48 @@
+{
+  "type": "message",
+  "id": "{{ACTIVITY_ID}}",
+  "timestamp": "2026-07-13T00:00:00.000Z",
+  "serviceUrl": "{{SERVICE_URL}}",
+  "channelId": "msteams",
+  "conversation": {
+    "id": "{{CONVERSATION_ID}}",
+    "conversationType": "channel"
+  },
+  "channelData": {
+    "tenant": {
+      "id": "{{TENANT_ID}}",
+      "name": "{{TENANT_NAME}}"
+    },
+    "team": {
+      "id": "{{TEAM_ID}}",
+      "name": "{{TEAM_NAME}}"
+    },
+    "channel": {
+      "id": "{{CHANNEL_ID}}",
+      "name": "General"
+    },
+    "teamsAppId": "{{BOT_ID}}"
+  },
+  "from": {
+    "id": "{{USER_ID}}",
+    "name": "{{USER_NAME}}",
+    "aadObjectId": "{{USER_AAD_ID}}",
+    "userPrincipalName": "{{USER_PRINCIPAL_NAME}}"
+  },
+  "recipient": {
+    "id": "{{BOT_ID}}",
+    "name": "{{BOT_NAME}}"
+  },
+  "text": "<at>{{BOT_NAME}}</at> echo HELLO_FROM_TEAMS_E2E",
+  "entities": [
+    {
+      "type": "mention",
+      "text": "<at>{{BOT_NAME}}</at>",
+      "mentioned": {
+        "id": "{{BOT_ID}}",
+        "name": "{{BOT_NAME}}"
+      }
+    }
+  ],
+  "replyToId": "{{ACTIVITY_ID}}"
+}

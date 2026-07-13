@@ -1216,9 +1216,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
     });
 
     click(await screen.findByLabelText("Preview first.png"));
@@ -1318,9 +1315,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
     });
 
     const bodyImage = await screen.findByAltText("first.png");
@@ -1410,9 +1404,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
     });
 
     const bodyImage = await screen.findByAltText("first.png");
@@ -1490,9 +1481,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
     });
 
     const bodyImage = await screen.findByAltText("First render");
@@ -1563,9 +1551,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
     });
 
     click(await screen.findByLabelText("Preview first.png"));
@@ -1660,9 +1645,6 @@ describe("zero attachment chips", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
     });
 
     click(await screen.findByLabelText("Preview first.png"));
@@ -1689,78 +1671,6 @@ describe("zero attachment chips", () => {
     // Navigating between images must not collapse fullscreen.
     expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
     expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
-  });
-
-  it("hides image navigation when the feature switch is disabled", async () => {
-    const firstImageUrl =
-      "https://cdn.vm7.io/artifacts/test/navigation-disabled/first.png";
-    const secondImageUrl =
-      "https://cdn.vm7.io/artifacts/test/navigation-disabled/second.png";
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
-      return respond(200, {
-        runs: [
-          {
-            runId: "run-navigation-disabled",
-            files: [
-              artifactFile(firstImageUrl, {
-                id: "artifact-disabled-first-image",
-                filename: "first.png",
-                contentType: "image/png",
-                size: 128,
-              }),
-              artifactFile(secondImageUrl, {
-                id: "artifact-disabled-second-image",
-                filename: "second.png",
-                contentType: "image/png",
-                size: 256,
-              }),
-            ],
-          },
-        ],
-      });
-    });
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatMessages: [
-        {
-          id: "msg-navigation-disabled",
-          role: "user",
-          content: "Review these images",
-          attachFiles: [
-            {
-              id: "artifact-disabled-first-image",
-              filename: "first.png",
-              contentType: "image/png",
-              size: 128,
-              url: firstImageUrl,
-            },
-            {
-              id: "artifact-disabled-second-image",
-              filename: "second.png",
-              contentType: "image/png",
-              size: 256,
-              url: secondImageUrl,
-            },
-          ],
-          runId: "run-navigation-disabled",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    // No featureSwitches override: the switch defaults to off in tests.
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    click(await screen.findByLabelText("Preview first.png"));
-    await waitFor(() => {
-      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
-        "alt",
-        "first.png",
-      );
-    });
-
-    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
-    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
   });
 
   it("opens presentation artifact controls from chat message links", async () => {

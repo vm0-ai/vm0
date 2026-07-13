@@ -1517,9 +1517,6 @@ describe("zero artifact sidebar", () => {
         },
       ],
       content: "Image artifacts are ready.",
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
     });
 
@@ -1657,9 +1654,6 @@ describe("zero artifact sidebar", () => {
         },
       ],
       content: "Image artifacts are ready.",
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
     });
 
@@ -1727,9 +1721,6 @@ describe("zero artifact sidebar", () => {
         },
       ],
       content: "Image artifacts are ready.",
-      featureSwitches: {
-        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
     });
 

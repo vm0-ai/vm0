@@ -249,10 +249,6 @@ function ArtifactSidebarWithThreadContext({
   const messageGroups = useLastResolved(thread.messageImageGroups$, {
     equalityFn: equalMessageImageGroups,
   });
-  const features = useLastResolved(featureSwitch$);
-  const imageNavigationEnabled = Boolean(
-    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
-  );
   const navigateArtifactSidebarImage = useSet(navigateArtifactSidebarImage$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
@@ -260,9 +256,7 @@ function ArtifactSidebarWithThreadContext({
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
       : undefined;
   const imageNavigation =
-    imageNavigationEnabled &&
-    artifactRef.source === "url" &&
-    loadable.state === "hasData"
+    artifactRef.source === "url" && loadable.state === "hasData"
       ? currentMessageImageArtifactNavigation(
           loadable.data,
           messageGroups ?? [],

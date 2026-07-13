@@ -195,6 +195,17 @@ export {
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
 export {
+  testTeamsDispatchProbeBodySchema,
+  testTeamsDispatchProbeContract,
+  testTeamsDispatchProbeErrorSchema,
+  testTeamsDispatchProbeFailureResponseSchema,
+  testTeamsDispatchProbeResponseSchema,
+  testTeamsDispatchProbeSuccessResponseSchema,
+  type TestTeamsDispatchProbeBody,
+  type TestTeamsDispatchProbeContract,
+  type TestTeamsDispatchProbeResponse,
+} from "./test-teams-dispatch-probe";
+export {
   zeroEmailInboundContract,
   zeroEmailReplyCallbackContract,
   zeroEmailReplyCallbackPayloadSchema,
@@ -414,6 +425,17 @@ export {
   testTelegramMockSuccessResponseSchema,
   type TestTelegramMockContract,
 } from "./test-telegram-mock";
+export {
+  testTeamsMockContract,
+  type TestTeamsMockContract,
+} from "./test-teams-mock";
+export {
+  testTeamsStateContract,
+  testTeamsStateErrorSchema,
+  testTeamsStateResponseSchema,
+  type TestTeamsStateContract,
+  type TestTeamsStateResponse,
+} from "./test-teams-state";
 export {
   testTelegramStateContract,
   testTelegramStateErrorSchema,
@@ -1081,6 +1103,12 @@ export {
   type PublicConnectorCatalogStatusResponse,
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
+export {
+  connectorPermissionDenyDiagnosticResultSchema,
+  zeroConnectorPermissionDenyContract,
+  type ConnectorPermissionDenyDiagnosticResult,
+  type ZeroConnectorPermissionDenyContract,
+} from "./zero-connector-permission-deny";
 export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
   CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
