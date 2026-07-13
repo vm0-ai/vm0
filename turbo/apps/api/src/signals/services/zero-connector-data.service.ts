@@ -185,12 +185,9 @@ function parseStoredReconnectReason(
 function storedConnectorRowToResponse(
   row: StoredConnectorRow,
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   now: Date,
 ): ExecutableConnectorResponse {
-  const authMethod = connectorAuthMethodIdSchema.parse(row.authMethod);
-  if (!getConnectorAuthMethod(type, authMethod)) {
-    throw new Error("Invalid stored connector auth method");
-  }
   const credentialStatus = connectorCredentialStatus({
     type,
     authMethod,
@@ -481,11 +478,25 @@ export function zeroConnectorList(args: {
     const now = nowDate();
     const connectorList: ExecutableConnectorResponse[] = storedRows.flatMap(
       (row) => {
-        const type = connectorTypeSchema.parse(row.type);
-        if (!storedConnectorTypeIsVisible(type, featureStates)) {
+        const type = connectorTypeSchema.safeParse(row.type);
+        if (
+          !type.success ||
+          !storedConnectorTypeIsVisible(type.data, featureStates)
+        ) {
           return [];
         }
-        return [storedConnectorRowToResponse(row, type, now)];
+        const authMethod = connectorAuthMethodIdSchema.safeParse(
+          row.authMethod,
+        );
+        if (
+          !authMethod.success ||
+          !getConnectorAuthMethod(type.data, authMethod.data)
+        ) {
+          return [];
+        }
+        return [
+          storedConnectorRowToResponse(row, type.data, authMethod.data, now),
+        ];
       },
     );
     const connectorProvidedBindings =
@@ -587,7 +598,21 @@ function storedConnectorByType(args: {
 
     const oauthRow = oauthRows[0];
     if (oauthRow) {
-      return storedConnectorRowToResponse(oauthRow, args.type, nowDate());
+      const authMethod = connectorAuthMethodIdSchema.safeParse(
+        oauthRow.authMethod,
+      );
+      if (
+        !authMethod.success ||
+        !getConnectorAuthMethod(args.type, authMethod.data)
+      ) {
+        return null;
+      }
+      return storedConnectorRowToResponse(
+        oauthRow,
+        args.type,
+        authMethod.data,
+        nowDate(),
+      );
     }
 
     return null;
@@ -1360,6 +1385,7 @@ export const connectManualGrantConnector$ = command(
       connector: storedConnectorRowToResponse(
         connectorRow,
         args.type,
+        args.authMethod,
         nowDate(),
       ),
     };
@@ -1435,6 +1461,7 @@ export const connectNoAuthConnector$ = command(
       connector: storedConnectorRowToResponse(
         connectorRow,
         args.type,
+        args.authMethod,
         nowDate(),
       ),
     };
@@ -2152,6 +2179,7 @@ export const upsertConnectorTokenConnection$ = command(
       connector: storedConnectorRowToResponse(
         connectionResult.connectorRow,
         args.type,
+        args.authMethod,
         nowDate(),
       ),
       created:
