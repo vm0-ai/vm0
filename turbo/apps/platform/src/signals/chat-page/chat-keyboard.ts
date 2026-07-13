@@ -67,13 +67,6 @@ function isDocumentScrollTarget(root: HTMLElement, target: EventTarget | null) {
   );
 }
 
-function isChatShortcutTarget(root: HTMLElement, target: EventTarget | null) {
-  return (
-    isDocumentScrollTarget(root, target) ||
-    (target instanceof Node && root.contains(target))
-  );
-}
-
 function hasOpenDialog(doc: Document): boolean {
   return doc.querySelector('[role="dialog"]') !== null;
 }
@@ -200,25 +193,19 @@ interface ChatPageShortcutSetup {
   doc: Document;
   focusedThread: () => ChatThreadSignals | null;
   navigateFocusedThread: (direction: "prev" | "next") => void | Promise<void>;
-  root: HTMLElement;
 }
 
 function setupChatPageGlobalShortcutListener({
   actions,
   doc,
-  root,
   signal,
 }: {
   actions: ChatPageShortcutActions;
   doc: Document;
-  root: HTMLElement;
   signal: AbortSignal;
 }): void {
   setupGlobalShortcut(createChatPageShortcutBindings(actions), signal, {
     doc,
-    shouldHandleEvent: (event) => {
-      return isChatShortcutTarget(root, event.target);
-    },
   });
 }
 
@@ -257,7 +244,7 @@ const clearFocusedThreadEmoji$ = command(
 const setupChatPageShortcutActions$ = command(
   (
     { get, set },
-    { doc, focusedThread, navigateFocusedThread, root }: ChatPageShortcutSetup,
+    { doc, focusedThread, navigateFocusedThread }: ChatPageShortcutSetup,
     signal: AbortSignal,
   ) => {
     setupChatPageGlobalShortcutListener({
@@ -317,7 +304,6 @@ const setupChatPageShortcutActions$ = command(
         },
       },
       doc,
-      root,
       signal,
     });
   },
@@ -548,7 +534,6 @@ export const setChatKeyboardScrollRoot$ = onRef(
         doc,
         focusedThread,
         navigateFocusedThread,
-        root: el,
       },
       signal,
     );
