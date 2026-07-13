@@ -1,49 +1,40 @@
 import { command, state } from "ccstate";
+import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 
-import { checkForceUpgrade } from "../lib/force-upgrade.ts";
-import { setLoop } from "./utils.ts";
-
-const FORCE_UPGRADE_POLL_INTERVAL_MS = 60_000;
+const FORCE_UPGRADE_REQUIRED_EVENT = "force-upgrade-required";
 
 const forceUpgradeDialogOpenState$ = state(false);
 
 export const forceUpgradeDialogOpen$ = forceUpgradeDialogOpenState$;
 
-type ForceUpgradePollOptions = {
-  readonly check: () => Promise<boolean>;
-  readonly onRequired: () => void;
-  readonly pollIntervalMs?: number;
-  readonly signal: AbortSignal;
-};
-
-export async function pollForceUpgradeRequirement({
-  check,
-  onRequired,
-  pollIntervalMs = FORCE_UPGRADE_POLL_INTERVAL_MS,
-  signal,
-}: ForceUpgradePollOptions): Promise<void> {
-  await setLoop(
-    async (loopSignal) => {
-      const required = await check();
-      loopSignal.throwIfAborted();
-      if (required) {
-        onRequired();
-      }
-      return required;
-    },
-    pollIntervalMs,
-    signal,
-  );
+export function reportForceUpgradeRequired(): void {
+  window.dispatchEvent(new Event(FORCE_UPGRADE_REQUIRED_EVENT));
 }
 
-export const pollForceUpgradeDialog$ = command(
-  async ({ set }, _signal: AbortSignal) => {
-    await pollForceUpgradeRequirement({
-      check: checkForceUpgrade,
-      onRequired: () => {
-        set(forceUpgradeDialogOpenState$, true);
-      },
-      signal: _signal,
-    });
+export function reportForceUpgradeResponse(response: {
+  readonly status: number;
+}): boolean {
+  if (response.status === CLIENT_FORCE_UPGRADE_STATUS) {
+    reportForceUpgradeRequired();
+    return true;
+  }
+  return false;
+}
+
+export const listenForceUpgradeDialog$ = command(
+  ({ set }, signal: AbortSignal) => {
+    if (signal.aborted) {
+      return;
+    }
+
+    const onRequired = () => {
+      set(forceUpgradeDialogOpenState$, true);
+    };
+    const removeListener = () => {
+      window.removeEventListener(FORCE_UPGRADE_REQUIRED_EVENT, onRequired);
+    };
+
+    window.addEventListener(FORCE_UPGRADE_REQUIRED_EVENT, onRequired);
+    signal.addEventListener("abort", removeListener, { once: true });
   },
 );

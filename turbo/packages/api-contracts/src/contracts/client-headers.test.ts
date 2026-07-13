@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_HEADER_NAMES,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
@@ -45,5 +46,9 @@ describe("client header contract", () => {
       "X-Client-Session-Id",
       "X-Client-Request-Id",
     ]);
+  });
+
+  it("keeps the force upgrade status stable for app clients", () => {
+    expect(CLIENT_FORCE_UPGRADE_STATUS).toBe(426);
   });
 });

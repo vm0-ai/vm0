@@ -1,4 +1,11 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import {
+  CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_TYPE_APP,
+  CLIENT_TYPE_CLI,
+  CLIENT_TYPE_HEADER,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
@@ -777,6 +784,51 @@ describe("createApp", () => {
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://www.vm7.ai:3042",
       );
+    });
+  });
+
+  describe("web client compatibility", () => {
+    it("rejects stale app clients before route handlers run", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.0.0-alpha.1",
+        },
+      });
+
+      expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
+      await expect(response.json()).resolves.toStrictEqual({
+        error: "Client update required",
+      });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("allows current app clients", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
+          [CLIENT_VERSION_HEADER]: "0.0.0",
+        },
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("does not force upgrade other client types", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: {
+          [CLIENT_TYPE_HEADER]: CLIENT_TYPE_CLI,
+          [CLIENT_VERSION_HEADER]: "0.0.0-alpha.1",
+        },
+      });
+
+      expect(response.status).toBe(200);
     });
   });
 

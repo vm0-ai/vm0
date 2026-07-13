@@ -7,7 +7,7 @@ import { AppSkeletonOverlay, Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
 import { ForceUpgradeDialog } from "./components/force-upgrade-dialog.tsx";
 import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
-import { pollForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
+import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
@@ -21,7 +21,7 @@ export const setupRouter = (
   const signal = store.get(rootSignal$);
   detach(store.set(setupAuthenticatedDaemons$, signal), Reason.Daemon);
   detach(
-    store.set(pollForceUpgradeDialog$, signal),
+    store.set(listenForceUpgradeDialog$, signal),
     Reason.Daemon,
     "force-upgrade",
   );
