@@ -30,6 +30,10 @@ export function providerUnavailable(message: string) {
   return httpError(503, "PROVIDER_UNAVAILABLE", message);
 }
 
+export function notConfigured(message: string) {
+  return httpError(503, "NOT_CONFIGURED", message);
+}
+
 export function connectorReadinessTimeout(message: string) {
   return httpError(503, "CONNECTOR_READINESS_TIMEOUT", message);
 }

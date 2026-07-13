@@ -5,14 +5,15 @@ import type {
 
 import { logger } from "../../lib/log";
 import {
-  generateText,
+  generateTextWithUsage,
   isLlmConfigured,
   type OpenRouterContentPart,
+  type OpenRouterUsage,
 } from "../external/openrouter";
 import { safeJsonParse, settle } from "../utils";
 
 const log = logger("api:zero-image-interpret-marks");
-const INTERPRET_MARKS_MODEL = "google/gemini-3.5-flash";
+export const INTERPRET_MARKS_MODEL = "google/gemini-3.5-flash";
 // Sized for the max 16 regions (each ~a few short strings); a too-small budget
 // truncates the JSON (finish_reason "length"), which makes generateText throw
 // and collapses the whole batch to the raw-instruction fallback.
@@ -36,6 +37,11 @@ function fallbackResult(
     edit: region.instruction,
     confidence: 0,
   };
+}
+
+interface InterpretedRegionMarks {
+  readonly regions: readonly ZeroImageIoInterpretMarksResult[];
+  readonly usage?: OpenRouterUsage;
 }
 
 function extractJsonObject(text: string): unknown {
@@ -92,10 +98,10 @@ function parseResults(
 export async function interpretRegionMarks(args: {
   readonly imageUrl: string;
   readonly regions: readonly ZeroImageIoInterpretMarksRegion[];
-}): Promise<ZeroImageIoInterpretMarksResult[]> {
+}): Promise<InterpretedRegionMarks> {
   const fallback = args.regions.map(fallbackResult);
   if (!isLlmConfigured()) {
-    return fallback;
+    return { regions: fallback };
   }
 
   const userText = JSON.stringify(
@@ -123,7 +129,7 @@ export async function interpretRegionMarks(args: {
   ];
 
   const generated = await settle(
-    generateText(
+    generateTextWithUsage(
       INTERPRET_MARKS_MODEL,
       [
         { role: "system", content: INTERPRET_MARKS_SYSTEM_PROMPT },
@@ -140,16 +146,18 @@ export async function interpretRegionMarks(args: {
           ? generated.error.message
           : String(generated.error),
     });
-    return fallback;
+    return { regions: fallback };
   }
   if (generated.value === null) {
-    return fallback;
+    return { regions: fallback };
   }
 
-  const results = parseResults(generated.value, args.regions);
+  const results = parseResults(generated.value.text, args.regions);
   if (results === null) {
     log.warn("Region mark interpretation returned unparseable JSON");
-    return fallback;
+    return { regions: fallback };
   }
-  return results;
+  return generated.value.usage === undefined
+    ? { regions: results }
+    : { regions: results, usage: generated.value.usage };
 }

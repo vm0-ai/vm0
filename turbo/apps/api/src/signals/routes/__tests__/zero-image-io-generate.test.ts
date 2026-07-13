@@ -1466,6 +1466,9 @@ describe("POST /api/zero/image-io/generate", () => {
       safety_tolerance: "4",
       image_urls: sourceImageUrls,
     });
+    await expect(orgCredits(fixture)).resolves.toBe(
+      1000 - FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
+    );
   });
 
   it("removes backgrounds with birefnet through fal without a prompt", async () => {

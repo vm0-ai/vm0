@@ -25,7 +25,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
-import { generateText } from "../external/openrouter";
+import { generateText, generateTextWithUsage } from "../external/openrouter";
 import {
   copyHostedSitesS3Object,
   generateHostedSitesPresignedGetUrl,
@@ -39,6 +39,7 @@ import {
   scheduleArtifactPreviewRender$,
   type RenderArtifactPreviewArgs,
 } from "./artifact-preview.service";
+import { recordOpenRouterUsage$ } from "./openrouter-usage.service";
 import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
 
 const PUT_URL_TTL_SECONDS = 3600;
@@ -47,7 +48,7 @@ const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
 const PRESENTATION_SPEAKER_NOTES_MODEL = "openai/gpt-4.1-mini";
-const HTML_DOM_EDIT_MODEL = "openai/gpt-4.1-mini";
+export const HTML_DOM_EDIT_MODEL = "openai/gpt-4.1-mini";
 const HTML_DOM_NODE_ID_ATTR = "data-vm0-node-id";
 const HTML_DOM_SCRIPT_ID_ATTR = "data-vm0-script-id";
 const DEFAULT_SCRIPT_ID_PREFIX = "vm0-script";
@@ -207,6 +208,10 @@ interface GeneratePresentationSpeakerNotesArgs {
 }
 
 interface CreateHtmlEditDraftArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string | undefined;
+  readonly operationId: string;
   readonly body: CreateHtmlEditDraftRequest;
 }
 
@@ -2481,7 +2486,7 @@ export const generatePresentationSpeakerNotes$ = command(
 
 export const createHtmlEditDraft$ = command(
   async (
-    _,
+    { set },
     args: CreateHtmlEditDraftArgs,
     signal: AbortSignal,
   ): Promise<CreateHtmlEditDraftResult> => {
@@ -2513,7 +2518,7 @@ export const createHtmlEditDraft$ = command(
       targetContexts,
     };
 
-    const generated = await generateText(
+    const generated = await generateTextWithUsage(
       HTML_DOM_EDIT_MODEL,
       htmlDomEditPrompt(editDocument),
       8192,
@@ -2525,7 +2530,7 @@ export const createHtmlEditDraft$ = command(
         message: "HTML edit generation is not configured",
       };
     }
-    const patchResult = parseHtmlDomEditPatchResult(generated);
+    const patchResult = parseHtmlDomEditPatchResult(generated.text);
     if (!patchResult) {
       return {
         status: "bad_request",
@@ -2547,6 +2552,21 @@ export const createHtmlEditDraft$ = command(
       version: 1,
       html: applied.html,
     });
+    await set(
+      recordOpenRouterUsage$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        runId: args.runId,
+        provider: HTML_DOM_EDIT_MODEL,
+        operation: "html-edit-draft",
+        operationId: args.operationId,
+        usage: generated.usage,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
     return { status: "ok", body: result };
   },
 );

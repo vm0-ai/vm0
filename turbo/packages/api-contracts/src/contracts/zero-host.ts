@@ -284,6 +284,7 @@ export const zeroHostContract = c.router({
       401: apiErrorSchema,
       402: apiErrorSchema,
       403: apiErrorSchema,
+      503: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Create an edited HTML draft from DOM comments",
