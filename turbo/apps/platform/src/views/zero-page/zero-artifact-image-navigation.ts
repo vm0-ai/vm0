@@ -43,7 +43,7 @@ type MessageImageSource = {
   readonly blocks?: readonly BodyRenderBlock[];
 };
 
-type MessageImageGroup = {
+export type MessageImageGroup = {
   readonly messages: readonly MessageImageSource[];
 };
 
@@ -174,6 +174,42 @@ function scopedMessageImages(
     }
   }
   return images;
+}
+
+function imageScopes(groups: readonly MessageImageGroup[]): MessageImage[][] {
+  return groups.flatMap((group) => {
+    const images = scopedMessageImages(group.messages);
+    return images.length > 0 ? [images] : [];
+  });
+}
+
+export function equalMessageImageGroups(
+  previous: readonly MessageImageGroup[],
+  next: readonly MessageImageGroup[],
+): boolean {
+  if (previous === next) {
+    return true;
+  }
+  const previousScopes = imageScopes(previous);
+  const nextScopes = imageScopes(next);
+  return (
+    previousScopes.length === nextScopes.length &&
+    previousScopes.every((scope, scopeIndex) => {
+      const nextScope = nextScopes[scopeIndex];
+      return (
+        nextScope !== undefined &&
+        scope.length === nextScope.length &&
+        scope.every((image, imageIndex) => {
+          const nextImage = nextScope[imageIndex];
+          return (
+            nextImage !== undefined &&
+            image.url === nextImage.url &&
+            image.filename === nextImage.filename
+          );
+        })
+      );
+    })
+  );
 }
 
 function artifactMetadataForUrl(

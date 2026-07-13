@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.144.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.2...runner-rs-v0.144.3) (2026-07-13)
+
+
+### Bug Fixes
+
+* **runner:** verify failed-start service disablement ([#21205](https://github.com/vm0-ai/vm0/issues/21205)) ([a706d21](https://github.com/vm0-ai/vm0/commit/a706d213dde0d9cb2c82942501c94ec82999d538))
+
+
+### Refactoring
+
+* **runner:** centralize failure log fields ([#21208](https://github.com/vm0-ai/vm0/issues/21208)) ([24e24e8](https://github.com/vm0-ai/vm0/commit/24e24e84afd1a5188b19585161930754bfdfadf8))
+
 ## [0.144.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.1...runner-rs-v0.144.2) (2026-07-13)
 
 

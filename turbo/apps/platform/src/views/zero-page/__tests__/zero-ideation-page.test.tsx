@@ -80,7 +80,6 @@ function mockUnreadShortcutThreads(): void {
       agent: { id: agentId, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:03:00Z",
-      running: false,
       pinnedAt: null,
     },
     {
@@ -89,7 +88,6 @@ function mockUnreadShortcutThreads(): void {
       agent: { id: agentId, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:02:00Z",
-      running: true,
       pinnedAt: null,
     },
     {
@@ -98,7 +96,6 @@ function mockUnreadShortcutThreads(): void {
       agent: { id: otherAgentId, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: "2026-06-01T00:01:00Z",
-      running: false,
       pinnedAt: null,
     },
   ];
@@ -434,6 +431,7 @@ describe("zero ideation page", () => {
     expect(
       within(unreadRegion).getByText("Running incident follow-up"),
     ).toBeInTheDocument();
+    expect(within(unreadRegion).getAllByLabelText("Running")).toHaveLength(1);
     expect(within(unreadRegion).queryByText("Unread")).toBeNull();
     expect(within(unreadRegion).queryByText("Running now")).toBeNull();
     expect(

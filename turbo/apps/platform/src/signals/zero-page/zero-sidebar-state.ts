@@ -264,7 +264,7 @@ export const setOverlayScrollMetrics$ = command(
 // Chat thread virtual list DOM state (RecentChatSection)
 // ---------------------------------------------------------------------------
 export const CHAT_THREAD_VIRTUAL_ROW_HEIGHT = 36;
-const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
+export const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 const internalChatThreadVirtualListElement$ = state<HTMLElement | null>(null);
 export type ChatThreadVirtualListScrollAlign = "top" | "bottom";

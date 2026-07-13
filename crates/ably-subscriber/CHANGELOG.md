@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.3...ably-subscriber-v1.0.4) (2026-07-13)
+
+
+### Performance Improvements
+
+* **ably-subscriber:** bound drop warning emission ([#21202](https://github.com/vm0-ai/vm0/issues/21202)) ([d0e2e87](https://github.com/vm0-ai/vm0/commit/d0e2e879ec4fa8f78e9a74617f774310164dc3bb))
+
 ## [1.0.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.2...ably-subscriber-v1.0.3) (2026-07-11)
 
 

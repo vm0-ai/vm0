@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
+use super::super::session_history_cpu::codex_timestamp_for_test;
 use super::super::session_restore::MaterializedResumeSession;
 use super::support::{CapturedEvent, CapturedEvents, minimal_context};
 use crate::types::{
@@ -31,22 +32,28 @@ const CODEX_CANONICAL_ROLLOUT_FILENAME_SUFFIX: &str = "-019e9154-c304-70f0-adde-
 fn materialized_text_session(
     session_id: impl Into<String>,
     history: impl Into<String>,
-) -> MaterializedResumeSession<'static> {
-    MaterializedResumeSession::new(session_id.into(), history.into().into_bytes())
+) -> MaterializedResumeSession {
+    let history = history.into().into_bytes();
+    let timestamp = codex_timestamp_for_test(&history);
+    MaterializedResumeSession::new(session_id.into(), history, timestamp)
 }
 
 fn materialized_bytes_session(
     session_id: impl Into<String>,
     history: &[u8],
-) -> MaterializedResumeSession<'static> {
-    MaterializedResumeSession::new(session_id.into(), history.to_vec())
+) -> MaterializedResumeSession {
+    MaterializedResumeSession::new(
+        session_id.into(),
+        history.to_vec(),
+        codex_timestamp_for_test(history),
+    )
 }
 
 fn materialized_codex_zstd_session(
     session_id: impl Into<String>,
     history: &[u8],
     timestamp: chrono::DateTime<chrono::Utc>,
-) -> MaterializedResumeSession<'static> {
+) -> MaterializedResumeSession {
     MaterializedResumeSession::new_codex_zstd(session_id.into(), history.to_vec(), Some(timestamp))
 }
 

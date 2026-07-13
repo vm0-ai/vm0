@@ -2,7 +2,7 @@
 
 mod codex;
 
-use std::borrow::Cow;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use sandbox::Sandbox;
@@ -13,7 +13,7 @@ use super::env::validate_resume_session_id;
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{RunnerError, RunnerResult};
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
-use crate::types::{ExecutionContext, ResumeSession};
+use crate::types::ExecutionContext;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 impl RestoredSessionIdentity {
@@ -54,64 +54,55 @@ fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessi
     }
 }
 
-pub(super) fn codex_session_meta_timestamp_line(
-    line: &str,
-) -> Option<chrono::DateTime<chrono::Utc>> {
-    codex::codex_session_meta_timestamp_line(line)
+#[derive(Debug)]
+pub(super) struct MaterializedResumeSession {
+    cli_agent_session_id: String,
+    history: MaterializedResumeHistory,
+    codex_timestamp: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug)]
-pub(super) struct MaterializedResumeSession<'a> {
-    cli_agent_session_id: Cow<'a, str>,
-    history: MaterializedResumeHistory<'a>,
-}
-
-#[derive(Debug)]
-enum MaterializedResumeHistory<'a> {
-    InlineText(&'a str),
+enum MaterializedResumeHistory {
+    SharedText(Arc<String>),
     Bytes(Vec<u8>),
-    CodexZstd {
-        bytes: Vec<u8>,
-        timestamp: Option<DateTime<Utc>>,
-    },
+    CodexZstd(Vec<u8>),
 }
 
-impl MaterializedResumeSession<'static> {
-    pub(super) fn new(cli_agent_session_id: String, history_bytes: Vec<u8>) -> Self {
+impl MaterializedResumeSession {
+    pub(super) fn new(
+        cli_agent_session_id: String,
+        history_bytes: Vec<u8>,
+        codex_timestamp: Option<DateTime<Utc>>,
+    ) -> Self {
         Self {
-            cli_agent_session_id: Cow::Owned(cli_agent_session_id),
+            cli_agent_session_id,
             history: MaterializedResumeHistory::Bytes(history_bytes),
+            codex_timestamp,
+        }
+    }
+
+    pub(super) fn new_shared(
+        cli_agent_session_id: String,
+        session_history: Arc<String>,
+        codex_timestamp: Option<DateTime<Utc>>,
+    ) -> Self {
+        Self {
+            cli_agent_session_id,
+            history: MaterializedResumeHistory::SharedText(session_history),
+            codex_timestamp,
         }
     }
 
     pub(super) fn new_codex_zstd(
         cli_agent_session_id: String,
         history_bytes: Vec<u8>,
-        timestamp: Option<DateTime<Utc>>,
+        codex_timestamp: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
-            cli_agent_session_id: Cow::Owned(cli_agent_session_id),
-            history: MaterializedResumeHistory::CodexZstd {
-                bytes: history_bytes,
-                timestamp,
-            },
+            cli_agent_session_id,
+            history: MaterializedResumeHistory::CodexZstd(history_bytes),
+            codex_timestamp,
         }
-    }
-}
-
-impl<'a> MaterializedResumeSession<'a> {
-    pub(super) fn from_inline_resume_session(
-        session: &'a ResumeSession,
-    ) -> RunnerResult<MaterializedResumeSession<'a>> {
-        let Some(session_history) = session.session_history() else {
-            return Err(RunnerError::Internal(
-                "resume session history was not materialized".into(),
-            ));
-        };
-        Ok(Self {
-            cli_agent_session_id: Cow::Borrowed(&session.cli_agent_session_id),
-            history: MaterializedResumeHistory::InlineText(session_history),
-        })
     }
 
     pub(super) fn cli_agent_session_id(&self) -> &str {
@@ -120,26 +111,20 @@ impl<'a> MaterializedResumeSession<'a> {
 
     pub(super) fn history_bytes(&self) -> &[u8] {
         match &self.history {
-            MaterializedResumeHistory::InlineText(session_history) => session_history.as_bytes(),
+            MaterializedResumeHistory::SharedText(session_history) => session_history.as_bytes(),
             MaterializedResumeHistory::Bytes(history_bytes) => history_bytes,
-            MaterializedResumeHistory::CodexZstd { bytes, .. } => bytes,
+            MaterializedResumeHistory::CodexZstd(bytes) => bytes,
         }
     }
 
-    pub(super) fn history_text(&self) -> Option<&str> {
-        match &self.history {
-            MaterializedResumeHistory::InlineText(session_history) => Some(session_history),
-            MaterializedResumeHistory::Bytes(history_bytes) => {
-                std::str::from_utf8(history_bytes).ok()
-            }
-            MaterializedResumeHistory::CodexZstd { .. } => None,
-        }
+    pub(super) fn codex_timestamp(&self) -> Option<DateTime<Utc>> {
+        self.codex_timestamp
     }
 
-    pub(super) fn codex_zstd_history(&self) -> Option<(&[u8], Option<DateTime<Utc>>)> {
+    pub(super) fn codex_zstd_history(&self) -> Option<&[u8]> {
         match &self.history {
-            MaterializedResumeHistory::CodexZstd { bytes, timestamp } => Some((bytes, *timestamp)),
-            MaterializedResumeHistory::InlineText(_) | MaterializedResumeHistory::Bytes(_) => None,
+            MaterializedResumeHistory::CodexZstd(bytes) => Some(bytes),
+            MaterializedResumeHistory::SharedText(_) | MaterializedResumeHistory::Bytes(_) => None,
         }
     }
 }
@@ -154,7 +139,7 @@ pub(super) struct SessionRestoreDiagnostics {
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &MaterializedResumeSession<'_>,
+    session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     // Validate the CLI agent session id to prevent path traversal.
     // Only allow alnum, dash, and underscore.
@@ -185,7 +170,7 @@ pub(super) async fn restore_session(
 pub(super) async fn restore_claude_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &MaterializedResumeSession<'_>,
+    session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let session_history = session.history_bytes();
     let project_name = CANONICAL_WORKING_DIR

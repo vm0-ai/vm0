@@ -5,6 +5,7 @@ import {
   useLastResolved,
   useLastLoadable,
 } from "ccstate-react";
+import type { Computed } from "ccstate";
 import {
   IconPlus,
   IconChevronRight,
@@ -15,7 +16,6 @@ import {
   IconPinnedOff,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -63,9 +63,18 @@ import {
   createNewChatThread$,
   newChatThreadDisabled$,
   type NewChatThreadPane,
-  sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+import {
+  scrollToThread$,
+  type SidebarChatThread,
+  sidebarChatThreadCount$,
+  sidebarChatThreadWindow$,
+  type SidebarChatThreadWindow,
+} from "../../signals/chat-page/sidebar-chat-thread-scroll.ts";
+import {
+  currentChatAgentId$,
+  currentChatThreadId$,
+} from "../../signals/agent-chat.ts";
 import { sidebarActiveThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -90,46 +99,35 @@ import {
   setSessionListCollapsed$,
   isScrolled$,
   setIsScrolled$,
-  overlayScrollMetrics$,
-  overlayScrollViewport$,
-  chatThreadVirtualListElement$,
   setChatThreadVirtualListElement$,
-  getChatThreadVirtualListScrollMargin,
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  scrollChatThreadVirtualListToIndex$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
-import { equalArrays, equalSets } from "../../lib/equality.ts";
+import { equalArrays } from "../../lib/equality.ts";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
-const CHAT_THREAD_VIRTUAL_OVERSCAN = 8;
-const CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT =
-  CHAT_THREAD_VIRTUAL_ROW_HEIGHT * 12;
 
-function equalChatThreadListItems(
-  previous: ChatThreadListItem,
-  next: ChatThreadListItem,
+function equalSidebarChatThreads(
+  previous: SidebarChatThread,
+  next: SidebarChatThread,
 ): boolean {
   return (
     previous.id === next.id &&
     previous.title === next.title &&
-    previous.agent.id === next.agent.id &&
-    previous.agent.avatarUrl === next.agent.avatarUrl &&
-    previous.createdAt === next.createdAt &&
-    previous.updatedAt === next.updatedAt &&
-    previous.running === next.running &&
-    previous.pinnedAt === next.pinnedAt &&
-    previous.renamedAt === next.renamedAt
+    previous.pinnedAt === next.pinnedAt
   );
 }
 
-function equalChatThreadLists(
-  previous: readonly ChatThreadListItem[],
-  next: readonly ChatThreadListItem[],
+function equalSidebarChatThreadWindows(
+  previous: SidebarChatThreadWindow,
+  next: SidebarChatThreadWindow,
 ): boolean {
-  return equalArrays(previous, next, equalChatThreadListItems);
+  return (
+    previous.startIndex === next.startIndex &&
+    equalArrays(previous.chatThreads, next.chatThreads, equalSidebarChatThreads)
+  );
 }
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
@@ -200,11 +198,28 @@ function getIndicatorState({
   return hasDraft ? "draft" : null;
 }
 
-function isChatThreadRunning(
-  session: ChatThreadListItem,
-  activeRunThreadIds: ReadonlySet<string> | undefined,
+function useThreadMembership(
+  threadIds$: Computed<Promise<ReadonlySet<string>>>,
+  threadId: string,
 ): boolean {
-  return session.running || (activeRunThreadIds?.has(session.id) ?? false);
+  const threadIds = useLastResolved(threadIds$, {
+    equalityFn(previous, next) {
+      return previous.has(threadId) === next.has(threadId);
+    },
+  });
+  return threadIds?.has(threadId) ?? false;
+}
+
+function useThreadDraft(threadId: string): boolean {
+  return useThreadMembership(sidebarDraftThreadIds$, threadId);
+}
+
+function useThreadUnread(threadId: string): boolean {
+  return useThreadMembership(sidebarUnreadThreadIds$, threadId);
+}
+
+function useThreadActiveRun(threadId: string): boolean {
+  return useThreadMembership(sidebarActiveThreadIds$, threadId);
 }
 
 function handleChatThreadClick(
@@ -464,7 +479,7 @@ function ChatThreadSideDecorator({
   );
 }
 
-function useChatThreadItemState(session: ChatThreadListItem) {
+function useChatThreadItemState(session: SidebarChatThread) {
   const pathParams = useGet(pathParams$);
   const searchParams = useGet(searchParams$);
   const urlMainThreadId =
@@ -483,15 +498,9 @@ function useChatThreadItemState(session: ChatThreadListItem) {
   const loadRightThread = useSet(loadRightThread$);
   const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
-  const draftThreadIds = useLastResolved(sidebarDraftThreadIds$, {
-    equalityFn: equalSets,
-  });
-  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$, {
-    equalityFn: equalSets,
-  });
-  const activeRunThreadIds = useLastResolved(sidebarActiveThreadIds$, {
-    equalityFn: equalSets,
-  });
+  const hasDraft = useThreadDraft(session.id);
+  const isThreadUnread = useThreadUnread(session.id);
+  const hasActiveRun = useThreadActiveRun(session.id);
 
   const isPinned = session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -502,11 +511,10 @@ function useChatThreadItemState(session: ChatThreadListItem) {
     sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
-  const isUnread =
-    (unreadThreadIds?.has(session.id) ?? false) && !isHighlighted;
+  const isUnread = isThreadUnread && !isHighlighted;
   const indicatorState = getIndicatorState({
-    hasDraft: (draftThreadIds?.has(session.id) ?? false) && !isHighlighted,
-    isRunning: isChatThreadRunning(session, activeRunThreadIds),
+    hasDraft: hasDraft && !isHighlighted,
+    isRunning: hasActiveRun,
     isUnread,
   });
 
@@ -532,7 +540,7 @@ function ChatThreadItemLink({
   session,
   state,
 }: {
-  session: ChatThreadListItem;
+  session: SidebarChatThread;
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
   const openRenameChatThreadDialog = useSet(
@@ -586,7 +594,7 @@ function ChatThreadItemLink({
   );
 }
 
-function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
+function ChatThreadItem({ session }: { session: SidebarChatThread }) {
   const state = useChatThreadItemState(session);
 
   return (
@@ -768,73 +776,20 @@ function DeleteChatThreadDialog() {
   );
 }
 
-function getFixedVirtualRange({
-  itemCount,
-  scrollMargin,
-  scrollTop,
-  viewportHeight,
-}: {
-  itemCount: number;
-  scrollMargin: number;
-  scrollTop: number;
-  viewportHeight: number;
-}) {
-  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
-  const firstVisibleIndex = Math.floor(
-    localScrollTop / CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  );
-  const visibleCount = Math.max(
-    1,
-    Math.ceil(viewportHeight / CHAT_THREAD_VIRTUAL_ROW_HEIGHT),
-  );
-  const startIndex = Math.max(
-    0,
-    firstVisibleIndex - CHAT_THREAD_VIRTUAL_OVERSCAN,
-  );
-  const endIndex = Math.min(
-    itemCount,
-    firstVisibleIndex + visibleCount + CHAT_THREAD_VIRTUAL_OVERSCAN,
-  );
-
-  return {
-    endIndex,
-    startIndex,
-    totalHeight: itemCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
-  };
-}
-
-function VirtualizedChatThreads({
-  chatThreads,
-}: {
-  chatThreads: readonly ChatThreadListItem[];
-}) {
-  const scrollViewport = useGet(overlayScrollViewport$);
-  const scrollMetrics = useGet(overlayScrollMetrics$);
-  const virtualListElement = useGet(chatThreadVirtualListElement$);
-  const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
-  const scrollMargin = getChatThreadVirtualListScrollMargin(
-    scrollViewport,
-    virtualListElement,
-  );
-  const viewportHeight =
-    scrollMetrics.clientHeight ||
-    scrollViewport?.clientHeight ||
-    CHAT_THREAD_VIRTUAL_FALLBACK_VIEWPORT_HEIGHT;
-  const scrollTop = scrollMetrics.scrollTop ?? scrollViewport?.scrollTop ?? 0;
-  const { startIndex, endIndex, totalHeight } = getFixedVirtualRange({
-    itemCount: chatThreads.length,
-    scrollMargin,
-    scrollTop,
-    viewportHeight,
+function VirtualizedChatThreads({ threadCount }: { threadCount: number }) {
+  const window = useLastResolved(sidebarChatThreadWindow$, {
+    equalityFn: equalSidebarChatThreadWindows,
   });
-  const visibleChatThreads = chatThreads.slice(startIndex, endIndex);
+  const setVirtualListElement = useSet(setChatThreadVirtualListElement$);
+  const startIndex = window?.startIndex ?? 0;
+  const visibleChatThreads = window?.chatThreads ?? [];
 
   return (
     <div
       ref={setVirtualListElement}
       className="relative w-full"
       data-testid="sidebar-chat-threads-virtual-list"
-      style={{ height: totalHeight }}
+      style={{ height: threadCount * CHAT_THREAD_VIRTUAL_ROW_HEIGHT }}
     >
       {visibleChatThreads.map((session, visibleOffset) => {
         const index = startIndex + visibleOffset;
@@ -858,14 +813,10 @@ function VirtualizedChatThreads({
   );
 }
 
-function ChatThreads({
-  chatThreads,
-}: {
-  chatThreads: readonly ChatThreadListItem[];
-}) {
+function ChatThreads({ threadCount }: { threadCount: number }) {
   const unreadOnly = useGet(chatThreadOnlyUnread$);
 
-  if (chatThreads.length === 0) {
+  if (threadCount === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
         {unreadOnly
@@ -874,7 +825,7 @@ function ChatThreads({
       </p>
     );
   }
-  return <VirtualizedChatThreads chatThreads={chatThreads} />;
+  return <VirtualizedChatThreads threadCount={threadCount} />;
 }
 
 function ChatThreadsTitle() {
@@ -1024,22 +975,28 @@ function consumePointerFocus(viewport: HTMLElement) {
 }
 
 function ChatThreadsContent() {
-  // useLastLoadable keeps the previous resolved list rendered while
-  // sidebarChatThreads$ recomputes on a pane/thread switch; useLoadable would
-  // flash the skeleton on every switch.
-  const chatThreadsLoadable = useLastLoadable(sidebarChatThreads$, {
-    equalityFn: equalChatThreadLists,
-  });
-  const chatThreads =
-    chatThreadsLoadable.state === "hasData" ? chatThreadsLoadable.data : [];
-  const chatThreadsLoading = chatThreadsLoadable.state === "loading";
   const collapsed = useGet(sessionListCollapsed$);
+
+  if (collapsed) {
+    return null;
+  }
+
+  return <ExpandedChatThreadsContent />;
+}
+
+function ExpandedChatThreadsContent() {
+  // The primitive count preserves the previous resolved value while the
+  // underlying event projection recomputes. Visible rows subscribe separately
+  // in VirtualizedChatThreads.
+  const threadCountLoadable = useLastLoadable(sidebarChatThreadCount$);
+  const threadCount =
+    threadCountLoadable.state === "hasData" ? threadCountLoadable.data : 0;
+  const chatThreadsLoading = threadCountLoadable.state === "loading";
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
-  const pathParams = useGet(pathParams$);
-  const currentMainThreadId =
-    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
-  const scrollVirtualListToIndex = useSet(scrollChatThreadVirtualListToIndex$);
+  const currentMainThreadId = useGet(currentChatThreadId$);
+  const scrollToThread = useSet(scrollToThread$);
+  const pageSignal = useGet(pageSignal$);
   const focusThreadLink = (
     viewport: HTMLElement,
     threadId: string,
@@ -1079,27 +1036,24 @@ function ChatThreadsContent() {
       return;
     }
 
-    const currentIndex = chatThreads.findIndex((thread) => {
-      return thread.id === currentMainThreadId;
-    });
-    if (currentIndex === -1) {
-      return;
-    }
-
-    scrollVirtualListToIndex(currentIndex, "top");
-    focusThreadLinkOnNextFrame(viewport, currentMainThreadId);
+    const scrollAndFocusCurrentThread = async () => {
+      const scrolled = await scrollToThread(
+        { threadId: currentMainThreadId, align: "top" },
+        pageSignal,
+      );
+      if (scrolled) {
+        focusThreadLinkOnNextFrame(viewport, currentMainThreadId);
+      }
+    };
+    detach(scrollAndFocusCurrentThread(), Reason.DomCallback);
   };
-
-  if (collapsed) {
-    return null;
-  }
 
   const content = (
     <div className="flex flex-col gap-1">
       {chatThreadsLoading ? (
         <ChatThreadsSkeleton />
       ) : (
-        <ChatThreads chatThreads={chatThreads} />
+        <ChatThreads threadCount={threadCount} />
       )}
     </div>
   );

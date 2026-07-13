@@ -433,6 +433,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the built-in R2-backed website template picker and generation-template flow.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.WorkflowQueue]: {
     maintainer: "lancy@vm0.ai",
