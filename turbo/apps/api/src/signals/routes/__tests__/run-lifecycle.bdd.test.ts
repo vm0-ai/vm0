@@ -2796,7 +2796,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
   });
 
   it("isolates identical CLI session IDs across application session scopes", async () => {
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const cliAgentSessionId = `bdd-shared-cli-${randomUUID()}`;
