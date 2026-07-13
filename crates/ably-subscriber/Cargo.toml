@@ -23,6 +23,7 @@ httpmock = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "net"] }
 tracing-subscriber = { workspace = true }
+tracing-test-support = { workspace = true }
 
 [lints]
 workspace = true

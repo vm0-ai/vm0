@@ -3,8 +3,8 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connection::{
-    DEFAULT_REALTIME_HOST, EventLoopState, SessionState, WsTransport, connect_and_attach,
-    exchange_token, rest_host, run_event_loop,
+    DEFAULT_REALTIME_HOST, DropWarningState, EventLoopState, SessionState, WsTransport,
+    connect_and_attach, exchange_token, rest_host, run_event_loop,
 };
 use crate::protocol::error_code;
 use crate::types::{Error, Event, SubscribeConfig};
@@ -109,7 +109,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             http,
             get_token: config.get_token,
             timing,
-            dropped_messages: 0,
+            drop_warnings: DropWarningState::default(),
         },
         close_rx,
     ));

@@ -21,6 +21,7 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "tracing-test-support",
  "url",
 ]
 

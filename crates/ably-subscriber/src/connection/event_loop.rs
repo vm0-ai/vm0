@@ -28,6 +28,69 @@ use crate::protocol::{
 };
 use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
 
+const DROP_WARNING_INTERVAL: Duration = Duration::from_secs(60);
+
+#[derive(Default)]
+pub(crate) struct DropWarningState {
+    total_dropped: u64,
+    reported_dropped: u64,
+    last_reported_at: Option<Instant>,
+    report_at: Option<Instant>,
+}
+
+struct DropWarningReport {
+    dropped_since_last: u64,
+    total_dropped: u64,
+}
+
+impl DropWarningState {
+    fn record_drop(&mut self) -> Option<DropWarningReport> {
+        self.total_dropped += 1;
+        if self.report_at.is_some() {
+            return None;
+        }
+
+        let now = Instant::now();
+        let Some(last_reported_at) = self.last_reported_at else {
+            return Some(self.take_report(now));
+        };
+        let report_at = last_reported_at + DROP_WARNING_INTERVAL;
+        if now >= report_at {
+            return Some(self.take_report(now));
+        }
+
+        self.report_at = Some(report_at);
+        None
+    }
+
+    fn report_at(&self) -> Option<Instant> {
+        self.report_at
+    }
+
+    fn take_due_report(&mut self) -> DropWarningReport {
+        self.take_report(Instant::now())
+    }
+
+    fn take_report(&mut self, now: Instant) -> DropWarningReport {
+        let report = DropWarningReport {
+            dropped_since_last: self.total_dropped - self.reported_dropped,
+            total_dropped: self.total_dropped,
+        };
+        self.reported_dropped = self.total_dropped;
+        self.last_reported_at = Some(now);
+        self.report_at = None;
+        report
+    }
+}
+
+fn warn_dropped_messages(report: DropWarningReport) {
+    tracing::warn!(
+        dropped_since_last = report.dropped_since_last,
+        total_dropped = report.total_dropped,
+        "event channel full, dropping message"
+    );
+}
+
 pub(crate) struct EventLoopState {
     pub transport: Option<WsTransport>,
     pub event_tx: mpsc::Sender<Event>,
@@ -39,7 +102,7 @@ pub(crate) struct EventLoopState {
     pub http: reqwest::Client,
     pub get_token: Box<dyn Fn() -> TokenFuture + Send + Sync>,
     pub timing: TimingConfig,
-    pub dropped_messages: u64,
+    pub drop_warnings: DropWarningState,
 }
 
 async fn sleep_until_optional(deadline: Option<Instant>) {
@@ -210,6 +273,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
             }
 
+            let drop_warning_deadline = p.drop_warnings.report_at();
             let Some(transport) = p.transport.as_mut() else {
                 tracing::warn!("WebSocket transport missing before receive loop");
                 break;
@@ -224,6 +288,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
                 _ = sleep_until_optional(p.session.token_renewal_at()), if p.session.token_renewal_at().is_some() => {
                     ReceiveLoopEvent::TokenRenewal
+                }
+
+                _ = sleep_until_optional(drop_warning_deadline), if drop_warning_deadline.is_some() => {
+                    ReceiveLoopEvent::DropWarningDeadline
                 }
 
                 frame = transport.ws_read.next() => {
@@ -266,6 +334,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     if handle_renewal_result(&mut p, &mut close_rx, result).await {
                         return;
                     }
+                }
+                ReceiveLoopEvent::DropWarningDeadline => {
+                    warn_dropped_messages(p.drop_warnings.take_due_report());
                 }
                 ReceiveLoopEvent::ChannelOperationDeadline => {
                     if let Some(attach_timed_out) =
@@ -510,6 +581,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 enum ReceiveLoopEvent {
     CloseRequested,
     TokenRenewal,
+    DropWarningDeadline,
     ChannelOperationDeadline,
     ChannelRetry,
     Frame(Option<Result<tungstenite::Message, tungstenite::Error>>),
@@ -657,11 +729,9 @@ async fn handle_message(
                             }));
                         }
                         Err(mpsc::error::TrySendError::Full(_)) => {
-                            p.dropped_messages += 1;
-                            tracing::warn!(
-                                total_dropped = p.dropped_messages,
-                                "event channel full, dropping message"
-                            );
+                            if let Some(report) = p.drop_warnings.record_drop() {
+                                warn_dropped_messages(report);
+                            }
                         }
                         Err(mpsc::error::TrySendError::Closed(_)) => {
                             return LoopAction::Stop;
@@ -1046,60 +1116,11 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
 mod tests {
     use super::super::state::ConnState;
     use super::*;
-    use std::collections::BTreeMap;
-    use std::fmt;
-    use std::sync::{Arc, Mutex};
 
     use crate::protocol::{AblyMessage, ErrorInfo};
     use crate::types::{TokenDetails, TokenRequest};
-    use tracing::Subscriber;
-    use tracing::field::{Field, Visit};
-    use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
-
-    #[derive(Clone, Default)]
-    struct CapturedEvents {
-        events: Arc<Mutex<Vec<BTreeMap<String, String>>>>,
-    }
-
-    impl CapturedEvents {
-        fn entries(&self) -> Vec<BTreeMap<String, String>> {
-            self.events.lock().unwrap().clone()
-        }
-    }
-
-    impl<S> Layer<S> for CapturedEvents
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = CapturedFields::default();
-            event.record(&mut visitor);
-            self.events.lock().unwrap().push(visitor.fields);
-        }
-    }
-
-    #[derive(Default)]
-    struct CapturedFields {
-        fields: BTreeMap<String, String>,
-    }
-
-    impl Visit for CapturedFields {
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
 
     fn test_event_loop_state(event_tx: mpsc::Sender<Event>) -> EventLoopState {
         let timing = TimingConfig::default();
@@ -1141,7 +1162,7 @@ mod tests {
                 })
             }),
             timing,
-            dropped_messages: 0,
+            drop_warnings: DropWarningState::default(),
         }
     }
 
@@ -1152,10 +1173,10 @@ mod tests {
         );
     }
 
-    fn captured_contains(events: &[BTreeMap<String, String>], needle: &str) -> bool {
+    fn captured_contains(events: &[CapturedEvent], needle: &str) -> bool {
         events
             .iter()
-            .flat_map(BTreeMap::values)
+            .flat_map(|event| event.fields.values())
             .any(|value| value.contains(needle))
     }
 
@@ -1246,7 +1267,7 @@ mod tests {
         .await;
 
         assert_eq!(action, LoopAction::Continue);
-        assert_eq!(state.dropped_messages, 1);
+        assert_eq!(state.drop_warnings.total_dropped, 1);
         assert!(
             matches!(event_rx.try_recv(), Ok(Event::Connected)),
             "expected pre-filled event to remain queued"
@@ -1290,7 +1311,7 @@ mod tests {
         .await;
 
         assert_eq!(action, LoopAction::Stop);
-        assert_eq!(state.dropped_messages, 0);
+        assert_eq!(state.drop_warnings.total_dropped, 0);
         let events = captured.entries();
         assert!(
             !captured_contains(&events, "Failed to decode JSON encoding layer"),
