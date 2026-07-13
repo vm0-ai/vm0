@@ -691,6 +691,13 @@ describe("GET /api/zero/artifacts", () => {
       orgId: `org_${randomUUID()}`,
     });
     const current = await artifactActor("Artifacts API org agent", actor);
+    const standaloneUpload = await createRunUploadedFile({
+      owner: current,
+      prompt: "upload standalone artifact",
+      filename: "standalone-notes.txt",
+      contentType: "text/plain",
+      sizeBytes: 256,
+    });
     const otherOrg = await artifactActor(
       "Artifacts API other org agent",
       otherOrgActor,
@@ -722,13 +729,6 @@ describe("GET /api/zero/artifacts", () => {
       files: [hostedFile],
     });
     await chat.completeHostedSiteWithBearer(bearer, prepared.deploymentId);
-    const standaloneUpload = await createRunUploadedFile({
-      owner: current,
-      prompt: "upload standalone artifact",
-      filename: "standalone-notes.txt",
-      contentType: "text/plain",
-      sizeBytes: 256,
-    });
 
     const otherOrgArtifact = await createHostedArtifact({
       actor: otherOrg.actor,
