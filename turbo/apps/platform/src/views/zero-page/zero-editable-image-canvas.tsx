@@ -2,9 +2,9 @@ import type {
   KeyboardEvent,
   PointerEvent,
   ReactNode,
-  SyntheticEvent,
 } from "react";
 import {
+  type ReactZoomPanPinchContentRef,
   type ReactZoomPanPinchContextState,
   TransformComponent,
   TransformWrapper,
@@ -53,6 +53,8 @@ const TOOLBAR_OFFSET = 12;
 const TOP_TOOLBAR_Z_INDEX_OFFSET = 4;
 const MIN_REGION_SELECTION_SIZE = 6;
 const IMAGE_EDIT_ACCENT_COLOR = "hsl(var(--primary))";
+const VIEWPORT_AUTO_FIT_PADDING = 24;
+const VIEWPORT_AUTO_FIT_MAX_RETRY_COUNT = 4;
 
 type EditableImageCanvasProps = {
   alt: string;
@@ -78,16 +80,14 @@ type CanvasItemViewProps = {
   alt: string;
   imageTestId: string;
   item: EditableImageCanvasItem;
-  onImageLoad: (
-    itemId: string,
-    event: SyntheticEvent<HTMLImageElement>,
-  ) => void;
+  onImageLoad: (item: EditableImageCanvasItem, image: HTMLImageElement) => void;
   onPointerDown: (
     item: EditableImageCanvasItem,
     event: PointerEvent<HTMLImageElement>,
   ) => void;
   selectingRegion: boolean;
   selected: boolean;
+  visible: boolean;
 };
 
 type EditableImageTransformFrameProps = {
@@ -99,10 +99,7 @@ type EditableImageTransformFrameProps = {
   displayZoom: number;
   imageTestId: string;
   items: EditableImageCanvasItem[];
-  onImageLoad: (
-    itemId: string,
-    event: SyntheticEvent<HTMLImageElement>,
-  ) => void;
+  onImageLoad: (item: EditableImageCanvasItem, image: HTMLImageElement) => void;
   onItemPointerDown: (
     item: EditableImageCanvasItem,
     event: PointerEvent<HTMLImageElement>,
@@ -137,6 +134,24 @@ type DisplayImageCanvasRegion = {
   width: number;
   x: number;
   y: number;
+};
+
+type DisplayImageCanvasBounds = {
+  bottom: number;
+  centerX: number;
+  centerY: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  width: number;
+};
+
+type ElementViewportRect = {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
 };
 
 type MoveImageCanvasItem = (args: {
@@ -323,6 +338,206 @@ function clampRegionCoordinate(value: number, max: number): number {
     return 0;
   }
   return Math.max(0, Math.min(max, value));
+}
+
+function clampZoomScale(value: number): number {
+  return Math.max(
+    IMAGE_LIGHTBOX_MIN_ZOOM,
+    Math.min(IMAGE_LIGHTBOX_MAX_ZOOM, value),
+  );
+}
+
+function resolvedItemsBoundingBox(
+  items: readonly EditableImageCanvasItem[],
+  viewportKey: string,
+): DisplayImageCanvasBounds | null {
+  if (items.length === 0) {
+    return null;
+  }
+
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const item of items) {
+    if (
+      !editableImageCanvasItemResolvedForViewport(item, viewportKey) ||
+      item.displayWidth <= 0 ||
+      item.displayHeight <= 0
+    ) {
+      return null;
+    }
+    left = Math.min(left, item.x);
+    top = Math.min(top, item.y);
+    right = Math.max(right, item.x + item.displayWidth);
+    bottom = Math.max(bottom, item.y + item.displayHeight);
+  }
+
+  const width = right - left;
+  const height = bottom - top;
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return {
+    bottom,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    height,
+    left,
+    right,
+    top,
+    width,
+  };
+}
+
+function editableImageCanvasItemResolvedForViewport(
+  item: EditableImageCanvasItem,
+  viewportKey: string,
+): boolean {
+  return item.dimensionsResolved && item.dimensionsViewportKey === viewportKey;
+}
+
+function elementViewportRect(element: HTMLElement): ElementViewportRect {
+  const rect = element.getBoundingClientRect();
+  return {
+    height: rect.height > 0 ? rect.height : element.clientHeight,
+    left: rect.left,
+    top: rect.top,
+    width: rect.width > 0 ? rect.width : element.clientWidth,
+  };
+}
+
+function viewportScaleForBounds(
+  bounds: DisplayImageCanvasBounds,
+  viewport: ElementViewportRect,
+): number | null {
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    return null;
+  }
+
+  const availableWidth = Math.max(
+    1,
+    viewport.width - VIEWPORT_AUTO_FIT_PADDING * 2,
+  );
+  const availableHeight = Math.max(
+    1,
+    viewport.height - VIEWPORT_AUTO_FIT_PADDING * 2,
+  );
+  return clampZoomScale(
+    Math.min(availableWidth / bounds.width, availableHeight / bounds.height),
+  );
+}
+
+function autoFitEditableImageViewport({
+  bounds,
+  canvasKey,
+  setDisplayZoom,
+  transformRef,
+}: {
+  bounds: DisplayImageCanvasBounds;
+  canvasKey: string;
+  setDisplayZoom: (key: string, zoom: number) => void;
+  transformRef: ReactZoomPanPinchContentRef;
+}): boolean {
+  const wrapper = transformRef.instance.wrapperComponent;
+  if (wrapper === null) {
+    return false;
+  }
+
+  const boundsElement = wrapper.querySelector<HTMLElement>(
+    "[data-editable-image-canvas-bounds='true']",
+  );
+  if (boundsElement === null) {
+    return false;
+  }
+
+  const viewport = elementViewportRect(wrapper);
+  const nextScale = viewportScaleForBounds(bounds, viewport);
+  if (nextScale === null) {
+    return false;
+  }
+
+  const boundsRect = boundsElement.getBoundingClientRect();
+  if (boundsRect.width > 0 && boundsRect.height > 0) {
+    transformRef.zoomToElement(boundsElement, nextScale, 0);
+    setDisplayZoom(canvasKey, nextScale);
+    return true;
+  }
+
+  const content = transformRef.instance.contentComponent;
+  const surface = wrapper.querySelector<HTMLElement>(
+    "[data-editable-image-canvas-surface='true']",
+  );
+  if (content === null || surface === null) {
+    return false;
+  }
+
+  const { scale } = transformRef.instance.state;
+  if (!Number.isFinite(scale) || scale <= 0) {
+    return false;
+  }
+  const contentRect = elementViewportRect(content);
+  const surfaceRect = elementViewportRect(surface);
+  const surfaceContentX = (surfaceRect.left - contentRect.left) / scale;
+  const surfaceContentY = (surfaceRect.top - contentRect.top) / scale;
+  const boundsCenterX = surfaceContentX + bounds.centerX;
+  const boundsCenterY = surfaceContentY + bounds.centerY;
+  const nextPositionX = viewport.width / 2 - boundsCenterX * nextScale;
+  const nextPositionY = viewport.height / 2 - boundsCenterY * nextScale;
+
+  transformRef.setTransform(nextPositionX, nextPositionY, nextScale, 0);
+  setDisplayZoom(canvasKey, nextScale);
+  return true;
+}
+
+function scheduleEditableImageViewportAutoFit({
+  bounds,
+  canvasKey,
+  node,
+  setDisplayZoom,
+  transformRef,
+}: {
+  bounds: DisplayImageCanvasBounds;
+  canvasKey: string;
+  node: HTMLElement;
+  setDisplayZoom: (key: string, zoom: number) => void;
+  transformRef: ReactZoomPanPinchContentRef;
+}): void {
+  if (
+    node.dataset.autoFitComplete === "true" ||
+    node.dataset.autoFitScheduled === "true"
+  ) {
+    return;
+  }
+
+  let retryCount = 0;
+  const fitViewport = () => {
+    if (!node.isConnected || node.dataset.autoFitComplete === "true") {
+      return;
+    }
+
+    delete node.dataset.autoFitScheduled;
+    const fitted = autoFitEditableImageViewport({
+      bounds,
+      canvasKey,
+      setDisplayZoom,
+      transformRef,
+    });
+    if (fitted) {
+      node.dataset.autoFitComplete = "true";
+      return;
+    }
+
+    retryCount += 1;
+    if (retryCount < VIEWPORT_AUTO_FIT_MAX_RETRY_COUNT) {
+      node.dataset.autoFitScheduled = "true";
+      window.requestAnimationFrame(fitViewport);
+    }
+  };
+
+  node.dataset.autoFitScheduled = "true";
+  window.requestAnimationFrame(fitViewport);
 }
 
 function regionPointerPoint(
@@ -557,6 +772,7 @@ function CanvasItemView({
   onPointerDown,
   selectingRegion,
   selected,
+  visible,
 }: CanvasItemViewProps) {
   const inverseScale = useTransformComponent(inverseScaleFromTransformState);
   const selectedImageOutlineWidth = SELECTED_IMAGE_OUTLINE_WIDTH * inverseScale;
@@ -569,9 +785,19 @@ function CanvasItemView({
       data-testid={
         item.id === PRIMARY_IMAGE_ITEM_ID ? imageTestId : `${imageTestId}-copy`
       }
+      ref={(image) => {
+        if (
+          image !== null &&
+          image.complete &&
+          image.naturalWidth > 0 &&
+          image.naturalHeight > 0
+        ) {
+          onImageLoad(item, image);
+        }
+      }}
       draggable={false}
       onLoad={(event) => {
-        onImageLoad(item.id, event);
+        onImageLoad(item, event.currentTarget);
       }}
       onPointerDown={(event) => {
         onPointerDown(item, event);
@@ -592,6 +818,7 @@ function CanvasItemView({
         pointerEvents: "auto",
         top: item.y,
         userSelect: "none",
+        opacity: visible ? undefined : 0,
         width: item.displayWidth,
         zIndex: item.zIndex,
       }}
@@ -762,31 +989,12 @@ function RegionCommentAnchor({
   );
 }
 
-function EditableCanvasSurface({
-  alt,
-  canvasTestId,
-  imageTestId,
-  items,
-  onImageLoad,
-  onItemPointerDown,
-  onSurfacePointerDown,
-  regionSelectionActive,
-  regionComments,
-  renderRegionComment,
-  renderRegionToolbar,
-  renderSelectionToolbar,
-  selectedRegion,
-  selectedItem,
-  selectedItemId,
-}: {
+type EditableCanvasSurfaceProps = {
   alt: string;
   canvasTestId: string;
   imageTestId: string;
   items: EditableImageCanvasItem[];
-  onImageLoad: (
-    itemId: string,
-    event: SyntheticEvent<HTMLImageElement>,
-  ) => void;
+  onImageLoad: (item: EditableImageCanvasItem, image: HTMLImageElement) => void;
   onItemPointerDown: (
     item: EditableImageCanvasItem,
     event: PointerEvent<HTMLImageElement>,
@@ -806,7 +1014,28 @@ function EditableCanvasSurface({
   selectedRegion: EditableImageCanvasRegion | null;
   selectedItem: EditableImageCanvasItem | null;
   selectedItemId: string | null;
-}) {
+  viewportKey: string;
+};
+
+function EditableCanvasSurface({
+  alt,
+  canvasTestId,
+  imageTestId,
+  items,
+  onImageLoad,
+  onItemPointerDown,
+  onSurfacePointerDown,
+  regionSelectionActive,
+  regionComments,
+  renderRegionComment,
+  renderRegionToolbar,
+  renderSelectionToolbar,
+  selectedRegion,
+  selectedItem,
+  selectedItemId,
+  viewportKey,
+}: EditableCanvasSurfaceProps) {
+  const canvasBounds = resolvedItemsBoundingBox(items, viewportKey);
   const regionItem =
     selectedRegion === null
       ? null
@@ -834,12 +1063,27 @@ function EditableCanvasSurface({
     >
       <div
         className="relative shrink-0 overflow-visible"
+        data-editable-image-canvas-surface="true"
         data-testid={`${canvasTestId}-surface`}
         style={{
           height: DEFAULT_CANVAS_HEIGHT,
           width: DEFAULT_CANVAS_WIDTH,
         }}
       >
+        {canvasBounds && (
+          <div
+            aria-hidden
+            data-editable-image-canvas-bounds="true"
+            data-testid={`${canvasTestId}-bounds`}
+            className="pointer-events-none absolute opacity-0"
+            style={{
+              height: canvasBounds.height,
+              left: canvasBounds.left,
+              top: canvasBounds.top,
+              width: canvasBounds.width,
+            }}
+          />
+        )}
         {items.map((item) => {
           return (
             <CanvasItemView
@@ -851,6 +1095,10 @@ function EditableCanvasSurface({
               onPointerDown={onItemPointerDown}
               selectingRegion={regionSelectionActive}
               selected={item.id === selectedItemId}
+              visible={editableImageCanvasItemResolvedForViewport(
+                item,
+                viewportKey,
+              )}
             />
           );
         })}
@@ -888,6 +1136,44 @@ function EditableCanvasSurface({
         )}
       </div>
     </div>
+  );
+}
+
+type EditableImageViewportAutoFitProps = {
+  canvasKey: string;
+  items: EditableImageCanvasItem[];
+  setDisplayZoom: (key: string, zoom: number) => void;
+  transformRef: ReactZoomPanPinchContentRef;
+  viewportKey: string;
+};
+
+function EditableImageViewportAutoFit({
+  canvasKey,
+  items,
+  setDisplayZoom,
+  transformRef,
+  viewportKey,
+}: EditableImageViewportAutoFitProps) {
+  const bounds = resolvedItemsBoundingBox(items, viewportKey);
+
+  return (
+    <span
+      aria-hidden
+      data-editable-image-viewport-auto-fit="true"
+      ref={(node) => {
+        if (node === null || bounds === null) {
+          return;
+        }
+        scheduleEditableImageViewportAutoFit({
+          bounds,
+          canvasKey,
+          node,
+          setDisplayZoom,
+          transformRef,
+        });
+      }}
+      style={{ display: "none" }}
+    />
   );
 }
 
@@ -947,7 +1233,8 @@ function EditableImageTransformFrame({
       trackPadPanning={{ disabled: false }}
       wheel={{ activationKeys: ["Control"], wheelDisabled: true }}
     >
-      {({ resetTransform, zoomIn, zoomOut }) => {
+      {(transformRef) => {
+        const { resetTransform, zoomIn, zoomOut } = transformRef;
         const controls = controlsFromTransformState({
           displayZoom,
           resetTransform,
@@ -994,8 +1281,16 @@ function EditableImageTransformFrame({
                 selectedRegion={selectedRegion}
                 selectedItem={selectedItem}
                 selectedItemId={selectedItemId}
+                viewportKey={viewportKey}
               />
             </TransformComponent>
+            <EditableImageViewportAutoFit
+              canvasKey={canvasKey}
+              items={items}
+              setDisplayZoom={setDisplayZoom}
+              transformRef={transformRef}
+              viewportKey={viewportKey}
+            />
           </div>
         );
       }}
@@ -1019,22 +1314,31 @@ export function EditableArtifactImageCanvas({
   const canvasState = useEditableImageCanvasState(canvasKey, src);
 
   const handleImageLoad = (
-    itemId: string,
-    event: SyntheticEvent<HTMLImageElement>,
+    item: EditableImageCanvasItem,
+    image: HTMLImageElement,
   ) => {
-    const size = nextImageSize(event.currentTarget);
+    const size = nextImageSize(image);
     if (size === null) {
+      return;
+    }
+    if (
+      editableImageCanvasItemResolvedForViewport(item, viewportKey) &&
+      item.naturalHeight === size.naturalHeight &&
+      item.naturalWidth === size.naturalWidth
+    ) {
       return;
     }
     canvasState.resizeItem({
       displayHeight: size.displayHeight,
       displayWidth: size.displayWidth,
-      itemId,
+      itemId: item.id,
       key: canvasKey,
       naturalHeight: size.naturalHeight,
       naturalWidth: size.naturalWidth,
-      preserveDisplaySize: itemId.startsWith("image-edit-"),
+      preserveDisplaySize: item.id.startsWith("image-edit-"),
+      preservePosition: item.preservePositionOnLoad,
       src,
+      viewportKey,
     });
   };
 

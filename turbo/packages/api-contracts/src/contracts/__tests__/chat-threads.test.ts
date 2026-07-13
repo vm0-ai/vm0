@@ -230,6 +230,18 @@ describe("artifacts contract", () => {
     expect(artifactsContract.unfavorite.path).toBe(
       "/api/zero/artifacts/unfavorite",
     );
+    expect(artifactsContract.getImageEditSnapshot.method).toBe("GET");
+    expect(artifactsContract.getImageEditSnapshot.path).toBe(
+      "/api/zero/artifacts/image-edit-snapshot",
+    );
+    expect(artifactsContract.upsertImageEditSnapshot.method).toBe("PUT");
+    expect(artifactsContract.upsertImageEditSnapshot.path).toBe(
+      "/api/zero/artifacts/image-edit-snapshot",
+    );
+    expect(artifactsContract.deleteImageEditSnapshot.method).toBe("DELETE");
+    expect(artifactsContract.deleteImageEditSnapshot.path).toBe(
+      "/api/zero/artifacts/image-edit-snapshot",
+    );
   });
 
   it("accepts keyset pagination query params", () => {

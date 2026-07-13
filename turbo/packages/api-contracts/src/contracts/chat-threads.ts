@@ -102,6 +102,33 @@ const artifactFavoriteBodySchema = z.object({
   artifactUrl: z.string().min(1),
 });
 
+const imageArtifactEditSnapshotItemSchema = z.object({
+  url: z.string().url(),
+  x: z.number(),
+  y: z.number(),
+  zIndex: z.number().int(),
+});
+
+const imageArtifactEditSnapshotStateSchema = z.object({
+  items: z.array(imageArtifactEditSnapshotItemSchema),
+  version: z.literal(1),
+});
+
+const imageArtifactEditSnapshotQuerySchema = z.object({
+  url: z.string().url(),
+});
+
+const imageArtifactEditSnapshotUpsertSchema = z.object({
+  snapshot: imageArtifactEditSnapshotStateSchema,
+  url: z.string().url(),
+});
+
+const imageArtifactEditSnapshotSchema = z.object({
+  artifactUrl: z.string().url(),
+  snapshot: imageArtifactEditSnapshotStateSchema,
+  updatedAt: z.string(),
+});
+
 const htmlArtifactEditSnapshotQuerySchema = z.object({
   url: z.string().url(),
 });
@@ -1204,6 +1231,49 @@ export const artifactsContract = c.router({
     },
     summary: "Remove an artifact favorite for the caller",
   },
+  getImageEditSnapshot: {
+    method: "GET",
+    path: "/api/zero/artifacts/image-edit-snapshot",
+    headers: authHeadersSchema,
+    query: imageArtifactEditSnapshotQuerySchema,
+    responses: {
+      200: z.object({ snapshot: imageArtifactEditSnapshotSchema.nullable() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a resumable image artifact edit snapshot for the caller",
+  },
+  upsertImageEditSnapshot: {
+    method: "PUT",
+    path: "/api/zero/artifacts/image-edit-snapshot",
+    headers: authHeadersSchema,
+    body: imageArtifactEditSnapshotUpsertSchema,
+    responses: {
+      200: imageArtifactEditSnapshotSchema,
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Upsert a resumable image artifact edit snapshot for the caller",
+  },
+  deleteImageEditSnapshot: {
+    method: "DELETE",
+    path: "/api/zero/artifacts/image-edit-snapshot",
+    headers: authHeadersSchema,
+    query: imageArtifactEditSnapshotQuerySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete a resumable image artifact edit snapshot for the caller",
+  },
 });
 
 export type ChatThreadsContract = typeof chatThreadsContract;
@@ -1250,6 +1320,8 @@ export {
   artifactItemSchema,
   artifactFavoriteBodySchema,
   artifactsListResponseSchema,
+  imageArtifactEditSnapshotSchema,
+  imageArtifactEditSnapshotStateSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
@@ -1320,6 +1392,12 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
 export type ArtifactItem = z.infer<typeof artifactItemSchema>;
 export type ArtifactsListResponse = z.infer<typeof artifactsListResponseSchema>;
+export type ImageArtifactEditSnapshot = z.infer<
+  typeof imageArtifactEditSnapshotSchema
+>;
+export type ImageArtifactEditSnapshotState = z.infer<
+  typeof imageArtifactEditSnapshotStateSchema
+>;
 export type HtmlArtifactEditSnapshot = z.infer<
   typeof htmlArtifactEditSnapshotSchema
 >;

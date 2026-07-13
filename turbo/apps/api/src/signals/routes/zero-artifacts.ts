@@ -1,19 +1,130 @@
 import { command } from "ccstate";
-import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { and, eq, sql, type SQL } from "drizzle-orm";
+import {
+  artifactsContract,
+  type ImageArtifactEditSnapshotState,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { imageArtifactEditSnapshots } from "@vm0/db/schema/image-artifact-edit-snapshot";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
+import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
+import { writeDb$, type Db } from "../external/db";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   favoriteArtifact$,
   unfavoriteArtifact$,
   zeroArtifacts$,
 } from "../services/zero-chat-thread.service";
+import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
+
+interface UserArtifactUrlAccessArgs {
+  readonly artifactUrl: string;
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+function artifactNotFound() {
+  return notFound("Artifact not found");
+}
+
+function isDefaultImageEditSnapshot(
+  artifactUrl: string,
+  snapshot: ImageArtifactEditSnapshotState,
+): boolean {
+  const [onlyItem] = snapshot.items;
+  return snapshot.items.length === 1 && onlyItem?.url === artifactUrl;
+}
+
+function publicArtifactObjectKey(url: string): string | null {
+  const base = new URL(env("PUBLIC_ARTIFACTS_BASE_URL"));
+  const parsed = new URL(url);
+  if (parsed.origin !== base.origin) {
+    return null;
+  }
+
+  const basePath = base.pathname.replace(/\/+$/, "");
+  const pathPrefix = basePath === "" ? "/" : `${basePath}/`;
+  if (!parsed.pathname.startsWith(pathPrefix)) {
+    return null;
+  }
+
+  const key = parsed.pathname.slice(pathPrefix.length);
+  return key.length > 0 ? key : null;
+}
+
+function uploadedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
+  return sql`EXISTS (
+    SELECT 1
+    FROM ${runUploadedFiles}
+    WHERE ${runUploadedFiles.userId} = ${args.userId}
+      AND ${runUploadedFiles.orgId} = ${args.orgId}
+      AND ${runUploadedFiles.url} = ${args.artifactUrl}
+    LIMIT 1
+  )`;
+}
+
+function attachedArtifactAccessCondition(args: UserArtifactUrlAccessArgs): SQL {
+  const objectKey = publicArtifactObjectKey(args.artifactUrl);
+  if (objectKey === null) {
+    return sql`FALSE`;
+  }
+
+  return sql`EXISTS (
+    SELECT 1
+    FROM ${chatMessages}
+    INNER JOIN ${chatThreads}
+      ON ${chatThreads.id} = ${chatMessages.chatThreadId}
+    INNER JOIN ${agentComposes}
+      ON ${agentComposes.id} = ${chatThreads.agentComposeId}
+    WHERE ${chatThreads.userId} = ${args.userId}
+      AND ${agentComposes.orgId} = ${args.orgId}
+      AND EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(COALESCE(${chatMessages.attachFileMetadata}, '[]'::jsonb)) AS attached_file
+        WHERE attached_file->>'objectKey' = ${objectKey}
+      )
+    LIMIT 1
+  )`;
+}
+
+async function userCanAccessArtifactUrl(
+  db: Db,
+  args: UserArtifactUrlAccessArgs,
+): Promise<boolean> {
+  const result = await db.execute<{ readonly canAccess: boolean }>(sql`
+    SELECT (
+      ${uploadedArtifactAccessCondition(args)}
+      OR ${attachedArtifactAccessCondition(args)}
+    ) AS "canAccess"
+  `);
+
+  return result.rows[0]?.canAccess === true;
+}
+
+async function deleteImageEditSnapshotRow(
+  db: Db,
+  args: UserArtifactUrlAccessArgs,
+): Promise<void> {
+  await db
+    .delete(imageArtifactEditSnapshots)
+    .where(
+      and(
+        eq(imageArtifactEditSnapshots.orgId, args.orgId),
+        eq(imageArtifactEditSnapshots.userId, args.userId),
+        eq(imageArtifactEditSnapshots.artifactUrl, args.artifactUrl),
+      ),
+    );
+}
 
 const listArtifactsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -120,6 +231,156 @@ const unfavoriteArtifactInner$ = command(
   },
 );
 
+const getImageEditSnapshotInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const query = get(queryOf(artifactsContract.getImageEditSnapshot));
+    const db = set(writeDb$);
+    const canAccess = await userCanAccessArtifactUrl(db, {
+      artifactUrl: query.url,
+      orgId: auth.orgId,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+    if (!canAccess) {
+      return artifactNotFound();
+    }
+
+    const [row] = await db
+      .select({
+        artifactUrl: imageArtifactEditSnapshots.artifactUrl,
+        snapshot: imageArtifactEditSnapshots.snapshot,
+        updatedAt: imageArtifactEditSnapshots.updatedAt,
+      })
+      .from(imageArtifactEditSnapshots)
+      .where(
+        and(
+          eq(imageArtifactEditSnapshots.orgId, auth.orgId),
+          eq(imageArtifactEditSnapshots.userId, auth.userId),
+          eq(imageArtifactEditSnapshots.artifactUrl, query.url),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        snapshot: row
+          ? {
+              artifactUrl: row.artifactUrl,
+              snapshot: row.snapshot,
+              updatedAt: row.updatedAt.toISOString(),
+            }
+          : null,
+      },
+    };
+  },
+);
+
+const upsertImageEditSnapshotInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const bodyResult = await get(
+      bodyResultOf(artifactsContract.upsertImageEditSnapshot),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const db = set(writeDb$);
+    const canAccess = await userCanAccessArtifactUrl(db, {
+      artifactUrl: bodyResult.data.url,
+      orgId: auth.orgId,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+    if (!canAccess) {
+      return artifactNotFound();
+    }
+
+    if (
+      isDefaultImageEditSnapshot(bodyResult.data.url, bodyResult.data.snapshot)
+    ) {
+      await deleteImageEditSnapshotRow(db, {
+        artifactUrl: bodyResult.data.url,
+        orgId: auth.orgId,
+        userId: auth.userId,
+      });
+      signal.throwIfAborted();
+      return { status: 204 as const, body: undefined };
+    }
+
+    const updatedAt = nowDate();
+    const [row] = await db
+      .insert(imageArtifactEditSnapshots)
+      .values({
+        artifactUrl: bodyResult.data.url,
+        orgId: auth.orgId,
+        snapshot: bodyResult.data.snapshot,
+        updatedAt,
+        userId: auth.userId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          imageArtifactEditSnapshots.orgId,
+          imageArtifactEditSnapshots.userId,
+          imageArtifactEditSnapshots.artifactUrl,
+        ],
+        set: {
+          snapshot: bodyResult.data.snapshot,
+          updatedAt,
+        },
+      })
+      .returning({
+        artifactUrl: imageArtifactEditSnapshots.artifactUrl,
+        snapshot: imageArtifactEditSnapshots.snapshot,
+        updatedAt: imageArtifactEditSnapshots.updatedAt,
+      });
+    signal.throwIfAborted();
+
+    if (!row) {
+      throw new Error("Failed to save image artifact edit snapshot");
+    }
+
+    return {
+      status: 200 as const,
+      body: {
+        artifactUrl: row.artifactUrl,
+        snapshot: row.snapshot,
+        updatedAt: row.updatedAt.toISOString(),
+      },
+    };
+  },
+);
+
+const deleteImageEditSnapshotInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const query = get(queryOf(artifactsContract.deleteImageEditSnapshot));
+    const db = set(writeDb$);
+    const canAccess = await userCanAccessArtifactUrl(db, {
+      artifactUrl: query.url,
+      orgId: auth.orgId,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+    if (!canAccess) {
+      return artifactNotFound();
+    }
+
+    await deleteImageEditSnapshotRow(db, {
+      artifactUrl: query.url,
+      orgId: auth.orgId,
+      userId: auth.userId,
+    });
+    signal.throwIfAborted();
+
+    return { status: 204 as const, body: undefined };
+  },
+);
+
 export const zeroArtifactsRoutes: readonly RouteEntry[] = [
   {
     route: artifactsContract.list,
@@ -152,6 +413,39 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
         requiredCapability: "chat-message:read",
       },
       unfavoriteArtifactInner$,
+    ),
+  },
+  {
+    route: artifactsContract.getImageEditSnapshot,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      getImageEditSnapshotInner$,
+    ),
+  },
+  {
+    route: artifactsContract.upsertImageEditSnapshot,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      upsertImageEditSnapshotInner$,
+    ),
+  },
+  {
+    route: artifactsContract.deleteImageEditSnapshot,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-message:read",
+      },
+      deleteImageEditSnapshotInner$,
     ),
   },
 ];

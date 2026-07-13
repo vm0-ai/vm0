@@ -4,8 +4,10 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  artifactsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type ImageArtifactEditSnapshotState,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -81,10 +83,19 @@ afterEach(() => {
 
 function setupChatThread({
   featureSwitches,
+  onImageEditSnapshotDelete,
+  onImageEditSnapshotUpsert,
   path = `${THREAD_PATH}?artifact=${encodeURIComponent(SOURCE_IMAGE_URL)}`,
+  persistedImageEditSnapshot = null,
 }: {
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
+  onImageEditSnapshotDelete?: (query: { readonly url: string }) => void;
+  onImageEditSnapshotUpsert?: (body: {
+    readonly snapshot: ImageArtifactEditSnapshotState;
+    readonly url: string;
+  }) => void;
   path?: string;
+  persistedImageEditSnapshot?: ImageArtifactEditSnapshotState | null;
 }): void {
   context.mocks.data.team([
     {
@@ -147,6 +158,38 @@ function setupChatThread({
     }
     return respond(200, { messages, hasHistoryBefore: false });
   });
+  let currentPersistedImageEditSnapshot = persistedImageEditSnapshot;
+  context.mocks.api(artifactsContract.getImageEditSnapshot, ({ respond }) => {
+    return respond(200, {
+      snapshot: currentPersistedImageEditSnapshot
+        ? {
+            artifactUrl: SOURCE_IMAGE_URL,
+            snapshot: currentPersistedImageEditSnapshot,
+            updatedAt: "2026-03-10T00:00:03.000Z",
+          }
+        : null,
+    });
+  });
+  context.mocks.api(
+    artifactsContract.upsertImageEditSnapshot,
+    ({ body, respond }) => {
+      currentPersistedImageEditSnapshot = body.snapshot;
+      onImageEditSnapshotUpsert?.(body);
+      return respond(200, {
+        artifactUrl: body.url,
+        snapshot: body.snapshot,
+        updatedAt: "2026-03-10T00:00:03.000Z",
+      });
+    },
+  );
+  context.mocks.api(
+    artifactsContract.deleteImageEditSnapshot,
+    ({ query, respond }) => {
+      currentPersistedImageEditSnapshot = null;
+      onImageEditSnapshotDelete?.(query);
+      return respond(204);
+    },
+  );
 
   detachedSetupPage({
     context,
@@ -559,6 +602,60 @@ function mockElementClientSize(
   });
 }
 
+function domRect({
+  height,
+  left = 0,
+  top = 0,
+  width,
+}: {
+  readonly height: number;
+  readonly left?: number;
+  readonly top?: number;
+  readonly width: number;
+}): DOMRect {
+  return {
+    bottom: top + height,
+    height,
+    left,
+    right: left + width,
+    toJSON: () => {
+      return {};
+    },
+    top,
+    width,
+    x: left,
+    y: top,
+  };
+}
+
+function mockElementLayoutBox(
+  element: HTMLElement,
+  rect: {
+    readonly height: number;
+    readonly left?: number;
+    readonly top?: number;
+    readonly width: number;
+  },
+): void {
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: rect.height },
+    clientWidth: { configurable: true, value: rect.width },
+    offsetHeight: { configurable: true, value: rect.height },
+    offsetWidth: { configurable: true, value: rect.width },
+  });
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return domRect(rect);
+    },
+  });
+}
+
+function transformNumbers(transform: string): readonly number[] {
+  const matches = transform.match(/-?\d+(?:\.\d+)?/g);
+  return matches?.map(Number) ?? [];
+}
+
 function mockImageNaturalSize(
   image: HTMLImageElement,
   size: { readonly height: number; readonly width: number },
@@ -607,6 +704,45 @@ async function openSelectedImageEditToolbar(
   await waitFor(() => {
     expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
   });
+}
+
+async function exitImageEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await user.click(screen.getByTestId("artifact-sidebar-exit-image-edit"));
+  await waitFor(() => {
+    expect(
+      screen.queryByTestId("artifact-sidebar-image-edit-canvas"),
+    ).toBeNull();
+  });
+}
+
+async function reopenImageEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  const visibleEditButton = screen.queryByTestId("image-edit-open");
+  if (visibleEditButton instanceof HTMLElement) {
+    await user.click(visibleEditButton);
+  } else {
+    await user.click(screen.getByLabelText("Preview source.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-open")).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("image-edit-open"));
+  }
+
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+    ).toBeInTheDocument();
+  });
+}
+
+async function exitAndReopenImageEditMode(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await exitImageEditMode(user);
+  await reopenImageEditMode(user);
 }
 
 async function createRegionComment(
@@ -748,6 +884,30 @@ describe("image editing", () => {
       "src",
       SOURCE_IMAGE_URL,
     );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+  });
+
+  it("restores a generated image after exiting and reopening image edit mode", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockImageEditGeneration();
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-remove-background"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+
+    await exitAndReopenImageEditMode(user);
+
     await waitFor(() => {
       expect(
         screen.getByTestId("artifact-sidebar-body-image-copy"),
@@ -1236,6 +1396,135 @@ describe("image editing", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("image-edit-region-comment")).toBeNull();
     });
+  });
+
+  it("does not restore a deleted generated image after reopening", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockImageEditGeneration();
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-remove-background"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("artifact-sidebar-body-image-copy"),
+      ).toBeNull();
+    });
+
+    await exitAndReopenImageEditMode(user);
+
+    expect(screen.queryByTestId("artifact-sidebar-body-image-copy")).toBeNull();
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "src",
+      SOURCE_IMAGE_URL,
+    );
+  });
+
+  it("does not touch persistence when exiting an unmodified source image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const deletedSnapshots: { readonly url: string }[] = [];
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotDelete: (query) => {
+        deletedSnapshots.push(query);
+      },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+    });
+
+    await openImageEditMode(user);
+    await exitImageEditMode(user);
+
+    expect(savedSnapshots).toStrictEqual([]);
+    expect(deletedSnapshots).toStrictEqual([]);
+  });
+
+  it("clears persisted snapshot after deleting back to only the source image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const deletedSnapshots: { readonly url: string }[] = [];
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    mockImageEditGeneration();
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotDelete: (query) => {
+        deletedSnapshots.push(query);
+      },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-remove-background"));
+    await waitFor(() => {
+      expect(savedSnapshots.at(-1)?.snapshot.items).toHaveLength(2);
+    });
+
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(deletedSnapshots).toContainEqual({ url: SOURCE_IMAGE_URL });
+    });
+    expect(savedSnapshots.at(-1)?.snapshot.items).toHaveLength(2);
+  });
+
+  it("restores the source image after the last image is deleted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const deletedSnapshots: { readonly url: string }[] = [];
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotDelete: (query) => {
+        deletedSnapshots.push(query);
+      },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+      persistedImageEditSnapshot: {
+        items: [{ url: SOURCE_IMAGE_URL, x: 440, y: 330, zIndex: 1 }],
+        version: 1,
+      },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-delete"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar-body-image")).toBeNull();
+    });
+    await waitFor(() => {
+      expect(deletedSnapshots).toContainEqual({ url: SOURCE_IMAGE_URL });
+    });
+    expect(savedSnapshots).toStrictEqual([]);
+
+    await exitAndReopenImageEditMode(user);
+
+    expect(
+      screen.getByTestId("artifact-sidebar-image-edit-canvas"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "src",
+      SOURCE_IMAGE_URL,
+    );
+    expect(screen.queryByTestId("artifact-sidebar-body-image-copy")).toBeNull();
   });
 
   it("applies template and described style transfer prompts", async () => {
@@ -1742,6 +2031,18 @@ describe("image editing", () => {
       expect(copyImageUrls).toContain(UPLOADED_IMAGE_URL);
       expect(copyImageUrls).toContain(SECOND_UPLOADED_IMAGE_URL);
     });
+
+    await exitAndReopenImageEditMode(user);
+
+    await waitFor(() => {
+      const copyImageUrls = screen
+        .getAllByTestId("artifact-sidebar-body-image-copy")
+        .map((image) => {
+          return image.getAttribute("src");
+        });
+      expect(copyImageUrls).toContain(UPLOADED_IMAGE_URL);
+      expect(copyImageUrls).toContain(SECOND_UPLOADED_IMAGE_URL);
+    });
   });
 
   it("keeps the selected image toolbar at screen size after zooming out", async () => {
@@ -1821,11 +2122,175 @@ describe("image editing", () => {
     if (!(image instanceof HTMLImageElement)) {
       throw new Error("Expected the edit canvas image to be an image element");
     }
+    expect(image.style.opacity).toBe("0");
     mockImageNaturalSize(image, { height: 900, width: 1200 });
     fireEvent.load(image);
 
     await waitFor(() => {
       expect(image).toHaveStyle({ height: "252px", width: "336px" });
+    });
+    expect(image.style.opacity).toBe("");
+  });
+
+  it("fits restored edit canvas items into the viewport", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      persistedImageEditSnapshot: {
+        items: [
+          { url: SOURCE_IMAGE_URL, x: 0, y: 0, zIndex: 1 },
+          { url: EDITED_IMAGE_URL, x: 1200, y: 900, zIndex: 2 },
+        ],
+        version: 1,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "source.png",
+      );
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+    const canvas = await screen.findByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(canvas, { height: 500, width: 500 });
+
+    const transformWrapper = canvas.querySelector<HTMLElement>(
+      ".react-transform-wrapper",
+    );
+    const transformContent = canvas.querySelector<HTMLElement>(
+      ".react-transform-component",
+    );
+    const surface = screen.getByTestId(
+      "artifact-sidebar-image-edit-canvas-surface",
+    );
+    if (transformWrapper === null || transformContent === null) {
+      throw new Error("Expected edit canvas transform elements");
+    }
+    mockElementLayoutBox(transformWrapper, { height: 500, width: 500 });
+    mockElementLayoutBox(transformContent, {
+      height: 1200,
+      width: 1600,
+    });
+    mockElementLayoutBox(surface, {
+      height: 1200,
+      left: 64,
+      top: 64,
+      width: 1600,
+    });
+
+    const sourceImage = screen.getByTestId("artifact-sidebar-body-image");
+    const restoredImage = await screen.findByTestId(
+      "artifact-sidebar-body-image-copy",
+    );
+    if (
+      !(sourceImage instanceof HTMLImageElement) ||
+      !(restoredImage instanceof HTMLImageElement)
+    ) {
+      throw new Error("Expected restored canvas items to be image elements");
+    }
+    mockImageNaturalSize(sourceImage, { height: 900, width: 1200 });
+    mockImageNaturalSize(restoredImage, { height: 900, width: 1200 });
+    fireEvent.load(sourceImage);
+    fireEvent.load(restoredImage);
+
+    const expectedScale = Number.parseFloat((452 / 1652).toFixed(8));
+    const expectedX = 250 - (64 + 826) * expectedScale;
+    const expectedY = 250 - (64 + 619.5) * expectedScale;
+    await waitFor(() => {
+      expect(transformContent.style.transform).toContain(
+        `scale(${expectedScale})`,
+      );
+    });
+    const [x, y, scale] = transformNumbers(transformContent.style.transform);
+    expect(x).toBeCloseTo(expectedX, 4);
+    expect(y).toBeCloseTo(expectedY, 4);
+    expect(scale).toBeCloseTo(expectedScale, 8);
+  });
+
+  it("refits edit canvas item dimensions after entering fullscreen", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "source.png",
+      );
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-edit-image"));
+    const sidebarCanvas = await screen.findByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(sidebarCanvas, { height: 300, width: 400 });
+    const sidebarImage = screen.getByTestId("artifact-sidebar-body-image");
+    if (!(sidebarImage instanceof HTMLImageElement)) {
+      throw new Error("Expected sidebar edit canvas item to be an image");
+    }
+    mockImageNaturalSize(sidebarImage, { height: 900, width: 1200 });
+    fireEvent.load(sidebarImage);
+    await waitFor(() => {
+      expect(sidebarImage).toHaveStyle({ height: "252px", width: "336px" });
+    });
+
+    await user.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-fullscreen-toggle"),
+      ).toHaveAttribute("aria-label", "Exit fullscreen");
+    });
+
+    const fullscreenCanvas = screen.getByTestId(
+      "artifact-sidebar-image-edit-canvas",
+    );
+    mockElementClientSize(fullscreenCanvas, { height: 900, width: 1200 });
+    const transformWrapper = fullscreenCanvas.querySelector<HTMLElement>(
+      ".react-transform-wrapper",
+    );
+    const transformContent = fullscreenCanvas.querySelector<HTMLElement>(
+      ".react-transform-component",
+    );
+    const surface = screen.getByTestId(
+      "artifact-sidebar-image-edit-canvas-surface",
+    );
+    if (transformWrapper === null || transformContent === null) {
+      throw new Error("Expected fullscreen edit canvas transform elements");
+    }
+    mockElementLayoutBox(transformWrapper, { height: 900, width: 1200 });
+    mockElementLayoutBox(transformContent, {
+      height: 1200,
+      width: 1600,
+    });
+    mockElementLayoutBox(surface, {
+      height: 1200,
+      left: 64,
+      top: 64,
+      width: 1600,
+    });
+
+    const fullscreenImage = screen.getByTestId("artifact-sidebar-body-image");
+    if (!(fullscreenImage instanceof HTMLImageElement)) {
+      throw new Error("Expected fullscreen edit canvas item to be an image");
+    }
+    expect(fullscreenImage.style.opacity).toBe("0");
+    mockImageNaturalSize(fullscreenImage, { height: 900, width: 1200 });
+    fireEvent.load(fullscreenImage);
+
+    await waitFor(() => {
+      expect(fullscreenImage).toHaveStyle({
+        height: "852px",
+        width: "1136px",
+      });
+    });
+    expect(fullscreenImage.style.opacity).toBe("");
+    await waitFor(() => {
+      expect(transformContent.style.transform).toContain("scale(1)");
     });
   });
 
@@ -1959,6 +2424,14 @@ describe("image editing", () => {
     fireEvent.pointerUp(window);
 
     expect(image).toHaveStyle({ left: "470px", top: "370px" });
+
+    await exitAndReopenImageEditMode(user);
+    const restoredImage = screen.getByTestId("artifact-sidebar-body-image");
+    expect(restoredImage).toHaveStyle({ left: "470px", top: "370px" });
+    await user.click(restoredImage);
+    await waitFor(() => {
+      expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
+    });
 
     fireEvent.keyDown(
       screen.getByTestId("artifact-sidebar-image-edit-canvas"),

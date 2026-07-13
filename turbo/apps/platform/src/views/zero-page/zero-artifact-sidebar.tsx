@@ -101,6 +101,8 @@ import {
   closeArtifactImageEdit$,
   imageEditUploading$,
   openArtifactImageEdit$,
+  persistEditableImageCanvasSnapshot$,
+  setImageEditSnapshotControllerRef$,
   type ImageEditRegionComment,
   type ImageEditRegion,
   runImageEdit$,
@@ -706,29 +708,7 @@ function ArtifactSidebarContent({
   );
 }
 
-function ArtifactSidebarResolvedContent({
-  closeHtmlCommentMode,
-  closeImageEditMode,
-  closePreview,
-  display,
-  fullscreen,
-  htmlCommentMode,
-  htmlEditSnapshotRestoreTarget,
-  htmlEditState,
-  htmlHeaderState,
-  imageEditActive,
-  imageNavigation,
-  onBack,
-  onEditImage,
-  openHtmlCommentMode,
-  openPresentationEditor,
-  pageSignal,
-  publishHtmlDomEditPreviewDraft,
-  resetZoomableImageCanvasZoom,
-  syncTarget,
-  threadId,
-  toggleFullscreen,
-}: {
+type ArtifactSidebarResolvedContentProps = {
   readonly closeHtmlCommentMode: () => void;
   readonly closeImageEditMode: () => void;
   readonly closePreview: () => void;
@@ -753,7 +733,32 @@ function ArtifactSidebarResolvedContent({
   readonly syncTarget?: ArtifactDownloadSyncTarget;
   readonly threadId?: string;
   readonly toggleFullscreen: () => void;
-}) {
+};
+
+function ArtifactSidebarResolvedContent({
+  closeHtmlCommentMode,
+  closeImageEditMode,
+  closePreview,
+  display,
+  fullscreen,
+  htmlCommentMode,
+  htmlEditSnapshotRestoreTarget,
+  htmlEditState,
+  htmlHeaderState,
+  imageEditActive,
+  imageNavigation,
+  onBack,
+  onEditImage,
+  openHtmlCommentMode,
+  openPresentationEditor,
+  pageSignal,
+  publishHtmlDomEditPreviewDraft,
+  resetZoomableImageCanvasZoom,
+  syncTarget,
+  threadId,
+  toggleFullscreen,
+}: ArtifactSidebarResolvedContentProps) {
+  const persistCanvasSnapshot = useSet(persistEditableImageCanvasSnapshot$);
   const applyHtmlStyleEdits = createHtmlStyleEditApplyAction({
     display,
     htmlEditState,
@@ -777,7 +782,13 @@ function ArtifactSidebarResolvedContent({
     htmlHeaderState,
     closeHtmlCommentMode,
   );
-  const exitImageEdit = imageEditActive ? closeImageEditMode : undefined;
+  const exitImageEdit = imageEditExitAction({
+    closeImageEditMode,
+    display,
+    imageEditActive,
+    pageSignal,
+    persistCanvasSnapshot,
+  });
 
   return (
     <ArtifactSidebarSurface
@@ -1022,6 +1033,43 @@ function htmlEditExitAction(
   closeHtmlCommentMode: () => void,
 ): (() => void) | undefined {
   return state === "editing" ? closeHtmlCommentMode : undefined;
+}
+
+function imageEditExitAction({
+  closeImageEditMode,
+  display,
+  imageEditActive,
+  pageSignal,
+  persistCanvasSnapshot,
+}: {
+  closeImageEditMode: () => void;
+  display: ArtifactDisplay;
+  imageEditActive: boolean;
+  pageSignal: AbortSignal;
+  persistCanvasSnapshot: (
+    args: { canvasSrc: string; key: string; url: string },
+    signal: AbortSignal,
+  ) => Promise<void>;
+}): (() => void) | undefined {
+  if (!imageEditActive || display.kind !== "image") {
+    return undefined;
+  }
+
+  return () => {
+    detach(
+      persistCanvasSnapshot(
+        {
+          canvasSrc: publicAttachmentUrl(display.url),
+          key: editableImageArtifactCanvasKey(display.url),
+          url: display.url,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+      "persistEditableImageCanvasSnapshotOnExit",
+    );
+    closeImageEditMode();
+  };
 }
 
 function resetArtifactSidebarImageZoom({
@@ -3805,43 +3853,23 @@ function createSubmitRegionCommentsHandler({
   };
 }
 
-function useArtifactImageEditActions({
+function useArtifactImageEditOperationAction({
+  artifactUrl,
   canvasKey,
   canvasSrc,
-  filename,
   pageSignal,
-  regionSelectionActive,
 }: {
+  artifactUrl: string;
   canvasKey: string;
   canvasSrc: string;
-  filename: string;
   pageSignal: AbortSignal;
-  regionSelectionActive: boolean;
-}) {
+}): ArtifactImageEditOperationHandler {
   const runImageEdit = useSet(runImageEdit$);
-  const addCanvasRegionComment = useSet(addEditableImageCanvasRegionComment$);
-  const deleteCanvasItem = useSet(deleteEditableImageCanvasItem$);
-  const clearCanvasRegionSelection = useSet(
-    clearEditableImageCanvasRegionSelection$,
-  );
-  const removeCanvasRegionComment = useSet(
-    removeEditableImageCanvasRegionComment$,
-  );
-  const setCanvasRegionInstructionDraft = useSet(
-    setEditableImageCanvasRegionInstructionDraft$,
-  );
-  const startEditingCanvasRegionComment = useSet(
-    startEditingEditableImageCanvasRegionComment$,
-  );
-  const startCanvasRegionSelection = useSet(
-    startEditableImageCanvasRegionSelection$,
-  );
-  const uploadCanvasImage = useSet(uploadEditableImageCanvasImage$);
-
-  const onOperation: ArtifactImageEditOperationHandler = (args) => {
+  return (args) => {
     detach(
       runImageEdit(
         {
+          artifactUrl,
           canvasKey,
           canvasSrc,
           operation: args.operation,
@@ -3858,25 +3886,101 @@ function useArtifactImageEditActions({
       "runImageEdit",
     );
   };
-  const onDownload = (item: EditableImageCanvasItem) => {
-    detach(
-      downloadAttachmentUrl(item.src, pageSignal, filename),
-      Reason.DomCallback,
-      "downloadEditableImageCanvasItem",
-    );
-  };
+}
+
+function useArtifactImageEditTransferActions({
+  artifactUrl,
+  canvasKey,
+  canvasSrc,
+  pageSignal,
+}: {
+  artifactUrl: string;
+  canvasKey: string;
+  canvasSrc: string;
+  pageSignal: AbortSignal;
+}) {
+  const deleteCanvasItem = useSet(deleteEditableImageCanvasItem$);
+  const persistCanvasSnapshot = useSet(persistEditableImageCanvasSnapshot$);
+  const uploadCanvasImage = useSet(uploadEditableImageCanvasImage$);
+
   const onDelete = (item: EditableImageCanvasItem) => {
     deleteCanvasItem({
       itemId: item.id,
       key: canvasKey,
       src: canvasSrc,
     });
+    detach(
+      persistCanvasSnapshot(
+        { canvasSrc, key: canvasKey, url: artifactUrl },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+      "persistEditableImageCanvasSnapshotAfterDelete",
+    );
   };
   const onUploadFiles = (files: readonly File[]) => {
     detach(
-      uploadCanvasImage({ canvasKey, canvasSrc }, files, pageSignal),
+      uploadCanvasImage(
+        { artifactUrl, canvasKey, canvasSrc },
+        files,
+        pageSignal,
+      ),
       Reason.DomCallback,
       "uploadEditableImageCanvasImage",
+    );
+  };
+
+  return { onDelete, onUploadFiles };
+}
+
+function useArtifactImageEditActions({
+  artifactUrl,
+  canvasKey,
+  canvasSrc,
+  filename,
+  pageSignal,
+  regionSelectionActive,
+}: {
+  artifactUrl: string;
+  canvasKey: string;
+  canvasSrc: string;
+  filename: string;
+  pageSignal: AbortSignal;
+  regionSelectionActive: boolean;
+}) {
+  const addCanvasRegionComment = useSet(addEditableImageCanvasRegionComment$);
+  const clearCanvasRegionSelection = useSet(
+    clearEditableImageCanvasRegionSelection$,
+  );
+  const removeCanvasRegionComment = useSet(
+    removeEditableImageCanvasRegionComment$,
+  );
+  const setCanvasRegionInstructionDraft = useSet(
+    setEditableImageCanvasRegionInstructionDraft$,
+  );
+  const startEditingCanvasRegionComment = useSet(
+    startEditingEditableImageCanvasRegionComment$,
+  );
+  const startCanvasRegionSelection = useSet(
+    startEditableImageCanvasRegionSelection$,
+  );
+  const onOperation = useArtifactImageEditOperationAction({
+    artifactUrl,
+    canvasKey,
+    canvasSrc,
+    pageSignal,
+  });
+  const transferActions = useArtifactImageEditTransferActions({
+    artifactUrl,
+    canvasKey,
+    canvasSrc,
+    pageSignal,
+  });
+  const onDownload = (item: EditableImageCanvasItem) => {
+    detach(
+      downloadAttachmentUrl(item.src, pageSignal, filename),
+      Reason.DomCallback,
+      "downloadEditableImageCanvasItem",
     );
   };
   const onRegionSelectionToggle = () => {
@@ -3913,7 +4017,7 @@ function useArtifactImageEditActions({
   });
 
   return {
-    onDelete,
+    onDelete: transferActions.onDelete,
     onDownload,
     onAddRegionComment,
     onEditRegionComment,
@@ -3922,7 +4026,7 @@ function useArtifactImageEditActions({
     onRemoveRegionComment,
     onRegionSelectionToggle,
     onSubmitRegionComments,
-    onUploadFiles,
+    onUploadFiles: transferActions.onUploadFiles,
   };
 }
 
@@ -3952,7 +4056,12 @@ function ArtifactImageEditBody({
   const regionComments = regionCommentsByKey[canvasKey] ?? [];
   const regionInstructionDraft = regionInstructionDraftByKey[canvasKey] ?? "";
   const regionSelectionActive = regionSelectionActiveByKey[canvasKey] ?? false;
+  const setImageEditSnapshotControllerRef = useSet(
+    setImageEditSnapshotControllerRef$,
+  );
+
   const actions = useArtifactImageEditActions({
+    artifactUrl: url,
     canvasKey,
     canvasSrc,
     filename,
@@ -3966,70 +4075,78 @@ function ArtifactImageEditBody({
   };
 
   return (
-    <ArtifactStageShell flush scrollable={false}>
-      <ArtifactStageCard fillHeight>
-        <div className="relative h-full min-h-0">
-          <ArtifactSidebarImageNavigationKeydown
-            fullscreen={fullscreen}
-            modalOpen={modalOpen}
-            navigation={imageNavigation}
-          />
-          <EditableArtifactImageCanvas
-            src={canvasSrc}
-            alt={filename}
-            canvasKey={canvasKey}
-            imageTestId="artifact-sidebar-body-image"
-            canvasTestId="artifact-sidebar-image-edit-canvas"
-            viewportKey={fullscreen ? "fullscreen" : "sidebar"}
-            renderRegionToolbar={(region) => {
-              return (
-                <ArtifactImageEditRegionCommentDraft
-                  draft={regionInstructionDraft}
-                  onDraftChange={actions.onRegionInstructionDraftChange}
-                  onSubmit={(instruction) => {
-                    actions.onAddRegionComment(region, instruction);
-                  }}
-                />
-              );
-            }}
-            renderRegionComment={(comment) => {
-              return (
-                <ArtifactImageEditRegionComment
-                  comment={comment}
-                  onEdit={actions.onEditRegionComment}
-                  onRemove={actions.onRemoveRegionComment}
-                />
-              );
-            }}
-            renderSelectionToolbar={(item) => {
-              return (
-                <ArtifactImageEditSelectionToolbar
-                  comments={commentsForItem(item.id)}
-                  imageUploading={imageUploading}
-                  item={item}
-                  onDelete={actions.onDelete}
-                  onDownload={actions.onDownload}
-                  onOperation={actions.onOperation}
-                  onRegionSelectionToggle={actions.onRegionSelectionToggle}
-                  onSubmitRegionComments={actions.onSubmitRegionComments}
-                  regionSelectionActive={regionSelectionActive}
-                />
-              );
-            }}
-          >
-            {(controls) => {
-              return (
-                <ArtifactImageEditCanvasChrome
-                  controls={controls}
-                  imageUploading={imageUploading}
-                  onUploadFiles={actions.onUploadFiles}
-                />
-              );
-            }}
-          </EditableArtifactImageCanvas>
-        </div>
-      </ArtifactStageCard>
-    </ArtifactStageShell>
+    <div
+      ref={setImageEditSnapshotControllerRef}
+      className="h-full min-h-0"
+      data-image-edit-snapshot-canvas-key={canvasKey}
+      data-image-edit-snapshot-canvas-src={canvasSrc}
+      data-image-edit-snapshot-url={url}
+    >
+      <ArtifactStageShell flush scrollable={false}>
+        <ArtifactStageCard fillHeight>
+          <div className="relative h-full min-h-0">
+            <ArtifactSidebarImageNavigationKeydown
+              fullscreen={fullscreen}
+              modalOpen={modalOpen}
+              navigation={imageNavigation}
+            />
+            <EditableArtifactImageCanvas
+              src={canvasSrc}
+              alt={filename}
+              canvasKey={canvasKey}
+              imageTestId="artifact-sidebar-body-image"
+              canvasTestId="artifact-sidebar-image-edit-canvas"
+              viewportKey={fullscreen ? "fullscreen" : "sidebar"}
+              renderRegionToolbar={(region) => {
+                return (
+                  <ArtifactImageEditRegionCommentDraft
+                    draft={regionInstructionDraft}
+                    onDraftChange={actions.onRegionInstructionDraftChange}
+                    onSubmit={(instruction) => {
+                      actions.onAddRegionComment(region, instruction);
+                    }}
+                  />
+                );
+              }}
+              renderRegionComment={(comment) => {
+                return (
+                  <ArtifactImageEditRegionComment
+                    comment={comment}
+                    onEdit={actions.onEditRegionComment}
+                    onRemove={actions.onRemoveRegionComment}
+                  />
+                );
+              }}
+              renderSelectionToolbar={(item) => {
+                return (
+                  <ArtifactImageEditSelectionToolbar
+                    comments={commentsForItem(item.id)}
+                    imageUploading={imageUploading}
+                    item={item}
+                    onDelete={actions.onDelete}
+                    onDownload={actions.onDownload}
+                    onOperation={actions.onOperation}
+                    onRegionSelectionToggle={actions.onRegionSelectionToggle}
+                    onSubmitRegionComments={actions.onSubmitRegionComments}
+                    regionSelectionActive={regionSelectionActive}
+                  />
+                );
+              }}
+            >
+              {(controls) => {
+                return (
+                  <ArtifactImageEditCanvasChrome
+                    controls={controls}
+                    imageUploading={imageUploading}
+                    onUploadFiles={actions.onUploadFiles}
+                  />
+                );
+              }}
+            </EditableArtifactImageCanvas>
+          </div>
+        </ArtifactStageCard>
+      </ArtifactStageShell>
+    </div>
   );
 }
 

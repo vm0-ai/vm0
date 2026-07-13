@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/zero-image-io-interpret-marks";
 import {
@@ -17,6 +18,7 @@ import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
   createDeferredPromise,
+  onRef,
   setLoop,
   tapError,
   withCleanup,
@@ -32,11 +34,16 @@ import {
 } from "./right-sidebar-search-params.ts";
 import {
   addEditableImageCanvasItem$,
+  clearEditableImageCanvasTransientState$,
   clearEditableImageCanvasRegionSelection$,
   editableImageArtifactCanvasKey,
+  editableImageCanvasSnapshotsByKey$,
+  type EditableImageCanvasSnapshot,
+  hydrateEditableImageCanvas$,
+  hydrateEditableImageCanvasSnapshot$,
   insertEditableImageCanvasItem$,
   removeEditableImageCanvasRegionComments$,
-  resetEditableImageCanvas$,
+  saveEditableImageCanvasSnapshot$,
 } from "./zero-editable-image-canvas.ts";
 
 export type ImageEditOperation =
@@ -125,6 +132,9 @@ const SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES = [
 ] as const;
 
 const internalImageEditUploading$ = state(false);
+const internalPersistedImageCanvasSnapshotPresentByKey$ = state<
+  Record<string, boolean>
+>({});
 
 export const artifactImageEditMode$ = computed((get) => {
   return get(searchParams$).get(ARTIFACT_IMAGE_EDIT_PARAM) === "1";
@@ -142,6 +152,7 @@ type OpenArtifactImageEditArgs =
     };
 
 type RunImageEditArgs = {
+  artifactUrl: string;
   canvasKey: string;
   canvasSrc: string;
   operation: ImageEditOperation;
@@ -154,6 +165,7 @@ type RunImageEditArgs = {
 };
 
 type UploadEditableImageCanvasImageArgs = {
+  artifactUrl: string;
   canvasKey: string;
   canvasSrc: string;
 };
@@ -174,7 +186,7 @@ export const openArtifactImageEdit$ = command(
     }
     clearChatAutomationSidebarParams(params);
     set(
-      resetEditableImageCanvas$,
+      hydrateEditableImageCanvas$,
       editableImageArtifactCanvasKey(args.url),
       publicAttachmentUrl(args.url),
     );
@@ -187,14 +199,142 @@ export const closeArtifactImageEdit$ = command(({ get, set }) => {
   const url = params.get(ARTIFACT_QUERY_PARAM);
   params.delete(ARTIFACT_IMAGE_EDIT_PARAM);
   if (url) {
-    set(
-      resetEditableImageCanvas$,
-      editableImageArtifactCanvasKey(url),
-      publicAttachmentUrl(url),
-    );
+    const canvasKey = editableImageArtifactCanvasKey(url);
+    const canvasSrc = publicAttachmentUrl(url);
+    set(saveEditableImageCanvasSnapshot$, canvasKey, canvasSrc);
+    set(clearEditableImageCanvasTransientState$, canvasKey);
   }
   set(replaceSearchParams$, params);
 });
+
+export const loadPersistedEditableImageCanvasSnapshot$ = command(
+  async (
+    { get, set },
+    args: { canvasSrc: string; key: string; url: string },
+    signal: AbortSignal,
+  ) => {
+    const initialSnapshot = get(editableImageCanvasSnapshotsByKey$)[args.key];
+    const client = get(zeroClient$)(artifactsContract, { apiBase: "api" });
+    const loaded = await accept(
+      client.getImageEditSnapshot({
+        query: { url: args.url },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (loaded.status === 404 || loaded.body.snapshot === null) {
+      set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
+        return { ...current, [args.key]: false };
+      });
+      return;
+    }
+    set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
+      return { ...current, [args.key]: true };
+    });
+    if (get(editableImageCanvasSnapshotsByKey$)[args.key] !== initialSnapshot) {
+      return;
+    }
+
+    set(
+      hydrateEditableImageCanvasSnapshot$,
+      args.key,
+      args.canvasSrc,
+      loaded.body.snapshot.snapshot,
+    );
+  },
+);
+
+function shouldDeletePersistedImageCanvasSnapshot(
+  snapshot: EditableImageCanvasSnapshot,
+  canvasSrc: string,
+): boolean {
+  if (snapshot.items.length === 0) {
+    return true;
+  }
+
+  const [onlyItem] = snapshot.items;
+  return snapshot.items.length === 1 && onlyItem?.url === canvasSrc;
+}
+
+export const persistEditableImageCanvasSnapshot$ = command(
+  async (
+    { get, set },
+    args: { canvasSrc: string; key: string; url: string },
+    signal: AbortSignal,
+  ) => {
+    const snapshot: EditableImageCanvasSnapshot = set(
+      saveEditableImageCanvasSnapshot$,
+      args.key,
+      args.canvasSrc,
+    );
+    const client = get(zeroClient$)(artifactsContract, { apiBase: "api" });
+    if (shouldDeletePersistedImageCanvasSnapshot(snapshot, args.canvasSrc)) {
+      if (!get(internalPersistedImageCanvasSnapshotPresentByKey$)[args.key]) {
+        return;
+      }
+
+      await accept(
+        client.deleteImageEditSnapshot({
+          query: { url: args.url },
+          fetchOptions: { signal },
+        }),
+        [204, 404],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+      set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
+        return { ...current, [args.key]: false };
+      });
+      return;
+    }
+
+    const saved = await accept(
+      client.upsertImageEditSnapshot({
+        body: {
+          snapshot: {
+            items: snapshot.items.map((item) => {
+              return { ...item };
+            }),
+            version: snapshot.version,
+          },
+          url: args.url,
+        },
+        fetchOptions: { signal },
+      }),
+      [200, 204, 404],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (saved.status === 200) {
+      set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
+        return { ...current, [args.key]: true };
+      });
+    } else if (saved.status === 204) {
+      set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
+        return { ...current, [args.key]: false };
+      });
+    }
+  },
+);
+
+export const setImageEditSnapshotControllerRef$ = onRef(
+  command(async ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
+    const canvasSrc = el.dataset.imageEditSnapshotCanvasSrc;
+    const key = el.dataset.imageEditSnapshotCanvasKey;
+    const url = el.dataset.imageEditSnapshotUrl;
+    if (!canvasSrc || !key || !url) {
+      return;
+    }
+
+    await set(
+      loadPersistedEditableImageCanvasSnapshot$,
+      { canvasSrc, key, url },
+      signal,
+    );
+  }),
+);
 
 function readResultImageUrl(
   result: Record<string, unknown> | undefined,
@@ -604,6 +744,23 @@ async function waitForImageEditResultUrl({
   });
 }
 
+const persistRunImageEditSnapshot$ = command(
+  async ({ set }, args: RunImageEditArgs, signal: AbortSignal) => {
+    await tapError(
+      set(
+        persistEditableImageCanvasSnapshot$,
+        {
+          canvasSrc: args.canvasSrc,
+          key: args.canvasKey,
+          url: args.artifactUrl,
+        },
+        signal,
+      ),
+      () => {},
+    );
+  },
+);
+
 export const runImageEdit$ = command(
   async ({ get, set }, args: RunImageEditArgs, parentSignal: AbortSignal) => {
     if (get(internalImageEditUploading$)) {
@@ -700,6 +857,7 @@ export const runImageEdit$ = command(
           }),
           key: args.canvasKey,
         });
+        await set(persistRunImageEditSnapshot$, args, signal);
         // A single generation applies all comments at once and the model gives
         // no per-region confirmation, so it can silently skip one when several
         // are batched. Tell the user to verify rather than assume every edit
@@ -727,6 +885,7 @@ export const runImageEdit$ = command(
         sourceItemId: args.sourceItemId,
         src: resultUrl,
       });
+      await set(persistRunImageEditSnapshot$, args, signal);
     };
 
     await withCleanup(
@@ -796,6 +955,18 @@ export const uploadEditableImageCanvasImage$ = command(
           src: url,
         });
       }
+      await tapError(
+        set(
+          persistEditableImageCanvasSnapshot$,
+          {
+            canvasSrc: args.canvasSrc,
+            key: args.canvasKey,
+            url: args.artifactUrl,
+          },
+          signal,
+        ),
+        () => {},
+      );
       toast.success(
         uploads.length === 1 ? "Image uploaded" : "Images uploaded",
       );

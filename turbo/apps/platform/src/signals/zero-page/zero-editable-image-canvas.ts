@@ -10,15 +10,30 @@ const DEFAULT_IMAGE_HEIGHT = 540;
 const DUPLICATE_OFFSET = 24;
 
 export type EditableImageCanvasItem = {
+  dimensionsResolved: boolean;
+  dimensionsViewportKey: string | null;
   displayHeight: number;
   displayWidth: number;
   id: string;
   naturalHeight: number;
   naturalWidth: number;
+  preservePositionOnLoad: boolean;
   src: string;
   x: number;
   y: number;
   zIndex: number;
+};
+
+export type EditableImageCanvasSnapshotItem = {
+  url: string;
+  x: number;
+  y: number;
+  zIndex: number;
+};
+
+export type EditableImageCanvasSnapshot = {
+  items: readonly EditableImageCanvasSnapshotItem[];
+  version: 1;
 };
 
 export type EditableImageCanvasRegion = {
@@ -38,6 +53,9 @@ export type EditableImageCanvasRegionComment = {
 const internalItemsByKey$ = state<Record<string, EditableImageCanvasItem[]>>(
   {},
 );
+const internalSnapshotByKey$ = state<
+  Record<string, EditableImageCanvasSnapshot>
+>({});
 const internalSelectedItemId$ = state<string | null>(null);
 const internalClipboardItemByKey$ = state<
   Record<string, EditableImageCanvasItem | null>
@@ -58,6 +76,10 @@ const internalNextRegionCommentIndexByKey$ = state<Record<string, number>>({});
 
 export const editableImageCanvasItemsByKey$ = computed((get) => {
   return get(internalItemsByKey$);
+});
+
+export const editableImageCanvasSnapshotsByKey$ = computed((get) => {
+  return get(internalSnapshotByKey$);
 });
 
 export const editableImageCanvasSelectedItemId$ = computed((get) => {
@@ -88,11 +110,14 @@ export function createInitialEditableImageCanvasItem(
   src: string,
 ): EditableImageCanvasItem {
   return {
+    dimensionsResolved: false,
+    dimensionsViewportKey: null,
     displayHeight: DEFAULT_IMAGE_HEIGHT,
     displayWidth: DEFAULT_IMAGE_WIDTH,
     id: PRIMARY_IMAGE_ITEM_ID,
     naturalHeight: DEFAULT_IMAGE_HEIGHT,
     naturalWidth: DEFAULT_IMAGE_WIDTH,
+    preservePositionOnLoad: false,
     src,
     x: (DEFAULT_CANVAS_WIDTH - DEFAULT_IMAGE_WIDTH) / 2,
     y: (DEFAULT_CANVAS_HEIGHT - DEFAULT_IMAGE_HEIGHT) / 2,
@@ -112,23 +137,70 @@ function itemsForKey(
   return current[key] ?? [createInitialEditableImageCanvasItem(src)];
 }
 
+function snapshotFromItems(
+  items: readonly EditableImageCanvasItem[],
+): EditableImageCanvasSnapshot {
+  return {
+    items: items.map((item) => {
+      return {
+        url: item.src,
+        x: item.x,
+        y: item.y,
+        zIndex: item.zIndex,
+      };
+    }),
+    version: 1,
+  };
+}
+
+function setSnapshotForItems(
+  current: Record<string, EditableImageCanvasSnapshot>,
+  key: string,
+  items: readonly EditableImageCanvasItem[],
+): Record<string, EditableImageCanvasSnapshot> {
+  const snapshot = snapshotFromItems(items);
+  if (snapshot.items.length > 0) {
+    return { ...current, [key]: snapshot };
+  }
+
+  const next = { ...current };
+  delete next[key];
+  return next;
+}
+
+function itemsFromSnapshot(
+  snapshot: EditableImageCanvasSnapshot,
+  canvasSrc: string,
+): EditableImageCanvasItem[] {
+  let primaryImageAssigned = false;
+  return snapshot.items.map((item, index) => {
+    const primaryImage = !primaryImageAssigned && item.url === canvasSrc;
+    if (primaryImage) {
+      primaryImageAssigned = true;
+    }
+
+    return {
+      ...createInitialEditableImageCanvasItem(item.url),
+      id: primaryImage ? PRIMARY_IMAGE_ITEM_ID : `image-snapshot-${index + 1}`,
+      preservePositionOnLoad: true,
+      x: item.x,
+      y: item.y,
+      zIndex: item.zIndex,
+    };
+  });
+}
+
 export const selectEditableImageCanvasItem$ = command(
   ({ set }, itemId: string | null) => {
     set(internalSelectedItemId$, itemId);
   },
 );
 
-export const resetEditableImageCanvas$ = command(
-  ({ set }, key: string, src: string) => {
-    set(internalItemsByKey$, (current) => {
-      return { ...current, [key]: [createInitialEditableImageCanvasItem(src)] };
-    });
+export const clearEditableImageCanvasTransientState$ = command(
+  ({ set }, key: string) => {
     set(internalSelectedItemId$, null);
     set(internalClipboardItemByKey$, (current) => {
       return { ...current, [key]: null };
-    });
-    set(internalNextItemIndexByKey$, (current) => {
-      return { ...current, [key]: 1 };
     });
     set(internalNextRegionCommentIndexByKey$, (current) => {
       return { ...current, [key]: 1 };
@@ -148,6 +220,72 @@ export const resetEditableImageCanvas$ = command(
     set(internalEditingRegionCommentIdByKey$, (current) => {
       return { ...current, [key]: null };
     });
+  },
+);
+
+export const saveEditableImageCanvasSnapshot$ = command(
+  ({ get, set }, key: string, src: string) => {
+    const items = itemsForKey(get(internalItemsByKey$), key, src);
+    const snapshot = snapshotFromItems(items);
+    set(internalSnapshotByKey$, (current) => {
+      return setSnapshotForItems(current, key, items);
+    });
+    return snapshot;
+  },
+);
+
+export const hydrateEditableImageCanvasSnapshot$ = command(
+  (
+    { set },
+    key: string,
+    src: string,
+    snapshot: EditableImageCanvasSnapshot,
+  ) => {
+    const items = itemsFromSnapshot(snapshot, src);
+    set(internalSnapshotByKey$, (current) => {
+      return { ...current, [key]: snapshot };
+    });
+    set(internalItemsByKey$, (current) => {
+      return { ...current, [key]: items };
+    });
+    set(internalNextItemIndexByKey$, (current) => {
+      return { ...current, [key]: items.length + 1 };
+    });
+    set(clearEditableImageCanvasTransientState$, key);
+  },
+);
+
+export const hydrateEditableImageCanvas$ = command(
+  ({ get, set }, key: string, src: string) => {
+    const snapshot = get(internalSnapshotByKey$)[key];
+    const items =
+      snapshot === undefined
+        ? [createInitialEditableImageCanvasItem(src)]
+        : itemsFromSnapshot(snapshot, src);
+    set(internalItemsByKey$, (current) => {
+      return { ...current, [key]: items };
+    });
+    set(internalNextItemIndexByKey$, (current) => {
+      return { ...current, [key]: items.length + 1 };
+    });
+    set(clearEditableImageCanvasTransientState$, key);
+  },
+);
+
+export const resetEditableImageCanvas$ = command(
+  ({ set }, key: string, src: string) => {
+    set(internalItemsByKey$, (current) => {
+      return { ...current, [key]: [createInitialEditableImageCanvasItem(src)] };
+    });
+    set(internalSnapshotByKey$, (current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    set(internalNextItemIndexByKey$, (current) => {
+      return { ...current, [key]: 1 };
+    });
+    set(clearEditableImageCanvasTransientState$, key);
   },
 );
 
@@ -492,7 +630,9 @@ export const resizeEditableImageCanvasItem$ = command(
       naturalHeight: number;
       naturalWidth: number;
       preserveDisplaySize?: boolean;
+      preservePosition?: boolean;
       src: string;
+      viewportKey: string;
     },
   ) => {
     set(internalItemsByKey$, (current) => {
@@ -519,12 +659,18 @@ export const resizeEditableImageCanvasItem$ = command(
               };
           return {
             ...item,
+            dimensionsResolved: true,
+            dimensionsViewportKey: args.viewportKey,
             displayHeight,
             displayWidth,
             naturalHeight: args.naturalHeight,
             naturalWidth: args.naturalWidth,
-            x: Math.round(centerX - displayWidth / 2),
-            y: Math.round(centerY - displayHeight / 2),
+            x: args.preservePosition
+              ? item.x
+              : Math.round(centerX - displayWidth / 2),
+            y: args.preservePosition
+              ? item.y
+              : Math.round(centerY - displayHeight / 2),
           };
         }),
       };
@@ -542,6 +688,9 @@ export const deleteEditableImageCanvasItem$ = command(
     },
   ) => {
     const items = itemsForKey(get(internalItemsByKey$), args.key, args.src);
+    const nextItems = items.filter((item) => {
+      return item.id !== args.itemId;
+    });
     const comments = get(internalRegionCommentsByKey$)[args.key] ?? [];
     const editingCommentId =
       get(internalEditingRegionCommentIdByKey$)[args.key] ?? null;
@@ -556,10 +705,11 @@ export const deleteEditableImageCanvasItem$ = command(
     set(internalItemsByKey$, (current) => {
       return {
         ...current,
-        [args.key]: items.filter((item) => {
-          return item.id !== args.itemId;
-        }),
+        [args.key]: nextItems,
       };
+    });
+    set(internalSnapshotByKey$, (current) => {
+      return setSnapshotForItems(current, args.key, nextItems);
     });
     if (get(internalSelectedItemId$) === args.itemId) {
       set(internalSelectedItemId$, null);
@@ -677,9 +827,13 @@ export const insertEditableImageCanvasItem$ = command(
           }),
         ) + 1,
     };
+    const nextItems = [...items, item];
 
     set(internalItemsByKey$, (current) => {
-      return { ...current, [args.key]: [...items, item] };
+      return { ...current, [args.key]: nextItems };
+    });
+    set(internalSnapshotByKey$, (current) => {
+      return setSnapshotForItems(current, args.key, nextItems);
     });
     set(internalSelectedItemId$, item.id);
     set(internalNextItemIndexByKey$, (current) => {
@@ -710,6 +864,8 @@ export const addEditableImageCanvasItem$ = command(
     const itemIndex = get(internalNextItemIndexByKey$)[args.key] ?? 1;
     const item = {
       ...sourceItem,
+      dimensionsResolved: false,
+      dimensionsViewportKey: null,
       id: `image-edit-${itemIndex}`,
       src: args.src,
       x: sourceItem.x + DUPLICATE_OFFSET,
@@ -722,9 +878,13 @@ export const addEditableImageCanvasItem$ = command(
           }),
         ) + 1,
     };
+    const nextItems = [...items, item];
 
     set(internalItemsByKey$, (current) => {
-      return { ...current, [args.key]: [...items, item] };
+      return { ...current, [args.key]: nextItems };
+    });
+    set(internalSnapshotByKey$, (current) => {
+      return setSnapshotForItems(current, args.key, nextItems);
     });
     set(internalSelectedItemId$, item.id);
     set(internalNextItemIndexByKey$, (current) => {
