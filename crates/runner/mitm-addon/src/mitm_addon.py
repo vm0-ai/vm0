@@ -542,10 +542,19 @@ def _builtin_host_policy_error_for_firewall_allow(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> builtin_host_policy.BuiltinRuntimeHostPolicyError | None:
-    if allow.api_entry.get(builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER) is not True:
+    marker_name = builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER
+    if marker_name not in allow.api_entry:
         return None
     if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
         return None
+    runtime_host_policy = allow.api_entry[marker_name]
+    if runtime_host_policy is True:
+        runtime_host_policy = allow.api_entry.get("hostPolicy")
+    elif not isinstance(runtime_host_policy, builtin_host_policy.CompiledBuiltinHostPolicy):
+        return builtin_host_policy.BuiltinRuntimeHostPolicyError(
+            reason="invalid_host_policy",
+            message=(f'builtin firewall "{allow.name}" runtime host policy state is invalid'),
+        )
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     if not trusted_host:
         return builtin_host_policy.BuiltinRuntimeHostPolicyError(
@@ -562,7 +571,7 @@ def _builtin_host_policy_error_for_firewall_allow(
             trusted_host=trusted_host,
             trusted_port=flow.request.port,
             auth_config=allow.api_entry.get("auth"),
-            host_policy=allow.api_entry.get("hostPolicy"),
+            host_policy=runtime_host_policy,
             upstream_endpoint=upstream_endpoint,
         )
     except builtin_host_policy.BuiltinRuntimeHostPolicyError as e:
