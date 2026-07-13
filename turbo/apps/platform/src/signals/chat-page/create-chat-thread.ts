@@ -3148,7 +3148,7 @@ function createCancelRunWithQueuedRecall({
 // ---------------------------------------------------------------------------
 
 const THINKING_TYPEWRITER_INTERVAL_MS = 100;
-const THINKING_TYPEWRITER_LINE_PAUSE_MS = 3000;
+const THINKING_TYPEWRITER_LINE_PAUSE_MS = 1000;
 const THINKING_TYPEWRITER_LINE_PAUSE_TICKS = IN_VITEST
   ? 1
   : Math.ceil(
