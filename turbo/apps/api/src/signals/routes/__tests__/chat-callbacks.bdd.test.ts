@@ -2843,6 +2843,42 @@ describe("CHAT-02: failed chat callbacks", () => {
     expect(marker?.content).toBe("insufficient_credits");
   }, 90_000);
 
+  it("shows friendly Claude overload guidance while preserving the raw run error", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const rawOverloadError =
+      "API Error: 529 Overloaded. This is a server-side issue, usually temporary - try again in a moment. If it persists, check https://status.claude.com.";
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "trigger claude overload",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await failChatRun(run.runId, sandboxHeaders, rawOverloadError);
+
+    const page = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return lifecycleMarkers(messages, run.runId, "failed").some(
+          (message) => {
+            return message.error?.includes("Claude Sonnet 4.6") ?? false;
+          },
+        );
+      },
+    );
+    const marker = lifecycleMarkers(page.messages, run.runId, "failed")[0];
+    expect(marker?.error).toBe(
+      "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+    );
+    expect(marker?.content).toBe(marker?.error);
+    expect(marker?.error).not.toContain("status.claude.com");
+
+    const rawRun = await api.readRun(actor, run.runId);
+    expect(rawRun.error).toBe(rawOverloadError);
+  }, 90_000);
+
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
