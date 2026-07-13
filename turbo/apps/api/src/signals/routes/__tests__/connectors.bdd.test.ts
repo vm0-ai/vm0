@@ -23,6 +23,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
   mockBase44OAuthProvider,
@@ -39,6 +40,7 @@ import {
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
+const authOrgApi = createAuthOrgAgentsBddApi(context);
 
 function uniqueSlug(prefix: string): string {
   return `${prefix}-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -187,6 +189,20 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
         name: "OPENAI_TOKEN",
       }),
     );
+
+    const secretList = await authOrgApi.listSecrets(actor);
+    expect(
+      secretList.secrets.find((secret) => {
+        return secret.name === "OPENAI_TOKEN";
+      }),
+    ).toMatchObject({
+      type: "connector",
+      connectorDisplay: {
+        label: "OpenAI",
+        environmentNames: ["OPENAI_TOKEN"],
+      },
+    });
+    expectNoVisibleSecret(secretList, "sk-bdd-manual-secret");
 
     await expect(
       connectorsApi.readScopeDiff(actor, "openai"),

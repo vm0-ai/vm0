@@ -3,6 +3,8 @@ import {
   zeroSecretsContract,
   zeroVariablesContract,
 } from "@vm0/api-contracts/contracts/zero-secrets";
+import type { SecretListResponse } from "@vm0/api-contracts/contracts/secrets";
+import { getConnectorStoredSecretDisplayInfo } from "@vm0/connectors/connector-utils";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -21,9 +23,26 @@ const setSecretBody$ = bodyResultOf(zeroSecretsContract.set);
 
 const listSecretsInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(organizationAuthContext$);
-  const body = await get(
+  const storedSecrets = await get(
     userSecrets({ orgId: auth.orgId, userId: auth.userId }),
   );
+  const body: SecretListResponse = {
+    secrets: storedSecrets.secrets.map((secret) => {
+      const display =
+        secret.type === "connector" || secret.type === "user"
+          ? getConnectorStoredSecretDisplayInfo(secret.name)
+          : null;
+      return {
+        ...secret,
+        connectorDisplay: display
+          ? {
+              label: display.connectorLabel,
+              environmentNames: display.envNames,
+            }
+          : null,
+      };
+    }),
+  };
   return {
     status: 200 as const,
     body,
