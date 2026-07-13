@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.4...guest-mock-codex-v0.6.5) (2026-07-13)
+
+
+### Performance Improvements
+
+* **guest-agent:** move parsed app-server payloads ([#21198](https://github.com/vm0-ai/vm0/issues/21198)) ([d89b5ec](https://github.com/vm0-ai/vm0/commit/d89b5ec872f58efd31c99ae6c9986b3b1662ee21))
+
 ## [0.6.4](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.3...guest-mock-codex-v0.6.4) (2026-07-11)
 
 

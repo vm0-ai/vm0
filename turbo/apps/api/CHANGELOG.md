@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.265.5](https://github.com/vm0-ai/vm0/compare/api-v1.265.4...api-v1.265.5) (2026-07-13)
+
+
+### Bug Fixes
+
+* align artifacts page with chat thread artifacts ([#21193](https://github.com/vm0-ai/vm0/issues/21193)) ([51cf2b5](https://github.com/vm0-ai/vm0/commit/51cf2b53ad62de17cbf68d96498f5c4fdda0c921))
+* align teams oauth connect flow ([#21200](https://github.com/vm0-ai/vm0/issues/21200)) ([af0060e](https://github.com/vm0-ai/vm0/commit/af0060e3407d850f46c9f89a8097b368ad80e7ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.1
+    * @vm0/core bumped to 8.425.4
+    * @vm0/db bumped to 1.111.1
+
 ## [1.265.4](https://github.com/vm0-ai/vm0/compare/api-v1.265.3...api-v1.265.4) (2026-07-13)
 
 
