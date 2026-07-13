@@ -86,6 +86,7 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "../services/zero-chat-message-shared.service";
+import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
@@ -172,27 +173,6 @@ interface WebChatPriorRun {
 interface LatestThreadSession {
   readonly sessionId: string;
   readonly selectedModel: string | null;
-}
-
-interface WebChatIncompleteRoundMessage {
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly error: string | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-}
-
-interface WebChatIncompleteRound {
-  readonly runId: string;
-  readonly status: "cancelled" | "failed" | "timeout";
-  readonly messages: WebChatIncompleteRoundMessage[];
-}
-
-interface IncompleteRoundRow extends WebChatIncompleteRoundMessage {
-  readonly runId: string;
-  readonly runStatus: "cancelled" | "failed" | "timeout";
-  readonly createdAt: Date;
-  readonly sequenceNumber: number | null;
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
@@ -319,7 +299,6 @@ const sendBody$ = bodyResultOf(chatMessagesContract.send);
 // prompt. Session compatibility is decided server-side from the target model.
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
-const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 
 function forbidden(message: string) {
@@ -600,13 +579,6 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function truncateIncomplete(value: string): string {
-  if (value.length <= WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP) {
-    return value;
-  }
-  return `${value.slice(0, WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
-}
-
 function formatAttachFileIds(
   ids: readonly string[] | null | undefined,
 ): string {
@@ -676,97 +648,6 @@ function buildWebChatPriorRunsContext(
     "",
     "---",
   ].join("\n");
-}
-
-function formatIncompleteMessage(
-  message: WebChatIncompleteRoundMessage,
-): string {
-  const attach = formatAttachFileIds(message.attachFiles);
-  if (message.role === "user") {
-    const body =
-      message.content !== null && message.content !== ""
-        ? truncateIncomplete(message.content)
-        : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
-  }
-  if (message.content !== null && message.content !== "") {
-    return `Assistant (partial): ${truncateIncomplete(message.content)}`;
-  }
-  return "Assistant: [no response before run ended]";
-}
-
-function buildWebChatIncompleteContext(
-  rounds: readonly WebChatIncompleteRound[],
-): string {
-  if (rounds.length === 0) {
-    return "";
-  }
-  const total = rounds.length;
-  const blocks = rounds.map((round, index) => {
-    const relativeIndex = index - total + 1;
-    const rendered = round.messages.map(formatIncompleteMessage);
-    const hasAssistant = round.messages.some((message) => {
-      return message.role === "assistant";
-    });
-    if (!hasAssistant) {
-      rendered.push("Assistant: [no response before run ended]");
-    }
-    return [
-      "---",
-      "",
-      `- RELATIVE_INDEX: ${relativeIndex}`,
-      `- RUN_STATUS: ${round.status}`,
-      "",
-      ...rendered,
-    ].join("\n");
-  });
-  return [
-    "# Incomplete Rounds Context",
-    "",
-    "The rounds below were sent in this thread but their runs did not complete",
-    "(cancelled, failed, or timed out), so the CLI session history does not",
-    "contain them. Treat them as part of the conversation you are having with",
-    "the user. RELATIVE_INDEX 0 is the most recent incomplete round.",
-    "",
-    blocks.join("\n\n"),
-    "",
-    "---",
-  ].join("\n");
-}
-
-function isIncompleteRunStatus(
-  value: string | null,
-): value is "cancelled" | "failed" | "timeout" {
-  return value === "cancelled" || value === "failed" || value === "timeout";
-}
-
-function groupIncompleteRoundsByRunId(
-  rows: readonly IncompleteRoundRow[],
-): WebChatIncompleteRound[] {
-  const byRunId = new Map<string, WebChatIncompleteRound>();
-  const order: string[] = [];
-  for (const row of rows) {
-    let round = byRunId.get(row.runId);
-    if (!round) {
-      round = { runId: row.runId, status: row.runStatus, messages: [] };
-      byRunId.set(row.runId, round);
-      order.push(row.runId);
-    }
-    round.messages.push({
-      role: row.role,
-      content: row.content,
-      error: row.error,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-  }
-  return order.map((runId) => {
-    const round = byRunId.get(runId);
-    if (!round) {
-      throw new Error("Incomplete round grouping lost run id");
-    }
-    return round;
-  });
 }
 
 async function loadAgentForChatSend(
@@ -924,93 +805,6 @@ async function getLatestRunsByThreadId(
       prompt: run.prompt,
       messages: messagesByRunId.get(run.runId) ?? [],
     };
-  });
-}
-
-async function getIncompleteRoundsSinceLastSuccess(
-  db: Db,
-  threadId: string,
-  maxRounds = 20,
-): Promise<IncompleteRoundRow[]> {
-  const rows = await db
-    .select({
-      runId: chatMessages.runId,
-      role: chatMessages.role,
-      content: chatMessages.content,
-      error: chatMessages.error,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
-      runStatus: agentRuns.status,
-      generationTemplate: chatMessages.generationTemplate,
-    })
-    .from(chatMessages)
-    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        visibleChatMessageCondition(),
-        inArray(agentRuns.status, ["cancelled", "failed", "timeout"]),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        sql`${chatMessages.createdAt} > COALESCE(
-          (
-            SELECT MAX(cm2.created_at)
-            FROM chat_messages cm2
-            INNER JOIN agent_runs ar2 ON ar2.id = cm2.run_id
-            WHERE cm2.chat_thread_id = ${threadId}
-              AND NOT EXISTS (
-                SELECT 1
-                FROM chat_messages revoker2
-                WHERE revoker2.revokes_message_id = cm2.id
-              )
-              AND ar2.result ? 'agentSessionId'
-              AND jsonb_typeof(ar2.result->'agentSessionId') = 'string'
-          ),
-          '-infinity'::timestamptz
-        )`,
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
-
-  const candidates: IncompleteRoundRow[] = [];
-  for (const row of rows) {
-    if (row.runId === null) {
-      continue;
-    }
-    if (!isIncompleteRunStatus(row.runStatus)) {
-      continue;
-    }
-    if (row.role !== "user" && row.role !== "assistant") {
-      continue;
-    }
-    candidates.push({
-      runId: row.runId,
-      runStatus: row.runStatus,
-      role: row.role,
-      content: row.content,
-      error: row.error,
-      attachFiles: row.attachFiles,
-      createdAt: row.createdAt,
-      sequenceNumber: row.sequenceNumber,
-      generationTemplate: row.generationTemplate,
-    });
-  }
-
-  const orderedRunIds: string[] = [];
-  const seen = new Set<string>();
-  for (const row of candidates) {
-    if (!seen.has(row.runId)) {
-      seen.add(row.runId);
-      orderedRunIds.push(row.runId);
-    }
-  }
-  if (orderedRunIds.length <= maxRounds) {
-    return candidates;
-  }
-
-  const keep = new Set(orderedRunIds.slice(orderedRunIds.length - maxRounds));
-  return candidates.filter((row) => {
-    return keep.has(row.runId);
   });
 }
 
@@ -1705,9 +1499,9 @@ async function resolveThread(params: {
     return notFound("Chat thread not found");
   }
 
-  const [latestSession, incompleteRows] = await Promise.all([
+  const [latestSession, incompleteContext] = await Promise.all([
     latestSessionForThread(params.db, thread.id),
-    getIncompleteRoundsSinceLastSuccess(params.db, thread.id),
+    loadWebChatIncompleteContext(params.db, thread.id),
   ]);
   const startNewSession = shouldStartNewSessionForSelectedModel({
     latestSession,
@@ -1719,11 +1513,7 @@ async function resolveThread(params: {
   return {
     threadId: thread.id,
     sessionId: startNewSession ? undefined : latestSession?.sessionId,
-    incompleteContext: startNewSession
-      ? ""
-      : buildWebChatIncompleteContext(
-          groupIncompleteRoundsByRunId(incompleteRows),
-        ),
+    incompleteContext: startNewSession ? "" : incompleteContext,
     computerUseHostId: thread.computerUseHostId,
     codexServiceTier: thread.codexServiceTier,
     isNewThread: false,
