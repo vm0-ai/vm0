@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.265.1](https://github.com/vm0-ai/vm0/compare/api-v1.265.0...api-v1.265.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **connectors:** ignore unsupported stored connectors ([#21163](https://github.com/vm0-ai/vm0/issues/21163)) ([3315d83](https://github.com/vm0-ai/vm0/commit/3315d8308784f2833de883ec3590f88900f03be4))
+
 ## [1.265.0](https://github.com/vm0-ai/vm0/compare/api-v1.264.0...api-v1.265.0) (2026-07-13)
 
 
