@@ -39,7 +39,7 @@ class _FirewallAuthState:
     """Per-auth-identity lifecycle state."""
 
     cache: _FirewallHeaderCacheEntry | None = None
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    in_flight: asyncio.Task[dict] | None = None
     force_refresh_pending: bool = False
     last_force_refresh_monotonic_at: float | None = None
 
@@ -254,47 +254,20 @@ def _build_cache_hit(
     return _build_token_meta(cached.payload, cache_hit=True)
 
 
-async def get_firewall_headers(
-    cache_key: FirewallAuthCacheKey,
+def _observe_fetch_task_exception(task: asyncio.Task[dict]) -> None:
+    """Retrieve a detached fetch failure after every waiter is cancelled."""
+    if not task.cancelled():
+        task.exception()
+
+
+async def _fetch_and_cache_firewall_headers(
+    state: _FirewallAuthState,
     request: FirewallAuthRequest,
+    *,
+    force_refresh: bool,
 ) -> dict:
-    """Get firewall auth headers with TTL-based caching.
-
-    Uses per-key locking so that concurrent requests for the same
-    auth identity coalesce into a single HTTP fetch.
-
-    Cache is evicted when:
-    - The run is removed from the registry (see registry.load_registry)
-    - A 401 response is received (see response handler)
-    - The expiresAt timestamp from the auth endpoint has passed
-    """
-    state = _get_auth_state(cache_key)
-
-    # Fast path: cache hit (no lock needed — single-threaded event loop)
-    if state.cache:
-        hit = _build_cache_hit(state.cache, firewall_billable=request.firewall_billable)
-        if hit:
-            return hit
-
-    # Slow path: acquire per-key lock so only one coroutine fetches
-    async with state.lock:
-        # Double-check: another coroutine may have populated cache while we waited
-        if state.cache:
-            hit = _build_cache_hit(state.cache, firewall_billable=request.firewall_billable)
-            if hit:
-                return hit
-
-        # Consume the force-refresh marker inside the lock so concurrent
-        # coroutines for the same auth identity cannot both trigger a
-        # refresh — the one that loses the lock will see the fresh cache
-        # on its double-check above and never reach this path. Record the
-        # consume timestamp so request_force_refresh() suppresses re-marking
-        # within the cooldown window (guards against 401-amplification).
-        force_refresh = state.force_refresh_pending
-        state.force_refresh_pending = False
-        if force_refresh:
-            state.last_force_refresh_monotonic_at = time.monotonic()
-
+    """Own one shared fetch through completion and update its cache state."""
+    try:
         result = await fetch_firewall_headers(
             request,
             force_refresh=force_refresh,
@@ -309,8 +282,8 @@ async def get_firewall_headers(
         )
 
         # A 401 can request a forced refresh while this non-forced fetch is
-        # in flight. Return the current result to this request, but do not let
-        # it repopulate shared cache ahead of the pending forced refresh.
+        # in flight. Return the current result to its initiating request, but
+        # do not let it repopulate shared cache ahead of the pending refresh.
         marker_appeared_during_non_forced_fetch = not force_refresh and state.force_refresh_pending
         if not marker_appeared_during_non_forced_fetch:
             state.cache = cache_entry
@@ -321,3 +294,59 @@ async def get_firewall_headers(
             refreshed_connectors=result.refreshed_connectors,
             refreshed_secrets=result.refreshed_secrets,
         )
+    finally:
+        state.in_flight = None
+
+
+async def get_firewall_headers(
+    cache_key: FirewallAuthCacheKey,
+    request: FirewallAuthRequest,
+) -> dict:
+    """Get firewall auth headers with TTL-based caching.
+
+    Uses a state-owned per-key task so concurrent requests for the same
+    auth identity coalesce even if an individual waiter is cancelled.
+
+    Cache is evicted when:
+    - The run is removed from the registry (see registry.load_registry)
+    - A 401 response is received (see response handler)
+    - The expiresAt timestamp from the auth endpoint has passed
+    """
+    state = _get_auth_state(cache_key)
+
+    while True:
+        # Cache inspection and task selection contain no await, so they are
+        # atomic on mitmproxy's single event loop.
+        if state.cache:
+            hit = _build_cache_hit(state.cache, firewall_billable=request.firewall_billable)
+            if hit:
+                return hit
+
+        fetch_task = state.in_flight
+        created_fetch = fetch_task is None
+        if fetch_task is None:
+            # Consume the marker before creating the task so only this shared
+            # operation can trigger the refresh. Recording before the fetch
+            # preserves the intentional failed-refresh cooldown semantics.
+            force_refresh = state.force_refresh_pending
+            state.force_refresh_pending = False
+            if force_refresh:
+                state.last_force_refresh_monotonic_at = time.monotonic()
+
+            fetch_task = asyncio.create_task(
+                _fetch_and_cache_firewall_headers(
+                    state,
+                    request,
+                    force_refresh=force_refresh,
+                )
+            )
+            state.in_flight = fetch_task
+            fetch_task.add_done_callback(_observe_fetch_task_exception)
+
+        result = await asyncio.shield(fetch_task)
+        if created_fetch:
+            return result
+
+        # Followers observe an ordinary completion through the cache. If the
+        # result was intentionally left uncached after a new 401 marker, the
+        # loop creates the required forced refresh instead.
