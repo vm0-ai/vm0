@@ -1,6 +1,6 @@
 [package]
 name = "sandbox-fc"
-version = "0.37.109"
+version = "0.37.110"
 edition.workspace = true
 
 [dependencies]
@@ -10,7 +10,7 @@ futures-util.workspace = true
 guest-contracts.workspace = true
 nbd-cow.workspace = true
 libc.workspace = true
-nix = { workspace = true, features = ["user", "inotify", "fs", "signal"] }
+nix = { workspace = true, features = ["user", "inotify", "fs", "signal", "sched"] }
 reqwest.workspace = true
 sandbox.workspace = true
 serde = { workspace = true, features = ["derive"] }

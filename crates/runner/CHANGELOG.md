@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.144.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.4...runner-rs-v0.144.5) (2026-07-13)
+
+
+### Bug Fixes
+
+* **mitm-addon:** preserve auth fetch across cancellation ([#21246](https://github.com/vm0-ai/vm0/issues/21246)) ([6eba99b](https://github.com/vm0-ai/vm0/commit/6eba99be0f63cab5664dee37944c400ab1d7ecbe))
+* **mitm-addon:** redact userinfo from malformed log urls ([#21289](https://github.com/vm0-ai/vm0/issues/21289)) ([8dc1850](https://github.com/vm0-ai/vm0/commit/8dc1850853ea87d1044577cd4a6e4268a10253d3))
+* **runner:** bound setup artifact resources ([#21240](https://github.com/vm0-ai/vm0/issues/21240)) ([600acc8](https://github.com/vm0-ai/vm0/commit/600acc8fde24aaa2c2770125b33d0232efdb30b1))
+* **runner:** recover inconsistent proxy ca state ([#21281](https://github.com/vm0-ai/vm0/issues/21281)) ([03b288d](https://github.com/vm0-ai/vm0/commit/03b288dc2b2badd43d80d6d348750ba4c3250990))
+* **sandbox-fc:** route tcp dns through dnsmasq ([#21288](https://github.com/vm0-ai/vm0/issues/21288)) ([a95d872](https://github.com/vm0-ai/vm0/commit/a95d8720fff31fa3be49fabac532eb5543865c82))
+
+
+### Documentation
+
+* **mitm-addon:** document openai extractor contracts ([#21271](https://github.com/vm0-ai/vm0/issues/21271)) ([98f834e](https://github.com/vm0-ai/vm0/commit/98f834e8cc622e78c63b3538bb05842d7e49b68e))
+* **runner:** document private filesystem contract ([#21274](https://github.com/vm0-ai/vm0/issues/21274)) ([10241a1](https://github.com/vm0-ai/vm0/commit/10241a195466eb9e19564aeb7f76fdc4af619ab5))
+
+
+### Refactoring
+
+* **mitm-addon:** make request classifications valid by construction ([#21283](https://github.com/vm0-ai/vm0/issues/21283)) ([114f961](https://github.com/vm0-ai/vm0/commit/114f961443c24bc00a90e3b355e53221e148b92a))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid eager catalog identity checks ([#21247](https://github.com/vm0-ai/vm0/issues/21247)) ([3f6e0bd](https://github.com/vm0-ai/vm0/commit/3f6e0bddfe467b471e05e91fa2a5bbdabb615076))
+* **mitm-addon:** reuse parsed built-in host policies ([#21290](https://github.com/vm0-ai/vm0/issues/21290)) ([1210784](https://github.com/vm0-ai/vm0/commit/1210784d3a49067bcbddc1342ad1ab5c784a412b))
+
 ## [0.144.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.3...runner-rs-v0.144.4) (2026-07-13)
 
 

@@ -1,25 +1,15 @@
 import { Command, Option } from "commander";
-import {
-  matchFirewallBaseUrl,
-  matchFirewallRequestDecision,
-  type FirewallRoutingPermissionRoute,
-} from "@vm0/connectors/firewall-rule-matcher";
-import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
-import { loadFirewallRoutingMetadata } from "@vm0/connectors/firewall-metadata/routing";
+import type { ConnectorPermissionDenyDiagnosticResult } from "@vm0/api-contracts/contracts/zero-connector-permission-deny";
 import {
   hasUnsafeFirewallPath,
-  type NetworkPolicies,
   UNKNOWN_PERMISSION_GRANT,
 } from "@vm0/connectors/firewall-types";
+import { diagnoseZeroConnectorPermissionDeny } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import {
   isComputerUsePermissionTarget,
   printComputerUsePermissionGuidance,
 } from "./computer-use-guidance";
-
-function unknownPermissionChangeCommand(connectorRef: string): string {
-  return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
-}
 
 interface PermissionDenyOptions {
   readonly method: string;
@@ -27,33 +17,11 @@ interface PermissionDenyOptions {
   readonly path?: string;
 }
 
-interface PermissionDenyBaseMatch {
-  readonly apiBase: string;
-  readonly decisionBase: string;
-  readonly displayBase: string;
-  readonly relativePath: string;
-  readonly score: number;
-}
+type UnsafeInputReason = Extract<
+  ConnectorPermissionDenyDiagnosticResult,
+  { readonly outcome: "unsafe-input" }
+>["reason"];
 
-interface PermissionDenyDecisionPermission {
-  readonly name: string;
-  readonly rules: readonly string[];
-}
-
-interface PermissionDenyDecisionApi {
-  readonly base: string;
-  readonly auth: Record<string, never>;
-  readonly permissions: readonly PermissionDenyDecisionPermission[];
-}
-
-interface PermissionDenyDecisionFirewall {
-  readonly name: string;
-  readonly apis: readonly PermissionDenyDecisionApi[];
-}
-
-const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
-const WHOLE_BASE_URL_VAR_PATTERN =
-  /^\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}$/;
 const VALID_DENIED_METHODS = new Set([
   "GET",
   "POST",
@@ -63,6 +31,10 @@ const VALID_DENIED_METHODS = new Set([
   "HEAD",
   "OPTIONS",
 ]);
+
+function unknownPermissionChangeCommand(connectorRef: string): string {
+  return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
+}
 
 function pathOnlyError(): Error {
   return new Error(
@@ -122,7 +94,7 @@ function rawAuthorityHasUnsafeSyntax(url: string): boolean {
   );
 }
 
-function parseDeniedUrl(url: string): URL {
+function validateDeniedUrl(url: string): void {
   if (
     !url.includes("://") ||
     /\s/.test(url) ||
@@ -139,82 +111,9 @@ function parseDeniedUrl(url: string): URL {
     if (parsed.username !== "" || parsed.password !== "") {
       throw invalidUrlError();
     }
-    return parsed;
   } catch {
     throw invalidUrlError();
   }
-}
-
-function baseUrlTemplateVarNames(base: string): string[] {
-  return [...base.matchAll(BASE_URL_VAR_PATTERN)].map((match) => {
-    return match[1]!;
-  });
-}
-
-function wholeBaseUrlTemplateVarName(base: string): string | null {
-  return WHOLE_BASE_URL_VAR_PATTERN.exec(base)?.[1] ?? null;
-}
-
-function resolveBaseUrlTemplateFromEnv(base: string): string | null {
-  const names = baseUrlTemplateVarNames(base);
-  if (names.length === 0) return base;
-
-  let missing = false;
-  const resolved = base.replace(
-    BASE_URL_VAR_PATTERN,
-    (_match, name: string) => {
-      const value = process.env[name];
-      if (!value) {
-        missing = true;
-        return "";
-      }
-      return value;
-    },
-  );
-  return missing ? null : resolved;
-}
-
-function baseUrlTemplateToPattern(base: string): string | null {
-  if (baseUrlTemplateVarNames(base).length === 0) return null;
-  const pattern = base.replace(BASE_URL_VAR_PATTERN, (_match, name: string) => {
-    return `{${name}}`;
-  });
-  return pattern.includes("://") ? pattern : null;
-}
-
-function connectorRefHostToken(connectorRef: string): string {
-  return connectorRef.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
-}
-
-function hostLabelToken(label: string): string {
-  return label.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
-}
-
-function hostLabelMatchesConnectorRef(
-  label: string,
-  connectorRef: string,
-): boolean {
-  const normalizedConnectorRef = connectorRef.toLowerCase();
-  const token = connectorRefHostToken(connectorRef);
-  const normalizedLabel = label.toLowerCase();
-  if (normalizedConnectorRef === token) {
-    return normalizedLabel === token;
-  }
-  return hostLabelToken(normalizedLabel) === token;
-}
-
-function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
-  const token = connectorRefHostToken(connectorRef);
-  if (token.length < 3) return false;
-  const labels = (url.hostname || "")
-    .toLowerCase()
-    .replace(/\.$/, "")
-    .split(".")
-    .filter((part) => {
-      return part !== "";
-    });
-  if (labels.length < 2) return false;
-  return hostLabelMatchesConnectorRef(labels[labels.length - 2]!, connectorRef);
 }
 
 function stripUrlQueryAndFragment(url: string): string {
@@ -226,185 +125,12 @@ function stripUrlQueryAndFragment(url: string): string {
   return url.slice(0, end);
 }
 
-function stripTrailingSlash(value: string): string {
-  return value.endsWith("/") ? value.slice(0, -1) : value;
-}
-
 function rawPathFromDeniedUrl(url: string): string {
   const urlWithoutQuery = stripUrlQueryAndFragment(url);
   const schemeEnd = urlWithoutQuery.indexOf("://");
   const authorityStart = schemeEnd === -1 ? 0 : schemeEnd + 3;
   const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
   return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
-}
-
-function matchApiBaseUrl(
-  url: string,
-  apiBase: string,
-): PermissionDenyBaseMatch | null {
-  const directMatch = matchFirewallBaseUrl(url, apiBase);
-  if (directMatch) {
-    return {
-      apiBase,
-      decisionBase: apiBase,
-      displayBase: directMatch.displayBase,
-      relativePath: directMatch.relativePath,
-      score: directMatch.score,
-    };
-  }
-
-  const resolvedBase = resolveBaseUrlTemplateFromEnv(apiBase);
-  if (resolvedBase !== null && resolvedBase !== apiBase) {
-    const resolvedMatch = matchFirewallBaseUrl(url, resolvedBase);
-    if (resolvedMatch) {
-      return {
-        apiBase,
-        decisionBase: resolvedBase,
-        displayBase: resolvedMatch.displayBase,
-        relativePath: resolvedMatch.relativePath,
-        score: resolvedMatch.score,
-      };
-    }
-    return null;
-  }
-
-  const patternBase = baseUrlTemplateToPattern(apiBase);
-  if (patternBase === null) return null;
-  const patternMatch = matchFirewallBaseUrl(url, patternBase);
-  if (!patternMatch) return null;
-  return {
-    apiBase,
-    decisionBase: patternBase,
-    displayBase: apiBase,
-    relativePath: patternMatch.relativePath,
-    score: patternMatch.score,
-  };
-}
-
-function findBestBaseMatch(
-  url: string,
-  deniedUrl: URL,
-  connectorRef: string,
-  apis: readonly { readonly base: string }[],
-): PermissionDenyBaseMatch | null {
-  let bestMatch: PermissionDenyBaseMatch | null = null;
-  for (const api of apis) {
-    const match = matchApiBaseUrl(url, api.base);
-    if (match && (!bestMatch || match.score > bestMatch.score)) {
-      bestMatch = match;
-    }
-  }
-  if (bestMatch !== null) return bestMatch;
-
-  const unresolvedWholeBaseApis = apis.filter((api) => {
-    const name = wholeBaseUrlTemplateVarName(api.base);
-    return name !== null && !process.env[name];
-  });
-  if (unresolvedWholeBaseApis.length !== 1) return null;
-  if (!hostnameMatchesConnectorRef(deniedUrl, connectorRef)) return null;
-
-  const api = unresolvedWholeBaseApis[0]!;
-  return {
-    apiBase: api.base,
-    decisionBase: deniedUrl.origin,
-    displayBase: api.base,
-    relativePath: rawPathFromDeniedUrl(url),
-    score: 0,
-  };
-}
-
-function routesForMatchedBase(
-  apis: readonly {
-    readonly base: string;
-    readonly routes: readonly FirewallRoutingPermissionRoute[];
-  }[],
-  apiBase: string,
-): readonly FirewallRoutingPermissionRoute[] {
-  const normalizedApiBase = stripTrailingSlash(apiBase);
-  const routes: FirewallRoutingPermissionRoute[] = [];
-  for (const api of apis) {
-    if (stripTrailingSlash(api.base) === normalizedApiBase) {
-      routes.push(...api.routes);
-    }
-  }
-  return routes;
-}
-
-function routesToDecisionPermissions(
-  routes: readonly FirewallRoutingPermissionRoute[],
-): PermissionDenyDecisionPermission[] {
-  const rulesByPermission = new Map<string, string[]>();
-  for (const route of routes) {
-    const rules = rulesByPermission.get(route.permissionName);
-    if (rules) {
-      rules.push(route.rule);
-    } else {
-      rulesByPermission.set(route.permissionName, [route.rule]);
-    }
-  }
-
-  return [...rulesByPermission.entries()].map(([name, rules]) => {
-    return { name, rules };
-  });
-}
-
-function buildDecisionFirewall(
-  connectorRef: string,
-  base: string,
-  permissions: readonly PermissionDenyDecisionPermission[],
-): readonly PermissionDenyDecisionFirewall[] {
-  return [
-    {
-      name: connectorRef,
-      apis: [
-        {
-          base,
-          auth: {},
-          permissions,
-        },
-      ],
-    },
-  ];
-}
-
-function buildAllDeniedNetworkPolicies(
-  connectorRef: string,
-  permissions: readonly PermissionDenyDecisionPermission[],
-): NetworkPolicies {
-  return {
-    [connectorRef]: {
-      allow: [],
-      deny: permissions.map((permission) => {
-        return permission.name;
-      }),
-      ask: [],
-      unknownPolicy: "deny",
-    },
-  };
-}
-
-function findDeniedDecisionPermissions(
-  connectorRef: string,
-  method: string,
-  url: string,
-  match: PermissionDenyBaseMatch,
-  apis: readonly {
-    readonly base: string;
-    readonly routes: readonly FirewallRoutingPermissionRoute[];
-  }[],
-): string[] {
-  const routes = routesForMatchedBase(apis, match.apiBase);
-  const permissions = routesToDecisionPermissions(routes);
-  const decision = matchFirewallRequestDecision(
-    buildDecisionFirewall(connectorRef, match.decisionBase, permissions),
-    method,
-    url,
-    buildAllDeniedNetworkPolicies(connectorRef, permissions),
-  );
-  if (decision.kind !== "block" || decision.reason !== "permission_denied") {
-    return [];
-  }
-  return [...decision.permissions];
 }
 
 function printPermissionChangeGuidance(
@@ -429,6 +155,74 @@ function printPermissionChangeGuidance(
       `To allow ${permission}, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --duration 1h`,
     );
   }
+}
+
+function printFilteredRequest(
+  label: string,
+  method: string,
+  relativePath: string,
+  base: string,
+): void {
+  console.log(
+    `The ${label} permission filtered ${method} ${relativePath} relative to base URL ${base}.`,
+  );
+}
+
+function unsafeInputError(reason: UnsafeInputReason): Error {
+  switch (reason) {
+    case "invalid-method":
+      return invalidMethodError();
+    case "invalid-url":
+      return invalidUrlError();
+    case "unsafe-path":
+      return unsafePathError();
+  }
+}
+
+function handleDiagnosticResult(
+  connectorRef: string,
+  method: string,
+  result: ConnectorPermissionDenyDiagnosticResult,
+): void {
+  switch (result.outcome) {
+    case "matched":
+      printFilteredRequest(
+        result.label,
+        method,
+        result.relativePath,
+        result.base,
+      );
+      printPermissionChangeGuidance(connectorRef, result.permissions);
+      return;
+    case "unknown-endpoint":
+      printFilteredRequest(
+        result.label,
+        method,
+        result.relativePath,
+        result.base,
+      );
+      console.log("No named permission was found covering this request.");
+      console.log("This request is governed by the unknown endpoint policy.");
+      console.log(
+        `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorRef)}`,
+      );
+      return;
+    case "unknown-connector":
+      throw new Error(`Unknown connector type: ${connectorRef}`);
+    case "no-matching-base":
+      throw new Error(
+        `No registered ${result.label} base URL matches the provided URL.`,
+      );
+    case "unresolved-dynamic-base":
+      throw new Error(
+        `No authoritative ${result.label} base URL is available for this diagnostic. Verify the ${connectorRef} connector configuration for the affected context and retry.`,
+      );
+    case "unsafe-input":
+      throw unsafeInputError(result.reason);
+  }
+
+  const exhaustiveResult: never = result;
+  return exhaustiveResult;
 }
 
 export const permissionDenyCommand = new Command()
@@ -475,8 +269,9 @@ Notes:
         if (!opts.url) {
           throw pathOnlyError();
         }
+
         const method = parseDeniedMethod(opts.method);
-        const deniedUrl = parseDeniedUrl(opts.url);
+        validateDeniedUrl(opts.url);
         const deniedPath = rawPathFromDeniedUrl(opts.url);
         if (hasUnsafeFirewallPath(deniedPath)) {
           throw unsafePathError();
@@ -492,49 +287,12 @@ Notes:
           return;
         }
 
-        const metadata = await loadFirewallRoutingMetadata(connectorRef);
-        if (!metadata) {
-          throw new Error(`Unknown connector type: ${connectorRef}`);
-        }
-
-        const label =
-          getFirewallPermissionSummary(connectorRef)?.label ?? connectorRef;
-        const match = findBestBaseMatch(
-          opts.url,
-          deniedUrl,
-          connectorRef,
-          metadata.apis,
-        );
-        if (!match) {
-          throw new Error(
-            `No registered ${label} base URL matches the provided URL.`,
-          );
-        }
-
-        const permissions = findDeniedDecisionPermissions(
+        const result = await diagnoseZeroConnectorPermissionDeny(
           connectorRef,
           method,
-          opts.url,
-          match,
-          metadata.apis,
+          stripUrlQueryAndFragment(opts.url),
         );
-
-        console.log(
-          `The ${label} permission filtered ${method} ${match.relativePath} relative to base URL ${match.displayBase}.`,
-        );
-
-        if (permissions.length === 0) {
-          console.log("No named permission was found covering this request.");
-          console.log(
-            "This request is governed by the unknown endpoint policy.",
-          );
-          console.log(
-            `To allow unknown endpoints, run: ${unknownPermissionChangeCommand(connectorRef)}`,
-          );
-          return;
-        }
-
-        printPermissionChangeGuidance(connectorRef, permissions);
+        handleDiagnosticResult(connectorRef, method, result);
       },
     ),
   );

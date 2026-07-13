@@ -4,6 +4,8 @@ use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use sandbox_fc::{DNS_READINESS_HOSTNAME, DNS_READINESS_IPV4};
+
 use super::log::tail_stderr;
 use super::port::DnsPortReservation;
 use crate::child_cleanup::kill_and_reap_child_on_drop;
@@ -200,6 +202,8 @@ fn dnsmasq_args(port: u16, interface_pattern: &str) -> Vec<String> {
         // VM host-side veth devices are created after dnsmasq starts.
         format!("--interface={interface_pattern}"),
         "--bind-dynamic".into(),
+        format!("--address=/{DNS_READINESS_HOSTNAME}/{DNS_READINESS_IPV4}"),
+        format!("--local=/{DNS_READINESS_HOSTNAME}/"),
         "--server".into(),
         "8.8.8.8".into(),
         "--server".into(),
@@ -234,6 +238,8 @@ mod tests {
                 "5353",
                 "--interface=vm0-ve-0a-*",
                 "--bind-dynamic",
+                "--address=/vm0-readiness.invalid/192.0.2.1",
+                "--local=/vm0-readiness.invalid/",
                 "--server",
                 "8.8.8.8",
                 "--server",

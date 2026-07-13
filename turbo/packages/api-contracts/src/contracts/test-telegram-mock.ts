@@ -24,7 +24,7 @@ export const testTelegramMockContract = c.router({
     method: "POST",
     path: "/api/test/telegram-mock/:botToken/:method",
     pathParams: testTelegramMockPathParamsSchema,
-    body: z.unknown().optional(),
+    body: z.record(z.string(), z.unknown()).optional(),
     responses: {
       200: testTelegramMockSuccessResponseSchema,
       404: z.union([z.string(), testTelegramMockErrorResponseSchema]),

@@ -569,7 +569,25 @@ async fn run_start_with_home(
         )
         .await
         {
-            Ok(handle) => break (runtime, handle),
+            Ok(handle) => {
+                if let Err(e) = runtime.activate_dns_readiness().await {
+                    memory_prefetch.cancel();
+                    handle.stop().await;
+                    runtime.shutdown().await;
+                    if let Err(kill_error) = mitm.kill_now().await {
+                        warn!(
+                            error = %kill_error,
+                            "failed to kill proxy after namespace DNS readiness failed"
+                        );
+                    }
+                    kmsg_handle.stop().await;
+                    memory_prefetch.drain().await;
+                    return Err(RunnerError::Internal(format!(
+                        "sandbox runtime DNS readiness: {e}"
+                    )));
+                }
+                break (runtime, handle);
+            }
             Err(e)
                 if e.kind() == std::io::ErrorKind::AddrInUse
                     && dns_start_attempt < DNS_START_MAX_ATTEMPTS =>

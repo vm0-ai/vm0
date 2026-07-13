@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.61](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.60...nbd-cow-v0.4.61) (2026-07-13)
+
+
+### Performance Improvements
+
+* **nbd-cow:** reduce default connection count ([#21232](https://github.com/vm0-ai/vm0/issues/21232)) ([ecadce2](https://github.com/vm0-ai/vm0/commit/ecadce247ec1997c8df6c95bb18c0a25bf720d9c))
+
 ## [0.4.60](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.59...nbd-cow-v0.4.60) (2026-07-12)
 
 

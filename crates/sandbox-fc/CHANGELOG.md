@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.110](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.109...sandbox-fc-v0.37.110) (2026-07-13)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** route tcp dns through dnsmasq ([#21288](https://github.com/vm0-ai/vm0/issues/21288)) ([a95d872](https://github.com/vm0-ai/vm0/commit/a95d8720fff31fa3be49fabac532eb5543865c82))
+
 ## [0.37.109](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.108...sandbox-fc-v0.37.109) (2026-07-13)
 
 ## [0.37.108](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.107...sandbox-fc-v0.37.108) (2026-07-12)

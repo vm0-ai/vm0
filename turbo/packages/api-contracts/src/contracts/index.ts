@@ -1113,6 +1113,16 @@ export {
   type ConnectorPermissionDenyDiagnosticResult,
   type ZeroConnectorPermissionDenyContract,
 } from "./zero-connector-permission-deny";
+export {
+  connectorCheckDiagnosticResultSchema,
+  connectorCheckPolicySchema,
+  connectorCheckRequestSchema,
+  zeroConnectorCheckContract,
+  type ConnectorCheckDiagnosticResult,
+  type ConnectorCheckPolicy,
+  type ConnectorCheckRequest,
+  type ZeroConnectorCheckContract,
+} from "./zero-connector-check";
 export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
   CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
