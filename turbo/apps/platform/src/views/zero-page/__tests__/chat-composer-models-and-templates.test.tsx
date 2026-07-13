@@ -51,6 +51,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
+import { pathname } from "../../../signals/location.ts";
 import { CODEX_FAST_MODE_LOCAL_DEFAULT_STORAGE_KEY } from "../../../signals/zero-page/codex-fast-local-default.ts";
 import { resetChatPageModelSelection$ } from "../../../signals/zero-page/zero-chat-page.ts";
 import { templateCardThemeIdBySlug$ } from "../../../signals/zero-page/zero-chat-composer.ts";
@@ -1206,6 +1207,8 @@ describe("chat composer models", () => {
     const link = linkByText("View all workflows");
     expect(link).toHaveAttribute("href", "/workflows");
     expect(link.parentElement).toHaveClass("shrink-0", "border-t");
+    await user.click(link);
+    expect(pathname()).toBe("/workflows");
   });
 
   it("scrolls the slash workflow picker with keyboard selection", async () => {

@@ -125,6 +125,27 @@ pub(crate) enum SessionHistoryCheckpointSource {
     CodexZstd { encoded: Vec<u8> },
 }
 
+pub(crate) struct PreparedSessionHistorySidecar {
+    pub(crate) digest: SessionHistoryDigest,
+    source: PreparedSessionHistorySidecarSource,
+}
+
+enum PreparedSessionHistorySidecarSource {
+    Exportable(SessionHistoryCheckpointSource),
+    RawTooLarge { max_bytes: u64 },
+}
+
+impl PreparedSessionHistorySidecar {
+    pub(crate) fn into_source(self) -> Result<SessionHistoryCheckpointSource, AgentError> {
+        match self.source {
+            PreparedSessionHistorySidecarSource::Exportable(source) => Ok(source),
+            PreparedSessionHistorySidecarSource::RawTooLarge { max_bytes } => {
+                Err(session_history_exceeds_max_error(max_bytes))
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum SessionHistoryDigestError {
     Read(AgentError),
@@ -163,6 +184,34 @@ pub(crate) fn read_session_history_checkpoint_source_from_payload_bounded(
         source => source
             .read(Some(max_bytes))
             .map(SessionHistoryCheckpointSource::Decoded),
+    }
+}
+
+pub(crate) fn prepare_session_history_sidecar_from_payload_bounded(
+    payload: &str,
+    max_decoded_bytes: u64,
+    max_sidecar_bytes: u64,
+) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
+    match resolve_session_history_source(payload)? {
+        ResolvedSessionHistorySource::Codex(session) if session.is_zstd() => {
+            if session.encoded_len()? <= max_sidecar_bytes {
+                let encoded = session.into_zstd_bytes(max_sidecar_bytes)?;
+                let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
+                Ok(PreparedSessionHistorySidecar {
+                    digest,
+                    source: PreparedSessionHistorySidecarSource::Exportable(
+                        SessionHistoryCheckpointSource::CodexZstd { encoded },
+                    ),
+                })
+            } else {
+                ResolvedSessionHistorySource::Codex(session)
+                    .open_decoded_reader()?
+                    .prepare_sidecar(max_decoded_bytes, max_sidecar_bytes)
+            }
+        }
+        source => source
+            .open_decoded_reader()?
+            .prepare_sidecar(max_decoded_bytes, max_sidecar_bytes),
     }
 }
 
@@ -707,6 +756,27 @@ impl DecodedSessionHistoryReader {
             }
         }
     }
+
+    fn prepare_sidecar(
+        self,
+        max_decoded_bytes: u64,
+        max_sidecar_bytes: u64,
+    ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
+        match self {
+            Self::Plain { path, reader } => prepare_session_history_sidecar_reader(
+                reader,
+                max_decoded_bytes,
+                max_sidecar_bytes,
+                |error| read_history_error(&path, error),
+            ),
+            Self::Zstd(reader) => prepare_session_history_sidecar_reader(
+                reader,
+                max_decoded_bytes,
+                max_sidecar_bytes,
+                zstd_session_history_error,
+            ),
+        }
+    }
 }
 
 fn zstd_session_history_error(source: io::Error) -> AgentError {
@@ -767,15 +837,81 @@ fn digest_history_reader(
         if size_bytes > max_bytes {
             return Err(SessionHistoryDigestError::ExceedsMaxBytes);
         }
-        let chunk = buffer
-            .get(..bytes_read)
-            .ok_or(SessionHistoryDigestError::ExceedsMaxBytes)?;
+        let chunk = buffer.get(..bytes_read).ok_or_else(|| {
+            SessionHistoryDigestError::Read(map_error(io::Error::other(
+                "session history reader returned more bytes than the provided buffer",
+            )))
+        })?;
         hasher.update(chunk);
     }
 
     Ok(SessionHistoryDigest {
         size_bytes,
         sha256_hex: hex::encode(hasher.finalize()),
+    })
+}
+
+fn digest_zstd_session_history_bytes(
+    encoded: &[u8],
+    max_bytes: u64,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    let reader = zstd::stream::read::Decoder::new(encoded).map_err(zstd_session_history_error)?;
+    digest_history_reader(reader, max_bytes, zstd_session_history_error)
+}
+
+fn prepare_session_history_sidecar_reader(
+    mut reader: impl Read,
+    max_decoded_bytes: u64,
+    max_sidecar_bytes: u64,
+    map_error: impl Fn(io::Error) -> AgentError,
+) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
+    let mut hasher = Sha256::new();
+    let mut size_bytes = 0u64;
+    let mut raw_bytes = Some(Vec::new());
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = reader
+            .read(&mut buffer)
+            .map_err(|error| SessionHistoryDigestError::Read(map_error(error)))?;
+        if bytes_read == 0 {
+            break;
+        }
+        size_bytes = size_bytes
+            .checked_add(bytes_read as u64)
+            .ok_or(SessionHistoryDigestError::ExceedsMaxBytes)?;
+        if size_bytes > max_decoded_bytes {
+            return Err(SessionHistoryDigestError::ExceedsMaxBytes);
+        }
+        let chunk = buffer.get(..bytes_read).ok_or_else(|| {
+            SessionHistoryDigestError::Read(map_error(io::Error::other(
+                "session history reader returned more bytes than the provided buffer",
+            )))
+        })?;
+        hasher.update(chunk);
+        if size_bytes <= max_sidecar_bytes {
+            if let Some(raw_bytes) = raw_bytes.as_mut() {
+                raw_bytes.extend_from_slice(chunk);
+            }
+        } else {
+            raw_bytes = None;
+        }
+    }
+
+    let source = match raw_bytes {
+        Some(raw_bytes) => PreparedSessionHistorySidecarSource::Exportable(
+            SessionHistoryCheckpointSource::Decoded(raw_bytes),
+        ),
+        None => PreparedSessionHistorySidecarSource::RawTooLarge {
+            max_bytes: max_sidecar_bytes,
+        },
+    };
+    Ok(PreparedSessionHistorySidecar {
+        digest: SessionHistoryDigest {
+            size_bytes,
+            sha256_hex: hex::encode(hasher.finalize()),
+        },
+        source,
     })
 }
 
@@ -938,6 +1074,112 @@ mod tests {
                 panic!("oversized encoded body should fall back to decoded history")
             }
         }
+    }
+
+    #[test]
+    fn sidecar_preparation_handles_raw_export_boundaries() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = b"abcde";
+        let path = write_history_file(&dir, "history.jsonl", history);
+
+        let prepared = prepare_session_history_sidecar_from_payload_bounded(
+            path.to_str().unwrap(),
+            history.len() as u64,
+            history.len() as u64,
+        )
+        .unwrap();
+        match prepared.into_source().unwrap() {
+            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
+            SessionHistoryCheckpointSource::CodexZstd { .. } => {
+                panic!("literal history must use the raw representation")
+            }
+        }
+
+        let prepared = prepare_session_history_sidecar_from_payload_bounded(
+            path.to_str().unwrap(),
+            history.len() as u64,
+            (history.len() - 1) as u64,
+        )
+        .unwrap();
+
+        assert_eq!(prepared.digest.size_bytes, history.len() as u64);
+        assert_eq!(
+            prepared.digest.sha256_hex,
+            hex::encode(Sha256::digest(history))
+        );
+        let error = match prepared.into_source() {
+            Ok(_) => panic!("raw body above the export limit must not be exportable"),
+            Err(error) => error,
+        };
+        assert_over_limit(error, (history.len() - 1) as u64);
+
+        let result = prepare_session_history_sidecar_from_payload_bounded(
+            path.to_str().unwrap(),
+            (history.len() - 1) as u64,
+            (history.len() - 1) as u64,
+        );
+        assert!(matches!(
+            result,
+            Err(SessionHistoryDigestError::ExceedsMaxBytes)
+        ));
+    }
+
+    #[test]
+    fn sidecar_preparation_falls_back_to_raw_when_codex_zstd_exceeds_export_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let day_dir = sessions_dir.join("2026").join("07").join("02");
+        std::fs::create_dir_all(&day_dir).unwrap();
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let history = b"a";
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        assert!(compressed.len() > history.len());
+        let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
+        std::fs::write(path, compressed).unwrap();
+        let payload = codex_marker_payload(&sessions_dir, thread_id);
+
+        let prepared = prepare_session_history_sidecar_from_payload_bounded(
+            &payload,
+            history.len() as u64,
+            history.len() as u64,
+        )
+        .unwrap();
+
+        assert_eq!(prepared.digest.size_bytes, history.len() as u64);
+        assert_eq!(
+            prepared.digest.sha256_hex,
+            hex::encode(Sha256::digest(history))
+        );
+        match prepared.into_source().unwrap() {
+            SessionHistoryCheckpointSource::Decoded(bytes) => assert_eq!(bytes, history),
+            SessionHistoryCheckpointSource::CodexZstd { .. } => {
+                panic!("encoded body above the export limit must fall back to raw")
+            }
+        }
+    }
+
+    #[test]
+    fn sidecar_preparation_rejects_truncated_retained_codex_zstd() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let day_dir = sessions_dir.join("2026").join("07").join("02");
+        std::fs::create_dir_all(&day_dir).unwrap();
+        let thread_id = "019e9154-c304-70f0-adde-36efb1be1701";
+        let history = b"retained zstd history";
+        let mut compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        compressed.pop().unwrap();
+        let encoded_limit = compressed.len() as u64;
+        let path = day_dir.join("rollout-019e9154c30470f0adde36efb1be1701.jsonl.zst");
+        std::fs::write(path, compressed).unwrap();
+        let payload = codex_marker_payload(&sessions_dir, thread_id);
+
+        let result = prepare_session_history_sidecar_from_payload_bounded(
+            &payload,
+            history.len() as u64,
+            encoded_limit,
+        );
+
+        assert!(matches!(result, Err(SessionHistoryDigestError::Read(_))));
     }
 
     #[test]

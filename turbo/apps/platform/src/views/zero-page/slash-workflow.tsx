@@ -131,6 +131,10 @@ export function SlashWorkflowMenu({
         <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
           <Link
             pathname={ROUTES.workflows}
+            onMouseDown={(event) => {
+              // Keep the composer focused until Link handles the click.
+              event.preventDefault();
+            }}
             className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
           >
             <span className="flex min-w-0 items-center gap-2">
