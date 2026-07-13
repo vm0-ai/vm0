@@ -1022,6 +1022,10 @@ mod tests {
                     .await;
 
             assert!(promoted);
+            let exec_calls = sandbox.exec_calls();
+            assert_eq!(exec_calls.len(), 1);
+            assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+            assert!(!exec_calls[0].cmd.contains("export-session-history-sidecar"));
             let checkout = cache
                 .prepare(WorkspaceImagePrepareRequest {
                     identity: WorkspaceImageLeaseIdentity {
