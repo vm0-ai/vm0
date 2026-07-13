@@ -127,24 +127,6 @@ function mockCloudflareVideoFrame(
   return requests;
 }
 
-function featureSwitchActor(actor: ApiTestUser): {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly orgRole?: "org:admin" | "org:member";
-} {
-  if (actor.orgId === null) {
-    throw new Error("Expected artifact test actor to have an org");
-  }
-  if (actor.orgRole === undefined) {
-    return { userId: actor.userId, orgId: actor.orgId };
-  }
-  return {
-    userId: actor.userId,
-    orgId: actor.orgId,
-    orgRole: actor.orgRole,
-  };
-}
-
 async function artifactActor(
   displayName: string,
   actor: ApiTestUser = bdd.user(),
@@ -1032,32 +1014,6 @@ describe("POST /api/zero/artifacts/favorite", () => {
       site: `favorite-${randomUUID().slice(0, 8)}`,
     });
 
-    const disabled = await chat.requestFavoriteArtifact(
-      owner.actor,
-      artifact.url,
-      [204],
-    );
-    if (disabled.status !== 204) {
-      throw new Error("Expected disabled favorite request to no-op");
-    }
-
-    const disabledList = await chat.listArtifacts(owner.actor);
-    const disabledArtifact = disabledList.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    if (!disabledArtifact) {
-      throw new Error("Expected disabled favorite artifact to be listed");
-    }
-    expect(disabledArtifact.isFavorited).toBeFalsy();
-
-    await updateFeatureSwitchesForUser(
-      context,
-      featureSwitchActor(owner.actor),
-      {
-        [FeatureSwitchKey.ArtifactFavorites]: true,
-      },
-    );
-
     await chat.favoriteArtifact(owner.actor, artifact.url);
 
     const favorited = await chat.listArtifacts(owner.actor);
@@ -1083,14 +1039,6 @@ describe("POST /api/zero/artifacts/favorite", () => {
 
   it("rejects favorite requests for artifacts outside the caller visibility set", async () => {
     const owner = await artifactActor("Artifacts API favorites visibility");
-    await updateFeatureSwitchesForUser(
-      context,
-      featureSwitchActor(owner.actor),
-      {
-        [FeatureSwitchKey.ArtifactFavorites]: true,
-      },
-    );
-
     const missing = await chat.requestFavoriteArtifact(
       owner.actor,
       `https://artifacts.example.com/${randomUUID()}.html`,

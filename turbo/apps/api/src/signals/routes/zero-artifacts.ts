@@ -1,12 +1,9 @@
 import { command } from "ccstate";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   favoriteArtifact$,
   unfavoriteArtifact$,
@@ -51,20 +48,6 @@ const favoriteArtifactInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.ArtifactFavorites, {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        overrides,
-      })
-    ) {
-      return { status: 204 as const, body: undefined };
-    }
-
     const visible = await set(
       favoriteArtifact$,
       {
@@ -91,20 +74,6 @@ const unfavoriteArtifactInner$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    const overrides = await get(
-      userFeatureSwitchOverrides(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.ArtifactFavorites, {
-        userId: auth.userId,
-        orgId: auth.orgId,
-        overrides,
-      })
-    ) {
-      return { status: 204 as const, body: undefined };
-    }
-
     await set(
       unfavoriteArtifact$,
       {

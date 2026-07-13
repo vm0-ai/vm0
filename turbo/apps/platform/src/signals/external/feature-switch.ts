@@ -10,6 +10,10 @@ import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
 export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
+export const LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY = "artifactFavorites";
+
+type FeatureSwitchStates = Record<FeatureSwitchKey, boolean> &
+  Partial<Record<typeof LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY, boolean>>;
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
@@ -29,28 +33,37 @@ const apiFeatureSwitchClient$ = computed((get) => {
 });
 
 function applySwitches(
-  result: Record<FeatureSwitchKey, boolean>,
+  result: FeatureSwitchStates,
   overrides: Partial<Record<string, boolean>> | undefined,
+  effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
-  if (!overrides) {
-    return;
-  }
-  for (const key of Object.values(FeatureSwitchKey)) {
-    const value = overrides[key];
-    if (value !== undefined) {
-      result[key] = Boolean(value);
+  if (overrides) {
+    for (const key of Object.values(FeatureSwitchKey)) {
+      const value = overrides[key];
+      if (value !== undefined) {
+        result[key] = Boolean(value);
+      }
     }
+  }
+
+  // Keep the retired key only for the cross-version window where a new
+  // frontend can still receive an explicit disabled state from an old API.
+  // Remove this compatibility path after the previous API version has drained.
+  const artifactFavorites =
+    effectiveSwitches?.[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY];
+  if (artifactFavorites !== undefined) {
+    result[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY] = Boolean(artifactFavorites);
   }
 }
 
-export const featureSwitch$ = computed((get) => {
+export const featureSwitch$ = computed((get): FeatureSwitchStates => {
   const raw = get(featureSwitchCache$);
   if (!raw) {
     // First-ever load: identity-gated switches start disabled until
     // `reloadFeatureSwitch$` populates the cache.
     return getAllFeatureStates({});
   }
-  return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
+  return JSON.parse(raw) as FeatureSwitchStates;
 });
 
 export const reloadFeatureSwitch$ = command(
@@ -70,7 +83,11 @@ export const reloadFeatureSwitch$ = command(
       email: identity.email,
       orgId: identity.orgId,
     });
-    applySwitches(combined, result.body.switches);
+    applySwitches(
+      combined,
+      result.body.switches,
+      result.body.effectiveSwitches,
+    );
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },
