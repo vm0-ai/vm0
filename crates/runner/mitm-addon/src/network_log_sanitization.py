@@ -3,15 +3,16 @@
 import urllib.parse
 
 _URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in range(0x21))
-_URLSPLIT_REMOVABLE_CHARACTERS = str.maketrans("", "", "\t\r\n")
+_URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
 _SPECIAL_URL_SCHEMES = ("http", "https")
 
 
 def _normalize_for_urlsplit(value: str) -> str:
     """Apply current URL preprocessing consistently on Python 3.10+."""
-    return value.lstrip(_URLSPLIT_LEADING_STRIP_CHARACTERS).translate(
-        _URLSPLIT_REMOVABLE_CHARACTERS
-    )
+    value = value.lstrip(_URLSPLIT_LEADING_STRIP_CHARACTERS)
+    for character in _URLSPLIT_REMOVABLE_CHARACTERS:
+        value = value.replace(character, "")
+    return value
 
 
 def _sanitize_netloc_for_network_log(netloc: str) -> str:
