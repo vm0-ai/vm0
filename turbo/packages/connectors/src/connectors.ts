@@ -19,7 +19,9 @@ import { slack } from "./connectors/slack";
 import { slock } from "./connectors/slock";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleCalendar } from "./connectors/google-calendar";
+import { googleContacts } from "./connectors/google-contacts";
 import { googleDocs } from "./connectors/google-docs";
+import { googleForms } from "./connectors/google-forms";
 import { googleCloud } from "./connectors/google-cloud";
 import { linear } from "./connectors/linear";
 import { intervalsIcu } from "./connectors/intervals-icu";
@@ -438,7 +440,9 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...slock,
   ...googleSheets,
   ...googleCalendar,
+  ...googleContacts,
   ...googleDocs,
+  ...googleForms,
   ...linear,
   ...intervalsIcu,
   ...vercel,

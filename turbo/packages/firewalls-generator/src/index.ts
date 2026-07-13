@@ -260,7 +260,9 @@ import { generate as generateZoom } from "./zoom";
 import { generate as generateGoogleAds } from "./google-ads";
 import { generate as generateGoogleAnalytics } from "./google-analytics";
 import { generate as generateGoogleCalendar } from "./google-calendar";
+import { generate as generateGoogleContacts } from "./google-contacts";
 import { generate as generateGoogleDocs } from "./google-docs";
+import { generate as generateGoogleForms } from "./google-forms";
 import { generate as generateGoogleMaps } from "./google-maps";
 import { generate as generateGoogleMeet } from "./google-meet";
 import { generate as generateGoogleSearchConsole } from "./google-search-console";
@@ -561,8 +563,10 @@ const GENERATORS: Record<string, () => Promise<void>> = {
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),
   ),
   "google-calendar": generateGoogleCalendar,
+  "google-contacts": generateGoogleContacts,
   "google-docs": generateGoogleDocs,
   "google-drive": generateGoogleDrive,
+  "google-forms": generateGoogleForms,
   "google-meet": generateGoogleMeet,
   "google-search-console": generateGoogleSearchConsole,
   "google-sheets": generateGoogleSheets,

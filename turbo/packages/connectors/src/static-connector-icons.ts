@@ -176,10 +176,14 @@ const STATIC_CONNECTOR_ICON_PATHS = {
     "views/zero-page/components/settings/icons/google-calendar-58ef860565d1.svg",
   "google-cloud":
     "views/zero-page/components/settings/icons/google-cloud-0a48e1af4a43.svg",
+  "google-contacts":
+    "views/zero-page/components/settings/icons/google-contacts-98f4863ead9e.png",
   "google-docs":
     "views/zero-page/components/settings/icons/google-docs-ce8a250ed67f.svg",
   "google-drive":
     "views/zero-page/components/settings/icons/google-drive-aa75924aa727.svg",
+  "google-forms":
+    "views/zero-page/components/settings/icons/google-forms-3dc37abd6d50.png",
   "google-maps":
     "views/zero-page/components/settings/icons/google-maps-5b06e906e8fc.svg",
   "google-meet":
@@ -536,8 +540,10 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "google-analytics",
   "google-calendar",
   "google-cloud",
+  "google-contacts",
   "google-docs",
   "google-drive",
+  "google-forms",
   "google-maps",
   "google-meet",
   "google-search-console",

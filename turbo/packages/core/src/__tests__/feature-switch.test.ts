@@ -22,6 +22,12 @@ describe("isFeatureEnabled", () => {
 
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.GoogleContactsConnector, {})).toBe(
+      false,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.GoogleFormsConnector, {})).toBe(
+      false,
+    );
     expect(
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
