@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.595.4](https://github.com/vm0-ai/vm0/compare/app-v0.595.3...app-v0.595.4) (2026-07-13)
+
+
+### Performance Improvements
+
+* **platform:** isolate chat and sidebar render subscriptions ([#21167](https://github.com/vm0-ai/vm0/issues/21167)) ([3b744e2](https://github.com/vm0-ai/vm0/commit/3b744e2f33baaa994cb448e70ce04dda775969b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.187.0
+    * @vm0/core bumped to 8.426.0
+
 ## [0.595.3](https://github.com/vm0-ai/vm0/compare/app-v0.595.2...app-v0.595.3) (2026-07-13)
 
 

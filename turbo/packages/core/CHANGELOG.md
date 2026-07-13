@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.426.0](https://github.com/vm0-ai/vm0/compare/core-v8.425.4...core-v8.426.0) (2026-07-13)
+
+
+### Features
+
+* enable website templates for staff org ([#21206](https://github.com/vm0-ai/vm0/issues/21206)) ([61ec5de](https://github.com/vm0-ai/vm0/commit/61ec5deffb5943aa3695b8e614862cb1b5a554fe))
+
+
+### Performance Improvements
+
+* **platform:** isolate chat and sidebar render subscriptions ([#21167](https://github.com/vm0-ai/vm0/issues/21167)) ([3b744e2](https://github.com/vm0-ai/vm0/commit/3b744e2f33baaa994cb448e70ce04dda775969b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.187.0
+
 ## [8.425.4](https://github.com/vm0-ai/vm0/compare/core-v8.425.3...core-v8.425.4) (2026-07-13)
 
 
