@@ -372,17 +372,13 @@ describe("zero chat thread IndexedDB fallback", () => {
       return respond(200, { messages: [], hasHistoryBefore: false });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-      await waitFor(() => {
-        expect(messageListRequests).toBeGreaterThan(0);
-        expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-      });
-      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-    } finally {
-      initialMessageList.resolve();
-    }
+    await waitFor(() => {
+      expect(messageListRequests).toBeGreaterThan(0);
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    });
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
   });
 
   it("keeps model and voice actions visible while uncached messages are blocked", async () => {
@@ -408,34 +404,30 @@ describe("zero chat thread IndexedDB fallback", () => {
       return never();
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-      await waitFor(() => {
-        expect(messageListRequests).toBeGreaterThan(0);
-        expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
-      });
+    await waitFor(() => {
+      expect(messageListRequests).toBeGreaterThan(0);
+      expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
+    });
 
-      const composer = document.querySelector("[data-chat-composer]");
-      expect(composer).toBeInstanceOf(HTMLElement);
-      expect(
-        (composer as HTMLElement).querySelector(".animate-pulse"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("combobox", { name: THREAD_MODEL_LABEL }),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
-      const sendButton = queryAllByRoleFast(
-        "button",
-        composer as HTMLElement,
-      ).find((button) => {
-        return button.getAttribute("aria-label") === "Send";
-      });
-      expect(sendButton).toBeInstanceOf(HTMLButtonElement);
-      expect(sendButton).toBeDisabled();
-    } finally {
-      initialMessageList.resolve();
-    }
+    const composer = document.querySelector("[data-chat-composer]");
+    expect(composer).toBeInstanceOf(HTMLElement);
+    expect(
+      (composer as HTMLElement).querySelector(".animate-pulse"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: THREAD_MODEL_LABEL }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
+    const sendButton = queryAllByRoleFast(
+      "button",
+      composer as HTMLElement,
+    ).find((button) => {
+      return button.getAttribute("aria-label") === "Send";
+    });
+    expect(sendButton).toBeInstanceOf(HTMLButtonElement);
+    expect(sendButton).toBeDisabled();
   });
 
   it("hides the model picker when an uncached thread has no selected model", async () => {
@@ -461,19 +453,15 @@ describe("zero chat thread IndexedDB fallback", () => {
       return never();
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-      await waitFor(() => {
-        expect(messageListRequests).toBeGreaterThan(0);
-        expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
-      });
+    await waitFor(() => {
+      expect(messageListRequests).toBeGreaterThan(0);
+      expect(screen.getAllByText(THREAD_TITLE).length).toBeGreaterThan(0);
+    });
 
-      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-      expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
-    } finally {
-      initialMessageList.resolve();
-    }
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Voice input")).toBeInTheDocument();
   });
 
   it("renders cached sidebar and chat messages while chat thread data APIs are blocked", async () => {

@@ -1844,20 +1844,16 @@ describe("chat composer models", () => {
       await Promise.resolve();
     });
 
-    try {
-      expect(
-        screen.getByRole("combobox", {
-          hidden: true,
-          name: "Kimi K2.7 Code",
-        }),
-      ).toBeInTheDocument();
-      expect(screen.getByRole("listbox")).toBeInTheDocument();
-      expect(
-        screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
-      ).toBeInTheDocument();
-    } finally {
-      pendingPreferenceReload.resolve();
-    }
+    expect(
+      screen.getByRole("combobox", {
+        hidden: true,
+        name: "Kimi K2.7 Code",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    ).toBeInTheDocument();
   });
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
