@@ -20,7 +20,7 @@ import { openChatIdb } from "../external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../external/idb-artifact-item-store.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
-import { onRejection } from "../utils.ts";
+import { onRef, onRejection } from "../utils.ts";
 import {
   ensureAgentDraft$,
   loadAgentDraft$,
@@ -36,8 +36,8 @@ const ARTIFACTS_MAX_PAGES = 100;
 // Read the whole locally-cached set back for the cache-first paint.
 const ARTIFACTS_CACHE_READ_LIMIT = ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
 
-// Number of cards the grid reveals per window step. The rendered window grows by
-// this amount on each "load more", keeping the DOM bounded for large sets.
+// Number of cards the grid makes available per automatic loading step. Row
+// virtualization keeps the mounted DOM bounded independently of this window.
 const ARTIFACT_WINDOW_STEP = 60;
 
 const internalArtifactsSearch$ = state("");
@@ -49,6 +49,19 @@ const internalArtifactFavoriteOverrides$ = state<
 >({});
 const internalArtifactsReload$ = state(0);
 const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
+const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
+const internalArtifactsGridElement$ = state<HTMLElement | null>(null);
+const internalArtifactsGridWidth$ = state(0);
+
+interface ArtifactsScrollMetrics {
+  readonly clientHeight: number;
+  readonly scrollTop: number;
+}
+
+const internalArtifactsScrollMetrics$ = state<ArtifactsScrollMetrics>({
+  clientHeight: 0,
+  scrollTop: 0,
+});
 
 interface ArtifactsPageData {
   readonly artifacts: readonly ArtifactItem[];
@@ -76,8 +89,8 @@ export const artifactsFavoritesOnly$ = computed((get) => {
   return get(internalArtifactsFavoritesOnly$);
 });
 
-// How many artifacts the grid currently reveals. Grown by the view's "load
-// more" control and reset to the first window whenever a filter changes.
+// How many artifacts the grid currently makes available. Grown automatically
+// near the scroll boundary and reset to the first window when filters change.
 export const artifactsWindow$ = computed((get) => {
   return get(internalArtifactsWindow$);
 });
@@ -87,6 +100,85 @@ export const growArtifactsWindow$ = command(({ set }) => {
     return count + ARTIFACT_WINDOW_STEP;
   });
 });
+
+export const artifactsScrollViewport$ = computed((get) => {
+  return get(internalArtifactsScrollViewport$);
+});
+
+export const artifactsScrollMetrics$ = computed((get) => {
+  return get(internalArtifactsScrollMetrics$);
+});
+
+export const artifactsGridElement$ = computed((get) => {
+  return get(internalArtifactsGridElement$);
+});
+
+export const artifactsGridWidth$ = computed((get) => {
+  return get(internalArtifactsGridWidth$);
+});
+
+export const syncArtifactsScrollMetrics$ = command(
+  ({ set }, viewport: HTMLElement) => {
+    set(internalArtifactsScrollMetrics$, {
+      clientHeight: viewport.clientHeight,
+      scrollTop: viewport.scrollTop,
+    });
+  },
+);
+
+export const setArtifactsScrollViewportRef$ = onRef(
+  command(({ set }, viewport: HTMLElement, signal: AbortSignal) => {
+    set(internalArtifactsScrollViewport$, viewport);
+    set(syncArtifactsScrollMetrics$, viewport);
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            set(syncArtifactsScrollMetrics$, viewport);
+          });
+    resizeObserver?.observe(viewport);
+
+    signal.addEventListener(
+      "abort",
+      () => {
+        resizeObserver?.disconnect();
+        set(internalArtifactsScrollViewport$, null);
+        set(internalArtifactsScrollMetrics$, {
+          clientHeight: 0,
+          scrollTop: 0,
+        });
+      },
+      { once: true },
+    );
+  }),
+);
+
+export const setArtifactsGridRef$ = onRef(
+  command(({ set }, element: HTMLElement, signal: AbortSignal) => {
+    const measure = () => {
+      set(internalArtifactsGridElement$, element);
+      set(internalArtifactsGridWidth$, element.clientWidth);
+    };
+    measure();
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
+    resizeObserver?.observe(element);
+
+    signal.addEventListener(
+      "abort",
+      () => {
+        resizeObserver?.disconnect();
+        set(internalArtifactsGridElement$, null);
+        set(internalArtifactsGridWidth$, 0);
+      },
+      { once: true },
+    );
+  }),
+);
 
 export const setArtifactsSearch$ = command(({ set }, search: string) => {
   set(internalArtifactsSearch$, search);

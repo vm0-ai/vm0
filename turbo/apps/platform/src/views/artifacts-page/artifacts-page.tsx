@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, UIEvent as ReactUIEvent } from "react";
 import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
@@ -42,8 +42,12 @@ import { agents$ } from "../../signals/agent.ts";
 import {
   applyArtifactFavoriteOverrides,
   artifactFavoriteOverrides$,
+  artifactsGridElement$,
+  artifactsGridWidth$,
   artifactsFavoritesOnly$,
   artifactsSearch$,
+  artifactsScrollMetrics$,
+  artifactsScrollViewport$,
   artifactsWindow$,
   cachedArtifacts$,
   filterArtifacts,
@@ -53,11 +57,14 @@ import {
   remoteArtifacts$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
+  setArtifactsGridRef$,
   setArtifactsFavoritesOnly$,
+  setArtifactsScrollViewportRef$,
   setArtifactsSearch$,
   setSelectedArtifactsAgentId$,
   setSelectedArtifactsCategory$,
   startArtifactChat$,
+  syncArtifactsScrollMetrics$,
   toggleArtifactFavorite$,
 } from "../../signals/artifacts-page/artifacts-signals.ts";
 import type { ArtifactCategory } from "../../signals/artifacts-page/artifact-category.ts";
@@ -87,6 +94,12 @@ type ArtifactPreviewKind = "image" | "html" | "pdf" | "video" | "file";
 type ArtifactTypeIconKind = "presentation" | "html" | "image" | "video";
 
 const DESKTOP_ARTIFACT_PREVIEW_SIZE = 1280;
+const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
+const ARTIFACT_GRID_GAP_PX = 12;
+const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 220;
+const ARTIFACT_GRID_OVERSCAN_ROWS = 2;
+const ARTIFACT_GRID_FALLBACK_WIDTH_PX = 900;
+const ARTIFACT_GRID_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -684,7 +697,7 @@ function ArtifactCard({
           : undefined
       }
       className={cn(
-        "group relative mb-3 aspect-square break-inside-avoid overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
+        "group relative aspect-square overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
         previewable &&
           "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
@@ -717,12 +730,15 @@ function ArtifactCard({
 
 function ArtifactsLoadingState() {
   return (
-    <div className="columns-[220px] gap-3" aria-label="Loading artifacts">
+    <div
+      className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3"
+      aria-label="Loading artifacts"
+    >
       {Array.from({ length: 8 }, (_, index) => {
         return (
           <div
             key={index}
-            className="mb-3 aspect-square break-inside-avoid overflow-hidden rounded-lg border border-border bg-card"
+            className="aspect-square overflow-hidden rounded-lg border border-border bg-card"
           >
             <div className="h-full bg-muted/30">
               <div className="flex h-full flex-col justify-end p-3">
@@ -739,6 +755,86 @@ function ArtifactsLoadingState() {
       })}
     </div>
   );
+}
+
+function hasUsableLayoutPosition(rect: DOMRectReadOnly): boolean {
+  return rect.top !== 0 || rect.left !== 0;
+}
+
+function getArtifactsGridScrollMargin(
+  scrollViewport: HTMLElement | null,
+  gridElement: HTMLElement | null,
+): number {
+  if (!scrollViewport || !gridElement) {
+    return 0;
+  }
+
+  const viewportRect = scrollViewport.getBoundingClientRect();
+  const gridRect = gridElement.getBoundingClientRect();
+  if (
+    hasUsableLayoutPosition(viewportRect) ||
+    hasUsableLayoutPosition(gridRect)
+  ) {
+    return Math.max(
+      0,
+      scrollViewport.scrollTop + gridRect.top - viewportRect.top,
+    );
+  }
+
+  return Math.max(0, gridElement.offsetTop - scrollViewport.offsetTop);
+}
+
+function getArtifactGridDimensions(containerWidth: number) {
+  const columnCount = Math.max(
+    1,
+    Math.floor(
+      (containerWidth + ARTIFACT_GRID_GAP_PX) /
+        (ARTIFACT_GRID_MIN_CARD_WIDTH_PX + ARTIFACT_GRID_GAP_PX),
+    ),
+  );
+  const cardSize =
+    (containerWidth - ARTIFACT_GRID_GAP_PX * (columnCount - 1)) / columnCount;
+  return {
+    columnCount,
+    rowHeight: cardSize + ARTIFACT_GRID_GAP_PX,
+  };
+}
+
+function getVirtualArtifactRange({
+  columnCount,
+  itemCount,
+  rowHeight,
+  scrollMargin,
+  scrollTop,
+  viewportHeight,
+}: {
+  readonly columnCount: number;
+  readonly itemCount: number;
+  readonly rowHeight: number;
+  readonly scrollMargin: number;
+  readonly scrollTop: number;
+  readonly viewportHeight: number;
+}) {
+  const rowCount = Math.ceil(itemCount / columnCount);
+  const localScrollTop = Math.max(0, scrollTop - scrollMargin);
+  const firstVisibleRow = Math.min(
+    Math.max(0, rowCount - 1),
+    Math.floor(localScrollTop / rowHeight),
+  );
+  const visibleRowCount = Math.max(1, Math.ceil(viewportHeight / rowHeight));
+  const startRow = Math.max(0, firstVisibleRow - ARTIFACT_GRID_OVERSCAN_ROWS);
+  const endRow = Math.min(
+    rowCount,
+    firstVisibleRow + visibleRowCount + ARTIFACT_GRID_OVERSCAN_ROWS,
+  );
+
+  return {
+    endIndex: Math.min(itemCount, endRow * columnCount),
+    startIndex: startRow * columnCount,
+    startOffset: startRow * rowHeight,
+    totalHeight:
+      rowCount === 0 ? 0 : rowCount * rowHeight - ARTIFACT_GRID_GAP_PX,
+  };
 }
 
 function ArtifactsErrorState() {
@@ -777,7 +873,6 @@ function ArtifactsList({
   loading,
   error,
   visibleCount,
-  onLoadMore,
   onOpenChat,
   onOpenPreview,
   onStartChat,
@@ -789,13 +884,18 @@ function ArtifactsList({
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
-  readonly onLoadMore: () => void;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
   readonly onToggleFavorite: (item: ArtifactItem) => void;
   readonly showFavoriteAction: boolean;
 }) {
+  const scrollViewport = useGet(artifactsScrollViewport$);
+  const scrollMetrics = useGet(artifactsScrollMetrics$);
+  const gridElement = useGet(artifactsGridElement$);
+  const measuredGridWidth = useGet(artifactsGridWidth$);
+  const setGridRef = useSet(setArtifactsGridRef$);
+
   if (loading) {
     return <ArtifactsLoadingState />;
   }
@@ -805,14 +905,50 @@ function ArtifactsList({
   if (artifacts.length === 0) {
     return <ArtifactsEmptyState filtered={hasFilters} />;
   }
-  // Render only the current window so a large set never mounts thousands of
-  // cards (and their iframes) at once; "Load more" reveals the next window.
+  // Auto-loading expands the available window while row virtualization keeps
+  // only the viewport and a small overscan mounted.
   const windowed = artifacts.slice(0, visibleCount);
-  const hasMore = windowed.length < artifacts.length;
+  const gridWidth =
+    measuredGridWidth ||
+    gridElement?.clientWidth ||
+    ARTIFACT_GRID_FALLBACK_WIDTH_PX;
+  const viewportHeight =
+    scrollMetrics.clientHeight ||
+    scrollViewport?.clientHeight ||
+    ARTIFACT_GRID_FALLBACK_VIEWPORT_HEIGHT_PX;
+  const scrollTop = scrollMetrics.scrollTop || scrollViewport?.scrollTop || 0;
+  const scrollMargin = getArtifactsGridScrollMargin(
+    scrollViewport,
+    gridElement,
+  );
+  const { columnCount, rowHeight } = getArtifactGridDimensions(gridWidth);
+  const { endIndex, startIndex, startOffset, totalHeight } =
+    getVirtualArtifactRange({
+      columnCount,
+      itemCount: windowed.length,
+      rowHeight,
+      scrollMargin,
+      scrollTop,
+      viewportHeight,
+    });
+  const virtualized = windowed.slice(startIndex, endIndex);
+
   return (
-    <>
-      <div className="columns-[220px] gap-3">
-        {windowed.map((artifact) => {
+    <div
+      ref={setGridRef}
+      className="relative w-full"
+      data-testid="artifacts-virtual-grid"
+      style={{ height: totalHeight }}
+    >
+      <div
+        className="absolute left-0 top-0 grid w-full gap-3"
+        data-testid="artifacts-virtual-grid-items"
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+          transform: `translateY(${startOffset}px)`,
+        }}
+      >
+        {virtualized.map((artifact) => {
           return (
             <ArtifactCard
               key={artifact.artifactItemId}
@@ -826,14 +962,7 @@ function ArtifactsList({
           );
         })}
       </div>
-      {hasMore && (
-        <div className="flex justify-center pt-1">
-          <Button variant="secondary" onClick={onLoadMore}>
-            Load more
-          </Button>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -853,6 +982,8 @@ export function ArtifactsPage() {
   const pageSignal = useGet(pageSignal$);
   const visibleCount = useGet(artifactsWindow$);
   const loadMore = useSet(growArtifactsWindow$);
+  const setScrollViewportRef = useSet(setArtifactsScrollViewportRef$);
+  const syncScrollMetrics = useSet(syncArtifactsScrollMetrics$);
   const openArtifactPreview = useOpenArtifactPreview();
   const lightboxUrl = useGet(lightboxUrl$);
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
@@ -891,6 +1022,18 @@ export function ArtifactsPage() {
     selectedAgentId !== null ||
     selectedCategory !== null ||
     (artifactFavoritesEnabled && favoritesOnly);
+  const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
+    const viewport = event.currentTarget;
+    syncScrollMetrics(viewport);
+    if (visibleCount >= artifacts.length) {
+      return;
+    }
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom <= ARTIFACT_AUTO_LOAD_THRESHOLD_PX) {
+      loadMore();
+    }
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -908,7 +1051,11 @@ export function ArtifactsPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 [scrollbar-gutter:stable]">
+      <main
+        ref={setScrollViewportRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 [scrollbar-gutter:stable]"
+      >
         <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           <ArtifactsToolbar
             search={search}
@@ -928,7 +1075,6 @@ export function ArtifactsPage() {
             loading={loading}
             error={error}
             visibleCount={visibleCount}
-            onLoadMore={loadMore}
             onOpenChat={openChat}
             onOpenPreview={openArtifactPreview}
             onStartChat={(item) => {
