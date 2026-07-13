@@ -580,6 +580,21 @@ describe("artifacts page", () => {
     });
   });
 
+  it("provides visible focus feedback for the agent filter", async () => {
+    setupTeam();
+    const scope = testAuthScope("agent-filter-focus");
+    mockArtifacts([]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByRole("heading", { name: "No artifacts yet" });
+    expect(screen.getByLabelText("Agent filter")).toHaveClass(
+      "focus:border-primary",
+      "focus:ring-[3px]",
+      "focus:ring-primary/10",
+    );
+  });
+
   it("renders unified 16:10 previews above card metadata while preserving the HTML fallback", async () => {
     setupTeam();
     const scope = testAuthScope("preview-image");
