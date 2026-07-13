@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Complete pre-commit workflow - run quality checks (format, lint, type, test) and validate/create conventional commit messages
+description: Complete pre-commit workflow - select and run applicable quality checks, then validate/create conventional commit messages
 context: fork
 ---
 
@@ -8,7 +8,7 @@ You are a commit specialist for the vm0 project. Your role is to ensure code qua
 
 ## Operations
 
-1. **Check** - Run pre-commit quality checks (format, lint, type, test)
+1. **Check** - Identify the affected scope and run its applicable pre-commit quality checks
 2. **Message** - Validate or create conventional commit messages
 
 Run both operations together for a complete pre-commit workflow.
@@ -17,35 +17,47 @@ Run both operations together for a complete pre-commit workflow.
 
 # Operation 1: Quality Checks
 
-## Commands
+## Scope Selection
 
-```bash
-cd turbo
+1. Read and follow the **Pre-Commit Checks** section in `CLAUDE.md`.
+2. Inspect `git status --short` and `git diff --cached --name-only`.
+3. Identify the affected languages, workspaces, crates, packages, generated outputs, and runtime consumers.
+4. Run every applicable formatter, linter, type or static check, and test for that scope.
+5. Expand to broader or cross-language checks for shared configuration, generated artifacts, contracts, build or deployment tooling, or uncertain impact.
 
-pnpm format           # Auto-format code
-pnpm lint             # Check for linting issues
-pnpm check-types      # Verify TypeScript type safety
-pnpm test             # Run all tests
-```
+Do not run an unrelated language ecosystem's full suite. Rust-only or Python-only changes do not require Turbo checks unless they affect Turbo inputs or consumers. Documentation-only changes require their relevant formatter, validator, or specialized checks rather than unrelated code suites.
+
+The root `lefthook.yml` selects formatting and static checks from staged paths. It does not replace manually selecting and running the relevant tests.
+
+## Command Selection
+
+- **Turbo / TypeScript:** Prefer affected-workspace checks. Use the full commands documented in `CLAUDE.md` when the change crosses workspaces or cannot be isolated safely.
+- **Rust:** From `crates/`, run formatting, Clippy, documentation checks, and tests for the affected crate(s). Use workspace-wide checks for shared or cross-crate changes.
+- **Python (`crates/runner/mitm-addon`):** Run Ruff formatting and linting, basedpyright, and pytest in that package.
+- **Documentation or configuration:** Run the formatter, validator, or specialized tests that consume the changed files.
 
 ## Execution Order
 
-**IMPORTANT: Run checks sequentially, one at a time.** Each check can take several minutes in this monorepo. Running them in parallel will saturate CPU/memory and make everything slower (or freeze the machine).
+**IMPORTANT: Run selected checks sequentially, one at a time.** Each check can take several minutes in this monorepo. Running them in parallel will saturate CPU/memory and make everything slower (or freeze the machine).
 
-1. **Format** (`pnpm format`) - Auto-fixes formatting
-2. **Lint** (`pnpm lint`) - Auto-fix with `--fix` flag if needed
-3. **Type Check** (`pnpm check-types`) - Requires manual fixes
-4. **Test** (`pnpm test`) - Requires debugging if failed
+Within each affected ecosystem, use this order when the check applies:
+
+1. **Format** - Apply the repository formatter
+2. **Lint / Static Analysis** - Fix underlying issues rather than suppressing them
+3. **Type Check** - Fix type errors without bypasses
+4. **Test** - Run the tests selected from the affected behavior and consumers
+
+Run only one Vitest process at a time. Do not run multiple Cargo checks concurrently.
 
 ## Output Format
 
 ```
 Pre-Commit Check Results
 
-Formatting: [PASSED/FIXED/FAILED]
-Linting: [PASSED/FIXED/FAILED]
-Type Checking: [PASSED/FAILED]
-Tests: [PASSED/FAILED]
+Affected scope: [languages, workspaces, crates, packages, and consumers]
+Checks:
+- [command]: [PASSED/FIXED/FAILED]
+Skipped ecosystems: [ecosystems omitted because they are unrelated]
 
 Summary: [Ready to commit / Issues need attention]
 ```
@@ -164,10 +176,11 @@ Alternatives:
 Complete Pre-Commit Workflow
 
 Step 1: Quality Checks
-   Formatting: PASSED
-   Linting: FIXED (2 issues)
-   Type Checking: PASSED
-   Tests: PASSED (42 tests)
+   Affected scope: turbo/apps/api
+   Checks:
+   - pnpm -F api exec vitest: PASSED (42 tests)
+   - applicable formatting, lint, type, and Knip checks: PASSED
+   Skipped ecosystems: Rust and Python (unrelated)
 
 Step 2: Commit Message
    Changes:
@@ -207,7 +220,7 @@ From CLAUDE.md:
 
 ## Best Practices
 
-1. Run checks before every commit
+1. Run all applicable checks before every commit
 2. Auto-fix formatting/lint when possible
 3. Focus on "why" not "what" in messages
 4. Keep commits atomic - one logical change

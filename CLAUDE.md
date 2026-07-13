@@ -167,21 +167,30 @@ For detailed patterns and examples, use `/testing`.
 
 ## Pre-Commit Checks
 
-**All code must pass these checks before committing.** Run these commands from the `/turbo` directory to ensure code quality:
+**Run every check relevant to the files and behavior changed before committing.** Do not run an unrelated language ecosystem's full suite. For example, Rust-only or Python-only changes do not require Turbo checks unless they affect Turbo inputs or consumers. Determine the affected scope from the changed files and their consumers, then expand the scope for shared configuration, generated artifacts, cross-language contracts, build or deployment tooling, and other changes with wider impact.
 
-### Required Checks:
-- **Lint:** `cd turbo && pnpm turbo run lint` - Check for code style and quality issues
-- **Type Check:** `cd turbo && pnpm check-types` - Verify TypeScript type safety
-- **Format:** `cd turbo && pnpm format` - Auto-format code according to project standards
-- **Test:** `cd turbo && pnpm vitest run --maxWorkers=4 --silent=passed-only` - Run all tests without overloading local workers
-- **Knip:** `cd turbo && pnpm knip` - Find and fix unused dependencies, exports, and files
+### Select Checks by Affected Scope
+
+- **Turbo / TypeScript:** Run formatting, lint, type checking, Knip, and tests for the affected workspace(s). The full-repository forms below are appropriate when a change crosses workspaces, affects shared Turbo configuration, or cannot be isolated safely:
+  - `cd turbo && pnpm format`
+  - `cd turbo && pnpm turbo run lint`
+  - `cd turbo && pnpm check-types`
+  - `cd turbo && pnpm vitest run --maxWorkers=4 --silent=passed-only`
+  - `cd turbo && pnpm knip`
+- **Rust:** Run `cargo fmt`, Clippy, documentation checks, and tests for the affected crate(s) from `crates/`. Use workspace-wide checks when shared crates, workspace configuration, or cross-crate behavior changes.
+- **Python (`crates/runner/mitm-addon`):** Run Ruff formatting and linting, basedpyright, and pytest in that package.
+- **Documentation or configuration:** Run the formatter, validator, or specialized tests that consume the changed files. Unrelated Turbo, Rust, or Python suites are not required unless those files affect them.
+
+The root `lefthook.yml` selects formatting and static checks from staged file paths. It does not replace running the relevant tests manually.
 
 ### Before Committing:
-1. Run all checks to ensure code quality
-2. Fix any issues that are found
-3. Never commit code that fails any of these checks
-4. Use proper conventional commit message format
-5. These checks help maintain the high standards defined in our design principles
+
+1. Identify the affected languages, workspaces, crates, packages, generated outputs, and runtime consumers
+2. Run all formatting, linting, type checking, static analysis, and tests relevant to that scope
+3. Expand to broader or cross-language checks when the impact is shared or uncertain
+4. Fix any issues that are found
+5. Never commit code that fails an applicable check
+6. Use proper conventional commit message format
 
 ### Running Vitest Correctly
 
@@ -192,7 +201,7 @@ For detailed patterns and examples, use `/testing`.
    ```
    pnpm -F @vm0/app exec vitest
    ```
-   Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/cli`, `@vm0/api`).
+   Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/cli`, `api`).
 3. **Limit full-suite worker concurrency** - When an all-workspace run is necessary, cap file workers to avoid resource-contention timeouts:
    ```
    pnpm vitest run --maxWorkers=4 --silent=passed-only
@@ -200,7 +209,8 @@ For detailed patterns and examples, use `/testing`.
    Do not increase test timeouts to compensate for excessive local concurrency.
 
 ### CRITICAL: Never run checks in background
-**All pre-commit checks (lint, format, typecheck, test, knip) MUST run in the foreground.** Never use `run_in_background` for these commands. The results must be available immediately so the commit can proceed — background execution defeats this purpose.
+
+**All selected pre-commit checks MUST run in the foreground.** Never use `run_in_background` for these commands. The results must be available immediately so the commit can proceed — background execution defeats this purpose.
 
 ## Code Quality Tools
 
@@ -235,7 +245,8 @@ GitHub Actions container jobs run `run` steps with `sh` by default. Any step tha
 
 ### Zero Tolerance for Skipping Tests
 
-**NEVER skip tests to make CI pass.** All tests must execute and pass:
+**NEVER skip tests to make CI pass.** All tests selected for the affected scope, together with all tests selected by CI, must execute and pass:
+
 - Do not add `skip` flags or environment variables to bypass tests
 - Do not modify CI workflow to skip tests that are timing out or failing
 - If tests are slow or timing out, **fix the underlying issue** - either optimize the tests or fix the code
@@ -243,6 +254,7 @@ GitHub Actions container jobs run `run` steps with `sh` by default. Any step tha
 - Especially critical: **never skip tests for the feature being developed in the PR**
 
 If tests timeout, investigate why:
+
 1. Is there a bug in the code causing infinite loops or hangs?
 2. Are there network issues or external service dependencies?
 3. Is the test itself poorly designed and needs optimization?
