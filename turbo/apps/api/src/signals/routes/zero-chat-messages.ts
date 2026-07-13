@@ -2251,6 +2251,213 @@ const handleInterruptSend$ = command(
   },
 );
 
+async function loadTimedAuthorizedAgent(
+  args: NormalSendArgs,
+  db: Db,
+  signal: AbortSignal,
+): Promise<AgentForChatSend | NormalSendFailure> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+    "nested",
+    async () => {
+      const agent = await loadAgentForChatSend(db, args.body.agentId);
+      signal.throwIfAborted();
+      if (!agent || agent.orgId !== args.orgId) {
+        return notFound("Agent not found");
+      }
+      if (agent.visibility === "private" && agent.owner !== args.userId) {
+        return forbidden("Only the private agent owner can run this agent");
+      }
+      return agent;
+    },
+  );
+}
+
+async function validateTimedModelSelection(
+  args: NormalSendArgs,
+  db: Db,
+): ReturnType<typeof validateModelSelection> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
+    "nested",
+    async () => {
+      return await validateModelSelection({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        modelSelection: args.body.modelSelection,
+      });
+    },
+  );
+}
+
+async function resolveTimedNormalSendFeatureSwitches(
+  args: NormalSendArgs,
+  db: Db,
+): ReturnType<typeof resolveNormalSendFeatureSwitches> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
+    "nested",
+    async () => {
+      return await resolveNormalSendFeatureSwitches(
+        db,
+        args.orgId,
+        args.userId,
+      );
+    },
+  );
+}
+
+async function validateTimedCodexServiceTierBeforeThread(
+  args: NormalSendArgs,
+  db: Db,
+  featureSwitches: NormalSendFeatureSwitches,
+): ReturnType<typeof validateCodexServiceTierBeforeThread> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
+    "nested",
+    async () => {
+      return await validateCodexServiceTierBeforeThread({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        body: args.body,
+        codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+      });
+    },
+  );
+}
+
+async function resolveTimedInitialThreadModelPin(
+  args: NormalSendArgs,
+  db: Db,
+): ReturnType<typeof resolveInitialThreadModelPin> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
+    "nested",
+    async () => {
+      return await resolveInitialThreadModelPin({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        existingThreadId: args.body.threadId,
+        modelSelection: args.body.modelSelection,
+      });
+    },
+  );
+}
+
+async function resolveTimedThread(
+  args: NormalSendArgs,
+  db: Db,
+  initialPin: ThreadModelPin,
+): ReturnType<typeof resolveThread> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+    "nested",
+    async () => {
+      return await resolveThread({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        agentId: args.body.agentId,
+        existingThreadId: args.body.threadId,
+        clientThreadId: args.body.clientThreadId,
+        chatThreadEventId: args.body.chatThreadEventId,
+        initialPin,
+        codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
+        modelSelection: args.body.modelSelection,
+      });
+    },
+  );
+}
+
+async function prepareTimedRecentChatContext(
+  args: NormalSendArgs,
+  db: Db,
+  thread: ResolvedThread,
+): ReturnType<typeof prepareRecentChatContext> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
+    "nested",
+    async () => {
+      return await prepareRecentChatContext(
+        db,
+        thread.threadId,
+        thread.isNewThread,
+        thread.incompleteContext,
+      );
+    },
+  );
+}
+
+async function maybePersistTimedExplicitModelFirstSelection(
+  args: NormalSendArgs,
+  db: Db,
+): ReturnType<typeof maybePersistExplicitModelFirstSelection> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
+    "nested",
+    async () => {
+      return await maybePersistExplicitModelFirstSelection({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        modelSelection: args.body.modelSelection,
+      });
+    },
+  );
+}
+
+async function maybePersistTimedExplicitCodexServiceTier(
+  args: NormalSendArgs,
+  db: Db,
+  threadId: string,
+): ReturnType<typeof maybePersistExplicitCodexServiceTier> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
+    "nested",
+    async () => {
+      return await maybePersistExplicitCodexServiceTier({
+        db,
+        threadId,
+        userId: args.userId,
+        body: args.body,
+      });
+    },
+  );
+}
+
+async function resolveTimedComputerUseHostGrant(
+  args: NormalSendArgs,
+  db: Db,
+  thread: ResolvedThread,
+): ReturnType<typeof resolveComputerUseHostGrant> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
+    "nested",
+    async () => {
+      return await resolveComputerUseHostGrant({
+        db,
+        orgId: args.orgId,
+        userId: args.userId,
+        body: args.body,
+        thread,
+      });
+    },
+  );
+}
+
 const prepareNormalSend$ = command(
   async (
     { set },
@@ -2258,38 +2465,27 @@ const prepareNormalSend$ = command(
     signal: AbortSignal,
   ): Promise<PreparedNormalSend | NormalSendFailure> => {
     const db = set(writeDb$);
-    const agent = await loadAgentForChatSend(db, args.body.agentId);
-    signal.throwIfAborted();
-    if (!agent || agent.orgId !== args.orgId) {
-      return notFound("Agent not found");
-    }
-    if (agent.visibility === "private" && agent.owner !== args.userId) {
-      return forbidden("Only the private agent owner can run this agent");
+    const agent = await loadTimedAuthorizedAgent(args, db, signal);
+    if ("status" in agent) {
+      return agent;
     }
 
-    const modelError = await validateModelSelection({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
-      modelSelection: args.body.modelSelection,
-    });
+    const modelError = await validateTimedModelSelection(args, db);
     signal.throwIfAborted();
     if (modelError) {
       return modelError;
     }
-    const featureSwitches = await resolveNormalSendFeatureSwitches(
+    const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
+      args,
       db,
-      args.orgId,
-      args.userId,
     );
     signal.throwIfAborted();
-    const codexServiceTierError = await validateCodexServiceTierBeforeThread({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
-      body: args.body,
-      codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
-    });
+    const codexServiceTierError =
+      await validateTimedCodexServiceTierBeforeThread(
+        args,
+        db,
+        featureSwitches,
+      );
     signal.throwIfAborted();
     if (codexServiceTierError) {
       return codexServiceTierError;
@@ -2302,67 +2498,33 @@ const prepareNormalSend$ = command(
       return generationTemplateError;
     }
 
-    const initialPin = await resolveInitialThreadModelPin({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
-      existingThreadId: args.body.threadId,
-      modelSelection: args.body.modelSelection,
-    });
+    const initialPin = await resolveTimedInitialThreadModelPin(args, db);
     signal.throwIfAborted();
     if ("status" in initialPin) {
       return initialPin;
     }
 
-    const thread = await resolveThread({
-      db,
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: args.body.agentId,
-      existingThreadId: args.body.threadId,
-      clientThreadId: args.body.clientThreadId,
-      chatThreadEventId: args.body.chatThreadEventId,
-      initialPin,
-      codexServiceTier: args.body.runOptions?.codexServiceTier ?? null,
-      modelSelection: args.body.modelSelection,
-    });
+    const thread = await resolveTimedThread(args, db, initialPin);
     signal.throwIfAborted();
     if ("status" in thread) {
       return thread;
     }
 
-    const priorContext = await prepareRecentChatContext(
-      db,
-      thread.threadId,
-      thread.isNewThread,
-      thread.incompleteContext,
-    );
+    const priorContext = await prepareTimedRecentChatContext(args, db, thread);
     signal.throwIfAborted();
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: args.body.generationTemplate,
     });
     const persistedExplicitSelection =
-      await maybePersistExplicitModelFirstSelection({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        modelSelection: args.body.modelSelection,
-      });
+      await maybePersistTimedExplicitModelFirstSelection(args, db);
     signal.throwIfAborted();
-    await maybePersistExplicitCodexServiceTier({
-      db,
-      threadId: thread.threadId,
-      userId: args.userId,
-      body: args.body,
-    });
+    await maybePersistTimedExplicitCodexServiceTier(args, db, thread.threadId);
     signal.throwIfAborted();
-    const computerUseHostGrant = await resolveComputerUseHostGrant({
+    const computerUseHostGrant = await resolveTimedComputerUseHostGrant(
+      args,
       db,
-      orgId: args.orgId,
-      userId: args.userId,
-      body: args.body,
       thread,
-    });
+    );
     signal.throwIfAborted();
     if (computerUseHostGrant !== null && "status" in computerUseHostGrant) {
       return computerUseHostGrant;

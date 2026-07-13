@@ -73,6 +73,16 @@ const routeMocks = createZeroRouteMocks(context);
 const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
   "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
   "api_dispatch_pre_create_zero_web_chat_validate_revocation",
   "api_dispatch_pre_create_zero_web_chat_check_active_run",
