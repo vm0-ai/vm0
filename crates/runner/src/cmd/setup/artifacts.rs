@@ -234,7 +234,15 @@ mod tests {
     }
 
     fn tarball_with_entry(entry_name: &str, content: &[u8]) -> Vec<u8> {
-        let encoder = GzEncoder::new(Vec::new(), Compression::default());
+        tarball_with_entry_compression(entry_name, content, Compression::default())
+    }
+
+    fn tarball_with_entry_compression(
+        entry_name: &str,
+        content: &[u8],
+        compression: Compression,
+    ) -> Vec<u8> {
+        let encoder = GzEncoder::new(Vec::new(), compression);
         let mut builder = tar::Builder::new(encoder);
         let mut header = tar::Header::new_gnu();
         header.set_size(content.len() as u64);
@@ -676,6 +684,45 @@ mod tests {
         download.assert_calls_async(1).await;
         assert!(
             error.to_string().contains("entry size mismatch"),
+            "unexpected error: {error}"
+        );
+        assert!(!target.exists());
+        assert!(setup_temp_files(dir.path()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn truncated_tar_entry_read_error_cleans_temps() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = MockServer::start_async().await;
+        let content = vec![b'x'; 128 * 1024];
+        let mut tarball = tarball_with_entry_compression("tool", &content, Compression::none());
+        tarball.truncate(tarball.len() - 64 * 1024);
+        let download = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/truncated.tar.gz");
+                then.status(200).body(tarball.clone());
+            })
+            .await;
+        let target = dir.path().join("tool");
+        let artifact = SetupArtifact {
+            label: "tar-entry",
+            display_name: "tar entry artifact".to_owned(),
+            target: target.clone(),
+            installed: content_identity(&content),
+            mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
+            url: server.url("/truncated.tar.gz"),
+            source: SetupArtifactSource::TarEntry {
+                entry_name: "tool".to_owned(),
+                archive: content_identity(&tarball),
+            },
+        };
+        let client = test_client();
+
+        let error = install_setup_artifact(&client, artifact).await.unwrap_err();
+
+        download.assert_calls_async(1).await;
+        assert!(
+            error.to_string().contains("read tar entry"),
             "unexpected error: {error}"
         );
         assert!(!target.exists());

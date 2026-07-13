@@ -925,44 +925,46 @@ async fn extract_tar_entry(
                 }
 
                 let (tmp, mut out) = create_setup_temp_file(&target, "extract")?;
-                let mut hasher = Sha256::new();
-                let mut buf = [0u8; 64 * 1024];
-                let mut observed_size = 0_u64;
-                let result = loop {
-                    let n = entry
-                        .read(&mut buf)
-                        .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
-                    if n == 0 {
-                        if observed_size != expected_size {
-                            break Err(RunnerError::Internal(format!(
-                                "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
+                let result = (|| {
+                    let mut hasher = Sha256::new();
+                    let mut buf = [0u8; 64 * 1024];
+                    let mut observed_size = 0_u64;
+                    loop {
+                        let n = entry
+                            .read(&mut buf)
+                            .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
+                        if n == 0 {
+                            if observed_size != expected_size {
+                                return Err(RunnerError::Internal(format!(
+                                    "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
+                                )));
+                            }
+                            std::io::Write::flush(&mut out)
+                                .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
+                            return Ok(hex::encode(hasher.finalize()));
+                        }
+                        let chunk = buf.get(..n).ok_or_else(|| {
+                            RunnerError::Internal("read returned invalid length".into())
+                        })?;
+                        let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
+                            RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
+                        })?;
+                        let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+                            RunnerError::Internal(format!(
+                                "{label} entry size overflow while extracting"
+                            ))
+                        })?;
+                        if next_size > expected_size {
+                            return Err(RunnerError::Internal(format!(
+                                "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
                             )));
                         }
-                        std::io::Write::flush(&mut out)
-                            .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
-                        break Ok(hex::encode(hasher.finalize()));
+                        hasher.update(chunk);
+                        std::io::Write::write_all(&mut out, chunk)
+                            .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
+                        observed_size = next_size;
                     }
-                    let chunk = buf.get(..n).ok_or_else(|| {
-                        RunnerError::Internal("read returned invalid length".into())
-                    })?;
-                    let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
-                        RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
-                    })?;
-                    let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
-                        RunnerError::Internal(format!(
-                            "{label} entry size overflow while extracting"
-                        ))
-                    })?;
-                    if next_size > expected_size {
-                        break Err(RunnerError::Internal(format!(
-                            "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
-                        )));
-                    }
-                    hasher.update(chunk);
-                    std::io::Write::write_all(&mut out, chunk)
-                        .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
-                    observed_size = next_size;
-                };
+                })();
                 if result.is_err() {
                     let _ = std::fs::remove_file(&tmp);
                 }
