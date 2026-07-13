@@ -23,7 +23,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -54,7 +54,7 @@ async function firewallRun(): Promise<{
   readonly headers: { readonly authorization: string };
 }> {
   const bdd = createBddApi(context);
-  const runsApi = createRunsAutomationsApi(context);
+  const runsApi = createRunsApi(context);
   const fw = createFirewallApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
@@ -443,7 +443,7 @@ describe("FW-3: billable firewall lease", () => {
 
   it("continues billable firewall auth after subscription deletion when credits remain", async () => {
     const bdd = createBddApi(context);
-    const runsApi = createRunsAutomationsApi(context);
+    const runsApi = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const fw = createFirewallApi(context);
     const actor = bdd.user();
@@ -513,7 +513,7 @@ describe("FW-3: billable firewall lease", () => {
 
   it("denies billable firewall auth when the granted credits already expired", async () => {
     const bdd = createBddApi(context);
-    const runsApi = createRunsAutomationsApi(context);
+    const runsApi = createRunsApi(context);
     const fw = createFirewallApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();

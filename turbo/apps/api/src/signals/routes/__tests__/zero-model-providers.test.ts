@@ -15,7 +15,7 @@ import { now } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
@@ -162,7 +162,7 @@ interface EntitledRunActor {
 
 async function entitledRunActor(): Promise<EntitledRunActor> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -181,7 +181,7 @@ async function markOrgCodexProviderStaleViaFirewall(
   entitled: EntitledRunActor,
   accessToken: string,
 ): Promise<void> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const { actor, agentId } = entitled;
   if (!actor.orgId) {
     throw new Error("Entitled actor must be org-scoped");

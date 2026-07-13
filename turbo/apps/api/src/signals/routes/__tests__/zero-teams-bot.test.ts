@@ -22,7 +22,7 @@ import { ROUTES } from "../../route";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
 import {
   installTeamsForTest,
@@ -41,7 +41,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const userConfigApi = createUserConfigBddApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {

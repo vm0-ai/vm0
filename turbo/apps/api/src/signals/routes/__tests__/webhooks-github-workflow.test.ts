@@ -10,7 +10,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -19,7 +19,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const gh = createGithubBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 
 const WORKFLOW_NAME = "github-webhook-workflow";
 const GITHUB_WEBHOOK_SECRET = "github-webhook-secret";

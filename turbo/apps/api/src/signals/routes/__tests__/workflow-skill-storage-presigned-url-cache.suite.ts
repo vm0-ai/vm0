@@ -15,7 +15,7 @@ import { mockEnv } from "../../../lib/env";
 import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 import { testWorkflowSkillStoragePresignedUrlCacheStateRoutes } from "../test-workflow-skill-storage-presigned-url-cache-state";
 
@@ -209,7 +209,7 @@ async function entitledWorkflowActor(): Promise<{
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   createMiscRoutesApi(context);
   const actor = bdd.user();
   api.acceptStorageDownloads();
@@ -275,7 +275,7 @@ async function createRunAndClaimWorkflowSkill(args: {
   readonly archiveUrl: string;
   readonly versionId: string;
 }> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const run = await api.createRun(args.actor, {
     agentId: args.agentId,
     prompt: args.prompt,
@@ -373,7 +373,7 @@ describe("workflow skill storage presigned URL cache", () => {
         fixture.objectKeyPrefix,
         second.archiveUrl,
       ]);
-      const api = createRunsAutomationsApi(context);
+      const api = createRunsApi(context);
       await api.requestCancelRun(fixture.actor, first.runId, [200]);
       await api.requestCancelRun(fixture.actor, second.runId, [200]);
     });
@@ -381,7 +381,7 @@ describe("workflow skill storage presigned URL cache", () => {
 
   it("reuses stale safe rows and sync-refreshes unsafe rows", async () => {
     const fixture = await createWorkflowSkillRunFixture();
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     await withCacheCleanup(fixture.objectKeyPrefix, async () => {
       const initial = await createRunAndClaimWorkflowSkill({
         ...fixture,

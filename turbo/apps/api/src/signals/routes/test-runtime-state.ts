@@ -10,7 +10,7 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 import { command } from "ccstate";
-import { testAutomationsStateContract } from "@vm0/api-contracts/contracts/test-automations-state";
+import { testRuntimeStateContract } from "@vm0/api-contracts/contracts/test-runtime-state";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { eq, sql } from "drizzle-orm";
@@ -31,12 +31,9 @@ import {
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
 
-// Test-only support actions. The legacy automation seeding endpoints that
-// used to live here were removed together with the automations tables
-// (#20101); the remaining actions cover generic infrastructure fixtures still
-// used by the API test suites.
+// Test-only support actions for generic infrastructure fixtures.
 
-const actionBody$ = bodyResultOf(testAutomationsStateContract.action);
+const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
 const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY =
   "vm0-key-run-lifecycle-bdd-default-model";
@@ -243,7 +240,7 @@ async function mutateRunnerJobSecretValueEnvironmentKeys(
   signal.throwIfAborted();
 }
 
-const postAutomationsStateAction$ = command(
+const postRuntimeStateAction$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
       return testEndpointNotFoundResponse();
@@ -335,9 +332,9 @@ const postAutomationsStateAction$ = command(
   },
 );
 
-export const testAutomationsStateRoutes: readonly RouteEntry[] = [
+export const testRuntimeStateRoutes: readonly RouteEntry[] = [
   {
-    route: testAutomationsStateContract.action,
-    handler: postAutomationsStateAction$,
+    route: testRuntimeStateContract.action,
+    handler: postRuntimeStateAction$,
   },
 ];

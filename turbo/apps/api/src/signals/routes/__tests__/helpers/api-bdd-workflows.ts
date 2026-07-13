@@ -19,7 +19,7 @@ import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createConnectorBddApi } from "./api-bdd-connectors";
-import { createRunsAutomationsApi } from "./api-bdd-runs-automations";
+import { createRunsApi } from "./api-bdd-runs";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -106,7 +106,7 @@ export function mockNotionConnectorOAuth(
 
 export function createWorkflowsBddApi(context: TestContext) {
   const bdd = createBddApi(context);
-  const runs = createRunsAutomationsApi(context);
+  const runs = createRunsApi(context);
   const connectors = createConnectorBddApi(context);
   const mocks = createZeroRouteMocks(context);
 

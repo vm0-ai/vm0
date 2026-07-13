@@ -11,7 +11,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -20,7 +20,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-api-workflow";

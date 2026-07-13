@@ -12,7 +12,7 @@ import { mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { resetNotionWebhookVerification } from "../../../test-fixtures/workflow-notion";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
@@ -23,7 +23,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const CRON_EXECUTE_WORKFLOW_TRIGGERS_PATH =
   "/api/cron/execute-workflow-triggers";
 

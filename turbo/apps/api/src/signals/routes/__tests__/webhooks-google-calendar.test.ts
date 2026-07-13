@@ -8,7 +8,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import type { ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
@@ -18,7 +18,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 
 const WORKFLOW_NAME = "calendar-webhook-workflow";
 const CALENDAR_EMAIL = "calendar-webhook-user@example.com";

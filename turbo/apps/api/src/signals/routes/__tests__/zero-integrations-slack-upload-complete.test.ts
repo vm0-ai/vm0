@@ -10,7 +10,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteSlackIntegrationFixture$,
@@ -27,7 +27,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
 const chatApi = createChatFilesBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 
 function zeroToken(args: {
   readonly userId: string;

@@ -329,13 +329,13 @@ export {
   type TestComputerUseStatePostResponse,
 } from "./test-computer-use-state";
 export {
-  testAutomationsStateActionBodySchema,
-  testAutomationsStateActionResponseSchema,
-  testAutomationsStateContract,
-  type TestAutomationsStateActionBody,
-  type TestAutomationsStateActionResponse,
-  type TestAutomationsStateContract,
-} from "./test-automations-state";
+  testRuntimeStateActionBodySchema,
+  testRuntimeStateActionResponseSchema,
+  testRuntimeStateContract,
+  type TestRuntimeStateActionBody,
+  type TestRuntimeStateActionResponse,
+  type TestRuntimeStateContract,
+} from "./test-runtime-state";
 export {
   testZeroAgentStateActionBodySchema,
   testZeroAgentStateActionResponseSchema,

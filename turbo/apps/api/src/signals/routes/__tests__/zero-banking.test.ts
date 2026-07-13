@@ -12,7 +12,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createBddApi } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   readBankingAuditEventsState,
@@ -82,7 +82,7 @@ async function seedBankingFixture(
   args: SeedBankingFixtureArgs = {},
 ): Promise<BankingFixture> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Banking fixtures require an org-scoped actor");

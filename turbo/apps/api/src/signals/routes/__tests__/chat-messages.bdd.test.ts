@@ -40,7 +40,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
@@ -63,7 +63,7 @@ import {
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
@@ -626,7 +626,7 @@ async function readThreadComputerUseHostId(
 
 /**
  * Raw chat send through the Hono app, for statuses the typed contract does
- * not model (precedent: requestListAutomationsRaw in api-bdd-runs-automations).
+ * not model (precedent: requestListAutomationsRaw in api-bdd-runs).
  */
 async function requestSendMessageRaw(
   actor: ApiTestUser,

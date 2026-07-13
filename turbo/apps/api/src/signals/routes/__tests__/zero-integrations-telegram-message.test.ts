@@ -17,13 +17,13 @@ import {
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const composes = createComposesBddApi(context);
 
 function uniqueBotId(): string {

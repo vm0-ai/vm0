@@ -31,9 +31,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   connector: "connector:read",
   memory: "relationship:read",
   relationship: "relationship:read",
-  // "schedule" and "automation" are deliberately absent: the removal stubs
-  // stay out of token-scoped (agent) help but remain invokable and visible to
-  // humans.
   doctor: null,
   credit: "billing:write",
   model: null,
@@ -131,21 +128,6 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "View or update user preferences (timezone, notifications)",
     load: async () => {
       return (await import("./commands/zero/preference")).zeroPreferenceCommand;
-    },
-  },
-  {
-    name: "schedule",
-    description:
-      "(removed: use `zero workflow`) Schedules are workflow triggers now",
-    load: async () => {
-      return (await import("./commands/zero/schedule")).zeroScheduleCommand;
-    },
-  },
-  {
-    name: "automation",
-    description: "(removed: use `zero workflow`) Automations are workflows now",
-    load: async () => {
-      return (await import("./commands/zero/automation")).zeroAutomationCommand;
     },
   },
   {

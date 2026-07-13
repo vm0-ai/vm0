@@ -11,7 +11,7 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -117,7 +117,7 @@ function mockSessionHistoryBlob(hash: string, history: string): void {
 
 async function seedSupportActor(): Promise<SupportSeed> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   if (!actor.orgId) {
     throw new Error("Support fixtures require an org-scoped actor");
@@ -144,7 +144,7 @@ async function createSupportRun(
   seed: SupportSeed,
   options: { readonly prompt?: string; readonly sessionId?: string } = {},
 ): Promise<SupportRun> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const run = await api.createRun(seed.actor, {
     agentId: seed.agentId,
     ...(options.sessionId === undefined
@@ -165,7 +165,7 @@ async function completeRunWithSession(
   seed: SupportSeed,
   run: SupportRun,
 ): Promise<void> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   const sandboxHeaders = {
     authorization: `Bearer ${api.sandboxTokenForRun(seed.actor, run.runId)}`,

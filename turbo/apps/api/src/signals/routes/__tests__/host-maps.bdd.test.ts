@@ -18,7 +18,7 @@ import {
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createMapsBillingApi } from "./helpers/api-bdd-maps-billing";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
 FILE-01 host APIs plus BILL-02/CHAIN-BILLING-MEDIA maps billing. Replaces the
@@ -1419,7 +1419,7 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
   it("charges marked-up Google Maps prices across geocode, directions, places, and details [MAPS-A]", async () => {
     const bdd = createBddApi(context);
     const billing = createMapsBillingApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
     await runs.grantProEntitlement(admin);
@@ -1651,7 +1651,7 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
   it("charges OpenStreetMap download and PNG render usage [MAPS-OSM-A]", async () => {
     const bdd = createBddApi(context);
     const billing = createMapsBillingApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
     await runs.grantProEntitlement(admin);
@@ -1778,7 +1778,7 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const billing = createMapsBillingApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();

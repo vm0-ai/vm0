@@ -129,7 +129,7 @@ const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
-const runsAutomationRoutes = [
+const runRoutes = [
   ...zeroApiKeysRoutes,
   ...zeroApiKeysDeleteRoutes,
   ...agentComposesRoutes,
@@ -155,8 +155,8 @@ const runsAutomationRoutes = [
   ...zeroUserPermissionGrantsRoutes,
 ] as const;
 
-function runsAutomationApp(context: TestContext) {
-  return setupAppWithRoutes({ context, routes: runsAutomationRoutes });
+function runApp(context: TestContext) {
+  return setupAppWithRoutes({ context, routes: runRoutes });
 }
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
@@ -244,7 +244,7 @@ function runnerHeartbeatBody(
   };
 }
 
-export function createRunsAutomationsApi(context: TestContext) {
+export function createRunsApi(context: TestContext) {
   const applyUserPermissionGrantRequestBody = (
     body: {
       readonly agentId: string;
@@ -315,7 +315,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       const tier = options.tier ?? "pro";
 
       await accept(
-        runsAutomationApp(context)(onboardingSetupContract).setup({
+        runApp(context)(onboardingSetupContract).setup({
           headers: authenticate(context, actor),
           body: { displayName: "BDD Entitled Agent" },
         }),
@@ -379,7 +379,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         invoicePaidEvent,
       );
       await accept(
-        runsAutomationApp(context)(webhookStripeContract).post({
+        runApp(context)(webhookStripeContract).post({
           body: JSON.stringify(invoicePaidEvent),
           extraHeaders: { "stripe-signature": "t=1,v1=bdd" },
         }),
@@ -387,7 +387,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
 
       const billingStatus = await accept(
-        runsAutomationApp(context)(zeroBillingStatusContract).get({
+        runApp(context)(zeroBillingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -402,7 +402,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runsAutomationApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -413,7 +413,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async claimRunnerJob(runId: string, body: RunnerJobClaimRequest = {}) {
       const response = await accept(
-        runsAutomationApp(context)(runnersJobClaimContract).claim({
+        runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
           body,
@@ -425,13 +425,11 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async refreshRunnerNetworkPolicy(runId: string, connectorRef: string) {
       const response = await accept(
-        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
-          {
-            headers: runnerHeaders(true),
-            params: { runId },
-            body: { connectorRefs: [connectorRef] },
-          },
-        ),
+        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body: { connectorRefs: [connectorRef] },
+        }),
         [200],
       );
       const [refresh] = response.body.refreshes;
@@ -450,13 +448,11 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersNetworkPolicyRefreshContract).refresh(
-          {
-            headers: authorization === undefined ? {} : { authorization },
-            params: { runId },
-            body: { connectorRefs: [connectorRef] },
-          },
-        ),
+        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body: { connectorRefs: [connectorRef] },
+        }),
         statuses,
       );
     },
@@ -466,7 +462,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       readonly token: string;
     }> {
       const response = await accept(
-        runsAutomationApp(context)(apiKeysContract).create({
+        runApp(context)(apiKeysContract).create({
           headers: authenticate(context, actor),
           body: {
             name: `bdd-runner-key-${randomUUID().slice(0, 8)}`,
@@ -480,7 +476,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async revokeApiKey(actor: ApiTestUser, id: string): Promise<void> {
       await accept(
-        runsAutomationApp(context)(apiKeysByIdContract).delete({
+        runApp(context)(apiKeysByIdContract).delete({
           headers: authenticate(context, actor),
           params: { id },
         }),
@@ -494,7 +490,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersPollContract).poll({
+        runApp(context)(runnersPollContract).poll({
           headers: authorization === undefined ? {} : { authorization },
           body,
         }),
@@ -509,7 +505,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersJobClaimContract).claim({
+        runApp(context)(runnersJobClaimContract).claim({
           headers: authorization === undefined ? {} : { authorization },
           params: { id: runId },
           body,
@@ -524,7 +520,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runnerRealtimeTokenContract).create({
+        runApp(context)(runnerRealtimeTokenContract).create({
           headers: authorization === undefined ? {} : { authorization },
           body,
         }),
@@ -574,7 +570,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       readonly versionId: string;
     }> {
       const response = await accept(
-        runsAutomationApp(context)(composesMainContract).create({
+        runApp(context)(composesMainContract).create({
           headers: authenticate(context, actor),
           body: { content },
         }),
@@ -589,7 +585,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
       const response = await accept(
-        runsAutomationApp(context)(runsMainContract).create({
+        runApp(context)(runsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -604,7 +600,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runsMainContract).create({
+        runApp(context)(runsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -614,7 +610,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async listAgentRuns(actor: ApiTestUser, query: RunsListQuery) {
       const response = await accept(
-        runsAutomationApp(context)(runsMainContract).list({
+        runApp(context)(runsMainContract).list({
           headers: authenticate(context, actor),
           query,
         }),
@@ -631,7 +627,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
-        runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: applyUserPermissionGrantRequestBody(body),
         }),
@@ -653,7 +649,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
+        runApp(context)(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: applyUserPermissionGrantRequestBody(body),
         }),
@@ -666,20 +662,13 @@ export function createRunsAutomationsApi(context: TestContext) {
       agentId: string,
     ): Promise<readonly UserPermissionGrantResponse[]> {
       const response = await accept(
-        runsAutomationApp(context)(zeroUserPermissionGrantsContract).list({
+        runApp(context)(zeroUserPermissionGrantsContract).list({
           headers: authenticate(context, actor),
           query: { agentId },
         }),
         [200],
       );
       return response.body;
-    },
-
-    enableAutomations(
-      _actor: ApiTestUser,
-      _options: { readonly webhookTriggers?: boolean } = {},
-    ): Promise<void> {
-      return Promise.resolve();
     },
 
     /**
@@ -692,7 +681,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       connectorTypes: readonly string[],
     ): Promise<readonly string[]> {
       const response = await accept(
-        runsAutomationApp(context)(zeroUserConnectorsContract).update({
+        runApp(context)(zeroUserConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
           body: { enabledTypes: [...connectorTypes] },
@@ -706,7 +695,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<readonly ModelProviderResponse[]> {
       const response = await accept(
-        runsAutomationApp(context)(zeroModelProvidersMainContract).list({
+        runApp(context)(zeroModelProvidersMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -723,7 +712,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: OrgModelProviderUpsertRequest,
     ): Promise<{ readonly providerId: string }> {
       const response = await accept(
-        runsAutomationApp(context)(zeroModelProvidersMainContract).upsert({
+        runApp(context)(zeroModelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body,
         }),
@@ -741,7 +730,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       policies: OrgModelPolicyRequest["policies"],
     ): Promise<void> {
       await accept(
-        runsAutomationApp(context)(zeroModelPoliciesMainContract).update({
+        runApp(context)(zeroModelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),
@@ -753,7 +742,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<{ readonly providerId: string }> {
       const providerResponse = await accept(
-        runsAutomationApp(context)(zeroModelProvidersMainContract).upsert({
+        runApp(context)(zeroModelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body: {
             type: "anthropic-api-key",
@@ -775,7 +764,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       ];
 
       await accept(
-        runsAutomationApp(context)(zeroModelPoliciesMainContract).update({
+        runApp(context)(zeroModelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),
@@ -787,7 +776,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async readBillingStatus(actor: ApiTestUser) {
       const response = await accept(
-        runsAutomationApp(context)(zeroBillingStatusContract).get({
+        runApp(context)(zeroBillingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -801,7 +790,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -815,7 +804,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
         }),
@@ -833,7 +822,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunsMainContract).create({
           headers: { authorization },
           body,
         }),
@@ -843,7 +832,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async readRun(actor: ApiTestUser, runId: string) {
       const response = await accept(
-        runsAutomationApp(context)(zeroRunsByIdContract).getById({
+        runApp(context)(zeroRunsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -858,7 +847,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsByIdContract).getById({
+        runApp(context)(zeroRunsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -872,7 +861,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunContextContract).getContext({
+        runApp(context)(zeroRunContextContract).getContext({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -886,7 +875,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunRunnerContract).getRunner({
+        runApp(context)(zeroRunRunnerContract).getRunner({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -896,7 +885,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async readRunQueue(actor: ApiTestUser) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsQueueContract).getQueue({
+        runApp(context)(zeroRunsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -908,7 +897,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsQueueContract).getQueue({
+        runApp(context)(zeroRunsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -921,7 +910,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(zeroRunsCancelContract).cancel({
+        runApp(context)(zeroRunsCancelContract).cancel({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -937,7 +926,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       const { authorization } = authenticate(context, actor);
       const app = createAppWithRoutes({
         signal,
-        routes: runsAutomationRoutes,
+        routes: runRoutes,
       });
       const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
         method: "POST",
@@ -949,7 +938,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async heartbeatRunner(group?: string) {
       return await accept(
-        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
+        runApp(context)(runnersHeartbeatContract).heartbeat({
           headers: runnerHeaders(true),
           body: runnerHeartbeatBody({ group }),
         }),
@@ -973,7 +962,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       } = {},
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
+        runApp(context)(runnersHeartbeatContract).heartbeat({
           headers: runnerHeaders(validAuth),
           body: runnerHeartbeatBody(args),
         }),
@@ -987,7 +976,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: unknown,
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
+        runApp(context)(runnersHeartbeatContract).heartbeat({
           headers: runnerHeaders(validAuth),
           body: body as RunnerHeartbeatBody,
         }),
@@ -997,7 +986,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async pollRunner(group?: string) {
       return await accept(
-        runsAutomationApp(context)(runnersPollContract).poll({
+        runApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(true),
           body: {
             group: group ?? "vm0/test",
@@ -1014,7 +1003,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersPollContract).poll({
+        runApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body,
         }),
@@ -1028,7 +1017,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersPollContract).poll({
+        runApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body: body as RunnerPollBody,
         }),
@@ -1043,7 +1032,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: RunnerJobClaimRequest = {},
     ) {
       return await accept(
-        runsAutomationApp(context)(runnersJobClaimContract).claim({
+        runApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
           body,
@@ -1058,7 +1047,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       return await accept(
-        runsAutomationApp(context)(runnerRealtimeTokenContract).create({
+        runApp(context)(runnerRealtimeTokenContract).create({
           headers: runnerHeaders(validAuth),
           body,
         }),
@@ -1072,31 +1061,31 @@ export function createRunsAutomationsApi(context: TestContext) {
     async requestSharedCronRoutesWithoutAuth() {
       const headers = cronHeaders(false);
       const aggregateUsage = await accept(
-        runsAutomationApp(context)(cronAggregateUsageContract).aggregate({
+        runApp(context)(cronAggregateUsageContract).aggregate({
           headers,
         }),
         [401],
       );
       const aggregateInsights = await accept(
-        runsAutomationApp(context)(cronAggregateInsightsContract).aggregate({
+        runApp(context)(cronAggregateInsightsContract).aggregate({
           headers,
         }),
         [401],
       );
       const processUsageEvents = await accept(
-        runsAutomationApp(context)(cronProcessUsageEventsContract).process({
+        runApp(context)(cronProcessUsageEventsContract).process({
           headers,
         }),
         [401],
       );
       const summarizeMemory = await accept(
-        runsAutomationApp(context)(cronSummarizeMemoryContract).summarize({
+        runApp(context)(cronSummarizeMemoryContract).summarize({
           headers,
         }),
         [401],
       );
       const telegramCleanup = await accept(
-        runsAutomationApp(context)(cronTelegramCleanupContract).cleanup({
+        runApp(context)(cronTelegramCleanupContract).cleanup({
           headers,
         }),
         [401],
@@ -1117,9 +1106,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     // file's own Stripe mocks.
     async reconcileBillingCron(validAuth: boolean) {
       return await accept(
-        runsAutomationApp(context)(
-          cronReconcileBillingEntitlementsContract,
-        ).reconcile({
+        runApp(context)(cronReconcileBillingEntitlementsContract).reconcile({
           headers: cronHeaders(validAuth),
         }),
         [200, 401],
