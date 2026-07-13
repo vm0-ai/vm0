@@ -12,6 +12,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
 
 use nix::fcntl::{OFlag, open, openat};
 use nix::sys::stat::{Mode, SFlag, fstat, mkdirat};
@@ -27,6 +28,9 @@ const SETUP_TEMP_ARTIFACT_MODE: u32 = 0o600;
 const SETUP_EXECUTABLE_ARTIFACT_MODE: u32 = 0o755;
 const SETUP_KERNEL_ARTIFACT_MODE: u32 = 0o644;
 const SETUP_TEMP_CREATE_ATTEMPTS: usize = 16;
+const SETUP_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const SETUP_READ_TIMEOUT: Duration = Duration::from_secs(60);
+const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
@@ -34,6 +38,11 @@ const STICKY_BIT: u32 = 0o1000;
 struct ProducedSetupArtifact {
     path: PathBuf,
     file: File,
+    sha256: String,
+}
+
+struct SetupArtifactIdentity {
+    size: u64,
     sha256: String,
 }
 
@@ -49,9 +58,15 @@ pub async fn run_setup() -> RunnerResult<()> {
 
     let paths = HomePaths::new()?;
     create_directories(&paths).await?;
-    artifacts::install_firecracker(&paths, arch).await?;
-    artifacts::install_kernel(&paths, arch).await?;
-    artifacts::install_mitmdump(&paths, arch).await?;
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(SETUP_CONNECT_TIMEOUT)
+        .read_timeout(SETUP_READ_TIMEOUT)
+        .timeout(SETUP_REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| RunnerError::Internal(format!("build setup HTTP client: {e}")))?;
+    artifacts::install_firecracker(&http_client, &paths, arch).await?;
+    artifacts::install_kernel(&http_client, &paths, arch).await?;
+    artifacts::install_mitmdump(&http_client, &paths, arch).await?;
     check_system_ca_bundle()?;
     check_kvm();
 
@@ -711,24 +726,46 @@ fn file_parent(path: &Path) -> &Path {
 // Shared download helpers
 // ---------------------------------------------------------------------------
 
-/// Stream an HTTP response to an opened temp file, computing SHA256 incrementally.
-/// Returns the written file and hex-encoded digest.
+/// Stream an HTTP response to an opened temp file, enforcing its exact identity.
 async fn stream_to_file(
     mut response: reqwest::Response,
     mut file: tokio::fs::File,
     path: &Path,
+    expected: &SetupArtifactIdentity,
+    label: &str,
 ) -> RunnerResult<(File, String)> {
     let mut hasher = Sha256::new();
+    let mut observed_size = 0_u64;
 
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|e| RunnerError::Internal(format!("read response chunk: {e}")))?
+        .map_err(|e| RunnerError::Internal(format!("read {label} response chunk: {e}")))?
     {
+        let chunk_size = u64::try_from(chunk.len())
+            .map_err(|e| RunnerError::Internal(format!("measure {label} response chunk: {e}")))?;
+        let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+            RunnerError::Internal(format!("{label} source size overflow while downloading"))
+        })?;
+        if next_size > expected.size {
+            return Err(RunnerError::Internal(format!(
+                "{label} source exceeds expected size of {} bytes (received at least {next_size} bytes)",
+                expected.size
+            )));
+        }
+
         hasher.update(&chunk);
         file.write_all(&chunk)
             .await
             .map_err(|e| RunnerError::Internal(format!("write {}: {e}", path.display())))?;
+        observed_size = next_size;
+    }
+
+    if observed_size != expected.size {
+        return Err(RunnerError::Internal(format!(
+            "{label} source size mismatch: expected {} bytes, got {observed_size} bytes",
+            expected.size
+        )));
     }
 
     file.flush()
@@ -740,25 +777,47 @@ async fn stream_to_file(
 
 /// Download a URL to a temp file. Cleans up on failure.
 async fn download_to_temp(
+    client: &reqwest::Client,
     url: &str,
     target: &Path,
     kind: &str,
     label: &str,
+    expected: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("download {label}: {e}")))?;
+
+    if !response.status().is_success() {
+        return Err(RunnerError::Internal(format!(
+            "download {label}: HTTP {}",
+            response.status()
+        )));
+    }
+
+    if let Some(content_length) = response.content_length()
+        && content_length != expected.size
+    {
+        return Err(RunnerError::Internal(format!(
+            "{label} source size mismatch: expected {} bytes, got {content_length} bytes",
+            expected.size
+        )));
+    }
+
     let (tmp_path, file) = create_setup_temp_file(target, kind)?;
     let result = async {
-        let response = reqwest::get(url)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("download {label}: {e}")))?;
-
-        if !response.status().is_success() {
-            return Err(RunnerError::Internal(format!(
-                "download {label}: HTTP {}",
-                response.status()
-            )));
-        }
-
-        stream_to_file(response, tokio::fs::File::from_std(file), &tmp_path).await
+        let (file, sha256) = stream_to_file(
+            response,
+            tokio::fs::File::from_std(file),
+            &tmp_path,
+            expected,
+            label,
+        )
+        .await?;
+        verify_sha256(&sha256, &expected.sha256, &format!("{label} source"))?;
+        Ok((file, sha256))
     }
     .await;
 
@@ -777,20 +836,29 @@ async fn download_to_temp(
 
 /// Download a tarball, extract a named entry. Cleans up tarball after extraction.
 async fn download_and_extract(
+    client: &reqwest::Client,
     url: &str,
     label: &str,
     entry_name: &str,
     target: &Path,
+    archive_identity: &SetupArtifactIdentity,
+    installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
-    // Tarball SHA is intentionally discarded — we verify the extracted binary's SHA instead.
     let ProducedSetupArtifact {
         path: tarball_path,
         file: tarball_file,
         sha256: _,
-    } = download_to_temp(url, target, "tarball", label).await?;
-    drop(tarball_file);
+    } = download_to_temp(client, url, target, "tarball", label, archive_identity).await?;
 
-    let result = extract_tar_entry(&tarball_path, target, entry_name).await;
+    let result = extract_tar_entry(
+        tarball_file,
+        &tarball_path,
+        target,
+        entry_name,
+        label,
+        installed_identity,
+    )
+    .await;
     let _ = tokio::fs::remove_file(&tarball_path).await;
     result
 }
@@ -798,18 +866,24 @@ async fn download_and_extract(
 /// Extract a named entry from a gzipped tarball, writing to tmp_path.
 /// Matches by file_name (last path component).
 async fn extract_tar_entry(
+    mut tarball_file: File,
     tarball_path: &Path,
     target: &Path,
     entry_name: &str,
+    label: &str,
+    installed_identity: &SetupArtifactIdentity,
 ) -> RunnerResult<ProducedSetupArtifact> {
     let tarball = tarball_path.to_owned();
     let target = target.to_owned();
     let entry_name = entry_name.to_owned();
+    let label = label.to_owned();
+    let expected_size = installed_identity.size;
 
     tokio::task::spawn_blocking(move || {
-        let file = std::fs::File::open(&tarball)
-            .map_err(|e| RunnerError::Internal(format!("open tarball: {e}")))?;
-        let decoder = flate2::read::GzDecoder::new(file);
+        tarball_file.seek(SeekFrom::Start(0)).map_err(|e| {
+            RunnerError::Internal(format!("seek verified tarball {}: {e}", tarball.display()))
+        })?;
+        let decoder = flate2::read::GzDecoder::new(tarball_file);
         let mut archive = tar::Archive::new(decoder);
 
         let entries = archive
@@ -830,14 +904,27 @@ async fn extract_tar_entry(
                 .unwrap_or_default();
 
             if file_name == entry_name {
+                let declared_size = entry.size();
+                if declared_size != expected_size {
+                    return Err(RunnerError::Internal(format!(
+                        "{label} entry size mismatch: expected {expected_size} bytes, got {declared_size} bytes"
+                    )));
+                }
+
                 let (tmp, mut out) = create_setup_temp_file(&target, "extract")?;
                 let mut hasher = Sha256::new();
                 let mut buf = [0u8; 64 * 1024];
+                let mut observed_size = 0_u64;
                 let result = loop {
                     let n = entry
                         .read(&mut buf)
                         .map_err(|e| RunnerError::Internal(format!("read tar entry: {e}")))?;
                     if n == 0 {
+                        if observed_size != expected_size {
+                            break Err(RunnerError::Internal(format!(
+                                "{label} entry size mismatch: expected {expected_size} bytes, got {observed_size} bytes"
+                            )));
+                        }
                         std::io::Write::flush(&mut out)
                             .map_err(|e| RunnerError::Internal(format!("flush binary: {e}")))?;
                         break Ok(hex::encode(hasher.finalize()));
@@ -845,9 +932,23 @@ async fn extract_tar_entry(
                     let chunk = buf.get(..n).ok_or_else(|| {
                         RunnerError::Internal("read returned invalid length".into())
                     })?;
+                    let chunk_size = u64::try_from(chunk.len()).map_err(|e| {
+                        RunnerError::Internal(format!("measure {label} tar entry chunk: {e}"))
+                    })?;
+                    let next_size = observed_size.checked_add(chunk_size).ok_or_else(|| {
+                        RunnerError::Internal(format!(
+                            "{label} entry size overflow while extracting"
+                        ))
+                    })?;
+                    if next_size > expected_size {
+                        break Err(RunnerError::Internal(format!(
+                            "{label} entry exceeds expected size of {expected_size} bytes (read at least {next_size} bytes)"
+                        )));
+                    }
                     hasher.update(chunk);
                     std::io::Write::write_all(&mut out, chunk)
                         .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
+                    observed_size = next_size;
                 };
                 if result.is_err() {
                     let _ = std::fs::remove_file(&tmp);
@@ -919,6 +1020,15 @@ async fn atomic_install_produced(
 
 #[allow(clippy::unreachable)] // arch validated by check_architecture
 fn select_sha<'a>(arch: &str, x86_64: &'a str, aarch64: &'a str) -> &'a str {
+    match arch {
+        "x86_64" => x86_64,
+        "aarch64" => aarch64,
+        _ => unreachable!(),
+    }
+}
+
+#[allow(clippy::unreachable)] // arch validated by check_architecture
+fn select_size(arch: &str, x86_64: u64, aarch64: u64) -> u64 {
     match arch {
         "x86_64" => x86_64,
         "aarch64" => aarch64,

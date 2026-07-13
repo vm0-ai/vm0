@@ -1,48 +1,74 @@
 use std::path::PathBuf;
 
 use crate::deps::{
-    FIRECRACKER_SHA256_AARCH64, FIRECRACKER_SHA256_X86_64, FIRECRACKER_VERSION,
-    KERNEL_SHA256_AARCH64, KERNEL_SHA256_X86_64, KERNEL_VERSION, MITMDUMP_SHA256_AARCH64,
-    MITMDUMP_SHA256_X86_64, MITMDUMP_TAR_ENTRY, MITMPROXY_VERSION, firecracker_tar_entry,
-    firecracker_url, kernel_url, mitmdump_url,
+    FIRECRACKER_ARCHIVE_SHA256_AARCH64, FIRECRACKER_ARCHIVE_SHA256_X86_64,
+    FIRECRACKER_ARCHIVE_SIZE_AARCH64, FIRECRACKER_ARCHIVE_SIZE_X86_64, FIRECRACKER_SHA256_AARCH64,
+    FIRECRACKER_SHA256_X86_64, FIRECRACKER_SIZE_AARCH64, FIRECRACKER_SIZE_X86_64,
+    FIRECRACKER_VERSION, KERNEL_SHA256_AARCH64, KERNEL_SHA256_X86_64, KERNEL_SIZE_AARCH64,
+    KERNEL_SIZE_X86_64, KERNEL_VERSION, MITMDUMP_SHA256_AARCH64, MITMDUMP_SHA256_X86_64,
+    MITMDUMP_SIZE_AARCH64, MITMDUMP_SIZE_X86_64, MITMDUMP_TAR_ENTRY,
+    MITMPROXY_ARCHIVE_SHA256_AARCH64, MITMPROXY_ARCHIVE_SHA256_X86_64,
+    MITMPROXY_ARCHIVE_SIZE_AARCH64, MITMPROXY_ARCHIVE_SIZE_X86_64, MITMPROXY_VERSION,
+    firecracker_tar_entry, firecracker_url, kernel_url, mitmdump_url,
 };
 use crate::error::RunnerResult;
 use crate::paths::HomePaths;
 
 use super::{
-    SETUP_EXECUTABLE_ARTIFACT_MODE, SETUP_KERNEL_ARTIFACT_MODE, download_and_extract,
-    download_to_temp, ensure_artifact_installed, select_sha, verify_and_install,
+    SETUP_EXECUTABLE_ARTIFACT_MODE, SETUP_KERNEL_ARTIFACT_MODE, SetupArtifactIdentity,
+    download_and_extract, download_to_temp, ensure_artifact_installed, select_sha, select_size,
+    verify_and_install,
 };
 
 enum SetupArtifactSource {
     Direct,
-    TarEntry { entry_name: String },
+    TarEntry {
+        entry_name: String,
+        archive: SetupArtifactIdentity,
+    },
 }
 
 struct SetupArtifact {
     label: &'static str,
     display_name: String,
     target: PathBuf,
-    expected_sha: String,
+    installed: SetupArtifactIdentity,
     mode: u32,
     url: String,
     source: SetupArtifactSource,
 }
 
-pub(super) async fn install_firecracker(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    install_setup_artifact(firecracker_artifact(paths, arch)).await
+pub(super) async fn install_firecracker(
+    client: &reqwest::Client,
+    paths: &HomePaths,
+    arch: &str,
+) -> RunnerResult<()> {
+    install_setup_artifact(client, firecracker_artifact(paths, arch)).await
 }
 
-pub(super) async fn install_kernel(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    install_setup_artifact(kernel_artifact(paths, arch)).await
+pub(super) async fn install_kernel(
+    client: &reqwest::Client,
+    paths: &HomePaths,
+    arch: &str,
+) -> RunnerResult<()> {
+    install_setup_artifact(client, kernel_artifact(paths, arch)).await
 }
 
-pub(super) async fn install_mitmdump(paths: &HomePaths, arch: &str) -> RunnerResult<()> {
-    install_setup_artifact(mitmdump_artifact(paths, arch)).await
+pub(super) async fn install_mitmdump(
+    client: &reqwest::Client,
+    paths: &HomePaths,
+    arch: &str,
+) -> RunnerResult<()> {
+    install_setup_artifact(client, mitmdump_artifact(paths, arch)).await
 }
 
-async fn install_setup_artifact(artifact: SetupArtifact) -> RunnerResult<()> {
-    if ensure_artifact_installed(&artifact.target, &artifact.expected_sha, artifact.mode).await? {
+async fn install_setup_artifact(
+    client: &reqwest::Client,
+    artifact: SetupArtifact,
+) -> RunnerResult<()> {
+    if ensure_artifact_installed(&artifact.target, &artifact.installed.sha256, artifact.mode)
+        .await?
+    {
         tracing::info!(
             "[OK] {} already installed, skipping download",
             artifact.display_name
@@ -54,17 +80,36 @@ async fn install_setup_artifact(artifact: SetupArtifact) -> RunnerResult<()> {
 
     let produced = match &artifact.source {
         SetupArtifactSource::Direct => {
-            download_to_temp(&artifact.url, &artifact.target, "download", artifact.label).await?
+            download_to_temp(
+                client,
+                &artifact.url,
+                &artifact.target,
+                "download",
+                artifact.label,
+                &artifact.installed,
+            )
+            .await?
         }
-        SetupArtifactSource::TarEntry { entry_name } => {
-            download_and_extract(&artifact.url, artifact.label, entry_name, &artifact.target)
-                .await?
+        SetupArtifactSource::TarEntry {
+            entry_name,
+            archive,
+        } => {
+            download_and_extract(
+                client,
+                &artifact.url,
+                artifact.label,
+                entry_name,
+                &artifact.target,
+                archive,
+                &artifact.installed,
+            )
+            .await?
         }
     };
 
     verify_and_install(
         produced,
-        &artifact.expected_sha,
+        &artifact.installed.sha256,
         artifact.label,
         &artifact.target,
         artifact.mode,
@@ -74,17 +119,38 @@ async fn install_setup_artifact(artifact: SetupArtifact) -> RunnerResult<()> {
     Ok(())
 }
 
+fn setup_artifact_identity(size: u64, sha256: &str) -> SetupArtifactIdentity {
+    SetupArtifactIdentity {
+        size,
+        sha256: sha256.to_owned(),
+    }
+}
+
 fn firecracker_artifact(paths: &HomePaths, arch: &str) -> SetupArtifact {
     SetupArtifact {
         label: "firecracker",
         display_name: format!("firecracker {FIRECRACKER_VERSION}"),
         target: paths.firecracker_bin(FIRECRACKER_VERSION),
-        expected_sha: select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64)
-            .to_owned(),
+        installed: setup_artifact_identity(
+            select_size(arch, FIRECRACKER_SIZE_X86_64, FIRECRACKER_SIZE_AARCH64),
+            select_sha(arch, FIRECRACKER_SHA256_X86_64, FIRECRACKER_SHA256_AARCH64),
+        ),
         mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
         url: firecracker_url(arch),
         source: SetupArtifactSource::TarEntry {
             entry_name: firecracker_tar_entry(arch),
+            archive: setup_artifact_identity(
+                select_size(
+                    arch,
+                    FIRECRACKER_ARCHIVE_SIZE_X86_64,
+                    FIRECRACKER_ARCHIVE_SIZE_AARCH64,
+                ),
+                select_sha(
+                    arch,
+                    FIRECRACKER_ARCHIVE_SHA256_X86_64,
+                    FIRECRACKER_ARCHIVE_SHA256_AARCH64,
+                ),
+            ),
         },
     }
 }
@@ -94,7 +160,10 @@ fn kernel_artifact(paths: &HomePaths, arch: &str) -> SetupArtifact {
         label: "kernel",
         display_name: format!("kernel vmlinux-{KERNEL_VERSION}"),
         target: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
-        expected_sha: select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64).to_owned(),
+        installed: setup_artifact_identity(
+            select_size(arch, KERNEL_SIZE_X86_64, KERNEL_SIZE_AARCH64),
+            select_sha(arch, KERNEL_SHA256_X86_64, KERNEL_SHA256_AARCH64),
+        ),
         mode: SETUP_KERNEL_ARTIFACT_MODE,
         url: kernel_url(arch),
         source: SetupArtifactSource::Direct,
@@ -106,11 +175,26 @@ fn mitmdump_artifact(paths: &HomePaths, arch: &str) -> SetupArtifact {
         label: "mitmdump",
         display_name: format!("mitmdump {MITMPROXY_VERSION}"),
         target: paths.mitmdump_bin(MITMPROXY_VERSION),
-        expected_sha: select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64).to_owned(),
+        installed: setup_artifact_identity(
+            select_size(arch, MITMDUMP_SIZE_X86_64, MITMDUMP_SIZE_AARCH64),
+            select_sha(arch, MITMDUMP_SHA256_X86_64, MITMDUMP_SHA256_AARCH64),
+        ),
         mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
         url: mitmdump_url(arch),
         source: SetupArtifactSource::TarEntry {
             entry_name: MITMDUMP_TAR_ENTRY.to_owned(),
+            archive: setup_artifact_identity(
+                select_size(
+                    arch,
+                    MITMPROXY_ARCHIVE_SIZE_X86_64,
+                    MITMPROXY_ARCHIVE_SIZE_AARCH64,
+                ),
+                select_sha(
+                    arch,
+                    MITMPROXY_ARCHIVE_SHA256_X86_64,
+                    MITMPROXY_ARCHIVE_SHA256_AARCH64,
+                ),
+            ),
         },
     }
 }
@@ -118,18 +202,33 @@ fn mitmdump_artifact(paths: &HomePaths, arch: &str) -> SetupArtifact {
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::time::Duration;
 
     use flate2::Compression;
     use flate2::write::GzEncoder;
     use httpmock::Method::GET;
     use httpmock::MockServer;
     use sha2::{Digest, Sha256};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::task::JoinHandle;
 
     use super::*;
 
     fn sha256_hex(content: &[u8]) -> String {
         hex::encode(Sha256::digest(content))
+    }
+
+    fn content_identity(content: &[u8]) -> SetupArtifactIdentity {
+        SetupArtifactIdentity {
+            size: u64::try_from(content.len()).unwrap(),
+            sha256: sha256_hex(content),
+        }
+    }
+
+    fn test_client() -> reqwest::Client {
+        reqwest::Client::builder().build().unwrap()
     }
 
     fn mode(path: &std::path::Path) -> u32 {
@@ -149,6 +248,75 @@ mod tests {
         builder.into_inner().unwrap().finish().unwrap()
     }
 
+    fn assert_identity(identity: &SetupArtifactIdentity, size: u64, sha256: &str) {
+        assert_eq!(identity.size, size);
+        assert_eq!(identity.sha256, sha256);
+    }
+
+    fn assert_tar_source(
+        source: &SetupArtifactSource,
+        expected_entry: &str,
+        archive_size: u64,
+        archive_sha256: &str,
+    ) {
+        let SetupArtifactSource::TarEntry {
+            entry_name,
+            archive,
+        } = source
+        else {
+            panic!("expected tar entry source");
+        };
+        assert_eq!(entry_name, expected_entry);
+        assert_identity(archive, archive_size, archive_sha256);
+    }
+
+    async fn spawn_http_response(response: Vec<u8>) -> (String, JoinHandle<std::io::Result<()>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut request = [0_u8; 1024];
+            let request_size = stream.read(&mut request).await?;
+            if request_size == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "setup fixture received an empty request",
+                ));
+            }
+            stream.write_all(&response).await
+        });
+        (format!("http://{address}/artifact"), task)
+    }
+
+    async fn finish_http_response(task: JoinHandle<std::io::Result<()>>) {
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("setup fixture timed out")
+            .expect("setup fixture task failed")
+            .expect("setup fixture response failed");
+    }
+
+    fn setup_temp_files(root: &Path) -> Vec<PathBuf> {
+        if !root.exists() {
+            return Vec::new();
+        }
+
+        let mut pending = vec![root.to_owned()];
+        let mut temp_files = Vec::new();
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let entry = entry.unwrap();
+                let file_type = entry.file_type().unwrap();
+                if file_type.is_dir() {
+                    pending.push(entry.path());
+                } else if entry.file_name().to_string_lossy().ends_with(".tmp") {
+                    temp_files.push(entry.path());
+                }
+            }
+        }
+        temp_files
+    }
+
     #[test]
     fn artifact_descriptors_preserve_metadata_by_arch() {
         let paths = HomePaths::with_root(PathBuf::from("/setup-root"));
@@ -159,22 +327,32 @@ mod tests {
             paths.firecracker_bin(FIRECRACKER_VERSION)
         );
         assert_eq!(firecracker_x86.mode, SETUP_EXECUTABLE_ARTIFACT_MODE);
-        assert_eq!(firecracker_x86.expected_sha, FIRECRACKER_SHA256_X86_64);
+        assert_identity(
+            &firecracker_x86.installed,
+            FIRECRACKER_SIZE_X86_64,
+            FIRECRACKER_SHA256_X86_64,
+        );
         assert_eq!(firecracker_x86.url, firecracker_url("x86_64"));
-        assert!(matches!(
+        assert_tar_source(
             &firecracker_x86.source,
-            SetupArtifactSource::TarEntry { entry_name }
-                if entry_name == &firecracker_tar_entry("x86_64")
-        ));
+            &firecracker_tar_entry("x86_64"),
+            FIRECRACKER_ARCHIVE_SIZE_X86_64,
+            FIRECRACKER_ARCHIVE_SHA256_X86_64,
+        );
 
         let firecracker_aarch64 = firecracker_artifact(&paths, "aarch64");
-        assert_eq!(firecracker_aarch64.expected_sha, FIRECRACKER_SHA256_AARCH64);
+        assert_identity(
+            &firecracker_aarch64.installed,
+            FIRECRACKER_SIZE_AARCH64,
+            FIRECRACKER_SHA256_AARCH64,
+        );
         assert_eq!(firecracker_aarch64.url, firecracker_url("aarch64"));
-        assert!(matches!(
+        assert_tar_source(
             &firecracker_aarch64.source,
-            SetupArtifactSource::TarEntry { entry_name }
-                if entry_name == &firecracker_tar_entry("aarch64")
-        ));
+            &firecracker_tar_entry("aarch64"),
+            FIRECRACKER_ARCHIVE_SIZE_AARCH64,
+            FIRECRACKER_ARCHIVE_SHA256_AARCH64,
+        );
 
         let kernel_x86 = kernel_artifact(&paths, "x86_64");
         assert_eq!(
@@ -182,27 +360,52 @@ mod tests {
             paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION)
         );
         assert_eq!(kernel_x86.mode, SETUP_KERNEL_ARTIFACT_MODE);
-        assert_eq!(kernel_x86.expected_sha, KERNEL_SHA256_X86_64);
+        assert_identity(
+            &kernel_x86.installed,
+            KERNEL_SIZE_X86_64,
+            KERNEL_SHA256_X86_64,
+        );
         assert_eq!(kernel_x86.url, kernel_url("x86_64"));
         assert!(matches!(kernel_x86.source, SetupArtifactSource::Direct));
 
         let kernel_aarch64 = kernel_artifact(&paths, "aarch64");
-        assert_eq!(kernel_aarch64.expected_sha, KERNEL_SHA256_AARCH64);
+        assert_identity(
+            &kernel_aarch64.installed,
+            KERNEL_SIZE_AARCH64,
+            KERNEL_SHA256_AARCH64,
+        );
         assert_eq!(kernel_aarch64.url, kernel_url("aarch64"));
+        assert!(matches!(kernel_aarch64.source, SetupArtifactSource::Direct));
 
         let mitmdump_x86 = mitmdump_artifact(&paths, "x86_64");
         assert_eq!(mitmdump_x86.target, paths.mitmdump_bin(MITMPROXY_VERSION));
         assert_eq!(mitmdump_x86.mode, SETUP_EXECUTABLE_ARTIFACT_MODE);
-        assert_eq!(mitmdump_x86.expected_sha, MITMDUMP_SHA256_X86_64);
+        assert_identity(
+            &mitmdump_x86.installed,
+            MITMDUMP_SIZE_X86_64,
+            MITMDUMP_SHA256_X86_64,
+        );
         assert_eq!(mitmdump_x86.url, mitmdump_url("x86_64"));
-        assert!(matches!(
+        assert_tar_source(
             &mitmdump_x86.source,
-            SetupArtifactSource::TarEntry { entry_name } if entry_name.as_str() == MITMDUMP_TAR_ENTRY
-        ));
+            MITMDUMP_TAR_ENTRY,
+            MITMPROXY_ARCHIVE_SIZE_X86_64,
+            MITMPROXY_ARCHIVE_SHA256_X86_64,
+        );
 
         let mitmdump_aarch64 = mitmdump_artifact(&paths, "aarch64");
-        assert_eq!(mitmdump_aarch64.expected_sha, MITMDUMP_SHA256_AARCH64);
+        assert_identity(
+            &mitmdump_aarch64.installed,
+            MITMDUMP_SIZE_AARCH64,
+            MITMDUMP_SHA256_AARCH64,
+        );
         assert_eq!(mitmdump_aarch64.url, mitmdump_url("aarch64"));
+        assert_tar_source(
+            &mitmdump_aarch64.source,
+            MITMDUMP_TAR_ENTRY,
+            MITMPROXY_ARCHIVE_SIZE_AARCH64,
+            MITMPROXY_ARCHIVE_SHA256_AARCH64,
+        );
     }
 
     #[tokio::test]
@@ -228,13 +431,14 @@ mod tests {
             label: "test",
             display_name: "test artifact".to_owned(),
             target: target.clone(),
-            expected_sha: sha256_hex(content),
+            installed: content_identity(content),
             mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
             url: server.url("/artifact.bin"),
             source: SetupArtifactSource::Direct,
         };
+        let client = test_client();
 
-        install_setup_artifact(artifact).await.unwrap();
+        install_setup_artifact(&client, artifact).await.unwrap();
 
         download.assert_calls_async(0).await;
         assert_eq!(std::fs::read(&target).unwrap(), content);
@@ -257,13 +461,14 @@ mod tests {
             label: "direct",
             display_name: "direct artifact".to_owned(),
             target: target.clone(),
-            expected_sha: sha256_hex(&content),
+            installed: content_identity(&content),
             mode: SETUP_KERNEL_ARTIFACT_MODE,
             url: server.url("/direct.bin"),
             source: SetupArtifactSource::Direct,
         };
+        let client = test_client();
 
-        install_setup_artifact(artifact).await.unwrap();
+        install_setup_artifact(&client, artifact).await.unwrap();
 
         download.assert_calls_async(1).await;
         assert_eq!(std::fs::read(&target).unwrap(), content);
@@ -287,18 +492,195 @@ mod tests {
             label: "tar-entry",
             display_name: "tar entry artifact".to_owned(),
             target: target.clone(),
-            expected_sha: sha256_hex(&content),
+            installed: content_identity(&content),
             mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
             url: server.url("/archive.tar.gz"),
             source: SetupArtifactSource::TarEntry {
                 entry_name: "tool".to_owned(),
+                archive: content_identity(&tarball),
             },
         };
+        let client = test_client();
 
-        install_setup_artifact(artifact).await.unwrap();
+        install_setup_artifact(&client, artifact).await.unwrap();
 
         download.assert_calls_async(1).await;
         assert_eq!(std::fs::read(&target).unwrap(), content);
         assert_eq!(mode(&target), SETUP_EXECUTABLE_ARTIFACT_MODE);
+    }
+
+    #[tokio::test]
+    async fn known_oversized_body_is_rejected_before_temp_creation() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = MockServer::start_async().await;
+        let body = b"larger body".to_vec();
+        let download = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/oversized.bin");
+                then.status(200).body(body.clone());
+            })
+            .await;
+        let expected = b"small";
+        let target = dir.path().join("nested").join("artifact.bin");
+        let artifact = SetupArtifact {
+            label: "direct",
+            display_name: "direct artifact".to_owned(),
+            target: target.clone(),
+            installed: content_identity(expected),
+            mode: SETUP_KERNEL_ARTIFACT_MODE,
+            url: server.url("/oversized.bin"),
+            source: SetupArtifactSource::Direct,
+        };
+        let client = test_client();
+
+        let error = install_setup_artifact(&client, artifact).await.unwrap_err();
+
+        download.assert_calls_async(1).await;
+        assert!(
+            error.to_string().contains("source size mismatch"),
+            "unexpected error: {error}"
+        );
+        assert!(!target.exists());
+        assert!(!target.parent().unwrap().exists());
+        assert!(setup_temp_files(dir.path()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn unknown_length_oversized_body_stops_before_excess_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n6\r\nabcdef\r\n0\r\n\r\n".to_vec();
+        let (url, server_task) = spawn_http_response(response).await;
+        let target = dir.path().join("artifact.bin");
+        let artifact = SetupArtifact {
+            label: "direct",
+            display_name: "direct artifact".to_owned(),
+            target: target.clone(),
+            installed: content_identity(b"abc"),
+            mode: SETUP_KERNEL_ARTIFACT_MODE,
+            url,
+            source: SetupArtifactSource::Direct,
+        };
+        let client = test_client();
+
+        let error = install_setup_artifact(&client, artifact).await.unwrap_err();
+        finish_http_response(server_task).await;
+
+        assert!(
+            error.to_string().contains("exceeds expected size"),
+            "unexpected error: {error}"
+        );
+        assert!(!target.exists());
+        assert!(setup_temp_files(dir.path()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn unknown_length_short_body_is_rejected_and_cleaned_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nabc".to_vec();
+        let (url, server_task) = spawn_http_response(response).await;
+        let target = dir.path().join("artifact.bin");
+        let artifact = SetupArtifact {
+            label: "direct",
+            display_name: "direct artifact".to_owned(),
+            target: target.clone(),
+            installed: content_identity(b"abcde"),
+            mode: SETUP_KERNEL_ARTIFACT_MODE,
+            url,
+            source: SetupArtifactSource::Direct,
+        };
+        let client = test_client();
+
+        let error = install_setup_artifact(&client, artifact).await.unwrap_err();
+        finish_http_response(server_task).await;
+
+        assert!(
+            error.to_string().contains("source size mismatch"),
+            "unexpected error: {error}"
+        );
+        assert!(error.to_string().contains("got 3 bytes"));
+        assert!(!target.exists());
+        assert!(setup_temp_files(dir.path()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn tar_archive_sha_mismatch_is_rejected_before_extraction() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = MockServer::start_async().await;
+        let content = b"tar entry artifact".to_vec();
+        let tarball = tarball_with_entry("tool", &content);
+        let download = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/archive.tar.gz");
+                then.status(200).body(tarball.clone());
+            })
+            .await;
+        let target = dir.path().join("tool");
+        let artifact = SetupArtifact {
+            label: "tar-entry",
+            display_name: "tar entry artifact".to_owned(),
+            target: target.clone(),
+            installed: content_identity(&content),
+            mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
+            url: server.url("/archive.tar.gz"),
+            source: SetupArtifactSource::TarEntry {
+                entry_name: "tool".to_owned(),
+                archive: SetupArtifactIdentity {
+                    size: u64::try_from(tarball.len()).unwrap(),
+                    sha256: sha256_hex(b"different archive"),
+                },
+            },
+        };
+        let client = test_client();
+
+        let error = install_setup_artifact(&client, artifact).await.unwrap_err();
+
+        download.assert_calls_async(1).await;
+        assert!(
+            error.to_string().contains("source SHA256 mismatch"),
+            "unexpected error: {error}"
+        );
+        assert!(!target.exists());
+        assert!(setup_temp_files(dir.path()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn tar_entry_declared_size_mismatch_is_rejected_before_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = MockServer::start_async().await;
+        let content = b"tar entry artifact".to_vec();
+        let tarball = tarball_with_entry("tool", &content);
+        let download = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/archive.tar.gz");
+                then.status(200).body(tarball.clone());
+            })
+            .await;
+        let target = dir.path().join("tool");
+        let artifact = SetupArtifact {
+            label: "tar-entry",
+            display_name: "tar entry artifact".to_owned(),
+            target: target.clone(),
+            installed: SetupArtifactIdentity {
+                size: u64::try_from(content.len()).unwrap() + 1,
+                sha256: sha256_hex(&content),
+            },
+            mode: SETUP_EXECUTABLE_ARTIFACT_MODE,
+            url: server.url("/archive.tar.gz"),
+            source: SetupArtifactSource::TarEntry {
+                entry_name: "tool".to_owned(),
+                archive: content_identity(&tarball),
+            },
+        };
+        let client = test_client();
+
+        let error = install_setup_artifact(&client, artifact).await.unwrap_err();
+
+        download.assert_calls_async(1).await;
+        assert!(
+            error.to_string().contains("entry size mismatch"),
+            "unexpected error: {error}"
+        );
+        assert!(!target.exists());
+        assert!(setup_temp_files(dir.path()).is_empty());
     }
 }
