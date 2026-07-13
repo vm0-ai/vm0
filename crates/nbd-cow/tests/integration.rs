@@ -18,6 +18,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use nix::sys::socket::{Shutdown, shutdown as shutdown_socket};
+use tokio::io::AsyncReadExt;
 
 #[path = "support/nbd_fixture.rs"]
 mod nbd_fixture;
@@ -675,7 +676,7 @@ async fn connect_device_survives_connection_loss() {
         // Opening the block device completes the kernel's deferred partition
         // scan while every connection is healthy. Otherwise the injected loss
         // can strand an already in-flight scan request on the removed socket.
-        Some(fs::File::open(format!("/dev/nbd{device_index}")))
+        Some(tokio::fs::File::open(format!("/dev/nbd{device_index}")).await)
     } else {
         None
     };
@@ -696,17 +697,12 @@ async fn connect_device_survives_connection_loss() {
 
         let device = opened_device.expect("connected device should have an open attempt");
         Some(
-            tokio::time::timeout(
-                Duration::from_secs(5),
-                tokio::task::spawn_blocking(move || {
-                    use std::os::unix::fs::FileExt;
-
-                    let device = device?;
-                    let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
-                    device.read_exact_at(&mut block, 0)?;
-                    Ok::<_, std::io::Error>(block)
-                }),
-            )
+            tokio::time::timeout(Duration::from_secs(5), async move {
+                let mut device = device?;
+                let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
+                device.read_exact(&mut block).await?;
+                Ok::<_, std::io::Error>(block)
+            })
             .await,
         )
     } else {
@@ -732,7 +728,6 @@ async fn connect_device_survives_connection_loss() {
     let block = read_after_connection_loss
         .expect("connected device should be read")
         .expect("read after connection loss should not time out")
-        .expect("read task should complete")
         .expect("read after connection loss should succeed");
     assert_eq!(
         block,
