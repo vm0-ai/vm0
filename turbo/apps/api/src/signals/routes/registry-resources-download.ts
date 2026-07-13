@@ -276,7 +276,8 @@ export function resolvePrivateRegistryResourceArchive(
   return {
     storageName: `registry-resource@${id}`,
     versionId: requestedVersionId ?? defaultVersionId,
-    sha256: requestedVersionId ? expectedSha256 : defaultSha256,
+    sha256:
+      requestedVersionId && expectedSha256 ? expectedSha256 : defaultSha256,
   };
 }
 
