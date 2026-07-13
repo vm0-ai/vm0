@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.595.5](https://github.com/vm0-ai/vm0/compare/app-v0.595.4...app-v0.595.5) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.187.1
+    * @vm0/connectors bumped to 1.156.1
+    * @vm0/core bumped to 8.426.1
+
 ## [0.595.4](https://github.com/vm0-ai/vm0/compare/app-v0.595.3...app-v0.595.4) (2026-07-13)
 
 
