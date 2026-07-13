@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.427.0](https://github.com/vm0-ai/vm0/compare/core-v8.426.1...core-v8.427.0) (2026-07-13)
+
+
+### Features
+
+* add gated google contacts and forms connectors ([#21242](https://github.com/vm0-ai/vm0/issues/21242)) ([3b0d03f](https://github.com/vm0-ai/vm0/commit/3b0d03fa432bad1cb81c9d34dfebcdcf66d8229d))
+* add nine feature-gated business connectors ([#21277](https://github.com/vm0-ai/vm0/issues/21277)) ([5f08ac9](https://github.com/vm0-ai/vm0/commit/5f08ac9bc73515b1b483114835b26e210b14265b))
+* graduate image artifact keyboard navigation ([#21273](https://github.com/vm0-ai/vm0/issues/21273)) ([fcf0055](https://github.com/vm0-ai/vm0/commit/fcf005540facf149885795ddd50eea9cb085dd41))
+* **workflows:** enable webhook trigger creation globally ([#21294](https://github.com/vm0-ai/vm0/issues/21294)) ([515f996](https://github.com/vm0-ai/vm0/commit/515f9963e06ecc1a51c166ff0ead0d7135820512))
+
+
+### Refactoring
+
+* retire artifact video preview feature switch ([#21276](https://github.com/vm0-ai/vm0/issues/21276)) ([700d3cc](https://github.com/vm0-ai/vm0/commit/700d3cc983b376f6ec75e6617aba1da95b60f56c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.188.0
+    * @vm0/connectors bumped to 1.157.0
+
 ## [8.426.1](https://github.com/vm0-ai/vm0/compare/core-v8.426.0...core-v8.426.1) (2026-07-13)
 
 

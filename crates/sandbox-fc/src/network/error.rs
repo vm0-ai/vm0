@@ -6,6 +6,8 @@
 
 use crate::command::CommandError;
 
+use super::readiness::DnsReadinessError;
+
 /// Network subsystem result alias using [`NetworkError`].
 pub type Result<T> = std::result::Result<T, NetworkError>;
 
@@ -29,6 +31,14 @@ pub enum NetworkError {
     #[error("pool is not active")]
     PoolNotActive,
 
+    /// A DNS-enabled namespace pool has not completed functional readiness activation.
+    #[error("namespace pool DNS readiness is not active")]
+    PoolDnsNotReady,
+
+    /// No startup-prewarmed namespace passed the functional DNS readiness probe.
+    #[error("no namespace passed DNS readiness activation")]
+    NoDnsReadyNamespaces,
+
     /// The default outbound network interface could not be detected from route output.
     #[error("failed to detect default network interface from: {0}")]
     NoDefaultInterface(String),
@@ -40,6 +50,10 @@ pub enum NetworkError {
     /// A required host or network prerequisite failed while preparing namespaces.
     #[error("prerequisite check failed: {0}")]
     Prerequisite(String),
+
+    /// A namespace failed its bounded functional DNS readiness probe.
+    #[error(transparent)]
+    DnsReadiness(#[from] DnsReadinessError),
 
     /// A namespace lease failed validation against the pool's current ownership state.
     #[error("invalid namespace lease: {0}")]

@@ -706,7 +706,7 @@ pub(super) struct ProcessCancelTimeouts {
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
-    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
+    pub(super) reusable_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl AgentExecutionResult {
@@ -714,7 +714,7 @@ impl AgentExecutionResult {
         Self {
             failure: None,
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            restored_session_identity: None,
+            reusable_session_identity: None,
         }
     }
 
@@ -726,7 +726,7 @@ impl AgentExecutionResult {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
-            restored_session_identity: None,
+            reusable_session_identity: None,
         }
     }
 
@@ -746,11 +746,11 @@ impl AgentExecutionResult {
         self
     }
 
-    pub(super) fn with_restored_session_identity(
+    pub(super) fn with_reusable_session_identity(
         mut self,
-        restored_session_identity: Option<RestoredSessionIdentity>,
+        reusable_session_identity: Option<RestoredSessionIdentity>,
     ) -> Self {
-        self.restored_session_identity = restored_session_identity;
+        self.reusable_session_identity = reusable_session_identity;
         self
     }
 
@@ -1059,7 +1059,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     }
 
     let mut session_restore_diagnostics = None;
-    let mut restored_session_identity = None;
+    let mut pre_run_restored_session_identity = None;
     let mut local_session_history_sidecar = None;
     let mut session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
@@ -1072,7 +1072,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     );
                     telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
-                    restored_session_identity = Some(identity);
+                    pre_run_restored_session_identity = Some(identity);
                     None
                 }
                 Err(reason) => {
@@ -1614,8 +1614,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
-                    .with_restored_session_identity(restored_session_identity));
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -1630,7 +1629,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     )),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
-                    restored_session_identity,
+                    reusable_session_identity: None,
                 });
             }
             return Err(e.into());
@@ -1694,8 +1693,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-                    .with_restored_session_identity(restored_session_identity));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -1809,7 +1807,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
-    if failure.is_none() {
+    // A pre-run identity proves only what was restored. Once the agent starts,
+    // publish an identity only after a successful execution verifies the
+    // current history or confirms that the restored history stayed unchanged.
+    let reusable_session_identity = if failure.is_none() {
         match read_final_session_history_identity(sandbox, context).await {
             Ok(final_identity) => {
                 telemetry.record(
@@ -1818,11 +1819,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     true,
                     None,
                 );
-                restored_session_identity = Some(final_identity);
+                Some(final_identity)
             }
             Err(final_identity_reason) => {
                 record_session_history_identity_reason(telemetry, final_identity_reason);
-                if let Some(restored_identity) = restored_session_identity.take() {
+                if let Some(restored_identity) = pre_run_restored_session_identity.take() {
                     match verify_restored_session_identity_for_reuse(
                         sandbox,
                         context,
@@ -1831,26 +1832,31 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .await
                     {
                         Ok(verified_restored_session_identity) => {
-                            restored_session_identity = Some(verified_restored_session_identity);
+                            Some(verified_restored_session_identity)
                         }
                         Err(reason) => {
                             record_session_history_identity_reason(telemetry, reason);
+                            None
                         }
                     }
+                } else {
+                    None
                 }
             }
         }
-    }
+    } else {
+        None
+    };
 
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
             stdout_stream_diagnostics,
-            restored_session_identity,
+            reusable_session_identity: None,
         },
         None => AgentExecutionResult::success()
             .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
-            .with_restored_session_identity(restored_session_identity),
+            .with_reusable_session_identity(reusable_session_identity),
     };
     telemetry.record(
         "agent_execute",

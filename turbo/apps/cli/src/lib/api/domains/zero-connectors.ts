@@ -17,6 +17,10 @@ import {
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
+  zeroConnectorPermissionDenyContract,
+  type ConnectorPermissionDenyDiagnosticResult,
+} from "@vm0/api-contracts/contracts/zero-connector-permission-deny";
+import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
@@ -117,6 +121,32 @@ export async function getZeroConnectorCatalogPermissions(
   handleError(
     result,
     `Failed to get connector permission metadata for "${connectorRef}"`,
+  );
+}
+
+export async function diagnoseZeroConnectorPermissionDeny(
+  connectorRef: string,
+  method: string,
+  url: string,
+): Promise<ConnectorPermissionDenyDiagnosticResult> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorPermissionDenyContract, {
+    ...config,
+    validateResponse: true,
+  });
+
+  const result = await client.diagnose({
+    params: { connectorRef },
+    body: { method, url },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(
+    result,
+    `Failed to diagnose permission denial for "${connectorRef}"`,
   );
 }
 
