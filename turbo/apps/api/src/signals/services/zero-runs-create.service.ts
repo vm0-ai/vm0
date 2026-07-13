@@ -26,7 +26,8 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
-  createAgentRun$,
+  completeAgentRun$,
+  prepareAgentRun$,
   type BeforeRunDispatch,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
@@ -925,38 +926,22 @@ async function resolveZeroRunTriggerPreCreateContext(
   return { triggerAgentId };
 }
 
-async function buildZeroCreateAgentRunArgs(args: {
-  readonly db: Db;
+function buildZeroCreateAgentRunArgs(args: {
   readonly command: CreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
-  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
   readonly allowedConnectorTypes: readonly ConnectorType[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<CreateAgentRunArgs> {
+}): CreateAgentRunArgs {
   const command = args.command;
   const agentModelProviderId = optionalAgentSetting(args.agent.modelProviderId);
   const agentSelectedModel = optionalAgentSetting(args.agent.selectedModel);
-  const memoryTiming = zeroMemoryTimingObserver(args.timing);
-  const memoryRuntimeAppendSystemPrompt =
-    await loadMemoryRuntimeAppendSystemPrompt(args.db, {
-      enabled: args.relationshipMemoryRuntimeInjectionEnabled,
-      orgId: command.auth.orgId,
-      userId: command.auth.userId,
-      prompt: command.body.prompt,
-      ...(command.memoryRuntimeRetrievalQuery !== undefined
-        ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
-        : {}),
-      timing: memoryTiming,
-      ...(command.zeroRunMetadata?.goalId
-        ? { goalId: command.zeroRunMetadata.goalId }
-        : {}),
-    });
   return {
     userId: command.auth.userId,
     orgId: command.auth.orgId,
@@ -965,7 +950,7 @@ async function buildZeroCreateAgentRunArgs(args: {
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
-      memoryRuntimeAppendSystemPrompt,
+      memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       permissionPolicies: args.runPermissionPolicies,
       triggerAgentId: args.triggerAgentId,
       triggerSource: command.triggerSource,
@@ -1013,29 +998,58 @@ async function buildZeroCreateAgentRunArgs(args: {
   };
 }
 
-async function buildZeroIntegrationCreateAgentRunArgs(args: {
+async function buildZeroFinalAppendSystemPrompt(args: {
   readonly db: Db;
-  readonly command: CreateZeroIntegrationRunCommandArgs;
+  readonly command: CreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly triggerAgentId: string | undefined;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<string> {
+  const command = args.command;
+  const memoryRuntimeAppendSystemPrompt =
+    await loadMemoryRuntimeAppendSystemPrompt(args.db, {
+      enabled: args.relationshipMemoryRuntimeInjectionEnabled,
+      orgId: command.auth.orgId,
+      userId: command.auth.userId,
+      prompt: command.body.prompt,
+      ...(command.memoryRuntimeRetrievalQuery !== undefined
+        ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
+        : {}),
+      timing: zeroMemoryTimingObserver(args.timing),
+      ...(command.zeroRunMetadata?.goalId
+        ? { goalId: command.zeroRunMetadata.goalId }
+        : {}),
+    });
+  return createRunBody({
+    body: command.body,
+    agent: args.agent,
+    userInfo: { ...args.userInfo, ...command.userInfoExtras },
+    relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+    memoryRuntimeAppendSystemPrompt,
+    permissionPolicies: args.runPermissionPolicies,
+    triggerAgentId: args.triggerAgentId,
+    triggerSource: command.triggerSource,
+    appendSystemPrompt: command.appendSystemPrompt,
+  }).appendSystemPrompt;
+}
+
+function buildZeroIntegrationCreateAgentRunArgs(args: {
+  readonly command: CreateZeroIntegrationRunCommandArgs;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
+  readonly memoryRuntimeAppendSystemPrompt: string | undefined;
+  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
   readonly allowedConnectorTypes: readonly ConnectorType[];
   readonly allowedCustomConnectorIds: readonly string[];
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<CreateAgentRunArgs> {
+}): CreateAgentRunArgs {
   const command = args.command;
-  const memoryTiming = zeroMemoryTimingObserver(args.timing);
-  const memoryRuntimeAppendSystemPrompt =
-    await loadMemoryRuntimeAppendSystemPrompt(args.db, {
-      enabled: args.relationshipMemoryRuntimeInjectionEnabled,
-      orgId: command.orgId,
-      userId: command.userId,
-      prompt: command.prompt,
-      timing: memoryTiming,
-    });
   return {
     userId: command.userId,
     orgId: command.orgId,
@@ -1045,7 +1059,7 @@ async function buildZeroIntegrationCreateAgentRunArgs(args: {
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
-      memoryRuntimeAppendSystemPrompt,
+      memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
       appendSystemPrompt: command.appendSystemPrompt,
@@ -1070,6 +1084,155 @@ async function buildZeroIntegrationCreateAgentRunArgs(args: {
     timingDimensions: zeroRunTimingDimensions({ origin: "zero_integration" }),
   };
 }
+
+async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
+  readonly db: Db;
+  readonly command: CreateZeroIntegrationRunCommandArgs;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
+  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly timing: ApiDispatchTimingCollector;
+}): Promise<string> {
+  const command = args.command;
+  const memoryRuntimeAppendSystemPrompt =
+    await loadMemoryRuntimeAppendSystemPrompt(args.db, {
+      enabled: args.relationshipMemoryRuntimeInjectionEnabled,
+      orgId: command.orgId,
+      userId: command.userId,
+      prompt: command.prompt,
+      timing: zeroMemoryTimingObserver(args.timing),
+    });
+  return createIntegrationRunBody({
+    prompt: command.prompt,
+    sessionId: command.sessionId,
+    agent: args.agent,
+    userInfo: { ...args.userInfo, ...command.userInfoExtras },
+    relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+    memoryRuntimeAppendSystemPrompt,
+    permissionPolicies: args.runPermissionPolicies,
+    triggerSource: command.triggerSource,
+    appendSystemPrompt: command.appendSystemPrompt,
+  }).appendSystemPrompt;
+}
+
+async function settleZeroRunPreparation<T>(
+  finalAppendSystemPromptPromise: Promise<string>,
+  preparedAgentRunPromise: Promise<T>,
+): Promise<readonly [string, PromiseSettledResult<T>]> {
+  const [finalAppendSystemPromptResult, preparedAgentRunResult] =
+    await Promise.allSettled([
+      finalAppendSystemPromptPromise,
+      preparedAgentRunPromise,
+    ]);
+  if (finalAppendSystemPromptResult.status === "rejected") {
+    const error: unknown = finalAppendSystemPromptResult.reason;
+    throw error;
+  }
+  return [finalAppendSystemPromptResult.value, preparedAgentRunResult];
+}
+
+interface ZeroRunAfterPreCreateBase {
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly relationshipMemoryEnabled: boolean;
+  readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+  readonly timing: ApiDispatchTimingCollector;
+}
+
+interface RegularZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
+  readonly kind: "regular";
+  readonly command: CreateZeroRunCommandArgs;
+  readonly triggerAgentId: string | undefined;
+}
+
+interface IntegrationZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
+  readonly kind: "integration";
+  readonly command: CreateZeroIntegrationRunCommandArgs;
+}
+
+type ZeroRunAfterPreCreate =
+  | RegularZeroRunAfterPreCreate
+  | IntegrationZeroRunAfterPreCreate;
+
+function buildProvisionalZeroCreateAgentRunArgs(
+  input: ZeroRunAfterPreCreate,
+): CreateAgentRunArgs {
+  if (input.kind === "regular") {
+    return buildZeroCreateAgentRunArgs({
+      ...input,
+      memoryRuntimeAppendSystemPrompt: undefined,
+    });
+  }
+  return buildZeroIntegrationCreateAgentRunArgs({
+    ...input,
+    memoryRuntimeAppendSystemPrompt: undefined,
+  });
+}
+
+async function buildZeroFinalAppendSystemPromptForKind(
+  db: Db,
+  input: ZeroRunAfterPreCreate,
+): Promise<string> {
+  if (input.kind === "regular") {
+    return await buildZeroFinalAppendSystemPrompt({ db, ...input });
+  }
+  return await buildZeroIntegrationFinalAppendSystemPrompt({ db, ...input });
+}
+
+const createAgentRunAfterZeroPreCreate$ = command(
+  async ({ set }, input: ZeroRunAfterPreCreate, signal: AbortSignal) => {
+    const db = set(writeDb$);
+    const provisionalCreateAgentRunArgs =
+      buildProvisionalZeroCreateAgentRunArgs(input);
+    const finalAppendSystemPromptPromise = (async () => {
+      const finalAppendSystemPrompt = await measureZeroPreCreate(
+        input.timing,
+        "api_dispatch_pre_create_zero_build_create_run_args",
+        async () => {
+          return await buildZeroFinalAppendSystemPromptForKind(db, input);
+        },
+      );
+      signal.throwIfAborted();
+      input.timing.recordElapsed(
+        "api_dispatch_pre_create_agent_run",
+        "top_level",
+        input.command.apiStartTime,
+      );
+      return finalAppendSystemPrompt;
+    })();
+    const preparedAgentRunPromise = set(
+      prepareAgentRun$,
+      { args: provisionalCreateAgentRunArgs, timing: input.timing },
+      signal,
+    );
+    const [finalAppendSystemPrompt, preparedAgentRunResult] =
+      await settleZeroRunPreparation(
+        finalAppendSystemPromptPromise,
+        preparedAgentRunPromise,
+      );
+    signal.throwIfAborted();
+    if (preparedAgentRunResult.status === "rejected") {
+      const error: unknown = preparedAgentRunResult.reason;
+      throw error;
+    }
+    const preparedAgentRun = preparedAgentRunResult.value;
+    if ("status" in preparedAgentRun) {
+      return preparedAgentRun;
+    }
+
+    return await set(
+      completeAgentRun$,
+      { prepared: preparedAgentRun, finalAppendSystemPrompt },
+      signal,
+    );
+  },
+);
 
 export const createZeroIntegrationRun$ = command(
   async (
@@ -1157,28 +1320,23 @@ export const createZeroIntegrationRun$ = command(
     );
     signal.throwIfAborted();
 
-    const createAgentRunArgs = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_build_create_run_args",
-      async () => {
-        return await buildZeroIntegrationCreateAgentRunArgs({
-          db,
-          command: args,
-          agent,
-          userInfo,
-          relationshipMemoryEnabled,
-          relationshipMemoryRuntimeInjectionEnabled,
-          runPermissionPolicies,
-          workflows,
-          allowedConnectorTypes,
-          allowedCustomConnectorIds,
-          timing,
-        });
+    return await set(
+      createAgentRunAfterZeroPreCreate$,
+      {
+        kind: "integration",
+        command: args,
+        agent,
+        userInfo,
+        relationshipMemoryEnabled,
+        relationshipMemoryRuntimeInjectionEnabled,
+        runPermissionPolicies,
+        workflows,
+        allowedConnectorTypes,
+        allowedCustomConnectorIds,
+        timing,
       },
+      signal,
     );
-    signal.throwIfAborted();
-
-    return await set(createAgentRun$, createAgentRunArgs, signal);
   },
 );
 
@@ -1293,27 +1451,23 @@ export const createZeroRun$ = command(
     );
     signal.throwIfAborted();
 
-    const createAgentRunArgs = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_build_create_run_args",
-      async () => {
-        return await buildZeroCreateAgentRunArgs({
-          db,
-          command: args,
-          agent,
-          userInfo,
-          relationshipMemoryEnabled,
-          relationshipMemoryRuntimeInjectionEnabled,
-          runPermissionPolicies,
-          triggerAgentId,
-          workflows,
-          allowedConnectorTypes,
-          allowedCustomConnectorIds,
-          timing,
-        });
+    return await set(
+      createAgentRunAfterZeroPreCreate$,
+      {
+        kind: "regular",
+        command: args,
+        agent,
+        userInfo,
+        relationshipMemoryEnabled,
+        relationshipMemoryRuntimeInjectionEnabled,
+        runPermissionPolicies,
+        triggerAgentId,
+        workflows,
+        allowedConnectorTypes,
+        allowedCustomConnectorIds,
+        timing,
       },
+      signal,
     );
-    signal.throwIfAborted();
-    return await set(createAgentRun$, createAgentRunArgs, signal);
   },
 );
