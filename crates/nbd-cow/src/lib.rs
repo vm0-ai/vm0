@@ -47,7 +47,10 @@ pub use device::{
 pub const BLOCK_SIZE: usize = 4096;
 
 /// Default number of connections per NBD device.
-pub const NUM_CONNECTIONS: usize = 4;
+///
+/// Three balances connect latency with steady-state I/O while leaving two
+/// live connections after one connection is lost.
+pub const NUM_CONNECTIONS: usize = 3;
 
 /// Default write buffer flush threshold: 4MB.
 pub const DEFAULT_FLUSH_THRESHOLD: usize = 4 * 1024 * 1024;
