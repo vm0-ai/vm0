@@ -455,7 +455,7 @@ describe("GET /api/cron/artifact-preview", () => {
     }
   }, 180_000);
 
-  it("generates poster frames for generated video artifacts and ignores ordinary video uploads", async () => {
+  it("generates poster frames for generated video artifacts without previewing ordinary video uploads", async () => {
     const owner = await artifactActor("Artifacts API video preview agent");
     if (!owner.actor.orgId) {
       throw new Error("Expected video preview test actor to have an org");
@@ -527,11 +527,11 @@ describe("GET /api/cron/artifact-preview", () => {
     expect(previewedArtifact?.previewImageUrl).toContain(
       `/${videoArtifactRowId}/poster.jpg`,
     );
-    expect(
-      response.artifacts.some((item) => {
-        return item.fileId === ordinaryVideoUpload.fileId;
-      }),
-    ).toBeFalsy();
+    const ordinaryArtifact = response.artifacts.find((item) => {
+      return item.fileId === ordinaryVideoUpload.fileId;
+    });
+    expect(ordinaryArtifact).toBeDefined();
+    expect(ordinaryArtifact).not.toHaveProperty("previewImageUrl");
   }, 180_000);
 
   it("does not render video posters when the video preview switch is disabled", async () => {
@@ -647,7 +647,7 @@ describe("GET /api/cron/artifact-preview", () => {
 });
 
 describe("GET /api/zero/artifacts", () => {
-  it("lists generated artifacts for the active organization and excludes ordinary uploads", async () => {
+  it("lists chat-thread artifacts for the active organization and hides uploads shadowed by hosted artifacts", async () => {
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ userId, orgId: `org_${randomUUID()}` });
     const otherOrgActor = bdd.user({
@@ -655,6 +655,13 @@ describe("GET /api/zero/artifacts", () => {
       orgId: `org_${randomUUID()}`,
     });
     const current = await artifactActor("Artifacts API org agent", actor);
+    const standaloneUpload = await createRunUploadedFile({
+      owner: current,
+      prompt: "upload standalone artifact",
+      filename: "standalone-notes.txt",
+      contentType: "text/plain",
+      sizeBytes: 256,
+    });
     const otherOrg = await artifactActor(
       "Artifacts API other org agent",
       otherOrgActor,
@@ -695,16 +702,31 @@ describe("GET /api/zero/artifacts", () => {
     });
 
     const response = await chat.listArtifacts(actor);
-    expect(response.artifacts).toHaveLength(1);
-    expect(response.artifacts[0]).toMatchObject({
-      threadId: run.threadId,
-      runId: run.runId,
-      fileId: prepared.url,
-      url: prepared.url,
-      size: hostedFile.size,
-      artifactKind: "hosted-site",
+    expect(response.artifacts).toHaveLength(2);
+    expect(response.artifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          threadId: run.threadId,
+          runId: run.runId,
+          fileId: prepared.url,
+          url: prepared.url,
+          size: hostedFile.size,
+          artifactKind: "hosted-site",
+        }),
+        expect.objectContaining({
+          threadId: standaloneUpload.threadId,
+          runId: standaloneUpload.runId,
+          fileId: standaloneUpload.fileId,
+          url: standaloneUpload.url,
+          size: 256,
+          contentType: "text/plain",
+        }),
+      ]),
+    );
+    const hostedArtifact = response.artifacts.find((artifact) => {
+      return artifact.fileId === prepared.url;
     });
-    expect(response.artifacts[0]).not.toHaveProperty("previewImageUrl");
+    expect(hostedArtifact).not.toHaveProperty("previewImageUrl");
     expect(
       response.artifacts.some((artifact) => {
         return artifact.fileId === ordinaryUploadId;
@@ -837,7 +859,7 @@ describe("GET /api/zero/artifacts", () => {
     ).toBeFalsy();
   }, 120_000);
 
-  it("returns every generated artifact for the org in one bulk response", async () => {
+  it("returns every artifact for the org in one bulk response", async () => {
     const first = await artifactActor("Artifacts API bulk agent");
     const secondAgent = await bdd.createAgent(first.actor, {
       displayName: "Artifacts API bulk second agent",

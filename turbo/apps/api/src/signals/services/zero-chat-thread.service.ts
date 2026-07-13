@@ -1006,14 +1006,7 @@ export function zeroChatThreadArtifacts(args: {
   );
 }
 
-function generatedArtifactCondition(): SQL {
-  return sql<boolean>`(
-    jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
-    OR ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
-  )`;
-}
-
-function generatedArtifactVisibilityConditions(args: {
+function artifactVisibilityConditions(args: {
   readonly userId: string;
   readonly orgId: string;
 }): SQL[] {
@@ -1022,7 +1015,6 @@ function generatedArtifactVisibilityConditions(args: {
     sql`${chatThreads.userId} = ${args.userId}`,
     sql`${agentComposes.orgId} = ${args.orgId}`,
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    generatedArtifactCondition(),
     sql`(
       NOT EXISTS (
         SELECT 1
@@ -1128,7 +1120,7 @@ export const zeroArtifacts$ = command(
     const keysetClause = cursor
       ? sql`WHERE (deduped_artifacts.created_at, deduped_artifacts.row_id) < (${cursor.createdAt}::timestamptz AT TIME ZONE 'UTC', ${cursor.rowId}::uuid)`
       : sql``;
-    const conditions = generatedArtifactVisibilityConditions(args);
+    const conditions = artifactVisibilityConditions(args);
 
     const rows = await db.execute<ArtifactListSqlRow>(sql`
       WITH scoped_artifacts AS (
@@ -1213,12 +1205,12 @@ export const zeroArtifacts$ = command(
   },
 );
 
-async function generatedArtifactUrlIsVisible(
+async function artifactUrlIsVisible(
   db: Db,
   args: ArtifactFavoriteArgs,
 ): Promise<boolean> {
   const conditions = [
-    ...generatedArtifactVisibilityConditions(args),
+    ...artifactVisibilityConditions(args),
     sql`${runUploadedFiles.url} = ${args.artifactUrl}`,
   ];
   const result = await db.execute<{ readonly visible: boolean }>(sql`
@@ -1256,7 +1248,7 @@ export const favoriteArtifact$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const db = set(writeDb$);
-    const visible = await generatedArtifactUrlIsVisible(db, args);
+    const visible = await artifactUrlIsVisible(db, args);
     signal.throwIfAborted();
     if (!visible) {
       return false;
