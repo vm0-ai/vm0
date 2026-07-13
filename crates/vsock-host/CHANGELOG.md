@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.53](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.52...vsock-host-v0.17.53) (2026-07-13)
+
+
+### Documentation
+
+* **vsock-host:** document captured exec output ([#21269](https://github.com/vm0-ai/vm0/issues/21269)) ([47acd85](https://github.com/vm0-ai/vm0/commit/47acd8544811f736fa77ae753b410bb8909d4461))
+
 ## [0.17.52](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.51...vsock-host-v0.17.52) (2026-07-07)
 
 
