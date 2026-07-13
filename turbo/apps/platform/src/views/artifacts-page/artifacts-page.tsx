@@ -21,6 +21,7 @@ import {
   IconWorld,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { r2ImageTransformUrl } from "@vm0/core";
 import {
   useGet,
   useLastLoadable,
@@ -107,6 +108,7 @@ const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 220;
 const ARTIFACT_GRID_OVERSCAN_ROWS = 2;
 const ARTIFACT_GRID_FALLBACK_WIDTH_PX = 900;
 const ARTIFACT_GRID_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
+const ARTIFACT_CARD_IMAGE_SIZE = 640;
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -153,6 +155,17 @@ function artifactPreviewKind(item: ArtifactItem): ArtifactPreviewKind {
     return "video";
   }
   return "file";
+}
+
+function artifactCardImageSupportsTransform(item: ArtifactItem): boolean {
+  const extension = item.filename.split(".").pop()?.toLowerCase();
+  return (
+    extension === "gif" ||
+    extension === "jpeg" ||
+    extension === "jpg" ||
+    extension === "png" ||
+    extension === "webp"
+  );
 }
 
 function artifactTypeIconKind(
@@ -474,10 +487,17 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   }
 
   if (previewKind === "image") {
+    const thumbnailUrl = artifactCardImageSupportsTransform(item)
+      ? r2ImageTransformUrl(previewUrl, {
+          width: ARTIFACT_CARD_IMAGE_SIZE,
+          height: ARTIFACT_CARD_IMAGE_SIZE,
+          fit: "cover",
+        })
+      : previewUrl;
     return (
       <ArtifactPreviewSurface iconKind={iconKind}>
         <img
-          src={previewUrl}
+          src={thumbnailUrl}
           alt=""
           loading="lazy"
           className="h-full w-full object-cover"
