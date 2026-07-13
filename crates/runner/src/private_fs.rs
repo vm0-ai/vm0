@@ -742,6 +742,7 @@ mod tests {
         run_ignored_child_test(
             "private_fs::tests::read_private_file_rejects_fifo_without_blocking_child",
             (FIFO_READ_CHILD_PATH_ENV, fifo_path),
+            &[],
             Duration::from_secs(10),
         )
         .await;

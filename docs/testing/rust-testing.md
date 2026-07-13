@@ -88,21 +88,28 @@ async fn post_json_success() {
 }
 ```
 
-### Test Serialization
+### Shared State and Process Environment
 
-When tests share mutable state (env vars, global server), use `std::sync::Mutex`:
+Use `std::sync::Mutex` only for Rust-owned shared state when every access participates in the same lock. A Tokio mutex does not coordinate separate `#[tokio::test]` runtimes.
+
+Do not use a mutex to justify `std::env::set_var` or `std::env::remove_var` in a multi-threaded test process. On non-Windows platforms, unrelated standard-library or dependency code may read the environment without taking the project lock, so the lock cannot satisfy those functions' safety contract.
+
+Configure environment-dependent scenarios before spawning a child process instead:
 
 ```rust
-// Use std::sync::Mutex, not tokio::sync::Mutex
-// Each #[tokio::test] runs in its own runtime, so tokio Mutex won't work across tests
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
+use std::path::Path;
+use std::process::Command;
 
-#[tokio::test]
-async fn test_with_shared_state() {
-    let _guard = TEST_MUTEX.lock().unwrap();
-    // ... test body
+fn command_with_test_env(binary: &Path) -> Command {
+    let mut command = Command::new(binary);
+    command
+        .env("TZ", "UTC")
+        .env_remove("R2_SECRET_ACCESS_KEY");
+    command
 }
 ```
+
+For inline runner tests, reuse `run_ignored_child_test` from `crates/runner/src/test_fixtures.rs`. It invokes one exact ignored test in a bounded child process and accepts per-child environment settings and removals.
 
 ### Temp Directories
 

@@ -325,6 +325,7 @@ mod tests {
         run_ignored_child_test(
             "state_file::tests::read_to_string_rejects_fifo_without_blocking_child",
             (FIFO_READ_CHILD_PATH_ENV, fifo_path),
+            &[],
             Duration::from_secs(10),
         )
         .await;
