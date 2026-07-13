@@ -425,6 +425,33 @@ describe("zero doctor permission-change command", () => {
     );
   });
 
+  it("does not treat permission API network failures as missing metadata", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    server.use(
+      http.get(
+        "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
+        () => {
+          return HttpResponse.error();
+        },
+      ),
+    );
+
+    await expect(async () => {
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--enable",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain("Failed to fetch");
+    expect(errorOutput).not.toContain("Unknown connector type");
+  });
+
   it("rejects permission metadata for a different connector ref", async () => {
     vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
     server.use(
