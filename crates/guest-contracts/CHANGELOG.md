@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.8...guest-contracts-v0.3.9) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
 ## [0.3.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.7...guest-contracts-v0.3.8) (2026-07-10)
 
 

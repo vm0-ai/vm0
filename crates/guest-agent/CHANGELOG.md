@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.5...guest-agent-v0.50.6) (2026-07-13)
+
+
+### Refactoring
+
+* remove vm0 api url env ([#21215](https://github.com/vm0-ai/vm0/issues/21215)) ([6f0d6a9](https://github.com/vm0-ai/vm0/commit/6f0d6a9bdf80c0437d3ef529fd06eacd62a0c412))
+
 ## [0.50.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.4...guest-agent-v0.50.5) (2026-07-13)
 
 ## [0.50.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.3...guest-agent-v0.50.4) (2026-07-12)
