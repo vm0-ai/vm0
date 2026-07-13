@@ -4,14 +4,40 @@
  * The command always points users at the self-service permission grant page.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpResponse, http } from "msw";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { server } from "../../../../mocks/server";
+import {
+  catalogPermissionDetail,
+  stubConnectorCatalogPermissions,
+} from "../../__tests__/helpers/connector-catalog";
 import { permissionChangeCommand } from "../permission-change";
 
 describe("zero doctor permission-change command", () => {
   const SLACK_READ_PERMISSION = "admin.conversations:read";
+  const permissionDetails = [
+    catalogPermissionDetail({
+      connectorRef: "slack",
+      label: "Slack",
+      permissions: [
+        { name: SLACK_READ_PERMISSION, description: "Read conversations" },
+        { name: "chat:write", description: "Send messages" },
+      ],
+    }),
+    catalogPermissionDetail({
+      connectorRef: "gmail",
+      label: "Gmail",
+      permissions: [
+        { name: "messages.send", description: "Send messages" },
+        { name: "drafts.send", description: "Send drafts" },
+      ],
+    }),
+    catalogPermissionDetail({
+      connectorRef: "cloudflare",
+      label: "Cloudflare",
+    }),
+  ];
 
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -20,6 +46,15 @@ describe("zero doctor permission-change command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+
+  beforeEach(() => {
+    vi.stubEnv("VM0_TOKEN", "test-token");
+    server.use(
+      stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
+      stubConnectorCatalogPermissions(permissionDetails, "https://www.vm0.ai"),
+      stubConnectorCatalogPermissions(permissionDetails),
+    );
+  });
 
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -292,12 +327,43 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("Only allow this permission below");
   });
 
+  it("validates a server-authored connector absent from the CLI bundle", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    const serverOnlyDetail = catalogPermissionDetail({
+      connectorRef: "server-only",
+      label: "Server Only",
+      permissions: [
+        { name: "records.read", description: "Read server records" },
+      ],
+    });
+    server.use(
+      stubConnectorCatalogPermissions(
+        [...permissionDetails, serverOnlyDetail],
+        "https://app.vm0.ai",
+      ),
+    );
+
+    await permissionChangeCommand.parseAsync([
+      "node",
+      "cli",
+      "server-only",
+      "--permission",
+      "records.read",
+      "--enable",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("[Manage Server Only permissions]");
+    expect(logCalls).toContain("ref=server-only");
+    expect(logCalls).toContain("permission=records.read");
+  });
+
   it("exits with an error for an unknown connector type", async () => {
     await expect(async () => {
       await permissionChangeCommand.parseAsync([
         "node",
         "cli",
-        "unknown_service",
+        "unknown-service",
         "--permission",
         "foo",
         "--enable",
@@ -305,7 +371,92 @@ describe("zero doctor permission-change command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Unknown connector type: unknown_service"),
+      expect.stringContaining("Unknown connector type: unknown-service"),
+    );
+  });
+
+  it("exits with authentication guidance when no token is available", async () => {
+    vi.stubEnv("VM0_TOKEN", "");
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+
+    await expect(async () => {
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--enable",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("Not authenticated"),
+    );
+  });
+
+  it("does not treat permission API authorization failures as missing metadata", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    server.use(
+      http.get(
+        "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
+        () => {
+          return HttpResponse.json(
+            { error: { message: "Forbidden", code: "FORBIDDEN" } },
+            { status: 403 },
+          );
+        },
+      ),
+    );
+
+    await expect(async () => {
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--enable",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining("403: Forbidden"),
+    );
+  });
+
+  it("rejects permission metadata for a different connector ref", async () => {
+    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    server.use(
+      http.get(
+        "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
+        () => {
+          return HttpResponse.json({
+            permissions: catalogPermissionDetail({
+              connectorRef: "github",
+              label: "GitHub",
+              permissions: [{ name: SLACK_READ_PERMISSION }],
+            }),
+          });
+        },
+      ),
+    );
+
+    await expect(async () => {
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        SLACK_READ_PERMISSION,
+        "--enable",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Permission metadata connectorRef mismatch: expected slack, got github",
+      ),
     );
   });
 

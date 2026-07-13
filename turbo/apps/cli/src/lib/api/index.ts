@@ -148,6 +148,7 @@ export {
   listZeroConnectors,
   listZeroConnectorCatalog,
   listZeroConnectorCatalogStatus,
+  getZeroConnectorCatalogPermissions,
   connectZeroConnectorManualGrant,
   listZeroCustomConnectors,
   getZeroCustomConnector,
