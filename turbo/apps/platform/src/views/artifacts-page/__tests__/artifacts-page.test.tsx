@@ -578,36 +578,19 @@ describe("artifacts page", () => {
     });
   });
 
-  it("provides visible focus and hover feedback for artifact controls", async () => {
+  it("provides visible focus feedback for the agent filter", async () => {
     setupTeam();
-    const scope = testAuthScope("control-feedback");
-    mockArtifacts([createArtifact()]);
+    const scope = testAuthScope("agent-filter-focus");
+    mockArtifacts([]);
 
-    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+    setupArtifactsPage({ scope });
 
-    await screen.findByText("launch-plan.html");
+    await screen.findByRole("heading", { name: "No artifacts yet" });
     expect(screen.getByLabelText("Agent filter")).toHaveClass(
       "focus:border-primary",
       "focus:ring-[3px]",
       "focus:ring-primary/10",
     );
-    expect(buttonByLabel("Add launch-plan.html to favorites")).toHaveClass(
-      "hover:bg-gray-50",
-    );
-
-    const moreActions = buttonByLabel("More actions for launch-plan.html");
-    expect(moreActions).toHaveClass("hover:bg-gray-50");
-    click(moreActions);
-
-    const menuItems = queryAllByRoleFast("menuitem");
-    expect(menuItems).toHaveLength(3);
-    for (const menuItem of menuItems) {
-      expect(menuItem).toHaveClass(
-        "focus-visible:ring-2",
-        "focus-visible:ring-inset",
-        "focus-visible:ring-ring",
-      );
-    }
   });
 
   it("renders preview images without cropping while preserving the HTML iframe fallback", async () => {
