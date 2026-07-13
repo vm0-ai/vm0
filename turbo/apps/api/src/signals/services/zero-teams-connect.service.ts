@@ -145,7 +145,9 @@ function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string {
-  const url = new URL(`${env("VM0_WEB_URL")}/api/zero/teams/oauth/connect`);
+  const url = new URL(
+    `${env("VM0_API_BACKEND_URL")}/api/zero/teams/oauth/connect`,
+  );
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   return url.toString();

@@ -8,7 +8,7 @@
 # go unnoticed.
 #
 # Required env:
-#   VM0_API_URL                      — preview deployment URL
+#   VM0_API_BACKEND_URL                      — preview deployment URL
 #   SLACK_SIGNING_SECRET             — shared with the preview for HMAC
 #   VERCEL_AUTOMATION_BYPASS_SECRET  — preview protection bypass
 #   E2E_RUNNER_EMAIL                 — the test user the runner job runs as
@@ -29,8 +29,8 @@ SLACK_USER_ID="U_E2E_USER_RT"
 DM_CHANNEL_ID="D_E2E_RT_${GITHUB_RUN_ID:-local}"
 
 setup_file() {
-    if [[ -z "${VM0_API_URL:-}" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "${VM0_API_BACKEND_URL:-}" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
     if [[ -z "${SLACK_SIGNING_SECRET:-}" ]]; then
         skip "SLACK_SIGNING_SECRET not set"

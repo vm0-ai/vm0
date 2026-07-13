@@ -126,21 +126,24 @@ mod tests {
     #[test]
     fn normalize_values_keeps_last_value_for_duplicate_keys() {
         let values = normalize_values(vec![
-            ("VM0_API_URL".to_string(), "user-value".to_string()),
-            ("VM0_API_URL".to_string(), "runner-value".to_string()),
+            ("VM0_API_BACKEND_URL".to_string(), "user-value".to_string()),
+            (
+                "VM0_API_BACKEND_URL".to_string(),
+                "runner-value".to_string(),
+            ),
         ]);
 
         assert_eq!(
             values
                 .iter()
-                .find(|(key, _)| key == "VM0_API_URL")
+                .find(|(key, _)| key == "VM0_API_BACKEND_URL")
                 .map(|(_, value)| value.as_str()),
             Some("runner-value")
         );
         assert_eq!(
             values
                 .iter()
-                .filter(|(key, _)| key == "VM0_API_URL")
+                .filter(|(key, _)| key == "VM0_API_BACKEND_URL")
                 .count(),
             1
         );

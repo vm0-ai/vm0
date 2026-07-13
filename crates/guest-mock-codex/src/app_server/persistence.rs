@@ -38,7 +38,7 @@ pub(super) fn persist_input_events(
                 "turn_request_sandbox_policy": context.turn_params.get("sandboxPolicy"),
                 "turn_request_client_user_message_id": context.turn_params.get("clientUserMessageId"),
                 "child_env_home": std::env::var("HOME").ok(),
-                "child_env_api_url": std::env::var("VM0_API_URL").ok(),
+                "child_env_api_url": std::env::var("VM0_API_BACKEND_URL").ok(),
                 "child_env_custom_user_env": std::env::var("CUSTOM_USER_ENV").ok(),
                 "child_env_openai_model": std::env::var("OPENAI_MODEL").ok(),
                 "child_env_openai_base_url": std::env::var("OPENAI_BASE_URL").ok(),

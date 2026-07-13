@@ -163,7 +163,7 @@ pub struct StartArgs {
     #[arg(long, short)]
     pub(crate) config: PathBuf,
     /// vm0 API URL (overrides config)
-    #[arg(long, env = "VM0_API_URL")]
+    #[arg(long, env = "VM0_API_BACKEND_URL")]
     api_url: Option<String>,
     /// Runner authentication token (overrides config)
     #[arg(long, env = "VM0_RUNNER_TOKEN")]
@@ -295,7 +295,7 @@ async fn run_start_with_home(
     // Validate required server fields
     if server.url.is_empty() {
         return Err(RunnerError::Config(
-            "server.url is required (set in config or via --api-url / VM0_API_URL)".into(),
+            "server.url is required (set in config or via --api-url / VM0_API_BACKEND_URL)".into(),
         ));
     }
     server.url = config::normalize_api_base_url(&server.url)?;

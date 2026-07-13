@@ -176,8 +176,8 @@ teardown_file() {
 # ============================================================================
 
 @test "vm0 run masks secret values in output" {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
 
     local secret_value="secret-${UNIQUE_ID}"
@@ -200,8 +200,8 @@ teardown_file() {
 }
 
 @test "vm0 run masks multiple CLI secrets in output" {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
 
     local secret1_value="secret1-${UNIQUE_ID}"

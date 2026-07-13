@@ -211,7 +211,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "zero-run-token-without-computer-use");
 
     server.use(
@@ -315,7 +315,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should print screenshot and app state file paths for get-app-state", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
@@ -389,7 +389,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send click snapshot coordinates and mouse options", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     server.use(
@@ -466,7 +466,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send click element indexes", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
@@ -550,7 +550,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send press-key snapshot id and key", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     server.use(
@@ -612,7 +612,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should send type-text snapshot id and text", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     server.use(
@@ -671,7 +671,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should call an mcp plugin tool with json arguments", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     let createBody: unknown;
@@ -736,7 +736,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should list a server's mcp tools via the reserved tools/list call", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     let createBody: unknown;
@@ -797,7 +797,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should list mcp servers reported by linked hosts", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     server.use(
@@ -838,7 +838,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should download pointer-backed screenshots through the API proxy", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("proxy-png-bytes");
@@ -904,7 +904,7 @@ describe("computer-use command visibility", () => {
   });
 
   it("should mark expired pointer screenshots in command output", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     server.use(

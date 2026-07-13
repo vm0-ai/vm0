@@ -20,7 +20,7 @@
 ///
 /// This is the only runner bootstrap key intentionally exposed to CLI child
 /// processes by the guest-agent's curated child environment.
-pub const API_URL_ENV: &str = "VM0_API_URL";
+pub const API_URL_ENV: &str = "VM0_API_BACKEND_URL";
 
 /// Stable run identifier used by guest-agent logs, telemetry, and runtime
 /// file path resolution.
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn contract_names_match_wire_values() {
-        assert_eq!(API_URL_ENV, "VM0_API_URL");
+        assert_eq!(API_URL_ENV, "VM0_API_BACKEND_URL");
         assert_eq!(RUN_ID_ENV, "VM0_RUN_ID");
         assert_eq!(CLI_AGENT_TYPE_ENV, "CLI_AGENT_TYPE");
         assert_eq!(USER_ENV_FILE_ENV, "VM0_USER_ENV_FILE");

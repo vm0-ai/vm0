@@ -4,9 +4,9 @@ import path from "node:path";
 
 dotenv.config({ path: path.join(__dirname, "../.env.local") });
 
-const apiUrl = process.env.VM0_API_URL;
+const apiUrl = process.env.VM0_API_BACKEND_URL;
 if (!apiUrl) {
-  throw new Error("VM0_API_URL environment variable is required");
+  throw new Error("VM0_API_BACKEND_URL environment variable is required");
 }
 
 type PublicService = "api" | "app" | "www";

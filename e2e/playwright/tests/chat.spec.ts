@@ -1,7 +1,7 @@
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
+const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 
 test("chat page displays tagline after onboarding", async ({ page }) => {
   await page.goto(appUrl);

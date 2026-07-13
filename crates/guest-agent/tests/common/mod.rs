@@ -580,7 +580,7 @@ pub unsafe fn setup_codex_app_server_env(
             std::env::remove_var("MOCK_CODEX_APP_SERVER_SCENARIO");
         }
         std::env::set_var("VM0_RUN_ID", config.run_id);
-        std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
+        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
@@ -706,7 +706,7 @@ pub unsafe fn setup_env(
             },
         )?;
         // Empty API token → has_api() false → no network calls.
-        std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
+        std::env::set_var("VM0_API_BACKEND_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");

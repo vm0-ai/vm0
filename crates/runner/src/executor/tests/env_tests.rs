@@ -412,7 +412,10 @@ fn build_env_json_required_keys() {
     let ctx = minimal_context();
     let env = build_env_for_test(&ctx, "https://api.example.com");
 
-    assert_eq!(env.get("VM0_API_URL").unwrap(), "https://api.example.com");
+    assert_eq!(
+        env.get("VM0_API_BACKEND_URL").unwrap(),
+        "https://api.example.com"
+    );
     assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(

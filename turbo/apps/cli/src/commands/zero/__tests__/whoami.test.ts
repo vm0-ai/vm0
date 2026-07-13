@@ -255,7 +255,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -326,7 +326,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -375,7 +375,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -418,7 +418,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -457,7 +457,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -522,7 +522,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -601,7 +601,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       const serverOnlyDetail = catalogPermissionDetail({
         connectorRef: "server-only",
@@ -681,7 +681,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -740,7 +740,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -818,7 +818,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -891,7 +891,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -966,7 +966,7 @@ describe("zero whoami command", () => {
       });
       vi.stubEnv("ZERO_AGENT_ID", "agent-123");
       vi.stubEnv("ZERO_TOKEN", token);
-      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+      vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
         http.get("http://localhost:3000/api/zero/connectors", () => {

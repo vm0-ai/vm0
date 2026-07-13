@@ -893,7 +893,7 @@ describe("zero doctor permission-deny command", () => {
     });
 
     it("should not generate any platform URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
 
       await permissionDenyCommand.parseAsync([

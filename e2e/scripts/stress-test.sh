@@ -3,7 +3,7 @@
 # Submits N concurrent jobs via `vm0 run`, waits for all to complete, and reports metrics.
 #
 # Prerequisites:
-#   - VM0_API_URL: Vercel preview URL (set in ~/.vm0/config.json via test token)
+#   - VM0_API_BACKEND_URL: Vercel preview URL (set in ~/.vm0/config.json via test token)
 #   - Agent already created via `vm0 compose`
 #
 # Usage: ./stress-test.sh <agent_name> <job_count> <prompt> <timeout_minutes> <total_capacity>

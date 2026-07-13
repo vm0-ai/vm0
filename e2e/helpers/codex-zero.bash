@@ -22,13 +22,13 @@ _codex_zero_token() {
 
 # Resolve the API base URL (matches CLI getApiUrl()).
 _codex_zero_api_url() {
-    if [[ -n "${VM0_API_URL:-}" ]]; then
-        case "$VM0_API_URL" in
-            http*) printf '%s' "$VM0_API_URL" ;;
-            *)     printf 'https://%s' "$VM0_API_URL" ;;
+    if [[ -n "${VM0_API_BACKEND_URL:-}" ]]; then
+        case "$VM0_API_BACKEND_URL" in
+            http*) printf '%s' "$VM0_API_BACKEND_URL" ;;
+            *)     printf 'https://%s' "$VM0_API_BACKEND_URL" ;;
         esac
     else
-        jq -r '.apiUrl // "https://www.vm0.ai"' "$HOME/.vm0/config.json"
+        jq -r '.apiUrl // "https://api.vm0.ai"' "$HOME/.vm0/config.json"
     fi
 }
 

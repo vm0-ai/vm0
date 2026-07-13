@@ -22,17 +22,17 @@
 load '../../helpers/setup'
 
 setup_file() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        echo "VM0_API_URL not set" >&2
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        echo "VM0_API_BACKEND_URL not set" >&2
         return 1
     fi
     # The test-oauth firewall rule matches only `{pr}.vm6.ai` hosts. If
-    # VM0_API_URL ever points elsewhere (e.g. a localhost tunnel or a
+    # VM0_API_BACKEND_URL ever points elsewhere (e.g. a localhost tunnel or a
     # different preview domain), the firewall won't match and the agent's
     # request would pass through to the origin — echo might still respond,
     # silently defeating the mid-run-refresh assertion. Fail early.
-    if [[ "$VM0_API_URL" != *.vm6.ai* ]]; then
-        echo "VM0_API_URL must be a *.vm6.ai host for the test-oauth firewall to match (got: $VM0_API_URL)" >&2
+    if [[ "$VM0_API_BACKEND_URL" != *.vm6.ai* ]]; then
+        echo "VM0_API_BACKEND_URL must be a *.vm6.ai host for the test-oauth firewall to match (got: $VM0_API_BACKEND_URL)" >&2
         return 1
     fi
 
@@ -40,7 +40,7 @@ setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export AGENT_NAME="e2e-test-oauth-${UNIQUE_ID}"
     export ARTIFACT_NAME="e2e-test-oauth-artifact-${UNIQUE_ID}"
-    export TEST_OAUTH_PROVIDER_URL="${VM0_API_URL/-www./-api.}"
+    export TEST_OAUTH_PROVIDER_URL="${VM0_API_BACKEND_URL/-www./-api.}"
 
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
@@ -119,7 +119,7 @@ EOF
 
     local response http_code resp_body
     response=$(curl "${curl_args[@]}" \
-        "${VM0_API_URL}/api/cli/auth/test-enable-connector?email=${encoded_email}")
+        "${VM0_API_BACKEND_URL}/api/cli/auth/test-enable-connector?email=${encoded_email}")
     http_code=$(echo "$response" | tail -n1)
     resp_body=$(echo "$response" | head -n-1)
 
@@ -205,7 +205,7 @@ seed_test_oauth_connector() {
 
     local response http_code resp_body
     response=$(curl "${curl_args[@]}" \
-        "${VM0_API_URL}/api/cli/auth/test-connector?email=${encoded_email}")
+        "${VM0_API_BACKEND_URL}/api/cli/auth/test-connector?email=${encoded_email}")
     http_code=$(echo "$response" | tail -n1)
     resp_body=$(echo "$response" | head -n-1)
 

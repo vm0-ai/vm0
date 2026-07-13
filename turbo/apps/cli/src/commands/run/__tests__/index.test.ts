@@ -88,7 +88,7 @@ describe("run command", () => {
     // Disable chalk colors for deterministic console output assertions
     chalk.level = 0;
     // Use environment variables for config instead of mocking the module
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
 
     // Default handlers for most tests

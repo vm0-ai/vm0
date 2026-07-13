@@ -40,12 +40,14 @@ export interface TeamsConnectFixture {
 
 export function setupTeamsConnectTestEnv(
   appUrl = "https://app.vm0.test",
+  apiBackendUrl = "https://api.vm0.test",
 ): void {
   clearTeamsBotAuthCacheForTest();
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   mockEnv("MICROSOFT_TEAMS_APP_TENANT_ID", TEAMS_APP_TENANT_ID);
   mockEnv("APP_URL", appUrl);
   mockEnv("VM0_WEB_URL", appUrl);
+  mockEnv("VM0_API_BACKEND_URL", apiBackendUrl);
 }
 
 export function teamsConnectFixture(

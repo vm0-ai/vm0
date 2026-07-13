@@ -39,7 +39,7 @@ describe("zero org list command", () => {
 
   beforeEach(async () => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     const cliJwt = buildFakeCliJwt({
       scope: "cli",
       orgId: "my-org",

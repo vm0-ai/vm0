@@ -53,7 +53,7 @@ export function verifyTelegramBotAvatarUrlSignature(params: {
 
 export function buildTelegramBotAvatarUrl(botId: string): string {
   const secretsKey = env("SECRETS_ENCRYPTION_KEY");
-  const apiUrl = env("VM0_API_URL");
+  const webUrl = env("VM0_WEB_URL");
   const path = `/api/integrations/telegram/${encodeURIComponent(botId)}/avatar`;
   const expiresAt = Math.floor(now() / 1000) + AVATAR_URL_TTL_SECONDS;
   const signature = computeAvatarHmacSignature(botId, secretsKey, expiresAt);
@@ -62,8 +62,8 @@ export function buildTelegramBotAvatarUrl(botId: string): string {
     sig: signature,
   });
   const signedPath = `${path}?${query.toString()}`;
-  if (!apiUrl) {
+  if (!webUrl) {
     return signedPath;
   }
-  return `${trimTrailingSlash(apiUrl)}${signedPath}`;
+  return `${trimTrailingSlash(webUrl)}${signedPath}`;
 }
