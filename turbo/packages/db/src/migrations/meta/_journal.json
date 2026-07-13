@@ -4047,6 +4047,13 @@
       "when": 1783907531076,
       "tag": "0577_early_phantom_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 578,
+      "version": "7",
+      "when": 1783922671040,
+      "tag": "0578_remove_unsupported_connectors",
+      "breakpoints": true
     }
   ]
 }
