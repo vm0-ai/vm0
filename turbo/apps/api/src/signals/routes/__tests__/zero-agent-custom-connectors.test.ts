@@ -9,11 +9,11 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const connectors = createConnectorBddApi(context);
 
 function currentSecond(): number {

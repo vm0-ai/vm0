@@ -12,7 +12,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   deleteFeatureSwitchesForUser,
@@ -35,7 +35,7 @@ import {
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {

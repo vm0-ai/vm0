@@ -10,7 +10,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createBddApi } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -63,7 +63,7 @@ function headers(
 
 async function seedGoalApiFixture(): Promise<GoalApiFixture> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const chat = createChatFilesBddApi(context);
   const actor = bdd.user();
   if (!actor.orgId) {

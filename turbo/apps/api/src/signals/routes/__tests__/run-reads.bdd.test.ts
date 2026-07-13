@@ -20,7 +20,7 @@ import {
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -45,7 +45,7 @@ const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const reads = createRunReadsApi(context);
 

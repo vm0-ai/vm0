@@ -10,7 +10,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createEmailApi } from "./helpers/api-bdd-email";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /**
  * helper gap:
@@ -25,13 +25,6 @@ import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
  * - RUN-04 persisted runner log ingestion needs callback/event API helpers.
  *   Checkpoint creation through the sandbox webhook is covered by
  *   run-lifecycle.bdd.test.ts; missing-run GET boundaries stay here.
- * - SCHED-01 has no standalone read-by-name route; schedule list is used as
- *   the visible read surface for create, update, enable, disable, and delete.
- * - CHAIN-SCHEDULE cron execution returns global counts only and does not
- *   expose created run ids; run identity is read through the org run queue
- *   (queued runs) and the schedule thread's user messages (executed runs),
- *   which expose the runId. Cron count fields are never asserted strictly
- *   because the cron processes due schedules across all organizations.
  * - SCHED-02 sync-skills valid-path coverage needs a focused external GitHub
  *   tarball/S3 helper; this file keeps shared cron auth rejection route-based
  *   without running valid global sweeps from the wrong owner file.
@@ -46,11 +39,11 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
   bdd.acceptAgentStorageWrites();
   const agent = await bdd.createAgent(actor, {
     displayName: "BDD run agent",
-    description: "Exercises run and schedule API integration tests.",
+    description: "Exercises run and cron API integration tests.",
     visibility: "private",
   });
 
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   await api.ensureOrgModelProvider(actor);
 
   return { agentId: agent.agentId };
@@ -59,7 +52,7 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
 describe("RUN-01: run creation admission and validation", () => {
   it("rejects invalid or unauthorized run creation requests through API validation", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const actor = bdd.user();
 
     const unauthenticated = await api.requestCreateRun(
@@ -124,7 +117,7 @@ describe("RUN-01: run creation admission and validation", () => {
 describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", () => {
   it("sets up run prerequisites through APIs and exposes the no-credit admission boundary", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const actor = bdd.user();
     const { agentId } = await createAgentWithModelProvider(actor);
 
@@ -168,7 +161,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
   });
 
   it("keeps official runner held-session heartbeat and empty polling visible through public endpoints", async () => {
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const runnerGroup = api.configureRunnerGroup();
     const heldSessionStates = [
       {
@@ -202,7 +195,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("keeps missing run detail and context hidden for another organization", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const outsider = bdd.user();
     const missingRunId = randomUUID();
 
@@ -221,7 +214,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("rejects runner metadata reads and job claims at unauthenticated, malformed, and missing boundaries", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const actor = bdd.user();
     const missingRunId = randomUUID();
     const invalidRunId = "not-a-run-id";
@@ -277,7 +270,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
   it("rejects malformed and unauthenticated runner, queue, read, context, and cancel requests", async () => {
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const actor = bdd.user();
     const missingRunId = randomUUID();
     const invalidRunId = "not-a-run-id";
@@ -363,7 +356,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
   });
 
   it("issues runner realtime tokens only for authenticated vm0 runner groups", async () => {
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
 
     const unauthenticated = await api.requestRunnerRealtimeToken(
       false,
@@ -419,15 +412,13 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
   });
 });
 
-// The SCHED-01/SCHED-02-execution/HOOK-01/AUTOMATIONS-01 lifecycle chains
-// were removed with the automation -> workflow cutover (#19959), and the
-// legacy scheduling system itself (poller, cron route, mutating API) was
-// deleted in #20100. Equivalent scheduling coverage lives in
-// zero-workflow-triggers.test.ts / zero-workflow-trigger-scheduler tests.
+// Workflow schedule lifecycle and execution coverage lives in
+// zero-workflow-triggers.test.ts and zero-workflow-trigger-scheduler.test.ts.
+// This file retains shared cron authorization and email outbox boundaries.
 
 describe("SCHED-02: cron routes", () => {
   it("rejects invalid cron auth on shared cron routes", async () => {
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
 
     const invalidCronRoutes = await api.requestSharedCronRoutesWithoutAuth();
     expect(

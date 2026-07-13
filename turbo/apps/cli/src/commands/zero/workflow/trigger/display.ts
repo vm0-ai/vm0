@@ -3,7 +3,7 @@ import type {
   GmailNewMessageEventConfig,
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { formatRelativeTime } from "../../../../lib/domain/schedule-utils";
+import { formatRelativeTime } from "../../../../lib/domain/relative-time";
 import { formatDurationSeconds } from "../../shared/duration";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;

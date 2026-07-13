@@ -15,12 +15,12 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   deleteVm0ManagedDefaultModelKey,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
-} from "./helpers/automations";
+} from "./helpers/runtime-state";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   generatedStripeCustomerId,
@@ -70,7 +70,7 @@ async function vm0AllowanceActor(args: {
 }> {
   await seedVm0ManagedDefaultModelKey();
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   const orgId = actor.orgId;
   if (!orgId) {
@@ -138,7 +138,7 @@ async function createVm0Run(
   agentId: string,
   prompt: string,
 ): Promise<{ readonly runId: string }> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   return await api.createRun(actor, {
     agentId,
     prompt,
@@ -152,7 +152,7 @@ async function recordPendingUsage(args: {
   readonly provider: string;
   readonly quantity: number;
 }): Promise<void> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const webhooks = createWebhookCallbackApi(context);
   await seedUsagePricingRows([
     {
@@ -188,7 +188,7 @@ async function processUsageEvents(): Promise<void> {
 }
 
 async function readOrgCredits(actor: ApiTestUser): Promise<number> {
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const status = await api.readBillingStatus(actor);
   return status.credits;
 }
@@ -405,7 +405,7 @@ describe("Usage Allowance", () => {
       credits: 0,
       allowance: { shortWindowUnits: 1, weeklyWindowUnits: 1 },
     });
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const firstRun = await createVm0Run(
       actor,
       agentId,
@@ -439,7 +439,7 @@ describe("Usage Allowance", () => {
       credits: 0,
       allowance: { shortWindowUnits: 2, weeklyWindowUnits: 2 },
     });
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const run = await createVm0Run(actor, agentId, "billable firewall lease");
     const client = setupApp({ context })(webhookFirewallAuthContract);
     const headers = {
@@ -473,7 +473,7 @@ describe("Usage Allowance", () => {
     // A non-vm0 run never activates allowance windows, so settlement must
     // charge org credits in full even though an active entitlement exists.
     const bdd = createBddApi(context);
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const actor = bdd.user();
     const orgId = actor.orgId;
     if (!orgId) {
@@ -520,7 +520,7 @@ describe("Usage Allowance", () => {
     });
     await createVm0Run(actor, agentId, "activate allowance windows");
 
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
     await api.ensureOrgModelProvider(actor);
@@ -633,7 +633,7 @@ describe("Usage Allowance", () => {
 
   it("denies billable firewall auth when the run has no allowance window", async () => {
     const { actor, orgId, agentId } = await vm0AllowanceActor({ credits: 100 });
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     // The run predates the entitlement, so it has no allowance windows.
     const run = await createVm0Run(actor, agentId, "run without windows");
     await seedAllowanceEntitlement(actor, orgId, {

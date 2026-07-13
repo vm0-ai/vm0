@@ -11,13 +11,13 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const billing = createBillingMediaApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatApi = createChatFilesBddApi(context);

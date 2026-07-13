@@ -8,13 +8,13 @@ import { clearMockNow, mockNow, nowDate } from "../../../lib/time";
 import { seedUsagePricingRows } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const billing = createBillingMediaApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);

@@ -1,22 +1,22 @@
 import type {
-  TestAutomationsStateActionBody,
-  TestAutomationsStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-automations-state";
+  TestRuntimeStateActionBody,
+  TestRuntimeStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-runtime-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import type { TestContext } from "../../../../__tests__/test-context";
-import { testAutomationsStateRoutes } from "../../test-automations-state";
+import { testRuntimeStateRoutes } from "../../test-runtime-state";
 
-const AUTOMATIONS_STATE_ROUTE = "/api/test/automations-state";
+const RUNTIME_STATE_ROUTE = "/api/test/runtime-state";
 
-function requestAutomationsState(
+function requestRuntimeState(
   context: TestContext,
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: testAutomationsStateRoutes,
+    routes: testRuntimeStateRoutes,
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -34,19 +34,19 @@ function expectOk(response: Response, operation: string): void {
 
 async function postAction(
   context: TestContext,
-  body: TestAutomationsStateActionBody,
-): Promise<TestAutomationsStateActionResponse> {
-  const response = await requestAutomationsState(
+  body: TestRuntimeStateActionBody,
+): Promise<TestRuntimeStateActionResponse> {
+  const response = await requestRuntimeState(
     context,
-    `${AUTOMATIONS_STATE_ROUTE}/action`,
+    `${RUNTIME_STATE_ROUTE}/action`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     },
   );
-  await expectOk(response, `automations action ${body.action}`);
-  return await readJson<TestAutomationsStateActionResponse>(response);
+  await expectOk(response, `runtime state action ${body.action}`);
+  return await readJson<TestRuntimeStateActionResponse>(response);
 }
 
 export async function seedVm0ManagedDefaultModelKey(
@@ -81,19 +81,15 @@ export async function deleteVm0ManagedDefaultModelKey(
   await postAction(context, { action: "delete-vm0-managed-default-model-key" });
 }
 
-export async function enableAutomationsFakeKms(
-  context: TestContext,
-): Promise<void> {
+export async function enableFakeKms(context: TestContext): Promise<void> {
   await postAction(context, { action: "enable-fake-kms" });
 }
 
-export async function resetAutomationsFakeKms(
-  context: TestContext,
-): Promise<void> {
+export async function resetFakeKms(context: TestContext): Promise<void> {
   await postAction(context, { action: "reset-fake-kms" });
 }
 
-export async function readAutomationsFakeKmsDecryptCallCount(
+export async function readFakeKmsDecryptCallCount(
   context: TestContext,
 ): Promise<number> {
   const response = await postAction(context, { action: "read-fake-kms-state" });

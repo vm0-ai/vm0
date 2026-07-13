@@ -25,7 +25,7 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -1547,7 +1547,7 @@ function sttFormData(
 describe("FILE-02: audio transcription v1 provider contract", () => {
   it("transcribes raw PCM through OpenAI behind the feature switch with the WAV byte contract", async () => {
     const { api, admin } = testActors();
-    const runsApi = createRunsAutomationsApi(context);
+    const runsApi = createRunsApi(context);
     await runsApi.grantProEntitlement(admin);
     const authApi = createAuthOrgAgentsBddApi(context);
     const apiKey = await authApi.createApiKey(admin, {
@@ -1629,7 +1629,7 @@ describe("FILE-02: audio transcription v1 provider contract", () => {
     if (!admin.orgId) {
       throw new Error("Expected STT duration test user to have an org");
     }
-    const runsApi = createRunsAutomationsApi(context);
+    const runsApi = createRunsApi(context);
     await runsApi.grantProEntitlement(admin);
 
     mockEnv("BYTEPLUS_STT_API_KEY", "test-byteplus-stt-key");

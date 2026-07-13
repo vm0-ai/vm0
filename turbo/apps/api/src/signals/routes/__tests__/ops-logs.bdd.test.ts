@@ -18,7 +18,7 @@ import {
 } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -32,7 +32,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
  * it from any other test file would race this file's far-past observation
  * windows on the shared database — the same single-file-ownership rule as the
  * email drain / billing reconcile / screenshot cleanup crons (see the shared
- * cron auth helper in helpers/api-bdd-runs-automations.ts).
+ * cron auth helper in helpers/api-bdd-runs.ts).
  *
  * Shared-DB time design: the model-stats chain derives a random far-past UTC
  * day (2003-2009) per run and asserts rankings as baseline+delta, so leftovers
@@ -68,7 +68,7 @@ async function entitledRunActor(): Promise<{
   readonly agentId: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -293,7 +293,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
   it("aggregates sandbox model observations into public rankings and applies retention", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const model = "claude-sonnet-4-6";
 
@@ -509,7 +509,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 describe("OPS-01: run log search via /api/logs/search", () => {
   it("searches run logs with keyword, context, filters, and pagination through the api", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
     const created = await runs.createRun(actor, {
       agentId,
@@ -740,7 +740,7 @@ describe("OPS-01: run log search via /api/logs/search", () => {
 
   it("scopes log search to the caller's organization runs", async () => {
     const api = createOpsLogsApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const first = await entitledRunActor();
     const firstRun = await runs.createRun(first.actor, {
       agentId: first.agentId,
@@ -1085,7 +1085,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 6);
@@ -1186,7 +1186,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 6, 30);
@@ -1287,7 +1287,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 7);
@@ -1369,7 +1369,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 7, 30);
@@ -1451,7 +1451,7 @@ describe("OPS-01: user data export", () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);
     const misc = createMiscRoutesApi(context);
-    const runs = createRunsAutomationsApi(context);
+    const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const actor = bdd.user();
     const exportStartAt = Date.UTC(2026, 4, 12, 8);

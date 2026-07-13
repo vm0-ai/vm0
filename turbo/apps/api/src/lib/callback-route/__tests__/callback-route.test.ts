@@ -8,7 +8,7 @@ import { computeHmacSignature } from "../../event-consumer/hmac";
 import { now } from "../../time";
 import { seedAgentRunCallback$ } from "../../../signals/routes/__tests__/helpers/agent-run-callback";
 import { createBddApi } from "../../../signals/routes/__tests__/helpers/api-bdd";
-import { createRunsAutomationsApi } from "../../../signals/routes/__tests__/helpers/api-bdd-runs-automations";
+import { createRunsApi } from "../../../signals/routes/__tests__/helpers/api-bdd-runs";
 import type { RouteEntry } from "../../../signals/route-entry";
 
 import { callbackPayload$, callbackRoute } from "../callback-route";
@@ -64,7 +64,7 @@ async function seedCallback(): Promise<{
   callbackId: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();

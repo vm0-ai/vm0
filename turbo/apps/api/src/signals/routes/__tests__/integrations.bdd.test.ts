@@ -18,7 +18,7 @@ import {
   createBddIntegrationApi,
   telegramLoginAuth,
 } from "./helpers/api-bdd-integrations";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
@@ -37,7 +37,7 @@ helper gap:
 const context = testContext();
 const bdd = createBddApi(context);
 const integrations = createBddIntegrationApi(context);
-const runs = createRunsAutomationsApi(context);
+const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const TELEGRAM_BOT_ID = 99_887_766;
 const TELEGRAM_BOT_TOKEN = `${TELEGRAM_BOT_ID}:bdd-token`;

@@ -14,7 +14,7 @@ import { mockEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -24,7 +24,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";

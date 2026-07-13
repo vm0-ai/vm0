@@ -18,7 +18,7 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   createWorkflowsBddApi,
@@ -33,7 +33,7 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const gh = createGithubBddApi(context);
-const runs = createRunsAutomationsApi(context);
+const runs = createRunsApi(context);
 const webhookCallbacks = createWebhookCallbackApi(context);
 
 function authHeaders() {

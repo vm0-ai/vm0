@@ -20,7 +20,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { mockNow, nowDate } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
 
@@ -239,7 +239,7 @@ async function entitledRunActor(): Promise<{
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
-  const api = createRunsAutomationsApi(context);
+  const api = createRunsApi(context);
   const actor = bdd.user();
   bdd.acceptAgentStorageWrites();
   api.acceptStorageDownloads();
@@ -303,7 +303,7 @@ beforeEach(() => {
 
 describe("system storage presigned URL cache", () => {
   it("reuses cached system-owned storage URLs across Zero runs", async () => {
-    const api = createRunsAutomationsApi(context);
+    const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     mockUniquePresignedUrls();
     const skill = isolatedSystemSkillStorage();

@@ -293,7 +293,7 @@ Static result: the `tests-no-setup-app` roots split from `12 clean / 42 dirty`
 after experiment 16 to `27 clean / 27 dirty` after this experiment. All direct
 `app-factory.ts` imports in that set are gone; the remaining dirty roots are
 through BDD helper modules, primarily `api-bdd-webhooks.ts`,
-`api-bdd-runs-automations.ts`, `api-bdd-github.ts`, `api-bdd-misc.ts`,
+`api-bdd-runs.ts`, `api-bdd-github.ts`, `api-bdd-misc.ts`,
 `api-bdd-connectors.ts`, `api-bdd-storages.ts`, `api-bdd-chat-files.ts`, and
 `api-bdd-user-config.ts`.
 
@@ -319,7 +319,7 @@ Change: migrate `zero-email.test.ts` from raw `createApp` to
 ### 19. Inline runner route helpers in Slack dispatch probe test
 
 Change: remove `test-slack-dispatch-probe.test.ts`'s dependency on the broad
-`api-bdd-runs-automations` helper. Add two local strict contract clients for
+`api-bdd-runs` helper. Add two local strict contract clients for
 `runnersHeartbeatContract` and `runnersJobClaimContract`, both backed by
 `runnersRoutes`.
 
@@ -361,7 +361,7 @@ Results:
 Static result: the `tests-no-setup-app` split improved from
 `28 clean / 26 dirty` to `29 clean / 25 dirty`. The remaining dirty roots are
 still concentrated in BDD helper modules, especially `api-bdd-webhooks.ts`,
-`api-bdd-runs-automations.ts`, `api-bdd-github.ts`, `api-bdd-misc.ts`,
+`api-bdd-runs.ts`, `api-bdd-github.ts`, `api-bdd-misc.ts`,
 `api-bdd-connectors.ts`, `api-bdd-storages.ts`, and `api-bdd-chat-files.ts`.
 
 Conclusion: this is safe to keep, but it is a wider route slice than the
@@ -369,10 +369,10 @@ direct-route tests. It increases the passing pure-context chunk by one root and
 about `62 MiB` versus the 28-root run, while the full 54-root test chunk remains
 blocked by the remaining BDD helpers.
 
-### 21. Storage, compose, and runs-automation BDD helper route slices
+### 21. Storage, compose, and runs BDD helper route slices
 
 Change: migrate `api-bdd-storages.ts`, `api-bdd-composes.ts`, and
-`api-bdd-runs-automations.ts` from default `setupApp` / `createApp` to strict
+`api-bdd-runs.ts` from default `setupApp` / `createApp` to strict
 `setupAppWithRoutes` / `createAppWithRoutes` backed by explicit real route
 arrays. Also split pure helper code out of broad BDD helpers:
 `storageTextFile` now lives in `api-bdd-storage-files.ts`, and

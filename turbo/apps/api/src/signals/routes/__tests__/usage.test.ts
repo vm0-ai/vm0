@@ -7,13 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
 

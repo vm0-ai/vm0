@@ -57,7 +57,7 @@ interface BearerCredential {
 /**
  * Session actor (Clerk mocks set on use) or a raw bearer token minted through
  * the API (PAT) or the test token signers (sandbox/zero). Precedent:
- * api-bdd-runs-automations' raw-bearer run creation.
+ * api-bdd-runs' raw-bearer run creation.
  */
 type Credential = ApiTestUser | BearerCredential;
 

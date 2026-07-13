@@ -14,12 +14,12 @@ import {
 } from "./helpers/zero-integrations-slack";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const store = createStore();
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const composes = createComposesBddApi(context);
 
 function zeroToken(args: {

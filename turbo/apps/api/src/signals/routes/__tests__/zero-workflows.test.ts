@@ -20,7 +20,7 @@ import {
   type ApiTestUser,
   type ApiTestUserOptions,
 } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
@@ -35,7 +35,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const miscApi = createMiscRoutesApi(context);
 const mocks = createZeroRouteMocks(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const connectorApi = createConnectorBddApi(context);
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";

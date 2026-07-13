@@ -8,7 +8,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
 helper gap:
@@ -26,7 +26,7 @@ helper gap:
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const bdd = createBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const DEFAULT_AGENT_AVATAR_URL = "svg:r1s0h1c5f4h";
 
 function shortId(): string {

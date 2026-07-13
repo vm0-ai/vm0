@@ -16,7 +16,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -24,7 +24,7 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const github = createGithubBddApi(context);
 const bdd = createBddApi(context);
-const api = createRunsAutomationsApi(context);
+const api = createRunsApi(context);
 const composes = createComposesBddApi(context);
 
 interface GitHubFileFixture {

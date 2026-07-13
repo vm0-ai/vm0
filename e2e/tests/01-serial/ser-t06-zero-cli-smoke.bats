@@ -4,12 +4,14 @@
 
 load '../../helpers/setup'
 
-@test "zero --help shows automation, agent, org commands" {
+@test "zero --help shows workflow, agent, org commands" {
     run $ZERO_CLI --help
     assert_success
-    assert_output --partial "automation"
+    assert_output --partial "workflow"
     assert_output --partial "agent"
     assert_output --partial "org"
+    refute_output --partial "  automation"
+    refute_output --partial "  schedule"
 }
 
 @test "zero --help does not show hidden or vm0-only commands" {
@@ -32,10 +34,16 @@ load '../../helpers/setup'
     assert_success
 }
 
-@test "zero automation prints the removal stub and fails" {
+@test "zero automation is an unknown command" {
     run $ZERO_CLI automation list
     assert_failure
-    assert_output --partial "zero workflow"
+    assert_output --partial "unknown command 'automation'"
+}
+
+@test "zero schedule is an unknown command" {
+    run $ZERO_CLI schedule list
+    assert_failure
+    assert_output --partial "unknown command 'schedule'"
 }
 
 @test "zero workflow list returns successfully" {

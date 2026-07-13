@@ -20,14 +20,14 @@ import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const MODEL_POLICIES_PATH = "/api/zero/model-policies";
 
 function currentSecond(): number {
