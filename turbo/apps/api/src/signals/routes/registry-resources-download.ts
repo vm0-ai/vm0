@@ -29,6 +29,7 @@ type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 interface PrivateRegistryResourceArchive {
   readonly storageName: string;
   readonly versionId: string;
+  readonly sha256: string;
 }
 
 const DOWNLOAD_URL_TTL_SECONDS = 900;
@@ -156,20 +157,123 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "0a87c99afe9cf24424aa1a1740a57cc3698e43f3c571b8ef1fd4560192f38746",
 } as const satisfies Record<string, string>;
 
+// Keep the default archive version for already released CLIs. Newer CLIs opt
+// into these refreshed presentation packages by sending their expected digest.
+// This prevents a backend-only deployment from breaking existing CLI users.
+const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
+  "template:html-ppt-blueprint-academy-runbook": {
+    d6f16dff7c2f7830b71a3d6ed3fd228f1de7a29fa7795e2a31afb9fc841a0f72:
+      "04d537e1a2dce0874d8be914e90884b756a0f14e30589b6e805b23110d3c698e",
+  },
+  "template:html-ppt-botane-organic-runbook": {
+    "052c937dc4a9c6e7c528265d86210c15488b19710d22437b25fb1710853c8a6f":
+      "28ad523a1663716dfe740d9c4b37160a386fd40f78fc61597b35be9c348fe023",
+  },
+  "template:html-ppt-business-data-runbook": {
+    c3ca2128d7dbfb2e683bb0386d5335505c1f540160481da1c97aae9ff52a15ac:
+      "edbb8ebe65957687641e1a573b64ad49dc6a9de462c4e46d510d154c5eb60f19",
+  },
+  "template:html-ppt-crayon-runbook": {
+    "1e698ca42b7a36dfa8a1ed6f45c2b25181bf1058c91207b934612a73701fae70":
+      "c8d9c8f02e70819968fb78c04a70a6e537601e9a86667fd57b3cba4e8825efb4",
+  },
+  "template:html-ppt-creative-agency-runbook": {
+    "7c3b33353bd22b2a6dc0c50c7ed9d3d97b159199ad30aa61b2abeb46a931b6ec":
+      "ce79d73e31cb5acbfe55479e8c1629ba68f7548b477709d98057ee8675b26867",
+  },
+  "template:html-ppt-data-report-runbook": {
+    "11747371adb6561e25cd4c3095caf62f52840c4ee625d234478f7631b746a9b3":
+      "63302cec8a67a5179c9ba6309f267a62f4ee15b3e8403a5515821d23916c40c2",
+  },
+  "template:html-ppt-editorial-magazine-runbook": {
+    d1ae6492925d2e9ed7cc0acc1684c33fea6613b6bef34b21aa228f01fc76c5d7:
+      "cc0fd39023d6f920ae5dcae7a2dce3c176d1fd34392b35818f5bd2677e81f874",
+  },
+  "template:html-ppt-landing-consulting-runbook": {
+    "3b2fa8e03ebe9bdd8397bfa4fdf526e9f10b11d2b1676829f7b32eeaa8336cf8":
+      "e027d3b085d2151bb72bd4b3f535dfa1130fb00321e15821d3125eadad22bffa",
+  },
+  "template:html-ppt-lumina-runbook": {
+    "38ae1652ababd62fbb2dcbc612a7a9458dae0b88283e09b34d113882f94ca063":
+      "f36f3076811cf916762b1a24f9e44a209a0daa58efad275f5da32ed5dae700cc",
+  },
+  "template:html-ppt-meridian-runbook": {
+    "6d31c74008ea8f854da929edb135ecbc8410dc3790e9c5ff8d43681029c1ecff":
+      "b1af398afe34a0625f0fd08e97444ac77c26ffb218ec62c315fe338558fb9133",
+  },
+  "template:html-ppt-mosaic-geometric-runbook": {
+    e9e489d2bcd817968c30ebae6b41513e3e175c58fd7a1db36351918ff45e1576:
+      "8e2ec2d02439606a525c36257db38c32d026953d75f9fd55c64fbaef482fe8ea",
+  },
+  "template:html-ppt-neo-brutalism-runbook": {
+    "70ca020b00cd79abdb471e3145f2bd706c1a2978fdd5870e372565033f3a4ead":
+      "6b3fb7b9eabb60d76d37f40b86a71f95682fcbca08ce1c331f899f6e72c95239",
+  },
+  "template:html-ppt-nocturne-runbook": {
+    efd5031c618ea76fa20d460f583c69c086459a965e006e38ef189390fe1692a6:
+      "eab50c15e578fce0dabdbbd1b2de11fa1c1b36596622157f7f142d8d2212c9cd",
+  },
+  "template:html-ppt-pixel-glitch-runbook": {
+    bf3f5312f2281490f592c8d1c02477e57632299ea93b9e3eef65fe1dc2236e29:
+      "958d5fe6f53598ff3cb920fe6dd91433b16a4eb5cbfb10fb179ae98b15765cce",
+  },
+  "template:html-ppt-playful-launch-runbook": {
+    "9c7524540e98a3605b71a35c918d1a186d9599f34f9e67aa8c86c457dc6b4582":
+      "6bbcb6decd53b667eb4aae4f79b05b10eb487fd83496265105d5b4c47542c9aa",
+  },
+  "template:html-ppt-playful-pop-runbook": {
+    "1c84b4a0df81a8ca169ac30a589410b8d846af5900c38d08fb77688b2556a565":
+      "9625d8a2ba670cbeac3be21469c07ca90841c1d45defc0c1de674cf2e1e3d7f8",
+  },
+  "template:html-ppt-prospectus-runbook": {
+    "0dc2b86b15970312003f6a60a90b03c47729870a38f85ae79c89547cd1cb485d":
+      "a6ec614912182e6ace467ff0c96036f263cab8030d01146b414af5996e9f278c",
+  },
+  "template:html-ppt-schoolhouse-runbook": {
+    bb3e49899d1bcd24b1e88ba8566a9ddd09039502fb51becffcd9f35051463e63:
+      "d792e4b858ac0ffeb0e0f4073730453d9753c9e654bdc671f7b2e94d6a40bd17",
+  },
+  "template:html-ppt-sticker-scrapbook-runbook": {
+    f59e1ee3e70b6ca220e584bf230749ef8768941fcdf7873f4704d6f02ad72c73:
+      "1e0571aa497862d02c00067875cf213ee1b3c4b7d34b78877f21bf66e1dd54b3",
+  },
+  "template:html-ppt-strata-runbook": {
+    c91074decc1642d5c17644aa2aac43702dc727220046807e8f29db1eb47bd450:
+      "358d4479fb2bb312a0dad0eb4a9f4b9fdae1037e2f46554535ce8425b12a3cd0",
+  },
+  "template:html-ppt-taped-consulting-runbook": {
+    "7b05540c82b410abd1f236ef8a42ff53601489a4a8531413983830d42cec614b":
+      "f80b9966e449e3e0c07bf6f7d21c73c09f164fd2e144fdbb61c9aa59f2e138c6",
+  },
+  "template:html-ppt-vantage-runbook": {
+    "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed":
+      "0172780a5797b6162eeb081390042289b80bcdc4ecf237142d3c89b830160381",
+  },
+} as const satisfies Record<string, Record<string, string>>;
+
 function privateRegistryResourceArchive(
   id: string,
+  expectedSha256: string | undefined,
+  defaultSha256: string,
 ): PrivateRegistryResourceArchive | undefined {
-  const versionId =
+  const defaultVersionId =
     PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS[
       id as keyof typeof PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS
     ];
-  if (!versionId) {
+  if (!defaultVersionId) {
     return undefined;
   }
 
+  const requestedVersionId = expectedSha256
+    ? PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256[
+        id as keyof typeof PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256
+      ]?.[expectedSha256]
+    : undefined;
+
   return {
     storageName: `registry-resource@${id}`,
-    versionId,
+    versionId: requestedVersionId ?? defaultVersionId,
+    sha256: requestedVersionId ? expectedSha256 : defaultSha256,
   };
 }
 
@@ -193,15 +297,19 @@ function archiveFilename(id: string): string {
 
 const downloadRegistryResourceInner$ = computed(async (get) => {
   const query = get(queryOf(registryResourceDownloadContract.download));
-  const privateArchive = privateRegistryResourceArchive(query.id);
-  if (!privateArchive) {
-    return notFound(`Registry resource "${query.id}" is not private-pullable`);
-  }
-
   const entry = findRegistryResource(query.id);
   const archive = entry?.source.archive;
   if (!entry || !archive) {
     return notFound(`Registry resource "${query.id}" has no archive source`);
+  }
+
+  const privateArchive = privateRegistryResourceArchive(
+    query.id,
+    query.expectedSha256,
+    archive.sha256,
+  );
+  if (!privateArchive) {
+    return notFound(`Registry resource "${query.id}" is not private-pullable`);
   }
 
   const db = get(db$);
@@ -247,7 +355,7 @@ const downloadRegistryResourceInner$ = computed(async (get) => {
       url,
       id: entry.id,
       type: archive.type,
-      sha256: archive.sha256,
+      sha256: privateArchive.sha256,
       expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
       versionId: privateArchive.versionId,
       fileCount: version.fileCount,
