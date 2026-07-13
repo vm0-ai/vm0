@@ -38,11 +38,20 @@ export const secretResponseSchema = z.object({
 
 export type SecretResponse = z.infer<typeof secretResponseSchema>;
 
+const secretListItemResponseSchema = secretResponseSchema.extend({
+  connectorDisplay: z
+    .object({
+      label: z.string(),
+      environmentNames: z.array(z.string()),
+    })
+    .nullable(),
+});
+
 /**
  * List secrets response
  */
 export const secretListResponseSchema = z.object({
-  secrets: z.array(secretResponseSchema),
+  secrets: z.array(secretListItemResponseSchema),
 });
 
 export type SecretListResponse = z.infer<typeof secretListResponseSchema>;
