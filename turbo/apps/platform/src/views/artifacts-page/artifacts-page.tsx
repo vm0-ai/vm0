@@ -349,7 +349,10 @@ function ArtifactsToolbar({
             onAgentChange(value === "all" ? null : value);
           }}
         >
-          <SelectTrigger aria-label="Agent filter" className="w-full sm:w-52">
+          <SelectTrigger
+            aria-label="Agent filter"
+            className="w-full transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 sm:w-52"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
