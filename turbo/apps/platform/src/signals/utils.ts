@@ -456,13 +456,7 @@ export function onDomEventFn<T>(callback: (e: T) => void | Promise<void>) {
 
 export function onRef<T extends HTMLElement | SVGSVGElement>(
   command$: Command<void | Promise<void>, [T, AbortSignal]>,
-  cleanup?: {
-    command: Command<void | Promise<void>, [T, AbortSignal]>;
-    description: string;
-    timeoutMs: number;
-  },
 ) {
-  const cleanupCommand$ = cleanup?.command;
   return command(({ set }, el: T | null) => {
     if (!el) {
       return;
@@ -474,14 +468,6 @@ export function onRef<T extends HTMLElement | SVGSVGElement>(
 
     return () => {
       ctrl.abort();
-      if (cleanup && cleanupCommand$) {
-        detach(
-          // eslint-disable-next-line ccstate/no-accessor-escape -- onRef owns the store-bound ref cleanup lifecycle.
-          set(cleanupCommand$, el, AbortSignal.timeout(cleanup.timeoutMs)),
-          Reason.DomCallback,
-          cleanup.description,
-        );
-      }
     };
   });
 }

@@ -3578,6 +3578,7 @@ function ArtifactImageEditBody({
 
   return (
     <div
+      key={canvasKey}
       ref={setImageEditSnapshotControllerRef}
       className="h-full min-h-0"
       data-image-edit-snapshot-canvas-key={canvasKey}

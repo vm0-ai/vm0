@@ -56,6 +56,7 @@ const internalItemsByKey$ = state<Record<string, EditableImageCanvasItem[]>>(
 const internalSnapshotByKey$ = state<
   Record<string, EditableImageCanvasSnapshot>
 >({});
+const internalMutationRevisionByKey$ = state<Record<string, number>>({});
 const internalSelectedItemId$ = state<string | null>(null);
 const internalClipboardItemByKey$ = state<
   Record<string, EditableImageCanvasItem | null>
@@ -80,6 +81,10 @@ export const editableImageCanvasItemsByKey$ = computed((get) => {
 
 export const editableImageCanvasSnapshotsByKey$ = computed((get) => {
   return get(internalSnapshotByKey$);
+});
+
+export const editableImageCanvasMutationRevisionsByKey$ = computed((get) => {
+  return get(internalMutationRevisionByKey$);
 });
 
 export const editableImageCanvasSelectedItemId$ = computed((get) => {
@@ -190,6 +195,12 @@ function itemsFromSnapshot(
   });
 }
 
+const markEditableImageCanvasMutated$ = command(({ set }, key: string) => {
+  set(internalMutationRevisionByKey$, (current) => {
+    return { ...current, [key]: (current[key] ?? 0) + 1 };
+  });
+});
+
 export const selectEditableImageCanvasItem$ = command(
   ({ set }, itemId: string | null) => {
     set(internalSelectedItemId$, itemId);
@@ -285,6 +296,7 @@ export const resetEditableImageCanvas$ = command(
     set(internalNextItemIndexByKey$, (current) => {
       return { ...current, [key]: 1 };
     });
+    set(markEditableImageCanvasMutated$, key);
     set(clearEditableImageCanvasTransientState$, key);
   },
 );
@@ -593,6 +605,7 @@ export const moveEditableImageCanvasItem$ = command(
         }),
       };
     });
+    set(markEditableImageCanvasMutated$, args.key);
   },
 );
 
@@ -708,6 +721,7 @@ export const deleteEditableImageCanvasItem$ = command(
         [args.key]: nextItems,
       };
     });
+    set(markEditableImageCanvasMutated$, args.key);
     set(internalSnapshotByKey$, (current) => {
       return setSnapshotForItems(current, args.key, nextItems);
     });
@@ -790,6 +804,7 @@ export const pasteEditableImageCanvasSelection$ = command(
     set(internalItemsByKey$, (current) => {
       return { ...current, [key]: [...items, duplicate] };
     });
+    set(markEditableImageCanvasMutated$, key);
     set(internalSelectedItemId$, duplicate.id);
     set(internalNextItemIndexByKey$, (current) => {
       return { ...current, [key]: itemIndex + 1 };
@@ -832,6 +847,7 @@ export const insertEditableImageCanvasItem$ = command(
     set(internalItemsByKey$, (current) => {
       return { ...current, [args.key]: nextItems };
     });
+    set(markEditableImageCanvasMutated$, args.key);
     set(internalSnapshotByKey$, (current) => {
       return setSnapshotForItems(current, args.key, nextItems);
     });
@@ -883,6 +899,7 @@ export const addEditableImageCanvasItem$ = command(
     set(internalItemsByKey$, (current) => {
       return { ...current, [args.key]: nextItems };
     });
+    set(markEditableImageCanvasMutated$, args.key);
     set(internalSnapshotByKey$, (current) => {
       return setSnapshotForItems(current, args.key, nextItems);
     });

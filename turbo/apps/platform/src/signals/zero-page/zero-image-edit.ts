@@ -41,7 +41,7 @@ import {
   DEFAULT_CANVAS_WIDTH,
   editableImageArtifactCanvasKey,
   editableImageCanvasItemsByKey$,
-  editableImageCanvasSnapshotsByKey$,
+  editableImageCanvasMutationRevisionsByKey$,
   type EditableImageCanvasItem,
   type EditableImageCanvasSnapshot,
   hydrateEditableImageCanvas$,
@@ -219,7 +219,8 @@ export const loadPersistedEditableImageCanvasSnapshot$ = command(
     args: { canvasSrc: string; key: string; url: string },
     signal: AbortSignal,
   ) => {
-    const initialSnapshot = get(editableImageCanvasSnapshotsByKey$)[args.key];
+    const initialMutationRevision =
+      get(editableImageCanvasMutationRevisionsByKey$)[args.key] ?? 0;
     const client = get(zeroClient$)(artifactsContract, { apiBase: "api" });
     const loaded = await accept(
       client.getImageEditSnapshot({
@@ -239,7 +240,10 @@ export const loadPersistedEditableImageCanvasSnapshot$ = command(
     set(internalPersistedImageCanvasSnapshotPresentByKey$, (current) => {
       return { ...current, [args.key]: true };
     });
-    if (get(editableImageCanvasSnapshotsByKey$)[args.key] !== initialSnapshot) {
+    if (
+      (get(editableImageCanvasMutationRevisionsByKey$)[args.key] ?? 0) !==
+      initialMutationRevision
+    ) {
       return;
     }
 
@@ -353,26 +357,54 @@ function imageEditSnapshotControllerArgs(el: HTMLDivElement): {
   return canvasSrc && key && url ? { canvasSrc, key, url } : null;
 }
 
+async function waitForAbort(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return;
+  }
+  const { promise, resolve } = Promise.withResolvers<void>();
+  signal.addEventListener(
+    "abort",
+    () => {
+      resolve();
+    },
+    { once: true },
+  );
+  await promise;
+}
+
+const persistImageEditSnapshotOnAbort$ = command(
+  async (
+    { set },
+    args: { canvasSrc: string; key: string; url: string },
+    signal: AbortSignal,
+  ) => {
+    await waitForAbort(signal);
+    await set(
+      persistEditableImageCanvasSnapshot$,
+      args,
+      AbortSignal.timeout(IMAGE_EDIT_SNAPSHOT_PERSIST_TIMEOUT_MS),
+    );
+  },
+);
+
 export const setImageEditSnapshotControllerRef$ = onRef(
   command(async ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
     const args = imageEditSnapshotControllerArgs(el);
     if (!args) {
       return;
     }
-    await set(loadPersistedEditableImageCanvasSnapshot$, args, signal);
+    const [loadResult, persistResult] = await Promise.allSettled([
+      set(loadPersistedEditableImageCanvasSnapshot$, args, signal),
+      set(persistImageEditSnapshotOnAbort$, args, signal),
+    ]);
+    signal.throwIfAborted();
+    if (persistResult.status === "rejected") {
+      throw persistResult.reason;
+    }
+    if (loadResult.status === "rejected") {
+      throw loadResult.reason;
+    }
   }),
-  {
-    command: command(
-      async ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
-        const args = imageEditSnapshotControllerArgs(el);
-        if (args) {
-          await set(persistEditableImageCanvasSnapshot$, args, signal);
-        }
-      },
-    ),
-    description: "persistEditableImageCanvasSnapshotOnUnmount",
-    timeoutMs: IMAGE_EDIT_SNAPSHOT_PERSIST_TIMEOUT_MS,
-  },
 );
 
 function readResultImageUrl(

@@ -17,7 +17,6 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { closeArtifact$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -70,13 +69,17 @@ afterEach(() => {
 
 function setupChatThread({
   featureSwitches,
+  imageEditSnapshotReady,
   onImageEditSnapshotDelete,
+  onImageEditSnapshotGet,
   onImageEditSnapshotUpsert,
   path = `${THREAD_PATH}?artifact=${encodeURIComponent(SOURCE_IMAGE_URL)}`,
   persistedImageEditSnapshot = null,
 }: {
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
+  imageEditSnapshotReady?: Promise<void>;
   onImageEditSnapshotDelete?: (query: { readonly url: string }) => void;
+  onImageEditSnapshotGet?: (query: { readonly url: string }) => void;
   onImageEditSnapshotUpsert?: (body: {
     readonly snapshot: ImageArtifactEditSnapshotState;
     readonly url: string;
@@ -146,17 +149,25 @@ function setupChatThread({
     return respond(200, { messages, hasHistoryBefore: false });
   });
   let currentPersistedImageEditSnapshot = persistedImageEditSnapshot;
-  context.mocks.api(artifactsContract.getImageEditSnapshot, ({ respond }) => {
-    return respond(200, {
-      snapshot: currentPersistedImageEditSnapshot
-        ? {
-            artifactUrl: SOURCE_IMAGE_URL,
-            snapshot: currentPersistedImageEditSnapshot,
-            updatedAt: "2026-03-10T00:00:03.000Z",
-          }
-        : null,
-    });
-  });
+  context.mocks.api(
+    artifactsContract.getImageEditSnapshot,
+    async ({ query, respond }) => {
+      if (imageEditSnapshotReady) {
+        await imageEditSnapshotReady;
+      }
+      onImageEditSnapshotGet?.(query);
+      const snapshot = currentPersistedImageEditSnapshot;
+      return respond(200, {
+        snapshot: snapshot
+          ? {
+              artifactUrl: query.url,
+              snapshot,
+              updatedAt: "2026-03-10T00:00:03.000Z",
+            }
+          : null,
+      });
+    },
+  );
   context.mocks.api(
     artifactsContract.upsertImageEditSnapshot,
     ({ body, respond }) => {
@@ -1288,7 +1299,7 @@ describe("image editing", () => {
     expect(deletedSnapshots).toStrictEqual([]);
   });
 
-  it("persists a moved source image when closing the artifact sidebar", async () => {
+  it("persists a moved source image when exiting edit mode and closing the sidebar", async () => {
     const user = userEvent.setup({ delay: null });
     const savedSnapshots: {
       readonly snapshot: ImageArtifactEditSnapshotState;
@@ -1308,7 +1319,8 @@ describe("image editing", () => {
     fireEvent.pointerUp(window);
     expect(image).toHaveStyle({ left: "470px", top: "370px" });
 
-    context.store.set(closeArtifact$);
+    await user.click(screen.getByTestId("artifact-sidebar-exit-image-edit"));
+    await user.click(screen.getByTestId("artifact-sidebar-close"));
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).toBeNull();
     });
@@ -1318,6 +1330,36 @@ describe("image editing", () => {
         { url: SOURCE_IMAGE_URL, x: 470, y: 370, zIndex: 1 },
       ]);
     });
+  });
+
+  it("keeps a local move when persisted restore finishes later", async () => {
+    const user = userEvent.setup({ delay: null });
+    const snapshotReady = createDeferredPromise<void>(context.signal);
+    const loadedSnapshotUrls: string[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      imageEditSnapshotReady: snapshotReady.promise,
+      onImageEditSnapshotGet: ({ url }) => {
+        loadedSnapshotUrls.push(url);
+      },
+      persistedImageEditSnapshot: {
+        items: [{ url: SOURCE_IMAGE_URL, x: 250, y: 180, zIndex: 1 }],
+        version: 1,
+      },
+    });
+
+    await openImageEditMode(user);
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.pointerDown(image, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
+    fireEvent.pointerUp(window);
+    expect(image).toHaveStyle({ left: "470px", top: "370px" });
+
+    snapshotReady.resolve();
+    await waitFor(() => {
+      expect(loadedSnapshotUrls).toContain(SOURCE_IMAGE_URL);
+    });
+    expect(image).toHaveStyle({ left: "470px", top: "370px" });
   });
 
   it("clears persisted snapshot after deleting back to only the source image", async () => {
