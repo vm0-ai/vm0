@@ -489,17 +489,21 @@ mod tests {
             std::net::SocketAddr::V6(_) => panic!("test server should use IPv4"),
         };
         let (received_tx, received_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
         let server_thread = std::thread::spawn(move || {
             let mut query = [0_u8; DNS_RESPONSE_MAX_BYTES];
             server.recv_from(&mut query).unwrap();
             received_tx.send(()).unwrap();
-            std::thread::sleep(Duration::from_millis(100));
+            release_rx.recv().unwrap();
         });
 
-        let error = probe_dns_endpoint(destination, Duration::from_millis(30)).unwrap_err();
+        let result = probe_dns_endpoint(destination, Duration::from_millis(30));
 
-        received_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let received = received_rx.recv_timeout(Duration::from_secs(1));
+        release_tx.send(()).unwrap();
         server_thread.join().unwrap();
+        received.unwrap();
+        let error = result.unwrap_err();
         assert_eq!(error.stage_name(), DnsReadinessStage::Timeout);
     }
 }

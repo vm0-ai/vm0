@@ -1023,8 +1023,8 @@ impl NetnsPoolInner {
             }
         }
 
-        delete_namespaces_with_ops(plan.ops, failed.clone()).await;
         let failed_names = cleanup_namespace_names(&failed);
+        delete_namespaces_with_ops(plan.ops, failed).await;
         let mut state = self.state.lock().await;
         state.commit_dns_activation(&failed_names, successful)?;
         info!(
