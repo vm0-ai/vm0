@@ -16,18 +16,21 @@ use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
+use guest_common::log_warn;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{ChildStdin, ChildStdout};
+use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::runtime::Handle;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::error::AgentError;
 
-use super::{child_env, diagnostics, exec_boundary, process_group::ChildProcessGroup};
+use super::{
+    LOG_TAG, child_env, child_exit_notifier::ChildExitNotifier, diagnostics, exec_boundary,
+    process_group::ChildProcessGroup,
+};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
@@ -279,8 +282,8 @@ impl From<CodexAppServerError> for AgentError {
 
 /// Client for a single spawned Codex app-server process.
 ///
-/// The client owns stdin/stdout/stderr handles, the child wait task, process
-/// group cleanup, and JSON-RPC request correlation. It is single-consumer:
+/// The client owns stdin/stdout/stderr handles, the child process, pre-reap
+/// process-group cleanup, and JSON-RPC request correlation. It is single-consumer:
 /// callers must not start another request, notification wait, or notification
 /// write while a previous operation on the same client is still in progress.
 ///
@@ -290,15 +293,14 @@ impl From<CodexAppServerError> for AgentError {
 ///
 /// Dropping a client that was not closed through [`Self::shutdown`] or
 /// [`Self::terminate`] performs best-effort cleanup: stdio handles are closed,
-/// the child wait result is checked once, the process group is killed if still
-/// tracked, and the stderr collection task is aborted.
+/// the owned child process group is killed before the child handle is dropped,
+/// and the stderr collection task is aborted.
 pub struct CodexAppServerClient {
     stdin: Option<ChildStdin>,
     stdout_reader: Option<BufReader<ChildStdout>>,
     stdout_partial_line: Vec<u8>,
-    process_id: Option<u32>,
-    process_group: Option<ChildProcessGroup>,
-    wait_rx: Option<oneshot::Receiver<std::io::Result<ExitStatus>>>,
+    child: Option<Child>,
+    exit_notifier: Option<ChildExitNotifier>,
     stderr_handle: Option<JoinHandle<Vec<String>>>,
     stderr_tail: Vec<String>,
     next_request_id: i64,
@@ -314,10 +316,11 @@ pub struct CodexAppServerClient {
 impl CodexAppServerClient {
     /// Spawn `codex app-server --listen stdio://` and return a connected client.
     ///
-    /// This must be called inside a Tokio runtime because stderr collection and
-    /// child waiting are owned by background tasks on the current runtime. The
-    /// config must include [`CodexAppServerConfig::with_child_env`], and spawn
-    /// validates the final argv/env size before creating the child process.
+    /// This must be called inside a Tokio runtime because stderr collection uses
+    /// a background task on the current runtime. The client retains direct child
+    /// ownership. The config must include
+    /// [`CodexAppServerConfig::with_child_env`], and spawn validates the final
+    /// argv/env size before creating the child process.
     pub fn spawn(config: CodexAppServerConfig) -> Result<Self, CodexAppServerError> {
         let runtime = Handle::try_current().map_err(|_error| {
             CodexAppServerError::Protocol(
@@ -364,8 +367,6 @@ impl CodexAppServerClient {
         cmd.env_remove("MOCK_CODEX_FIXTURE");
 
         let mut child = cmd.spawn().map_err(CodexAppServerError::Spawn)?;
-        let process_id = child.id();
-        let process_group = ChildProcessGroup::from_group_leader_child_id(process_id);
         let stdin = child.stdin.take().ok_or_else(|| {
             CodexAppServerError::Protocol("app-server stdin was not piped".to_string())
         })?;
@@ -377,18 +378,23 @@ impl CodexAppServerClient {
         })?;
         let stderr_handle =
             runtime.spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
-        let (wait_tx, wait_rx) = oneshot::channel();
-        runtime.spawn(async move {
-            let _ = wait_tx.send(child.wait().await);
-        });
+        let exit_notifier = match ChildExitNotifier::open(&child) {
+            Ok(exit_notifier) => Some(exit_notifier),
+            Err(error) => {
+                log_warn!(
+                    LOG_TAG,
+                    "Codex app-server pidfd exit notification unavailable; natural exit cleanup will use wait-only fallback: {error}"
+                );
+                None
+            }
+        };
 
         Ok(Self {
             stdin: Some(stdin),
             stdout_reader: Some(BufReader::new(stdout)),
             stdout_partial_line: Vec::new(),
-            process_id,
-            process_group,
-            wait_rx: Some(wait_rx),
+            child: Some(child),
+            exit_notifier,
             stderr_handle: Some(stderr_handle),
             stderr_tail: Vec::new(),
             next_request_id: 1,
@@ -407,7 +413,7 @@ impl CodexAppServerClient {
     /// The id becomes `None` after the child wait completes and the process
     /// handles have been cleared.
     pub fn process_id(&self) -> Option<u32> {
-        self.process_id
+        self.child.as_ref().and_then(Child::id)
     }
 
     /// Pop the oldest buffered notification, if any.
@@ -616,9 +622,9 @@ impl CodexAppServerClient {
     /// Close stdin and complete app-server shutdown.
     ///
     /// This is the normal close path. When stdin is still open, the client
-    /// closes stdio, yields once to let the child observe EOF, then escalates to
-    /// process-group termination if the child has not exited. Stderr is drained
-    /// best-effort before the client is marked closed.
+    /// closes stdio, yields once to let the child observe EOF, then performs
+    /// process-group cleanup while the child is still owned and unreaped. Stderr
+    /// is drained best-effort before the client is marked closed.
     pub async fn shutdown(&mut self) -> Result<(), CodexAppServerError> {
         if self.closed {
             return Ok(());
@@ -626,13 +632,10 @@ impl CodexAppServerClient {
 
         let requested_graceful_shutdown = self.stdin.is_some();
         self.close_io_handles();
-        let child_exited = if requested_graceful_shutdown {
+        if requested_graceful_shutdown {
             tokio::task::yield_now().await;
-            self.try_finish_child_wait()?.is_some()
-        } else {
-            self.try_finish_child_wait()?.is_some()
-        };
-        if self.wait_rx.is_some() && !child_exited {
+        }
+        if self.child.is_some() {
             self.sigterm_process_group();
             self.sigkill_process_group();
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
@@ -641,7 +644,6 @@ impl CodexAppServerClient {
         }
 
         self.drain_stderr().await;
-        self.clear_child_process_handles();
         self.closed = true;
         Ok(())
     }
@@ -649,17 +651,16 @@ impl CodexAppServerClient {
     /// Force app-server termination without the graceful stdin-EOF wait.
     ///
     /// This is used when higher-level runtime policy has already decided the
-    /// app-server should stop promptly. It closes stdio, checks whether the
-    /// child already exited, then escalates to process-group termination if
-    /// needed. Stderr is still drained best-effort before close completes.
+    /// app-server should stop promptly. It closes stdio, performs process-group
+    /// cleanup while the child is still owned and unreaped, and then waits for
+    /// the child. Stderr is still drained best-effort before close completes.
     pub async fn terminate(&mut self) -> Result<(), CodexAppServerError> {
         if self.closed {
             return Ok(());
         }
 
         self.close_io_handles();
-        let child_exited = self.try_finish_child_wait()?.is_some();
-        if self.wait_rx.is_some() && !child_exited {
+        if self.child.is_some() {
             self.sigterm_process_group();
             self.sigkill_process_group();
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
@@ -668,17 +669,16 @@ impl CodexAppServerClient {
         }
 
         self.drain_stderr().await;
-        self.clear_child_process_handles();
         self.closed = true;
         Ok(())
     }
 
     async fn wait_for_child(&mut self, timeout: Duration) -> Result<bool, CodexAppServerError> {
-        let Some(wait_rx) = self.wait_rx.as_mut() else {
+        let Some(child) = self.child.as_mut() else {
             return Ok(true);
         };
 
-        match tokio::time::timeout(timeout, wait_rx).await {
+        match tokio::time::timeout(timeout, child.wait()).await {
             Ok(result) => {
                 self.finish_child_wait(result)?;
                 Ok(true)
@@ -689,46 +689,19 @@ impl CodexAppServerClient {
 
     fn finish_child_wait(
         &mut self,
-        result: Result<std::io::Result<ExitStatus>, oneshot::error::RecvError>,
+        result: std::io::Result<ExitStatus>,
     ) -> Result<ExitStatus, CodexAppServerError> {
-        self.wait_rx = None;
         match result {
-            Ok(Ok(status)) => Ok(status),
-            Ok(Err(error)) => {
-                self.kill_and_clear_child_process_handles();
+            Ok(status) => {
+                self.exit_notifier = None;
+                self.child = None;
+                Ok(status)
+            }
+            Err(error) => {
+                self.sigkill_process_group();
+                self.exit_notifier = None;
+                self.child = None;
                 Err(CodexAppServerError::Io(error))
-            }
-            Err(_) => {
-                self.kill_and_clear_child_process_handles();
-                Err(CodexAppServerError::Protocol(
-                    "app-server wait task ended without status".to_string(),
-                ))
-            }
-        }
-    }
-
-    fn try_finish_child_wait(&mut self) -> Result<Option<ExitStatus>, CodexAppServerError> {
-        let Some(wait_rx) = self.wait_rx.as_mut() else {
-            return Ok(None);
-        };
-
-        match wait_rx.try_recv() {
-            Ok(Ok(status)) => {
-                self.wait_rx = None;
-                Ok(Some(status))
-            }
-            Ok(Err(error)) => {
-                self.wait_rx = None;
-                self.kill_and_clear_child_process_handles();
-                Err(CodexAppServerError::Io(error))
-            }
-            Err(oneshot::error::TryRecvError::Empty) => Ok(None),
-            Err(oneshot::error::TryRecvError::Closed) => {
-                self.wait_rx = None;
-                self.kill_and_clear_child_process_handles();
-                Err(CodexAppServerError::Protocol(
-                    "app-server wait task ended without status".to_string(),
-                ))
             }
         }
     }
@@ -738,6 +711,7 @@ impl CodexAppServerClient {
         pending_method: &str,
     ) -> Result<IncomingMessage, CodexAppServerError> {
         loop {
+            let has_exit_notifier = self.exit_notifier.is_some();
             tokio::select! {
                 biased;
                 line = {
@@ -749,23 +723,9 @@ impl CodexAppServerClient {
                     let line = match line {
                         Ok(Some(line)) => line,
                         Ok(None) => {
-                            match self.try_finish_child_wait() {
-                                Ok(Some(status)) => {
-                                    let error = CodexAppServerError::ChildExited {
-                                        method: pending_method.to_string(),
-                                        status: status.to_string(),
-                                    };
-                                    return Err(self.poison_error(error));
-                                }
-                                Ok(None) => {
-                                    return Err(self.poison_error(CodexAppServerError::Disconnected {
-                                        method: pending_method.to_string(),
-                                    }));
-                                }
-                                Err(error) => {
-                                    return Err(self.poison_error(error));
-                                }
-                            }
+                            return Err(self.poison_error(CodexAppServerError::Disconnected {
+                                method: pending_method.to_string(),
+                            }));
                         }
                         Err(error) => {
                             return Err(self.poison_error(error));
@@ -776,14 +736,46 @@ impl CodexAppServerClient {
                     }
                     return parse_incoming_message(&line).map_err(|error| self.poison_error(error));
                 }
-                result = async {
-                    match self.wait_rx.as_mut() {
-                        Some(wait_rx) => Some(wait_rx.await),
+                exit = async {
+                    match self.exit_notifier.as_ref() {
+                        Some(exit_notifier) => Some(exit_notifier.wait_for_exit().await),
                         None => None,
                     }
-                }, if self.wait_rx.is_some() => {
+                }, if has_exit_notifier && self.child.is_some() => {
+                    let Some(exit) = exit else {
+                        return Err(self.poison_stream("app-server exit notifier disappeared"));
+                    };
+                    if let Err(error) = exit {
+                        log_warn!(
+                            LOG_TAG,
+                            "Codex app-server pidfd exit notification failed; natural exit cleanup will use wait-only fallback: {error}"
+                        );
+                        self.exit_notifier = None;
+                        continue;
+                    }
+                    self.sigkill_process_group();
+                    let Some(child) = self.child.as_mut() else {
+                        return Err(self.poison_stream("app-server child disappeared"));
+                    };
+                    let result = child.wait().await;
+                    let status = match self.finish_child_wait(result) {
+                        Ok(status) => status,
+                        Err(error) => return Err(self.poison_error(error)),
+                    };
+                    let error = CodexAppServerError::ChildExited {
+                        method: pending_method.to_string(),
+                        status: status.to_string(),
+                    };
+                    return Err(self.poison_error(error));
+                }
+                result = async {
+                    match self.child.as_mut() {
+                        Some(child) => Some(child.wait().await),
+                        None => None,
+                    }
+                }, if !has_exit_notifier && self.child.is_some() => {
                     let Some(result) = result else {
-                        return Err(self.poison_stream("app-server wait receiver disappeared"));
+                        return Err(self.poison_stream("app-server child disappeared"));
                     };
                     let status = match self.finish_child_wait(result) {
                         Ok(status) => status,
@@ -901,12 +893,7 @@ impl CodexAppServerClient {
         };
         self.mark_stream_unusable(message);
         self.close_io_handles();
-        if self.process_group_signal_needed() {
-            self.sigkill_process_group();
-        }
-        if self.wait_rx.is_none() {
-            self.clear_child_process_handles();
-        }
+        self.sigkill_process_group();
         error
     }
 
@@ -914,12 +901,7 @@ impl CodexAppServerClient {
         let message = message.into();
         self.mark_stream_unusable(message.clone());
         self.close_io_handles();
-        if self.process_group_signal_needed() {
-            self.sigkill_process_group();
-        }
-        if self.wait_rx.is_none() {
-            self.clear_child_process_handles();
-        }
+        self.sigkill_process_group();
         CodexAppServerError::Protocol(message)
     }
 
@@ -935,13 +917,6 @@ impl CodexAppServerClient {
         };
         if !stderr_handle.is_finished() {
             tokio::task::yield_now().await;
-        }
-
-        let Some(stderr_handle) = self.stderr_handle.as_ref() else {
-            return;
-        };
-        if !stderr_handle.is_finished() {
-            self.sigkill_process_group();
         }
 
         let Some(stderr_handle) = self.stderr_handle.as_mut() else {
@@ -966,20 +941,21 @@ impl CodexAppServerClient {
     }
 
     fn sigterm_process_group(&self) {
-        if let Some(process_group) = self.process_group {
+        if let Some(process_group) = self.child_process_group() {
             process_group.sigterm();
         }
     }
 
     fn sigkill_process_group(&self) {
-        if let Some(process_group) = self.process_group {
+        if let Some(process_group) = self.child_process_group() {
             process_group.sigkill();
         }
     }
 
-    fn clear_child_process_handles(&mut self) {
-        self.process_id = None;
-        self.process_group = None;
+    fn child_process_group(&self) -> Option<ChildProcessGroup> {
+        self.child
+            .as_ref()
+            .and_then(ChildProcessGroup::from_group_leader_child)
     }
 
     fn close_io_handles(&mut self) {
@@ -987,27 +963,8 @@ impl CodexAppServerClient {
         self.stdout_reader.take();
     }
 
-    fn kill_and_clear_child_process_handles(&mut self) {
-        self.sigkill_process_group();
-        self.clear_child_process_handles();
-    }
-
-    fn process_group_signal_needed(&self) -> bool {
-        self.wait_rx.is_some()
-            || self
-                .stderr_handle
-                .as_ref()
-                .is_some_and(|stderr_handle| !stderr_handle.is_finished())
-    }
-
     fn kill_unusable_stream_process_if_needed(&mut self) {
-        let _ = self.try_finish_child_wait();
-        if self.process_group_signal_needed() {
-            self.sigkill_process_group();
-        }
-        if self.wait_rx.is_none() {
-            self.clear_child_process_handles();
-        }
+        self.sigkill_process_group();
     }
 }
 
@@ -1027,10 +984,7 @@ impl Drop for CodexAppServerClient {
     fn drop(&mut self) {
         if !self.closed {
             self.close_io_handles();
-            let _ = self.try_finish_child_wait();
-            if self.process_group_signal_needed() {
-                self.sigkill_process_group();
-            }
+            self.sigkill_process_group();
         }
         if let Some(stderr_handle) = self.stderr_handle.take() {
             stderr_handle.abort();

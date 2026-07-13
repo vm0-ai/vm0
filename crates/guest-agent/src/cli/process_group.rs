@@ -11,6 +11,10 @@ pub(super) struct ChildProcessGroup {
 }
 
 impl ChildProcessGroup {
+    pub(super) fn from_group_leader_child(child: &tokio::process::Child) -> Option<Self> {
+        Self::from_group_leader_child_id(child.id())
+    }
+
     pub(super) fn from_group_leader_child_id(child_id: Option<u32>) -> Option<Self> {
         child_id.and_then(Self::from_raw_child_id)
     }
@@ -56,6 +60,8 @@ fn current_process_group() -> i32 {
 
 #[cfg(test)]
 mod tests {
+    use std::process::Stdio;
+
     use super::ChildProcessGroup;
 
     #[test]
@@ -91,5 +97,20 @@ mod tests {
             ChildProcessGroup::from_group_leader_child_id(Some(overflowing_child_id)),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn child_process_group_rejects_reaped_child() {
+        let mut child = tokio::process::Command::new("true")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("spawn child");
+
+        child.wait().await.expect("wait for child");
+
+        assert_eq!(ChildProcessGroup::from_group_leader_child(&child), None);
     }
 }
