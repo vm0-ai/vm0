@@ -616,6 +616,86 @@ describe("artifacts page", () => {
     );
   });
 
+  it("loads CDN image cards as thumbnails while preserving original previews", async () => {
+    setupTeam();
+    const scope = testAuthScope("image-thumbnail");
+    const cdnImageUrl =
+      "https://cdn.vm7.io/artifacts/user/image-run/generated.png";
+    const thumbnailUrl =
+      "https://cdn.vm7.io/cdn-cgi/image/width=640,height=640,fit=cover,format=auto,quality=85,metadata=none/artifacts/user/image-run/generated.png";
+    const externalImageUrl =
+      "https://images.example.com/artifacts/external-image.png";
+    const unsupportedCdnImageUrl =
+      "https://cdn.vm7.io/artifacts/user/image-run/legacy.bmp";
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "image-run:file-1",
+        runId: "image-run",
+        fileId: "image-file",
+        filename: "generated.png",
+        contentType: "image/png",
+        url: cdnImageUrl,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "external-image-run:file-1",
+        runId: "external-image-run",
+        fileId: "external-image-file",
+        filename: "external-image.png",
+        contentType: "image/png",
+        url: externalImageUrl,
+        artifactKind: undefined,
+      }),
+      createArtifact({
+        artifactItemId: "unsupported-image-run:file-1",
+        runId: "unsupported-image-run",
+        fileId: "unsupported-image-file",
+        filename: "legacy.bmp",
+        contentType: "image/bmp",
+        url: unsupportedCdnImageUrl,
+        artifactKind: undefined,
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("generated.png");
+    await screen.findByText("external-image.png");
+    await screen.findByText("legacy.bmp");
+    const cardImageUrls = Array.from(
+      document.querySelectorAll("article img"),
+      (image) => {
+        return image.getAttribute("src");
+      },
+    );
+    expect(cardImageUrls).toStrictEqual(
+      expect.arrayContaining([
+        thumbnailUrl,
+        externalImageUrl,
+        unsupportedCdnImageUrl,
+      ]),
+    );
+    expect(cardImageUrls).not.toContain(cdnImageUrl);
+
+    click(buttonByLabel("Preview generated.png"));
+    await expect(
+      screen.findByRole("dialog", { name: "generated.png preview" }),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+      "src",
+      cdnImageUrl,
+    );
+
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    click(buttonByLabel("More actions for generated.png"));
+    expect(
+      screen.getByLabelText("Open preview for generated.png"),
+    ).toHaveAttribute("href", cdnImageUrl);
+  });
+
   it("opens previewable artifacts in the lightbox without split view", async () => {
     setupTeam();
     const scope = testAuthScope("preview-lightbox");
