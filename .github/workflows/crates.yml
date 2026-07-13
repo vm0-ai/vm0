@@ -1079,7 +1079,7 @@ jobs:
             >/dev/null &
           UNRELATED_EXEC_PID=$!
           UNRELATED_READY=""
-          for _ in $(seq 1 100); do
+          for _ in $(seq 1 30); do
             if sudo "$BIN_DIR/runner" exec --timeout 2 --sandbox "$SANDBOX_ID" -- \
               test -e /tmp/vm0-cgroup-unrelated.ready >/dev/null 2>&1; then
               UNRELATED_READY=1
