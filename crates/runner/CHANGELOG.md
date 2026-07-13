@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.1...runner-rs-v0.144.2) (2026-07-13)
+
+
+### Performance Improvements
+
+* **runner:** defer cold cache fill until agent spawn ([#21190](https://github.com/vm0-ai/vm0/issues/21190)) ([e8f3f95](https://github.com/vm0-ai/vm0/commit/e8f3f950f773c0be73efea3ca9e0fff18e2b7c9f))
+
 ## [0.144.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.0...runner-rs-v0.144.1) (2026-07-13)
 
 

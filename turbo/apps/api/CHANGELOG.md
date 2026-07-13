@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.265.4](https://github.com/vm0-ai/vm0/compare/api-v1.265.3...api-v1.265.4) (2026-07-13)
+
+
+### Performance Improvements
+
+* **api:** attribute runner notification latency ([#21164](https://github.com/vm0-ai/vm0/issues/21164)) ([3a198f8](https://github.com/vm0-ai/vm0/commit/3a198f8c1d0ca725ec7df7ebada02303ac6cb480))
+
 ## [1.265.3](https://github.com/vm0-ai/vm0/compare/api-v1.265.2...api-v1.265.3) (2026-07-13)
 
 
