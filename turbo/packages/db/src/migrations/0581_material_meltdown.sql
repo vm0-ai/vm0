@@ -1,3 +1,4 @@
+LOCK TABLE "chat_messages" IN ACCESS EXCLUSIVE MODE;--> statement-breakpoint
 DO $$
 BEGIN
   IF EXISTS (
