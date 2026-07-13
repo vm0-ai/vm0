@@ -36,8 +36,13 @@ import {
   addEditableImageCanvasItem$,
   clearEditableImageCanvasTransientState$,
   clearEditableImageCanvasRegionSelection$,
+  createInitialEditableImageCanvasItem,
+  DEFAULT_CANVAS_HEIGHT,
+  DEFAULT_CANVAS_WIDTH,
   editableImageArtifactCanvasKey,
+  editableImageCanvasItemsByKey$,
   editableImageCanvasSnapshotsByKey$,
+  type EditableImageCanvasItem,
   type EditableImageCanvasSnapshot,
   hydrateEditableImageCanvas$,
   hydrateEditableImageCanvasSnapshot$,
@@ -88,6 +93,7 @@ const REGION_MARK_LINE_WIDTH = 4;
 // Cap the interpret and generation-start requests so a hung backend can't leave
 // the edit lock (internalImageEditUploading$) stuck true until a page reload.
 const IMAGE_EDIT_REQUEST_TIMEOUT_MS = 45_000;
+const IMAGE_EDIT_SNAPSHOT_PERSIST_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 90_000;
 // Bound the region source-image load so a stalled request can't hang the run
@@ -247,15 +253,29 @@ export const loadPersistedEditableImageCanvasSnapshot$ = command(
 );
 
 function shouldDeletePersistedImageCanvasSnapshot(
-  snapshot: EditableImageCanvasSnapshot,
+  items: readonly EditableImageCanvasItem[],
   canvasSrc: string,
 ): boolean {
-  if (snapshot.items.length === 0) {
+  if (items.length === 0) {
     return true;
   }
 
-  const [onlyItem] = snapshot.items;
-  return snapshot.items.length === 1 && onlyItem?.url === canvasSrc;
+  const [onlyItem] = items;
+  if (
+    items.length !== 1 ||
+    !onlyItem ||
+    onlyItem.src !== canvasSrc ||
+    onlyItem.zIndex !== 1
+  ) {
+    return false;
+  }
+
+  return (
+    onlyItem.x ===
+      Math.round((DEFAULT_CANVAS_WIDTH - onlyItem.displayWidth) / 2) &&
+    onlyItem.y ===
+      Math.round((DEFAULT_CANVAS_HEIGHT - onlyItem.displayHeight) / 2)
+  );
 }
 
 export const persistEditableImageCanvasSnapshot$ = command(
@@ -264,13 +284,16 @@ export const persistEditableImageCanvasSnapshot$ = command(
     args: { canvasSrc: string; key: string; url: string },
     signal: AbortSignal,
   ) => {
+    const items = get(editableImageCanvasItemsByKey$)[args.key] ?? [
+      createInitialEditableImageCanvasItem(args.canvasSrc),
+    ];
     const snapshot: EditableImageCanvasSnapshot = set(
       saveEditableImageCanvasSnapshot$,
       args.key,
       args.canvasSrc,
     );
     const client = get(zeroClient$)(artifactsContract, { apiBase: "api" });
-    if (shouldDeletePersistedImageCanvasSnapshot(snapshot, args.canvasSrc)) {
+    if (shouldDeletePersistedImageCanvasSnapshot(items, args.canvasSrc)) {
       if (!get(internalPersistedImageCanvasSnapshotPresentByKey$)[args.key]) {
         return;
       }
@@ -319,21 +342,37 @@ export const persistEditableImageCanvasSnapshot$ = command(
   },
 );
 
+function imageEditSnapshotControllerArgs(el: HTMLDivElement): {
+  canvasSrc: string;
+  key: string;
+  url: string;
+} | null {
+  const canvasSrc = el.dataset.imageEditSnapshotCanvasSrc;
+  const key = el.dataset.imageEditSnapshotCanvasKey;
+  const url = el.dataset.imageEditSnapshotUrl;
+  return canvasSrc && key && url ? { canvasSrc, key, url } : null;
+}
+
 export const setImageEditSnapshotControllerRef$ = onRef(
   command(async ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
-    const canvasSrc = el.dataset.imageEditSnapshotCanvasSrc;
-    const key = el.dataset.imageEditSnapshotCanvasKey;
-    const url = el.dataset.imageEditSnapshotUrl;
-    if (!canvasSrc || !key || !url) {
+    const args = imageEditSnapshotControllerArgs(el);
+    if (!args) {
       return;
     }
-
-    await set(
-      loadPersistedEditableImageCanvasSnapshot$,
-      { canvasSrc, key, url },
-      signal,
-    );
+    await set(loadPersistedEditableImageCanvasSnapshot$, args, signal);
   }),
+  {
+    command: command(
+      async ({ set }, el: HTMLDivElement, signal: AbortSignal) => {
+        const args = imageEditSnapshotControllerArgs(el);
+        if (args) {
+          await set(persistEditableImageCanvasSnapshot$, args, signal);
+        }
+      },
+    ),
+    description: "persistEditableImageCanvasSnapshotOnUnmount",
+    timeoutMs: IMAGE_EDIT_SNAPSHOT_PERSIST_TIMEOUT_MS,
+  },
 );
 
 function readResultImageUrl(

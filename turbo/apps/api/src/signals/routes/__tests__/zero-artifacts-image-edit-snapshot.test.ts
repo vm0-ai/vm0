@@ -168,23 +168,25 @@ describe("image artifact edit snapshots", () => {
     expect(loaded.body.snapshot).toBeNull();
   });
 
-  it("does not persist the default single-source snapshot", async () => {
+  it("persists a moved single-source snapshot", async () => {
     const fixture = await seedVisibleImage();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    await accept(
+    const snapshot = {
+      version: 1 as const,
+      items: [{ url: fixture.artifactUrl, x: 48, y: 64, zIndex: 1 }],
+    };
+    const saved = await accept(
       client().upsertImageEditSnapshot({
         headers: { authorization: "Bearer clerk-session" },
         body: {
-          snapshot: {
-            version: 1,
-            items: [{ url: fixture.artifactUrl, x: 0, y: 0, zIndex: 1 }],
-          },
+          snapshot,
           url: fixture.artifactUrl,
         },
       }),
-      [204],
+      [200],
     );
+    expect(saved.body.snapshot).toStrictEqual(snapshot);
 
     const loaded = await accept(
       client().getImageEditSnapshot({
@@ -193,7 +195,7 @@ describe("image artifact edit snapshots", () => {
       }),
       [200],
     );
-    expect(loaded.body.snapshot).toBeNull();
+    expect(loaded.body.snapshot?.snapshot).toStrictEqual(snapshot);
   });
 
   it("returns null for a visible image without a saved snapshot", async () => {

@@ -1,9 +1,6 @@
 import { command } from "ccstate";
 import { and, eq, sql, type SQL } from "drizzle-orm";
-import {
-  artifactsContract,
-  type ImageArtifactEditSnapshotState,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -35,14 +32,6 @@ interface UserArtifactUrlAccessArgs {
 
 function artifactNotFound() {
   return notFound("Artifact not found");
-}
-
-function isDefaultImageEditSnapshot(
-  artifactUrl: string,
-  snapshot: ImageArtifactEditSnapshotState,
-): boolean {
-  const [onlyItem] = snapshot.items;
-  return snapshot.items.length === 1 && onlyItem?.url === artifactUrl;
 }
 
 function publicArtifactObjectKey(url: string): string | null {
@@ -298,18 +287,6 @@ const upsertImageEditSnapshotInner$ = command(
     signal.throwIfAborted();
     if (!canAccess) {
       return artifactNotFound();
-    }
-
-    if (
-      isDefaultImageEditSnapshot(bodyResult.data.url, bodyResult.data.snapshot)
-    ) {
-      await deleteImageEditSnapshotRow(db, {
-        artifactUrl: bodyResult.data.url,
-        orgId: auth.orgId,
-        userId: auth.userId,
-      });
-      signal.throwIfAborted();
-      return { status: 204 as const, body: undefined };
     }
 
     const updatedAt = nowDate();

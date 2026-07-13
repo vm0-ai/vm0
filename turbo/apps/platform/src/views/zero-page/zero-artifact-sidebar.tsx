@@ -744,7 +744,6 @@ function ArtifactSidebarResolvedContent({
   threadId,
   toggleFullscreen,
 }: ArtifactSidebarResolvedContentProps) {
-  const persistCanvasSnapshot = useSet(persistEditableImageCanvasSnapshot$);
   const applyHtmlStyleEdits = createHtmlStyleEditApplyAction({
     display,
     htmlEditState,
@@ -768,13 +767,7 @@ function ArtifactSidebarResolvedContent({
     htmlHeaderState,
     closeHtmlCommentMode,
   );
-  const exitImageEdit = imageEditExitAction({
-    closeImageEditMode,
-    display,
-    imageEditActive,
-    pageSignal,
-    persistCanvasSnapshot,
-  });
+  const exitImageEdit = imageEditActive ? closeImageEditMode : undefined;
 
   return (
     <ArtifactSidebarSurface
@@ -1019,43 +1012,6 @@ function htmlEditExitAction(
   closeHtmlCommentMode: () => void,
 ): (() => void) | undefined {
   return state === "editing" ? closeHtmlCommentMode : undefined;
-}
-
-function imageEditExitAction({
-  closeImageEditMode,
-  display,
-  imageEditActive,
-  pageSignal,
-  persistCanvasSnapshot,
-}: {
-  closeImageEditMode: () => void;
-  display: ArtifactDisplay;
-  imageEditActive: boolean;
-  pageSignal: AbortSignal;
-  persistCanvasSnapshot: (
-    args: { canvasSrc: string; key: string; url: string },
-    signal: AbortSignal,
-  ) => Promise<void>;
-}): (() => void) | undefined {
-  if (!imageEditActive || display.kind !== "image") {
-    return undefined;
-  }
-
-  return () => {
-    detach(
-      persistCanvasSnapshot(
-        {
-          canvasSrc: publicAttachmentUrl(display.url),
-          key: editableImageArtifactCanvasKey(display.url),
-          url: display.url,
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-      "persistEditableImageCanvasSnapshotOnExit",
-    );
-    closeImageEditMode();
-  };
 }
 
 function resetArtifactSidebarImageZoom({
@@ -3612,7 +3568,6 @@ function ArtifactImageEditBody({
   const setImageEditSnapshotControllerRef = useSet(
     setImageEditSnapshotControllerRef$,
   );
-
   const actions = useArtifactImageEditActions({
     artifactUrl: url,
     canvasKey,

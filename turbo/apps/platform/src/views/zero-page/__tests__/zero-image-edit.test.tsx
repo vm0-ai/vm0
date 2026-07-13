@@ -17,6 +17,7 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { closeArtifact$ } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
 const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
@@ -1287,6 +1288,38 @@ describe("image editing", () => {
     expect(deletedSnapshots).toStrictEqual([]);
   });
 
+  it("persists a moved source image when closing the artifact sidebar", async () => {
+    const user = userEvent.setup({ delay: null });
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
+    });
+
+    await openImageEditMode(user);
+    const image = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.pointerDown(image, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
+    fireEvent.pointerUp(window);
+    expect(image).toHaveStyle({ left: "470px", top: "370px" });
+
+    context.store.set(closeArtifact$);
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).toBeNull();
+    });
+
+    await waitFor(() => {
+      expect(savedSnapshots.at(-1)?.snapshot.items).toStrictEqual([
+        { url: SOURCE_IMAGE_URL, x: 470, y: 370, zIndex: 1 },
+      ]);
+    });
+  });
+
   it("clears persisted snapshot after deleting back to only the source image", async () => {
     const user = userEvent.setup({ delay: null });
     const deletedSnapshots: { readonly url: string }[] = [];
@@ -2038,8 +2071,15 @@ describe("image editing", () => {
 
   it("moves and duplicates the selected image on the edit canvas", async () => {
     const user = userEvent.setup({ delay: null });
+    const savedSnapshots: {
+      readonly snapshot: ImageArtifactEditSnapshotState;
+      readonly url: string;
+    }[] = [];
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+      onImageEditSnapshotUpsert: (body) => {
+        savedSnapshots.push(body);
+      },
     });
 
     await waitFor(() => {
@@ -2070,6 +2110,11 @@ describe("image editing", () => {
     expect(image).toHaveStyle({ left: "470px", top: "370px" });
 
     await exitAndReopenImageEditMode(user);
+    await waitFor(() => {
+      expect(savedSnapshots.at(-1)?.snapshot.items).toStrictEqual([
+        { url: SOURCE_IMAGE_URL, x: 470, y: 370, zIndex: 1 },
+      ]);
+    });
     const restoredImage = screen.getByTestId("artifact-sidebar-body-image");
     expect(restoredImage).toHaveStyle({ left: "470px", top: "370px" });
     await user.click(restoredImage);
