@@ -932,7 +932,7 @@ describe("team page navigation", () => {
     const deleteDialog = await screen.findByRole("dialog");
     expect(
       within(deleteDialog).getByText(
-        /including automations and chats other people created/u,
+        /Deletes the agent, its workflows, automations, and everyone.s chat history/u,
       ),
     ).toBeInTheDocument();
 
@@ -1016,7 +1016,7 @@ describe("team page navigation", () => {
     // The delete dialog offers to rescue each bound workflow by copying it.
     await waitFor(() => {
       expect(
-        within(deleteDialog).getByText("Keep any of these workflows?"),
+        within(deleteDialog).getByText("Keep any workflows?"),
       ).toBeInTheDocument();
       expect(
         within(deleteDialog).getByText("Sales Research"),
