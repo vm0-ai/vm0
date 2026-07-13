@@ -298,9 +298,8 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import {
-  resolveChatComposerSubmitBlocker,
+  resolveSelectedModelChatComposerSubmitBlocker,
   usePersonalOauthConfigurationAction,
 } from "./model-first-oauth-submit-blocker.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -3769,7 +3768,7 @@ function RecommendedFollowupList({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource;
 }) {
-  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const sendMessage = useSet(thread.sendMessage$);
   const selectedModel = useLastResolved(thread.selectedModel$) ?? null;
   const rootSignal = useGet(rootSignal$);
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
@@ -3998,7 +3997,8 @@ function useChatComposerModel(
         }
       : baseModelSelection;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const personalModelProvider = useLastResolved(personalModelProvider$);
+  const modelConfigurationWarning =
+    useLastResolved(thread.modelConfigurationWarning$) ?? null;
   const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
 
   const handleModelSelectionChange = (
@@ -4016,9 +4016,8 @@ function useChatComposerModel(
     : undefined;
   const modelPickerLoading = selectedModelResolved === undefined;
   const submitBlockerProps = modelSelection
-    ? resolveChatComposerSubmitBlocker({
-        personalModelProvider,
-        selectedModel: modelSelection.selectedModel,
+    ? resolveSelectedModelChatComposerSubmitBlocker({
+        warning: modelConfigurationWarning,
         onAction: openPersonalOauthConfiguration,
       })
     : undefined;
@@ -4042,8 +4041,8 @@ function useChatThreadComposerSendState({
   computerUseHostIdForSend: string | null | undefined;
   clearComputerUseHostOverride: () => void;
 }) {
-  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
-  const [, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const send = useSet(thread.sendMessage$);
+  const queueMessage = useSet(thread.queueMessage$);
   const rootSignal = useGet(rootSignal$);
   const generationTemplate = useGet(thread.draft.generationTemplate$);
   const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
@@ -4098,7 +4097,6 @@ function useChatThreadComposerSendState({
     handleSend,
     handleQueue,
     handleFeedbackSend,
-    sendLoading: sendLoadable.state === "loading",
     templatePicker: {
       value: generationTemplate,
       onChange: (value: GenerationTemplateRequest | undefined) => {
@@ -4283,10 +4281,9 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const queuedMessageItems = useQueuedMessageItems(thread);
   const hasMessagesResolved = useLastResolved(thread.hasMessages$);
   const hasMessages = hasMessagesResolved ?? false;
-  const lastAssistantCancelled =
-    useLastResolved(thread.lastAssistantCancelled$) ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
-  const allFinished = useLastResolved(thread.allFinished$)!;
+  const sendButtonStatus =
+    useLastResolved(thread.composerSendButtonStatus$) ?? "sending";
   const cancelRun = useSet(thread.cancelRun$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
@@ -4310,21 +4307,15 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     submitBlockerProps,
     modelSelection,
   } = useChatComposerModel(thread, pageSignal);
-  const {
-    handleSend,
-    handleQueue,
-    handleFeedbackSend,
-    sendLoading,
-    templatePicker,
-  } = useChatThreadComposerSendState({
-    thread,
-    modelSelection,
-    computerUseHostIdForSend,
-    clearComputerUseHostOverride,
-  });
-  const sending = !allFinished || sendLoading;
+  const { handleSend, handleQueue, handleFeedbackSend, templatePicker } =
+    useChatThreadComposerSendState({
+      thread,
+      modelSelection,
+      computerUseHostIdForSend,
+      clearComputerUseHostOverride,
+    });
   const skeletonVisible = hasMessagesResolved === undefined;
-  const composerSending = sending && !lastAssistantCancelled;
+  const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
 
   const handleDraftChange = () => {
@@ -4342,12 +4333,11 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     onQueue: handleQueue,
     sending: composerSending,
     queueWhileSending,
-    onCancel:
-      !allFinished || sendLoading
-        ? () => {
-            detach(cancelRun(pageSignal), Reason.DomCallback);
-          }
-        : undefined,
+    onCancel: composerSending
+      ? () => {
+          detach(cancelRun(pageSignal), Reason.DomCallback);
+        }
+      : undefined,
     displayName,
     className: "w-full min-w-0",
     autoFocus: shouldAutoFocusComposer({

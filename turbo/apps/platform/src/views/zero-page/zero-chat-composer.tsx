@@ -7030,18 +7030,16 @@ function ComposerModelPickerSlot({
   modelPickerLoading,
   submitBlocker,
   codexFastModeEnabled,
-  modelPickerOpen,
   onModelPickerChange,
-  onModelPickerOpenChange,
 }: {
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   codexFastModeEnabled: boolean;
-  modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
-  onModelPickerOpenChange: (open: boolean) => void;
 }) {
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
   if (modelPickerLoading) {
     return null;
   }
@@ -7066,7 +7064,7 @@ function ComposerModelPickerSlot({
           mobileIconTrigger
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
-          onOpenChange={onModelPickerOpenChange}
+          onOpenChange={setModelPickerOpen}
           disabled={modelPicker.disabled}
           resolveDefaultSelection={false}
         />
@@ -7123,8 +7121,6 @@ export function useZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
-  const modelPickerOpen = useGet(modelPickerOpen$);
-  const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
   const features = useLastResolved(featureSwitch$);
   const { codexFastModeEnabled, uploadPopoverEnabled } =
@@ -7586,9 +7582,7 @@ export function useZeroChatComposer({
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
                     codexFastModeEnabled={codexFastModeEnabled}
-                    modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
-                    onModelPickerOpenChange={setModelPickerOpen}
                   />
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton

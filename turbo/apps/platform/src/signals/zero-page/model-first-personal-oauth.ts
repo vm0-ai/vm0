@@ -31,9 +31,37 @@ export type PersonalModelProviderStatus =
       modelLabel: string;
     };
 
+type PersonalModelProviderWarningKind =
+  | "claude-code-connect"
+  | "claude-code-reconnect"
+  | "codex-connect"
+  | "codex-reconnect";
+
+export type PersonalModelProviderWarning =
+  `${PersonalModelProviderWarningKind}\0${string}`;
+
 export type PersonalModelProviderStatusByModel = Readonly<
   Record<string, PersonalModelProviderStatus>
 >;
+
+export function personalModelProviderWarning(
+  status: PersonalModelProviderStatus | null | undefined,
+): PersonalModelProviderWarning | null {
+  if (!status || status.status === "connected") {
+    return null;
+  }
+  let kind: PersonalModelProviderWarningKind;
+  if (status.providerType === "codex-oauth-token") {
+    kind =
+      status.status === "needs_reconnect" ? "codex-reconnect" : "codex-connect";
+  } else {
+    kind =
+      status.status === "needs_reconnect"
+        ? "claude-code-reconnect"
+        : "claude-code-connect";
+  }
+  return `${kind}\0${status.modelLabel}`;
+}
 
 const internalReloadPersonalModelProvider$ = state(0);
 

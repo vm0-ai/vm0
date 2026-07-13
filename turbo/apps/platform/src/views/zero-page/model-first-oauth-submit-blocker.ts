@@ -3,6 +3,7 @@ import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../../signals/zero-
 import { setCodexDeviceAuthDialogStatePersonal$ } from "../../signals/zero-page/settings/codex-device-auth.ts";
 import type {
   PersonalModelProviderStatusByModel,
+  PersonalModelProviderWarning,
   PersonalOauthProviderType,
 } from "../../signals/zero-page/model-first-personal-oauth.ts";
 
@@ -51,6 +52,36 @@ export function resolveChatComposerSubmitBlocker(params: {
   const blocker = resolveModelConfigurationSubmitBlocker(
     params.personalModelProvider?.[params.selectedModel],
   );
+  return blocker
+    ? {
+        ...blocker,
+        onAction: () => {
+          params.onAction(blocker.providerType, blocker.codexDeviceAuthMode);
+        },
+      }
+    : undefined;
+}
+
+export function resolveSelectedModelChatComposerSubmitBlocker(params: {
+  warning: PersonalModelProviderWarning | null;
+  onAction: (
+    providerType: MemberOauthProviderType,
+    codexDeviceAuthMode: CodexDeviceAuthDialogMode,
+  ) => void;
+}): ModelConfigurationSubmitBlocker | undefined {
+  if (params.warning === null) {
+    return undefined;
+  }
+  const separatorIndex = params.warning.indexOf("\0");
+  const warningKind = params.warning.slice(0, separatorIndex);
+  const providerType = warningKind.startsWith("codex-")
+    ? "codex-oauth-token"
+    : "claude-code-oauth-token";
+  const blocker = resolveModelConfigurationSubmitBlocker({
+    status: warningKind.endsWith("-reconnect") ? "needs_reconnect" : "missing",
+    providerType,
+    modelLabel: params.warning.slice(separatorIndex + 1),
+  });
   return blocker
     ? {
         ...blocker,

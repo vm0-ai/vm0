@@ -2058,9 +2058,11 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    await user.click(
-      await screen.findByRole("combobox", { name: "Claude Sonnet 4.6" }),
-    );
+    const modelPicker = await screen.findByRole("combobox", {
+      name: "Claude Sonnet 4.6",
+    });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await user.click(modelPicker);
 
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
@@ -2069,6 +2071,10 @@ describe("chat composer models", () => {
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });
+
+    await user.keyboard("{Escape}");
+    expect(modelPicker).toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("blocks routed model sends until the matching device login is opened", async () => {

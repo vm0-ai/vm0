@@ -10,6 +10,7 @@ import type { ChatThread } from "../agent-chat.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
+import type { PersonalModelProviderWarning } from "../zero-page/model-first-personal-oauth.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
@@ -35,6 +36,8 @@ export type ThinkingIndicatorMode =
   | "running-queued"
   | "finished"
   | null;
+
+export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface MessageImageGroupProjection {
   readonly messages: readonly {
@@ -64,6 +67,9 @@ export interface ChatThreadSignals {
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
   selectedModel$: Computed<Promise<string | null>>;
+  modelConfigurationWarning$: Computed<
+    Promise<PersonalModelProviderWarning | null>
+  >;
   setModelSelection$: Command<
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
@@ -81,6 +87,7 @@ export interface ChatThreadSignals {
       AbortSignal,
     ]
   >;
+  composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<void>,
     [string, string | null | undefined, AbortSignal]
@@ -132,7 +139,6 @@ export interface ChatThreadSignals {
   hasQueuedMessages$: Computed<Promise<boolean>>;
   queuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
   emptyQueuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
-  lastAssistantCancelled$: Computed<Promise<boolean>>;
   thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
   thinkingMessageId$: Computed<Promise<string | null>>;
   thinkingText$: Computed<Promise<string | null>>;
@@ -140,7 +146,6 @@ export interface ChatThreadSignals {
     Promise<RecommendedFollowupSource | null>
   >;
   activeGoalObjective$: Computed<Promise<string | null>>;
-  allFinished$: Computed<Promise<boolean>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;

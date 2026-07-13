@@ -93,9 +93,14 @@ import {
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
+import {
+  personalModelProvider$,
+  personalModelProviderWarning,
+} from "../zero-page/model-first-personal-oauth.ts";
 
 import type {
   ChatThreadSignals,
+  ComposerSendButtonStatus,
   MessageImageGroupProjection,
   QueuedChatMessageItem,
   RecommendedFollowupSource,
@@ -560,10 +565,28 @@ function createModelSelection(
     },
   );
 
+  const modelConfigurationWarning$ =
+    createModelConfigurationWarning(selectedModel$);
+
   return {
     selectedModel$,
+    modelConfigurationWarning$,
     setModelSelection$,
   };
+}
+
+function createModelConfigurationWarning(
+  selectedModel$: Computed<Promise<string | null>>,
+) {
+  return computed(async (get) => {
+    const selectedModel = await get(selectedModel$);
+    if (selectedModel === null) {
+      return null;
+    }
+    return personalModelProviderWarning(
+      (await get(personalModelProvider$))[selectedModel],
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2659,8 +2682,29 @@ const appendOptimisticSendMessage$ = command(
   },
 );
 
+function createComposerSendButtonSignals(messages: {
+  allFinished$: Computed<Promise<boolean>>;
+  lastAssistantCancelled$: Computed<Promise<boolean>>;
+}) {
+  const pendingSendCount$ = state(0);
+  const composerSendButtonStatus$ = computed(
+    async (get): Promise<ComposerSendButtonStatus> => {
+      const sendPending = get(pendingSendCount$) > 0;
+      const [allFinished, lastAssistantCancelled] = await Promise.all([
+        get(messages.allFinished$),
+        get(messages.lastAssistantCancelled$),
+      ]);
+      return (sendPending || !allFinished) && !lastAssistantCancelled
+        ? "sending"
+        : "idle";
+    },
+  );
+  return { pendingSendCount$, composerSendButtonStatus$ };
+}
+
 interface SendMessageDeps {
   threadId: string;
+  pendingSendCount$: State<number>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
@@ -2720,6 +2764,7 @@ const postSendMessage$ = command(
 function createSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
+    pendingSendCount$,
     threadMeta$,
     draft,
     cancelDraftSync$,
@@ -2729,7 +2774,7 @@ function createSendMessage(deps: SendMessageDeps) {
   } = deps;
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
-  return command(
+  const performSendMessage$ = command(
     async (
       { get, set },
       prompt: string,
@@ -2818,6 +2863,27 @@ function createSendMessage(deps: SendMessageDeps) {
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
+    },
+  );
+  return command(
+    async (
+      { set },
+      prompt: string,
+      modelSelection: ModelProviderSelection | null,
+      options: SendMessageOptions | undefined,
+      signal: AbortSignal,
+    ) => {
+      set(pendingSendCount$, (count) => {
+        return count + 1;
+      });
+      await withCleanup(
+        set(performSendMessage$, prompt, modelSelection, options, signal),
+        () => {
+          set(pendingSendCount$, (count) => {
+            return count - 1;
+          });
+        },
+      );
     },
   );
 }
@@ -3565,13 +3631,12 @@ export function createChatThreadSignals(
   const { remoteThreadDetail$, threadDraft$, reloadThread$ } =
     createRemoteThreadDetail(dataSource);
   const threadMeta$ = createThreadMeta(threadId);
-  const { threadTitle$, threadTitleEmoji$, threadTitleText$ } =
-    createThreadTitleParts(threadMeta$);
+  const threadTitle = createThreadTitleParts(threadMeta$);
   const threadSettledInServer$ = createThreadSettledInServer(
     threadId,
     threadMeta$,
   );
-  const { selectedModel$, setModelSelection$ } = createModelSelection(
+  const modelSelection = createModelSelection(
     threadId,
     threadMeta$,
     dataSource,
@@ -3601,6 +3666,7 @@ export function createChatThreadSignals(
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
+  const composerSendButton = createComposerSendButtonSignals(messages);
   const artifact = createArtifacts(threadId);
   const runTracking = createRunTracking({
     threadId,
@@ -3617,8 +3683,9 @@ export function createChatThreadSignals(
   });
   const messageActions = createThreadMessageActions({
     threadId,
+    pendingSendCount$: composerSendButton.pendingSendCount$,
     threadMeta$,
-    selectedModel$,
+    selectedModel$: modelSelection.selectedModel$,
     rawMessages$: messages.rawMessages$,
     draft,
     cancelDraftSync$,
@@ -3639,14 +3706,12 @@ export function createChatThreadSignals(
     threadDraft$,
     threadMeta$,
     reloadThread$,
-    threadTitle$,
-    threadTitleEmoji$,
-    threadTitleText$,
+    ...threadTitle,
     threadSettledInServer$,
-    selectedModel$,
-    setModelSelection$,
+    ...modelSelection,
     ...computerUseHostSelection,
     ...messageActions,
+    composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
     ...scrollSignals,
     containerEl$,
     setContainerRef$,
@@ -3669,13 +3734,11 @@ export function createChatThreadSignals(
     hasQueuedMessages$: messages.hasQueuedMessages$,
     queuedMessageItems$: messages.queuedMessageItems$,
     emptyQueuedMessageItems$: messages.emptyQueuedMessageItems$,
-    lastAssistantCancelled$: messages.lastAssistantCancelled$,
     thinkingIndicatorMode$: messages.thinkingIndicatorMode$,
     thinkingMessageId$: messages.thinkingMessageId$,
     thinkingText$: messages.thinkingText$,
     recommendedFollowupSource$: messages.recommendedFollowupSource$,
     activeGoalObjective$: messages.activeGoalObjective$,
-    allFinished$: messages.allFinished$,
     donePhrase$: messages.donePhrase$,
     loadMoreRenderedChatGroups$: messages.loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$:
