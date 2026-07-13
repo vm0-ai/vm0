@@ -111,10 +111,10 @@ describe("chat message persistence", () => {
         },
       });
 
+      await firstThreadCaughtUp.promise;
       await expect(
         screen.findByText(FIRST_MESSAGE),
       ).resolves.toBeInTheDocument();
-      await firstThreadCaughtUp.promise;
       await waitFor(async () => {
         const persistedMessage: unknown = await testDb.get(
           CHAT_MESSAGES_STORE,
