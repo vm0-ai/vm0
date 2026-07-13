@@ -14,15 +14,6 @@ export {
   type BuildInfoRouteResponse,
 } from "./build-info";
 export {
-  appVersionSchema,
-  webClientCompatibilityContract,
-  webClientCompatibilityQuerySchema,
-  webClientCompatibilityResponseSchema,
-  type WebClientCompatibilityContract,
-  type WebClientCompatibilityResponse,
-  type WebClientCompatibilityRouteResponse,
-} from "./web-client-compatibility";
-export {
   healthAuthContract,
   healthContract,
   healthResponseSchema,

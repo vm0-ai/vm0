@@ -7,6 +7,7 @@ import {
 } from "./auth-retry.ts";
 import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
 import { addClientHeaders } from "./client-headers.ts";
+import { reportForceUpgradeResponse } from "./force-upgrade.ts";
 
 const OAUTH_WEB_NAVIGATION_TARGET = "www";
 
@@ -174,6 +175,8 @@ export const fetch$ = computed((get) => {
         );
       }
     }
+
+    reportForceUpgradeResponse(response);
 
     return response;
   };

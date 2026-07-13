@@ -1,14 +1,6 @@
-import { command } from "ccstate";
 import { z } from "zod";
-import {
-  appVersionSchema,
-  webClientCompatibilityContract,
-  type WebClientCompatibilityRouteResponse,
-} from "@vm0/api-contracts/contracts";
 
-import compatibilityConfig from "../../lib/web-client-compatibility.json";
-import { setResHeader$ } from "../context/hono";
-import { queryOf } from "../context/request";
+import compatibilityConfig from "./web-client-compatibility.json";
 
 type AppVersion = {
   readonly major: number;
@@ -20,20 +12,21 @@ type AppVersion = {
 const APP_VERSION_PATTERN =
   /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<prerelease>[0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u;
 
+const appVersionSchema = z.string().regex(APP_VERSION_PATTERN);
+
 const webClientCompatibilityConfigSchema = z.object({
   minimumSupportedVersion: appVersionSchema,
 });
 
 const { minimumSupportedVersion } =
   webClientCompatibilityConfigSchema.parse(compatibilityConfig);
-const webClientCompatibilityQuery$ = queryOf(
-  webClientCompatibilityContract.get,
-);
 
-function parseAppVersion(version: string): AppVersion {
+export const minimumSupportedWebClientVersion = minimumSupportedVersion;
+
+function parseAppVersion(version: string): AppVersion | null {
   const match = APP_VERSION_PATTERN.exec(version);
   if (!match?.groups) {
-    throw new Error(`Invalid app version: ${version}`);
+    return null;
   }
 
   return {
@@ -60,9 +53,12 @@ function compareIdentifiers(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-function compareAppVersions(left: string, right: string): number {
+function compareAppVersions(left: string, right: string): number | null {
   const parsedLeft = parseAppVersion(left);
   const parsedRight = parseAppVersion(right);
+  if (!parsedLeft || !parsedRight) {
+    return null;
+  }
 
   const releaseComparison =
     parsedLeft.major - parsedRight.major ||
@@ -102,22 +98,7 @@ function compareAppVersions(left: string, right: string): number {
   return 0;
 }
 
-function isSupportedWebClientVersion(version: string): boolean {
-  return compareAppVersions(version, minimumSupportedVersion) >= 0;
+export function isSupportedWebClientVersion(version: string): boolean {
+  const comparison = compareAppVersions(version, minimumSupportedVersion);
+  return comparison === null || comparison >= 0;
 }
-
-export const webClientCompatibility$ = command(
-  ({ get, set }, _signal: AbortSignal): WebClientCompatibilityRouteResponse => {
-    const query = get(webClientCompatibilityQuery$);
-
-    set(setResHeader$, "Cache-Control", "no-store");
-
-    return {
-      status: 200,
-      body: {
-        minimumSupportedVersion,
-        supported: isSupportedWebClientVersion(query.version),
-      },
-    };
-  },
-);
