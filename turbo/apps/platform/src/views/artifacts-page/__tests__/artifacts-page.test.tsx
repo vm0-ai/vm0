@@ -1396,5 +1396,23 @@ describe("artifacts page", () => {
       expect(focusedArtifactIndex()).toBe("60");
     });
     await screen.findByText("keyboard-windowed-060.html");
+
+    const firstMountedArtifact = document.querySelector<HTMLElement>(
+      "article[data-artifact-index]",
+    );
+    if (!firstMountedArtifact?.dataset.artifactIndex) {
+      throw new Error("First mounted artifact not found");
+    }
+    const firstMountedIndex = Number(
+      firstMountedArtifact.dataset.artifactIndex,
+    );
+    expect(firstMountedIndex).toBeGreaterThan(0);
+
+    firstMountedArtifact.focus();
+    fireEvent.keyDown(firstMountedArtifact, { key: "Tab", shiftKey: true });
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe(String(firstMountedIndex - 1));
+    });
   });
 });

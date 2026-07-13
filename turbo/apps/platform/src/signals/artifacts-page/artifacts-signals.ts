@@ -189,10 +189,16 @@ export const setArtifactsGridRef$ = onRef(
   }),
 );
 
-function focusArtifactElement(element: HTMLElement): boolean {
-  const focusTarget = element.matches('[tabindex="0"]')
+export function getArtifactFocusTarget(
+  element: HTMLElement,
+): HTMLElement | null {
+  return element.matches('[tabindex="0"]')
     ? element
     : element.querySelector<HTMLElement>(ARTIFACT_FOCUS_TARGET_SELECTOR);
+}
+
+function focusArtifactElement(element: HTMLElement): boolean {
+  const focusTarget = getArtifactFocusTarget(element);
   if (!focusTarget) {
     return false;
   }

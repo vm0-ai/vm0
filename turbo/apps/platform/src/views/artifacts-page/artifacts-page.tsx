@@ -1,4 +1,8 @@
-import type { ReactNode, UIEvent as ReactUIEvent } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  UIEvent as ReactUIEvent,
+} from "react";
 import type { ArtifactItem } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
@@ -51,6 +55,7 @@ import {
   artifactsWindow$,
   cachedArtifacts$,
   filterArtifacts,
+  getArtifactFocusTarget,
   growArtifactsWindow$,
   navigateToArtifactThread$,
   reloadArtifacts$,
@@ -891,6 +896,78 @@ function ArtifactsKeyboardContinuation({
   );
 }
 
+function createArtifactsKeyboardNavigation({
+  artifactsLength,
+  columnCount,
+  endIndex,
+  onLoadMore,
+  requestKeyboardFocus,
+  rowHeight,
+  scrollMargin,
+  scrollViewport,
+  startIndex,
+  syncScrollMetrics,
+  windowedLength,
+}: {
+  readonly artifactsLength: number;
+  readonly columnCount: number;
+  readonly endIndex: number;
+  readonly onLoadMore: () => void;
+  readonly requestKeyboardFocus: (index: number) => void;
+  readonly rowHeight: number;
+  readonly scrollMargin: number;
+  readonly scrollViewport: HTMLElement | null;
+  readonly startIndex: number;
+  readonly syncScrollMetrics: (viewport: HTMLElement) => void;
+  readonly windowedLength: number;
+}) {
+  const scrollToIndex = (index: number) => {
+    if (!scrollViewport) {
+      return;
+    }
+    const row = Math.floor(index / columnCount);
+    scrollViewport.scrollTop = scrollMargin + row * rowHeight;
+    syncScrollMetrics(scrollViewport);
+  };
+
+  const continueForward = () => {
+    const nextIndex = endIndex < windowedLength ? endIndex : windowedLength;
+    if (nextIndex >= artifactsLength) {
+      return;
+    }
+    requestKeyboardFocus(nextIndex);
+    if (nextIndex >= windowedLength) {
+      onLoadMore();
+    }
+    scrollToIndex(nextIndex);
+  };
+
+  const handleBackward = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.key !== "Tab" ||
+      !event.shiftKey ||
+      startIndex === 0 ||
+      !scrollViewport
+    ) {
+      return;
+    }
+    const firstMountedArtifact = event.currentTarget.querySelector<HTMLElement>(
+      `[data-artifact-index="${startIndex}"]`,
+    );
+    if (
+      !firstMountedArtifact ||
+      event.target !== getArtifactFocusTarget(firstMountedArtifact)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    requestKeyboardFocus(startIndex - 1);
+    scrollToIndex(startIndex - 1);
+  };
+
+  return { continueForward, handleBackward };
+}
+
 function ArtifactsList({
   artifacts,
   hasFilters,
@@ -951,25 +1028,22 @@ function ArtifactsList({
   const virtualized = windowed.slice(startIndex, endIndex);
   const hasKeyboardContinuation =
     endIndex < windowed.length || windowed.length < artifacts.length;
-
-  const continueKeyboardNavigation = () => {
-    const nextIndex = endIndex < windowed.length ? endIndex : windowed.length;
-    if (nextIndex >= artifacts.length) {
-      return;
-    }
-
-    requestKeyboardFocus(nextIndex);
-    if (nextIndex >= windowed.length) {
-      onLoadMore();
-    }
-
-    if (!scrollViewport) {
-      return;
-    }
-    const row = Math.floor(nextIndex / columnCount);
-    scrollViewport.scrollTop = scrollMargin + row * rowHeight;
-    syncScrollMetrics(scrollViewport);
-  };
+  const {
+    continueForward: continueKeyboardNavigation,
+    handleBackward: handleGridKeyDownCapture,
+  } = createArtifactsKeyboardNavigation({
+    artifactsLength: artifacts.length,
+    columnCount,
+    endIndex,
+    onLoadMore,
+    requestKeyboardFocus,
+    rowHeight,
+    scrollMargin,
+    scrollViewport,
+    startIndex,
+    syncScrollMetrics,
+    windowedLength: windowed.length,
+  });
 
   if (loading) {
     return <ArtifactsLoadingState />;
@@ -984,6 +1058,7 @@ function ArtifactsList({
   return (
     <div
       ref={setGridRef}
+      onKeyDownCapture={handleGridKeyDownCapture}
       className="relative w-full"
       data-testid="artifacts-virtual-grid"
       style={{ height: totalHeight }}
