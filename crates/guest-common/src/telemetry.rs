@@ -1,4 +1,8 @@
 //! Telemetry recording for sandbox operations.
+//!
+//! The configured log destination is process-global and shared by every thread.
+//! Embedding runtimes should install it during process bootstrap. Tests and
+//! other callers that replace or clear it must coordinate exclusive ownership.
 
 use crate::log;
 use serde::Serialize;
@@ -14,7 +18,14 @@ use std::os::fd::{AsRawFd, RawFd};
 static SANDBOX_OPS_APPEND_LOCK: Mutex<()> = Mutex::new(());
 static SANDBOX_OPS_LOG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// Set the sandbox operations log path used by future `record_sandbox_op` calls.
+/// Set the process-global sandbox operations log path.
+///
+/// The selected path is shared by every thread. A later call replaces it for
+/// `record_sandbox_op` calls that have not yet captured a destination. Records
+/// already in progress may still append to the path they captured.
+///
+/// This is not a scoped override. Tests and other callers that replace or clear
+/// the path must coordinate exclusive ownership of the shared state.
 pub fn set_sandbox_ops_log_file(path: impl AsRef<Path>) {
     let mut state = SANDBOX_OPS_LOG_OVERRIDE
         .lock()
@@ -22,7 +33,14 @@ pub fn set_sandbox_ops_log_file(path: impl AsRef<Path>) {
     *state = Some(path.as_ref().to_path_buf());
 }
 
-/// Clear the explicit sandbox operations log path.
+/// Clear the process-global sandbox operations log path.
+///
+/// This disables recording for calls that have not yet captured a destination.
+/// It does not restore a path installed by an earlier setter, and records
+/// already in progress may still append to the path they captured.
+///
+/// Tests and other callers that replace or clear the path must coordinate
+/// exclusive ownership of the shared state.
 pub fn clear_sandbox_ops_log_file() {
     let mut state = SANDBOX_OPS_LOG_OVERRIDE
         .lock()
@@ -98,6 +116,10 @@ struct SandboxOpEntry {
 }
 
 /// Record a sandbox operation to the telemetry log on a best-effort basis.
+///
+/// Each call snapshots the process-global destination before serialization and
+/// append. A setter or clear that overlaps after the snapshot does not reroute
+/// that record; it may still finish on the previous path.
 ///
 /// This helper is non-fatal: it no-ops when no explicit log path is configured.
 /// Serialization or append/open/lock/write failures are not propagated to the
@@ -253,20 +275,33 @@ mod tests {
     }
 
     #[test]
-    fn record_sandbox_op_uses_explicit_log_path_override() {
+    fn record_sandbox_op_replaces_and_clears_process_global_path() {
         let _guard = lock_test_state();
         let dir = tempfile::tempdir().unwrap();
-        let log_path = dir.path().join("runtime").join("logs").join("ops.jsonl");
-        let _override_guard = SandboxOpsOverrideGuard::set(&log_path);
+        let log_dir = dir.path().join("runtime").join("logs");
+        let first_path = log_dir.join("first.jsonl");
+        let second_path = log_dir.join("second.jsonl");
+        let _override_guard = SandboxOpsOverrideGuard::set(&first_path);
 
-        record_sandbox_op("op_override", Duration::from_millis(12), true, None);
+        record_sandbox_op("first_path", Duration::from_millis(12), true, None);
+        set_sandbox_ops_log_file(&second_path);
+        record_sandbox_op("second_path", Duration::from_millis(24), true, None);
+        clear_sandbox_ops_log_file();
+        record_sandbox_op("after_clear", Duration::from_millis(36), true, None);
 
-        let content = std::fs::read_to_string(&log_path).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 1);
-        let entry: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-        assert_eq!(entry["action_type"], "op_override");
-        assert_eq!(entry["duration_ms"], 12);
+        let first_content = std::fs::read_to_string(&first_path).unwrap();
+        let first_lines: Vec<&str> = first_content.lines().collect();
+        assert_eq!(first_lines.len(), 1);
+        let first_entry: serde_json::Value = serde_json::from_str(first_lines[0]).unwrap();
+        assert_eq!(first_entry["action_type"], "first_path");
+        assert_eq!(first_entry["duration_ms"], 12);
+
+        let second_content = std::fs::read_to_string(&second_path).unwrap();
+        let second_lines: Vec<&str> = second_content.lines().collect();
+        assert_eq!(second_lines.len(), 1);
+        let second_entry: serde_json::Value = serde_json::from_str(second_lines[0]).unwrap();
+        assert_eq!(second_entry["action_type"], "second_path");
+        assert_eq!(second_entry["duration_ms"], 24);
     }
 
     #[test]

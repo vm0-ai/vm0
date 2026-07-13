@@ -6,6 +6,8 @@
 //! Without a configured system log, logging falls back to stderr-only behavior.
 //! System log append failures are reported to stderr and do not suppress the
 //! original stderr line.
+//! The configured file sink is process-global and shared by every thread. Tests
+//! and other callers that replace or clear it must coordinate exclusive ownership.
 //!
 //! Embedding runtimes may persist or upload the configured system log; this
 //! module only owns the local logging sinks.
@@ -100,7 +102,11 @@ pub fn timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-/// Override the system log file used by future log lines.
+/// Override the process-global system log file used by future log lines.
+///
+/// The selected path and cached handle are shared by every thread. A later call
+/// replaces the selected path. Tests and other callers that replace or clear it
+/// must coordinate exclusive ownership of the shared state.
 ///
 /// Updating this path drops any cached file handle, including same-path
 /// updates. This lets callers force the next write to reopen the path.
