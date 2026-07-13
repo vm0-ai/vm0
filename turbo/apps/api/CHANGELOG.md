@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.265.2](https://github.com/vm0-ai/vm0/compare/api-v1.265.1...api-v1.265.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* acknowledge incompatible Notion webhook events ([#21165](https://github.com/vm0-ai/vm0/issues/21165)) ([773c9af](https://github.com/vm0-ai/vm0/commit/773c9afa82643658aa06e44d6e504f44599e6992)), closes [#21157](https://github.com/vm0-ai/vm0/issues/21157)
+
 ## [1.265.1](https://github.com/vm0-ai/vm0/compare/api-v1.265.0...api-v1.265.1) (2026-07-13)
 
 
