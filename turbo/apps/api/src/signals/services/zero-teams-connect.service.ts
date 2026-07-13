@@ -16,6 +16,7 @@ import type { TeamsInboundActivity } from "@vm0/api-contracts/contracts/zero-tea
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { env } from "../../lib/env";
+import { internalApiBaseUrl } from "../../lib/internal-api-url";
 import { logger } from "../../lib/log";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
@@ -145,9 +146,7 @@ function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string {
-  const url = new URL(
-    `${env("VM0_API_BACKEND_URL")}/api/zero/teams/oauth/connect`,
-  );
+  const url = new URL("/api/zero/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   return url.toString();

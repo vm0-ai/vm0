@@ -45,11 +45,14 @@ function teamsInstallUrl(tenantId?: string): string {
   return url.toString();
 }
 
-function teamsOauthConnectUrl(fixture: {
-  readonly orgId: string;
-  readonly userId: string;
-}): string {
-  const url = new URL("https://api.vm0.test/api/zero/teams/oauth/connect");
+function teamsOauthConnectUrl(
+  fixture: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  origin = "https://api.vm0.test",
+): string {
+  const url = new URL("/api/zero/teams/oauth/connect", origin);
   url.searchParams.set("orgId", fixture.orgId);
   url.searchParams.set("vm0UserId", fixture.userId);
   return url.toString();
@@ -170,6 +173,34 @@ describe("GET /api/zero/integrations/teams/connect", () => {
         orgId: "org_empty",
         userId: "user_empty",
       }),
+    });
+  });
+
+  it("falls back to the web origin when the API backend URL is unset", async () => {
+    mockEnv("VM0_API_BACKEND_URL", undefined);
+    mocks.clerk.session("user_empty", "org_empty", "org:admin");
+
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+
+    const response = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      isInstalled: false,
+      isConnected: false,
+      isAdmin: true,
+      installUrl: teamsInstallUrl(),
+      connectUrl: teamsOauthConnectUrl(
+        {
+          orgId: "org_empty",
+          userId: "user_empty",
+        },
+        "https://app.vm0.test",
+      ),
     });
   });
 
