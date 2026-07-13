@@ -13,6 +13,8 @@ export enum FeatureSwitchKey {
   DocuSignConnector = "docusignConnector",
   DropboxConnector = "dropboxConnector",
   FigmaConnector = "figmaConnector",
+  GoogleContactsConnector = "googleContactsConnector",
+  GoogleFormsConnector = "googleFormsConnector",
   MercuryConnector = "mercuryConnector",
   Microsoft365Connector = "microsoft365Connector",
   NeonConnector = "neonConnector",

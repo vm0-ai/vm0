@@ -79,8 +79,10 @@ import { googleAdsProvider } from "./connectors/google-ads/provider";
 import { googleAnalyticsProvider } from "./connectors/google-analytics/provider";
 import { googleCalendarProvider } from "./connectors/google-calendar/provider";
 import { googleCloudProvider } from "./connectors/google-cloud/provider";
+import { googleContactsProvider } from "./connectors/google-contacts/provider";
 import { googleDocsProvider } from "./connectors/google-docs/provider";
 import { googleDriveProvider } from "./connectors/google-drive/provider";
+import { googleFormsProvider } from "./connectors/google-forms/provider";
 import { googleMapsProvider } from "./connectors/google-maps/provider";
 import { googleMeetProvider } from "./connectors/google-meet/provider";
 import { googleSearchConsoleProvider } from "./connectors/google-search-console/provider";
@@ -687,8 +689,14 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
     googleCalendarProvider,
   ),
   authCodeRefreshProviderEntry("google-cloud", "oauth", googleCloudProvider),
+  authCodeRefreshProviderEntry(
+    "google-contacts",
+    "oauth",
+    googleContactsProvider,
+  ),
   authCodeRefreshProviderEntry("google-docs", "oauth", googleDocsProvider),
   authCodeRefreshProviderEntry("google-drive", "oauth", googleDriveProvider),
+  authCodeRefreshProviderEntry("google-forms", "oauth", googleFormsProvider),
   authCodeRefreshProviderEntry("google-maps", "oauth", googleMapsProvider),
   authCodeRefreshProviderEntry("google-meet", "oauth", googleMeetProvider),
   authCodeRefreshProviderEntry(

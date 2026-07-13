@@ -86,6 +86,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Figma design connector",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleContactsConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Google Contacts connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.GoogleFormsConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Google Forms connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
