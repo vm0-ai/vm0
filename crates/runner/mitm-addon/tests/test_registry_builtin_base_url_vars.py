@@ -128,6 +128,38 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.zendesk.com"
 
+    @pytest.mark.parametrize(
+        ("base_url_vars", "expected_message"),
+        [
+            ([], "baseUrlVars must be an object"),
+            ({"ZENDESK_SUBDOMAIN": 1}, "baseUrlVars must contain string values"),
+        ],
+    )
+    def test_malformed_base_url_vars_reject_vm(
+        self, tmp_path, base_url_vars: object, expected_message: str
+    ) -> None:
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-zendesk",
+            name="zendesk",
+            base_url_vars={"ZENDESK_SUBDOMAIN": "acme"},
+        )
+        data = json.loads(path.read_text())
+        data["vms"]["10.200.0.1"]["firewalls"][0]["baseUrlVars"] = base_url_vars
+        path.write_text(json.dumps(data))
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert "10.200.0.1" not in state.vms
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert invalid_vm.message == expected_message
+
     def test_builtin_fixed_provider_suffix_rejects_authority_escape(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
