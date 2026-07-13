@@ -7,7 +7,7 @@ use super::messages::{
 };
 use super::persistence::{InputEventContext, persist_input_events};
 use super::scenario::Scenario;
-use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction};
+use super::{AppServerState, INVALID_REQUEST, PendingResponse, ServerAction, spawn_stderr_holder};
 use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::thread;
@@ -208,6 +208,10 @@ impl AppServerState {
             return Ok(ServerAction::Continue);
         }
         if self.scenario == Scenario::ExitOnTurnStart {
+            return Ok(ServerAction::Stop);
+        }
+        if self.scenario == Scenario::ExitOnTurnStartWithStderrHolder {
+            spawn_stderr_holder()?;
             return Ok(ServerAction::Stop);
         }
         if self.scenario == Scenario::HangOnTurnStart {
