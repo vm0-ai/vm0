@@ -576,6 +576,15 @@ function sandboxOperationEventsForRun(
   });
 }
 
+function sandboxOperationEventsForRunByAction(
+  runId: string,
+  actionType: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === actionType;
+  });
+}
+
 function sandboxOperationDurationForRun(
   runId: string,
   actionType: string,
@@ -2749,6 +2758,30 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
       apiToClaimRequestMs,
     );
+    for (const actionType of [
+      "runner_notification_queue_to_entry",
+      "runner_notification_affinity_lookup",
+      "runner_notification_queue_to_publish_start",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          session_affinity: "protected",
+        }),
+      );
+    }
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
 
     const expiredFollowUp = await api.createRun(actor, {
@@ -3134,6 +3167,30 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
       apiToClaimRequestMs,
     );
+    for (const actionType of [
+      "runner_notification_queue_to_entry",
+      "runner_notification_affinity_lookup",
+      "runner_notification_queue_to_publish_start",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        third.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          session_affinity: "no_session",
+        }),
+      );
+    }
     await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
       decryptCountBeforeClaim,
     );
