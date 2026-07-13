@@ -538,13 +538,15 @@ function successRedirectResponse(args: {
 function callbackOAuthContext(args: {
   readonly storedContext: string | undefined;
   readonly realmId: string | undefined;
+  readonly domain: string | undefined;
 }): string | undefined {
-  if (!args.realmId) {
+  if (!args.realmId && !args.domain) {
     return args.storedContext;
   }
   return JSON.stringify({
     ...(args.storedContext ? { storedContext: args.storedContext } : {}),
-    realmId: args.realmId,
+    ...(args.realmId ? { realmId: args.realmId } : {}),
+    ...(args.domain ? { domain: args.domain } : {}),
   });
 }
 
@@ -931,6 +933,7 @@ const handleAuthCodeConnectorCallback$ = command(
           oauthContext: callbackOAuthContext({
             storedContext: resolvedState.oauthContext,
             realmId: args.query.realmId,
+            domain: args.query.domain,
           }),
           identity: resolvedState.identity,
           origin: args.origin,
