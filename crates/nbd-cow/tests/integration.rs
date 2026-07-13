@@ -605,10 +605,10 @@ async fn snapshot_restore_round_trip() {
 // DevicePool-specific tests (require root + nbd module)
 // ---------------------------------------------------------------------------
 
-/// Verify connect_device works with a specific device index.
+/// Verify a specifically connected device remains readable after one connection is lost.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn connect_device_specific_index() {
+async fn connect_device_survives_connection_loss() {
     if !nbd_test_available() {
         return;
     }
@@ -668,6 +668,31 @@ async fn connect_device_specific_index() {
         false
     };
 
+    let read_after_connection_loss = if connected {
+        let lost_server = server_handles.remove(0);
+        lost_server.abort();
+        let _ = lost_server.await;
+        tokio::task::yield_now().await;
+
+        let device_path = format!("/dev/nbd{device_index}");
+        Some(
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                tokio::task::spawn_blocking(move || {
+                    use std::os::unix::fs::FileExt;
+
+                    let device = fs::File::open(device_path)?;
+                    let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
+                    device.read_exact_at(&mut block, 0)?;
+                    Ok::<_, std::io::Error>(block)
+                }),
+            )
+            .await,
+        )
+    } else {
+        None
+    };
+
     // Clean up
     shutdown.cancel();
     for h in server_handles {
@@ -681,6 +706,16 @@ async fn connect_device_specific_index() {
 
     connect_result.expect("socketpair setup or connect_device");
     assert!(device_has_correct_size, "device should have correct size");
+    let block = read_after_connection_loss
+        .expect("connected device should be read")
+        .expect("read after connection loss should not time out")
+        .expect("read task should complete")
+        .expect("read after connection loss should succeed");
+    assert_eq!(
+        block,
+        vec![0_u8; nbd_cow::BLOCK_SIZE],
+        "read after connection loss should return base image data"
+    );
 }
 
 /// After destroy + release, the pool should not hand back the same device
