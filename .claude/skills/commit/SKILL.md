@@ -19,7 +19,7 @@ Run both operations together for a complete pre-commit workflow.
 
 ## Scope Selection
 
-1. Read and follow the [Pre-Commit Checks](../../../CLAUDE.md#pre-commit-checks) section.
+1. Read and follow the **Pre-Commit Checks** section in `CLAUDE.md`.
 2. Inspect `git status --short` and `git diff --cached --name-only`.
 3. Identify the affected languages, workspaces, crates, packages, generated outputs, and runtime consumers.
 4. Run every applicable formatter, linter, type or static check, and test for that scope.
@@ -27,11 +27,11 @@ Run both operations together for a complete pre-commit workflow.
 
 Do not run an unrelated language ecosystem's full suite. Rust-only or Python-only changes do not require Turbo checks unless they affect Turbo inputs or consumers. Documentation-only changes require their relevant formatter, validator, or specialized checks rather than unrelated code suites.
 
-The root [lefthook.yml](../../../lefthook.yml) selects formatting and static checks from staged paths. It does not replace manually selecting and running the relevant tests.
+The root `lefthook.yml` selects formatting and static checks from staged paths. It does not replace manually selecting and running the relevant tests.
 
 ## Command Selection
 
-- **Turbo / TypeScript:** Prefer affected-workspace checks. Use the full commands documented in [CLAUDE.md](../../../CLAUDE.md#select-checks-by-affected-scope) when the change crosses workspaces or cannot be isolated safely.
+- **Turbo / TypeScript:** Prefer affected-workspace checks. Use the full commands documented in `CLAUDE.md` when the change crosses workspaces or cannot be isolated safely.
 - **Rust:** From `crates/`, run formatting, Clippy, documentation checks, and tests for the affected crate(s). Use workspace-wide checks for shared or cross-crate changes.
 - **Python (`crates/runner/mitm-addon`):** Run Ruff formatting and linting, basedpyright, and pytest in that package.
 - **Documentation or configuration:** Run the formatter, validator, or specialized tests that consume the changed files.
@@ -210,7 +210,7 @@ For detailed information, read these files:
 
 # Project Standards
 
-From [CLAUDE.md](../../../CLAUDE.md):
+From CLAUDE.md:
 
 - **Never use `any` type** - Use `unknown` with narrowing
 - **Never add eslint-disable** - Fix the root cause
