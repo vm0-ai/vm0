@@ -3498,6 +3498,41 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("moves the main chat when a page shortcut comes from the sidebar thread link", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
+      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+    });
+
+    const currentThreadLink = linkByText("Current keyboard thread");
+    currentThreadLink.focus();
+    expect(currentThreadLink).toHaveFocus();
+    expect(
+      fireEvent.keyDown(currentThreadLink, {
+        key: "ArrowUp",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    ).toBeFalsy();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("opens the current chat rename dialog with F2", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
