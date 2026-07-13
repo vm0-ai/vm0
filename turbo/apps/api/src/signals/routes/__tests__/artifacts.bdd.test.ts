@@ -875,9 +875,7 @@ describe("GET /api/zero/artifacts", () => {
       runnerGroup: owner.runnerGroup,
       site: `challenge-preview-${randomUUID().slice(0, 8)}`,
     });
-    await expect(flushWaitUntilForTest()).rejects.toThrow(
-      "browser-rendering snapshot returned a Cloudflare challenge",
-    );
+    await flushWaitUntilForTest();
 
     const response = await chat.listArtifacts(owner.actor);
     const challengedArtifact = response.artifacts.find((item) => {

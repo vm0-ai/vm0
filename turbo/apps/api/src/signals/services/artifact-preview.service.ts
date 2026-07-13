@@ -334,7 +334,16 @@ export const scheduleArtifactPreviewRender$ = command(
       return;
     }
     waitUntil(
-      set(renderAndStoreArtifactPreview$, args, new AbortController().signal),
+      tapError(
+        set(renderAndStoreArtifactPreview$, args, new AbortController().signal),
+        (error) => {
+          log.warn("Failed to render artifact preview", {
+            artifactId: args.id,
+            url: args.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
+      ),
     );
   },
 );
