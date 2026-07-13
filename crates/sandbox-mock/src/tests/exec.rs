@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn sandbox_default_exec_succeeds() {
@@ -125,4 +126,45 @@ async fn sandbox_exec_applies_mock_capture_budget() {
     assert_eq!(result.stderr, b"stde");
     assert!(result.stderr_truncated);
     assert_eq!(result.termination, ExecTermination::Exited { exit_code: 0 });
+}
+
+#[tokio::test]
+async fn sandbox_exec_matcher_applies_capture_limits_and_is_one_shot() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.add_exec_matcher(ExecMatcher {
+        pattern: "echo hello".into(),
+        exit_code: 42,
+        stdout: b"stdout".to_vec(),
+        stderr: b"stderr".to_vec(),
+    });
+    let factory = MockSandboxFactory::with_overrides(overrides);
+    let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+    let request = ExecRequest {
+        cmd: "echo hello world",
+        timeout: Duration::from_secs(5),
+        env: &[],
+        sudo: false,
+        stdin_bytes: None,
+        output_limits: ExecOutputLimits::separate(3, 4),
+    };
+
+    let matched = sandbox.exec(&request).await.unwrap();
+    assert_eq!(
+        matched.termination,
+        ExecTermination::Exited { exit_code: 42 }
+    );
+    assert_eq!(matched.stdout, b"std");
+    assert!(matched.stdout_truncated);
+    assert_eq!(matched.stderr, b"stde");
+    assert!(matched.stderr_truncated);
+
+    let fallback = sandbox.exec(&request).await.unwrap();
+    assert_eq!(
+        fallback.termination,
+        ExecTermination::Exited { exit_code: 0 }
+    );
+    assert!(fallback.stdout.is_empty());
+    assert!(!fallback.stdout_truncated);
+    assert!(fallback.stderr.is_empty());
+    assert!(!fallback.stderr_truncated);
 }

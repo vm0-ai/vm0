@@ -4,11 +4,18 @@ use std::time::Duration;
 use ::sandbox::{ExecOutputLimits, ProcessControlMode, ProcessOutputMode};
 
 /// Behavior override applied to exec calls whose command contains the pattern.
+///
+/// The matcher configures an ordinary [`ExecResult`](::sandbox::ExecResult).
+/// The result remains subject to the executing
+/// [`ExecRequest`](::sandbox::ExecRequest)'s output limits.
 pub struct ExecMatcher {
     /// Substring to match against `ExecRequest.cmd`.
     pub pattern: String,
+    /// Exit code reported by the configured `ExecTermination::Exited` result.
     pub exit_code: i32,
+    /// Stdout bytes configured before the request's output limits are applied.
     pub stdout: Vec<u8>,
+    /// Stderr bytes configured before the request's output limits are applied.
     pub stderr: Vec<u8>,
 }
 

@@ -243,30 +243,26 @@ impl MockSandboxOverrides {
             .push_back(exit);
     }
 
-    /// Register a pattern matcher consumed on first match.
+    /// Register a one-shot pattern matcher for an ordinary exited result.
+    ///
+    /// The first registered matcher whose pattern occurs in a command is
+    /// consumed. The result is constructed with [`ExecResult::new`], then the
+    /// request's [`ExecOutputLimits`] are applied before it is returned.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec
             .matchers
             .lock_ignoring_poison()
             .push(ExecMatcherResult {
                 pattern: matcher.pattern,
-                result: ExecResult {
-                    termination: ExecTermination::Exited {
-                        exit_code: matcher.exit_code,
-                    },
-                    stdout: matcher.stdout,
-                    stderr: matcher.stderr,
-                    diagnostic: String::new(),
-                    stdout_truncated: false,
-                    stderr_truncated: false,
-                },
+                result: ExecResult::new(matcher.exit_code, matcher.stdout, matcher.stderr),
             });
     }
 
     /// Register a pattern matcher that returns the supplied full exec result.
     ///
-    /// Use this when a test needs a non-ordinary terminal state such as timeout,
-    /// cancel, start failure, or wait failure.
+    /// Use this when a test needs a non-ordinary terminal state, diagnostic
+    /// text, or pre-existing result metadata. The request's
+    /// [`ExecOutputLimits`] are still applied before the result is returned.
     pub fn add_exec_result_matcher(&self, pattern: impl Into<String>, result: ExecResult) {
         self.exec
             .matchers
