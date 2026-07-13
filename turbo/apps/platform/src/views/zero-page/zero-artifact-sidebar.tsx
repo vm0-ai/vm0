@@ -168,6 +168,7 @@ import {
 } from "./zero-artifact-display.ts";
 import {
   currentMessageImageArtifactNavigation,
+  equalMessageImageGroups,
   type ImageArtifactNavigationItem,
   shouldIgnoreImageArtifactNavigationKey,
 } from "./zero-artifact-image-navigation.ts";
@@ -259,7 +260,9 @@ function ArtifactSidebarWithThreadContext({
   const lastAgentId = useLastResolved(thread.agentId$);
   const agentId =
     agentIdLoadable.state === "hasData" ? agentIdLoadable.data : lastAgentId;
-  const messageGroups = useLastResolved(thread.groupedChatMessages$);
+  const messageGroups = useLastResolved(thread.messageImageGroups$, {
+    equalityFn: equalMessageImageGroups,
+  });
   const features = useLastResolved(featureSwitch$);
   const imageNavigationEnabled = Boolean(
     features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
