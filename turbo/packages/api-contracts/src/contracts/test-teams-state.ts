@@ -85,6 +85,20 @@ export const testTeamsStateResponseSchema = z.object({
       promptPreview: z.string().nullable(),
     }),
   ),
+  recent_callbacks: z.array(
+    z.object({
+      id: z.string(),
+      runId: z.string(),
+      status: z.string(),
+      internalKind: z.string().nullable(),
+      attempts: z.number(),
+      lastError: z.string().nullable(),
+      createdAt: z.string(),
+      lastAttemptAt: nullableDateStringSchema,
+      deliveredAt: nullableDateStringSchema,
+      payload: z.unknown(),
+    }),
+  ),
   org_metadata: z
     .object({
       orgId: z.string(),

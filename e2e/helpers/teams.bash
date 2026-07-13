@@ -143,7 +143,7 @@ wait_for_teams_mock_reply_activity() {
     local tenant_id="$1" conversation_id="$2" expected_text="$3"
     local timeout="${4:-60}"
     local start=$SECONDS
-    local state match
+    local state match failed_callback
     while (( SECONDS - start < timeout )); do
         state=$(teams_fetch_state "$tenant_id")
         match=$(printf '%s' "$state" \
@@ -157,9 +157,22 @@ wait_for_teams_mock_reply_activity() {
             echo "$match"
             return 0
         fi
+        failed_callback=$(printf '%s' "$state" \
+            | jq -c '
+                [.recent_callbacks[]?
+                 | select(.internalKind == "teams:org")
+                 | select(.status == "failed")]
+                | .[0]' 2>/dev/null)
+        if [[ -n "$failed_callback" && "$failed_callback" != "null" ]]; then
+            echo "# Teams callback failed before reply was observed" >&2
+            echo "# callback: $failed_callback" >&2
+            echo "# mock_calls: $(printf '%s' "$state" | jq -c '.mock_calls')" >&2
+            return 1
+        fi
         sleep "$TEAMS_POLL_INTERVAL_S"
     done
     echo "# wait_for_teams_mock_reply_activity: timed out after $((SECONDS - start))s" >&2
+    echo "# last state callbacks: $(printf '%s' "$state" | jq -c '.recent_callbacks')" >&2
     echo "# last state mock_calls: $(printf '%s' "$state" | jq -c '.mock_calls')" >&2
     return 1
 }

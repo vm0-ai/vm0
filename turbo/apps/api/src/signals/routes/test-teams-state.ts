@@ -14,6 +14,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTeamsMockCallLog } from "@vm0/db/schema/e2e-teams-mock-call-log";
@@ -57,6 +58,10 @@ function isoString(value: Date): string {
   return value.toISOString();
 }
 
+function nullableIsoString(value: Date | null): string | null {
+  return value ? isoString(value) : null;
+}
+
 function contentKeys(value: unknown): string[] {
   if (value && typeof value === "object") {
     return Object.keys(value);
@@ -78,6 +83,11 @@ function resolvedTeamsMockBaseUrl(): string | null {
   const vercelUrl = optionalEnv("VERCEL_URL");
   if (e2eTeamsMockEnabled() && vercelUrl) {
     return `https://${vercelUrl}/api/test/teams-mock`;
+  }
+
+  const apiBackendUrl = optionalEnv("VM0_API_BACKEND_URL");
+  if (e2eTeamsMockEnabled() && apiBackendUrl) {
+    return `${apiBackendUrl.replace(/\/+$/u, "")}/api/test/teams-mock`;
   }
 
   return null;
@@ -578,6 +588,38 @@ function recentTeamsRuns(db: ReadonlyDb, orgId: string | null | undefined) {
     .limit(50);
 }
 
+function recentTeamsCallbacks(
+  db: ReadonlyDb,
+  orgId: string | null | undefined,
+) {
+  if (!orgId) {
+    return [];
+  }
+  return db
+    .select({
+      id: agentRunCallbacks.id,
+      runId: agentRunCallbacks.runId,
+      status: agentRunCallbacks.status,
+      internalKind: agentRunCallbacks.internalKind,
+      attempts: agentRunCallbacks.attempts,
+      lastError: agentRunCallbacks.lastError,
+      createdAt: agentRunCallbacks.createdAt,
+      lastAttemptAt: agentRunCallbacks.lastAttemptAt,
+      deliveredAt: agentRunCallbacks.deliveredAt,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .innerJoin(agentRuns, eq(agentRuns.id, agentRunCallbacks.runId))
+    .where(
+      and(
+        eq(agentRuns.orgId, orgId),
+        eq(agentRunCallbacks.internalKind, "teams:org"),
+      ),
+    )
+    .orderBy(desc(agentRunCallbacks.createdAt))
+    .limit(50);
+}
+
 async function orgMetaFor(db: ReadonlyDb, orgId: string | null | undefined) {
   if (!orgId) {
     return null;
@@ -713,6 +755,7 @@ const getTeamsState$ = computed(async (get) => {
     compose?.headVersionId,
   );
   const mockCalls = await recentMockCalls(db, query.tenant_id);
+  const callbacks = await recentTeamsCallbacks(db, stateOrgId);
 
   return {
     status: 200 as const,
@@ -728,6 +771,14 @@ const getTeamsState$ = computed(async (get) => {
       }),
       recent_runs: recentRuns.map((run) => {
         return { ...run, createdAt: isoString(run.createdAt) };
+      }),
+      recent_callbacks: callbacks.map((callback) => {
+        return {
+          ...callback,
+          createdAt: isoString(callback.createdAt),
+          lastAttemptAt: nullableIsoString(callback.lastAttemptAt),
+          deliveredAt: nullableIsoString(callback.deliveredAt),
+        };
       }),
       org_metadata: orgMeta,
       default_agent: defaultAgent,
