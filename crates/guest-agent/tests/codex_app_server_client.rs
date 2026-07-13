@@ -1146,7 +1146,7 @@ fn process_group_exited(process_group: ObservedProcessGroup) -> Result<bool, Str
         }
     }
 
-    Ok(false)
+    linux_process_group_has_no_live_members(process_group.pgid)
 }
 
 fn process_group_exists(pgid: i32) -> Result<bool, String> {
@@ -1172,9 +1172,12 @@ fn linux_process_identity(pid: u32) -> Result<Option<LinuxProcessIdentity>, Stri
         Err(error) => return Err(format!("read {stat_path}: {error}")),
     };
 
-    parse_linux_process_identity(&stat)
-        .map(Some)
-        .map_err(|error| format!("parse {stat_path}: {error}"))
+    let process_stat =
+        parse_linux_process_stat(&stat).map_err(|error| format!("parse {stat_path}: {error}"))?;
+    Ok(Some(LinuxProcessIdentity {
+        process_group_id: process_stat.process_group_id,
+        start_time_ticks: process_stat.start_time_ticks,
+    }))
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -1193,11 +1196,64 @@ fn linux_procfs_available() -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn parse_linux_process_identity(stat: &str) -> Result<LinuxProcessIdentity, String> {
+struct LinuxProcessStat {
+    state: char,
+    process_group_id: i32,
+    start_time_ticks: u64,
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_group_has_no_live_members(pgid: i32) -> Result<bool, String> {
+    if !linux_procfs_available() {
+        return Ok(false);
+    }
+
+    let entries = std::fs::read_dir("/proc").map_err(|error| format!("read /proc: {error}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read /proc entry: {error}"))?;
+        let file_name = entry.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        if file_name.parse::<u32>().is_err() {
+            continue;
+        }
+
+        let stat_path = entry.path().join("stat");
+        let stat = match std::fs::read_to_string(&stat_path) {
+            Ok(stat) => stat,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("read {}: {error}", stat_path.display())),
+        };
+        let process_stat = parse_linux_process_stat(&stat)
+            .map_err(|error| format!("parse {}: {error}", stat_path.display()))?;
+        if process_stat.process_group_id == pgid && !matches!(process_stat.state, 'Z' | 'X' | 'x') {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn linux_process_group_has_no_live_members(_pgid: i32) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_linux_process_stat(stat: &str) -> Result<LinuxProcessStat, String> {
     let (_comm, fields_text) = stat
         .rsplit_once(") ")
         .ok_or_else(|| "missing command terminator".to_string())?;
     let fields = fields_text.split_whitespace().collect::<Vec<_>>();
+    let state = fields
+        .first()
+        .and_then(|state| {
+            let mut chars = state.chars();
+            let state = chars.next()?;
+            chars.next().is_none().then_some(state)
+        })
+        .ok_or_else(|| "invalid process state field".to_string())?;
     let process_group_id = fields
         .get(2)
         .ok_or_else(|| "missing process group field".to_string())?
@@ -1209,7 +1265,8 @@ fn parse_linux_process_identity(stat: &str) -> Result<LinuxProcessIdentity, Stri
         .parse::<u64>()
         .map_err(|error| format!("invalid start time field: {error}"))?;
 
-    Ok(LinuxProcessIdentity {
+    Ok(LinuxProcessStat {
+        state,
         process_group_id,
         start_time_ticks,
     })
