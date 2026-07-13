@@ -15,8 +15,10 @@ from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.auth_state_helpers import (
     auth_cache_key,
     cached_headers,
+    force_refresh_pending,
     has_auth_state,
     require_cached_headers,
+    require_last_force_refresh_monotonic_at,
     set_cached_headers,
 )
 
@@ -83,6 +85,109 @@ class TestFirewallHeaderCache:
         assert sum(flag is False for flag in cache_hit_flags) == 1
         assert sum(flag is True for flag in cache_hit_flags) == 2
         assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer token"}
+
+    async def test_cancelled_force_refresh_leader_keeps_shared_fetch(self, mitm_ctx):
+        """A cancelled leader must leave its threaded forced fetch available to a waiter."""
+        endpoint = FakeAuthEndpoint()
+        release_response = threading.Event()
+        endpoint.queue_json_response(
+            {
+                "headers": {"Authorization": "Bearer refreshed"},
+                "expiresAt": time.time() + 3600,
+            },
+            release_event=release_response,
+        )
+        cache_key = auth_cache_key()
+        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+        auth_cache.request_force_refresh(cache_key)
+        before_fetch = time.monotonic()
+
+        with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+            leader = asyncio.create_task(auth_cache.get_firewall_headers(cache_key, auth_request))
+            waiter = None
+            try:
+                assert await asyncio.to_thread(endpoint.wait_for_request_count, 1)
+                leader.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await leader
+
+                waiter_started = asyncio.Event()
+
+                async def wait_for_headers() -> dict:
+                    waiter_started.set()
+                    return await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+                waiter = asyncio.create_task(wait_for_headers())
+                await waiter_started.wait()
+                release_response.set()
+                result = await waiter
+            finally:
+                release_response.set()
+                tasks = [task for task in (leader, waiter) if task is not None]
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert endpoint.request_count == 1
+        assert endpoint.requests[0].json_body()["forceRefresh"] is True
+        assert result["headers"] == {"Authorization": "Bearer refreshed"}
+        assert result["cache_hit"] is True
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
+        assert not force_refresh_pending(cache_key)
+        assert require_last_force_refresh_monotonic_at(cache_key) >= before_fetch
+
+    async def test_cancelled_leader_shared_failure_allows_later_retry(self, mitm_ctx):
+        """A failed surviving fetch must fail its waiter and leave the key retryable."""
+        endpoint = FakeAuthEndpoint()
+        release_failure = threading.Event()
+        endpoint.queue_response(500, body=b"not-json", release_event=release_failure)
+        endpoint.queue_json_response(
+            {
+                "headers": {"Authorization": "Bearer retry"},
+                "expiresAt": time.time() + 3600,
+            }
+        )
+        cache_key = auth_cache_key()
+        auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
+
+        with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
+            leader = asyncio.create_task(auth_cache.get_firewall_headers(cache_key, auth_request))
+            waiter = None
+            try:
+                assert await asyncio.to_thread(endpoint.wait_for_request_count, 1)
+                leader.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await leader
+
+                waiter_started = asyncio.Event()
+
+                async def wait_for_headers() -> dict:
+                    waiter_started.set()
+                    return await auth_cache.get_firewall_headers(cache_key, auth_request)
+
+                waiter = asyncio.create_task(wait_for_headers())
+                await waiter_started.wait()
+                release_failure.set()
+                with pytest.raises(urllib.error.HTTPError):
+                    await waiter
+
+                assert endpoint.request_count == 1
+                assert cached_headers(cache_key) is None
+
+                retry = await auth_cache.get_firewall_headers(cache_key, auth_request)
+            finally:
+                release_failure.set()
+                tasks = [task for task in (leader, waiter) if task is not None]
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert endpoint.request_count == 2
+        assert retry["headers"] == {"Authorization": "Bearer retry"}
+        assert retry["cache_hit"] is False
+        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer retry"}
 
     async def test_different_keys_fetch_independently(self, mitm_ctx):
         """Different auth cache keys should fetch independently."""
@@ -213,8 +318,8 @@ class TestFirewallHeaderCache:
             assert cached["cache_hit"] is True
             assert endpoint.request_count == 2
 
-    def test_registry_eviction_cleans_locks(self, tmp_path, mitm_ctx):
-        """When a run is evicted from registry, its locks should be cleaned up too."""
+    def test_registry_eviction_cleans_auth_state(self, tmp_path, mitm_ctx):
+        """When a run is evicted from the registry, its auth state is removed."""
         cache_key = auth_cache_key(run_id="run-old")
         set_cached_headers(cache_key, headers={}, expires_at=None)
 
