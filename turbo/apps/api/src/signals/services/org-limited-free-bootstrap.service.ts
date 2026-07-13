@@ -22,6 +22,10 @@ import {
   DEFAULT_AGENT_NAME,
   DEFAULT_AGENT_SOUND,
 } from "./default-agent-profile";
+import {
+  upsertOrgPlanEntitlement,
+  writeOrgMetadataWithPlanEntitlements,
+} from "./org-plan-entitlements.service";
 
 const L = logger("org-limited-free-bootstrap.service");
 
@@ -206,25 +210,39 @@ async function finalizeBootstrap(
     return { bootstrapped: true, agentId: agentRow.id };
   }
 
-  await tx
-    .insert(orgMetadata)
-    .values({
-      orgId: args.orgId,
-      defaultAgentId: agentRow.id,
-      tier: "limited-free-1",
-      onboardingPaymentPending: false,
-      onboardingComplete: false,
-      updatedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: orgMetadata.orgId,
-      set: {
-        defaultAgentId: agentRow.id,
+  await writeOrgMetadataWithPlanEntitlements(tx, {
+    writeOrgMetadata: async (writeTx) => {
+      return await writeTx
+        .insert(orgMetadata)
+        .values({
+          orgId: args.orgId,
+          defaultAgentId: agentRow.id,
+          tier: "limited-free-1",
+          onboardingPaymentPending: false,
+          onboardingComplete: false,
+          updatedAt: nowDate(),
+        })
+        .onConflictDoUpdate({
+          target: orgMetadata.orgId,
+          set: {
+            defaultAgentId: agentRow.id,
+            tier: "limited-free-1",
+            onboardingPaymentPending: false,
+            updatedAt: nowDate(),
+          },
+        })
+        .returning({
+          orgId: orgMetadata.orgId,
+        });
+    },
+    writePlanEntitlement: async (writeTx, row) => {
+      await upsertOrgPlanEntitlement(writeTx, {
+        orgId: row.orgId,
         tier: "limited-free-1",
-        onboardingPaymentPending: false,
-        updatedAt: nowDate(),
-      },
-    });
+        source: "org_metadata_bootstrap",
+      });
+    },
+  });
 
   await grantOnboardingCredits(
     tx,

@@ -13,6 +13,10 @@ import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { settle } from "../../utils";
 import { expireAtomGrantFixture } from "../../../test-fixtures/org-metadata";
+import {
+  deleteOrgPlanEntitlementFixture,
+  readOrgPlanEntitlementFixture,
+} from "../../../test-fixtures/org-plan-entitlement";
 import { readUsageAllowanceEntitlementFixture } from "../../../test-fixtures/usage-allowance";
 import {
   createBddApi,
@@ -472,6 +476,28 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       credits: 3000,
       tier: "limited-free-1",
       onboardingPaymentPending: false,
+    });
+    await expect(
+      readOrgPlanEntitlementFixture(orgOf(admin)),
+    ).resolves.toMatchObject({
+      orgId: orgOf(admin),
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "org_metadata_bootstrap",
+      status: "active",
+      baseConcurrencyLimit: 1,
+      canBuyConcurrency: false,
+      autoRechargeAllowed: false,
+      supportByok: false,
+      restrictedVm0Models: true,
+      videoGenerationAllowed: false,
+      audioLifetimeLimit: 10,
+      audioDailyRateLimit: 10,
+      audioDailyDurationSeconds: 600,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
     });
     const onboardingCreditGrant = billing.creditGrants.find((grant) => {
       return grant.source === "onboarding";
@@ -1776,6 +1802,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const renewedGrantExpiresAtUnix = epochSeconds(14);
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
     await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
 
     await api.postStripeEvent(
@@ -1825,6 +1852,26 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         source: "subscription_renewal",
       }),
     ]);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "team",
+      planRank: 2,
+      source: "stripe_atom_grant",
+      status: "active",
+      baseConcurrencyLimit: 10,
+      canBuyConcurrency: true,
+      autoRechargeAllowed: true,
+      supportByok: true,
+      restrictedVm0Models: false,
+      videoGenerationAllowed: true,
+      audioLifetimeLimit: null,
+      audioDailyRateLimit: 500,
+      audioDailyDurationSeconds: 30_000,
+      stripeSubscriptionId: null,
+      stripePriceId: "price_bdd_atom_grant",
+      currentPeriodEnd: isoOf(grantExpiresAtUnix),
+      expiresAt: isoOf(grantExpiresAtUnix),
+    });
 
     await api.postStripeEvent(
       stripeEvent({
@@ -1880,6 +1927,12 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         }),
       ]),
     );
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "team",
+      currentPeriodStart: isoOf(grantExpiresAtUnix),
+      currentPeriodEnd: isoOf(renewedGrantExpiresAtUnix),
+      expiresAt: isoOf(renewedGrantExpiresAtUnix),
+    });
 
     const expiredAt = new Date(now() - 1000);
     await expireAtomGrantFixture({ orgId, expiredAt });
@@ -1891,6 +1944,17 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(downgraded.credits).toBe(0);
     expect(downgraded.hasSubscription).toBeFalsy();
     expect(downgraded.creditGrants).toHaveLength(0);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "stripe_atom_grant",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
+    });
   });
 
   it("upserts usage allowance entitlements from Atom subscription invoices", async () => {
@@ -2725,6 +2789,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const suffix = randomUUID().slice(0, 8);
     const teamSubscriptionId = `sub_bdd_team_${suffix}`;
     const teamInvoiceId = `in_bdd_team_${suffix}`;
+    const teamPeriodEnd = epochSeconds(30);
     const teamSubscription = {
       id: teamSubscriptionId,
       status: "active",
@@ -2737,6 +2802,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       items: { data: [{ price: { id: "price_bdd_team" } }] },
     };
     context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(teamSubscription)
       .mockResolvedValueOnce(teamSubscription)
       .mockResolvedValueOnce(teamSubscription);
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
@@ -2764,7 +2830,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       customer: granted.customerId,
       metadata: {},
       parent: { subscription_details: { subscription: teamSubscriptionId } },
-      lines: subscriptionLines(epochSeconds(30)),
+      lines: subscriptionLines(teamPeriodEnd),
     };
     await Promise.all([
       api.postStripeEvent(
@@ -2789,6 +2855,27 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         return grant.amount === 120_000;
       }),
     ).toHaveLength(1);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "team",
+      planRank: 2,
+      source: "stripe_subscription",
+      status: "active",
+      baseConcurrencyLimit: 10,
+      canBuyConcurrency: true,
+      autoRechargeAllowed: true,
+      supportByok: true,
+      restrictedVm0Models: false,
+      videoGenerationAllowed: true,
+      audioLifetimeLimit: null,
+      audioDailyRateLimit: 500,
+      audioDailyDurationSeconds: 30_000,
+      stripeSubscriptionId: teamSubscriptionId,
+      stripePriceId: "price_bdd_team",
+      currentPeriodEnd: isoOf(teamPeriodEnd),
+      cancelAt: null,
+      expiresAt: null,
+    });
 
     const drained = await runs.readRunQueue(actor);
     expect(drained.body.concurrency.tier).toBe("team");
@@ -2798,6 +2885,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     // Redelivering the processed team invoice re-runs lingering-pro cleanup.
     const cancelCallsBefore =
       context.mocks.stripe.subscriptions.cancel.mock.calls.length;
+    await deleteOrgPlanEntitlementFixture(orgId);
     await api.postStripeEvent(
       stripeEvent({ type: "invoice.paid", object: teamInvoice }),
       [200],
@@ -2805,6 +2893,10 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(
       context.mocks.stripe.subscriptions.cancel.mock.calls.length,
     ).toBeGreaterThan(cancelCallsBefore);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      planKey: "team",
+      stripeSubscriptionId: teamSubscriptionId,
+    });
     expect((await billing.readBillingStatus(actor)).credits).toBe(140_000);
 
     // A lower-tier subscription invoice cannot replace the team subscription.
@@ -2935,6 +3027,28 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(suspended.subscriptionStatus).toBe("canceled");
     expect(suspended.hasSubscription).toBeFalsy();
     expect(suspended.scheduledChange).toBeNull();
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "stripe_subscription",
+      status: "active",
+      baseConcurrencyLimit: 1,
+      canBuyConcurrency: false,
+      autoRechargeAllowed: false,
+      supportByok: false,
+      restrictedVm0Models: true,
+      videoGenerationAllowed: false,
+      audioLifetimeLimit: 10,
+      audioDailyRateLimit: 10,
+      audioDailyDurationSeconds: 600,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAt: null,
+      expiresAt: null,
+    });
 
     await runs.requestCancelRun(actor, first.runId, [200]);
     await runs.requestCancelRun(actor, second.runId, [200]);

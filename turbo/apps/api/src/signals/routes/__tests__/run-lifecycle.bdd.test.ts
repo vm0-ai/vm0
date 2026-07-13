@@ -32,6 +32,7 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
+import { readOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import {
   createBddApi,
   expectApiError,
@@ -8683,6 +8684,15 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
 });
 
 describe("BILL-01: billing entitlement reconciliation cron", () => {
+  function billingActorOrgId(actor: ApiTestUser): string {
+    if (!actor.orgId) {
+      throw new Error(
+        "Billing reconciliation tests require an org-scoped actor",
+      );
+    }
+    return actor.orgId;
+  }
+
   function subscriptionEvent(args: {
     readonly subscriptionId: string;
     readonly customerId: string;
@@ -8763,6 +8773,16 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
 
     const status = await billing.readBillingStatus(actor);
     expect(status.tier).toBe("pro");
+    await expect(
+      readOrgPlanEntitlementFixture(billingActorOrgId(actor)),
+    ).resolves.toMatchObject({
+      orgId: billingActorOrgId(actor),
+      planKey: "pro",
+      source: "stripe_subscription",
+      status: "active",
+      stripeSubscriptionId: granted.subscriptionId,
+      stripePriceId: "price_bdd_pro",
+    });
 
     await failSubscription(granted);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
@@ -8808,7 +8828,18 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
     await api.reconcileBillingCron(true);
     const synced = await billing.readBillingStatus(actor);
     expect(synced.tier).toBe("pro");
+    await expect(
+      readOrgPlanEntitlementFixture(billingActorOrgId(actor)),
+    ).resolves.toMatchObject({
+      orgId: billingActorOrgId(actor),
+      planKey: "pro",
+      source: "stripe_subscription",
+      status: "past_due",
+      stripeSubscriptionId: granted.subscriptionId,
+      stripePriceId: "price_bdd_pro",
+    });
 
+    const stalePeriodEndUnix = Math.floor(now() / 1000) - 2 * 86_400;
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
       id: granted.subscriptionId,
       status: "past_due",
@@ -8822,7 +8853,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
         data: [
           {
             price: { id: "price_bdd_pro" },
-            current_period_end: Math.floor(now() / 1000) - 2 * 86_400,
+            current_period_end: stalePeriodEndUnix,
           },
         ],
       },
@@ -8832,6 +8863,24 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
 
     const downgraded = await billing.readBillingStatus(actor);
     expect(downgraded.tier).not.toBe("pro");
+    await expect(
+      readOrgPlanEntitlementFixture(billingActorOrgId(actor)),
+    ).resolves.toMatchObject({
+      orgId: billingActorOrgId(actor),
+      planKey: "limited-free-1",
+      source: "stripe_subscription",
+      status: "active",
+      baseConcurrencyLimit: 1,
+      canBuyConcurrency: false,
+      autoRechargeAllowed: false,
+      supportByok: false,
+      restrictedVm0Models: true,
+      videoGenerationAllowed: false,
+      stripeSubscriptionId: granted.subscriptionId,
+      stripePriceId: "price_bdd_pro",
+      currentPeriodEnd: new Date(stalePeriodEndUnix * 1000).toISOString(),
+      expiresAt: null,
+    });
   });
 
   it("clears cancelled subscriptions during reconciliation", async () => {
@@ -8855,5 +8904,17 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
 
     const cleared = await billing.readBillingStatus(actor);
     expect(cleared.tier).not.toBe("pro");
+    await expect(
+      readOrgPlanEntitlementFixture(billingActorOrgId(actor)),
+    ).resolves.toMatchObject({
+      orgId: billingActorOrgId(actor),
+      planKey: "limited-free-1",
+      source: "stripe_subscription",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
+    });
   });
 });
