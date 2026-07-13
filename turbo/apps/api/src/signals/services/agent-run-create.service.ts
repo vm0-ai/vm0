@@ -6701,11 +6701,7 @@ function prepareRunContext(
       if (isRouteError(runtimeContext)) {
         return runtimeContext;
       }
-      const body = withFinalFrameworkAppendSystemPrompt(
-        bodyContext.body,
-        runtimeContext.framework,
-        args.chatThreadId,
-      );
+      const body = bodyContext.body;
 
       const validation = await timing.measure(
         "api_dispatch_prepare_context_validate_environment",
@@ -7293,19 +7289,47 @@ function createAtomicLaunchRun(input: {
   });
 }
 
-export const createAgentRun$ = command(
+interface PreparedAgentRun {
+  readonly args: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly timing: ApiDispatchTimingCollector;
+}
+
+interface PrepareAgentRunArgs {
+  readonly args: CreateAgentRunArgs;
+  readonly timing: ApiDispatchTimingCollector;
+}
+
+interface CompleteAgentRunArgs {
+  readonly prepared: PreparedAgentRun;
+  readonly finalAppendSystemPrompt: CreateRunBody["appendSystemPrompt"];
+}
+
+function finalizePreparedRunContext(
+  prepared: PreparedAgentRun,
+  finalAppendSystemPrompt: CreateRunBody["appendSystemPrompt"],
+): PreparedRunContext {
+  return {
+    ...prepared.context,
+    body: withFinalFrameworkAppendSystemPrompt(
+      {
+        ...prepared.context.body,
+        appendSystemPrompt: finalAppendSystemPrompt,
+      },
+      prepared.context.framework,
+      prepared.args.chatThreadId,
+    ),
+  };
+}
+
+export const prepareAgentRun$ = command(
   async (
     { get, set },
-    args: CreateAgentRunArgs,
+    input: PrepareAgentRunArgs,
     signal: AbortSignal,
-  ): Promise<CreateRunRouteResult> => {
+  ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    const { args, timing } = input;
     const db = set(writeDb$);
-    const timing = args.timing ?? new ApiDispatchTimingCollector();
-    timing.recordElapsed(
-      "api_dispatch_pre_create_agent_run",
-      "top_level",
-      args.apiStartTime,
-    );
     const tierGate = await timing.measure(
       "api_dispatch_check_org_tier",
       "top_level",
@@ -7329,6 +7353,24 @@ export const createAgentRun$ = command(
     if (isRouteError(context)) {
       return context;
     }
+
+    return { args, context, timing };
+  },
+);
+
+export const completeAgentRun$ = command(
+  async (
+    { get, set },
+    input: CompleteAgentRunArgs,
+    signal: AbortSignal,
+  ): Promise<CreateRunRouteResult> => {
+    const db = set(writeDb$);
+    const { args, timing } = input.prepared;
+    const context = finalizePreparedRunContext(
+      input.prepared,
+      input.finalAppendSystemPrompt,
+    );
+    signal.throwIfAborted();
 
     const modelTierGate = await checkLimitedFreeRunModelAdmission({
       db,
@@ -7384,6 +7426,33 @@ export const createAgentRun$ = command(
         signal,
         timing,
       }),
+    );
+  },
+);
+
+export const createAgentRun$ = command(
+  async (
+    { set },
+    args: CreateAgentRunArgs,
+    signal: AbortSignal,
+  ): Promise<CreateRunRouteResult> => {
+    const timing = args.timing ?? new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_agent_run",
+      "top_level",
+      args.apiStartTime,
+    );
+    const prepared = await set(prepareAgentRun$, { args, timing }, signal);
+    if (isRouteError(prepared)) {
+      return prepared;
+    }
+    return await set(
+      completeAgentRun$,
+      {
+        prepared,
+        finalAppendSystemPrompt: args.body.appendSystemPrompt,
+      },
+      signal,
     );
   },
 );

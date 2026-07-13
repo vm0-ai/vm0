@@ -1472,7 +1472,29 @@ describe("CHAT-02: admission without spendable credits", () => {
 describe("CHAT-02: model-first provider policies", () => {
   it("adds Codex image upload guidance for web chat Codex sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for runtime memory");
+    }
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", "test");
+    onTestFinished(() => {
+      mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", undefined);
+    });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      {
+        [FeatureSwitchKey.RelationshipMemory]: true,
+        [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+      },
+    );
+    const memoryText =
+      "The user prefers the aurora-21210 color palette for generated images.";
+    await chat.createMemory(actor, {
+      text: memoryText,
+      kind: "preference",
+      confidence: 95,
+    });
 
     await misc.upsertPersonalModelProvider(
       actor,
@@ -1495,7 +1517,8 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "generate an image in web chat",
+      prompt:
+        "generate an image in web chat using the aurora-21210 color palette",
       model: "gpt-5.4",
     });
     const { claim } = await claimChatRun(runnerGroup, run.runId);
@@ -1507,6 +1530,20 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain("zero web upload-file -h");
     expect(appendSystemPrompt).toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
     expect(appendSystemPrompt).not.toContain("When running in Codex");
+    expect(appendSystemPrompt).toContain(memoryText);
+    let previousSectionIndex = -1;
+    for (const section of [
+      "# Agent Identity",
+      "# Agent Tools",
+      "# Current User Info",
+      "# Zero Memory Context",
+      "# Current Integration",
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    ]) {
+      const sectionIndex = appendSystemPrompt.indexOf(section);
+      expect(sectionIndex).toBeGreaterThan(previousSectionIndex);
+      previousSectionIndex = sectionIndex;
+    }
     await cancelChatRun(actor, run.runId);
   });
 
