@@ -77,10 +77,12 @@ struct ActiveRunState {
     phase_started_at: DateTime<Utc>,
 }
 
-/// One parked (idle) sandbox's identity: the `session_id` it's keyed by in
-/// the idle pool and the `sandbox_id` of the Firecracker VM kept alive for
-/// reuse. Pairing these as a struct (rather than parallel arrays) matches
-/// `ActiveRun` and avoids the "indexed-by-position" bug class.
+/// Diagnostic projection of one parked sandbox. `session_id` is the CLI agent
+/// session component of the pool's internal scoped reuse identity, so separate
+/// scopes may legitimately project the same value. `sandbox_id` identifies the
+/// Firecracker VM kept alive for reuse. Pairing them as a struct (rather than
+/// parallel arrays) matches `ActiveRun` and avoids the "indexed-by-position"
+/// bug class.
 #[derive(Debug, Clone, Serialize)]
 pub struct IdleVm {
     pub session_id: String,
