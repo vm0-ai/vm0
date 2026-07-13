@@ -42,6 +42,182 @@ export interface AgentDeleteCopyTarget {
 /** Sentinel Select value meaning "let this workflow be deleted with the agent". */
 const DELETE_WITH_AGENT = "__delete_with_agent__";
 
+function DeleteDangerHeader({ agentName }: { agentName: string }) {
+  return (
+    <>
+      <DialogHeader className="space-y-0 text-left">
+        <div className="flex items-center gap-2">
+          <IconAlertTriangle
+            size={20}
+            stroke={1.5}
+            className="shrink-0 text-destructive"
+          />
+          <DialogTitle>Delete {agentName}?</DialogTitle>
+        </div>
+        <DialogDescription className="mt-3">
+          Deletes the agent, its workflows, automations, and everyone&apos;s
+          chat history.
+        </DialogDescription>
+      </DialogHeader>
+      <p className="mt-3 text-sm font-semibold text-foreground">
+        This can&apos;t be undone.
+      </p>
+    </>
+  );
+}
+
+interface DeleteConfirmButtonProps {
+  deleting: boolean;
+  copying: boolean;
+  onDelete: () => void;
+  className?: string;
+}
+
+function DeleteConfirmButton({
+  deleting,
+  copying,
+  onDelete,
+  className,
+}: DeleteConfirmButtonProps) {
+  const label = copying ? "Copying…" : deleting ? "Deleting…" : "Delete agent";
+  return (
+    <Button
+      variant="destructive"
+      size="sm"
+      className={className}
+      disabled={deleting || copying}
+      onClick={onDelete}
+    >
+      {label}
+    </Button>
+  );
+}
+
+interface AgentDeleteReconcileViewProps {
+  agentName: string;
+  deleting: boolean;
+  copying: boolean;
+  onDelete: () => void;
+  deleteWorkflows: readonly AgentDeleteWorkflow[];
+  deleteCopyTargets: readonly AgentDeleteCopyTarget[];
+  copyChoices: Record<string, string>;
+  setCopyChoices: (choices: Record<string, string>) => void;
+}
+
+function AgentDeleteReconcileView({
+  agentName,
+  deleting,
+  copying,
+  onDelete,
+  deleteWorkflows,
+  deleteCopyTargets,
+  copyChoices,
+  setCopyChoices,
+}: AgentDeleteReconcileViewProps) {
+  return (
+    <div className="grid grid-cols-[264px_1fr]">
+      <div className="flex flex-col border-r border-[hsl(var(--gray-400))]/40 bg-muted/40 px-6 py-6">
+        <DeleteDangerHeader agentName={agentName} />
+        <div className="mt-auto flex flex-col gap-2 pt-8">
+          <DeleteConfirmButton
+            deleting={deleting}
+            copying={copying}
+            onDelete={onDelete}
+            className="w-full"
+          />
+          <DialogClose asChild>
+            <Button variant="outline" size="sm" className="w-full">
+              Cancel
+            </Button>
+          </DialogClose>
+        </div>
+      </div>
+      <div className="flex flex-col px-6 py-6">
+        <p className="text-sm font-medium text-foreground">
+          Keep any workflows?
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Copy a workflow to another agent to keep it. Anything left is deleted.
+        </p>
+        <div className="mt-3 flex max-h-[320px] flex-col gap-1 overflow-y-auto">
+          {deleteWorkflows.map((workflow) => {
+            return (
+              <div
+                key={workflow.id}
+                className="grid grid-cols-[1fr_200px] items-center gap-6"
+              >
+                <span
+                  className="min-w-0 truncate text-sm text-foreground"
+                  title={workflow.title}
+                >
+                  {workflow.title}
+                </span>
+                <Select
+                  value={copyChoices[workflow.id] ?? DELETE_WITH_AGENT}
+                  onValueChange={(value) => {
+                    setCopyChoices({ ...copyChoices, [workflow.id]: value });
+                  }}
+                >
+                  <SelectTrigger
+                    className="w-full"
+                    aria-label={`Handle workflow ${workflow.title}`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DELETE_WITH_AGENT}>
+                      Delete with agent
+                    </SelectItem>
+                    {deleteCopyTargets.map((target) => {
+                      return (
+                        <SelectItem key={target.id} value={target.id}>
+                          Copy to {target.displayName ?? target.id}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface AgentDeleteSimpleViewProps {
+  agentName: string;
+  deleting: boolean;
+  copying: boolean;
+  onDelete: () => void;
+}
+
+function AgentDeleteSimpleView({
+  agentName,
+  deleting,
+  copying,
+  onDelete,
+}: AgentDeleteSimpleViewProps) {
+  return (
+    <div className="flex flex-col px-6 py-6">
+      <DeleteDangerHeader agentName={agentName} />
+      <DialogFooter className="mt-6">
+        <DialogClose asChild>
+          <Button variant="outline" size="sm">
+            Cancel
+          </Button>
+        </DialogClose>
+        <DeleteConfirmButton
+          deleting={deleting}
+          copying={copying}
+          onDelete={onDelete}
+        />
+      </DialogFooter>
+    </div>
+  );
+}
+
 interface AgentDeleteDialogProps {
   /** Agent name shown in the confirmation copy. */
   resolvedAgentName: string;
@@ -111,34 +287,6 @@ export function AgentDeleteDialog({
     );
   };
 
-  const deleteButtonLabel = copying
-    ? "Copying…"
-    : deleting
-      ? "Deleting…"
-      : "Delete agent";
-
-  const deleteDangerHeader = (
-    <>
-      <DialogHeader className="space-y-0 text-left">
-        <div className="flex items-center gap-2">
-          <IconAlertTriangle
-            size={20}
-            stroke={1.5}
-            className="shrink-0 text-destructive"
-          />
-          <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
-        </div>
-        <DialogDescription className="mt-3">
-          Deletes the agent, its workflows, automations, and everyone&apos;s
-          chat history.
-        </DialogDescription>
-      </DialogHeader>
-      <p className="mt-3 text-sm font-semibold text-foreground">
-        This can&apos;t be undone.
-      </p>
-    </>
-  );
-
   return (
     <Card className="zero-card overflow-hidden border-destructive/20 mt-4">
       <CardContent className="p-4 sm:p-5">
@@ -164,110 +312,23 @@ export function AgentDeleteDialog({
               </DialogTrigger>
               <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0">
                 {canReconcile ? (
-                  <div className="grid grid-cols-[264px_1fr]">
-                    <div className="flex flex-col border-r border-[hsl(var(--gray-400))]/40 bg-muted/40 px-6 py-6">
-                      {deleteDangerHeader}
-                      <div className="mt-auto flex flex-col gap-2 pt-8">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="w-full"
-                          disabled={deleting || copying}
-                          onClick={handleDelete}
-                        >
-                          {deleteButtonLabel}
-                        </Button>
-                        <DialogClose asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                          >
-                            Cancel
-                          </Button>
-                        </DialogClose>
-                      </div>
-                    </div>
-                    <div className="flex flex-col px-6 py-6">
-                      <p className="text-sm font-medium text-foreground">
-                        Keep any workflows?
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Copy a workflow to another agent to keep it. Anything
-                        left is deleted.
-                      </p>
-                      <div className="mt-3 flex max-h-[320px] flex-col gap-1 overflow-y-auto">
-                        {deleteWorkflows.map((workflow) => {
-                          return (
-                            <div
-                              key={workflow.id}
-                              className="grid grid-cols-[1fr_200px] items-center gap-6"
-                            >
-                              <span
-                                className="min-w-0 truncate text-sm text-foreground"
-                                title={workflow.title}
-                              >
-                                {workflow.title}
-                              </span>
-                              <Select
-                                value={
-                                  copyChoices[workflow.id] ?? DELETE_WITH_AGENT
-                                }
-                                onValueChange={(value) => {
-                                  setCopyChoices({
-                                    ...copyChoices,
-                                    [workflow.id]: value,
-                                  });
-                                }}
-                              >
-                                <SelectTrigger
-                                  className="w-full"
-                                  aria-label={`Handle workflow ${workflow.title}`}
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value={DELETE_WITH_AGENT}>
-                                    Delete with agent
-                                  </SelectItem>
-                                  {deleteCopyTargets.map((target) => {
-                                    return (
-                                      <SelectItem
-                                        key={target.id}
-                                        value={target.id}
-                                      >
-                                        Copy to{" "}
-                                        {target.displayName ?? target.id}
-                                      </SelectItem>
-                                    );
-                                  })}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
+                  <AgentDeleteReconcileView
+                    agentName={resolvedAgentName}
+                    deleting={deleting}
+                    copying={copying}
+                    onDelete={handleDelete}
+                    deleteWorkflows={deleteWorkflows}
+                    deleteCopyTargets={deleteCopyTargets}
+                    copyChoices={copyChoices}
+                    setCopyChoices={setCopyChoices}
+                  />
                 ) : (
-                  <div className="flex flex-col px-6 py-6">
-                    {deleteDangerHeader}
-                    <DialogFooter className="mt-6">
-                      <DialogClose asChild>
-                        <Button variant="outline" size="sm">
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        disabled={deleting || copying}
-                        onClick={handleDelete}
-                      >
-                        {deleteButtonLabel}
-                      </Button>
-                    </DialogFooter>
-                  </div>
+                  <AgentDeleteSimpleView
+                    agentName={resolvedAgentName}
+                    deleting={deleting}
+                    copying={copying}
+                    onDelete={handleDelete}
+                  />
                 )}
               </DialogContent>
             </Dialog>
