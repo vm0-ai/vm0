@@ -121,7 +121,9 @@ const uuidPattern =
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 
 function createChatThreadScrollSignals(threadId: string) {
-  return createScrollSignals(threadId);
+  return createScrollSignals(threadId, {
+    observeViewportResizeOnMobile: true,
+  });
 }
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {

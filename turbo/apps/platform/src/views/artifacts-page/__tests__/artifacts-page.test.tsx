@@ -578,17 +578,26 @@ describe("artifacts page", () => {
     });
   });
 
-  it("renders static preview images while preserving the HTML iframe fallback", async () => {
+  it("renders preview images without cropping while preserving the HTML iframe fallback", async () => {
     setupTeam();
     const scope = testAuthScope("preview-image");
     const previewImageUrl =
       "https://cdn.vm7.io/artifacts/user/artifact-row/preview-deploy.webp";
+    const imageUrl = "https://artifacts.example.com/full-image.png";
     mockArtifacts([
       createArtifact({
         artifactItemId: "static-run:file-1",
         runId: "static-run",
         filename: "static-preview.html",
         previewImageUrl,
+      }),
+      createArtifact({
+        artifactItemId: "image-run:file-1",
+        runId: "image-run",
+        filename: "full-image.png",
+        contentType: "image/png",
+        url: imageUrl,
+        artifactKind: undefined,
       }),
       createArtifact({
         artifactItemId: "fallback-run:file-1",
@@ -602,13 +611,20 @@ describe("artifacts page", () => {
     setupArtifactsPage({ scope });
 
     await screen.findByText("static-preview.html");
+    await screen.findByText("full-image.png");
     await screen.findByText("fallback-preview.html");
-    const previewImages = Array.from(document.querySelectorAll("img")).filter(
-      (image) => {
-        return image.getAttribute("src") === previewImageUrl;
-      },
-    );
-    expect(previewImages).toHaveLength(1);
+    for (const src of [previewImageUrl, imageUrl]) {
+      const previewImages = Array.from(
+        document.querySelectorAll<HTMLImageElement>(`img[src="${src}"]`),
+      );
+      expect(previewImages).toHaveLength(1);
+      expect(previewImages[0]).toHaveClass(
+        "h-full",
+        "w-full",
+        "object-contain",
+      );
+      expect(previewImages[0]).not.toHaveClass("object-cover");
+    }
     expect(screen.queryByTitle("static-preview.html preview")).toBeNull();
     expect(screen.getByTitle("fallback-preview.html preview")).toHaveAttribute(
       "src",
