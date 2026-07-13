@@ -4,6 +4,7 @@ import {
   type ArtifactItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroAgentDraftContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +19,10 @@ import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { openChatIdb } from "../../../signals/external/chat-idb-store.ts";
 import { createArtifactItemCacheStores } from "../../../signals/external/idb-artifact-item-store.ts";
+import {
+  LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY,
+  reloadFeatureSwitch$,
+} from "../../../signals/external/feature-switch.ts";
 
 const artifactIdbMock = vi.hoisted(() => {
   interface StoredObjectStore {
@@ -413,13 +418,11 @@ function mockScrollViewport(
 function setupArtifactsPage({
   scope,
   enabled = true,
-  artifactFavoritesEnabled = false,
   htmlArtifactCommentEditingEnabled = false,
   imageEditingEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
-  readonly artifactFavoritesEnabled?: boolean;
   readonly htmlArtifactCommentEditingEnabled?: boolean;
   readonly imageEditingEnabled?: boolean;
 }): void {
@@ -436,7 +439,6 @@ function setupArtifactsPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: enabled,
-      [FeatureSwitchKey.ArtifactFavorites]: artifactFavoritesEnabled,
       [FeatureSwitchKey.HtmlArtifactCommentEditing]:
         htmlArtifactCommentEditingEnabled,
       [FeatureSwitchKey.ImageEditing]: imageEditingEnabled,
@@ -1113,6 +1115,33 @@ describe("artifacts page", () => {
     expect(listCalls).toBe(1);
   });
 
+  it("hides favorite controls when the previous API effectively disables artifact favorites", async () => {
+    setupTeam();
+    const scope = testAuthScope("legacy-favorites-disabled");
+    mockArtifacts([createArtifact()]);
+
+    setupArtifactsPage({ scope });
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: {},
+        effectiveSwitches: {
+          [LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY]: false,
+        },
+      });
+    });
+    await context.store.set(reloadFeatureSwitch$, context.signal);
+
+    await screen.findByText("launch-plan.html");
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Show favorite artifacts"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Add launch-plan.html to favorites"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("favorites artifacts optimistically and filters favorites locally", async () => {
     setupTeam();
     const scope = testAuthScope("favorites");
@@ -1154,7 +1183,7 @@ describe("artifacts page", () => {
       return respond(204);
     });
 
-    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+    setupArtifactsPage({ scope });
 
     await screen.findByText("launch-plan.html");
     await screen.findByText("favorite-brief.html");

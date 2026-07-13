@@ -20,7 +20,6 @@ import {
   IconVideo,
   IconWorld,
 } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { r2ImageTransformUrl } from "@vm0/core";
 import {
   useGet,
@@ -80,7 +79,10 @@ import {
   classifyChatAttachment,
   type BodyPreviewKind,
 } from "../../signals/chat-page/parse-body-blocks.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY,
+} from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   lightboxUrl$,
@@ -1159,7 +1161,7 @@ export function ArtifactsPage() {
   const agents = useLastResolved(agents$) ?? [];
   const features = useLastResolved(featureSwitch$);
   const artifactFavoritesEnabled =
-    features?.[FeatureSwitchKey.ArtifactFavorites] ?? false;
+    features?.[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY] !== false;
   const remoteData =
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
