@@ -976,6 +976,15 @@ class TestResponseHandler:
                 "https://user:pass@target.example.com:9443/path?access_token=secret#fragment",
                 "https://target.example.com:9443/path",
             ),
+            (
+                "https:////user:pass@target.example.com:9443/path?access_token=secret#fragment",
+                "https://target.example.com:9443/path",
+            ),
+            (
+                "https://target.example.com:9443/users/alice@example.com"
+                "?access_token=secret#fragment",
+                "https://target.example.com:9443/users/alice@example.com",
+            ),
         ],
     )
     def test_network_log_target_url_strips_query_and_fragment(

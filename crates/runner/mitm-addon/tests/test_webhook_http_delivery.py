@@ -84,6 +84,41 @@ def test_rejects_invalid_url_before_open(tmp_path, sync_usage_executor):
     )
 
 
+def test_rejects_malformed_sensitive_url_without_logging_credentials(tmp_path, sync_usage_executor):
+    proxy_log = tmp_path / "proxy.jsonl"
+    raw_url = "https:////user:pass@api.vm0.ai/path?token=secret#frag"
+    sanitized_url = "https://api.vm0.ai/path"
+    payload = {"runId": "run-1", "events": []}
+    payload_bytes = len(json.dumps(payload).encode())
+
+    with patch.object(urllib.request.OpenerDirector, "open") as mock_open:
+        assert usage.webhook.enqueue_webhook_delivery(
+            raw_url,
+            "tok",
+            payload,
+            str(proxy_log),
+            "usage_event",
+        )
+        with pytest.raises(ValueError, match="absolute http"):
+            sync_usage_executor.shutdown(wait=True)
+
+    mock_open.assert_not_called()
+    entries = read_jsonl_entries_after_flush(proxy_log)
+    error_entry = entries[-1]
+    assert error_entry["url"] == sanitized_url
+    assert sanitized_url in error_entry["message"]
+    assert "absolute http" in error_entry["error"]
+    assert "non-retryable" in error_entry["message"]
+    assert_body_free_webhook_entry(
+        error_entry,
+        run_id="run-1",
+        event_count=0,
+        payload_bytes=payload_bytes,
+    )
+    for entry in entries:
+        assert_sensitive_webhook_url_parts_absent(entry)
+
+
 def test_closes_http_error_response(tmp_path, real_flow, sync_usage_executor, usage_webhook_api):
     flow = model_usage_flow(real_flow, tmp_path)
 
