@@ -753,7 +753,6 @@ describe("team page navigation", () => {
         agent: { id: researchAgentId, avatarUrl: null },
         createdAt: "2026-06-01T00:00:00Z",
         updatedAt: "2026-06-01T00:02:00Z",
-        running: false,
         pinnedAt: null,
       },
       {
@@ -762,7 +761,6 @@ describe("team page navigation", () => {
         agent: { id: researchAgentId, avatarUrl: null },
         createdAt: "2026-06-01T00:00:00Z",
         updatedAt: "2026-06-01T00:01:00Z",
-        running: false,
         pinnedAt: null,
       },
     ];

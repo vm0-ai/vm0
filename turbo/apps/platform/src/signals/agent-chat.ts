@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import {
   chatThreadsContract,
-  type ChatThreadListItem,
   type CodexServiceTier,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentById, currentAgentId$, defaultAgentId$ } from "./agent.ts";
@@ -12,7 +11,6 @@ import { activeRoute$ } from "./active-route.ts";
 import { reloadChatUnreadStateCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
-  sidebarActiveThreadIds$,
   chatThreadMetaMap$,
   eventDrivenChatThreads$,
 } from "./chat-page/chat-thread-event-sourcing.ts";
@@ -130,58 +128,13 @@ const eventDrivenFilteredChatThreads$ = computed(
   },
 );
 
-const eventDrivenVisibleChatThreads$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
-    const threads = await get(eventDrivenFilteredChatThreads$);
-
-    return threads.map((thread) => {
-      return eventDrivenThreadToListItem(thread);
-    });
-  },
-);
-
-export const chatThreads$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
-    return await get(eventDrivenVisibleChatThreads$);
-  },
-);
+export const chatThreads$ = eventDrivenFilteredChatThreads$;
 
 export const currentChatThreadListIds$ = computed(
   async (get): Promise<readonly string[]> => {
     const threads = await get(eventDrivenFilteredChatThreads$);
     return threads.map((thread) => {
       return thread.id;
-    });
-  },
-);
-
-function eventDrivenThreadToListItem(
-  thread: EventDrivenChatThread,
-  running = false,
-): ChatThreadListItem {
-  return {
-    id: thread.id,
-    title: thread.title,
-    agent: {
-      id: thread.agentId,
-      avatarUrl: null,
-    },
-    createdAt: thread.createdAt,
-    updatedAt: thread.updatedAt,
-    running,
-    pinnedAt: thread.pinnedAt,
-    renamedAt: thread.renamedAt,
-  };
-}
-
-export const allChatThreadListItems$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
-    const activeRunThreadIds = await get(sidebarActiveThreadIds$);
-    return (await get(eventDrivenChatThreads$)).map((thread) => {
-      return eventDrivenThreadToListItem(
-        thread,
-        activeRunThreadIds.has(thread.id),
-      );
     });
   },
 );

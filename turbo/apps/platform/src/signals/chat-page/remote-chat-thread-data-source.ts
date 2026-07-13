@@ -400,6 +400,11 @@ function createSubscribeRealtime() {
             },
             {
               kind: "loop",
+              topic: `chatThreadArtifactsChanged:${threadId}`,
+              loopCommand$: handlers.onArtifactsChanged$,
+            },
+            {
+              kind: "loop",
               topic: `chatThreadWorkflowQueueChanged:${threadId}`,
               loopCommand$: handlers.onWorkflowQueueChanged$,
             },

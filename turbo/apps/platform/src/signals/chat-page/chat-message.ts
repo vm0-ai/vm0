@@ -72,7 +72,7 @@ export const deleteChatThread$ = command(
         id: eventId,
         kind: "deleted",
         chatThreadId: threadId,
-        agentId: existingThread.agent.id,
+        agentId: existingThread.agentId,
         title: null,
         selectedModel: null,
         createdAt: nowDate().toISOString(),
@@ -126,7 +126,7 @@ export const pinChatThread$ = command(
         id: eventId,
         kind: "pinned",
         chatThreadId: threadId,
-        agentId: existingThread.agent.id,
+        agentId: existingThread.agentId,
         title: null,
         selectedModel: null,
         createdAt: nowDate().toISOString(),
@@ -158,7 +158,7 @@ export const unpinChatThread$ = command(
         id: eventId,
         kind: "unpinned",
         chatThreadId: threadId,
-        agentId: existingThread.agent.id,
+        agentId: existingThread.agentId,
         title: null,
         selectedModel: null,
         createdAt: nowDate().toISOString(),
@@ -199,7 +199,7 @@ export const renameChatThread$ = command(
       optimisticAgentId =
         threads.find((thread) => {
           return thread.id === threadId;
-        })?.agent.id ?? null;
+        })?.agentId ?? null;
     }
     if (optimisticAgentId) {
       set(registerOptimisticChatThreadEvent$, {

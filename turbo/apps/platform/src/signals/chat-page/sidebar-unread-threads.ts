@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadMarkAgentReadContract,
   chatThreadsContract,
-  type ChatThreadListItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { accept } from "../../lib/accept.ts";
@@ -98,8 +97,14 @@ export const unreadAgentIds$ = computed(
   },
 );
 
+interface CurrentAgentUnreadChatThread {
+  readonly id: string;
+  readonly title: string | null;
+  readonly hasActiveRun: boolean;
+}
+
 export const currentAgentUnreadChatThreads$ = computed(
-  async (get): Promise<ChatThreadListItem[]> => {
+  async (get): Promise<readonly CurrentAgentUnreadChatThread[]> => {
     const features = get(featureSwitch$);
     if (!features[FeatureSwitchKey.MobileUnreadChatThreadShortcuts]) {
       return [];
@@ -121,15 +126,7 @@ export const currentAgentUnreadChatThreads$ = computed(
         return {
           id: thread.id,
           title: thread.title,
-          agent: {
-            id: thread.agentId,
-            avatarUrl: null,
-          },
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          running: activeRunThreadIds.has(thread.id),
-          pinnedAt: thread.pinnedAt,
-          renamedAt: thread.renamedAt,
+          hasActiveRun: activeRunThreadIds.has(thread.id),
         };
       });
   },

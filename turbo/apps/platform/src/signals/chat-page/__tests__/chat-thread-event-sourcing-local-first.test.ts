@@ -237,13 +237,14 @@ describe("chat thread event sourcing local-first list", () => {
     expect(threads).toStrictEqual([
       {
         id: THREAD_ID,
+        agentId: AGENT_ID,
         title: "Cached renamed title",
-        agent: { id: AGENT_ID, avatarUrl: null },
+        sortAt: "2026-07-03T02:00:00.000Z",
         createdAt: "2026-07-03T01:00:00.000Z",
         updatedAt: "2026-07-03T03:00:00.000Z",
-        running: false,
         pinnedAt: null,
         renamedAt: "2026-07-03T03:00:00.000Z",
+        selectedModel: null,
       },
     ]);
     expect(eventsRequests).toBe(1);
@@ -650,13 +651,14 @@ describe("chat thread event sourcing local-first list", () => {
     await expect(context.store.get(chatThreads$)).resolves.toStrictEqual([
       {
         id: OPTIMISTIC_THREAD_ID,
+        agentId: AGENT_ID,
         title: null,
-        agent: { id: AGENT_ID, avatarUrl: null },
+        sortAt: "2026-07-03T05:00:00.000Z",
         createdAt: "2026-07-03T05:00:00.000Z",
         updatedAt: "2026-07-03T05:00:01.000Z",
-        running: false,
         pinnedAt: null,
         renamedAt: null,
+        selectedModel: "claude-sonnet-4-6",
       },
     ]);
     await expect(

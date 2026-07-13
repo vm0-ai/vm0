@@ -51,6 +51,7 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { equalSets } from "../../lib/equality.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
@@ -142,6 +143,19 @@ function PinnedAgentSideDecorator({
 function AgentListDialogContainer() {
   const open = useGet(chatListOpen$);
   const onOpenChange = useSet(setChatListOpen$);
+
+  if (!open) {
+    return null;
+  }
+
+  return <OpenAgentListDialog onOpenChange={onOpenChange} />;
+}
+
+function OpenAgentListDialog({
+  onOpenChange,
+}: {
+  onOpenChange: (open: boolean) => void;
+}) {
   const displayNameLoadable = useLastLoadable(defaultAgentName$);
   const displayName =
     displayNameLoadable.state === "hasData"
@@ -169,7 +183,7 @@ function AgentListDialogContainer() {
   };
   return (
     <AgentListDialog
-      open={open}
+      open
       onOpenChange={onOpenChange}
       displayName={displayName}
       subagents={subagents}
@@ -192,7 +206,9 @@ export function PinnedAgentListSection() {
   const features = useGet(featureSwitch$);
   const agentUnreadIndicatorsEnabled =
     features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
-  const unreadAgentIds = useLastResolved(unreadAgentIds$);
+  const unreadAgentIds = useLastResolved(unreadAgentIds$, {
+    equalityFn: equalSets,
+  });
 
   const openAgentListDialog = useSet(openAgentListDialog$);
   const collapsed = useGet(agentCardCollapsed$);
