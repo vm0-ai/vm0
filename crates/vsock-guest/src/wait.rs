@@ -190,7 +190,13 @@ fn wait_with_kill_timeout_or_cancelled_by(
             }
         };
 
-        match wait_for_exit_timeout_or_cancelled(&observed_rx, deadline, is_cancelled) {
+        let mut decision = wait_for_exit_timeout_or_cancelled(&observed_rx, deadline, is_cancelled);
+        if matches!(&decision, WaitDecision::Kill(_)) {
+            refresh_process_tree_kill_target(&mut kill_target);
+            decision = apply_final_exit_priority(decision, &observed_rx);
+        }
+
+        match decision {
             WaitDecision::Exited => {
                 let observed = match observer.join() {
                     Ok(observed) => observed,
@@ -292,6 +298,16 @@ fn exit_observed(observed_rx: &mpsc::Receiver<()>) -> bool {
     }
 }
 
+fn apply_final_exit_priority(
+    decision: WaitDecision,
+    observed_rx: &mpsc::Receiver<()>,
+) -> WaitDecision {
+    match decision {
+        WaitDecision::Kill(_) if exit_observed(observed_rx) => WaitDecision::Exited,
+        decision => decision,
+    }
+}
+
 fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
     let child_id = process_signal_pid(child_id)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid child pid"))?;
@@ -320,12 +336,11 @@ fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
 
 fn kill_child(
     child: &mut Child,
-    mut kill_target: ProcessTreeKillTarget,
+    kill_target: ProcessTreeKillTarget,
     reason: KillReason,
 ) -> ChildKill {
-    refresh_process_tree_kill_target(&mut kill_target);
     // SAFETY: this owner has not reaped child, so its PID/process group cannot
-    // have been reused since kill_target was captured.
+    // have been reused since the owner refreshed kill_target.
     let tree_killed = unsafe { kill_process_tree_target(kill_target) };
     let child_killed = child.kill().is_ok();
     let killed = tree_killed || child_killed;
@@ -411,7 +426,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn kill_spawned_child(child: &mut Option<Child>) {
         if let Some(mut child) = child.take() {
-            let target = process_tree_kill_target(child.id());
+            let mut target = process_tree_kill_target(child.id());
+            refresh_process_tree_kill_target(&mut target);
             let _ = kill_child(&mut child, target, KillReason::Cancelled);
             let _ = child.wait();
         }
@@ -533,6 +549,17 @@ mod tests {
         assert!(matches!(decision, WaitDecision::Exited));
     }
 
+    #[test]
+    fn final_observed_exit_wins_over_pending_kill_decision() {
+        let (observed_tx, observed_rx) = mpsc::channel::<()>();
+        observed_tx.send(()).unwrap();
+
+        let decision =
+            apply_final_exit_priority(WaitDecision::Kill(KillReason::Timeout), &observed_rx);
+
+        assert!(matches!(decision, WaitDecision::Exited));
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn natural_exit_cleanup_runs_before_direct_child_is_reaped() {
@@ -630,7 +657,13 @@ mod tests {
             }
         };
 
-        let child_kill = kill_child(child.as_mut().unwrap(), stale_target, KillReason::Timeout);
+        let mut refreshed_target = stale_target;
+        refresh_process_tree_kill_target(&mut refreshed_target);
+        let child_kill = kill_child(
+            child.as_mut().unwrap(),
+            refreshed_target,
+            KillReason::Timeout,
+        );
         if !child_kill.killed {
             kill_spawned_child(&mut child);
             kill_pidfd_and_wait(&child_pidfd)
