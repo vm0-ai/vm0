@@ -160,7 +160,10 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
 // Keep the default archive version for already released CLIs. Newer CLIs opt
 // into these refreshed presentation packages by sending their expected digest.
 // This prevents a backend-only deployment from breaking existing CLI users.
-const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
+const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256: Record<
+  string,
+  Record<string, string>
+> = {
   "template:html-ppt-blueprint-academy-runbook": {
     d6f16dff7c2f7830b71a3d6ed3fd228f1de7a29fa7795e2a31afb9fc841a0f72:
       "04d537e1a2dce0874d8be914e90884b756a0f14e30589b6e805b23110d3c698e",
@@ -249,7 +252,7 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
     "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed":
       "0172780a5797b6162eeb081390042289b80bcdc4ecf237142d3c89b830160381",
   },
-} as const satisfies Record<string, Record<string, string>>;
+};
 
 function privateRegistryResourceArchive(
   id: string,
