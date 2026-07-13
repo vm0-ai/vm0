@@ -1,4 +1,5 @@
 import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
+import { CLIENT_REQUEST_ID_HEADER } from "@vm0/api-contracts/contracts/client-headers";
 import { command, computed, state } from "ccstate";
 import type { Context } from "hono";
 import { RedirectStatusCode } from "hono/utils/http-status";
@@ -23,6 +24,7 @@ function header(name: string) {
 export const userAgent$ = header("User-Agent");
 export const authorization$ = header("authorization");
 export const cookie$ = header("cookie");
+export const clientRequestId$ = header(CLIENT_REQUEST_ID_HEADER);
 
 function resHeader(name: string) {
   return computed((get) => {

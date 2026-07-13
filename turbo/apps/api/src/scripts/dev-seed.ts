@@ -333,6 +333,19 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.075), 1_000_000],
     ["tokens.output", usd(4.5), 1_000_000],
   ]),
+  // OpenRouter-backed edit helpers. Pricing retrieved 2026-07-10 from:
+  // https://developers.openai.com/api/docs/models/gpt-4.1-mini
+  // https://ai.google.dev/gemini-api/docs/pricing
+  ...usageGroup("model", "openai/gpt-4.1-mini", [
+    ["tokens.input", usd(0.4), 1_000_000],
+    ["tokens.cache_read", usd(0.1), 1_000_000],
+    ["tokens.output", usd(1.6), 1_000_000],
+  ]),
+  ...usageGroup("model", "google/gemini-3.5-flash", [
+    ["tokens.input", usd(1.5), 1_000_000],
+    ["tokens.cache_read", usd(0.15), 1_000_000],
+    ["tokens.output", usd(9), 1_000_000],
+  ]),
 
   // X connector — https://docs.x.com/x-api/getting-started/pricing
   ...usageGroup("connector", "x", [

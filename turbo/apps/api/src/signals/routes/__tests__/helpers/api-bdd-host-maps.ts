@@ -38,7 +38,7 @@ type HostCompleteStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostFilesStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type HostRedeployStatus = 200 | 400 | 401 | 402 | 403 | 404 | 409 | 500;
 type HostSpeakerNotesStatus = 200 | 400 | 401 | 402 | 403 | 500;
-type HostHtmlDomEditStatus = 200 | 400 | 401 | 402 | 403 | 500;
+type HostHtmlDomEditStatus = 200 | 400 | 401 | 402 | 403 | 500 | 503;
 type MapsStatus = 200 | 400 | 401 | 402 | 403 | 502 | 503;
 
 interface HostedSitesS3Capture {

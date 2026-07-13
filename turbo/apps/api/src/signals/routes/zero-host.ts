@@ -1,20 +1,33 @@
+import { randomUUID } from "node:crypto";
+
 import { command } from "ccstate";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { clientRequestId$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { isLlmConfigured } from "../external/openrouter";
 import {
   completeHostedSiteDeployment$,
   createHtmlEditDraft$,
   generatePresentationSpeakerNotes$,
   getHostedSiteFiles$,
+  HTML_DOM_EDIT_MODEL,
   prepareHostedSiteDeployment$,
   redeployHtml$,
   redeployPresentationHtml$,
 } from "../services/zero-host.service";
+import { checkBillableOperationCredits$ } from "../services/billable-operation-admission.service";
+import { checkOpenRouterUsagePricing$ } from "../services/openrouter-usage.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  insufficientCredits,
+  notFound,
+  notConfigured,
+} from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
 
 function internalError(message: string) {
@@ -274,9 +287,38 @@ const createHtmlEditDraftInner$ = command(
       return suspended;
     }
 
+    if (isLlmConfigured()) {
+      const hasCredits = await set(
+        checkBillableOperationCredits$,
+        { orgId: auth.orgId },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!hasCredits) {
+        return insufficientCredits();
+      }
+
+      const missingPricing = await set(
+        checkOpenRouterUsagePricing$,
+        { provider: HTML_DOM_EDIT_MODEL },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (missingPricing.length > 0) {
+        return notConfigured("HTML edit pricing is not configured");
+      }
+    }
+
+    const operationId = get(clientRequestId$) || randomUUID();
     const result = await set(
       createHtmlEditDraft$,
-      { body: bodyResult.data },
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        runId: "runId" in auth ? auth.runId : undefined,
+        operationId,
+        body: bodyResult.data,
+      },
       signal,
     );
     signal.throwIfAborted();

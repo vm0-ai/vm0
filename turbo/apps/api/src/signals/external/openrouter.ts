@@ -16,12 +16,31 @@ export interface OpenRouterImagePart {
 
 export type OpenRouterContentPart = OpenRouterTextPart | OpenRouterImagePart;
 
-interface OpenRouterMessage {
+export interface OpenRouterMessage {
   readonly role: "system" | "user" | "assistant";
   readonly content: string | readonly OpenRouterContentPart[];
 }
 
+export interface OpenRouterTokenDetails {
+  readonly cached_tokens?: number;
+  readonly cache_write_tokens?: number;
+  readonly reasoning_tokens?: number;
+}
+
+export interface OpenRouterUsage {
+  readonly prompt_tokens?: number;
+  readonly completion_tokens?: number;
+  readonly prompt_tokens_details?: OpenRouterTokenDetails;
+  readonly completion_tokens_details?: OpenRouterTokenDetails;
+}
+
+export interface OpenRouterTextGeneration {
+  readonly text: string;
+  readonly usage?: OpenRouterUsage;
+}
+
 interface OpenRouterResponse {
+  readonly usage?: OpenRouterUsage;
   readonly choices: readonly {
     readonly finish_reason: string | null;
     readonly native_finish_reason?: string | null;
@@ -57,6 +76,26 @@ export async function generateText(
   maxTokens?: number,
   options?: OpenRouterGenerateTextOptions,
 ): Promise<string | null> {
+  const generation = await generateTextWithUsage(
+    model,
+    messages,
+    maxTokens,
+    options,
+  );
+  return generation?.text ?? null;
+}
+
+/**
+ * Call OpenRouter chat completions and return both text and provider-reported
+ * usage. The usage payload is intentionally passed through with OpenRouter's
+ * snake_case fields so billing code can stay aligned with their API surface.
+ */
+export async function generateTextWithUsage(
+  model: string,
+  messages: readonly OpenRouterMessage[],
+  maxTokens?: number,
+  options?: OpenRouterGenerateTextOptions,
+): Promise<OpenRouterTextGeneration | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
     return null;
@@ -104,5 +143,7 @@ export async function generateText(
   if (!content) {
     throw new Error("OpenRouter returned empty content");
   }
-  return content;
+  return data.usage === undefined
+    ? { text: content }
+    : { text: content, usage: data.usage };
 }
