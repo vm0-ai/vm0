@@ -19,6 +19,7 @@ import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroImageIoInterpretMarksRoutes } from "../zero-image-io-interpret-marks";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
+import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
 
 const context = testContext();
 const store = createStore();
@@ -57,13 +58,13 @@ function createApp() {
   });
 }
 
-function zeroToken(userId: string, orgId: string): string {
+function zeroToken(userId: string, orgId: string, runId: string): string {
   const seconds = Math.floor(now() / 1000);
   return signSandboxJwtForTests({
     scope: "zero",
     userId,
     orgId,
-    runId: randomUUID(),
+    runId,
     capabilities: ["file:write", "billing:read"],
     iat: seconds,
     exp: seconds + 60,
@@ -93,7 +94,11 @@ async function restoreInterpretPricingRows(
   await seedUsagePricingRows(snapshot);
 }
 
-async function seedActor(): Promise<{ orgId: string; userId: string }> {
+async function seedActor(): Promise<{
+  orgId: string;
+  userId: string;
+  runId: string;
+}> {
   const orgId = randomUUID();
   const userId = randomUUID();
   await store.set(
@@ -101,7 +106,17 @@ async function seedActor(): Promise<{ orgId: string; userId: string }> {
     { orgId, userId, role: "admin" },
     context.signal,
   );
-  return { orgId, userId };
+  const { composeId } = await store.set(
+    seedCompose$,
+    { orgId, userId },
+    context.signal,
+  );
+  const { runId } = await store.set(
+    seedRun$,
+    { orgId, userId, composeId, triggerSource: "web" },
+    context.signal,
+  );
+  return { orgId, userId, runId };
 }
 
 function requestInterpret(
@@ -183,10 +198,10 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
         });
       }),
     );
-    const { orgId, userId } = await seedActor();
+    const { orgId, userId, runId } = await seedActor();
     await seedInterpretBilling(orgId);
     const app = createApp();
-    const token = zeroToken(userId, orgId);
+    const token = zeroToken(userId, orgId, runId);
 
     await expect(orgCredits(app, token)).resolves.toBe(
       GEMINI_INTERPRET_STARTING_CREDITS,
@@ -226,16 +241,20 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
 
   it("rejects configured LLM calls when the org has no credits", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
-    const { orgId, userId } = await seedActor();
+    const { orgId, userId, runId } = await seedActor();
     await seedOrgMetadata({ orgId, tier: "pro", credits: 0 });
     const app = createApp();
 
-    const response = await requestInterpret(app, zeroToken(userId, orgId), {
-      imageUrl: MARKED_IMAGE,
-      regions: [
-        { id: "region-comment-1", mark: 1, instruction: "make it yellow" },
-      ],
-    });
+    const response = await requestInterpret(
+      app,
+      zeroToken(userId, orgId, runId),
+      {
+        imageUrl: MARKED_IMAGE,
+        regions: [
+          { id: "region-comment-1", mark: 1, instruction: "make it yellow" },
+        ],
+      },
+    );
 
     expect(response.status).toBe(402);
     const body = (await response.json()) as {
@@ -276,10 +295,10 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
         });
       }),
     );
-    const { orgId, userId } = await seedActor();
+    const { orgId, userId, runId } = await seedActor();
     await seedInterpretBilling(orgId);
     const app = createApp();
-    const token = zeroToken(userId, orgId);
+    const token = zeroToken(userId, orgId, runId);
     const body = {
       imageUrl: MARKED_IMAGE,
       regions: [
@@ -312,7 +331,7 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
       }),
     );
     await trackPricing(deleteInterpretPricingRows());
-    const { orgId, userId } = await seedActor();
+    const { orgId, userId, runId } = await seedActor();
     await seedOrgMetadata({
       orgId,
       tier: "pro",
@@ -320,12 +339,16 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
     });
     const app = createApp();
 
-    const response = await requestInterpret(app, zeroToken(userId, orgId), {
-      imageUrl: MARKED_IMAGE,
-      regions: [
-        { id: "region-comment-1", mark: 1, instruction: "make it yellow" },
-      ],
-    });
+    const response = await requestInterpret(
+      app,
+      zeroToken(userId, orgId, runId),
+      {
+        imageUrl: MARKED_IMAGE,
+        regions: [
+          { id: "region-comment-1", mark: 1, instruction: "make it yellow" },
+        ],
+      },
+    );
 
     expect(response.status).toBe(503);
     const body = (await response.json()) as {
@@ -337,15 +360,19 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
 
   it("falls back to the raw instruction when the LLM is not configured", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
-    const { orgId, userId } = await seedActor();
+    const { orgId, userId, runId } = await seedActor();
     const app = createApp();
 
-    const response = await requestInterpret(app, zeroToken(userId, orgId), {
-      imageUrl: MARKED_IMAGE,
-      regions: [
-        { id: "region-comment-1", mark: 1, instruction: "make it yellow" },
-      ],
-    });
+    const response = await requestInterpret(
+      app,
+      zeroToken(userId, orgId, runId),
+      {
+        imageUrl: MARKED_IMAGE,
+        regions: [
+          { id: "region-comment-1", mark: 1, instruction: "make it yellow" },
+        ],
+      },
+    );
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {

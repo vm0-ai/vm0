@@ -16,7 +16,7 @@ export interface OpenRouterImagePart {
 
 export type OpenRouterContentPart = OpenRouterTextPart | OpenRouterImagePart;
 
-export interface OpenRouterMessage {
+interface OpenRouterMessage {
   readonly role: "system" | "user" | "assistant";
   readonly content: string | readonly OpenRouterContentPart[];
 }
@@ -34,7 +34,7 @@ export interface OpenRouterUsage {
   readonly completion_tokens_details?: OpenRouterTokenDetails;
 }
 
-export interface OpenRouterTextGeneration {
+interface OpenRouterTextGeneration {
   readonly text: string;
   readonly usage?: OpenRouterUsage;
 }
