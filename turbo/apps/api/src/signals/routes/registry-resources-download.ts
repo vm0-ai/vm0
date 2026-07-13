@@ -254,7 +254,7 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256: Record<
   },
 };
 
-function privateRegistryResourceArchive(
+export function resolvePrivateRegistryResourceArchive(
   id: string,
   expectedSha256: string | undefined,
   defaultSha256: string,
@@ -306,7 +306,7 @@ const downloadRegistryResourceInner$ = computed(async (get) => {
     return notFound(`Registry resource "${query.id}" has no archive source`);
   }
 
-  const privateArchive = privateRegistryResourceArchive(
+  const privateArchive = resolvePrivateRegistryResourceArchive(
     query.id,
     query.expectedSha256,
     archive.sha256,
