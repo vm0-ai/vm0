@@ -1,3 +1,29 @@
+//! Private filesystem boundary for runner-owned configuration, identity, and
+//! status state.
+//!
+//! On Unix, [`ensure_private_dir`] establishes the directory trust boundary.
+//! It rejects parent-directory and symlink components, refuses targets
+//! reserved for system or shared runner state, validates component ownership
+//! and replaceability, and enforces mode `0700` on the final directory.
+//! Acceptable existing intermediate directory modes are preserved; newly
+//! created components are private.
+//!
+//! File reads and writes are separate path-based operations. They neither call
+//! [`ensure_private_dir`] nor validate or retain the parent directory chain,
+//! so callers must establish the required parent-directory trust first. Unix
+//! reads protect and validate the final opened file, reject unsafe ownership
+//! or write permissions, and may tighten acceptable permissions to `0600`.
+//! Unix writes use a private sibling staging file and rename it over the
+//! target. That prevents readers from observing partial target contents, but
+//! it does not fsync the file or parent directory, serialize writers, or
+//! provide crash durability. Cleanup of a staging file after failure is best
+//! effort.
+//!
+//! Non-Unix fallbacks keep the read size and UTF-8 checks, but otherwise use
+//! ordinary directory creation, file open, and file write operations. They do
+//! not provide the Unix path, ownership, mode, file-type, no-follow,
+//! nonblocking, staging, or atomic-replacement guarantees.
+
 use std::ffi::OsStr;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Component, Path, PathBuf};
@@ -10,6 +36,7 @@ const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
 const PRIVATE_FILE_READ_MAX_BYTES: u64 = 64 * 1024;
+/// Maximum number of bytes accepted for a private runner status snapshot.
 pub(crate) const PRIVATE_STATUS_FILE_READ_MAX_BYTES: u64 = 1024 * 1024;
 const RESERVED_PRIVATE_DIR_PATHS: &[&str] = &[
     "/",
@@ -51,8 +78,17 @@ const RESERVED_PRIVATE_DIR_SUBTREES: &[&str] = &[
 
 /// Ensure `path` is private runtime state for the current runner process.
 ///
-/// The runner normally runs as root. This intentionally keeps runtime state
-/// owned by the effective uid instead of chowning it back to `SUDO_USER`.
+/// This rejects parent-directory and existing symlink components, exact
+/// reserved targets, and recursively reserved shared-runner subtrees. The
+/// component walk refuses to create missing reserved paths and requires each
+/// opened parent to be owned by root or the effective uid and not be
+/// group/other writable unless it is sticky. Existing non-reserved components
+/// must be owned by the effective uid.
+///
+/// Acceptable existing intermediate modes are preserved. Newly created
+/// components and the final directory are set to `0700`, and the final
+/// directory must be owned by the effective uid. The runner normally runs as
+/// root; state is intentionally not chowned back to `SUDO_USER`.
 #[cfg(unix)]
 pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     reject_reserved_private_dir_path(path)?;
@@ -63,6 +99,10 @@ pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     ensure_private_dir_fd_owned_by(path, &fd, expected_uid)
 }
 
+/// Create `path` and any missing parents using the platform filesystem API.
+///
+/// This fallback does not apply the Unix reserved-path, parent-component,
+/// symlink, ownership, replaceability, or `0700` mode guarantees.
 #[cfg(not(unix))]
 pub async fn ensure_private_dir(path: &Path) -> RunnerResult<()> {
     tokio::fs::create_dir_all(path)
@@ -117,11 +157,27 @@ async fn reject_existing_symlink_components(path: &Path) -> RunnerResult<()> {
     Ok(())
 }
 
+/// Read an optional private UTF-8 file with the default 64 KiB limit.
+///
+/// Missing paths return `Ok(None)`. The Unix validation, permission mutation,
+/// and trusted-parent requirements are described by
+/// [`read_private_file_to_string_with_max`].
 #[cfg(unix)]
 pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<String>> {
     read_private_file_to_string_with_max(path, PRIVATE_FILE_READ_MAX_BYTES).await
 }
 
+/// Read an optional private UTF-8 file with a caller-supplied byte limit.
+///
+/// Missing paths return `Ok(None)`. The final component is opened with
+/// `O_NOFOLLOW`, `O_CLOEXEC`, and `O_NONBLOCK`, then must be a regular file
+/// owned by the effective uid and not group/other writable. An otherwise
+/// acceptable mode other than `0600` is tightened through the opened
+/// descriptor before reading, so a successful call may change permissions.
+///
+/// Parent components are not validated; callers must establish the required
+/// parent-directory trust separately. Content longer than `max_bytes`,
+/// invalid UTF-8, and a limit for which `max_bytes + 1` overflows are rejected.
 #[cfg(unix)]
 pub async fn read_private_file_to_string_with_max(
     path: &Path,
@@ -181,11 +237,21 @@ async fn read_private_file_contents(
     })
 }
 
+/// Read an optional UTF-8 file with the default 64 KiB limit on non-Unix.
+///
+/// Missing paths return `Ok(None)`. This fallback does not apply the Unix
+/// no-follow, nonblocking, file-type, ownership, or permission checks.
 #[cfg(not(unix))]
 pub async fn read_private_file_to_string(path: &Path) -> RunnerResult<Option<String>> {
     read_private_file_to_string_with_max(path, PRIVATE_FILE_READ_MAX_BYTES).await
 }
 
+/// Read an optional UTF-8 file with a caller-supplied limit on non-Unix.
+///
+/// Missing paths return `Ok(None)`. Content longer than `max_bytes`, invalid
+/// UTF-8, and a limit for which `max_bytes + 1` overflows are rejected. The
+/// path is otherwise opened with ordinary platform behavior, so callers remain
+/// responsible for its trust and privacy.
 #[cfg(not(unix))]
 pub async fn read_private_file_to_string_with_max(
     path: &Path,
@@ -206,6 +272,19 @@ pub async fn read_private_file_to_string_with_max(
         .map(Some)
 }
 
+/// Write a private file through same-directory atomic replacement on Unix.
+///
+/// `path` must have a file name and be below a parent directory whose trust
+/// the caller has already established, normally with [`ensure_private_dir`].
+/// This function does not validate or retain the parent chain.
+///
+/// The content is written to a hidden UUID-named sibling created exclusively
+/// with exact mode `0600`. After the writer is flushed and closed, the sibling
+/// is renamed over the target so readers do not observe partial target
+/// contents. Neither the file nor parent directory is fsynced, so this is not
+/// a crash-durability guarantee. The function also provides no locking or
+/// concurrent-writer ordering guarantee. After an error, staging-file removal
+/// is attempted as best-effort cleanup.
 #[cfg(unix)]
 pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
     use std::ffi::OsString;
@@ -250,6 +329,11 @@ pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()>
     result
 }
 
+/// Write a file directly with the platform filesystem API on non-Unix.
+///
+/// This fallback does not provide the Unix sibling staging, explicit `0600`
+/// mode, or atomic replacement. It uses ordinary path resolution and does not
+/// validate the destination or parent chain.
 #[cfg(not(unix))]
 pub async fn write_private_file(path: &Path, content: &[u8]) -> RunnerResult<()> {
     tokio::fs::write(path, content)
