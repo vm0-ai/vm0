@@ -69,12 +69,14 @@ interface AuthHeaders {
 type CallbackQuery = {
   readonly code?: string;
   readonly state?: string;
+  readonly domain?: string;
   readonly error?: string;
   readonly error_description?: string;
 };
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL = "https://api.github.com/user";
+const DATADOG_US3_TOKEN_URL = "https://api.us3.datadoghq.com/oauth2/v1/token";
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
@@ -137,6 +139,31 @@ export function mockGitHubConnectorOAuth(): void {
       });
     }),
   );
+}
+
+interface DatadogOAuthProviderRecorder {
+  readonly tokenBodies: URLSearchParams[];
+}
+
+export function mockDatadogConnectorOAuth(): DatadogOAuthProviderRecorder {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("DATADOG_OAUTH_CLIENT_ID", "datadog-client-id");
+  mockOptionalEnv("DATADOG_OAUTH_CLIENT_SECRET", "datadog-client-secret");
+
+  const tokenBodies: URLSearchParams[] = [];
+  server.use(
+    http.post(DATADOG_US3_TOKEN_URL, async ({ request }) => {
+      tokenBodies.push(new URLSearchParams(await request.text()));
+      return HttpResponse.json({
+        access_token: "bdd-datadog-access-token",
+        refresh_token: "bdd-datadog-refresh-token",
+        expires_in: 3600,
+        scope: "dashboards_read logs_read_index_data",
+      });
+    }),
+  );
+
+  return { tokenBodies };
 }
 
 interface TestOAuthAuthCodeProviderOptions {
