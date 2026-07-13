@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.266.0](https://github.com/vm0-ai/vm0/compare/api-v1.265.5...api-v1.266.0) (2026-07-13)
+
+
+### Features
+
+* bill openrouter edit helpers ([#20945](https://github.com/vm0-ai/vm0/issues/20945)) ([825c5fa](https://github.com/vm0-ai/vm0/commit/825c5fa33e400b11470ea51388546c672ca6f354))
+
+
+### Bug Fixes
+
+* restore artifact preview screenshots ([#21223](https://github.com/vm0-ai/vm0/issues/21223)) ([7236561](https://github.com/vm0-ai/vm0/commit/72365612e37279b9c00f0ec9e50b39a2ba524e4f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.187.0
+    * @vm0/core bumped to 8.426.0
+    * @vm0/db bumped to 1.111.2
+
 ## [1.265.5](https://github.com/vm0-ai/vm0/compare/api-v1.265.4...api-v1.265.5) (2026-07-13)
 
 
