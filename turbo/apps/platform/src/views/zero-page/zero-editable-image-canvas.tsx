@@ -1,8 +1,4 @@
-import type {
-  KeyboardEvent,
-  PointerEvent,
-  ReactNode,
-} from "react";
+import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import {
   type ReactZoomPanPinchContentRef,
   type ReactZoomPanPinchContextState,
