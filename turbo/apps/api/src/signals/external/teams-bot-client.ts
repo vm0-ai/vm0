@@ -5,7 +5,7 @@ import { safeJsonParse, safeUrlParse, settle } from "../utils";
 
 const BOT_FRAMEWORK_SCOPE = "https://api.botframework.com/.default";
 const MICROSOFT_GRAPH_SCOPE = "https://graph.microsoft.com/.default";
-const MICROSOFT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
+const DEFAULT_MICROSOFT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
 
 const teamsTokenResponseSchema = z
   .object({
@@ -206,14 +206,48 @@ function tenantTokenUrl(tenantId: string): string {
   )}/oauth2/v2.0/token`;
 }
 
+function e2eTeamsMockBaseUrl(): string | undefined {
+  const explicitBaseUrl = optionalEnv("TEAMS_MOCK_BASE_URL");
+  if (explicitBaseUrl) {
+    return explicitBaseUrl.replace(/\/+$/u, "");
+  }
+
+  const flag = optionalEnv("E2E_TEAMS_MOCK_ENABLED");
+  const mockEnabled = flag === "1" || flag === "true";
+  const vercelUrl = optionalEnv("VERCEL_URL");
+  if (mockEnabled && vercelUrl) {
+    return `https://${vercelUrl}/api/test/teams-mock`;
+  }
+  return undefined;
+}
+
 function botTokenUrl(tenantId: string): string {
-  return (
-    optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL") ?? tenantTokenUrl(tenantId)
-  );
+  const configured = optionalEnv("MICROSOFT_TEAMS_BOT_TOKEN_URL");
+  if (configured) {
+    return configured;
+  }
+  const mockBaseUrl = e2eTeamsMockBaseUrl();
+  return mockBaseUrl ? `${mockBaseUrl}/token` : tenantTokenUrl(tenantId);
 }
 
 function graphTokenUrl(tenantId: string): string {
-  return tenantTokenUrl(tenantId);
+  const configured = optionalEnv("MICROSOFT_TEAMS_GRAPH_TOKEN_URL");
+  if (configured) {
+    return configured;
+  }
+  const mockBaseUrl = e2eTeamsMockBaseUrl();
+  return mockBaseUrl ? `${mockBaseUrl}/token` : tenantTokenUrl(tenantId);
+}
+
+function graphBaseUrl(): string {
+  const configured = optionalEnv("MICROSOFT_GRAPH_BASE_URL");
+  if (configured) {
+    return configured.replace(/\/+$/u, "");
+  }
+  const mockBaseUrl = e2eTeamsMockBaseUrl();
+  return mockBaseUrl
+    ? `${mockBaseUrl}/graph`
+    : DEFAULT_MICROSOFT_GRAPH_BASE_URL;
 }
 
 function networkErrorMessage(error: unknown): string {
@@ -365,7 +399,7 @@ function teamsGraphChannelMessageUrl(args: {
   readonly replies?: boolean;
   readonly limit?: number;
 }): string {
-  const base = `${MICROSOFT_GRAPH_BASE_URL}/teams/${encodeURIComponent(
+  const base = `${graphBaseUrl()}/teams/${encodeURIComponent(
     args.teamId,
   )}/channels/${encodeURIComponent(args.channelId)}/messages`;
   const path = args.messageId
@@ -381,9 +415,7 @@ function teamsGraphChannelMessageUrl(args: {
 }
 
 function teamsGraphUserUrl(userId: string): string {
-  const url = new URL(
-    `${MICROSOFT_GRAPH_BASE_URL}/users/${encodeURIComponent(userId)}`,
-  );
+  const url = new URL(`${graphBaseUrl()}/users/${encodeURIComponent(userId)}`);
   url.searchParams.set("$select", "id,displayName,userPrincipalName,mail");
   return url.toString();
 }
