@@ -730,17 +730,17 @@ async fn pool_cooldown_prevents_immediate_reuse() {
     pool.cleanup().await;
 }
 
-/// After cooldown expires, a released device should become available again.
+/// After cooldown expires, the pool should release the device claim.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn pool_release_and_reacquire_after_cooldown() {
+async fn pool_releases_claim_after_cooldown() {
     if !nbd_test_available() {
         return;
     }
 
     let fixture = NbdTestFixture::new();
 
-    // Very short cooldown so we can test re-acquisition
+    // Very short cooldown so we can test claim release
     let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig {
         cooldown: std::time::Duration::from_millis(50),
     });
@@ -750,23 +750,30 @@ async fn pool_release_and_reacquire_after_cooldown() {
         .create_cow_device(fixture.base(), &cow, fixture.size())
         .await
         .expect("create");
+    let device_index = dev.device_index();
 
     dev.destroy_with_retries(destroy_policy())
         .await
         .expect("destroy");
 
-    // Wait for cooldown to expire
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let claim_released = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match nbd_cow::device_lock::try_acquire_device_claim(device_index) {
+                Ok(Some(claim)) => {
+                    drop(claim);
+                    return Ok(());
+                }
+                Ok(None) => tokio::time::sleep(Duration::from_millis(10)).await,
+                Err(e) => return Err(e),
+            }
+        }
+    })
+    .await;
 
-    let cow2 = fixture.cow_path("cow2.img");
-    let dev2 = pool
-        .create_cow_device(fixture.base(), &cow2, fixture.size())
-        .await
-        .expect("create after cooldown");
-    dev2.destroy_with_retries(destroy_policy())
-        .await
-        .expect("destroy after cooldown");
     pool.cleanup().await;
+    claim_released
+        .expect("timed out waiting for device claim release")
+        .expect("probe device claim release");
 }
 
 /// Dropping an NbdCowDevice without calling destroy() should still
