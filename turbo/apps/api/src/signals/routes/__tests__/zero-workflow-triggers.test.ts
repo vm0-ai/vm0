@@ -533,6 +533,60 @@ describe("zero workflow triggers", () => {
     ]);
   });
 
+  it("lists thread-bound webhook triggers", async () => {
+    const { fixture, workflowId } = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received" ||
+      !created.body.chatThreadId
+    ) {
+      throw new Error("Expected a thread-bound webhook trigger");
+    }
+
+    const listed = await accept(
+      triggersClient().listForChatThread({
+        headers: authHeaders(),
+        params: { threadId: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    const [listedTrigger] = listed.body;
+    expect(listedTrigger).toMatchObject({
+      id: created.body.id,
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      chatThreadId: created.body.chatThreadId,
+      secretLastFour: created.body.secretLastFour,
+      disabledReason: null,
+      lastReceivedAt: null,
+      workflow: expect.objectContaining({ id: workflowId }),
+    });
+    if (
+      !listedTrigger ||
+      listedTrigger.kind !== "event" ||
+      listedTrigger.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected the webhook trigger to be listed");
+    }
+    expect(listedTrigger.webhookUrl).toBeUndefined();
+    expect(listedTrigger.webhookSecret).toBeUndefined();
+  });
+
   it("stores trigger chat threads at the workflow-user level", async () => {
     const { workflowId } = await setupFixture();
     const first = await accept(

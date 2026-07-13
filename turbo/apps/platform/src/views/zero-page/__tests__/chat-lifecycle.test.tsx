@@ -36,6 +36,7 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowTriggersContract,
+  type ChatThreadWorkflowTrigger,
   type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -4510,6 +4511,44 @@ describe("chat lifecycle", () => {
     expect(
       within(editDialog).queryByLabelText("Interval seconds"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows webhook automations in the sidebar without edit controls", async () => {
+    const trigger: ChatThreadWorkflowTrigger = {
+      id: "e0000001-0000-4000-a000-000000000006",
+      ownerUserId: "test-user-123",
+      enabled: true,
+      chatThreadId: AUTOMATION_THREAD_ID,
+      nextRunAt: null,
+      lastRunAt: null,
+      workflow: {
+        id: "a0000001-0000-4000-a000-000000000006",
+        agentId: AGENT_ID,
+        name: "webhook-sync",
+        displayName: "Webhook sync",
+        description: "Sync external webhook events",
+      },
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      secretLastFour: "cafe",
+      disabledReason: null,
+      lastReceivedAt: null,
+    };
+
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(trigger);
+
+    expect(within(sidebar).getByText("Webhook sync")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Webhook automation")).toBeInTheDocument();
+    expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Run now")).toBeInTheDocument();
+    expect(within(sidebar).queryByText("Edit")).not.toBeInTheDocument();
   });
 
   it("updates a schedule workflow automation from the sidebar", async () => {
