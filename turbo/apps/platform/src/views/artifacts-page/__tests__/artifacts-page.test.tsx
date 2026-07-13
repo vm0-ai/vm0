@@ -413,13 +413,11 @@ function mockScrollViewport(
 function setupArtifactsPage({
   scope,
   enabled = true,
-  artifactFavoritesEnabled = false,
   htmlArtifactCommentEditingEnabled = false,
   imageEditingEnabled = false,
 }: {
   readonly scope: TestAuthScope;
   readonly enabled?: boolean;
-  readonly artifactFavoritesEnabled?: boolean;
   readonly htmlArtifactCommentEditingEnabled?: boolean;
   readonly imageEditingEnabled?: boolean;
 }): void {
@@ -436,7 +434,6 @@ function setupArtifactsPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.Artifacts]: enabled,
-      [FeatureSwitchKey.ArtifactFavorites]: artifactFavoritesEnabled,
       [FeatureSwitchKey.HtmlArtifactCommentEditing]:
         htmlArtifactCommentEditingEnabled,
       [FeatureSwitchKey.ImageEditing]: imageEditingEnabled,
@@ -1154,7 +1151,7 @@ describe("artifacts page", () => {
       return respond(204);
     });
 
-    setupArtifactsPage({ scope, artifactFavoritesEnabled: true });
+    setupArtifactsPage({ scope });
 
     await screen.findByText("launch-plan.html");
     await screen.findByText("favorite-brief.html");
