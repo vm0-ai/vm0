@@ -276,6 +276,39 @@ async def test_runtime_host_policy_enforces_inline_public_destination_policy(
     assert "Authorization" not in flow.request.headers
 
 
+async def test_runtime_host_policy_rejects_malformed_provider_policy(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="malformed-provider",
+        base="https://api.com",
+        host_policy={"kind": "providerOwned", "suffixes": ["com"]},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.com",
+        path="/v1/items",
+        request_headers=headers(("Host", "api.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "builtin_host_policy_denied"
+    assert body["reason"] == "invalid_host_policy"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
 @pytest.mark.parametrize(
     ("base", "host_header", "sni", "port", "expected_reason"),
     [
