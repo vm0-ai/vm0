@@ -184,7 +184,6 @@ async function loadSelectedIncompleteRounds(
     }),
   );
   const roundsByRunId = new Map<string, IncompleteRound>();
-  const orderedRunIds: string[] = [];
   for (const row of rows) {
     if (row.runId === null) {
       continue;
@@ -200,7 +199,6 @@ async function loadSelectedIncompleteRounds(
     if (round === undefined) {
       round = { runId: row.runId, status, messages: [] };
       roundsByRunId.set(row.runId, round);
-      orderedRunIds.push(row.runId);
     }
     round.messages.push({
       role: row.role,
@@ -209,13 +207,7 @@ async function loadSelectedIncompleteRounds(
     });
   }
 
-  return orderedRunIds.map((runId) => {
-    const round = roundsByRunId.get(runId);
-    if (round === undefined) {
-      throw new Error("Incomplete round grouping lost run id");
-    }
-    return round;
-  });
+  return [...roundsByRunId.values()];
 }
 
 function formatAttachFileIds(
