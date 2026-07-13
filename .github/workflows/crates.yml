@@ -1258,7 +1258,7 @@ jobs:
           # valid response proves PREROUTING redirected the connection to the
           # runner-managed dnsmasq instead of mitmproxy raw TCP passthrough.
           TCP_DNS_SCRIPT="import socket,struct; q=bytes.fromhex('123401000001000000000000077463702d646e7307696e76616c69640000010001'); s=socket.create_connection(('192.0.2.1',53),5); s.sendall(struct.pack('!H',len(q))+q); f=s.makefile('rb'); h=f.read(2); assert len(h)==2; n=struct.unpack('!H',h)[0]; r=f.read(n); assert len(r)==n and r[:2]==q[:2] and r[2]&128; print('TCP_DNS_OK=true')"
-          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "$TCP_DNS_SCRIPT" 2>&1) \
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- python3 -c "$TCP_DNS_SCRIPT") \
             || fail "TCP DNS resolution failed: $OUTPUT"
           [ "$OUTPUT" = "TCP_DNS_OK=true" ] || fail "unexpected TCP DNS output: $OUTPUT"
           echo "  tcp: $OUTPUT"
