@@ -245,6 +245,15 @@ def test_non_terminal_prefilter_ignores_nested_types_and_payload_text():
     assert extract_openai_responses_usage_from_event_json(body) is None
 
 
+def test_non_terminal_prefilter_handles_fractional_exponent_number_before_type():
+    body = b'{"score":-2.5e+3,"type":"response.output_text.delta","delta":"ignored"}'
+
+    assert (
+        openai_responses._classify_responses_event_type(body)
+        == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
+    )
+
+
 def test_duplicate_top_level_type_uses_first_type_boundary():
     body = (
         b'{"type":"response.output_text.delta",'
