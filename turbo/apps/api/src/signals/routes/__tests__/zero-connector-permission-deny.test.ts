@@ -11,7 +11,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -27,7 +27,7 @@ const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
-const runsApi = createRunsAutomationsApi(context);
+const runsApi = createRunsApi(context);
 const store = createStore();
 
 interface DiagnosticBody {
