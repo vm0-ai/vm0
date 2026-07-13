@@ -25,7 +25,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.HtmlArtifactCommentEditing, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.WebsiteTemplates, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.AgentDetailWorkflowsTab, {})).toBe(
       false,
     );
@@ -144,7 +143,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       true,
@@ -179,7 +178,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.WebsiteTemplates]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowConnectorReadiness]).toBe(
       false,
