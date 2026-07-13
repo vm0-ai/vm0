@@ -29,11 +29,11 @@ function readGlobalCss(): string {
 }
 
 describe("platform entrypoint safe area behavior", () => {
-  it("keeps iOS system chrome opaque above fullscreen surfaces", () => {
+  it("lets fullscreen surfaces paint under translucent iOS system chrome", () => {
     expect(indexHtml).toMatch(
-      /<meta\s+name="apple-mobile-web-app-status-bar-style"\s+content="default"\s*\/>/,
+      /<meta\s+name="apple-mobile-web-app-status-bar-style"\s+content="black-translucent"\s*\/>/,
     );
-    expect(indexHtml).not.toContain('content="black-translucent"');
+    expect(indexHtml).not.toContain('content="default"');
   });
 
   it("keeps supported viewport hints without unsupported keyboard directives", () => {
