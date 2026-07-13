@@ -108,7 +108,6 @@ const resolvePaneThread$ = command(
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
-      set(thread.runPhraseLoop$, signal),
       set(thread.subscribeChatThread$, signal),
     ]);
     signal.throwIfAborted();

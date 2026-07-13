@@ -33,8 +33,10 @@ export interface ChatThreadSignals {
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   reloadThread$: Command<void, []>;
+  threadTitle$: Computed<Promise<string | null>>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
+  threadSettledInServer$: Computed<Promise<boolean>>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
@@ -118,14 +120,8 @@ export interface ChatThreadSignals {
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;
-  rotatingPhrase$: Computed<string>;
-  donePhrase$: Computed<string>;
-  displayedThinkingText$: Computed<Promise<string>>;
-  setThinkingIndicatorTextRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
-  runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
+  thinkingPhrase$: Computed<string>;
+  donePhrase$: Computed<Promise<string>>;
   // -- Artifacts ------------------------------------------------------------
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   reloadArtifacts$: Command<void, []>;
