@@ -505,7 +505,7 @@ async fn snapshot_attempt_drop_handoff_kills_child_before_netns_release() {
     );
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn snapshot_attempt_cancelled_finish_hands_complete_process_to_finalizer() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
@@ -513,17 +513,16 @@ async fn snapshot_attempt_cancelled_finish_hands_complete_process_to_finalizer()
     attempt.track_child_for_test(exited_child_for_test().await);
     attempt.track_stderr_handle_for_test(tokio::spawn(std::future::pending::<()>()));
 
-    let finish = tokio::time::timeout(
-        Duration::from_millis(1),
-        attempt.finish_runtime_after_workflow(Err(SnapshotError::Api(ApiError::Other(
-            "timeout".into(),
-        )))),
-    )
-    .await;
-    assert!(
-        finish.is_err(),
-        "explicit finish should be cancelled during stderr drain"
-    );
+    {
+        let finish = attempt.finish_runtime_after_workflow(Err(SnapshotError::Api(
+            ApiError::Other("timeout".into()),
+        )));
+        tokio::pin!(finish);
+        assert!(
+            futures_util::poll!(finish.as_mut()).is_pending(),
+            "explicit finish should wait for the stderr forwarder"
+        );
+    }
 
     let presence = attempt.cleanup_resources.presence();
     assert!(
