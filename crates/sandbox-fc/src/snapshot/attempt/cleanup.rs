@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use nbd_cow::KeptCow;
 use nbd_cow::PooledNbdCowDevice;
 use nbd_cow::pool::DevicePoolHandle;
-use tokio::task::JoinHandle;
 
 use crate::network::{NetnsLease, NetnsPool};
 
@@ -13,10 +12,7 @@ use super::super::cow::{
 };
 use super::super::output::cleanup_workspace_image_file_sync;
 use super::super::publish::SnapshotPublishAttempt;
-use super::super::runtime::{
-    SNAPSHOT_FINALIZER_CHILD_WAIT_TIMEOUT, SNAPSHOT_FINALIZER_PIPE_DRAIN_TIMEOUT,
-    drain_or_abort_forwarder, kill_and_reap_firecracker_bounded,
-};
+use super::process::SnapshotProcess;
 
 async fn release_snapshot_netns(
     netns_pool: &mut NetnsPool,
@@ -132,9 +128,7 @@ pub(super) struct SnapshotCleanupResources {
     pub(super) workspace_image: AttemptWorkspaceImage,
     pub(super) publish_attempt: Option<SnapshotPublishAttempt>,
     pub(super) network: Option<NetnsLease>,
-    pub(super) child: Option<tokio::process::Child>,
-    pub(super) stdout_handle: Option<JoinHandle<()>>,
-    pub(super) stderr_handle: Option<JoinHandle<()>>,
+    pub(super) process: SnapshotProcess,
 }
 
 impl SnapshotCleanupResources {
@@ -163,6 +157,7 @@ impl SnapshotCleanupResources {
     }
 
     pub(super) fn presence(&self) -> SnapshotCleanupPresence {
+        let process = self.process.presence();
         SnapshotCleanupPresence {
             has_device_pool: self.device_pool.is_some(),
             has_netns_pool: self.netns_pool.is_some(),
@@ -173,9 +168,9 @@ impl SnapshotCleanupResources {
                 .as_ref()
                 .is_some_and(SnapshotPublishAttempt::has_cleanup_work),
             has_network: self.network.is_some(),
-            has_child: self.child.is_some(),
-            has_stdout_forwarder: self.stdout_handle.is_some(),
-            has_stderr_forwarder: self.stderr_handle.is_some(),
+            has_child: process.has_child,
+            has_stdout_forwarder: process.has_stdout_forwarder,
+            has_stderr_forwarder: process.has_stderr_forwarder,
         }
     }
 
@@ -305,11 +300,6 @@ impl SnapshotCleanupResources {
             }
         }
     }
-
-    pub(super) fn drop_forwarder_handles(&mut self) {
-        self.stdout_handle.take();
-        self.stderr_handle.take();
-    }
 }
 
 pub(super) struct SnapshotCleanupReport {
@@ -336,25 +326,7 @@ pub(super) struct SnapshotCleanupFinalizer {
 
 impl SnapshotCleanupFinalizer {
     pub(super) async fn run(mut self) {
-        let child_reaped = if let Some(child) = self.resources.child.as_mut() {
-            kill_and_reap_firecracker_bounded(child, SNAPSHOT_FINALIZER_CHILD_WAIT_TIMEOUT).await
-        } else {
-            true
-        };
-        self.resources.child.take();
-
-        let stdout_forwarder_finished = drain_or_abort_forwarder(
-            &mut self.resources.stdout_handle,
-            "stdout",
-            SNAPSHOT_FINALIZER_PIPE_DRAIN_TIMEOUT,
-        )
-        .await;
-        let stderr_forwarder_finished = drain_or_abort_forwarder(
-            &mut self.resources.stderr_handle,
-            "stderr",
-            SNAPSHOT_FINALIZER_PIPE_DRAIN_TIMEOUT,
-        )
-        .await;
+        let process = self.resources.process.finalize_after_cancellation().await;
 
         let network_released = self
             .resources
@@ -373,9 +345,9 @@ impl SnapshotCleanupFinalizer {
             .await;
 
         let report = SnapshotCleanupReport {
-            child_reaped,
-            stdout_forwarder_finished,
-            stderr_forwarder_finished,
+            child_reaped: process.child_reaped,
+            stdout_forwarder_finished: process.stdout_forwarder_finished,
+            stderr_forwarder_finished: process.stderr_forwarder_finished,
             network_released,
             publish_cleaned,
             workspace_image_cleaned,
