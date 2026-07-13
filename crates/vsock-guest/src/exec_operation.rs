@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout};
+use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -18,10 +18,7 @@ use crate::drain::{BoundedDrainResult, BoundedStreamConfig, drain_bounded_cancel
 use crate::error::to_io_error;
 use crate::exec_control::ExecControlGuard;
 use crate::log::log;
-use crate::process::{
-    ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child_with_target,
-    process_tree_kill_target, refresh_process_tree_kill_target,
-};
+use crate::process::{ContainedChild, extract_exit_code};
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
     SpawnedShellCommand, format_env_diagnostics, spawn_shell_command_with_pipes,
@@ -29,8 +26,8 @@ use crate::shell_command::{
 };
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
-    DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
-    wait_with_kill_timeout_or_cancelled_either_with_target,
+    DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline, terminate_contained_child,
+    wait_contained_with_timeout_or_cancelled,
 };
 use crate::writer::GuestWriter;
 
@@ -352,6 +349,18 @@ impl ExecCompletion<'_> {
         );
     }
 
+    fn fatal_wait_failed(&self, diagnostic: &str) {
+        self.operation_guard.poison(diagnostic.to_owned());
+        self.wait_failed(diagnostic);
+        self.operation_guard.shutdown_transports();
+    }
+
+    fn fatal_without_result(&self, diagnostic: &str) {
+        self.operation_guard.poison(diagnostic.to_owned());
+        self.release_without_result();
+        self.operation_guard.shutdown_transports();
+    }
+
     fn finish<'a>(
         &self,
         termination: ExecTermination,
@@ -393,8 +402,7 @@ impl ExecCompletion<'_> {
 }
 
 struct ExecSetup {
-    child: Child,
-    kill_target: ProcessTreeKillTarget,
+    process: ContainedChild,
     stdin_writer: Option<StdinWriter>,
     drain_cancel: Arc<AtomicBool>,
     drain_done_tx: mpsc::Sender<()>,
@@ -402,13 +410,11 @@ struct ExecSetup {
 }
 
 impl ExecSetup {
-    fn new(child: Child) -> Self {
-        let kill_target = process_tree_kill_target(child.id());
+    fn new(process: ContainedChild) -> Self {
         let drain_cancel = Arc::new(AtomicBool::new(false));
         let (drain_done_tx, drain_done_rx) = mpsc::channel::<()>();
         Self {
-            child,
-            kill_target,
+            process,
             stdin_writer: None,
             drain_cancel,
             drain_done_tx,
@@ -417,15 +423,19 @@ impl ExecSetup {
     }
 
     fn take_stdout(&mut self) -> Option<ChildStdout> {
-        self.child.stdout.take()
+        self.process.child.stdout.take()
     }
 
     fn take_stderr(&mut self) -> Option<ChildStderr> {
-        self.child.stderr.take()
+        self.process.child.stderr.take()
     }
 
     fn take_stdin(&mut self) -> Option<ChildStdin> {
-        self.child.stdin.take()
+        self.process.child.stdin.take()
+    }
+
+    fn child_id(&self) -> u32 {
+        self.process.child_id()
     }
 
     fn set_stdin_writer(&mut self, writer: StdinWriter) {
@@ -459,8 +469,7 @@ impl ExecSetup {
         diagnostic: &str,
     ) {
         let ExecSetup {
-            child,
-            kill_target,
+            process,
             stdin_writer,
             drain_cancel,
             drain_done_tx: _,
@@ -468,23 +477,31 @@ impl ExecSetup {
         } = self;
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
-        kill_and_reap_child_with_target(child, kill_target);
+        let cleanup = terminate_contained_child(process);
         join_stdin_writer_after_kill(stdin_writer);
-        completion.wait_failed(diagnostic);
+        match cleanup {
+            Ok(()) => completion.wait_failed(diagnostic),
+            Err(error) => completion.fatal_wait_failed(&format!(
+                "{diagnostic}; exec containment cleanup failed: {error}"
+            )),
+        }
     }
 
     fn abort_exec_started_send_failed(self, completion: &ExecCompletion<'_>) {
         debug_assert!(self.stdin_writer.is_none());
         let ExecSetup {
-            child,
-            kill_target,
+            process,
             stdin_writer: _,
             drain_cancel: _,
             drain_done_tx: _,
             drain_done_rx: _,
         } = self;
-        kill_and_reap_child_with_target(child, kill_target);
-        completion.release_without_result();
+        match terminate_contained_child(process) {
+            Ok(()) => completion.release_without_result(),
+            Err(error) => completion.fatal_without_result(&format!(
+                "exec containment cleanup failed after exec_started send failure: {error}"
+            )),
+        }
     }
 }
 
@@ -515,8 +532,7 @@ impl ExecSetupWithStdout {
             stdout_result_rx: _,
         } = self;
         let ExecSetup {
-            child,
-            kill_target,
+            process,
             stdin_writer,
             drain_cancel,
             drain_done_tx: _,
@@ -524,10 +540,15 @@ impl ExecSetupWithStdout {
         } = setup;
         exec_cancel.store(true, Ordering::Release);
         drain_cancel.store(true, Ordering::Release);
-        kill_and_reap_child_with_target(child, kill_target);
+        let cleanup = terminate_contained_child(process);
         join_stdin_writer_after_kill(stdin_writer);
         let _ = stdout_handle.join();
-        completion.wait_failed(diagnostic);
+        match cleanup {
+            Ok(()) => completion.wait_failed(diagnostic),
+            Err(error) => completion.fatal_wait_failed(&format!(
+                "{diagnostic}; exec containment cleanup failed: {error}"
+            )),
+        }
     }
 
     fn into_running(
@@ -541,8 +562,7 @@ impl ExecSetupWithStdout {
             stdout_result_rx,
         } = self;
         let ExecSetup {
-            child,
-            kill_target,
+            process,
             stdin_writer,
             drain_cancel,
             drain_done_tx,
@@ -551,8 +571,7 @@ impl ExecSetupWithStdout {
         drop(drain_done_tx);
 
         RunningExec {
-            child,
-            kill_target,
+            process,
             stdin_writer,
             stdout_handle,
             stdout_result_rx,
@@ -565,8 +584,7 @@ impl ExecSetupWithStdout {
 }
 
 struct RunningExec {
-    child: Child,
-    kill_target: ProcessTreeKillTarget,
+    process: ContainedChild,
     stdin_writer: Option<StdinWriter>,
     stdout_handle: JoinHandle<()>,
     stdout_result_rx: mpsc::Receiver<BoundedDrainResult>,
@@ -585,8 +603,7 @@ impl RunningExec {
         exec_cancel: &AtomicBool,
     ) {
         let RunningExec {
-            child,
-            mut kill_target,
+            process,
             stdin_writer,
             stdout_handle,
             stdout_result_rx,
@@ -596,7 +613,6 @@ impl RunningExec {
             drain_done_rx,
         } = self;
 
-        refresh_process_tree_kill_target(&mut kill_target);
         let prepare_stdin_writer_for_pre_reap = || {
             let Some(writer) = stdin_writer.as_ref() else {
                 return false;
@@ -608,17 +624,22 @@ impl RunningExec {
                 false
             }
         };
-        let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
-            child,
-            kill_target,
+        let outcome = wait_contained_with_timeout_or_cancelled(
+            process,
             request.timeout.wait_timeout_ms(),
             connection_cancel,
             exec_cancel,
             prepare_stdin_writer_for_pre_reap,
         );
+        let fatal = matches!(&outcome, WaitOutcome::Fatal(_));
+        if let WaitOutcome::Fatal(diagnostic) = &outcome {
+            completion.operation_guard.poison(diagnostic.clone());
+        }
         join_stdin_writer_after_wait(stdin_writer, request.seq, &request.label);
-        if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
-            || connection_cancel.load(Ordering::Acquire)
+        if matches!(
+            &outcome,
+            WaitOutcome::Cancelled | WaitOutcome::TimedOut | WaitOutcome::Fatal(_)
+        ) || connection_cancel.load(Ordering::Acquire)
             || exec_cancel.load(Ordering::Acquire)
         {
             exec_cancel.store(true, Ordering::Release);
@@ -655,6 +676,7 @@ impl RunningExec {
                 ExecTermination::WaitFailed,
                 format!("Failed to wait: {msg}"),
             ),
+            WaitOutcome::Fatal(msg) => (ExecTermination::WaitFailed, msg),
         };
 
         log_exec_terminal_if_notable(
@@ -672,6 +694,9 @@ impl RunningExec {
             captured_output(&stderr_result),
             &diagnostic,
         );
+        if fatal {
+            completion.operation_guard.shutdown_transports();
+        }
     }
 }
 
@@ -814,6 +839,7 @@ fn run_exec_operation_worker<S>(
         effective_env,
         request.sudo,
         pipe_stdin,
+        &operation_guard.containment(),
     ) {
         Ok(spawned) => spawned,
         Err(e) => {
@@ -821,17 +847,24 @@ fn run_exec_operation_worker<S>(
                 "Failed to execute: {e} ({})",
                 format_env_diagnostics(&request.command, &env_refs)
             );
-            completion.start_failed(&diagnostic);
+            if e.is_fatal() {
+                completion.fatal_wait_failed(&diagnostic);
+            } else {
+                completion.start_failed(&diagnostic);
+            }
             return;
         }
     };
 
-    let SpawnedShellCommand { child, env_script } = spawned;
+    let SpawnedShellCommand {
+        process,
+        env_script,
+    } = spawned;
     let _env_script = env_script;
-    let mut setup = ExecSetup::new(child);
+    let mut setup = ExecSetup::new(process);
 
     if request.lifecycle == ExecOperationLifecycle::Supervised
-        && let Err(e) = send_exec_started(request.seq, setup.child.id(), &writer)
+        && let Err(e) = send_exec_started(request.seq, setup.child_id(), &writer)
     {
         log(
             "WARN",

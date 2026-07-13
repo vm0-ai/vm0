@@ -1,9 +1,19 @@
+use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Default)]
+use crate::containment::ContainmentManager;
+use crate::writer::GuestShutdown;
+
+#[derive(Clone)]
 pub(crate) struct OperationState {
-    inner: Arc<Mutex<Inner>>,
+    inner: Arc<OperationStateInner>,
+}
+
+struct OperationStateInner {
+    state: Mutex<Inner>,
+    containment: ContainmentManager,
+    transports: Mutex<Vec<GuestShutdown>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,6 +25,7 @@ enum Mode {
 struct Inner {
     mode: Mode,
     pending: usize,
+    fatal_reason: Option<String>,
 }
 
 impl Default for Inner {
@@ -22,6 +33,7 @@ impl Default for Inner {
         Self {
             mode: Mode::Open,
             pending: 0,
+            fatal_reason: None,
         }
     }
 }
@@ -29,12 +41,14 @@ impl Default for Inner {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AcquireOperationError {
     Quiescing,
+    Fatal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QuiesceResult {
     Quiesced,
     Busy { pending: usize },
+    Fatal,
 }
 
 #[derive(Clone)]
@@ -48,8 +62,26 @@ struct OperationGuardInner {
 }
 
 impl OperationState {
+    fn new(containment: ContainmentManager) -> Self {
+        Self {
+            inner: Arc::new(OperationStateInner {
+                state: Mutex::new(Inner::default()),
+                containment,
+                transports: Mutex::new(Vec::new()),
+            }),
+        }
+    }
+
+    #[cfg(any(debug_assertions, feature = "test-support"))]
+    pub(crate) fn with_cgroup_fixture(root: std::path::PathBuf) -> Self {
+        Self::new(ContainmentManager::fixture(root))
+    }
+
     pub(crate) fn acquire(&self) -> Result<OperationGuard, AcquireOperationError> {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if inner.fatal_reason.is_some() {
+            return Err(AcquireOperationError::Fatal);
+        }
         if inner.mode == Mode::Quiescing {
             return Err(AcquireOperationError::Quiescing);
         }
@@ -63,33 +95,113 @@ impl OperationState {
     }
 
     pub(crate) fn enter_quiescing(&self) -> QuiesceResult {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        inner.mode = Mode::Quiescing;
-        if inner.pending == 0 {
-            QuiesceResult::Quiesced
-        } else {
-            QuiesceResult::Busy {
-                pending: inner.pending,
+        {
+            let mut inner = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            if inner.fatal_reason.is_some() {
+                return QuiesceResult::Fatal;
+            }
+            inner.mode = Mode::Quiescing;
+            if inner.pending > 0 {
+                return QuiesceResult::Busy {
+                    pending: inner.pending,
+                };
+            }
+        }
+
+        if let Err(error) = self.inner.containment.audit() {
+            self.poison(format!("exec containment audit failed: {error}"));
+            return QuiesceResult::Fatal;
+        }
+        QuiesceResult::Quiesced
+    }
+
+    pub(crate) fn resume(&self) -> Result<(), AcquireOperationError> {
+        let mut inner = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if inner.fatal_reason.is_some() {
+            return Err(AcquireOperationError::Fatal);
+        }
+        inner.mode = Mode::Open;
+        Ok(())
+    }
+
+    pub(crate) fn is_quiescing(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode
+            == Mode::Quiescing
+    }
+
+    pub(crate) fn is_fatal(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .fatal_reason
+            .is_some()
+    }
+
+    pub(crate) fn poison(&self, reason: String) {
+        self.mark_fatal(reason);
+        self.shutdown_transports();
+    }
+
+    fn mark_fatal(&self, reason: String) {
+        {
+            let mut inner = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            if inner.fatal_reason.is_none() {
+                inner.fatal_reason = Some(reason);
             }
         }
     }
 
-    pub(crate) fn resume(&self) {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).mode = Mode::Open;
+    fn shutdown_transports(&self) {
+        let mut transports = self
+            .inner
+            .transports
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        transports.retain(GuestShutdown::is_alive);
+        for transport in transports.iter() {
+            transport.shutdown();
+        }
     }
 
-    pub(crate) fn is_quiescing(&self) -> bool {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).mode == Mode::Quiescing
+    pub(crate) fn register_transport(&self, transport: GuestShutdown) {
+        let mut transports = self
+            .inner
+            .transports
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        transports.retain(GuestShutdown::is_alive);
+        transports.push(transport.clone());
+        drop(transports);
+        if self.is_fatal() {
+            transport.shutdown();
+        }
+    }
+
+    pub(crate) fn containment(&self) -> ContainmentManager {
+        self.inner.containment.clone()
+    }
+
+    pub(crate) fn audit_containment(&self) -> io::Result<()> {
+        self.inner.containment.audit()
     }
 
     fn release_one(&self) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         inner.pending = inner.pending.saturating_sub(1);
     }
 
     #[cfg(test)]
     pub(crate) fn pending(&self) -> usize {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).pending
+        self.inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pending
     }
 }
 
@@ -98,6 +210,24 @@ impl OperationGuard {
         if !self.inner.released.swap(true, Ordering::AcqRel) {
             self.inner.state.release_one();
         }
+    }
+
+    pub(crate) fn poison(&self, reason: String) {
+        self.inner.state.mark_fatal(reason);
+    }
+
+    pub(crate) fn shutdown_transports(&self) {
+        self.inner.state.shutdown_transports();
+    }
+
+    pub(crate) fn containment(&self) -> ContainmentManager {
+        self.inner.state.containment()
+    }
+}
+
+impl Default for OperationState {
+    fn default() -> Self {
+        Self::new(ContainmentManager::default())
     }
 }
 
@@ -164,7 +294,7 @@ mod tests {
             state.acquire(),
             Err(AcquireOperationError::Quiescing)
         ));
-        state.resume();
+        state.resume().unwrap();
 
         let guard = state.acquire().unwrap();
         assert_eq!(state.pending(), 1);

@@ -1,7 +1,210 @@
 use std::io;
+#[cfg(target_os = "linux")]
+use std::os::fd::{FromRawFd, OwnedFd, RawFd};
 use std::process::{Child, Command, ExitStatus};
+use std::time::Instant;
 
+use crate::containment::{CLEANUP_TIMEOUT, ContainmentManager, ProcessContainment};
 use crate::log::log;
+
+pub(crate) struct ContainedChild {
+    pub(crate) child: Child,
+    pub(crate) containment: ProcessContainment,
+    #[cfg(target_os = "linux")]
+    pub(crate) pidfd: OwnedFd,
+}
+
+#[derive(Debug)]
+pub(crate) struct SpawnContainmentError {
+    error: io::Error,
+    fatal: bool,
+}
+
+impl SpawnContainmentError {
+    fn start(error: io::Error) -> Self {
+        Self {
+            error,
+            fatal: false,
+        }
+    }
+
+    fn fatal(error: io::Error) -> Self {
+        Self { error, fatal: true }
+    }
+
+    pub(crate) fn is_fatal(&self) -> bool {
+        self.fatal
+    }
+}
+
+impl std::fmt::Display for SpawnContainmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl std::error::Error for SpawnContainmentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl From<io::Error> for SpawnContainmentError {
+    fn from(error: io::Error) -> Self {
+        Self::start(error)
+    }
+}
+
+impl ContainedChild {
+    pub(crate) fn child_id(&self) -> u32 {
+        self.child.id()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_process_group(child: Child) -> io::Result<Self> {
+        let child_id = child.id();
+        let target = process_tree_kill_target(child_id);
+        Self::from_process_group_target(child, target)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_process_group_target(
+        child: Child,
+        target: ProcessTreeKillTarget,
+    ) -> io::Result<Self> {
+        let child_id = child.id();
+        #[cfg(target_os = "linux")]
+        let pidfd = match open_pidfd(child_id) {
+            Ok(pidfd) => pidfd,
+            Err(error) => {
+                kill_and_reap_child_with_target(child, target);
+                return Err(error);
+            }
+        };
+        Ok(Self {
+            child,
+            containment: ProcessContainment::ProcessGroup(Some(target)),
+            #[cfg(target_os = "linux")]
+            pidfd,
+        })
+    }
+}
+
+pub(crate) fn spawn_contained<F>(
+    command: &mut Command,
+    manager: &ContainmentManager,
+    configure: F,
+) -> Result<ContainedChild, SpawnContainmentError>
+where
+    F: FnOnce(&mut Command) -> io::Result<()>,
+{
+    use std::os::unix::process::CommandExt;
+
+    let prepared = manager.prepare().map_err(SpawnContainmentError::start)?;
+    prepared.register_pre_exec(command);
+    if let Err(error) = configure(command) {
+        prepared.discard();
+        return Err(SpawnContainmentError::start(error));
+    }
+    command.process_group(0);
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            prepared.discard();
+            return Err(SpawnContainmentError::start(error));
+        }
+    };
+    let child_id = child.id();
+    let mut containment = prepared.finish(child_id);
+
+    #[cfg(target_os = "linux")]
+    let pidfd = match open_pidfd(child_id) {
+        Ok(pidfd) => pidfd,
+        Err(error) => {
+            let diagnostic = format!("failed to open pidfd for child {child_id}: {error}");
+            match cleanup_without_pidfd(&mut child, &mut containment) {
+                Ok(true) => match containment.remove() {
+                    Ok(()) => {
+                        return Err(SpawnContainmentError::start(io::Error::new(
+                            error.kind(),
+                            diagnostic,
+                        )));
+                    }
+                    Err(cleanup_error) => {
+                        return Err(SpawnContainmentError::fatal(io::Error::other(format!(
+                            "{diagnostic}; failed to remove exec containment: {cleanup_error}"
+                        ))));
+                    }
+                },
+                Ok(false) => {
+                    return Err(SpawnContainmentError::fatal(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("{diagnostic}; timed out cleaning the spawned process"),
+                    )));
+                }
+                Err(cleanup_error) => {
+                    return Err(SpawnContainmentError::fatal(io::Error::other(format!(
+                        "{diagnostic}; failed to clean the spawned process: {cleanup_error}"
+                    ))));
+                }
+            }
+        }
+    };
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = containment.kill();
+        let _ = child.kill();
+        return Err(SpawnContainmentError::fatal(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "pidfd containment requires Linux",
+        )));
+    }
+
+    #[cfg(target_os = "linux")]
+    Ok(ContainedChild {
+        child,
+        containment,
+        pidfd,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn open_pidfd(pid: u32) -> io::Result<OwnedFd> {
+    let pid = process_signal_pid(pid)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid child pid"))?;
+    // SAFETY: pidfd_open does not dereference user pointers and returns a new
+    // descriptor on success.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let fd = RawFd::try_from(fd)
+        .map_err(|_| io::Error::other("pidfd_open returned an invalid descriptor"))?;
+    // SAFETY: fd is newly owned by this process.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+fn cleanup_without_pidfd(
+    child: &mut Child,
+    containment: &mut ProcessContainment,
+) -> io::Result<bool> {
+    let containment_result = containment.kill();
+    let _ = child.kill();
+    let _ = containment_result?;
+    let deadline = Instant::now() + CLEANUP_TIMEOUT;
+    loop {
+        let child_exited = child.try_wait()?.is_some();
+        let containment_empty = containment.wait_empty_until(deadline)?;
+        if child_exited && containment_empty {
+            return Ok(true);
+        }
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
 
 /// Extract exit code from ExitStatus, mapping signals to 128 + signal number
 #[cfg(unix)]
@@ -21,6 +224,7 @@ pub(crate) fn extract_exit_code(status: ExitStatus) -> i32 {
 ///
 /// Timeout killing targets the process group by child PID, so every child path
 /// that uses the shared wait helpers must preserve this spawn invariant.
+#[cfg(test)]
 pub(crate) fn spawn_in_own_process_group(command: &mut Command) -> io::Result<Child> {
     #[cfg(unix)]
     {
@@ -108,10 +312,6 @@ pub(crate) struct ProcessTreeKillTarget {
 }
 
 impl ProcessTreeKillTarget {
-    pub(crate) fn child_id(&self) -> u32 {
-        self.child_id
-    }
-
     fn child_pgid_to_signal(&self) -> Option<u32> {
         self.child_pgid
             .and_then(|pgid| signalable_child_pgid(self.child_id, pgid))
@@ -194,6 +394,7 @@ pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> 
 }
 
 /// Kill the process tree for a spawned child and reap the direct child.
+#[cfg(test)]
 pub(crate) fn kill_and_reap_child(child: Child) {
     let child_id = child.id();
     let target = process_tree_kill_target(child_id);
@@ -202,6 +403,7 @@ pub(crate) fn kill_and_reap_child(child: Child) {
 
 /// Kill a process tree using a previously snapshotted target and reap the
 /// direct child.
+#[cfg(test)]
 pub(crate) fn kill_and_reap_child_with_target(mut child: Child, mut target: ProcessTreeKillTarget) {
     // Signal before waiting. The direct child may already be a zombie while
     // descendants still live in its process group; reaping first would release

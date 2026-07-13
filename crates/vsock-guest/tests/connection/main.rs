@@ -8,6 +8,7 @@
 mod support;
 
 mod basic;
+mod containment;
 mod exec_basic;
 mod exec_cancel_cleanup;
 mod exec_control;

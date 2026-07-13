@@ -4,11 +4,15 @@
 //! auto-mounts devtmpfs on `/dev` (`CONFIG_DEVTMPFS_MOUNT=y`).
 //!
 //! This module handles the remaining setup:
-//! 1. Mount virtual filesystems (/proc, /sys)
+//! 1. Mount virtual filesystems (/proc, /sys, cgroup v2)
 //! 2. Configure TCP keepalive and environment variables
 
 use nix::mount::{MsFlags, mount};
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
+
+const CGROUP_MOUNT_PATH: &str = "/sys/fs/cgroup";
+const EXEC_CGROUP_ROOT: &str = "/sys/fs/cgroup/vm0-exec";
 
 /// Initialize virtual filesystems and environment.
 ///
@@ -56,6 +60,32 @@ pub fn init_filesystem() -> Result<(), InitError> {
         source: e,
     })?;
 
+    fs::create_dir_all(CGROUP_MOUNT_PATH).map_err(|e| InitError::Filesystem {
+        path: CGROUP_MOUNT_PATH.into(),
+        source: e,
+    })?;
+    mount(
+        Some("cgroup2"),
+        CGROUP_MOUNT_PATH,
+        Some("cgroup2"),
+        MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
+        None::<&str>,
+    )
+    .map_err(|e| InitError::Mount {
+        target: CGROUP_MOUNT_PATH.into(),
+        source: e,
+    })?;
+    fs::create_dir(EXEC_CGROUP_ROOT).map_err(|e| InitError::Filesystem {
+        path: EXEC_CGROUP_ROOT.into(),
+        source: e,
+    })?;
+    fs::set_permissions(EXEC_CGROUP_ROOT, fs::Permissions::from_mode(0o700)).map_err(|e| {
+        InitError::Filesystem {
+            path: EXEC_CGROUP_ROOT.into(),
+            source: e,
+        }
+    })?;
+
     // Mount tmpfs on /dev/shm — required by Chromium for shared memory.
     // devtmpfs (CONFIG_DEVTMPFS_MOUNT=y) doesn't create /dev/shm.
     let _ = fs::create_dir_all("/dev/shm");
@@ -100,7 +130,14 @@ pub fn init_filesystem() -> Result<(), InitError> {
 /// Errors that can occur during filesystem initialization
 #[derive(Debug)]
 pub enum InitError {
-    Mount { target: String, source: nix::Error },
+    Mount {
+        target: String,
+        source: nix::Error,
+    },
+    Filesystem {
+        path: String,
+        source: std::io::Error,
+    },
 }
 
 impl std::fmt::Display for InitError {
@@ -108,6 +145,9 @@ impl std::fmt::Display for InitError {
         match self {
             InitError::Mount { target, source } => {
                 write!(f, "Failed to mount {}: {}", target, source)
+            }
+            InitError::Filesystem { path, source } => {
+                write!(f, "Failed to initialize {path}: {source}")
             }
         }
     }

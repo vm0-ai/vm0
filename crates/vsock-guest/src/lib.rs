@@ -7,6 +7,7 @@
 //! Protocol encoding/decoding is handled by the `vsock-proto` crate.
 
 mod connection;
+mod containment;
 mod drain;
 mod error;
 mod exec_control;
@@ -24,6 +25,12 @@ mod user;
 mod wait;
 mod writer;
 
+#[cfg(any(debug_assertions, feature = "test-support"))]
+#[doc(hidden)]
+pub use connection::handle_connection_with_cgroup_fixture;
+#[cfg(any(debug_assertions, feature = "test-support"))]
+#[doc(hidden)]
+pub use connection::run_with_cgroup_fixture;
 pub use connection::{connect_unix, connect_vsock, handle_connection, run};
 pub use log::log;
 

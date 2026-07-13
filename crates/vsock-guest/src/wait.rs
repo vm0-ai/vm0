@@ -1,15 +1,23 @@
+use std::cmp;
 use std::io;
-use std::process::{Child, ExitStatus};
+#[cfg(target_os = "linux")]
+use std::os::fd::{AsRawFd, OwnedFd};
+#[cfg(test)]
+use std::process::Child;
+use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+#[cfg(test)]
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::containment::CLEANUP_TIMEOUT;
+use crate::process::ContainedChild;
+#[cfg(test)]
 use crate::process::{
-    ProcessTreeKillTarget, kill_and_reap_child_with_target, kill_process_tree_target,
-    process_signal_pid, process_tree_kill_target, refresh_process_tree_kill_target,
+    ProcessTreeKillTarget, kill_process_tree_target, process_tree_kill_target,
+    refresh_process_tree_kill_target,
 };
-use crate::threading::spawn_scoped_named;
 
 /// After the child process exits, continue draining stdout/stderr for this
 /// many seconds. If EOF is not received within this deadline, proceed to
@@ -17,7 +25,6 @@ use crate::threading::spawn_scoped_named;
 /// child processes hold pipe fds open.
 pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
 const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
-const THREAD_WAIT_OBSERVER: &str = "vsock-wait-observer";
 
 /// Outcome of child wait helpers.
 pub(crate) enum WaitOutcome {
@@ -29,6 +36,8 @@ pub(crate) enum WaitOutcome {
     Cancelled,
     /// `wait()` itself failed; carries the error message.
     WaitFailed(String),
+    /// Descendant cleanup could not be proven within the security deadline.
+    Fatal(String),
 }
 
 enum KillReason {
@@ -64,33 +73,22 @@ pub(crate) fn await_drain_deadline(
     completed
 }
 
-/// Wait for `child` with an optional timeout, allowing the caller to request
-/// process-tree cleanup after natural exit is observed but before the direct
-/// child is reaped.
-///
-/// The callback returns `true` when a still-running descendant is holding a
-/// resource that must be released by killing the tracked process tree.
+/// Wait for a debug/test child with the process-group fallback.
+#[cfg(test)]
 pub(crate) fn wait_with_kill_timeout_and_pre_reap_cleanup(
     child: Child,
     timeout_ms: u32,
     pre_reap_cleanup: impl FnMut() -> bool,
 ) -> WaitOutcome {
-    let kill_target = process_tree_kill_target(child.id());
-    wait_with_kill_timeout_or_cancelled_by(
-        child,
-        kill_target,
-        timeout_ms,
-        || false,
-        pre_reap_cleanup,
-    )
+    let process = match ContainedChild::from_process_group(child) {
+        Ok(process) => process,
+        Err(error) => return WaitOutcome::WaitFailed(error.to_string()),
+    };
+    wait_with_kill_timeout_or_cancelled_by(process, timeout_ms, || false, pre_reap_cleanup)
 }
 
-/// Wait for `child` while observing either cancel flag and using a kill target
-/// snapshotted before entering the wait path.
-///
-/// Exec operations have both connection-level cancellation and request-level
-/// cancellation, and they snapshot process-tree targets before stdio setup can
-/// introduce cleanup races.
+/// Wait for a debug/test child with an already sampled process-group target.
+#[cfg(test)]
 pub(crate) fn wait_with_kill_timeout_or_cancelled_either_with_target(
     child: Child,
     kill_target: ProcessTreeKillTarget,
@@ -99,187 +97,225 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled_either_with_target(
     second_cancel: &AtomicBool,
     pre_reap_cleanup: impl FnMut() -> bool,
 ) -> WaitOutcome {
+    let process = match ContainedChild::from_process_group_target(child, kill_target) {
+        Ok(process) => process,
+        Err(error) => return WaitOutcome::WaitFailed(error.to_string()),
+    };
     wait_with_kill_timeout_or_cancelled_by(
-        child,
-        kill_target,
+        process,
         timeout_ms,
         || first_cancel.load(Ordering::Acquire) || second_cancel.load(Ordering::Acquire),
         pre_reap_cleanup,
     )
 }
 
+pub(crate) fn wait_contained_with_timeout_or_cancelled(
+    process: ContainedChild,
+    timeout_ms: u32,
+    first_cancel: &AtomicBool,
+    second_cancel: &AtomicBool,
+    pre_reap_cleanup: impl FnMut() -> bool,
+) -> WaitOutcome {
+    wait_with_kill_timeout_or_cancelled_by(
+        process,
+        timeout_ms,
+        || first_cancel.load(Ordering::Acquire) || second_cancel.load(Ordering::Acquire),
+        pre_reap_cleanup,
+    )
+}
+
+pub(crate) fn wait_contained_with_timeout_and_pre_reap_cleanup(
+    process: ContainedChild,
+    timeout_ms: u32,
+    pre_reap_cleanup: impl FnMut() -> bool,
+) -> WaitOutcome {
+    wait_with_kill_timeout_or_cancelled_by(process, timeout_ms, || false, pre_reap_cleanup)
+}
+
+pub(crate) fn terminate_contained_child(mut process: ContainedChild) -> io::Result<()> {
+    kill_contained(&mut process)?;
+    let status = wait_for_killed_process(&mut process)?;
+    process.containment.remove()?;
+    let _ = status;
+    Ok(())
+}
+
 fn wait_with_kill_timeout_or_cancelled_by(
-    mut child: Child,
-    mut kill_target: ProcessTreeKillTarget,
+    mut process: ContainedChild,
     timeout_ms: u32,
     is_cancelled: impl Fn() -> bool,
     mut pre_reap_cleanup: impl FnMut() -> bool,
 ) -> WaitOutcome {
-    let child_id = child.id();
-    debug_assert_eq!(kill_target.child_id(), child_id);
-    refresh_process_tree_kill_target(&mut kill_target);
-    let deadline = if timeout_ms > 0 {
+    let deadline = (timeout_ms > 0).then(|| {
         let now = Instant::now();
-        Some(
-            now.checked_add(Duration::from_millis(u64::from(timeout_ms)))
-                .unwrap_or(now),
-        )
-    } else {
-        None
+        now.checked_add(Duration::from_millis(u64::from(timeout_ms)))
+            .unwrap_or(now)
+    });
+
+    let mut decision = match wait_for_exit_timeout_or_cancelled(&process, deadline, is_cancelled) {
+        Ok(decision) => decision,
+        Err(error) => return fatal_wait(error),
     };
-
-    thread::scope(|scope| {
-        let (observed_tx, observed_rx) = mpsc::channel::<()>();
-        let observer = match spawn_scoped_named(scope, THREAD_WAIT_OBSERVER, move || {
-            let result = wait_for_child_exit_without_reap(child_id);
-            let _ = observed_tx.send(());
-            result
-        }) {
-            Ok(observer) => observer,
-            Err(e) => {
-                // Without a non-reaping observer, natural exit cannot be
-                // distinguished safely from timeout/cancel before reap.
-                kill_and_reap_child_with_target(child, kill_target);
-                return WaitOutcome::WaitFailed(format!("failed to spawn wait observer: {e}"));
-            }
-        };
-
-        let mut decision = wait_for_exit_timeout_or_cancelled(&observed_rx, deadline, is_cancelled);
-        if matches!(&decision, WaitDecision::Kill(_)) {
-            refresh_process_tree_kill_target(&mut kill_target);
-            decision = apply_final_exit_priority(decision, &observed_rx);
+    if matches!(decision, WaitDecision::Kill(_)) {
+        match pidfd_ready(&process, Duration::ZERO) {
+            Ok(true) => decision = WaitDecision::Exited,
+            Ok(false) => {}
+            Err(error) => return fatal_wait(error),
         }
+    }
 
-        match decision {
-            WaitDecision::Exited => {
-                let observed = match observer.join() {
-                    Ok(observed) => observed,
-                    Err(panic) => {
-                        kill_and_reap_child_with_target(child, kill_target);
-                        std::panic::resume_unwind(panic);
-                    }
-                };
-                if let Err(e) = observed {
-                    kill_and_reap_child_with_target(child, kill_target);
-                    return WaitOutcome::WaitFailed(format!(
-                        "failed to observe child exit without reaping: {e}"
-                    ));
-                }
-
-                if pre_reap_cleanup() {
-                    refresh_process_tree_kill_target(&mut kill_target);
-                    // SAFETY: the exit observer used WNOWAIT, so this owner
-                    // still holds the unreaped direct child identity.
-                    let _ = unsafe { kill_process_tree_target(kill_target) };
-                }
-
-                match child.wait() {
-                    Ok(status) => WaitOutcome::Exited(status),
-                    Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-                }
+    match decision {
+        WaitDecision::Exited => finish_natural_exit(process, &mut pre_reap_cleanup),
+        WaitDecision::Kill(reason) => {
+            let killed = match kill_contained(&mut process) {
+                Ok(killed) => killed,
+                Err(error) => return fatal_wait(error),
+            };
+            let status = match wait_for_killed_process(&mut process) {
+                Ok(status) => status,
+                Err(error) => return fatal_wait(error),
+            };
+            if let Err(error) = process.containment.remove() {
+                return fatal_wait(error);
             }
-            WaitDecision::Kill(reason) => {
-                let child_killed = kill_child(&mut child, kill_target);
-                let observed = observer.join();
-                let status = child.wait();
-
-                let observed = match observed {
-                    Ok(observed) => observed,
-                    Err(panic) => std::panic::resume_unwind(panic),
-                };
-                let status = match status {
-                    Ok(status) => status,
-                    Err(e) => return WaitOutcome::WaitFailed(e.to_string()),
-                };
-                if let Err(e) = observed {
-                    return WaitOutcome::WaitFailed(format!(
-                        "failed to observe child exit without reaping: {e}"
-                    ));
-                }
-                if !child_killed {
-                    return WaitOutcome::Exited(status);
-                }
-                match reason {
-                    KillReason::Timeout => WaitOutcome::TimedOut,
-                    KillReason::Cancelled => WaitOutcome::Cancelled,
-                }
+            if !killed {
+                return WaitOutcome::Exited(status);
+            }
+            match reason {
+                KillReason::Timeout => WaitOutcome::TimedOut,
+                KillReason::Cancelled => WaitOutcome::Cancelled,
             }
         }
-    })
+    }
+}
+
+fn finish_natural_exit(
+    mut process: ContainedChild,
+    pre_reap_cleanup: &mut impl FnMut() -> bool,
+) -> WaitOutcome {
+    let requested_cleanup = pre_reap_cleanup();
+    let populated = match process.containment.populated() {
+        Ok(populated) => populated,
+        Err(error) => return fatal_wait(error),
+    };
+    let should_kill = (process.containment.is_cgroup() && populated)
+        || (!process.containment.is_cgroup() && requested_cleanup);
+    if should_kill && let Err(error) = process.containment.kill() {
+        return fatal_wait(error);
+    }
+    if process.containment.is_cgroup() {
+        let deadline = Instant::now() + CLEANUP_TIMEOUT;
+        match process.containment.wait_empty_until(deadline) {
+            Ok(true) => {}
+            Ok(false) => {
+                return fatal_wait(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "timed out waiting for exec cgroup to become empty",
+                ));
+            }
+            Err(error) => return fatal_wait(error),
+        }
+    }
+    if let Err(error) = process.containment.remove() {
+        return fatal_wait(error);
+    }
+    match process.child.wait() {
+        Ok(status) => WaitOutcome::Exited(status),
+        Err(error) => WaitOutcome::WaitFailed(error.to_string()),
+    }
+}
+
+fn kill_contained(process: &mut ContainedChild) -> io::Result<bool> {
+    let containment_result = process.containment.kill();
+    let child_killed = process.child.kill().is_ok();
+    let containment_killed = containment_result?;
+    Ok(containment_killed || child_killed)
+}
+
+fn wait_for_killed_process(process: &mut ContainedChild) -> io::Result<ExitStatus> {
+    let deadline = Instant::now() + CLEANUP_TIMEOUT;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "timed out waiting for contained child cleanup",
+            ));
+        }
+        let exited = pidfd_ready(process, remaining.min(Duration::from_millis(10)))?;
+        let empty = !process.containment.populated()?;
+        if exited && empty {
+            return process.child.wait();
+        }
+    }
 }
 
 fn wait_for_exit_timeout_or_cancelled(
-    observed_rx: &mpsc::Receiver<()>,
+    process: &ContainedChild,
     deadline: Option<Instant>,
     is_cancelled: impl Fn() -> bool,
-) -> WaitDecision {
+) -> io::Result<WaitDecision> {
     let poll_interval = Duration::from_millis(WAIT_CANCEL_POLL_INTERVAL_MS);
-
     loop {
-        if exit_observed(observed_rx) {
-            return WaitDecision::Exited;
+        if pidfd_ready(process, Duration::ZERO)? {
+            return Ok(WaitDecision::Exited);
         }
-
         let now = Instant::now();
         let wait_for = match deadline {
             Some(deadline) => {
                 let remaining = deadline.saturating_duration_since(now);
                 if remaining.is_zero() {
-                    return WaitDecision::Kill(KillReason::Timeout);
+                    return Ok(WaitDecision::Kill(KillReason::Timeout));
                 }
                 remaining.min(poll_interval)
             }
             None => poll_interval,
         };
-
         if is_cancelled() {
-            return WaitDecision::Kill(KillReason::Cancelled);
+            return Ok(WaitDecision::Kill(KillReason::Cancelled));
         }
-
-        match observed_rx.recv_timeout(wait_for) {
-            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return WaitDecision::Exited;
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        if pidfd_ready(process, wait_for)? {
+            return Ok(WaitDecision::Exited);
         }
     }
 }
 
-fn exit_observed(observed_rx: &mpsc::Receiver<()>) -> bool {
-    match observed_rx.try_recv() {
-        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => true,
-        Err(mpsc::TryRecvError::Empty) => false,
-    }
+#[cfg(target_os = "linux")]
+fn pidfd_ready(process: &ContainedChild, timeout: Duration) -> io::Result<bool> {
+    poll_pidfd(&process.pidfd, timeout)
 }
 
-fn apply_final_exit_priority(
-    decision: WaitDecision,
-    observed_rx: &mpsc::Receiver<()>,
-) -> WaitDecision {
-    match decision {
-        WaitDecision::Kill(_) if exit_observed(observed_rx) => WaitDecision::Exited,
-        decision => decision,
-    }
+#[cfg(not(target_os = "linux"))]
+fn pidfd_ready(_process: &ContainedChild, _timeout: Duration) -> io::Result<bool> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "pidfd readiness requires Linux",
+    ))
 }
 
-fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
-    let child_id = process_signal_pid(child_id)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid child pid"))?;
-    // SAFETY: zeroed siginfo_t is valid for waitid to fill.
-    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+#[cfg(target_os = "linux")]
+fn poll_pidfd(pidfd: &OwnedFd, timeout: Duration) -> io::Result<bool> {
+    let timeout_ms = if timeout.is_zero() {
+        0
+    } else {
+        cmp::min(cmp::max(timeout.as_millis(), 1), libc::c_int::MAX as u128) as libc::c_int
+    };
     loop {
-        // SAFETY: child_id belongs to a direct child owned by this process.
-        // WNOWAIT observes its terminal state without releasing its PID.
-        let result = unsafe {
-            libc::waitid(
-                libc::P_PID,
-                child_id as libc::id_t,
-                &mut info,
-                libc::WEXITED | libc::WNOWAIT,
-            )
+        let mut pollfd = libc::pollfd {
+            fd: pidfd.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
         };
+        // SAFETY: pollfd points to one initialized descriptor entry.
+        let result = unsafe { libc::poll(&mut pollfd, 1, timeout_ms) };
+        if result > 0 {
+            if pollfd.revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+                return Err(io::Error::other("pidfd became invalid while polling"));
+            }
+            return Ok(pollfd.revents & (libc::POLLIN | libc::POLLHUP) != 0);
+        }
         if result == 0 {
-            return Ok(());
+            return Ok(false);
         }
         let error = io::Error::last_os_error();
         if error.kind() != io::ErrorKind::Interrupted {
@@ -288,9 +324,14 @@ fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
     }
 }
 
-fn kill_child(child: &mut Child, kill_target: ProcessTreeKillTarget) -> bool {
-    // SAFETY: this owner has not reaped child, so its PID/process group cannot
-    // have been reused since the owner refreshed kill_target.
+fn fatal_wait(error: io::Error) -> WaitOutcome {
+    WaitOutcome::Fatal(format!("exec containment failed: {error}"))
+}
+
+#[cfg(test)]
+fn kill_child(child: &mut Child, mut kill_target: ProcessTreeKillTarget) -> bool {
+    refresh_process_tree_kill_target(&mut kill_target);
+    // SAFETY: the test owner retains the unreaped child while signaling.
     let tree_killed = unsafe { kill_process_tree_target(kill_target) };
     let child_killed = child.kill().is_ok();
     tree_killed || child_killed
@@ -494,44 +535,6 @@ mod tests {
         );
 
         assert!(matches!(outcome, WaitOutcome::Cancelled));
-    }
-
-    #[test]
-    fn observed_exit_wins_over_elapsed_deadline() {
-        let cancel = AtomicBool::new(false);
-        let (observed_tx, observed_rx) = mpsc::channel::<()>();
-        observed_tx.send(()).unwrap();
-
-        let decision =
-            wait_for_exit_timeout_or_cancelled(&observed_rx, Some(Instant::now()), || {
-                cancel.load(Ordering::Acquire)
-            });
-
-        assert!(matches!(decision, WaitDecision::Exited));
-    }
-
-    #[test]
-    fn observed_exit_wins_over_pre_signalled_cancel() {
-        let cancel = AtomicBool::new(true);
-        let (observed_tx, observed_rx) = mpsc::channel::<()>();
-        observed_tx.send(()).unwrap();
-
-        let decision = wait_for_exit_timeout_or_cancelled(&observed_rx, None, || {
-            cancel.load(Ordering::Acquire)
-        });
-
-        assert!(matches!(decision, WaitDecision::Exited));
-    }
-
-    #[test]
-    fn final_observed_exit_wins_over_pending_kill_decision() {
-        let (observed_tx, observed_rx) = mpsc::channel::<()>();
-        observed_tx.send(()).unwrap();
-
-        let decision =
-            apply_final_exit_priority(WaitDecision::Kill(KillReason::Timeout), &observed_rx);
-
-        assert!(matches!(decision, WaitDecision::Exited));
     }
 
     #[cfg(target_os = "linux")]

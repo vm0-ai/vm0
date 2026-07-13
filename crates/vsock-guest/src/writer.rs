@@ -3,24 +3,37 @@ use std::io;
 use std::net::Shutdown;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 const WRITE_DEADLINE: Duration = Duration::from_secs(10);
 
 /// Shared guest-to-host frame writer.
 ///
-/// The mutex is held for exactly one encoded protocol frame, so concurrent
+/// The write lock is held for exactly one encoded protocol frame, so concurrent
 /// producers cannot interleave bytes on the stream.
 #[derive(Clone)]
 pub(crate) struct GuestWriter {
-    stream: Arc<Mutex<UnixStream>>,
+    transport: Arc<GuestTransport>,
+}
+
+struct GuestTransport {
+    stream: UnixStream,
+    write_lock: Mutex<()>,
+}
+
+#[derive(Clone)]
+pub(crate) struct GuestShutdown {
+    transport: Weak<GuestTransport>,
 }
 
 impl GuestWriter {
     pub(crate) fn new(stream: UnixStream) -> Self {
         Self {
-            stream: Arc::new(Mutex::new(stream)),
+            transport: Arc::new(GuestTransport {
+                stream,
+                write_lock: Mutex::new(()),
+            }),
         }
     }
 
@@ -28,11 +41,21 @@ impl GuestWriter {
         self.write_frame_with_deadline(frame, WRITE_DEADLINE)
     }
 
+    pub(crate) fn shutdown(&self) {
+        let _ = self.transport.stream.shutdown(Shutdown::Both);
+    }
+
+    pub(crate) fn shutdown_handle(&self) -> GuestShutdown {
+        GuestShutdown {
+            transport: Arc::downgrade(&self.transport),
+        }
+    }
+
     fn write_frame_with_deadline(&self, frame: &[u8], deadline: Duration) -> io::Result<()> {
         self.write_frame_with_deadline_after_lock(frame, deadline, || {})
     }
 
-    /// Run `after_lock` while holding the writer mutex, immediately before
+    /// Run `after_lock` while holding the writer lock, immediately before
     /// sending `frame`.
     ///
     /// Guarded operations use this to mark themselves complete at the point
@@ -45,7 +68,7 @@ impl GuestWriter {
         self.write_frame_with_deadline_after_lock(frame, WRITE_DEADLINE, after_lock)
     }
 
-    /// Build and send one frame while holding the writer mutex.
+    /// Build and send one frame while holding the writer lock.
     ///
     /// Control paths that derive the response from operation state use this so
     /// the state check and frame ordering are linearized with terminal frames.
@@ -53,11 +76,15 @@ impl GuestWriter {
     where
         F: FnOnce() -> io::Result<Vec<u8>>,
     {
-        let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        let _write_guard = self
+            .transport
+            .write_lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let frame = build_frame()?;
-        let result = send_frame(stream.as_raw_fd(), &frame, WRITE_DEADLINE);
+        let result = send_frame(self.transport.stream.as_raw_fd(), &frame, WRITE_DEADLINE);
         if result.is_err() {
-            let _ = stream.shutdown(Shutdown::Both);
+            let _ = self.transport.stream.shutdown(Shutdown::Both);
         }
         result
     }
@@ -71,15 +98,32 @@ impl GuestWriter {
     where
         F: FnOnce(),
     {
-        let stream = self.stream.lock().unwrap_or_else(|e| e.into_inner());
+        let _write_guard = self
+            .transport
+            .write_lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         after_lock();
-        let result = send_frame(stream.as_raw_fd(), frame, deadline);
+        let result = send_frame(self.transport.stream.as_raw_fd(), frame, deadline);
         if result.is_err() {
             // The protocol has no resync marker. After a timeout or partial
             // write failure, keep the stream from carrying corrupted frames.
-            let _ = stream.shutdown(Shutdown::Both);
+            let _ = self.transport.stream.shutdown(Shutdown::Both);
         }
         result
+    }
+}
+
+impl GuestShutdown {
+    pub(crate) fn is_alive(&self) -> bool {
+        self.transport.strong_count() > 0
+    }
+
+    pub(crate) fn shutdown(&self) {
+        let Some(transport) = self.transport.upgrade() else {
+            return;
+        };
+        let _ = transport.stream.shutdown(Shutdown::Both);
     }
 }
 

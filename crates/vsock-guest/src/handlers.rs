@@ -1,24 +1,34 @@
 use std::io::{self, Write};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+#[cfg(test)]
+use std::process::Child;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 #[cfg(any(debug_assertions, feature = "test-support"))]
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use vsock_proto::{
     self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
     MSG_WRITE_FILES_RESULT,
 };
 
+use crate::containment::ContainmentManager;
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
 use crate::log::log;
-use crate::process::{extract_exit_code, kill_and_reap_child, spawn_in_own_process_group};
+use crate::process::{ContainedChild, SpawnContainmentError, extract_exit_code, spawn_contained};
+#[cfg(test)]
+use crate::process::{kill_and_reap_child, spawn_in_own_process_group};
+use crate::quiesce::OperationGuard;
 use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 use crate::user::apply_write_file_identity;
-use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout_and_pre_reap_cleanup};
+use crate::wait::{
+    WaitOutcome, await_drain_deadline, terminate_contained_child,
+    wait_contained_with_timeout_and_pre_reap_cleanup,
+};
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
 const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
@@ -46,6 +56,11 @@ pub(crate) struct DecodedWriteFilesMessage<'a> {
     content_bytes: usize,
 }
 
+pub(crate) struct GuardedWriteResponse {
+    pub(crate) frame: Vec<u8>,
+    pub(crate) fatal: bool,
+}
+
 /// Handle write_file message
 fn handle_write_file(
     path: &str,
@@ -53,7 +68,8 @@ fn handle_write_file(
     use_sudo: bool,
     append: bool,
     private: bool,
-) -> (bool, String) {
+    operation_guard: &OperationGuard,
+) -> (bool, String, bool) {
     log(
         "INFO",
         &format!(
@@ -66,28 +82,58 @@ fn handle_write_file(
         ),
     );
 
-    let child = match spawn_write_file_command(path, use_sudo, append, private) {
-        Ok(c) => c,
-        Err(e) => return (false, format!("Failed to spawn write command: {e}")),
+    let process = match spawn_write_file_command(
+        path,
+        use_sudo,
+        append,
+        private,
+        &operation_guard.containment(),
+    ) {
+        Ok(process) => process,
+        Err(error) => {
+            let fatal = error.is_fatal();
+            return (
+                false,
+                format!("Failed to spawn write command: {error}"),
+                fatal,
+            );
+        }
     };
 
-    wait_write_file_child(child, content, SystemThreadSpawner)
+    wait_contained_write_file_child(process, content, SystemThreadSpawner, |diagnostic| {
+        operation_guard.poison(diagnostic.to_owned());
+    })
 }
 
-fn handle_write_files(payload: &[u8], file_count: usize, content_bytes: usize) -> (bool, String) {
+fn handle_write_files(
+    payload: &[u8],
+    file_count: usize,
+    content_bytes: usize,
+    operation_guard: &OperationGuard,
+) -> (bool, String, bool) {
     log(
         "INFO",
         &format!("write_files: files={file_count} content_bytes={content_bytes}"),
     );
 
-    let child = match spawn_write_files_command() {
-        Ok(c) => c,
-        Err(e) => return (false, format!("Failed to spawn batch write command: {e}")),
+    let process = match spawn_write_files_command(&operation_guard.containment()) {
+        Ok(process) => process,
+        Err(error) => {
+            let fatal = error.is_fatal();
+            return (
+                false,
+                format!("Failed to spawn batch write command: {error}"),
+                fatal,
+            );
+        }
     };
 
-    wait_write_file_child(child, payload, SystemThreadSpawner)
+    wait_contained_write_file_child(process, payload, SystemThreadSpawner, |diagnostic| {
+        operation_guard.poison(diagnostic.to_owned());
+    })
 }
 
+#[cfg(test)]
 fn wait_write_file_child<S>(child: Child, content: &[u8], spawner: S) -> (bool, String)
 where
     S: ThreadSpawner,
@@ -95,8 +141,9 @@ where
     wait_write_file_child_with_timeout(child, content, WRITE_TIMEOUT_MS, spawner)
 }
 
+#[cfg(test)]
 fn wait_write_file_child_with_timeout<S>(
-    mut child: Child,
+    child: Child,
     content: &[u8],
     timeout_ms: u32,
     spawner: S,
@@ -104,11 +151,49 @@ fn wait_write_file_child_with_timeout<S>(
 where
     S: ThreadSpawner,
 {
-    let stdin_pipe = match child.stdin.take() {
+    let process = match ContainedChild::from_process_group(child) {
+        Ok(process) => process,
+        Err(error) => return (false, format!("write containment setup failed: {error}")),
+    };
+    let (success, error, _) =
+        wait_contained_write_file_child_with_timeout(process, content, timeout_ms, spawner, |_| {});
+    (success, error)
+}
+
+fn wait_contained_write_file_child<S, F>(
+    process: ContainedChild,
+    content: &[u8],
+    spawner: S,
+    on_fatal: F,
+) -> (bool, String, bool)
+where
+    S: ThreadSpawner,
+    F: Fn(&str),
+{
+    wait_contained_write_file_child_with_timeout(
+        process,
+        content,
+        WRITE_TIMEOUT_MS,
+        spawner,
+        on_fatal,
+    )
+}
+
+fn wait_contained_write_file_child_with_timeout<S, F>(
+    mut process: ContainedChild,
+    content: &[u8],
+    timeout_ms: u32,
+    spawner: S,
+    on_fatal: F,
+) -> (bool, String, bool)
+where
+    S: ThreadSpawner,
+    F: Fn(&str),
+{
+    let stdin_pipe = match process.child.stdin.take() {
         Some(p) => p,
         None => {
-            kill_and_reap_child(child);
-            return (false, "missing stdin pipe".to_string());
+            return cleanup_write_failure(process, "missing stdin pipe");
         }
     };
     // Drain stderr concurrently with wait via the cancellable helper. Stdout
@@ -120,11 +205,10 @@ where
     // its last write returns EPIPE.
     // Defensive: same invariant as the shared drain helper — reap the child if
     // its stderr is somehow already gone, so we don't leave a zombie.
-    let stderr_pipe = match child.stderr.take() {
+    let stderr_pipe = match process.child.stderr.take() {
         Some(p) => p,
         None => {
-            kill_and_reap_child(child);
-            return (false, "missing stderr pipe".to_string());
+            return cleanup_write_failure(process, "missing stderr pipe");
         }
     };
     let cancel = Arc::new(AtomicBool::new(false));
@@ -143,36 +227,62 @@ where
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
                 drop(stdin_pipe);
-                kill_and_reap_child(child);
-                return (false, format!("Failed to spawn stderr drain thread: {e}"));
+                return cleanup_write_failure(
+                    process,
+                    &format!("Failed to spawn stderr drain thread: {e}"),
+                );
             }
         }
     };
 
     std::thread::scope(|scope| {
         let (stdin_done_tx, stdin_done_rx) = std::sync::mpsc::channel::<()>();
+        let stdin_cancel = Arc::new(AtomicBool::new(false));
+        let stdin_cancel_worker = stdin_cancel.clone();
         let stdin_handle = match spawn_scoped_named(scope, THREAD_WRITE_STDIN, move || {
             let mut stdin = stdin_pipe;
-            let result = stdin.write_all(content);
+            let result = write_all_cancellable(&mut stdin, content, &stdin_cancel_worker);
             let _ = stdin_done_tx.send(());
             result
         }) {
             Ok(handle) => handle,
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
-                kill_and_reap_child(child);
+                let cleanup = terminate_contained_child(process);
                 let _ = await_drain_deadline(&done_rx, 1, &cancel);
                 let _ = stderr_handle.join();
-                return (false, format!("Failed to spawn stdin writer thread: {e}"));
+                return match cleanup {
+                    Ok(()) => (
+                        false,
+                        format!("Failed to spawn stdin writer thread: {e}"),
+                        false,
+                    ),
+                    Err(cleanup_error) => (
+                        false,
+                        format!(
+                            "Failed to spawn stdin writer thread: {e}; exec containment cleanup failed: {cleanup_error}"
+                        ),
+                        true,
+                    ),
+                };
             }
         };
 
-        let outcome = wait_with_kill_timeout_and_pre_reap_cleanup(child, timeout_ms, || {
-            matches!(
+        let outcome = wait_contained_with_timeout_and_pre_reap_cleanup(process, timeout_ms, || {
+            let pending = matches!(
                 stdin_done_rx.try_recv(),
                 Err(std::sync::mpsc::TryRecvError::Empty)
-            )
+            );
+            if pending {
+                stdin_cancel.store(true, Ordering::Release);
+            }
+            pending
         });
+        if let WaitOutcome::Fatal(diagnostic) = &outcome {
+            on_fatal(diagnostic);
+            cancel.store(true, Ordering::Release);
+        }
+        stdin_cancel.store(true, Ordering::Release);
         let stdin_result = match stdin_handle.join() {
             Ok(result) => result,
             Err(panic) => std::panic::resume_unwind(panic),
@@ -182,22 +292,116 @@ where
         let stderr = stderr_handle.join().unwrap_or_default();
 
         match outcome {
-            WaitOutcome::TimedOut => (false, "write timed out".to_string()),
-            WaitOutcome::Cancelled => (false, "write cancelled".to_string()),
-            WaitOutcome::WaitFailed(msg) => (false, format!("write wait failed: {msg}")),
+            WaitOutcome::TimedOut => (false, "write timed out".to_string(), false),
+            WaitOutcome::Cancelled => (false, "write cancelled".to_string(), false),
+            WaitOutcome::WaitFailed(msg) => (false, format!("write wait failed: {msg}"), false),
+            WaitOutcome::Fatal(msg) => (false, msg, true),
             WaitOutcome::Exited(s) => {
                 let exit_code = extract_exit_code(s);
                 if exit_code != 0 {
                     let stderr_str = String::from_utf8_lossy(&stderr);
-                    return (false, format!("write failed: {stderr_str}"));
+                    return (false, format!("write failed: {stderr_str}"), false);
                 }
                 if let Err(e) = stdin_result {
-                    return (false, format!("Failed to write to stdin: {e}"));
+                    return (false, format!("Failed to write to stdin: {e}"), false);
                 }
-                (true, String::new())
+                (true, String::new(), false)
             }
         }
     })
+}
+
+fn write_all_cancellable<W>(writer: &mut W, content: &[u8], cancel: &AtomicBool) -> io::Result<()>
+where
+    W: Write + AsRawFd,
+{
+    let fd = writer.as_raw_fd();
+    set_nonblocking(fd)?;
+    let mut written = 0usize;
+    while written < content.len() {
+        if cancel.load(Ordering::Acquire) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "write cancelled",
+            ));
+        }
+        let remaining = content
+            .get(written..)
+            .ok_or_else(|| io::Error::other("write offset exceeded content length"))?;
+        match writer.write(remaining) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "failed to write content",
+                ));
+            }
+            Ok(count) => written += count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                wait_write_ready(fd, cancel)?;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+fn set_nonblocking(fd: libc::c_int) -> io::Result<()> {
+    // SAFETY: fd is the owned write-helper stdin descriptor.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: F_SETFL updates status flags on the same open descriptor.
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn wait_write_ready(fd: libc::c_int, cancel: &AtomicBool) -> io::Result<()> {
+    loop {
+        if cancel.load(Ordering::Acquire) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "write cancelled",
+            ));
+        }
+        let mut pollfd = libc::pollfd {
+            fd,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+        // SAFETY: pollfd points to one initialized descriptor entry.
+        let result = unsafe { libc::poll(&mut pollfd, 1, 50) };
+        if result > 0 {
+            if pollfd.revents & libc::POLLNVAL != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "write-helper stdin descriptor is invalid",
+                ));
+            }
+            if pollfd.revents & (libc::POLLOUT | libc::POLLHUP | libc::POLLERR) != 0 {
+                return Ok(());
+            }
+        } else if result < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() != io::ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+    }
+}
+
+fn cleanup_write_failure(process: ContainedChild, diagnostic: &str) -> (bool, String, bool) {
+    match terminate_contained_child(process) {
+        Ok(()) => (false, diagnostic.to_owned(), false),
+        Err(error) => (
+            false,
+            format!("{diagnostic}; exec containment cleanup failed: {error}"),
+            true,
+        ),
+    }
 }
 
 fn write_file_command_args(
@@ -229,7 +433,8 @@ fn spawn_write_file_command(
     use_sudo: bool,
     append: bool,
     private: bool,
-) -> io::Result<Child> {
+    containment: &ContainmentManager,
+) -> Result<ContainedChild, SpawnContainmentError> {
     let mut command = Command::new(guest_write_file_path());
     for arg in write_file_command_args(use_sudo, append, private)? {
         command.arg(arg);
@@ -240,19 +445,23 @@ fn spawn_write_file_command(
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_write_file_identity(&mut command, use_sudo)?;
-    spawn_in_own_process_group(&mut command)
+    spawn_contained(&mut command, containment, |command| {
+        apply_write_file_identity(command, use_sudo)
+    })
 }
 
-fn spawn_write_files_command() -> io::Result<Child> {
+fn spawn_write_files_command(
+    containment: &ContainmentManager,
+) -> Result<ContainedChild, SpawnContainmentError> {
     let mut command = Command::new(guest_write_file_path());
     command
         .arg("--batch")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_write_file_identity(&mut command, false)?;
-    spawn_in_own_process_group(&mut command)
+    spawn_contained(&mut command, containment, |command| {
+        apply_write_file_identity(command, false)
+    })
 }
 
 fn guest_write_file_path() -> PathBuf {
@@ -306,26 +515,41 @@ pub(crate) fn decode_write_files_message(
 pub(crate) fn handle_decoded_write_file_message(
     seq: u32,
     decoded: DecodedWriteFileMessage<'_>,
-) -> io::Result<Vec<u8>> {
-    let (success, error) = handle_write_file(
+    operation_guard: &OperationGuard,
+) -> io::Result<GuardedWriteResponse> {
+    let (success, error, fatal) = handle_write_file(
         decoded.path,
         decoded.content,
         decoded.use_sudo,
         decoded.append,
         decoded.private,
+        operation_guard,
     );
+    if fatal {
+        operation_guard.poison(error.clone());
+    }
     let payload = vsock_proto::encode_write_file_result(success, &error);
-    vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)
+    let frame = vsock_proto::encode(MSG_WRITE_FILE_RESULT, seq, &payload).map_err(to_io_error)?;
+    Ok(GuardedWriteResponse { frame, fatal })
 }
 
 pub(crate) fn handle_decoded_write_files_message(
     seq: u32,
     decoded: DecodedWriteFilesMessage<'_>,
-) -> io::Result<Vec<u8>> {
-    let (success, error) =
-        handle_write_files(decoded.payload, decoded.file_count, decoded.content_bytes);
+    operation_guard: &OperationGuard,
+) -> io::Result<GuardedWriteResponse> {
+    let (success, error, fatal) = handle_write_files(
+        decoded.payload,
+        decoded.file_count,
+        decoded.content_bytes,
+        operation_guard,
+    );
+    if fatal {
+        operation_guard.poison(error.clone());
+    }
     let payload = vsock_proto::encode_write_files_result(success, &error);
-    vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)
+    let frame = vsock_proto::encode(MSG_WRITE_FILES_RESULT, seq, &payload).map_err(to_io_error)?;
+    Ok(GuardedWriteResponse { frame, fatal })
 }
 
 /// Handle basic incoming messages and return the connection-loop outcome.

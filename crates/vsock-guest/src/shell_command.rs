@@ -36,7 +36,7 @@
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use std::os::fd::{AsRawFd, RawFd};
@@ -150,7 +150,7 @@ pub(crate) struct PreparedShellCommand {
 }
 
 pub(crate) struct SpawnedShellCommand {
-    pub(crate) child: Child,
+    pub(crate) process: crate::process::ContainedChild,
     pub(crate) env_script: Option<EnvScriptGuard>,
 }
 
@@ -551,7 +551,8 @@ pub(crate) fn spawn_shell_command_with_pipes(
     env: &[(&str, &str)],
     sudo: bool,
     pipe_stdin: bool,
-) -> io::Result<SpawnedShellCommand> {
+    containment: &crate::containment::ContainmentManager,
+) -> Result<SpawnedShellCommand, crate::process::SpawnContainmentError> {
     let PreparedShellCommand {
         mut command,
         env_script,
@@ -560,8 +561,11 @@ pub(crate) fn spawn_shell_command_with_pipes(
     if pipe_stdin {
         command.stdin(Stdio::piped());
     }
-    let child = crate::process::spawn_in_own_process_group(&mut command)?;
-    Ok(SpawnedShellCommand { child, env_script })
+    let process = crate::process::spawn_contained(&mut command, containment, |_| Ok(()))?;
+    Ok(SpawnedShellCommand {
+        process,
+        env_script,
+    })
 }
 
 #[cfg(test)]

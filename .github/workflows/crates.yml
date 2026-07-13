@@ -1061,6 +1061,93 @@ jobs:
           echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
           echo "PASS: basic exec"
 
+          # Test: every release exec is owned by one recursive cgroup.
+          echo "--- Test: exec descendant containment ---"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- sh -c \
+            'findmnt -n -t cgroup2 /sys/fs/cgroup >/dev/null && test -d /sys/fs/cgroup/vm0-exec' \
+            || fail "guest cgroup v2 hierarchy is unavailable"
+
+          TIMEOUT_SCRIPT=$(cat <<'GUEST_SCRIPT'
+          rm -f /tmp/vm0-cgroup-sibling-1.pid /tmp/vm0-cgroup-sibling-2.pid /tmp/vm0-cgroup-nested.pid
+          setsid sh -c '
+            echo $$ > /tmp/vm0-cgroup-sibling-1.pid
+            setsid sh -c "echo \$\$ > /tmp/vm0-cgroup-nested.pid; sleep 60" &
+            sleep 60
+          ' &
+          setsid sh -c 'echo $$ > /tmp/vm0-cgroup-sibling-2.pid; sleep 60' &
+          for _ in $(seq 1 100); do
+            [ -s /tmp/vm0-cgroup-sibling-1.pid ] && \
+              [ -s /tmp/vm0-cgroup-sibling-2.pid ] && \
+              [ -s /tmp/vm0-cgroup-nested.pid ] && break
+            sleep 0.02
+          done
+          [ -s /tmp/vm0-cgroup-sibling-1.pid ] && \
+            [ -s /tmp/vm0-cgroup-sibling-2.pid ] && \
+            [ -s /tmp/vm0-cgroup-nested.pid ]
+          wait
+          GUEST_SCRIPT
+          )
+          if sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --timeout 1 -- sh -c "$TIMEOUT_SCRIPT"; then
+            fail "descendant containment command should time out"
+          fi
+
+          VERIFY_GONE_SCRIPT=$(cat <<'GUEST_SCRIPT'
+          for _ in $(seq 1 100); do
+            alive=0
+            for file in /tmp/vm0-cgroup-sibling-1.pid /tmp/vm0-cgroup-sibling-2.pid /tmp/vm0-cgroup-nested.pid; do
+              pid=$(cat "$file") || exit 1
+              kill -0 "$pid" 2>/dev/null && alive=1
+            done
+            [ "$alive" = 0 ] && exit 0
+            sleep 0.02
+          done
+          exit 1
+          GUEST_SCRIPT
+          )
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$VERIFY_GONE_SCRIPT" \
+            || fail "sibling or nested setsid descendant survived timeout"
+
+          DETACH_SCRIPT=$(cat <<'GUEST_SCRIPT'
+          rm -f /tmp/vm0-cgroup-detached.pid
+          setsid sh -c 'echo $$ > /tmp/vm0-cgroup-detached.pid; sleep 60' >/dev/null 2>&1 &
+          for _ in $(seq 1 100); do
+            [ -s /tmp/vm0-cgroup-detached.pid ] && exit 0
+            sleep 0.02
+          done
+          exit 1
+          GUEST_SCRIPT
+          )
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c "$DETACH_SCRIPT" \
+            || fail "wrapper-first detach command failed"
+          DETACHED_PID=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/vm0-cgroup-detached.pid) \
+            || fail "detached pid was not recorded"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c \
+            "! kill -0 $DETACHED_PID 2>/dev/null" \
+            || fail "detached descendant survived successful wrapper exit"
+
+          SUDO_TIMEOUT_SCRIPT=$(cat <<'GUEST_SCRIPT'
+          rm -f /tmp/vm0-cgroup-sudo.pid
+          setsid sh -c 'echo $$ > /tmp/vm0-cgroup-sudo.pid; sleep 60' &
+          while [ ! -s /tmp/vm0-cgroup-sudo.pid ]; do sleep 0.02; done
+          wait
+          GUEST_SCRIPT
+          )
+          if sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo --timeout 1 -- sh -c "$SUDO_TIMEOUT_SCRIPT"; then
+            fail "sudo descendant containment command should time out"
+          fi
+          SUDO_PID=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- cat /tmp/vm0-cgroup-sudo.pid) \
+            || fail "sudo descendant pid was not recorded"
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- sh -c \
+            "! kill -0 $SUDO_PID 2>/dev/null" \
+            || fail "ordinary sudo descendant survived timeout"
+
+          [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] \
+            || fail "unrelated main agent sandbox stopped during side-exec cleanup"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- echo containment-isolated)
+          [ "$OUTPUT" = "containment-isolated" ] \
+            || fail "unrelated concurrent exec was affected: $OUTPUT"
+          echo "PASS: exec descendant containment"
+
           # Test 3: exit code propagation
           echo "--- Test: exit code propagation ---"
           sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- false && fail "expected non-zero exit"

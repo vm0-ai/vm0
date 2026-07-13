@@ -141,6 +141,11 @@ fn acquire_operation_guard(
             send_error_response(seq, "guest operations are quiescing", writer)?;
             Ok(None)
         }
+        Err(AcquireOperationError::Fatal) => {
+            send_error_response(seq, "guest runtime is unhealthy", writer)?;
+            writer.shutdown();
+            Ok(None)
+        }
     }
 }
 
@@ -149,7 +154,11 @@ fn reject_operation_if_quiescing(
     seq: u32,
     writer: &GuestWriter,
 ) -> io::Result<bool> {
-    if operation_state.is_quiescing() {
+    if operation_state.is_fatal() {
+        send_error_response(seq, "guest runtime is unhealthy", writer)?;
+        writer.shutdown();
+        Ok(true)
+    } else if operation_state.is_quiescing() {
         send_error_response(seq, "guest operations are quiescing", writer)?;
         Ok(true)
     } else {
@@ -216,6 +225,11 @@ fn handle_quiesce_operations(
             &format!("guest operations still pending: {pending}"),
             writer,
         ),
+        QuiesceResult::Fatal => {
+            let result = send_error_response(seq, "guest runtime is unhealthy", writer);
+            writer.shutdown();
+            result
+        }
     }
 }
 
@@ -234,8 +248,14 @@ fn handle_resume_operations(
         return Ok(());
     }
 
-    operation_state.resume();
-    send_empty_response(MSG_OPERATIONS_RESUMED, seq, writer)
+    match operation_state.resume() {
+        Ok(()) => send_empty_response(MSG_OPERATIONS_RESUMED, seq, writer),
+        Err(_) => {
+            let result = send_error_response(seq, "guest runtime is unhealthy", writer);
+            writer.shutdown();
+            result
+        }
+    }
 }
 
 struct ConnectionDispatcher {
@@ -247,13 +267,17 @@ struct ConnectionDispatcher {
 }
 
 impl ConnectionDispatcher {
-    fn new(writer: GuestWriter, connection_cancel: Arc<AtomicBool>) -> Self {
+    fn new(
+        writer: GuestWriter,
+        connection_cancel: Arc<AtomicBool>,
+        operation_state: OperationState,
+    ) -> Self {
         Self {
             writer,
             connection_cancel,
             exec_operation_registry: ExecOperationRegistry::default(),
             exec_control_registry: ExecControlRegistry::default(),
-            operation_state: OperationState::default(),
+            operation_state,
         }
     }
 
@@ -385,10 +409,22 @@ impl ConnectionDispatcher {
         else {
             return Ok(());
         };
-        let response = handle_decoded_write_file_message(msg.seq, decoded)?;
-        self.writer.write_frame_after_lock(&response, || {
+        let response = match handle_decoded_write_file_message(msg.seq, decoded, &operation_guard) {
+            Ok(response) => response,
+            Err(error) => {
+                if self.operation_state.is_fatal() {
+                    operation_guard.shutdown_transports();
+                }
+                return Err(error);
+            }
+        };
+        let result = self.writer.write_frame_after_lock(&response.frame, || {
             operation_guard.release();
-        })
+        });
+        if response.fatal {
+            operation_guard.shutdown_transports();
+        }
+        result
     }
 
     fn handle_write_files(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
@@ -410,10 +446,23 @@ impl ConnectionDispatcher {
         else {
             return Ok(());
         };
-        let response = handle_decoded_write_files_message(msg.seq, decoded)?;
-        self.writer.write_frame_after_lock(&response, || {
+        let response = match handle_decoded_write_files_message(msg.seq, decoded, &operation_guard)
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if self.operation_state.is_fatal() {
+                    operation_guard.shutdown_transports();
+                }
+                return Err(error);
+            }
+        };
+        let result = self.writer.write_frame_after_lock(&response.frame, || {
             operation_guard.release();
-        })
+        });
+        if response.fatal {
+            operation_guard.shutdown_transports();
+        }
+        result
     }
 
     fn handle_quiesce_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
@@ -497,17 +546,32 @@ pub fn connect_unix(path: &str) -> io::Result<UnixStream> {
 /// Handle connection - the main event loop
 /// Uses separate reader/writer to avoid deadlock between main loop and background threads
 pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
-    match handle_connection_with_outcome(stream) {
+    match handle_connection_with_outcome(stream, OperationState::default()) {
         Ok(_) => Ok(()),
         Err(failure) => Err(failure.error),
     }
 }
 
-fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, ConnectionFailure> {
+#[cfg(any(debug_assertions, feature = "test-support"))]
+pub fn handle_connection_with_cgroup_fixture(
+    stream: UnixStream,
+    root: std::path::PathBuf,
+) -> io::Result<()> {
+    match handle_connection_with_outcome(stream, OperationState::with_cgroup_fixture(root)) {
+        Ok(_) => Ok(()),
+        Err(failure) => Err(failure.error),
+    }
+}
+
+fn handle_connection_with_outcome(
+    stream: UnixStream,
+    operation_state: OperationState,
+) -> Result<ConnectionEnd, ConnectionFailure> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while worker threads write results.
     let mut reader = stream.try_clone().map_err(unstable_connection_failure)?;
     let writer = GuestWriter::new(stream);
+    operation_state.register_transport(writer.shutdown_handle());
     let connection_cancel = Arc::new(AtomicBool::new(false));
     let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
 
@@ -525,7 +589,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, C
     log("INFO", "Sent ready signal");
 
     let mut session = ConnectionSession::new();
-    let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone());
+    let dispatcher = ConnectionDispatcher::new(writer, connection_cancel.clone(), operation_state);
     let mut buf = [0u8; READ_BUFFER_SIZE];
     loop {
         // Read from stream (reader is separate, no lock needed)
@@ -637,7 +701,25 @@ fn retry_or_fail(failure: ReconnectFailure, attempts: u32) -> io::Result<()> {
 /// Includes reconnection logic for snapshot restore scenarios where
 /// the connection is lost when VM is paused and resumed.
 pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
+    run_with_operation_state(unix_socket, OperationState::default())
+}
+
+#[cfg(any(debug_assertions, feature = "test-support"))]
+pub fn run_with_cgroup_fixture(
+    unix_socket: Option<&str>,
+    root: std::path::PathBuf,
+) -> io::Result<()> {
+    run_with_operation_state(unix_socket, OperationState::with_cgroup_fixture(root))
+}
+
+fn run_with_operation_state(
+    unix_socket: Option<&str>,
+    operation_state: OperationState,
+) -> io::Result<()> {
     log("INFO", "Starting vsock guest...");
+    operation_state.audit_containment().map_err(|error| {
+        io::Error::other(format!("guest exec containment is not reusable: {error}"))
+    })?;
 
     let mut attempts = 0u32;
 
@@ -648,7 +730,7 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream)
+                    handle_connection_with_outcome(stream, operation_state.clone())
                 })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
@@ -656,9 +738,13 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 .map_err(unstable_connection_failure)
                 .and_then(|stream| {
                     log("INFO", "Connected");
-                    handle_connection_with_outcome(stream)
+                    handle_connection_with_outcome(stream, operation_state.clone())
                 })
         };
+
+        if operation_state.is_fatal() {
+            return Err(io::Error::other("guest runtime is unhealthy"));
+        }
 
         match result {
             Ok(ConnectionEnd::Shutdown) => return Ok(()),

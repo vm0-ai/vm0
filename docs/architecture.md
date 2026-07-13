@@ -188,6 +188,19 @@ profiles:
     workspace_disk_mb: 16384
 ```
 
+**Guest exec lifecycle**:
+
+- `guest-init` mounts cgroup v2 and gives every guest exec operation its own
+  root-managed cgroup before executable code runs.
+- An exec result is terminal for the whole descendant tree. Background or
+  detached processes are stopped before success, timeout, or cancellation is
+  reported; exec is not a durable-service ownership API.
+- If recursive cleanup cannot be verified, the guest closes its transport and
+  rejects sandbox quiesce/reuse so the runner retires the sandbox.
+- Normal execs run as the sandbox user inside a root-owned hierarchy. `--sudo`
+  receives the same best-effort lifecycle cleanup, but root inside the guest is
+  trusted and can modify cgroups or terminate the guest supervisor.
+
 **Host-local runner overrides**:
 
 - Host-specific capacity belongs in `/etc/vm0-runner/host.env`, not

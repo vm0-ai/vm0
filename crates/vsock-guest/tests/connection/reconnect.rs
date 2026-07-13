@@ -1,17 +1,21 @@
-use std::io::{self, Write};
+use std::fs;
+use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use vsock_guest::run;
+use vsock_guest::{run, run_with_cgroup_fixture};
 use vsock_proto::{
-    self, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    self, ExecOutputPolicy, MSG_OPERATIONS_RESUMED, MSG_PING, MSG_PONG, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK,
 };
 
 use super::support::{
-    read_and_discard_message, read_message, send_resume_operations, unique_socket_path,
+    read_and_discard_message, read_message, send_exec_start, send_resume_operations,
+    unique_socket_path, unique_tmp_path,
 };
 
 const EXPECTED_RECONNECT_ATTEMPTS: usize = 50;
@@ -88,6 +92,53 @@ fn run_resets_reconnect_attempts_after_real_host_work() {
     handle.join().unwrap().unwrap();
 }
 
+#[test]
+fn fatal_cleanup_from_old_connection_closes_replacement_transport() {
+    let socket_path = unique_socket_path("reconnect-fatal-containment");
+    let root_guard = unique_tmp_path("reconnect-fatal-containment", "");
+    let root = PathBuf::from(root_guard.as_str());
+    fs::create_dir(&root).unwrap();
+    let listener = UnixListener::bind(socket_path.as_str()).unwrap();
+    let (done_rx, handle) = spawn_run_fixture_thread(socket_path.as_str(), root.clone());
+
+    let mut first = accept_run_connection(&listener, &done_rx, 1);
+    first
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    read_and_discard_message(&mut first);
+    send_exec_start(
+        &mut first,
+        501,
+        "sleep 60",
+        60_000,
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    );
+    let leaf = wait_for_fixture_leaf(&root);
+    fs::write(leaf.join("cgroup.events"), b"populated 1\n").unwrap();
+    drop(first);
+
+    let mut replacement = accept_run_connection(&listener, &done_rx, 2);
+    replacement
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    read_and_discard_message(&mut replacement);
+
+    let report = done_rx.recv_timeout(Duration::from_secs(4)).unwrap();
+    assert_eq!(
+        report,
+        Err((io::ErrorKind::Other, "guest runtime is unhealthy".into()))
+    );
+    let mut byte = [0_u8; 1];
+    assert!(matches!(replacement.read(&mut byte), Ok(0) | Err(_)));
+
+    drop(replacement);
+    drop(listener);
+    let error = handle.join().unwrap().unwrap_err();
+    assert_eq!(error.to_string(), "guest runtime is unhealthy");
+    fs::remove_dir_all(&root).unwrap();
+}
+
 fn assert_run_exhausts_after_short_lived_connections(
     label: &str,
     mut handle_connection: impl FnMut(&mut UnixStream),
@@ -146,6 +197,43 @@ fn spawn_run_thread(socket_path: &str) -> (mpsc::Receiver<RunReport>, JoinHandle
         result
     });
     (done_rx, handle)
+}
+
+fn spawn_run_fixture_thread(
+    socket_path: &str,
+    root: PathBuf,
+) -> (mpsc::Receiver<RunReport>, JoinHandle<io::Result<()>>) {
+    let guest_socket_path = socket_path.to_owned();
+    let (done_tx, done_rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = run_with_cgroup_fixture(Some(&guest_socket_path), root);
+        let report = result
+            .as_ref()
+            .map(|_| ())
+            .map_err(|error| (error.kind(), error.to_string()));
+        let _ = done_tx.send(report);
+        result
+    });
+    (done_rx, handle)
+}
+
+fn wait_for_fixture_leaf(root: &Path) -> PathBuf {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(path) = fs::read_dir(root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.is_dir())
+        {
+            return path;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "exec cgroup leaf was not created"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn accept_run_connection(
