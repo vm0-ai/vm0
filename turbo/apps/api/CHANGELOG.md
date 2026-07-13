@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.265.3](https://github.com/vm0-ai/vm0/compare/api-v1.265.2...api-v1.265.3) (2026-07-13)
+
+
+### Bug Fixes
+
+* authenticate and validate html artifact previews ([#21171](https://github.com/vm0-ai/vm0/issues/21171)) ([9f9ec3b](https://github.com/vm0-ai/vm0/commit/9f9ec3be9e20b0908f1e61a1504511e1b0b2bcff))
+
 ## [1.265.2](https://github.com/vm0-ai/vm0/compare/api-v1.265.1...api-v1.265.2) (2026-07-13)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.595.2](https://github.com/vm0-ai/vm0/compare/app-v0.595.1...app-v0.595.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* keep chat thread shortcuts active across the chat page ([#21173](https://github.com/vm0-ai/vm0/issues/21173)) ([380eeba](https://github.com/vm0-ai/vm0/commit/380eebaacb096a1cd1608820d90065cad8c12049))
+
 ## [0.595.1](https://github.com/vm0-ai/vm0/compare/app-v0.595.0...app-v0.595.1) (2026-07-13)
 
 
