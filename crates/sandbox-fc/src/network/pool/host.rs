@@ -304,29 +304,26 @@ async fn setup_host_iptables(
     Ok(())
 }
 
-/// Add a proxy REDIRECT rule for outbound non-DNS TCP traffic in PREROUTING.
+/// Add a proxy REDIRECT rule for outbound TCP traffic in PREROUTING.
 ///
 /// This rule redirects outbound TCP traffic from the namespace's veth peer IP
-/// to the specified proxy port on the host. Standard DNS (53) and DNS-over-TLS
-/// (853) are excluded so their dedicated rules cannot be bypassed by
-/// mitmproxy's raw TCP passthrough.
-async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> Result<()> {
+/// to the specified proxy port on the host. When the DNS proxy is enabled,
+/// standard DNS (53) and DNS-over-TLS (853) are excluded so their dedicated
+/// rules cannot be bypassed by mitmproxy's raw TCP passthrough. Without a DNS
+/// proxy, all TCP traffic keeps the existing mitmproxy behavior.
+async fn add_proxy_redirect_rule(
+    name: &str,
+    peer_ip: &str,
+    proxy_port: u16,
+    dns_proxy_enabled: bool,
+) -> Result<()> {
     let src = format!("{peer_ip}/30");
     let port_str = proxy_port.to_string();
-    exec_iptables(&[
-        "-t",
-        "nat",
-        "-A",
-        "PREROUTING",
-        "-s",
-        &src,
-        "-p",
-        "tcp",
-        "-m",
-        "multiport",
-        "!",
-        "--dports",
-        "53,853",
+    let mut args: Vec<&str> = vec!["-t", "nat", "-A", "PREROUTING", "-s", &src, "-p", "tcp"];
+    if dns_proxy_enabled {
+        args.extend(["-m", "multiport", "!", "--dports", "53,853"]);
+    }
+    args.extend([
         "-j",
         "REDIRECT",
         "--to-port",
@@ -335,8 +332,8 @@ async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> 
         "comment",
         "--comment",
         name,
-    ])
-    .await?;
+    ]);
+    exec_iptables(&args).await?;
     Ok(())
 }
 
@@ -676,7 +673,9 @@ pub(super) async fn create_single_namespace(
     match result {
         Ok(()) => {
             if let Some(port) = proxy_port {
-                if let Err(e) = add_proxy_redirect_rule(&ns_name, &peer_ip, port).await {
+                if let Err(e) =
+                    add_proxy_redirect_rule(&ns_name, &peer_ip, port, dns_port.is_some()).await
+                {
                     error!(name = %ns_name, error = %e, "failed to add proxy rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
