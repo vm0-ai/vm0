@@ -88,7 +88,7 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "template:html-ppt-playful-launch-runbook":
     "1c46e7d953de0ea47924b9e9936433d7ede1d21ac595f62cbcdee160bded6c26",
   "template:html-ppt-bloom-pitch-runbook":
-    "58cf8db8aa23176e9290719ae567f639dcb1c5bd7058a580a4d01f4ce1d3fdf5",
+    "a7c6805b134a3892ac46e8aa4c89ab319ca6f58ac283c0aeb8de645eb88ba5ae",
   "template:html-ppt-blueprint-academy-runbook":
     "69536f28d581fced0512e5f61195b32aa4e80a260f14e953abb9710c17d7aef3",
   "template:html-ppt-botane-organic-runbook":
