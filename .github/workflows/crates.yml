@@ -1152,8 +1152,17 @@ jobs:
             || fail "wrapper-first detach command failed"
           DETACHED_PID=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- cat /tmp/vm0-cgroup-detached.pid) \
             || fail "detached pid was not recorded"
-          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- sh -c \
-            "! kill -0 $DETACHED_PID 2>/dev/null" \
+          WAIT_FOR_PID_EXIT_SCRIPT=$(cat <<'GUEST_SCRIPT'
+          pid=$1
+          for _ in $(seq 1 100); do
+            kill -0 "$pid" 2>/dev/null || exit 0
+            sleep 0.02
+          done
+          exit 1
+          GUEST_SCRIPT
+          )
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- \
+            sh -c "$WAIT_FOR_PID_EXIT_SCRIPT" sh "$DETACHED_PID" \
             || fail "detached descendant survived successful wrapper exit"
 
           SUDO_TIMEOUT_SCRIPT=$(cat <<'GUEST_SCRIPT'
@@ -1168,8 +1177,8 @@ jobs:
           fi
           SUDO_PID=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- cat /tmp/vm0-cgroup-sudo.pid) \
             || fail "sudo descendant pid was not recorded"
-          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- sh -c \
-            "! kill -0 $SUDO_PID 2>/dev/null" \
+          sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" --sudo -- \
+            sh -c "$WAIT_FOR_PID_EXIT_SCRIPT" sh "$SUDO_PID" \
             || fail "ordinary sudo descendant survived timeout"
 
           [ -S "/run/vm0/sock/$SANDBOX_ID/control.sock" ] \
