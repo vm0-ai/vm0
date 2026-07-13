@@ -16,12 +16,30 @@ function setScrollMetrics(
 function createScrollContainer(): HTMLElement {
   const container = document.createElement("section");
   const content = document.createElement("div");
+  let scrollTop = 0;
+  Object.defineProperty(container, "scrollTop", {
+    configurable: true,
+    get: () => {
+      return scrollTop;
+    },
+    set: (value: number) => {
+      const maxScrollTop = Math.max(
+        0,
+        container.scrollHeight - container.clientHeight,
+      );
+      scrollTop = Math.max(0, Math.min(value, maxScrollTop));
+    },
+  });
   container.appendChild(content);
   document.body.appendChild(container);
   return container;
 }
 
-function mockResizeObserver(): { restore: () => void; triggerAll: () => void } {
+function mockResizeObserver(): {
+  restore: () => void;
+  trigger: (target: Element) => void;
+  triggerAll: () => void;
+} {
   const originalDescriptor = Object.getOwnPropertyDescriptor(
     globalThis,
     "ResizeObserver",
@@ -29,40 +47,43 @@ function mockResizeObserver(): { restore: () => void; triggerAll: () => void } {
   const observers: TestResizeObserver[] = [];
 
   class TestResizeObserver implements ResizeObserver {
-    private observedTarget: Element | null = null;
+    private observedTargets = new Set<Element>();
 
     constructor(private readonly callback: ResizeObserverCallback) {
       observers.push(this);
     }
 
     observe(target: Element): void {
-      this.observedTarget = target;
+      this.observedTargets.add(target);
     }
 
     unobserve(target: Element): void {
-      if (this.observedTarget === target) {
-        this.observedTarget = null;
-      }
+      this.observedTargets.delete(target);
     }
 
     disconnect(): void {
-      this.observedTarget = null;
+      this.observedTargets = new Set<Element>();
     }
 
-    trigger(): void {
-      if (!this.observedTarget) {
+    trigger(target?: Element): void {
+      const targets = target
+        ? this.observedTargets.has(target)
+          ? [target]
+          : []
+        : [...this.observedTargets];
+      if (targets.length === 0) {
         return;
       }
       this.callback(
-        [
-          {
-            target: this.observedTarget,
-            contentRect: this.observedTarget.getBoundingClientRect(),
+        targets.map((observedTarget) => {
+          return {
+            target: observedTarget,
+            contentRect: observedTarget.getBoundingClientRect(),
             borderBoxSize: [],
             contentBoxSize: [],
             devicePixelContentBoxSize: [],
-          } as unknown as ResizeObserverEntry,
-        ],
+          } as unknown as ResizeObserverEntry;
+        }),
         this,
       );
     }
@@ -88,6 +109,11 @@ function mockResizeObserver(): { restore: () => void; triggerAll: () => void } {
 
   return {
     restore,
+    trigger: (target) => {
+      for (const observer of observers) {
+        observer.trigger(target);
+      }
+    },
     triggerAll: () => {
       for (const observer of observers) {
         observer.trigger();
@@ -111,10 +137,14 @@ describe("auto-scroll", () => {
     }
   }
 
-  function installResizeObserver(): { triggerAll: () => void } {
+  function installResizeObserver(): {
+    trigger: (target: Element) => void;
+    triggerAll: () => void;
+  } {
     const resizeObserver = mockResizeObserver();
     resizeObserverCleanups.push(resizeObserver.restore);
     return {
+      trigger: resizeObserver.trigger,
       triggerAll: resizeObserver.triggerAll,
     };
   }
@@ -210,5 +240,81 @@ describe("auto-scroll", () => {
     resizeObserver.triggerAll();
 
     expect(scrollContainer.scrollTop).toBe(480);
+  });
+
+  it("keeps a mobile chat at the bottom when its viewport becomes shorter", () => {
+    const resizeObserver = installResizeObserver();
+    ctx.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)";
+    });
+    const scroll = createScrollSignals("mobile-viewport-resize", {
+      observeViewportResizeOnMobile: true,
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    scrollContainer.scrollTop = 700;
+
+    bindScrollContainer(scroll, scrollContainer);
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 180,
+    });
+    resizeObserver.trigger(scrollContainer);
+
+    expect(scrollContainer.scrollTop).toBe(820);
+  });
+
+  it("preserves a mobile history-reading position when the viewport becomes shorter", () => {
+    const resizeObserver = installResizeObserver();
+    ctx.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)";
+    });
+    const scroll = createScrollSignals("mobile-history-resize", {
+      observeViewportResizeOnMobile: true,
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    scrollContainer.scrollTop = 700;
+
+    bindScrollContainer(scroll, scrollContainer);
+    scrollContainer.dispatchEvent(new Event("pointerdown"));
+    scrollContainer.scrollTop = 400;
+    scrollContainer.dispatchEvent(new Event("scroll"));
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 180,
+    });
+    resizeObserver.trigger(scrollContainer);
+
+    expect(scrollContainer.scrollTop).toBe(400);
+  });
+
+  it("does not observe the chat viewport resize on desktop", () => {
+    const resizeObserver = installResizeObserver();
+    ctx.mocks.browser.matchMedia(false);
+    const scroll = createScrollSignals("desktop-viewport-resize", {
+      observeViewportResizeOnMobile: true,
+    });
+    const scrollContainer = createScrollContainer();
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 300,
+    });
+    scrollContainer.scrollTop = 700;
+
+    bindScrollContainer(scroll, scrollContainer);
+    setScrollMetrics(scrollContainer, {
+      scrollHeight: 1000,
+      clientHeight: 180,
+    });
+    resizeObserver.trigger(scrollContainer);
+
+    expect(scrollContainer.scrollTop).toBe(700);
   });
 });
