@@ -35,21 +35,22 @@ const apiFeatureSwitchClient$ = computed((get) => {
 function applySwitches(
   result: FeatureSwitchStates,
   overrides: Partial<Record<string, boolean>> | undefined,
+  effectiveSwitches: Partial<Record<string, boolean>> | undefined,
 ) {
-  if (!overrides) {
-    return;
-  }
-  for (const key of Object.values(FeatureSwitchKey)) {
-    const value = overrides[key];
-    if (value !== undefined) {
-      result[key] = Boolean(value);
+  if (overrides) {
+    for (const key of Object.values(FeatureSwitchKey)) {
+      const value = overrides[key];
+      if (value !== undefined) {
+        result[key] = Boolean(value);
+      }
     }
   }
 
   // Keep the retired key only for the cross-version window where a new
   // frontend can still receive an explicit disabled state from an old API.
   // Remove this compatibility path after the previous API version has drained.
-  const artifactFavorites = overrides[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY];
+  const artifactFavorites =
+    effectiveSwitches?.[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY];
   if (artifactFavorites !== undefined) {
     result[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY] = Boolean(artifactFavorites);
   }
@@ -82,7 +83,11 @@ export const reloadFeatureSwitch$ = command(
       email: identity.email,
       orgId: identity.orgId,
     });
-    applySwitches(combined, result.body.switches);
+    applySwitches(
+      combined,
+      result.body.switches,
+      result.body.effectiveSwitches,
+    );
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },
