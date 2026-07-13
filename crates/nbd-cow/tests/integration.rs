@@ -671,6 +671,15 @@ async fn connect_device_survives_connection_loss() {
         false
     };
 
+    let opened_device = if connected {
+        // Opening the block device completes the kernel's deferred partition
+        // scan while every connection is healthy. Otherwise the injected loss
+        // can strand an already in-flight scan request on the removed socket.
+        Some(fs::File::open(format!("/dev/nbd{device_index}")))
+    } else {
+        None
+    };
+
     let connection_shutdown_result = if connected {
         // Closing only the userspace server races with the kernel noticing EOF.
         // Shut down the socket retained after connect so I/O assigned to this
@@ -685,14 +694,14 @@ async fn connect_device_survives_connection_loss() {
         lost_server.abort();
         let _ = lost_server.await;
 
-        let device_path = format!("/dev/nbd{device_index}");
+        let device = opened_device.expect("connected device should have an open attempt");
         Some(
             tokio::time::timeout(
                 Duration::from_secs(5),
                 tokio::task::spawn_blocking(move || {
                     use std::os::unix::fs::FileExt;
 
-                    let device = fs::File::open(device_path)?;
+                    let device = device?;
                     let mut block = vec![1_u8; nbd_cow::BLOCK_SIZE];
                     device.read_exact_at(&mut block, 0)?;
                     Ok::<_, std::io::Error>(block)
