@@ -3,12 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { markHostedArtifactEligibleForPreviewCron } from "./helpers/artifact-preview-state";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -19,6 +21,7 @@ import {
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { readRunUploadedFileSources } from "./helpers/runtime-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
@@ -197,6 +200,22 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
     throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
   }
   return token;
+}
+
+function fileWriteToken(owner: ArtifactActor, runId: string): string {
+  if (!owner.actor.orgId) {
+    throw new Error("Expected artifact test actor to have an org");
+  }
+  const seconds = Math.floor(now() / 1000);
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: owner.actor.userId,
+    orgId: owner.actor.orgId,
+    runId,
+    capabilities: ["file:write"],
+    iat: seconds,
+    exp: seconds + 60,
+  });
 }
 
 async function completeChatRunOk(
@@ -527,18 +546,6 @@ describe("GET /api/cron/artifact-preview", () => {
         context,
         ordinaryVideoUpload,
       );
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactVideoPreview]: true,
-      },
-    );
-
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),
       [200],
@@ -573,57 +580,6 @@ describe("GET /api/cron/artifact-preview", () => {
     expect(ordinaryArtifact).not.toHaveProperty("previewImageUrl");
   }, 180_000);
 
-  it("does not render video posters when the video preview switch is disabled", async () => {
-    const owner = await artifactActor("Artifacts API video preview off agent");
-    if (!owner.actor.orgId) {
-      throw new Error(
-        "Expected video preview disabled test actor to have an org",
-      );
-    }
-    mockEnv("CRON_SECRET", CRON_SECRET);
-    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
-
-    const videoArtifact = await createRunUploadedFile({
-      owner,
-      prompt: "create disabled generated video artifact",
-      filename: "disabled-video.mp4",
-      contentType: "video/mp4",
-    });
-    await markHostedArtifactEligibleForPreviewCron(context, videoArtifact, {
-      generatedBy: "zero-official-video",
-    });
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactVideoPreview]: false,
-      },
-    );
-
-    const generated = await accept(
-      cronClient().generate({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(generated.body).toStrictEqual({ generated: 0 });
-    expect(frameRequests).toHaveLength(0);
-    expect(
-      owner.objectStore.puts.some((put) => {
-        return put.key.endsWith("/poster.jpg");
-      }),
-    ).toBeFalsy();
-
-    const response = await chat.listArtifacts(owner.actor);
-    const disabledArtifact = response.artifacts.find((item) => {
-      return item.fileId === videoArtifact.fileId;
-    });
-    expect(disabledArtifact).toBeDefined();
-    expect(disabledArtifact).not.toHaveProperty("previewImageUrl");
-  }, 180_000);
-
   it("leaves video preview empty when media frame extraction fails", async () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
     if (!owner.actor.orgId) {
@@ -643,27 +599,6 @@ describe("GET /api/cron/artifact-preview", () => {
     await markHostedArtifactEligibleForPreviewCron(context, videoArtifact, {
       generatedBy: "zero-official-video",
     });
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactVideoPreview]: true,
-      },
-    );
-    onTestFinished(async () => {
-      await updateFeatureSwitchesForUser(
-        context,
-        featureSwitchActor(owner.actor),
-        {
-          [FeatureSwitchKey.ArtifactVideoPreview]: false,
-        },
-      );
-    });
-
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),
       [200],
@@ -686,6 +621,39 @@ describe("GET /api/cron/artifact-preview", () => {
 });
 
 describe("GET /api/zero/artifacts", () => {
+  it.each(["workflow-schedule", "workflow-event"] as const)(
+    "attributes run uploads to the %s source",
+    async (triggerSource) => {
+      const owner = await artifactActor(
+        `Artifacts API ${triggerSource} source agent`,
+      );
+      const run = await api.createDirectRun(owner.actor, {
+        agentComposeId: owner.agentId,
+        prompt: `create ${triggerSource} artifact`,
+        modelProviderType: "anthropic-api-key",
+        triggerSource,
+        vars: { ZERO_AGENT_ID: owner.agentId },
+        secrets: { ZERO_TOKEN: "bdd-artifact-zero-token" },
+      });
+      const fileId = randomUUID();
+      owner.objectStore.addObject({
+        bucket: "test-user-artifacts",
+        key: `artifacts/${owner.actor.userId}/${fileId}/workflow-output.txt`,
+        size: 128,
+      });
+
+      await chat.completeUploadWithBearer(
+        `Bearer ${fileWriteToken(owner, run.runId)}`,
+        { id: fileId, contentType: "text/plain" },
+        [200],
+      );
+
+      await expect(
+        readRunUploadedFileSources(context, run.runId),
+      ).resolves.toStrictEqual([triggerSource]);
+    },
+  );
+
   it("lists chat-thread artifacts for the active organization and hides uploads shadowed by hosted artifacts", async () => {
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ userId, orgId: `org_${randomUUID()}` });

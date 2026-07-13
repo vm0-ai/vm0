@@ -54,6 +54,7 @@ import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
 import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
+import * as e2eTeamsMockCallLogSchema from "./schema/e2e-teams-mock-call-log";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
 import * as orgPlanEntitlementSchema from "./schema/org-plan-entitlement";
@@ -136,6 +137,7 @@ export const schema = {
   ...teamsOrgConnectionSchema,
   ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
+  ...e2eTeamsMockCallLogSchema,
   ...e2eTelegramMockCallLogSchema,
   ...variableSchema,
   ...composeJobSchema,

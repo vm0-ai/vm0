@@ -10,8 +10,10 @@ import type {
   RunStatus,
   SystemLogResponse,
 } from "@vm0/api-contracts/contracts/runs";
+import { formatClaudeProviderOverloadedRunError } from "@vm0/api-contracts/contracts/errors";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
@@ -92,6 +94,7 @@ interface RunWithCompose {
   readonly error: string | null;
   readonly lastEventSequence: number | null;
   readonly composeContent: unknown;
+  readonly selectedModel: string | null;
 }
 
 function extractFramework(composeContent: unknown): string {
@@ -147,7 +150,11 @@ function buildRunState(run: RunWithCompose): RunState {
   }
 
   if (run.status === "failed" && run.error) {
-    state.error = run.error;
+    state.error =
+      formatClaudeProviderOverloadedRunError({
+        message: run.error,
+        selectedModel: run.selectedModel,
+      }) ?? run.error;
   }
 
   if (run.lastEventSequence !== null) {
@@ -190,12 +197,14 @@ export function agentRunEvents(
         error: agentRuns.error,
         lastEventSequence: agentRuns.lastEventSequence,
         composeContent: agentComposeVersions.content,
+        selectedModel: zeroRuns.selectedModel,
       })
       .from(agentRuns)
       .leftJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
       )
+      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(
         and(
           eq(agentRuns.id, params.runId),

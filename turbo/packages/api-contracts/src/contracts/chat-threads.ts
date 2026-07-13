@@ -314,17 +314,6 @@ const pagedChatMessageBaseSchema = z.object({
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
   sequenceNumber: z.number().nullable().optional(),
-  // Deprecated legacy schedule automation metadata. Migration 0545 clears
-  // existing values; new message writes no longer populate these fields.
-  automationId: z.string().optional(),
-  automationTitle: z.string().optional(),
-  automationSnapshot: z
-    .object({
-      id: z.string(),
-      title: z.string(),
-      description: z.string().nullable(),
-    })
-    .optional(),
   workflowSnapshot: z
     .object({
       id: z.string().uuid().optional(),

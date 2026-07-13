@@ -11,6 +11,9 @@ import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
+import { testTeamsDispatchProbeRoutes } from "./routes/test-teams-dispatch-probe";
+import { testTeamsMockRoutes } from "./routes/test-teams-mock";
+import { testTeamsStateRoutes } from "./routes/test-teams-state";
 import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
 
 /**
@@ -23,11 +26,13 @@ import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
  *   deploy workflow (`Generate E2E test tokens`) and `e2e/` suites.
  * - `test-oauth-provider-*`: the synthetic OAuth provider backing the
  *   `test-oauth`/`test-oauth-device` connectors in `packages/connectors`.
- * - `test-slack-mock` / `test-telegram-mock`: provider stand-ins that Slack
- *   and Telegram Web API traffic is redirected to on previews via
- *   `E2E_SLACK_MOCK_ENABLED` / `E2E_TELEGRAM_MOCK_ENABLED`.
+ * - `test-slack-mock` / `test-telegram-mock` / `test-teams-mock`: provider
+ *   stand-ins that integration API traffic is redirected to on previews via
+ *   `E2E_SLACK_MOCK_ENABLED` / `E2E_TELEGRAM_MOCK_ENABLED` /
+ *   `E2E_TEAMS_MOCK_ENABLED`.
  * - state/probe routes: fixture seeding and dispatch probes used by
- *   `e2e/helpers/slack.bash` and `e2e/helpers/telegram.bash`.
+ *   `e2e/helpers/slack.bash`, `e2e/helpers/telegram.bash`, and
+ *   `e2e/helpers/teams.bash`.
  *
  * Every route here is gated by `isTestEndpointAllowed` (development or
  * preview-with-bypass only) and returns 404 in production.
@@ -49,5 +54,8 @@ export const E2E_ROUTES: readonly RouteEntry[] = [
   ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,
+  ...testTeamsDispatchProbeRoutes,
+  ...testTeamsMockRoutes,
+  ...testTeamsStateRoutes,
   ...testZeroAgentStateRoutes,
 ];

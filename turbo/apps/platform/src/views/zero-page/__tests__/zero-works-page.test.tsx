@@ -146,7 +146,7 @@ describe("works page", () => {
     });
   });
 
-  it("shows Microsoft Teams admin install controls", async () => {
+  it("shows Microsoft Teams admin install controls before installation", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: false, isAdmin: true });
@@ -155,6 +155,11 @@ describe("works page", () => {
 
     const installButton = await screen.findByTestId("teams-install-button");
     expect(installButton).toHaveTextContent("Install in Teams");
+    expect(
+      screen.getByText(
+        "Connect your Microsoft account, then install the Teams app",
+      ),
+    ).toBeInTheDocument();
     click(installButton);
 
     expect(openSpy).toHaveBeenCalledTimes(1);

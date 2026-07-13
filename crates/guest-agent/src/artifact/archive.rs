@@ -52,10 +52,17 @@ fn walk_entries(
             continue;
         }
 
-        if let Ok(dir) = current.open_child_dir(&name) {
+        let (try_directory, try_file) = match entry.file_type() {
+            Ok(file_type) => (file_type.is_dir(), file_type.is_file()),
+            Err(_) => (true, true),
+        };
+        if try_directory && let Ok(dir) = current.open_child_dir(&name) {
             let name_str = artifact_path_component(&name, relative)?;
             let rel = relative_artifact_path(relative, name_str);
             walk_dir(&dir, &rel, out)?;
+            continue;
+        }
+        if !try_file {
             continue;
         }
 

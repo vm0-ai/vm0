@@ -373,7 +373,7 @@ function queryUsageInsightSourceBuckets(db: Db, p: UsageInsightSqlParams) {
           WHEN zr.trigger_source = 'web' THEN 'chat'
           WHEN zr.trigger_source = 'slack' THEN 'slack'
           WHEN zr.trigger_source = 'email' THEN 'email'
-          WHEN zr.trigger_source = 'automation' THEN 'automation'
+          WHEN zr.trigger_source IN ('automation', 'workflow-schedule', 'workflow-event') THEN 'automation'
           ELSE 'others'
         END AS bucket,
         COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,

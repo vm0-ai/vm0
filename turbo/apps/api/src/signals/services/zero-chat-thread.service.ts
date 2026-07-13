@@ -31,7 +31,6 @@ import {
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
-  type ChatMessageAutomationSnapshot,
   type ChatMessageGoalEvent,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
@@ -108,11 +107,8 @@ type ChatMessageRow = {
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
   readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
-  readonly automationSnapshot: ChatMessageAutomationSnapshot | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
-  readonly automationId: string | null;
-  readonly automationTitle: string | null;
   readonly workflowName: string | null;
   readonly workflowDisplayName: string | null;
   readonly workflowDescription: string | null;
@@ -220,11 +216,8 @@ const messageColumns = {
   attachFileMetadata: chatMessages.attachFileMetadata,
   generationTemplate: chatMessages.generationTemplate,
   recommendedFollowups: chatMessages.recommendedFollowups,
-  automationSnapshot: chatMessages.automationSnapshot,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
-  automationId: chatMessages.automationId,
-  automationTitle: chatMessages.automationTitle,
   workflowId: sql<string | null>`(
     SELECT "zero_workflows"."id"
     FROM "zero_runs"
@@ -657,9 +650,6 @@ function toPagedMessage(
       return {
         ...message,
         role: "user" as const,
-        automationId: row.automationId ?? undefined,
-        automationTitle: row.automationTitle ?? undefined,
-        automationSnapshot: row.automationSnapshot ?? undefined,
       };
     }
     const recommendedFollowups = normalizeRecommendedFollowups(
