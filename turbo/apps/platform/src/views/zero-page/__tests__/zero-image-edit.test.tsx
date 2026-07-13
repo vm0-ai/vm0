@@ -18,7 +18,6 @@ import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/
 import { zeroImageShareXContract } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 
 import {
   detachedSetupPage,
@@ -43,12 +42,37 @@ const UPLOADED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/uploaded.png";
 const SECOND_UPLOADED_IMAGE_URL =
   "https://cdn.vm7.io/artifacts/test/image-edit/uploaded-second.png";
-const SOFT_VECTOR_TEMPLATE = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
-  return item.slug === "soft-vector";
-});
-if (!SOFT_VECTOR_TEMPLATE) {
-  throw new Error("Missing Soft Vector illustration template");
-}
+const STYLE_TRANSFER_TEMPLATES = [
+  "Illustration",
+  "Anime cell",
+  "Watercolor",
+  "Risograph",
+  "Papercut",
+  "Studio production",
+  "Notion",
+  "Ink wash",
+  "Clay",
+] as const;
+const STYLE_TRANSFER_TEMPLATE_TEST_IDS = [
+  "image-edit-style-template-illustration",
+  "image-edit-style-template-anime-cell",
+  "image-edit-style-template-watercolor",
+  "image-edit-style-template-risograph",
+  "image-edit-style-template-papercut",
+  "image-edit-style-template-studio-production",
+  "image-edit-style-template-notion",
+  "image-edit-style-template-ink-wash",
+  "image-edit-style-template-clay",
+] as const;
+const REMOVED_STYLE_TRANSFER_TEMPLATES = [
+  "Warm film",
+  "Soft Vector",
+  "Grain Poster",
+  "Sunlit Gouache",
+  "Editorial",
+  "Neon noir",
+  "Vintage comic",
+] as const;
 
 afterEach(() => {
   vi.stubEnv("VITE_QA_BYPASS_X_SHARE_CONNECTOR", "");
@@ -770,7 +794,7 @@ describe("image editing", () => {
 
     expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
     expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
-      "bg-blue-600",
+      "bg-primary",
     );
     expect(
       screen.getByTestId("artifact-sidebar-image-zoom-controls"),
@@ -836,6 +860,8 @@ describe("image editing", () => {
     });
     expect(screen.queryByTestId("image-edit-region-selection")).toBeNull();
     expect(screen.getByTestId("image-edit-region-comment-frame")).toHaveClass(
+      "border-primary/90",
+      "bg-primary/10",
       "border-dashed",
       "opacity-0",
     );
@@ -876,7 +902,7 @@ describe("image editing", () => {
       "Cancel area selection",
     );
     expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
-      "bg-blue-600",
+      "bg-primary",
     );
     expect(screen.getByTestId("image-edit-region-comment-clear")).toHaveClass(
       "opacity-0",
@@ -1110,7 +1136,7 @@ describe("image editing", () => {
       "Cancel area selection",
     );
     expect(screen.getByTestId("image-edit-select-region")).toHaveClass(
-      "bg-blue-600",
+      "bg-primary",
     );
 
     fireEvent.pointerDown(image, { button: 0, clientX: 120, clientY: 140 });
@@ -1234,7 +1260,24 @@ describe("image editing", () => {
     expect(
       within(stylePopover).getByText("Style Transfer"),
     ).toBeInTheDocument();
-    expect(within(stylePopover).getByText("Soft Vector")).toBeInTheDocument();
+    for (const templateName of STYLE_TRANSFER_TEMPLATES) {
+      expect(within(stylePopover).getByText(templateName)).toBeInTheDocument();
+    }
+    expect(
+      Array.from(
+        stylePopover.querySelectorAll(
+          'label[data-testid^="image-edit-style-template-"]',
+        ),
+      ).map((element) => {
+        return element instanceof HTMLElement
+          ? element.dataset.testid
+          : undefined;
+      }),
+    ).toStrictEqual([...STYLE_TRANSFER_TEMPLATE_TEST_IDS]);
+    for (const templateName of REMOVED_STYLE_TRANSFER_TEMPLATES) {
+      expect(within(stylePopover).queryByText(templateName)).toBeNull();
+    }
+    expect(within(stylePopover).queryByText(/Same motif/u)).toBeNull();
     expect(
       within(stylePopover).queryByText("AI styles"),
     ).not.toBeInTheDocument();
@@ -1248,21 +1291,44 @@ describe("image editing", () => {
       within(stylePopover).queryByText("Templates"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByTestId(
-        "image-edit-style-template-preview-illustration-soft-vector",
-      ),
-    ).toHaveAttribute(
-      "src",
-      SOFT_VECTOR_TEMPLATE.cardPreviewImage ??
-        SOFT_VECTOR_TEMPLATE.previewImage,
+      screen.getByTestId("image-edit-style-template-preview-ink-wash"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("image-edit-style-template-preview-studio-production"),
+    ).toBeInTheDocument();
+    for (const templateName of STYLE_TRANSFER_TEMPLATES) {
+      expect(
+        within(stylePopover).getByRole("radio", {
+          name: new RegExp(templateName, "u"),
+        }),
+      ).not.toBeChecked();
+    }
+    expect(
+      within(stylePopover).getByRole("radio", { name: /Custom style/u }),
+    ).not.toBeChecked();
+    expect(screen.getByTestId("image-edit-apply-style")).toHaveAttribute(
+      "aria-disabled",
+      "true",
     );
     await user.click(
-      screen.getByTestId("image-edit-style-template-illustration-soft-vector"),
+      screen.getByTestId("image-edit-style-template-studio-production"),
+    );
+    expect(
+      within(stylePopover).getByRole("radio", {
+        name: /Studio production/u,
+      }),
+    ).toBeChecked();
+    expect(
+      within(stylePopover).getByRole("radio", { name: /Custom style/u }),
+    ).not.toBeChecked();
+    expect(screen.getByTestId("image-edit-apply-style")).toHaveAttribute(
+      "aria-disabled",
+      "false",
     );
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
-      expect(prompts[0]).toContain("Soft Vector illustration template style");
+      expect(prompts[0]).toContain("Polished studio production style");
     });
     await waitFor(() => {
       expect(
@@ -1275,6 +1341,12 @@ describe("image editing", () => {
       screen.getByTestId("image-edit-style-custom-input"),
       "Neon cyberpunk lighting",
     );
+    expect(
+      within(screen.getByTestId("image-edit-style-popover")).getByRole(
+        "radio",
+        { name: /Custom style/u },
+      ),
+    ).toBeChecked();
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
@@ -1317,10 +1389,13 @@ describe("image editing", () => {
       expect(screen.getByTestId("image-edit-toolbar")).toBeInTheDocument();
     });
     await user.click(screen.getByTestId("image-edit-style-transfer"));
+    await user.click(
+      screen.getByTestId("image-edit-style-template-illustration"),
+    );
     await user.click(screen.getByTestId("image-edit-apply-style"));
 
     await waitFor(() => {
-      expect(prompts[0]).toContain("Warm analog film look");
+      expect(prompts[0]).toContain("Clean vector illustration style");
       expect(
         screen.getByText("Applying style transfer..."),
       ).toBeInTheDocument();
@@ -1903,6 +1978,39 @@ describe("image editing", () => {
     expect(
       screen.getByTestId("artifact-sidebar-body-image-copy"),
     ).toHaveAttribute("src", SOURCE_IMAGE_URL);
+  });
+
+  it("keeps the selected image edit toolbar above higher canvas image layers", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+
+    const canvas = screen.getByTestId("artifact-sidebar-image-edit-canvas");
+    const sourceImage = screen.getByTestId("artifact-sidebar-body-image");
+    fireEvent.keyDown(canvas, { key: "c", metaKey: true });
+    fireEvent.keyDown(canvas, { key: "v", metaKey: true });
+
+    const copiedImage = await screen.findByTestId(
+      "artifact-sidebar-body-image-copy",
+    );
+    await user.click(sourceImage);
+
+    const toolbarLayer = screen
+      .getByTestId("image-edit-toolbar")
+      .closest(".image-edit-floating-toolbar");
+    if (!(toolbarLayer instanceof HTMLElement)) {
+      throw new Error("Missing image edit toolbar layer");
+    }
+
+    const toolbarZIndex = Number(toolbarLayer.style.zIndex);
+    const sourceImageZIndex = Number(sourceImage.style.zIndex);
+    const copiedImageZIndex = Number(copiedImage.style.zIndex);
+
+    expect(sourceImageZIndex).toBeLessThan(copiedImageZIndex);
+    expect(toolbarZIndex).toBeGreaterThan(copiedImageZIndex);
   });
 
   it("deletes the selected image with the Delete or Backspace key", async () => {
