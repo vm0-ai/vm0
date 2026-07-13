@@ -1024,6 +1024,20 @@ jobs:
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
+          DNS_READINESS_LOGGED=false
+          for _ in $(seq 1 30); do
+            STARTUP_LOGS=$(sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 300 2>&1) \
+              || fail "failed to read runner startup logs"
+            if printf '%s\n' "$STARTUP_LOGS" \
+              | grep -F "namespace DNS readiness probe succeeded" >/dev/null; then
+              DNS_READINESS_LOGGED=true
+              break
+            fi
+            sleep 1
+          done
+          [ "$DNS_READINESS_LOGGED" = true ] \
+            || fail "runner did not activate namespace DNS readiness"
+
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &

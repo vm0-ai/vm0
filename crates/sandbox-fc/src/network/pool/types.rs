@@ -118,6 +118,8 @@ impl Drop for NetnsLease {
 /// When `proxy_port` is set, the pool pre-warms and acquires from the proxy
 /// queue only. Without `proxy_port`, it pre-warms and acquires from the plain
 /// queue. This avoids keeping an unreachable plain queue alive in proxy mode.
+/// When both proxy and DNS ports are set, callers must start the DNS service
+/// and call [`super::NetnsPool::activate_dns_readiness`] before acquiring.
 pub struct NetnsPoolConfig {
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,

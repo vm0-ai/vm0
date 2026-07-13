@@ -127,6 +127,19 @@ impl SandboxRuntime for FirecrackerRuntime {
         }
     }
 
+    async fn activate_dns_readiness(&self) -> sandbox::Result<()> {
+        if self.dns_port.is_none() {
+            return Ok(());
+        }
+        self.netns_pool
+            .activate_dns_readiness()
+            .await
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::Runtime,
+                message: format!("netns DNS readiness: {e}"),
+            })
+    }
+
     async fn shutdown(&mut self) {
         // Clean up shared netns pool.
         if let Err(e) = self.netns_pool.cleanup().await {
