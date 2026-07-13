@@ -70,10 +70,10 @@ class TestXConnectorResponsePipeline:
             for event in body["events"]
         ]
 
-    def test_full_response_pipeline_large_x_json_uses_bounded_buffer(
+    def test_full_response_pipeline_large_x_json_uses_incremental_parser_without_buffer(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        """responseheaders + response bill X JSON without full-body buffering."""
+        """responseheaders + response bill X JSON without a body-prefix copy."""
         flow = make_x_pipeline_flow(real_flow, tmp_path, query="expansions=author_id")
 
         mitm_addon.responseheaders(flow)
@@ -81,8 +81,8 @@ class TestXConnectorResponsePipeline:
         callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
@@ -103,6 +103,8 @@ class TestXConnectorResponsePipeline:
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
         response_stream(flow)(_compress_body(encoding_case, payload))
+        assert metadata_keys.STREAM_BUFFER in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
 
         payloads = self._call_and_get_billing(flow)
 
@@ -432,7 +434,6 @@ class TestXConnectorResponsePipeline:
             sandbox_value="tok-xyz",
             rule="GET /2/tweets/search/recent",
         )
-
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "connector_response_finish" in flow.metadata
@@ -466,6 +467,7 @@ class TestXConnectorResponsePipeline:
             sandbox_value="tok-xyz",
             rule="GET /2/tweets/search/recent",
         )
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * STREAM_BUFFER_LIMIT)

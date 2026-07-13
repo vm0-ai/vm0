@@ -134,6 +134,15 @@ async fn codex_app_server_returns_structured_rpc_errors() -> Result<(), String> 
             assert_eq!(method, "unknown/method");
             assert_eq!(error.code, -32601);
             assert_eq!(error.message, "unsupported method");
+            assert_eq!(
+                error.data,
+                Some(json!({
+                    "request": {
+                        "method": "unknown/method"
+                    },
+                    "retryable": false
+                }))
+            );
         }
         other => return Err(format!("expected RPC error, got {other:?}")),
     }

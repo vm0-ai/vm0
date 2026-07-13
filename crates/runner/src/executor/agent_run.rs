@@ -891,6 +891,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         session_history_restore_plan,
     } = controls;
     let has_active_input_source = active_input_source.is_some();
+    let mut deferred_background_fill = None;
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -985,7 +986,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .then_some(STORAGE_CACHE_POPULATE_FAILED),
             );
             match cache_result {
-                Ok(()) => {
+                Ok(deferred) => {
+                    deferred_background_fill = deferred;
                     let guest_manifest = plan.into_guest_manifest();
                     let download_t = Instant::now();
                     let download_result =
@@ -1425,6 +1427,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let stream_task = handle
         .take_stdout_receiver()
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
+
+    if let Some(background_fill) = deferred_background_fill {
+        background_fill.start(telemetry);
+    }
 
     // 6. Wait for exit (or cancellation). On cancel, ask the guest to cancel the
     // supervised process and briefly wait for its terminal status so the vsock

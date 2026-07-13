@@ -5,8 +5,8 @@ const c = initContract();
 
 // Test-only support actions that historically lived on the automations test
 // route. The legacy automation seeding endpoints were removed with the
-// automations tables (#20101); the remaining actions cover generic fixtures
-// (composes, fake KMS, the vm0-managed default model key) still used by the
+// automations tables (#20101); the remaining actions cover infrastructure-only
+// fixtures (fake KMS and the vm0-managed default model key) still used by the
 // API test suites.
 export const testAutomationsStateErrorSchema = z.object({
   error: z.string(),
@@ -15,16 +15,6 @@ export const testAutomationsStateErrorSchema = z.object({
 export const testAutomationsStateActionBodySchema = z.discriminatedUnion(
   "action",
   [
-    z.object({
-      action: z.literal("seed-compose"),
-      org_id: z.string(),
-      user_id: z.string(),
-      compose_id: z.string().optional(),
-    }),
-    z.object({
-      action: z.literal("read-compose-head-version"),
-      compose_id: z.string(),
-    }),
     z.object({
       action: z.literal("seed-vm0-managed-default-model-key"),
     }),
@@ -64,8 +54,6 @@ export const testAutomationsStateActionBodySchema = z.discriminatedUnion(
 
 export const testAutomationsStateActionResponseSchema = z.object({
   ok: z.literal(true),
-  compose_id: z.string().optional(),
-  head_version_id: z.string().nullable().optional(),
   selected_model: z.string().optional(),
   decrypt_call_count: z.number().optional(),
   admission_lock_held: z.boolean().optional(),

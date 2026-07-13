@@ -56,6 +56,7 @@ from .openai_responses import (
 from .providers.connectors import (
     create_connector_response_parser,
     has_connector_response_parser,
+    needs_connector_response_buffer_fallback,
     report_connector_usage,
 )
 from .providers.model_provider import (
@@ -91,6 +92,7 @@ __all__ = [
     "increment_in_flight_flows",
     "is_model_provider_usage_observable",
     "merge_openai_responses_usage_result",
+    "needs_connector_response_buffer_fallback",
     "read_usage_flush_request_id",
     "report_connector_usage",
     "report_model_provider_usage",

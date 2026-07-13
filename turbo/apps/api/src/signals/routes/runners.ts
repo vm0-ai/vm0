@@ -1407,34 +1407,48 @@ async function buildClaimResponseBody(args: {
     "claim_route_response_assembly",
     "top_level",
     async () => {
-      const resumeSession = await resolveResumeSessionForClaim({
-        resumeSession: args.storedContext.resumeSession,
-        timing: args.timing,
-        loadIdentityRepresentation(hash: string) {
-          return args.loadIdentityRepresentation(hash);
-        },
-        loadCompressedRepresentation(
-          hash: string,
-          encoding: CompressedSessionHistoryBlobEncoding,
-        ) {
-          return args.loadCompressedRepresentation(hash, encoding);
-        },
-        generateResumeSessionHistoryUrl: args.generateResumeSessionHistoryUrl,
-        generateResumeSessionHistoryObjectUrl:
-          args.generateResumeSessionHistoryObjectUrl,
-      });
+      const [resumeSessionResult, refreshedPoliciesResult] =
+        await Promise.allSettled([
+          resolveResumeSessionForClaim({
+            resumeSession: args.storedContext.resumeSession,
+            timing: args.timing,
+            loadIdentityRepresentation(hash: string) {
+              return args.loadIdentityRepresentation(hash);
+            },
+            loadCompressedRepresentation(
+              hash: string,
+              encoding: CompressedSessionHistoryBlobEncoding,
+            ) {
+              return args.loadCompressedRepresentation(hash, encoding);
+            },
+            generateResumeSessionHistoryUrl:
+              args.generateResumeSessionHistoryUrl,
+            generateResumeSessionHistoryObjectUrl:
+              args.generateResumeSessionHistoryObjectUrl,
+          }),
+          refreshClaimNetworkPolicies({
+            db: args.db,
+            run: args.run,
+            storedContext: args.storedContext,
+            timing: args.timing,
+          }),
+        ]);
+      if (resumeSessionResult.status === "rejected") {
+        const error: unknown = resumeSessionResult.reason;
+        throw error;
+      }
+      const resumeSession = resumeSessionResult.value;
       args.signal.throwIfAborted();
       const sandboxToken = generateSandboxToken(
         args.run.userId,
         args.run.id,
         args.run.orgId,
       );
-      const refreshedPolicies = await refreshClaimNetworkPolicies({
-        db: args.db,
-        run: args.run,
-        storedContext: args.storedContext,
-        timing: args.timing,
-      });
+      if (refreshedPoliciesResult.status === "rejected") {
+        const error: unknown = refreshedPoliciesResult.reason;
+        throw error;
+      }
+      const refreshedPolicies = refreshedPoliciesResult.value;
       args.signal.throwIfAborted();
       const {
         secretValueEnvironmentKeys: _secretValueEnvironmentKeys,

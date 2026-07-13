@@ -70,11 +70,13 @@ class TestModelProviderJsonStreaming:
 
         assert "model_json_usage_finish" not in flow.metadata
         assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
-    def test_full_pipeline_large_model_json_uses_bounded_buffer(self, tmp_path, real_flow):
-        """responseheaders + response report model usage without full-body buffering."""
+    def test_full_pipeline_large_model_json_uses_incremental_parser_without_buffer(
+        self, tmp_path, real_flow
+    ):
+        """responseheaders + response report model usage without a body-prefix copy."""
         flow = model_provider_flow(
             real_flow,
             tmp_path,
@@ -91,8 +93,8 @@ class TestModelProviderJsonStreaming:
         callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
         callback(b"x" * (STREAM_BUFFER_LIMIT + 4096))
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":200}}')
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         webhook = run_response(flow, self._usage_webhook_api)
 
@@ -179,6 +181,8 @@ class TestModelProviderJsonStreaming:
         mitm_addon.responseheaders(flow)
         assert "model_json_usage_finish" not in flow.metadata
         response_stream(flow)(compressed)
+        assert metadata_keys.STREAM_BUFFER in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
 
         webhook = run_response(flow, self._usage_webhook_api)
 
@@ -345,6 +349,8 @@ class TestModelProviderJsonStreaming:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(compressed)
+        assert metadata_keys.STREAM_BUFFER in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
 
         webhook = run_response(flow, self._usage_webhook_api)
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.36](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.35...guest-common-v0.2.36) (2026-07-13)
+
+
+### Documentation
+
+* **guest-common:** document process-global log sinks ([#21194](https://github.com/vm0-ai/vm0/issues/21194)) ([7a336b1](https://github.com/vm0-ai/vm0/commit/7a336b17b8cd5cef7f0a9d5c84be78fd6552e4c7))
+
 ## [0.2.35](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.34...guest-common-v0.2.35) (2026-07-10)
 
 ## [0.2.34](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.33...guest-common-v0.2.34) (2026-07-09)

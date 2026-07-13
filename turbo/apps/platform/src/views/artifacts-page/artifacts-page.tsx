@@ -764,8 +764,8 @@ function ArtifactsEmptyState({ filtered }: { readonly filtered: boolean }) {
       </h2>
       <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
         {filtered
-          ? "Adjust the search or agent filter to find generated artifacts."
-          : "Generated files will appear here after agents create them."}
+          ? "Adjust the search or agent filter to find artifacts."
+          : "Files will appear here after agents create them."}
       </p>
     </div>
   );
@@ -902,7 +902,7 @@ export function ArtifactsPage() {
               Artifacts
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Browse generated files from this organization.
+              Browse files from this organization.
             </p>
           </div>
         </div>

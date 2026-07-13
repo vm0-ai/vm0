@@ -4,6 +4,7 @@ import type {
   PublicConnectorCatalogAuthMethodSummary,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogManualField,
+  PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
@@ -123,6 +124,29 @@ export function catalogStatusItem(
   };
 }
 
+export function catalogPermissionDetail(
+  overrides: Partial<PublicConnectorCatalogPermissionDetail> & {
+    readonly connectorRef: string;
+  },
+): PublicConnectorCatalogPermissionDetail {
+  const permissions = overrides.permissions ?? [];
+  return {
+    connectorRef: overrides.connectorRef,
+    label: overrides.label ?? overrides.connectorRef,
+    icon: overrides.icon ?? {
+      url: `https://icons.example.test/${overrides.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
+    permissionCount: overrides.permissionCount ?? permissions.length,
+    permissions,
+    categories: overrides.categories ?? null,
+    defaultPolicy: overrides.defaultPolicy ?? {
+      permissionDefault: "allow",
+      unknownPolicy: "allow",
+    },
+  };
+}
+
 export function stubConnectorCatalog(
   connectors: readonly PublicConnectorCatalogItem[],
 ) {
@@ -138,6 +162,36 @@ export function stubConnectorCatalogStatus(
     "http://localhost:3000/api/zero/connector-catalog/status",
     () => {
       return HttpResponse.json({ connectors });
+    },
+  );
+}
+
+export function stubConnectorCatalogPermissions(
+  details: readonly PublicConnectorCatalogPermissionDetail[],
+  origin = "http://localhost:3000",
+) {
+  const detailsByRef = new Map(
+    details.map((detail) => {
+      return [detail.connectorRef, detail] as const;
+    }),
+  );
+  return http.get(
+    `${origin}/api/zero/connector-catalog/:connectorRef/permissions`,
+    ({ params }) => {
+      const connectorRef = String(params.connectorRef);
+      const permissions = detailsByRef.get(connectorRef);
+      if (!permissions) {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Connector catalog item not found",
+              code: "NOT_FOUND",
+            },
+          },
+          { status: 404 },
+        );
+      }
+      return HttpResponse.json({ permissions });
     },
   );
 }

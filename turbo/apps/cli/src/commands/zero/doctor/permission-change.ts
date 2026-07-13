@@ -1,9 +1,6 @@
 import { Command, Option } from "commander";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import {
-  findFirewallMetadataPermission,
-  loadFirewallPermissionMetadata,
-} from "@vm0/connectors/firewall-metadata";
+import { findFirewallMetadataPermission } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
@@ -14,6 +11,7 @@ import {
 import {
   ApiRequestError,
   createComputerUseAuthorizationRequest,
+  getZeroConnectorCatalogPermissions,
 } from "../../../lib/api";
 
 const DEFAULT_PERMISSION_GRANT_DURATION: UserPermissionGrantExpiresIn = "1h";
@@ -263,7 +261,7 @@ Notes:
           return;
         }
 
-        const metadata = await loadFirewallPermissionMetadata(connectorRef);
+        const metadata = await getZeroConnectorCatalogPermissions(connectorRef);
         if (!metadata) {
           throw new Error(`Unknown connector type: ${connectorRef}`);
         }

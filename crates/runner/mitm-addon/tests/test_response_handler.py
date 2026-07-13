@@ -71,6 +71,7 @@ class TestResponseHandler:
                 headers=header_map({"content-type": "text/plain", "content-length": "8"}),
                 content=b"upstream",
             )
+            flow.metadata[metadata_keys.RESPONSE_STREAM_STATE] = {"total_bytes": 8}
             mitm_addon.response(flow)
 
         assert flow.response.status_code == 401
@@ -98,6 +99,8 @@ class TestResponseHandler:
         assert entry["connector_diagnostic_reason"] == "not_configured_for_run"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"
+        assert entry["response_size"] == len(content)
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         proxy_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
         assert proxy_entry["type"] == "connector_diagnostic"
         assert proxy_entry["connector"] == "fal"
@@ -1048,10 +1051,10 @@ class TestResponseHandler:
         entry = read_jsonl_entries_after_flush(Path(log_path))[0]
         assert entry["response_size"] == 100
 
-    def test_response_size_tracks_streamed_bytes_when_buffer_truncated(
+    def test_response_size_tracks_large_stream_without_body_buffer(
         self, tmp_path, real_flow, mitm_ctx
     ):
-        """response_size should ignore Content-Length when stream metadata exists."""
+        """A large ordinary response keeps exact size without retaining a prefix."""
         flow = real_flow(with_response=False, host="api.example.com")
         log_path = str(tmp_path / "network.jsonl")
         body = b"x" * (STREAM_BUFFER_LIMIT + 4096)
@@ -1066,10 +1069,10 @@ class TestResponseHandler:
         )
 
         mitm_addon.responseheaders(flow)
-        response_stream(flow)(body[:123])
-        response_stream(flow)(body[123:])
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
+        assert response_stream(flow)(body[:123]) == body[:123]
+        assert response_stream(flow)(body[123:]) == body[123:]
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -1496,7 +1499,7 @@ class TestResponseHandler:
         entry = read_jsonl_entries_after_flush(Path(log_path))[0]
         assert entry["response_size"] == 0
 
-    def test_response_size_tracks_streamed_bytes_when_buffer_truncated_without_length(
+    def test_response_size_tracks_large_unbounded_stream_without_length(
         self, tmp_path, real_flow, mitm_ctx
     ):
         """response_size should not become 0 for chunked large streamed responses."""
@@ -1516,6 +1519,8 @@ class TestResponseHandler:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(body[:123])
         response_stream(flow)(body[123:])
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -1793,6 +1798,7 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         assert flow.response.stream is False
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata
@@ -1815,6 +1821,7 @@ class TestResponseHandler:
         mitm_addon.response(flow)
 
         assert flow.response.stream is False
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata

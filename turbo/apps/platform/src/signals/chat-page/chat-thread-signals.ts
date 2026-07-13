@@ -134,6 +134,7 @@ export interface ChatThreadSignals {
   emptyQueuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
   lastAssistantCancelled$: Computed<Promise<boolean>>;
   thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
+  thinkingMessageId$: Computed<Promise<string | null>>;
   thinkingText$: Computed<Promise<string | null>>;
   recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
@@ -147,6 +148,11 @@ export interface ChatThreadSignals {
   blockColors$: Computed<[string, string, string]>;
   thinkingPhrase$: Computed<string>;
   donePhrase$: Computed<Promise<string>>;
+  displayedThinkingText$: Computed<Promise<string>>;
+  setThinkingIndicatorTextRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   // -- Artifacts ------------------------------------------------------------
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   reloadArtifacts$: Command<void, []>;

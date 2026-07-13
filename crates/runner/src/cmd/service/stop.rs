@@ -9,7 +9,7 @@ use super::drain_override::{remove_drain_restart_override, write_drain_restart_o
 use super::gate::check_active_jobs_gate;
 use super::systemctl::{
     BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
-    is_unit_active, run_systemctl, run_systemctl_bounded,
+    is_unit_active, is_unit_enabled_bounded, run_systemctl, run_systemctl_bounded,
 };
 use super::{
     RunnerServiceUnit, ServiceFuture, acquire_service_lock, drain_override_cleanup_reload_error,
@@ -38,14 +38,14 @@ pub(super) struct StopArgs {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum CleanupPolicy {
-    /// Cleanup a failed production target service and disable it.
+    /// Cleanup a failed production target service and require it to be disabled.
     FailedStart,
     /// Cleanup a partially started transient CI service without disabling it.
     PartialStart,
 }
 
 impl CleanupPolicy {
-    fn disables_service(self) -> bool {
+    fn requires_disabled_service(self) -> bool {
         matches!(self, Self::FailedStart)
     }
 }
@@ -85,6 +85,7 @@ trait ServiceStopOps {
     fn reset_failed_bounded<'a>(&'a mut self, unit: &'a RunnerServiceUnit)
     -> ServiceFuture<'a, ()>;
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn is_enabled<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
     fn cleanup_drain_restart_override<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -291,6 +292,10 @@ impl ServiceStopOps for RealServiceStopOps {
         })
     }
 
+    fn is_enabled<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        Box::pin(async move { is_unit_enabled_bounded(unit, CLEANUP_ACTION_TIMEOUT).await })
+    }
+
     fn cleanup_drain_restart_override<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -422,11 +427,17 @@ async fn stop_cleanup_with_ops(
         _ => {}
     }
 
-    if cleanup.disables_service()
-        && let Err(e) = ops.disable(unit).await
-    {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to disable runner service during cleanup");
-    }
+    let disable_error = if cleanup.requires_disabled_service() {
+        match ops.disable(unit).await {
+            Ok(()) => None,
+            Err(e) => {
+                warn!(unit = %unit.unit_name(), error = %e, "failed to disable runner service during cleanup");
+                Some(e)
+            }
+        }
+    } else {
+        None
+    };
 
     if let Err(e) = ops.reset_failed_bounded(unit).await {
         warn!(unit = %unit.unit_name(), error = %e, "failed to reset failed service state during cleanup");
@@ -435,7 +446,61 @@ async fn stop_cleanup_with_ops(
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override during cleanup");
     }
 
-    verify_cleanup_inactive(unit, ops, cleanup_escalated).await
+    let inactive_result = verify_cleanup_inactive(unit, ops, cleanup_escalated).await;
+    let disabled_result = if cleanup.requires_disabled_service() {
+        verify_cleanup_not_enabled(unit, ops, disable_error).await
+    } else {
+        Ok(())
+    };
+
+    combine_cleanup_postcondition_results(unit, inactive_result, disabled_result)
+}
+
+async fn verify_cleanup_not_enabled(
+    unit: &RunnerServiceUnit,
+    ops: &mut impl ServiceStopOps,
+    disable_error: Option<RunnerError>,
+) -> RunnerResult<()> {
+    match ops.is_enabled(unit).await {
+        Ok(false) => {
+            info!(unit = %unit.unit_name(), "runner service cleanup verified not enabled");
+            Ok(())
+        }
+        Ok(true) => {
+            let disable_detail = disable_error
+                .map(|e| format!("; disable attempt failed: {e}"))
+                .unwrap_or_default();
+            Err(RunnerError::Internal(format!(
+                "failed-start cleanup left {} enabled{disable_detail}",
+                unit.service_name()
+            )))
+        }
+        Err(verification_error) => match disable_error {
+            Some(disable_error) => Err(RunnerError::Internal(format!(
+                "failed to verify {} is not enabled after failed-start cleanup: {verification_error}; disable attempt also failed: {disable_error}",
+                unit.service_name()
+            ))),
+            None => Err(RunnerError::Internal(format!(
+                "failed to verify {} is not enabled after failed-start cleanup: {verification_error}",
+                unit.service_name()
+            ))),
+        },
+    }
+}
+
+fn combine_cleanup_postcondition_results(
+    unit: &RunnerServiceUnit,
+    inactive_result: RunnerResult<()>,
+    disabled_result: RunnerResult<()>,
+) -> RunnerResult<()> {
+    match (inactive_result, disabled_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(inactive_error), Err(disabled_error)) => Err(RunnerError::Internal(format!(
+            "cleanup postconditions failed for {}: {inactive_error}; additionally: {disabled_error}",
+            unit.service_name()
+        ))),
+    }
 }
 
 async fn escalate_cleanup_stop(unit: &RunnerServiceUnit, ops: &mut impl ServiceStopOps) {
@@ -540,6 +605,7 @@ mod tests {
         stop_no_block_error: bool,
         reset_failed_error: bool,
         disable_error: bool,
+        enabled_results: VecDeque<RunnerResult<bool>>,
         cleanup_drain_error: bool,
         advance_time_on_sleep: bool,
     }
@@ -560,6 +626,7 @@ mod tests {
                 stop_no_block_error: false,
                 reset_failed_error: false,
                 disable_error: false,
+                enabled_results: VecDeque::from([Ok(false)]),
                 cleanup_drain_error: false,
                 advance_time_on_sleep: false,
             }
@@ -691,6 +758,13 @@ mod tests {
             } else {
                 Ok(())
             }))
+        }
+
+        fn is_enabled<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+            self.events.push("is_enabled");
+            Box::pin(std::future::ready(
+                self.enabled_results.pop_front().unwrap_or(Ok(false)),
+            ))
         }
 
         fn cleanup_drain_restart_override<'a>(
@@ -851,6 +925,7 @@ mod tests {
                 "reset_failed_bounded",
                 "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
+                "is_enabled",
             ]
         );
     }
@@ -888,8 +963,163 @@ mod tests {
                 "reset_failed_bounded",
                 "cleanup_drain_restart_override_bounded",
                 "cleanup_active_state",
+                "is_enabled",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_accepts_disable_error_after_confirming_not_enabled() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            disable_error: true,
+            ..FakeStopOps::default()
+        };
+
+        stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "disable",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+                "is_enabled",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_fails_when_disable_errors_and_unit_remains_enabled() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            disable_error: true,
+            enabled_results: VecDeque::from([Ok(true)]),
+            ..FakeStopOps::default()
+        };
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("left vm0-runner-test.service enabled"));
+        assert!(message.contains("disable failed"));
+        assert_eq!(
+            ops.events,
+            [
+                "check_gate",
+                "acquire_cleanup_lock",
+                "stop_bounded",
+                "cleanup_active_state",
+                "disable",
+                "reset_failed_bounded",
+                "cleanup_drain_restart_override_bounded",
+                "cleanup_active_state",
+                "is_enabled",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_fails_when_disable_succeeds_but_unit_remains_enabled() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            enabled_results: VecDeque::from([Ok(true)]),
+            ..FakeStopOps::default()
+        };
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("left vm0-runner-test.service enabled"));
+        assert!(!message.contains("disable failed"));
+    }
+
+    #[tokio::test]
+    async fn stop_failed_start_cleanup_preserves_disable_and_enablement_query_errors() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            disable_error: true,
+            enabled_results: VecDeque::from([Err(fake_error("is-enabled unavailable"))]),
+            ..FakeStopOps::default()
+        };
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("failed to verify vm0-runner-test.service is not enabled"));
+        assert!(message.contains("is-enabled unavailable"));
+        assert!(message.contains("disable failed"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_failed_start_cleanup_preserves_inactive_and_enablement_failures() {
+        let unit = service_unit();
+        let home = fake_home();
+        let active_states = std::iter::repeat_with(|| cleanup_state("active", true))
+            .take(16)
+            .collect();
+        let mut ops = FakeStopOps {
+            cleanup_states: active_states,
+            enabled_results: VecDeque::from([Ok(true)]),
+            advance_time_on_sleep: true,
+            ..FakeStopOps::default()
+        };
+
+        let err = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::FailedStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+        let message = err.to_string();
+
+        assert!(message.contains("ActiveState=active"));
+        assert!(message.contains("left vm0-runner-test.service enabled"));
+        assert_eq!(ops.events.last(), Some(&"is_enabled"));
     }
 
     #[tokio::test]

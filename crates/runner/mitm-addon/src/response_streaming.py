@@ -2,8 +2,8 @@
 
 Lifecycle:
 - ``mitm_addon.responseheaders()`` calls ``configure_response_stream()`` to
-  install the streaming callback, capped forensic buffer, and incremental
-  usage parsers.
+  install the streaming callback, exact byte accounting, optional capped body
+  buffer, and incremental usage parsers.
 - ``mitm_addon.websocket_message()`` calls ``feed_model_websocket_usage()`` for
   terminal server-side usage frames on model-provider WebSocket upgrades.
 - ``mitm_addon.response()`` finalizes HTTP model and connector usage before
@@ -12,8 +12,8 @@ Lifecycle:
 - ``mitm_addon.websocket_end()`` is terminal for model-provider WebSocket
   upgrades. HTTP 101 responses defer tracked usage release until that hook.
 - hook cleanup paths call ``release_response_stream_state()`` to remove parser
-  callbacks and stream buffer metadata from ``flow.metadata``. This cleanup is
-  separate from tracked usage release.
+  callbacks, byte accounting, and optional buffer metadata from
+  ``flow.metadata``. This cleanup is separate from tracked usage release.
 """
 
 from collections.abc import Callable
@@ -53,6 +53,11 @@ class CapturedResponseStreamBody(NamedTuple):
     truncated: bool
 
 
+class _ResponseUsageStreamSetup(NamedTuple):
+    parser: _ResponseChunkParser | None
+    needs_buffered_fallback: bool
+
+
 def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
     """Return whether a flow should use OpenAI Responses usage parsing.
 
@@ -61,6 +66,21 @@ def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
     usage protocol, while other model-provider flows use the Anthropic protocol.
     """
     return flow_metadata.cli_agent_type(flow.metadata) == "codex"
+
+
+def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
+    """Return whether terminal model usage may parse a buffered JSON body."""
+    response = flow.response
+    if (
+        response is None
+        or not _response_can_have_body(flow, response)
+        or not usage.is_model_provider_usage_observable(flow)
+    ):
+        return False
+    content_type = response.headers.get("content-type", "").lower()
+    if "text/event-stream" in content_type:
+        return False
+    return not _is_confirmed_websocket_upgrade_response(flow)
 
 
 def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
@@ -143,13 +163,12 @@ def _maybe_log_response_encoding_inspection_risk(
     )
 
 
-def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParser | None:
+def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStreamSetup:
     # Set up usage extraction for response classes that need body inspection.
-    # The forensic stream_buffer remains capped; usage parsers consume chunks
-    # separately so a large response cannot grow that buffer.
+    # Usage parsers consume chunks separately from the optional capped buffer.
     response = flow.response
     if response is None:
-        return None
+        return _ResponseUsageStreamSetup(None, False)
 
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
@@ -165,7 +184,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
-        return None
+        return _ResponseUsageStreamSetup(None, False)
     if is_observable_model_provider:
         content_type = response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
@@ -190,7 +209,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
                 _maybe_log_response_encoding_inspection_risk(flow, response)
-                return None
+                return _ResponseUsageStreamSetup(None, False)
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
 
             def finish_sse_usage() -> None:
@@ -202,7 +221,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
                 parser_fn.finish()
 
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
-            return decode_session.feed
+            return _ResponseUsageStreamSetup(decode_session.feed, False)
 
         if uses_openai_responses_usage_protocol(flow):
             extractor = usage.create_openai_responses_json_usage_extractor()
@@ -211,7 +230,11 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         decode_session = _make_response_decode_session(extractor.feed, response.headers)
         if decode_session is None:
             _maybe_log_response_encoding_inspection_risk(flow, response)
-            return None
+            return _ResponseUsageStreamSetup(
+                None,
+                uses_model_json_fallback(flow)
+                and body_decoding.can_decode_json_usage_body(response.headers),
+            )
 
         def finish_json_usage() -> tuple[dict | None, str | None]:
             decode_error = decode_session.finish_error()
@@ -220,10 +243,10 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
             return extractor.finish()
 
         flow.metadata[_MODEL_JSON_USAGE_FINISH] = finish_json_usage
-        return decode_session.feed
+        return _ResponseUsageStreamSetup(decode_session.feed, False)
 
     if not is_billable_flow:
-        return None
+        return _ResponseUsageStreamSetup(None, False)
     if not body_decoding.can_stream_decode_usage(response.headers):
         firewall_name = flow_metadata.firewall_name(flow.metadata)
         if (
@@ -231,12 +254,17 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
             and usage.has_connector_response_parser(firewall_name)
         ):
             _maybe_log_response_encoding_inspection_risk(flow, response)
-        return None
+        return _ResponseUsageStreamSetup(
+            None,
+            _response_can_have_body(flow, response)
+            and body_decoding.can_decode_json_usage_body(response.headers)
+            and usage.needs_connector_response_buffer_fallback(flow),
+        )
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
         decode_session = _make_response_decode_session(connector_parser.feed, response.headers)
         if decode_session is None:
-            return None
+            raise RuntimeError("stream-decodable connector response did not create a decoder")
         if connector_parser.finish is not None or connector_parser.finish_decode_error is not None:
 
             def finish_connector_response() -> None:
@@ -249,9 +277,9 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
                     connector_parser.finish()
 
             flow.metadata[_CONNECTOR_RESPONSE_FINISH] = finish_connector_response
-        return decode_session.feed
+        return _ResponseUsageStreamSetup(decode_session.feed, False)
 
-    return None
+    return _ResponseUsageStreamSetup(None, False)
 
 
 def _is_confirmed_websocket_upgrade_response(flow: http.HTTPFlow) -> bool:
@@ -294,55 +322,50 @@ def _single_header_value(headers: http.Headers, name: str) -> str | None:
 
 
 def configure_response_stream(flow: http.HTTPFlow) -> None:
-    """
-    Enable response streaming with body buffering.
+    """Enable pass-through response streaming and body consumers.
 
-    Uses a callback to stream response data to the client immediately
-    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
-    Once the limit is exceeded, buffering stops but streaming continues
-    uninterrupted.  The buffered body is available in the ``response()``
-    hook via ``flow.metadata[metadata_keys.STREAM_BUFFER]``.
+    Every configured response records exact streamed bytes. A capped raw-wire
+    body prefix is retained only for network capture or a terminal usage
+    fallback that cannot use incremental decoding.
     """
     if not flow.response:
         return
 
-    buf = bytearray()
-    state = {"truncated": False, "total_bytes": 0}
-    active_parser = _configure_response_usage_parser(flow)
+    metrics = {"total_bytes": 0}
+    usage_parser, needs_buffered_fallback = _configure_response_usage_stream(flow)
+    retain_body = flow_metadata.should_capture_body(flow.metadata) or needs_buffered_fallback
+    buf = bytearray() if retain_body else None
+    buffer_state = {"truncated": False} if retain_body else None
 
-    # Buffer cap policy:
-    # - stream_buffer is only for forensic logging / capture and is always
-    #   capped at STREAM_BUFFER_LIMIT.
-    # - Token usage extraction uses the incremental parsers above.
-    buf_limit = STREAM_BUFFER_LIMIT
-
-    def stream_and_buffer(chunk: bytes) -> bytes:
-        state["total_bytes"] += len(chunk)
-        if not state["truncated"]:
-            remaining = buf_limit - len(buf)
+    def stream_and_observe(chunk: bytes) -> bytes:
+        metrics["total_bytes"] += len(chunk)
+        if buf is not None and buffer_state is not None and not buffer_state["truncated"]:
+            remaining = STREAM_BUFFER_LIMIT - len(buf)
             if len(chunk) <= remaining:
                 buf.extend(chunk)
             else:
                 buf.extend(chunk[:remaining])
-                state["truncated"] = True
-        if active_parser is not None:
-            active_parser(chunk)
+                buffer_state["truncated"] = True
+        if usage_parser is not None:
+            usage_parser(chunk)
         return chunk
 
-    flow.response.stream = stream_and_buffer
-    flow.metadata[metadata_keys.STREAM_BUFFER] = buf
-    flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = state
-    flow.metadata[_RESPONSE_STREAM_CALLBACK] = stream_and_buffer
+    flow.response.stream = stream_and_observe
+    flow.metadata[metadata_keys.RESPONSE_STREAM_STATE] = metrics
+    if buf is not None and buffer_state is not None:
+        flow.metadata[metadata_keys.STREAM_BUFFER] = buf
+        flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = buffer_state
+    flow.metadata[_RESPONSE_STREAM_CALLBACK] = stream_and_observe
 
 
 def streamed_response_size(flow: http.HTTPFlow) -> int | None:
     """Return total bytes observed by the response streaming callback.
 
     Read-only helper used by ``response()`` network logging. Reads
-    ``metadata_keys.STREAM_BUFFER_STATE`` and returns ``None`` when
+    ``metadata_keys.RESPONSE_STREAM_STATE`` and returns ``None`` when
     ``responseheaders()`` did not configure streaming for this flow.
     """
-    state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE)
+    state = flow.metadata.get(metadata_keys.RESPONSE_STREAM_STATE)
     if state is None:
         return None
     return int(state["total_bytes"])
@@ -498,12 +521,13 @@ def release_response_stream_state(flow: http.HTTPFlow) -> None:
     ``error()``, and ``websocket_end()``. Safe to call repeatedly. This releases
     stream/parser state even when a 101 response keeps usage tracking alive
     until ``websocket_end()``. Removes ``_RESPONSE_STREAM_CALLBACK``,
-    ``metadata_keys.STREAM_BUFFER``, ``metadata_keys.STREAM_BUFFER_STATE``, and
+    ``metadata_keys.RESPONSE_STREAM_STATE``, optional body-buffer metadata, and
     outstanding model or connector finish callbacks. Preserves externally
-    replaced ``flow.response.stream`` callbacks and only disables the stream
-    callback installed by this module.
+    replaced ``flow.response.stream`` callbacks and only disables the callback
+    installed by this module.
     """
     stream_callback = flow.metadata.pop(_RESPONSE_STREAM_CALLBACK, None)
+    flow.metadata.pop(metadata_keys.RESPONSE_STREAM_STATE, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
     flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)

@@ -589,6 +589,11 @@ one stable fallback phrase, while the done phrase is derived from messages and
 subscribed only by the finished row. In the final trace, all React work ended by
 1.461 seconds and no timer-driven `ThinkingIndicator` update remained.
 
+A later follow-up restored the thinking text typewriter at a 100 ms interval,
+along with the CSS shimmer, block-pop, and entrance animations. The fallback
+phrase remains stable rather than rotating. The measurements in this section
+therefore document the fully static baseline, not the current animation policy.
+
 The phrase "first-second commits" is only a time bucket, not a causal phase. In
 the traced run, all initial local work finished within 301 ms, followed by no
 labelled scheduler update until 1.194 seconds. In another run, a remote thinking
