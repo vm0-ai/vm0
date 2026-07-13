@@ -49,6 +49,26 @@ pub(in crate::executor::tests) fn sandbox_exec_error(message: impl Into<String>)
     }
 }
 
+pub(in crate::executor::tests) fn sandbox_read_file_error(
+    message: impl Into<String>,
+) -> SandboxError {
+    SandboxError::Operation {
+        operation: SandboxOperation::ReadFile,
+        reason: SandboxOperationReason::Guest,
+        message: message.into(),
+    }
+}
+
+pub(in crate::executor::tests) fn sandbox_copy_file_error(
+    message: impl Into<String>,
+) -> SandboxError {
+    SandboxError::Operation {
+        operation: SandboxOperation::CopyFile,
+        reason: SandboxOperationReason::Guest,
+        message: message.into(),
+    }
+}
+
 pub(in crate::executor::tests) fn sandbox_write_file_error(
     message: impl Into<String>,
 ) -> SandboxError {

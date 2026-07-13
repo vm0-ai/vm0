@@ -11,7 +11,7 @@ use super::super::super::{
     GUEST_LOG_COPY_MAX_BYTES, STDOUT_STREAM_LIMIT_MARKER, STDOUT_STREAM_OVERFLOW_MARKER,
     guest_runtime_path,
 };
-use super::super::support::{minimal_context, sandbox_exec_error, test_executor_config};
+use super::super::support::{minimal_context, sandbox_copy_file_error, test_executor_config};
 use crate::paths::LogPaths;
 
 #[test]
@@ -149,41 +149,37 @@ async fn copy_guest_logs_keeps_existing_logs_when_sandbox_ops_missing() {
 }
 
 #[tokio::test]
-async fn copy_guest_logs_skips_on_nonzero_exit() {
+async fn copy_guest_logs_continues_after_copy_failure() {
     let dir = tempfile::tempdir().unwrap();
     let log_paths = LogPaths::new(dir.path().to_path_buf());
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
 
-    // Copy fails (file doesn't exist in guest).
-    sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
-    sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
-    sandbox.push_copy_file_result(Err(sandbox_exec_error("No such file")));
-
-    copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
-
-    // Host files should not be created
-    assert!(!log_paths.system_log(ctx.run_id).exists());
-    assert!(!log_paths.metrics_log(ctx.run_id).exists());
-    assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
-}
-
-#[tokio::test]
-async fn copy_guest_logs_skips_on_exec_error() {
-    let dir = tempfile::tempdir().unwrap();
-    let log_paths = LogPaths::new(dir.path().to_path_buf());
-    let sandbox = MockSandbox::new("test");
-    let ctx = minimal_context();
-
-    sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
-    sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
-    sandbox.push_copy_file_result(Err(sandbox_exec_error("vsock down")));
+    sandbox.push_copy_file_result(Err(sandbox_copy_file_error("guest copy failed")));
+    sandbox.push_copy_file_result(Ok(b"{\"cpu\":0.5}\n".to_vec()));
+    sandbox.push_copy_file_result(Ok(b"{\"action_type\":\"cleanup\"}\n".to_vec()));
 
     copy_guest_logs(&sandbox, &ctx, &log_paths, false).await;
 
     assert!(!log_paths.system_log(ctx.run_id).exists());
-    assert!(!log_paths.metrics_log(ctx.run_id).exists());
-    assert!(!log_paths.sandbox_ops_log(ctx.run_id).exists());
+    assert_eq!(
+        tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+            .await
+            .unwrap(),
+        "{\"cpu\":0.5}\n"
+    );
+    assert_eq!(
+        tokio::fs::read_to_string(log_paths.sandbox_ops_log(ctx.run_id))
+            .await
+            .unwrap(),
+        "{\"action_type\":\"cleanup\"}\n"
+    );
+
+    let calls = sandbox.copy_file_calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].host_path, log_paths.system_log(ctx.run_id));
+    assert_eq!(calls[1].host_path, log_paths.metrics_log(ctx.run_id));
+    assert_eq!(calls[2].host_path, log_paths.sandbox_ops_log(ctx.run_id));
 }
 
 #[tokio::test]
