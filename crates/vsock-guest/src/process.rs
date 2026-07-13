@@ -102,18 +102,17 @@ fn find_child_pgid(parent_pid: u32) -> Option<u32> {
     None
 }
 
-#[derive(Clone, Copy)]
 pub(crate) struct ProcessTreeKillTarget {
     child_id: u32,
     child_pgid: Option<u32>,
 }
 
 impl ProcessTreeKillTarget {
-    pub(crate) fn child_id(self) -> u32 {
+    pub(crate) fn child_id(&self) -> u32 {
         self.child_id
     }
 
-    fn child_pgid_to_signal(self) -> Option<u32> {
+    fn child_pgid_to_signal(&self) -> Option<u32> {
         self.child_pgid
             .and_then(|pgid| signalable_child_pgid(self.child_id, pgid))
     }
@@ -139,24 +138,12 @@ pub(crate) fn refresh_process_tree_kill_target(target: &mut ProcessTreeKillTarge
     }
 }
 
-/// Kill a process group and, if `su -` created a child session, also kill
-/// that child's process group.
-///
-/// # Safety
-///
-/// `child_id` must be a valid PID from `Command::spawn()`.
-/// Returns `true` if any targeted process group was signalled.
-pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
-    // Find su's child PGID BEFORE killing — after kill, PPID changes to 1.
-    let target = process_tree_kill_target(child_id);
-    unsafe { kill_process_tree_target(target) }
-}
-
 /// Kill a previously snapshotted process tree target.
 ///
 /// # Safety
 ///
-/// `target.child_id` must come from a PID returned by `Command::spawn()`.
+/// `target.child_id` must come from a PID returned by `Command::spawn()`, and
+/// that direct child must not have been reaped since the target was captured.
 pub(crate) unsafe fn kill_process_tree_target(target: ProcessTreeKillTarget) -> bool {
     // Kill the direct child's process group (the su wrapper).
     let mut signalled = false;
@@ -247,7 +234,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     use crate::test_support::{kill_pidfd_and_wait, open_pidfd, wait_for_pidfd_exit};
-    use crate::wait::{WaitOutcome, wait_with_kill_timeout};
+    use crate::wait::{WaitOutcome, wait_with_kill_timeout_and_pre_reap_cleanup};
 
     struct TempDirGuard(PathBuf);
 
@@ -549,7 +536,8 @@ mod tests {
             }
         };
 
-        let outcome = wait_with_kill_timeout(child.take().unwrap(), 100);
+        let outcome =
+            wait_with_kill_timeout_and_pre_reap_cleanup(child.take().unwrap(), 100, || false);
         if !matches!(outcome, WaitOutcome::TimedOut) {
             kill_pidfd_and_wait(&background_pidfd)
                 .unwrap_or_else(|e| panic!("failed to clean up background pidfd: {e}"));
@@ -576,7 +564,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn snapshotted_process_tree_target_kills_setsid_child_after_parent_exit() {
+    fn snapshotted_process_tree_target_kills_setsid_child_before_parent_reap() {
         use std::io::{BufRead, BufReader, Write};
         use std::os::unix::process::CommandExt;
 
@@ -654,6 +642,37 @@ mod tests {
                 panic!("failed to release parent fifo: {e}");
             }
         }
+        let direct_child_id = child.as_ref().unwrap().id();
+        // SAFETY: zeroed siginfo_t is valid for waitid to fill.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: direct_child_id belongs to the test-owned direct child.
+        // WNOWAIT proves it exited without releasing its PID before signaling.
+        let waitid_result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                direct_child_id as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if waitid_result != 0 {
+            let waitid_error = std::io::Error::last_os_error();
+            kill_spawned_child(&mut child);
+            kill_pidfd_and_wait(&child_pidfd).unwrap_or_else(|cleanup| {
+                panic!("waitid failed: {waitid_error}; cleanup={cleanup}")
+            });
+            panic!("failed to observe parent shell exit: {waitid_error}");
+        }
+
+        // SAFETY: `target` came from the spawned shell, and WNOWAIT kept its
+        // direct-child identity owned and unreaped.
+        if !unsafe { kill_process_tree_target(target) } {
+            kill_spawned_child(&mut child);
+            kill_pidfd_and_wait(&child_pidfd)
+                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
+            panic!("snapshotted target should signal at least one process group");
+        }
+
         let status = match child.take().unwrap().wait() {
             Ok(status) => status,
             Err(e) => {
@@ -668,12 +687,6 @@ mod tests {
             panic!("parent shell should exit successfully, got {status}");
         }
 
-        // SAFETY: `target` came from the spawned shell before it exited.
-        if !unsafe { kill_process_tree_target(target) } {
-            kill_pidfd_and_wait(&child_pidfd)
-                .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
-            panic!("snapshotted target should signal at least one process group");
-        }
         match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
             Ok(true) => {}
             Ok(false) => {

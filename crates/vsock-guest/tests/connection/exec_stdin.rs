@@ -115,7 +115,7 @@ fn exec_operation_returns_when_grandchild_holds_stdin_without_reading() {
     let orphan = OrphanProcessGuard::new("orphan-exec-operation-stdin");
     let stdin = vec![b'x'; vsock_proto::MAX_EXEC_STDIN_BYTES];
     let command = format!(
-        "sleep 30 <&0 >/dev/null 2>/dev/null & echo $! > '{}'; printf stdin-orphan-done",
+        "exec 3<&0; sleep 30 <&3 >/dev/null 2>/dev/null & echo $! > '{}'; exec 3<&-; printf stdin-orphan-done",
         orphan.pid_path()
     );
 
@@ -132,7 +132,6 @@ fn exec_operation_returns_when_grandchild_holds_stdin_without_reading() {
         elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
         "exec result should not wait for an inherited stdin pipe, took {elapsed:?}",
     );
-
     finish_guest_connection(handle, host_stream);
 }
 

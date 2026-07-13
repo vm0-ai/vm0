@@ -20,7 +20,7 @@ use crate::exec_control::ExecControlGuard;
 use crate::log::log;
 use crate::process::{
     ProcessTreeKillTarget, extract_exit_code, kill_and_reap_child_with_target,
-    kill_process_tree_target, process_tree_kill_target, refresh_process_tree_kill_target,
+    process_tree_kill_target, refresh_process_tree_kill_target,
 };
 use crate::quiesce::OperationGuard;
 use crate::shell_command::{
@@ -597,14 +597,26 @@ impl RunningExec {
         } = self;
 
         refresh_process_tree_kill_target(&mut kill_target);
+        let prepare_stdin_writer_for_pre_reap = || {
+            let Some(writer) = stdin_writer.as_ref() else {
+                return false;
+            };
+            if matches!(writer.done_rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+                request_stdin_writer_cancel(writer);
+                true
+            } else {
+                false
+            }
+        };
         let outcome = wait_with_kill_timeout_or_cancelled_either_with_target(
             child,
             kill_target,
             request.timeout.wait_timeout_ms(),
             connection_cancel,
             exec_cancel,
+            prepare_stdin_writer_for_pre_reap,
         );
-        join_stdin_writer_after_wait(stdin_writer, kill_target, request.seq, &request.label);
+        join_stdin_writer_after_wait(stdin_writer, request.seq, &request.label);
         if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)
             || connection_cancel.load(Ordering::Acquire)
             || exec_cancel.load(Ordering::Acquire)
@@ -1294,12 +1306,7 @@ fn is_stdin_write_cancelled(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::Interrupted && error.to_string() == STDIN_WRITE_CANCELLED
 }
 
-fn join_stdin_writer_after_wait(
-    writer: Option<StdinWriter>,
-    kill_target: ProcessTreeKillTarget,
-    seq: u32,
-    label: &str,
-) {
+fn join_stdin_writer_after_wait(writer: Option<StdinWriter>, seq: u32, label: &str) {
     let Some(writer) = writer else {
         return;
     };
@@ -1308,7 +1315,6 @@ fn join_stdin_writer_after_wait(
         // keep stdin open. Stop the writer before joining it so bounded stdin
         // cannot strand this worker thread.
         request_stdin_writer_cancel(&writer);
-        let _ = unsafe { kill_process_tree_target(kill_target) };
     }
     join_stdin_writer(writer, seq, label);
 }
