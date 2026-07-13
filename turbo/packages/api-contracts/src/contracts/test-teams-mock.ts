@@ -4,7 +4,7 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-const teamsMockBodySchema = z.unknown().optional();
+const teamsMockBodySchema = z.record(z.string(), z.unknown()).optional();
 const teamsMockOkSchema = z.object({ ok: z.literal(true) });
 const teamsMockTokenResponseSchema = z.object({
   access_token: z.string(),
