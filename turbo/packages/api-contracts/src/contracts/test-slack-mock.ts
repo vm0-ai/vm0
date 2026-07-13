@@ -29,7 +29,7 @@ export const SLACK_E2E_SCOPES = [
   "users:read.email",
 ] as const;
 
-const slackMockRequestBodySchema = z.unknown().optional();
+const slackMockRequestBodySchema = z.record(z.string(), z.unknown()).optional();
 const slackMockNotFoundSchema = z.string();
 
 export const testSlackMockOkResponseSchema = z.object({

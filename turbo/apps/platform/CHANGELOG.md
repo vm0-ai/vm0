@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.596.0](https://github.com/vm0-ai/vm0/compare/app-v0.595.5...app-v0.596.0) (2026-07-13)
+
+
+### Features
+
+* graduate image artifact keyboard navigation ([#21273](https://github.com/vm0-ai/vm0/issues/21273)) ([fcf0055](https://github.com/vm0-ai/vm0/commit/fcf005540facf149885795ddd50eea9cb085dd41))
+* **platform:** auto-load a virtualized artifacts grid ([#21229](https://github.com/vm0-ai/vm0/issues/21229)) ([f55bf3d](https://github.com/vm0-ai/vm0/commit/f55bf3db866e17b9b3fc4eaada372cd11980a1d9))
+* **platform:** replace image share menu with copy link ([#21264](https://github.com/vm0-ai/vm0/issues/21264)) ([43b5a59](https://github.com/vm0-ai/vm0/commit/43b5a5974bbf3c0c86ff397aed2718743b3eada3))
+
+
+### Bug Fixes
+
+* clarify teams setup flow ([#21270](https://github.com/vm0-ai/vm0/issues/21270)) ([d613fd8](https://github.com/vm0-ai/vm0/commit/d613fd88419eac93dc490cd60f0ec5352f892acd))
+* **platform:** correct artifact card proportions ([#21292](https://github.com/vm0-ai/vm0/issues/21292)) ([b948367](https://github.com/vm0-ai/vm0/commit/b9483672e3f2471183bd4d0fecb5fda75620b390))
+* **platform:** keep mobile chat pinned after viewport resize ([#21238](https://github.com/vm0-ai/vm0/issues/21238)) ([47e8505](https://github.com/vm0-ai/vm0/commit/47e8505dca6a52fb4f6b8b6da60d6d97d6478db9))
+* **platform:** preserve artifact preview image aspect ratios ([#21250](https://github.com/vm0-ai/vm0/issues/21250)) ([0c9648a](https://github.com/vm0-ai/vm0/commit/0c9648ae15d96283124c450bbba6b887e4f74c2b))
+
+
+### Performance Improvements
+
+* **platform:** optimize artifact image card thumbnails ([#21253](https://github.com/vm0-ai/vm0/issues/21253)) ([f237cba](https://github.com/vm0-ai/vm0/commit/f237cba42a48d21bba75be4964e822cdb3344de6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.188.0
+    * @vm0/connectors bumped to 1.157.0
+    * @vm0/core bumped to 8.427.0
+
 ## [0.595.5](https://github.com/vm0-ai/vm0/compare/app-v0.595.4...app-v0.595.5) (2026-07-13)
 
 

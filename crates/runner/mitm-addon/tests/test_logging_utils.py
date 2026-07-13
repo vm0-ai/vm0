@@ -3,6 +3,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import flow_metadata_keys as metadata_keys
 import logging_utils
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
@@ -112,9 +114,147 @@ class TestLogProxyEntry:
         assert entry["extra_field"] == "value"
         assert_utc_millisecond_timestamp(entry["timestamp"])
 
-    def test_sanitizes_structured_url_field(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("raw_url", "expected_url"),
+        [
+            pytest.param(
+                "https://user:pass@example.com/v1/search?token=secret#fragment",
+                "https://example.com/v1/search",
+                id="absolute",
+            ),
+            pytest.param(
+                "//user:pass@example.com/v1/search?token=secret#fragment",
+                "//example.com/v1/search",
+                id="protocol-relative",
+            ),
+            pytest.param(
+                "https:////user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="extra-slashes",
+            ),
+            pytest.param(
+                "https:///user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="three-slashes",
+            ),
+            pytest.param(
+                "https:/user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="one-slash",
+            ),
+            pytest.param(
+                "https:user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="no-slashes",
+            ),
+            pytest.param(
+                "HTTP:////user:pass@example.com/path?token=secret#fragment",
+                "http://example.com/path",
+                id="case-insensitive-http-scheme",
+            ),
+            pytest.param(
+                r"https:\\user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="reverse-solidus",
+            ),
+            pytest.param(
+                r"https:/\\user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="mixed-separators",
+            ),
+            pytest.param(
+                r"https://\/user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="separator-only-netloc",
+            ),
+            pytest.param(
+                "///user:pass@example.com/path?token=secret#fragment",
+                "//example.com/path",
+                id="extra-protocol-relative-slash",
+            ),
+            pytest.param(
+                r"//\/user:pass@example.com/path?token=secret#fragment",
+                "//example.com/path",
+                id="separator-only-protocol-relative-netloc",
+            ),
+            pytest.param(
+                "\x00 https:////user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="leading-c0-and-space",
+            ),
+            pytest.param(
+                "h\tt\rtp\ns:////user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="embedded-urlsplit-controls",
+            ),
+            pytest.param(
+                "https:////first@user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="multiple-at-signs",
+            ),
+            pytest.param(
+                "https:////user:pass@example.com?token=secret#fragment",
+                "https://example.com",
+                id="empty-path",
+            ),
+            pytest.param(
+                "https:////user:pass@example.com/?token=secret#fragment",
+                "https://example.com/",
+                id="root-path",
+            ),
+            pytest.param(
+                "https://example.com/users/alice@example.com?token=secret#fragment",
+                "https://example.com/users/alice@example.com",
+                id="at-sign-in-valid-path",
+            ),
+        ],
+    )
+    def test_sanitizes_structured_url_field(self, tmp_path, raw_url, expected_url):
         proxy_path = tmp_path / "proxy-test.jsonl"
-        raw_url = "https://user:pass@example.com/v1/search?token=secret#fragment"
+
+        logging_utils.log_proxy_entry(
+            str(proxy_path),
+            "warn",
+            "url diagnostic",
+            url=raw_url,
+            extra_field="value",
+        )
+
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert entry["message"] == "url diagnostic"
+        assert entry["url"] == expected_url
+        assert entry["extra_field"] == "value"
+        serialized = json.dumps(entry)
+        assert "user:pass" not in serialized
+        assert "first@" not in serialized
+        assert "token=secret" not in serialized
+        assert "#fragment" not in serialized
+
+    @pytest.mark.parametrize(
+        "raw_url",
+        [
+            "https:////example.com/users/alice@example.com?token=secret#fragment",
+            r"https://\/example.com/users/alice@example.com?token=secret#fragment",
+        ],
+    )
+    def test_preserves_at_sign_after_malformed_authority(self, tmp_path, raw_url):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+
+        logging_utils.log_proxy_entry(
+            str(proxy_path),
+            "warn",
+            "url diagnostic",
+            url=raw_url,
+        )
+
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert entry["url"].endswith("example.com/users/alice@example.com")
+        assert "token=secret" not in entry["url"]
+        assert "#fragment" not in entry["url"]
+
+    def test_only_sanitizes_exact_url_field(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        raw_url = "https://user:pass@example.com/path?token=secret#fragment"
 
         logging_utils.log_proxy_entry(
             str(proxy_path),
@@ -125,8 +265,7 @@ class TestLogProxyEntry:
         )
 
         [entry] = read_jsonl_entries_after_flush(proxy_path)
-        assert entry["message"] == "url diagnostic"
-        assert entry["url"] == "https://example.com/v1/search"
+        assert entry["url"] == "https://example.com/path"
         assert entry["raw_url_copy"] == raw_url
 
     def test_appends_multiple_entries(self, tmp_path):

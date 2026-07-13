@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.267.0](https://github.com/vm0-ai/vm0/compare/api-v1.266.1...api-v1.267.0) (2026-07-13)
+
+
+### Features
+
+* add nine feature-gated business connectors ([#21277](https://github.com/vm0-ai/vm0/issues/21277)) ([5f08ac9](https://github.com/vm0-ai/vm0/commit/5f08ac9bc73515b1b483114835b26e210b14265b))
+* **api:** add connector permission-deny diagnostics ([#21272](https://github.com/vm0-ai/vm0/issues/21272)) ([da440e9](https://github.com/vm0-ai/vm0/commit/da440e9493305ebf0b541f9120fcecc94c3b1c8f))
+* **workflows:** enable webhook trigger creation globally ([#21294](https://github.com/vm0-ai/vm0/issues/21294)) ([515f996](https://github.com/vm0-ai/vm0/commit/515f9963e06ecc1a51c166ff0ead0d7135820512))
+
+
+### Bug Fixes
+
+* **api:** classify workflow automation sources across consumers ([#21280](https://github.com/vm0-ai/vm0/issues/21280)) ([59ac3a3](https://github.com/vm0-ai/vm0/commit/59ac3a3ef2ae420e8fee4045acc71c61a963fcce))
+* refresh teams status on bot activity ([#21282](https://github.com/vm0-ai/vm0/issues/21282)) ([b6fa9a6](https://github.com/vm0-ai/vm0/commit/b6fa9a6297dcbadb6d6ef0114dcb07766a826f94))
+* show friendly claude overload guidance ([#21249](https://github.com/vm0-ai/vm0/issues/21249)) ([09026b5](https://github.com/vm0-ai/vm0/commit/09026b58cc8c7ec01219681d8f54ef4f0e4e80b0))
+
+
+### Refactoring
+
+* keep gmail workflow events metadata-only ([#21287](https://github.com/vm0-ai/vm0/issues/21287)) ([8cc41f8](https://github.com/vm0-ai/vm0/commit/8cc41f808e42d1e8abfe6245c45996a1e0593abd))
+* retire artifact video preview feature switch ([#21276](https://github.com/vm0-ai/vm0/issues/21276)) ([700d3cc](https://github.com/vm0-ai/vm0/commit/700d3cc983b376f6ec75e6617aba1da95b60f56c))
+
+
+### Performance Improvements
+
+* **api:** attribute normal send preparation stages ([#21245](https://github.com/vm0-ai/vm0/issues/21245)) ([289a1a7](https://github.com/vm0-ai/vm0/commit/289a1a727f220dc98418e434c1287d19baa61ebe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.188.0
+    * @vm0/connectors bumped to 1.157.0
+    * @vm0/core bumped to 8.427.0
+    * @vm0/db bumped to 1.111.4
+
 ## [1.266.1](https://github.com/vm0-ai/vm0/compare/api-v1.266.0...api-v1.266.1) (2026-07-13)
 
 

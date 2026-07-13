@@ -3195,6 +3195,117 @@ describe("CHAT-02: auto-send after failures", () => {
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
+
+  it("keeps only the newest 20 incomplete rounds for normal and queued callback sends", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const anchor = await startChatRun(actor, {
+      agentId,
+      prompt: "successful frontier anchor",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorHeaders);
+    await flushWaitUntilForTest();
+
+    const historyPrompts = Array.from({ length: 21 }, (_, index) => {
+      return `incomplete frontier history ${String(index).padStart(2, "0")}`;
+    });
+    for (const prompt of historyPrompts) {
+      const round = await startChatRun(actor, {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+      });
+      await api.requestCancelRun(actor, round.runId, [200]);
+      await waitForRunStatus(actor, round.runId, "cancelled");
+    }
+    await flushWaitUntilForTest();
+
+    const normalPrompt = "normal frontier probe";
+    const normal = await startChatRun(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: normalPrompt,
+    });
+    const normalContext = await waitForRunContext(actor, normal.runId);
+    const normalAppended = normalContext.body.appendSystemPrompt ?? "";
+    expect(normalAppended).toContain("# Incomplete Rounds Context");
+    expect(normalAppended.match(/^- RUN_STATUS:/gm) ?? []).toHaveLength(20);
+    expect(normalAppended).not.toContain(historyPrompts[0]);
+    expect(normalAppended).not.toContain("successful frontier anchor");
+    for (const prompt of historyPrompts.slice(1)) {
+      expect(normalAppended).toContain(prompt);
+    }
+    const normalPositions = historyPrompts.slice(1).map((prompt) => {
+      return normalAppended.indexOf(prompt);
+    });
+    expect(normalPositions).toStrictEqual(
+      [...normalPositions].sort((left, right) => {
+        return left - right;
+      }),
+    );
+
+    const normalHeaders = await claimChatRun(runnerGroup, normal.runId);
+    const queuedPrompt = "queued callback frontier probe";
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: anchor.threadId,
+      prompt: queuedPrompt,
+    });
+    await failChatRun(normal.runId, normalHeaders, "frontier probe failed");
+
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.content === queuedPrompt && message.runId !== undefined
+          );
+        });
+      },
+    );
+    const autoSent = userMessages(messages.messages).find((message) => {
+      return message.content === queuedPrompt && message.runId !== undefined;
+    });
+    if (!autoSent?.runId) {
+      throw new Error("Expected the queued frontier probe to auto-send");
+    }
+
+    const callbackContext = await waitForRunContext(actor, autoSent.runId);
+    const callbackAppended = callbackContext.body.appendSystemPrompt ?? "";
+    expect(callbackAppended).toContain("# Incomplete Rounds Context");
+    expect(callbackAppended.match(/^- RUN_STATUS:/gm) ?? []).toHaveLength(20);
+    expect(
+      callbackAppended.match(/^- RUN_STATUS: cancelled$/gm) ?? [],
+    ).toHaveLength(19);
+    expect(
+      callbackAppended.match(/^- RUN_STATUS: failed$/gm) ?? [],
+    ).toHaveLength(1);
+    expect(callbackAppended).not.toContain(historyPrompts[0]);
+    expect(callbackAppended).not.toContain(historyPrompts[1]);
+    expect(callbackAppended).toContain(normalPrompt);
+    for (const prompt of historyPrompts.slice(2)) {
+      expect(callbackAppended).toContain(prompt);
+    }
+    const callbackPositions = [...historyPrompts.slice(2), normalPrompt].map(
+      (prompt) => {
+        return callbackAppended.indexOf(prompt);
+      },
+    );
+    expect(callbackPositions).toStrictEqual(
+      [...callbackPositions].sort((left, right) => {
+        return left - right;
+      }),
+    );
+
+    await api.requestCancelRun(actor, autoSent.runId, [200]);
+    await waitForRunStatus(actor, autoSent.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {

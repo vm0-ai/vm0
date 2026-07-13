@@ -988,7 +988,7 @@ pub(super) async fn execute_prepared_sandbox_run(
     let restored_session_identity = result
         .as_ref()
         .ok()
-        .and_then(|result| result.restored_session_identity.clone());
+        .and_then(|result| result.reusable_session_identity.clone());
 
     let cleanup_result = post_job_cleanup(
         sandbox.as_ref(),
