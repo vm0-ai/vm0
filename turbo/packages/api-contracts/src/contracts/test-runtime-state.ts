@@ -43,6 +43,10 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("release-org-admission-lock"),
   }),
+  z.object({
+    action: z.literal("read-run-uploaded-file-sources"),
+    run_id: z.uuid(),
+  }),
 ]);
 
 export const testRuntimeStateActionResponseSchema = z.object({
@@ -51,6 +55,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
   decrypt_call_count: z.number().optional(),
   admission_lock_held: z.boolean().optional(),
   admission_lock_waiting: z.boolean().optional(),
+  uploaded_file_sources: z.array(z.string()).optional(),
 });
 
 export const testRuntimeStateContract = c.router({
