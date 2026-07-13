@@ -1452,7 +1452,7 @@ def _handle_response(flow: http.HTTPFlow) -> None:
         not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
         and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
-        and usage.is_model_provider_usage_observable(flow)
+        and response_streaming.uses_model_json_fallback(flow)
     ):
         if response_streaming.uses_openai_responses_usage_protocol(flow):
             json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(

@@ -6,6 +6,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+import brotli
 import pytest
 from mitmproxy import http
 from mitmproxy.flow import Error
@@ -106,6 +107,8 @@ class TestModelProviderSseUsage:
         """response() must flush a trailing SSE usage event before reporting."""
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5",'
@@ -125,6 +128,36 @@ class TestModelProviderSseUsage:
             "tokens.cache_read": 10,
             "tokens.cache_creation": 15,
         }
+
+    @pytest.mark.parametrize("capture_body", [False, True])
+    def test_brotli_sse_does_not_use_model_json_fallback(self, tmp_path, real_flow, capture_body):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        assert flow.response is not None
+        flow.response.headers["content-encoding"] = "br"
+        if capture_body:
+            flow.metadata[metadata_keys.CAPTURE_BODY] = True
+        plaintext = (
+            b"event: response.completed\n"
+            b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
+            b'"usage":{"input_tokens":50,"output_tokens":20}}}\n\n'
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(brotli.compress(plaintext))
+        assert (metadata_keys.STREAM_BUFFER in flow.metadata) is capture_body
+        assert (metadata_keys.STREAM_BUFFER_STATE in flow.metadata) is capture_body
+
+        webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+        proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+        entries = (
+            read_jsonl_entries_after_flush(proxy_log) if jsonl_exists_after_flush(proxy_log) else []
+        )
+        assert not any(
+            entry.get("message") == "Model provider JSON usage extraction failed"
+            for entry in entries
+        )
 
     def test_full_pipeline_model_sse_reports_response_incomplete_usage(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)

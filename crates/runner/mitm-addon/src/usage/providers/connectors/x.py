@@ -47,11 +47,10 @@ _HTTP_STATUS_REDIRECT_MIN = 300
 
 # X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
 # is a regular request/response endpoint for rules management, NOT a stream).
-# Streams deliver one JSON object per line, possibly for hours.  The shared
-# response streaming wrapper remains the mitmproxy stream callback: it keeps the
-# capped forensic stream_buffer and, when a parser is configured, feeds the X
-# NDJSON parser incrementally so billing extraction does not require buffering
-# the full response body.
+# Streams deliver one JSON object per line, possibly for hours. The shared
+# response streaming wrapper feeds the X NDJSON parser incrementally so billing
+# extraction does not retain the response body. Capture mode independently keeps
+# a capped raw-wire prefix.
 _STREAM_ENDPOINTS = frozenset(
     {
         "/2/tweets/search/stream",
@@ -293,6 +292,12 @@ class _NdjsonState(TypedDict):
     """JSON-parseable non-blank lines."""
     lines_failed: int
     """Lines that failed JSON decoding or exceeded the single-line safety cap."""
+
+
+class _ResponseUsageContext(NamedTuple):
+    permission: str
+    request_path: str
+    endpoint_bucket: str
 
 
 class _NdjsonExtractor:
@@ -920,6 +925,26 @@ def _compute_billable_counts(
     return counts
 
 
+def _response_usage_context(flow: http.HTTPFlow) -> _ResponseUsageContext | None:
+    if not flow.response or not (
+        _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
+    ):
+        return None
+    permission = flow_metadata.firewall_permission(flow.metadata)
+    if not permission:
+        return None
+    request_path = _strip_request_target_query(flow.request.path)
+    endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
+    if endpoint_bucket is None:
+        return None
+    return _ResponseUsageContext(permission, request_path, endpoint_bucket)
+
+
+def needs_response_buffer_fallback(flow: http.HTTPFlow) -> bool:
+    """Return whether X billing may consume a buffered response body."""
+    return _response_usage_context(flow) is not None
+
+
 def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     """Compute billable resource counts and buffer them for upload.
 
@@ -942,22 +967,17 @@ def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     - ``firewall_permission`` is not mapped to an X billing bucket
       (e.g. the ``"app-only"`` scope for BearerToken-only endpoints)
     """
+    response_context = _response_usage_context(flow)
+    if response_context is None:
+        return
     firewall_name = flow_metadata.firewall_name(flow.metadata)
-    if not flow.response or not (
-        _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
-    ):
-        return
-    permission = flow_metadata.firewall_permission(flow.metadata)
-    if not permission:
-        return
+    permission = response_context.permission
     # mitmproxy's ``flow.request.path`` is the raw request-target — it
     # includes the query string.  Strip it without parsing query params so
     # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``) still
     # match requests that carry ``?max_results=10`` or similar.
-    request_path = _strip_request_target_query(flow.request.path)
-    endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
-    if endpoint_bucket is None:
-        return
+    request_path = response_context.request_path
+    endpoint_bucket = response_context.endpoint_bucket
     if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
         request_body = billing_body.decode_request_body_for_billing(
             _request_body_for_billing_refinement(flow),
