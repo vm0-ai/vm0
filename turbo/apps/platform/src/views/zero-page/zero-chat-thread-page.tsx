@@ -4549,6 +4549,9 @@ interface ServerThinkingLabel {
   readonly displayedText: string;
   readonly fullText: string;
   readonly id: string;
+  readonly setRef: (
+    el: HTMLParagraphElement | null,
+  ) => (() => void) | undefined;
 }
 
 function ThinkingLabel({
@@ -4565,7 +4568,7 @@ function ThinkingLabel({
 
   if (isQueued) {
     return (
-      <p className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] truncate">
+      <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
         Waiting in{" "}
         <button
           type="button"
@@ -4584,7 +4587,8 @@ function ThinkingLabel({
     return (
       <p
         key={serverThinkingLabel.id}
-        className="text-muted-foreground min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
+        ref={serverThinkingLabel.setRef}
+        className="zero-shimmer-text min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem]"
         aria-label={serverThinkingLabel.fullText}
       >
         {serverThinkingLabel.displayedText || "\u00a0"}
@@ -4593,7 +4597,7 @@ function ThinkingLabel({
   }
 
   return (
-    <p className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] truncate">
+    <p className="zero-shimmer-text min-w-0 flex-1 text-[0.8125rem] truncate">
       {thinkingLabel}
     </p>
   );
@@ -4669,7 +4673,7 @@ function WaitingForAssistantResponse({
     <div
       data-thinking-indicator
       data-role="assistant"
-      className="flex flex-col gap-1"
+      className="zero-thinking-enter flex flex-col gap-1"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
@@ -4839,12 +4843,18 @@ function ThinkingIndicator({
   });
   const thinkingLabel = useGet(thread.thinkingPhrase$);
   const thinkingText = indicatorState.lastThinkingMessage?.thinking.trim();
+  const displayedThinkingText =
+    useLastResolved(thread.displayedThinkingText$) ?? "";
+  const setThinkingIndicatorTextRef = useSet(
+    thread.setThinkingIndicatorTextRef$,
+  );
   const serverThinkingLabel =
     thinkingText && indicatorState.lastThinkingMessage && indicatorState.running
       ? {
-          displayedText: thinkingText,
+          displayedText: displayedThinkingText,
           fullText: thinkingText,
           id: indicatorState.lastThinkingMessage.id,
+          setRef: setThinkingIndicatorTextRef,
         }
       : undefined;
   const recommendedFollowupSource = latestRecommendedFollowups(groups);
