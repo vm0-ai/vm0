@@ -1081,6 +1081,12 @@ export {
   type PublicConnectorCatalogStatusResponse,
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
+export {
+  connectorPermissionDenyDiagnosticResultSchema,
+  zeroConnectorPermissionDenyContract,
+  type ConnectorPermissionDenyDiagnosticResult,
+  type ZeroConnectorPermissionDenyContract,
+} from "./zero-connector-permission-deny";
 export { CONNECTOR_REF_MAX_LENGTH, connectorRefSchema } from "./connector-ref";
 export {
   CONNECTOR_CATALOG_AUTH_METHOD_ID_MAX_LENGTH,
