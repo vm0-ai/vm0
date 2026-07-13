@@ -314,6 +314,17 @@ const handleZeroTeamsBot$ = command(
       );
       signal.throwIfAborted();
     }
+    if (
+      activityResult.kind === "upserted" &&
+      activityResult.installation.orgId
+    ) {
+      await set(
+        publishTeamsChanged$,
+        { orgId: activityResult.installation.orgId },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
 
     const installation =
       activityResult.kind === "upserted" ? activityResult.installation : null;

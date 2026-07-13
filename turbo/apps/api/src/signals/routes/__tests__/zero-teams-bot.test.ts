@@ -7,12 +7,14 @@ import {
 
 import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { signSandboxJwtForTests, verifyZeroToken } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { db } from "../../../lib/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
 import { now } from "../../../lib/time";
@@ -518,6 +520,30 @@ function teamsBotRemovedActivity(
     },
     recipient: { id: "28:bot-1", name: "Zero" },
     membersRemoved: [{ id: "28:bot-1", name: "Zero" }],
+  };
+}
+
+function teamsBotInstalledActivity(
+  fixture: TeamsConnectFixture = botFixture(),
+): Record<string, unknown> {
+  return {
+    type: "conversationUpdate",
+    id: "activity-install-1",
+    timestamp: "2026-06-30T09:15:00.000Z",
+    serviceUrl: fixture.serviceUrl,
+    channelId: "msteams",
+    conversation: {
+      id: "19:thread@thread.tacv2",
+      conversationType: "channel",
+    },
+    channelData: {
+      tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
+      channel: { id: "19:channel@thread.tacv2", name: "General" },
+      teamsAppId: "teams-app-test",
+    },
+    recipient: { id: "28:bot-1", name: "Zero" },
+    membersAdded: [{ id: "28:bot-1", name: "Zero" }],
   };
 }
 
@@ -2081,5 +2107,39 @@ describe("POST /api/zero/teams/bot", () => {
       installUrl: teamsInstallUrl(),
       connectUrl: teamsOauthConnectUrl(fixture),
     });
+  });
+
+  it("publishes Teams status changes when an install activity refreshes a bound installation", async () => {
+    const fixture = botFixture();
+    botFrameworkHandlers();
+    context.mocks.ably.publish.mockResolvedValue(undefined);
+    await installTeamsForTest(context.signal, fixture);
+    await connectTeamsFixture(fixture);
+    await db()
+      .insert(orgMembersCache)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        role: "admin",
+      })
+      .onConflictDoUpdate({
+        target: [orgMembersCache.orgId, orgMembersCache.userId],
+        set: { role: "admin" },
+      });
+    context.mocks.ably.publish.mockClear();
+    clearTeamsBotAuthCacheForTest();
+    botFrameworkHandlers();
+
+    const response = await postTeamsActivity({
+      activity: teamsBotInstalledActivity(fixture),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await response.json();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "teams:changed",
+      null,
+    );
   });
 });
