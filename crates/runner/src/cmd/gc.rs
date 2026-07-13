@@ -7061,6 +7061,7 @@ server:
         run_ignored_child_test(
             "cmd::gc::tests::gc_storage_cache_many_candidates_low_fd_child",
             (LOW_FD_STORAGE_GC_CHILD_ENV, "1"),
+            &[],
             Duration::from_secs(60),
         )
         .await;
