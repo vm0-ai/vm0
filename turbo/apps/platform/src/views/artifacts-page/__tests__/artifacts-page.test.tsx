@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import {
   artifactsContract,
   type ArtifactItem,
@@ -373,6 +373,43 @@ function mockArtifacts(artifacts: readonly ArtifactItem[]): void {
   });
 }
 
+function mockScrollViewport(
+  element: HTMLElement,
+  initial: {
+    readonly clientHeight: number;
+    readonly scrollHeight: number;
+    readonly scrollTop: number;
+  },
+) {
+  let metrics = initial;
+  Object.defineProperties(element, {
+    clientHeight: {
+      configurable: true,
+      get: () => {
+        return metrics.clientHeight;
+      },
+    },
+    scrollHeight: {
+      configurable: true,
+      get: () => {
+        return metrics.scrollHeight;
+      },
+    },
+    scrollTop: {
+      configurable: true,
+      get: () => {
+        return metrics.scrollTop;
+      },
+      set: (scrollTop: number) => {
+        metrics = { ...metrics, scrollTop };
+      },
+    },
+  });
+  return (next: Partial<typeof initial>) => {
+    metrics = { ...metrics, ...next };
+  };
+}
+
 function setupArtifactsPage({
   scope,
   enabled = true,
@@ -471,6 +508,23 @@ function buttonByLabel(label: string): HTMLElement {
     throw new Error(`${label} button not found`);
   }
   return button;
+}
+
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function focusedArtifactIndex(): string | null {
+  return (
+    document.activeElement?.closest<HTMLElement>("[data-artifact-index]")
+      ?.dataset.artifactIndex ?? null
+  );
 }
 
 describe("artifacts page", () => {
@@ -1270,34 +1324,111 @@ describe("artifacts page", () => {
     await screen.findByText("page-two.html");
   });
 
-  it("windows a large set behind a load more control", async () => {
+  it("virtualizes a large set and loads more near the scroll boundary", async () => {
     setupTeam();
     const scope = testAuthScope("windowed");
-    const many = Array.from({ length: 65 }, (_, index) => {
-      const label = String(index).padStart(2, "0");
+    const many = Array.from({ length: 180 }, (_, index) => {
+      const label = String(index).padStart(3, "0");
       return createArtifact({
         artifactItemId: `windowed-${label}:file`,
         runId: `windowed-${label}`,
         filename: `windowed-${label}.html`,
-        createdAt: `2026-01-01T00:${label}:00Z`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
       });
     });
     mockArtifacts(many);
 
     setupArtifactsPage({ scope });
 
-    // The first window renders; the tail stays hidden until "Load more".
-    await screen.findByText("windowed-00.html");
-    expect(screen.queryByText("windowed-64.html")).not.toBeInTheDocument();
+    await screen.findByText("windowed-000.html");
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
 
-    const loadMoreButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Load more";
+    const scrollViewport = screen.getByRole("main");
+    const setScrollMetrics = mockScrollViewport(scrollViewport, {
+      clientHeight: 800,
+      scrollHeight: 6068,
+      scrollTop: 5300,
     });
-    if (!loadMoreButton) {
-      throw new Error("Load more button not found");
-    }
-    click(loadMoreButton);
+    fireEvent.scroll(scrollViewport);
 
-    await screen.findByText("windowed-64.html");
+    await screen.findByText("windowed-064.html");
+    expect(screen.queryByText("windowed-000.html")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+
+    setScrollMetrics({ scrollHeight: 12_148, scrollTop: 11_400 });
+    fireEvent.scroll(scrollViewport);
+
+    await screen.findByText("windowed-119.html");
+    expect(screen.queryByText("windowed-064.html")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+
+    setScrollMetrics({ scrollHeight: 18_228, scrollTop: 17_400 });
+    fireEvent.scroll(scrollViewport);
+
+    await screen.findByText("windowed-179.html");
+    expect(screen.queryByText("windowed-119.html")).not.toBeInTheDocument();
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+  });
+
+  it("continues keyboard navigation through virtualized artifacts", async () => {
+    setupTeam();
+    const scope = testAuthScope("keyboard-windowed");
+    const many = Array.from({ length: 120 }, (_, index) => {
+      const label = String(index).padStart(3, "0");
+      return createArtifact({
+        artifactItemId: `keyboard-windowed-${label}:file`,
+        runId: `keyboard-windowed-${label}`,
+        filename: `keyboard-windowed-${label}.html`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      });
+    });
+    mockArtifacts(many);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("keyboard-windowed-000.html");
+    const scrollViewport = screen.getByRole("main");
+    const setScrollMetrics = mockScrollViewport(scrollViewport, {
+      clientHeight: 800,
+      scrollHeight: 6068,
+      scrollTop: 0,
+    });
+
+    fireEvent.focus(buttonByText("Continue browsing artifacts"));
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe("15");
+    });
+    await screen.findByText("keyboard-windowed-015.html");
+
+    setScrollMetrics({ scrollHeight: 20_000, scrollTop: 4560 });
+    fireEvent.scroll(scrollViewport);
+    await screen.findByText("keyboard-windowed-059.html");
+
+    fireEvent.focus(buttonByText("Continue browsing artifacts"));
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe("60");
+    });
+    await screen.findByText("keyboard-windowed-060.html");
+
+    const firstMountedArtifact = document.querySelector<HTMLElement>(
+      "article[data-artifact-index]",
+    );
+    if (!firstMountedArtifact?.dataset.artifactIndex) {
+      throw new Error("First mounted artifact not found");
+    }
+    const firstMountedIndex = Number(
+      firstMountedArtifact.dataset.artifactIndex,
+    );
+    expect(firstMountedIndex).toBeGreaterThan(0);
+
+    firstMountedArtifact.focus();
+    fireEvent.keyDown(firstMountedArtifact, { key: "Tab", shiftKey: true });
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe(String(firstMountedIndex - 1));
+    });
   });
 });
