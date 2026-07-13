@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.595.0](https://github.com/vm0-ai/vm0/compare/app-v0.594.0...app-v0.595.0) (2026-07-13)
+
+
+### Features
+
+* restrict webhook triggers to team and custom workspaces ([#20966](https://github.com/vm0-ai/vm0/issues/20966)) ([18b727b](https://github.com/vm0-ai/vm0/commit/18b727b45cf337c76b73bf89f9d893eeb4cbd0b5))
+
+
+### Bug Fixes
+
+* **platform:** batch indexeddb chat persistence ([#21136](https://github.com/vm0-ai/vm0/issues/21136)) ([7286f3d](https://github.com/vm0-ai/vm0/commit/7286f3da7a31fd564b145f5a18324b342ead65d9))
+* use opaque ios pwa status bar ([#21056](https://github.com/vm0-ai/vm0/issues/21056)) ([347ed8e](https://github.com/vm0-ai/vm0/commit/347ed8e7b4eb5c0c61ed1936d779e9c35f424ade))
+
+
+### Performance Improvements
+
+* **platform:** reduce chat render work ([#21137](https://github.com/vm0-ai/vm0/issues/21137)) ([80851d4](https://github.com/vm0-ai/vm0/commit/80851d4728b5403a5d6c7efb1082ffed004c01d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.0
+    * @vm0/core bumped to 8.425.3
+
 ## [0.594.0](https://github.com/vm0-ai/vm0/compare/app-v0.593.1...app-v0.594.0) (2026-07-12)
 
 

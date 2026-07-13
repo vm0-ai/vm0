@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.265.0](https://github.com/vm0-ai/vm0/compare/api-v1.264.0...api-v1.265.0) (2026-07-13)
+
+
+### Features
+
+* restrict webhook triggers to team and custom workspaces ([#20966](https://github.com/vm0-ai/vm0/issues/20966)) ([18b727b](https://github.com/vm0-ai/vm0/commit/18b727b45cf337c76b73bf89f9d893eeb4cbd0b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.0
+    * @vm0/core bumped to 8.425.3
+    * @vm0/db bumped to 1.111.0
+
 ## [1.264.0](https://github.com/vm0-ai/vm0/compare/api-v1.263.1...api-v1.264.0) (2026-07-12)
 
 
