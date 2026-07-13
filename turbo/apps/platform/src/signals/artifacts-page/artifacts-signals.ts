@@ -39,6 +39,8 @@ const ARTIFACTS_CACHE_READ_LIMIT = ARTIFACTS_PAGE_SIZE * ARTIFACTS_MAX_PAGES;
 // Number of cards the grid makes available per automatic loading step. Row
 // virtualization keeps the mounted DOM bounded independently of this window.
 const ARTIFACT_WINDOW_STEP = 60;
+const ARTIFACT_FOCUS_TARGET_SELECTOR =
+  'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const internalArtifactsSearch$ = state("");
 const internalArtifactsAgentId$ = state<string | null>(null);
@@ -52,6 +54,7 @@ const internalArtifactsWindow$ = state(ARTIFACT_WINDOW_STEP);
 const internalArtifactsScrollViewport$ = state<HTMLElement | null>(null);
 const internalArtifactsGridElement$ = state<HTMLElement | null>(null);
 const internalArtifactsGridWidth$ = state(0);
+const internalArtifactsPendingFocusIndex$ = state<number | null>(null);
 
 interface ArtifactsScrollMetrics {
   readonly clientHeight: number;
@@ -100,6 +103,12 @@ export const growArtifactsWindow$ = command(({ set }) => {
     return count + ARTIFACT_WINDOW_STEP;
   });
 });
+
+export const requestArtifactsKeyboardFocus$ = command(
+  ({ set }, index: number) => {
+    set(internalArtifactsPendingFocusIndex$, index);
+  },
+);
 
 export const artifactsScrollViewport$ = computed((get) => {
   return get(internalArtifactsScrollViewport$);
@@ -178,6 +187,42 @@ export const setArtifactsGridRef$ = onRef(
       { once: true },
     );
   }),
+);
+
+function focusArtifactElement(element: HTMLElement): boolean {
+  const focusTarget = element.matches('[tabindex="0"]')
+    ? element
+    : element.querySelector<HTMLElement>(ARTIFACT_FOCUS_TARGET_SELECTOR);
+  if (!focusTarget) {
+    return false;
+  }
+
+  focusTarget.focus();
+  return document.activeElement === focusTarget;
+}
+
+export const setArtifactCardRef$ = onRef(
+  command(
+    (
+      { get, set },
+      element: HTMLElement | SVGSVGElement,
+      _signal: AbortSignal,
+    ) => {
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      const index = Number(element.dataset.artifactIndex);
+      if (!Number.isInteger(index)) {
+        return;
+      }
+      if (get(internalArtifactsPendingFocusIndex$) !== index) {
+        return;
+      }
+      if (focusArtifactElement(element)) {
+        set(internalArtifactsPendingFocusIndex$, null);
+      }
+    },
+  ),
 );
 
 export const setArtifactsSearch$ = command(({ set }, search: string) => {

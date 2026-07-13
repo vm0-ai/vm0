@@ -55,8 +55,10 @@ import {
   navigateToArtifactThread$,
   reloadArtifacts$,
   remoteArtifacts$,
+  requestArtifactsKeyboardFocus$,
   selectedArtifactsAgentId$,
   selectedArtifactsCategory$,
+  setArtifactCardRef$,
   setArtifactsGridRef$,
   setArtifactsFavoritesOnly$,
   setArtifactsScrollViewportRef$,
@@ -654,6 +656,8 @@ function ArtifactCardActions({
 }
 
 function ArtifactCard({
+  cardRef,
+  index,
   item,
   onOpenChat,
   onOpenPreview,
@@ -661,6 +665,8 @@ function ArtifactCard({
   onToggleFavorite,
   showFavoriteAction,
 }: {
+  readonly cardRef: (element: HTMLElement | null) => void;
+  readonly index: number;
   readonly item: ArtifactItem;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
@@ -675,6 +681,8 @@ function ArtifactCard({
   const favorited = item.isFavorited === true;
   return (
     <article
+      ref={cardRef}
+      data-artifact-index={index}
       role={previewable ? "button" : undefined}
       tabIndex={previewable ? 0 : undefined}
       aria-label={previewable ? `Preview ${item.filename}` : undefined}
@@ -867,12 +875,29 @@ function ArtifactsEmptyState({ filtered }: { readonly filtered: boolean }) {
   );
 }
 
+function ArtifactsKeyboardContinuation({
+  onFocus,
+}: {
+  readonly onFocus: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="sr-only focus:not-sr-only focus:absolute focus:left-0 focus:top-full focus:z-10 focus:mt-2 focus:rounded-md focus:border focus:border-border focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:text-foreground focus:shadow-sm"
+      onFocus={onFocus}
+    >
+      Continue browsing artifacts
+    </button>
+  );
+}
+
 function ArtifactsList({
   artifacts,
   hasFilters,
   loading,
   error,
   visibleCount,
+  onLoadMore,
   onOpenChat,
   onOpenPreview,
   onStartChat,
@@ -884,6 +909,7 @@ function ArtifactsList({
   readonly loading: boolean;
   readonly error: boolean;
   readonly visibleCount: number;
+  readonly onLoadMore: () => void;
   readonly onOpenChat: (threadId: string) => void;
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
@@ -895,18 +921,9 @@ function ArtifactsList({
   const gridElement = useGet(artifactsGridElement$);
   const measuredGridWidth = useGet(artifactsGridWidth$);
   const setGridRef = useSet(setArtifactsGridRef$);
-
-  if (loading) {
-    return <ArtifactsLoadingState />;
-  }
-  if (error) {
-    return <ArtifactsErrorState />;
-  }
-  if (artifacts.length === 0) {
-    return <ArtifactsEmptyState filtered={hasFilters} />;
-  }
-  // Auto-loading expands the available window while row virtualization keeps
-  // only the viewport and a small overscan mounted.
+  const syncScrollMetrics = useSet(syncArtifactsScrollMetrics$);
+  const requestKeyboardFocus = useSet(requestArtifactsKeyboardFocus$);
+  const setArtifactCardRef = useSet(setArtifactCardRef$);
   const windowed = artifacts.slice(0, visibleCount);
   const gridWidth =
     measuredGridWidth ||
@@ -932,6 +949,37 @@ function ArtifactsList({
       viewportHeight,
     });
   const virtualized = windowed.slice(startIndex, endIndex);
+  const hasKeyboardContinuation =
+    endIndex < windowed.length || windowed.length < artifacts.length;
+
+  const continueKeyboardNavigation = () => {
+    const nextIndex = endIndex < windowed.length ? endIndex : windowed.length;
+    if (nextIndex >= artifacts.length) {
+      return;
+    }
+
+    requestKeyboardFocus(nextIndex);
+    if (nextIndex >= windowed.length) {
+      onLoadMore();
+    }
+
+    if (!scrollViewport) {
+      return;
+    }
+    const row = Math.floor(nextIndex / columnCount);
+    scrollViewport.scrollTop = scrollMargin + row * rowHeight;
+    syncScrollMetrics(scrollViewport);
+  };
+
+  if (loading) {
+    return <ArtifactsLoadingState />;
+  }
+  if (error) {
+    return <ArtifactsErrorState />;
+  }
+  if (artifacts.length === 0) {
+    return <ArtifactsEmptyState filtered={hasFilters} />;
+  }
 
   return (
     <div
@@ -948,10 +996,13 @@ function ArtifactsList({
           transform: `translateY(${startOffset}px)`,
         }}
       >
-        {virtualized.map((artifact) => {
+        {virtualized.map((artifact, visibleOffset) => {
+          const index = startIndex + visibleOffset;
           return (
             <ArtifactCard
               key={artifact.artifactItemId}
+              cardRef={setArtifactCardRef}
+              index={index}
               item={artifact}
               onOpenChat={onOpenChat}
               onOpenPreview={onOpenPreview}
@@ -962,6 +1013,9 @@ function ArtifactsList({
           );
         })}
       </div>
+      {hasKeyboardContinuation && (
+        <ArtifactsKeyboardContinuation onFocus={continueKeyboardNavigation} />
+      )}
     </div>
   );
 }
@@ -1075,6 +1129,7 @@ export function ArtifactsPage() {
             loading={loading}
             error={error}
             visibleCount={visibleCount}
+            onLoadMore={loadMore}
             onOpenChat={openChat}
             onOpenPreview={openArtifactPreview}
             onStartChat={(item) => {

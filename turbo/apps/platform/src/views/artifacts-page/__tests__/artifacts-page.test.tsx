@@ -510,6 +510,23 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
+function buttonByText(text: string): HTMLElement {
+  const button = queryAllByRoleFast("button").find((candidate) => {
+    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+  });
+  if (!button) {
+    throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function focusedArtifactIndex(): string | null {
+  return (
+    document.activeElement?.closest<HTMLElement>("[data-artifact-index]")
+      ?.dataset.artifactIndex ?? null
+  );
+}
+
 describe("artifacts page", () => {
   it("hides the entry and redirects when the feature switch is disabled", async () => {
     setupTeam();
@@ -1336,5 +1353,48 @@ describe("artifacts page", () => {
     await screen.findByText("windowed-179.html");
     expect(screen.queryByText("windowed-119.html")).not.toBeInTheDocument();
     expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+  });
+
+  it("continues keyboard navigation through virtualized artifacts", async () => {
+    setupTeam();
+    const scope = testAuthScope("keyboard-windowed");
+    const many = Array.from({ length: 120 }, (_, index) => {
+      const label = String(index).padStart(3, "0");
+      return createArtifact({
+        artifactItemId: `keyboard-windowed-${label}:file`,
+        runId: `keyboard-windowed-${label}`,
+        filename: `keyboard-windowed-${label}.html`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+      });
+    });
+    mockArtifacts(many);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("keyboard-windowed-000.html");
+    const scrollViewport = screen.getByRole("main");
+    const setScrollMetrics = mockScrollViewport(scrollViewport, {
+      clientHeight: 800,
+      scrollHeight: 6068,
+      scrollTop: 0,
+    });
+
+    fireEvent.focus(buttonByText("Continue browsing artifacts"));
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe("15");
+    });
+    await screen.findByText("keyboard-windowed-015.html");
+
+    setScrollMetrics({ scrollHeight: 20_000, scrollTop: 4560 });
+    fireEvent.scroll(scrollViewport);
+    await screen.findByText("keyboard-windowed-059.html");
+
+    fireEvent.focus(buttonByText("Continue browsing artifacts"));
+
+    await waitFor(() => {
+      expect(focusedArtifactIndex()).toBe("60");
+    });
+    await screen.findByText("keyboard-windowed-060.html");
   });
 });
