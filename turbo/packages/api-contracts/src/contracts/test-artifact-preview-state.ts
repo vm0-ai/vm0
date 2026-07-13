@@ -16,6 +16,7 @@ export const testArtifactPreviewStateActionBodySchema = z.discriminatedUnion(
       run_id: z.string(),
       url: z.string(),
       generated_by: z.string().optional(),
+      preview_image_url: z.string().url().optional(),
     }),
   ],
 );
