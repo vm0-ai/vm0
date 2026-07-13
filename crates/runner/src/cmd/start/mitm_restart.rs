@@ -127,6 +127,7 @@ mod tests {
         let (mitm, rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
             mitmdump_bin: PathBuf::from("true"),
             ca_dir: dir.path().to_path_buf(),
+            ca_lock_path: dir.path().join("ca.lock"),
             addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("registry.json"),
             registry_lock_path: dir.path().join("registry.lock"),

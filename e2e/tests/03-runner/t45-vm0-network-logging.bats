@@ -2,9 +2,9 @@
 
 # Test network traffic logging from sandbox VMs.
 #
-# TCP: All outbound TCP is redirected through mitmproxy (transparent mode).
+# TCP: Outbound non-DNS TCP is redirected through mitmproxy (transparent mode).
 #      Non-HTTP TCP (e.g. SSH) passes through as raw TCP.
-# DNS: Queries intercepted via iptables REDIRECT to dnsmasq, logged as type "dns".
+# DNS: UDP/TCP 53 is redirected to dnsmasq and logged as type "dns".
 # Non-TCP: Logged via iptables LOG + /dev/kmsg (UDP, ICMP, etc).
 # All types are written to the same per-run network JSONL file.
 
@@ -67,15 +67,19 @@ EOF
     wait_for_log "$RUN_ID" --network -- "TCP" ":22" ":443"
 }
 
-@test "t45-1: dns queries logged via dnsmasq" {
+@test "t45-1: udp and tcp dns queries logged via dnsmasq" {
     create_agent
 
-    # DNS queries are intercepted by iptables REDIRECT to dnsmasq and logged
-    # as type "dns". getent triggers a standard libc DNS lookup.
+    # getent exercises standard UDP DNS. The Python query forces DNS over TCP
+    # to a TEST-NET destination with no resolver, so a valid response proves
+    # the packet was transparently redirected to dnsmasq rather than passed
+    # through as generic TCP.
+    local tcp_dns_script="import socket,struct; q=bytes.fromhex('123401000001000000000000077463702d646e7307696e76616c69640000010001'); s=socket.create_connection(('192.0.2.1',53),5); s.sendall(struct.pack('!H',len(q))+q); f=s.makefile('rb'); h=f.read(2); assert len(h)==2; n=struct.unpack('!H',h)[0]; r=f.read(n); assert len(r)==n and r[:2]==q[:2] and r[2]&128; print('TCP_DNS_OK=true')"
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "getent hosts example.com"
+        "getent hosts example.com >/dev/null && python3 -c \"$tcp_dns_script\""
     assert_success
+    assert_output --partial "TCP_DNS_OK=true"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
@@ -83,9 +87,13 @@ EOF
         return 1
     }
 
-    # Verify network logs contain DNS entries and at least one DNS result row.
-    # DNS result entries render as: [timestamp] DNS   example.com:53 -> <answer>
-    wait_for_log "$RUN_ID" --network -- "example.com" "DNS" ":53" "->"
+    # The distinct TCP-only name proves dnsmasq parsed and logged the TCP query,
+    # rather than mitmproxy recording only generic connection metadata.
+    wait_for_log "$RUN_ID" --network -- \
+        "example.com" \
+        "tcp-dns.invalid" \
+        "DNS" \
+        ":53"
 }
 
 @test "t45-2: non-dns udp appears in network logs" {

@@ -34,6 +34,16 @@ const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
 const STICKY_BIT: u32 = 0o1000;
+const START_SYSTEM_DEPENDENCIES: [&str; 7] = [
+    "ip",
+    "iptables",
+    "iptables-save",
+    "sysctl",
+    "dnsmasq",
+    "mkfs.ext4",
+    "openssl",
+];
+const OTHER_COMMAND_SYSTEM_DEPENDENCIES: [&str; 3] = ["pgrep", "debootstrap", "flock"];
 
 struct ProducedSetupArtifact {
     path: PathBuf,
@@ -97,24 +107,12 @@ fn check_architecture() -> RunnerResult<&'static str> {
 
 /// Returns names of missing required dependencies.
 fn check_system_dependencies() -> Vec<&'static str> {
-    // Required by `runner start` (sandbox networking and workspace images).
-    let required = [
-        "ip",
-        "iptables",
-        "iptables-save",
-        "sysctl",
-        "dnsmasq",
-        "mkfs.ext4",
-    ];
-    // Only needed by specific commands (rootfs, build, etc.)
-    let optional = ["pgrep", "debootstrap", "flock", "openssl"];
-
-    let missing_required: Vec<&str> = required
+    let missing_required: Vec<&str> = START_SYSTEM_DEPENDENCIES
         .iter()
         .filter(|dep| which::which(dep).is_err())
         .copied()
         .collect();
-    let missing_optional: Vec<&str> = optional
+    let missing_optional: Vec<&str> = OTHER_COMMAND_SYSTEM_DEPENDENCIES
         .iter()
         .filter(|dep| which::which(dep).is_err())
         .copied()
@@ -1214,20 +1212,18 @@ mod tests {
     #[test]
     fn check_system_dependencies_only_returns_known_deps() {
         let missing = check_system_dependencies();
-        let known = [
-            "ip",
-            "iptables",
-            "iptables-save",
-            "sysctl",
-            "dnsmasq",
-            "mkfs.ext4",
-        ];
         for dep in &missing {
             assert!(
-                known.contains(dep),
+                START_SYSTEM_DEPENDENCIES.contains(dep),
                 "unexpected dependency reported as missing: {dep}"
             );
         }
+    }
+
+    #[test]
+    fn runner_start_dependencies_include_openssl_for_proxy_ca_validation() {
+        assert!(START_SYSTEM_DEPENDENCIES.contains(&"openssl"));
+        assert!(!OTHER_COMMAND_SYSTEM_DEPENDENCIES.contains(&"openssl"));
     }
 
     #[test]

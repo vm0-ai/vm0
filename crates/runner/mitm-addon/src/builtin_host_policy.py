@@ -61,7 +61,28 @@ class _PublicDestinationHostPolicy:
     pass
 
 
-_ParsedHostPolicy = _ProviderOwnedHostPolicy | _PublicDestinationHostPolicy | None
+_ConfiguredHostPolicy = _ProviderOwnedHostPolicy | _PublicDestinationHostPolicy
+_ParsedHostPolicy = _ConfiguredHostPolicy | None
+
+
+@dataclass(frozen=True)
+class CompiledBuiltinHostPolicy:
+    """Opaque validated host policy owned by one resolved registry snapshot."""
+
+    _policy: _ConfiguredHostPolicy
+
+
+def _compiled_host_policy_value(
+    *,
+    firewall_name: str,
+    compiled: CompiledBuiltinHostPolicy,
+) -> _ConfiguredHostPolicy:
+    policy = compiled._policy
+    if isinstance(policy, (_ProviderOwnedHostPolicy, _PublicDestinationHostPolicy)):
+        return policy
+    raise BuiltinHostPolicyError(
+        f'builtin firewall "{firewall_name}" runtime host policy state is invalid'
+    )
 
 
 def validate_credentialed_builtin_base(
@@ -70,9 +91,9 @@ def validate_credentialed_builtin_base(
     base: str,
     auth_config: object,
     host_policy: object,
-) -> None:
+) -> CompiledBuiltinHostPolicy | None:
     if not auth_config_injects_credentials(auth_config):
-        return
+        return None
     try:
         parsed = urllib.parse.urlsplit(base)
     except ValueError as e:
@@ -95,6 +116,9 @@ def validate_credentialed_builtin_base(
         parsed=parsed,
         host_policy=parsed_host_policy,
     )
+    if parsed_host_policy is None:
+        return None
+    return CompiledBuiltinHostPolicy(parsed_host_policy)
 
 
 def validate_credentialed_builtin_request_destination(
@@ -109,10 +133,16 @@ def validate_credentialed_builtin_request_destination(
     if not auth_config_injects_ordinary_upstream_credentials(auth_config):
         return
     try:
-        parsed_host_policy = _parse_host_policy(
-            firewall_name=firewall_name,
-            host_policy=host_policy,
-        )
+        if isinstance(host_policy, CompiledBuiltinHostPolicy):
+            parsed_host_policy = _compiled_host_policy_value(
+                firewall_name=firewall_name,
+                compiled=host_policy,
+            )
+        else:
+            parsed_host_policy = _parse_host_policy(
+                firewall_name=firewall_name,
+                host_policy=host_policy,
+            )
         _validate_builtin_runtime_host_policy(
             firewall_name=firewall_name,
             trusted_host=trusted_host,

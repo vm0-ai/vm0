@@ -27,6 +27,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
   mockBase44OAuthProvider,
+  mockDatadogConnectorOAuth,
   mockDeferredTestOAuthTokenEndpoint,
   mockGitHubConnectorOAuth,
   mockGithubAppInstallProvider,
@@ -298,6 +299,56 @@ describe("CONN-02: OAuth start and callback", () => {
     );
     expectApiError(failedConnector.body);
     expect(failedConnector.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("persists the callback-selected Datadog site through the public OAuth flow", async () => {
+    const provider = mockDatadogConnectorOAuth();
+
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.DatadogConnector]: true,
+    });
+
+    const start = await connectorsApi.startOauth(actor, "datadog", "oauth");
+    const authorizationUrl = new URL(start.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
+      "S256",
+    );
+    const state = stateFromAuthorizationUrl(start.authorizationUrl);
+
+    const callback = await connectorsApi.completeOauthCallback("datadog", {
+      code: "datadog-success-code",
+      state,
+      domain: "us3.datadoghq.com",
+    });
+    expect(redirectLocation(callback).pathname).toBe("/connector/success");
+
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("code")).toBe("datadog-success-code");
+    const codeVerifier = provider.tokenBodies[0]?.get("code_verifier");
+    expect(codeVerifier).toStrictEqual(expect.any(String));
+    expect(codeVerifier?.length).toBeGreaterThanOrEqual(43);
+
+    const connected = await connectorsApi.readConnectorByType(actor, "datadog");
+    expect(connected).toMatchObject({
+      type: "datadog",
+      authMethod: "oauth",
+      externalId: "us3.datadoghq.com",
+      externalUsername: "us3.datadoghq.com",
+      oauthScopes: [
+        "dashboards_read",
+        "events_read",
+        "incident_read",
+        "logs_read_index_data",
+        "metrics_read",
+        "monitors_read",
+        "slos_read",
+      ],
+      connectionStatus: "connected",
+    });
+    expectNoVisibleSecret(connected, "bdd-datadog-access-token");
+    expectNoVisibleSecret(connected, "bdd-datadog-refresh-token");
   });
 
   it("rejects OAuth start requests that target unsupported or unavailable auth methods", async () => {

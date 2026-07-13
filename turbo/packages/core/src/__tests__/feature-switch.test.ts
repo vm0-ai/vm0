@@ -55,11 +55,6 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
     expect(
-      isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
-        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
-      }),
-    ).toBe(true);
-    expect(
       isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
@@ -69,11 +64,6 @@ describe("isFeatureEnabled", () => {
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -164,9 +154,8 @@ describe("getAllFeatureStates", () => {
       otherOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(
-      false,
-    );
+    // WorkflowWebhookTriggers is globally enabled, so it is on for every org
+    expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,

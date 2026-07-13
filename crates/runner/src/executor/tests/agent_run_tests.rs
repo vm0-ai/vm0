@@ -47,8 +47,8 @@ use super::super::{
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, StartProcessGateSandbox, api_artifact,
     api_storage, create_overridden_sandbox, minimal_context, sandbox_exec_error,
-    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts, test_executor_config,
-    test_telemetry,
+    sandbox_read_file_error, spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
+    test_executor_config, test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -2662,7 +2662,7 @@ async fn run_in_sandbox_records_final_identity_metadata_read_failure_reason() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let ctx = minimal_context();
-    sandbox.push_read_file_result(Err(sandbox_exec_error("vsock read failed")));
+    sandbox.push_read_file_result(Err(sandbox_read_file_error("guest read failed")));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(

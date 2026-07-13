@@ -14,8 +14,8 @@ stale decisions cannot leak into later hook handling for the same flow.
 """
 
 import urllib.parse
-from dataclasses import dataclass
-from typing import Literal, Protocol
+from dataclasses import dataclass, field
+from typing import Literal, Protocol, TypeAlias
 
 from mitmproxy import http
 
@@ -62,20 +62,11 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 
-RequestClassificationKind = Literal[
-    "no_client_ip",
-    "pass_through",
-    "registry_unavailable",
-    "stale_tls_admission",
-    "invalid_registry_vm",
-    "authority_denied",
-    "api_allow",
-    "browser_allow",
-    "firewall_ambiguous",
-    "firewall_block",
-    "firewall_allow",
-    "public_destination_denied",
-    "allow",
+StaleTlsAdmissionReason: TypeAlias = Literal[
+    "client_ip_missing",
+    "client_ip_mismatch",
+    "registry_entry_missing",
+    "run_id_mismatch",
 ]
 
 
@@ -103,42 +94,106 @@ class PublicDestinationDenial:
 
 
 @dataclass(frozen=True)
-class RequestClassification:
-    """Classification result and the payload field valid for each kind.
+class NoClientIp:
+    kind: Literal["no_client_ip"] = field(init=False, default="no_client_ip")
 
-    Payload fields are tied to `kind`; optional fields are not independent
-    facts. The expected payloads are:
 
-    - `registry_unavailable`: `registry_unavailable`.
-    - `invalid_registry_vm`: `invalid_vm`.
-    - `authority_denied`: `vm_info` and `authority_error`.
-    - `firewall_block`: `vm_info` and `firewall_block`.
-    - `firewall_ambiguous`: `vm_info` and `firewall_ambiguous`.
-    - `firewall_allow`: `vm_info` and `firewall_allow`.
-    - `public_destination_denied`: `vm_info` and
-      `public_destination_denial`.
-    - `api_allow`, `browser_allow`, and `allow`: `vm_info`.
-    - `firewall_allow` and `allow` may also carry
-      `builtin_firewall_catalog_snapshot` when registry compilation depended on
-      a catalog snapshot.
-    - `stale_tls_admission`: `stale_tls_reason`; `vm_info` is present only
-      when the stale admission is detected after a VM entry is found.
-    - `no_client_ip` and `pass_through`: no additional payload.
-    """
+@dataclass(frozen=True)
+class PassThrough:
+    kind: Literal["pass_through"] = field(init=False, default="pass_through")
 
-    kind: RequestClassificationKind
-    vm_info: dict | None = None
-    registry_unavailable: registry.RegistryUnavailable | None = None
-    invalid_vm: registry.InvalidVmEntry | None = None
-    authority_error: AuthorityValidationError | None = None
-    firewall_ambiguous: matching.FirewallAmbiguous | None = None
-    firewall_block: matching.FirewallBlock | None = None
-    firewall_allow: matching.FirewallAllow | None = None
-    public_destination_denial: PublicDestinationDenial | None = None
-    builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None = (
-        None
+
+@dataclass(frozen=True)
+class RegistryUnavailable:
+    registry_unavailable: registry.RegistryUnavailable
+    kind: Literal["registry_unavailable"] = field(init=False, default="registry_unavailable")
+
+
+@dataclass(frozen=True)
+class StaleTlsAdmission:
+    stale_tls_reason: StaleTlsAdmissionReason
+    kind: Literal["stale_tls_admission"] = field(init=False, default="stale_tls_admission")
+
+
+@dataclass(frozen=True)
+class InvalidRegistryVm:
+    invalid_vm: registry.InvalidVmEntry
+    kind: Literal["invalid_registry_vm"] = field(init=False, default="invalid_registry_vm")
+
+
+@dataclass(frozen=True)
+class AuthorityDenied:
+    vm_info: dict
+    authority_error: AuthorityValidationError
+    kind: Literal["authority_denied"] = field(init=False, default="authority_denied")
+
+
+@dataclass(frozen=True)
+class ApiAllow:
+    vm_info: dict
+    kind: Literal["api_allow"] = field(init=False, default="api_allow")
+
+
+@dataclass(frozen=True)
+class BrowserAllow:
+    vm_info: dict
+    kind: Literal["browser_allow"] = field(init=False, default="browser_allow")
+
+
+@dataclass(frozen=True)
+class FirewallAmbiguous:
+    vm_info: dict
+    firewall_ambiguous: matching.FirewallAmbiguous
+    kind: Literal["firewall_ambiguous"] = field(init=False, default="firewall_ambiguous")
+
+
+@dataclass(frozen=True)
+class FirewallBlock:
+    vm_info: dict
+    firewall_block: matching.FirewallBlock
+    kind: Literal["firewall_block"] = field(init=False, default="firewall_block")
+
+
+@dataclass(frozen=True)
+class FirewallAllow:
+    vm_info: dict
+    firewall_allow: matching.FirewallAllow
+    builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
+    kind: Literal["firewall_allow"] = field(init=False, default="firewall_allow")
+
+
+@dataclass(frozen=True)
+class PublicDestinationDenied:
+    vm_info: dict
+    public_destination_denial: PublicDestinationDenial
+    kind: Literal["public_destination_denied"] = field(
+        init=False,
+        default="public_destination_denied",
     )
-    stale_tls_reason: str = ""
+
+
+@dataclass(frozen=True)
+class Allow:
+    vm_info: dict
+    builtin_firewall_catalog_snapshot: registry_firewalls.BuiltinFirewallCatalogSnapshot | None
+    kind: Literal["allow"] = field(init=False, default="allow")
+
+
+RequestClassification: TypeAlias = (
+    NoClientIp
+    | PassThrough
+    | RegistryUnavailable
+    | StaleTlsAdmission
+    | InvalidRegistryVm
+    | AuthorityDenied
+    | ApiAllow
+    | BrowserAllow
+    | FirewallAmbiguous
+    | FirewallBlock
+    | FirewallAllow
+    | PublicDestinationDenied
+    | Allow
+)
 
 
 def cache_classification(flow: http.HTTPFlow, classification: RequestClassification) -> None:
@@ -223,22 +278,19 @@ def classify_request(
 
     if not client_ip:
         if tls_admission is not None:
-            return RequestClassification(
-                kind="stale_tls_admission",
+            return StaleTlsAdmission(
                 stale_tls_reason="client_ip_missing",
             )
-        return RequestClassification(kind="no_client_ip")
+        return NoClientIp()
 
     registry_state = registry.load_registry_state(registry_path)
     if isinstance(registry_state, registry.RegistryUnavailable):
-        return RequestClassification(
-            kind="registry_unavailable",
+        return RegistryUnavailable(
             registry_unavailable=registry_state,
         )
 
     if tls_admission is not None and tls_admission.client_ip != client_ip:
-        return RequestClassification(
-            kind="stale_tls_admission",
+        return StaleTlsAdmission(
             stale_tls_reason="client_ip_mismatch",
         )
 
@@ -246,16 +298,14 @@ def classify_request(
     if vm_info is None:
         invalid_vm = registry_state.invalid_vms.get(client_ip)
         if invalid_vm is not None:
-            return RequestClassification(
-                kind="invalid_registry_vm",
+            return InvalidRegistryVm(
                 invalid_vm=invalid_vm,
             )
         if tls_admission is not None:
-            return RequestClassification(
-                kind="stale_tls_admission",
+            return StaleTlsAdmission(
                 stale_tls_reason="registry_entry_missing",
             )
-        return RequestClassification(kind="pass_through")
+        return PassThrough()
 
     run_id = vm_info.get("runId", "")
     if (
@@ -263,9 +313,7 @@ def classify_request(
         and tls_admission.run_id is not None
         and tls_admission.run_id != run_id
     ):
-        return RequestClassification(
-            kind="stale_tls_admission",
-            vm_info=vm_info,
+        return StaleTlsAdmission(
             stale_tls_reason="run_id_mismatch",
         )
 
@@ -277,8 +325,7 @@ def classify_request(
     try:
         trusted_authority = get_trusted_authority(flow)
     except AuthorityValidationError as e:
-        return RequestClassification(
-            kind="authority_denied",
+        return AuthorityDenied(
             vm_info=vm_info,
             authority_error=e,
         )
@@ -293,10 +340,10 @@ def classify_request(
 
     hostname = trusted_authority.host.lower()
     if _api_hostname_matches(api_url, hostname) and not flow.request.path.startswith("/api/test/"):
-        return RequestClassification(kind="api_allow", vm_info=vm_info)
+        return ApiAllow(vm_info=vm_info)
 
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
-        return RequestClassification(kind="browser_allow", vm_info=vm_info)
+        return BrowserAllow(vm_info=vm_info)
 
     compiled_firewalls = registry_state.compiled_firewalls.get(client_ip)
     compiled_network_policies = registry_state.compiled_network_policies[client_ip]
@@ -309,14 +356,12 @@ def classify_request(
             connector_intent.from_flow(flow),
         )
         if isinstance(result, matching.FirewallAmbiguous):
-            return RequestClassification(
-                kind="firewall_ambiguous",
+            return FirewallAmbiguous(
                 vm_info=vm_info,
                 firewall_ambiguous=result,
             )
         if isinstance(result, matching.FirewallBlock):
-            return RequestClassification(
-                kind="firewall_block",
+            return FirewallBlock(
                 vm_info=vm_info,
                 firewall_block=result,
             )
@@ -328,13 +373,11 @@ def classify_request(
                 defer_unresolved_hostnames=defer_unresolved_public_destination,
             )
             if public_destination_denial is not None:
-                return RequestClassification(
-                    kind="public_destination_denied",
+                return PublicDestinationDenied(
                     vm_info=vm_info,
                     public_destination_denial=public_destination_denial,
                 )
-            return RequestClassification(
-                kind="firewall_allow",
+            return FirewallAllow(
                 vm_info=vm_info,
                 firewall_allow=result,
                 builtin_firewall_catalog_snapshot=(
@@ -342,8 +385,7 @@ def classify_request(
                 ),
             )
 
-    return RequestClassification(
-        kind="allow",
+    return Allow(
         vm_info=vm_info,
         builtin_firewall_catalog_snapshot=registry_state.builtin_firewall_catalog_snapshot,
     )
@@ -363,20 +405,18 @@ def classification_needs_request_timing(classification: RequestClassification) -
 
 
 def should_stream_capture_request(classification: RequestClassification) -> bool:
-    if classification.kind not in ("api_allow", "browser_allow", "allow"):
+    if not isinstance(classification, ApiAllow | BrowserAllow | Allow):
         return False
-    vm_info = classification.vm_info
-    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
+    return bool(classification.vm_info.get("captureNetworkBodies", False))
 
 
 def should_try_firewall_stream_capture_request(classification: RequestClassification) -> bool:
-    if classification.kind != "firewall_allow":
+    if not isinstance(classification, FirewallAllow):
         return False
     allow = classification.firewall_allow
-    if allow is None or firewall_allow_uses_public_destination(allow):
+    if firewall_allow_uses_public_destination(allow):
         return False
-    vm_info = classification.vm_info
-    return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
+    return bool(classification.vm_info.get("captureNetworkBodies", False))
 
 
 def firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> bool:

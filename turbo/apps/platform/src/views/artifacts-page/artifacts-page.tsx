@@ -101,14 +101,19 @@ import { publicAttachmentUrl } from "../zero-page/zero-attachment-url.ts";
 type ArtifactPreviewKind = "image" | "html" | "pdf" | "video" | "file";
 type ArtifactTypeIconKind = "presentation" | "html" | "image" | "video";
 
-const DESKTOP_ARTIFACT_PREVIEW_SIZE = 1280;
+const DESKTOP_ARTIFACT_PREVIEW_WIDTH = 1280;
+const DESKTOP_ARTIFACT_PREVIEW_HEIGHT = 800;
 const ARTIFACT_AUTO_LOAD_THRESHOLD_PX = 800;
 const ARTIFACT_GRID_GAP_PX = 12;
-const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 220;
+const ARTIFACT_GRID_MIN_CARD_WIDTH_PX = 292;
 const ARTIFACT_GRID_OVERSCAN_ROWS = 2;
 const ARTIFACT_GRID_FALLBACK_WIDTH_PX = 900;
 const ARTIFACT_GRID_FALLBACK_VIEWPORT_HEIGHT_PX = 800;
-const ARTIFACT_CARD_IMAGE_SIZE = 640;
+const ARTIFACT_CARD_IMAGE_WIDTH = 640;
+const ARTIFACT_CARD_IMAGE_HEIGHT = 400;
+const ARTIFACT_CARD_PREVIEW_ASPECT_RATIO = 16 / 10;
+const ARTIFACT_CARD_DETAILS_HEIGHT_PX = 64;
+const ARTIFACT_CARD_BORDER_WIDTH_PX = 1;
 const ARTIFACT_CATEGORY_OPTIONS: readonly {
   readonly ariaLabel: string;
   readonly label: string;
@@ -414,9 +419,9 @@ function DesktopArtifactPreviewFrame({
         sandbox="allow-same-origin allow-scripts"
         tabIndex={-1}
         style={{
-          height: `${DESKTOP_ARTIFACT_PREVIEW_SIZE}px`,
-          scale: `calc(100cqw / ${DESKTOP_ARTIFACT_PREVIEW_SIZE}px)`,
-          width: `${DESKTOP_ARTIFACT_PREVIEW_SIZE}px`,
+          height: `${DESKTOP_ARTIFACT_PREVIEW_HEIGHT}px`,
+          scale: `calc(100cqw / ${DESKTOP_ARTIFACT_PREVIEW_WIDTH}px)`,
+          width: `${DESKTOP_ARTIFACT_PREVIEW_WIDTH}px`,
         }}
         className="pointer-events-none absolute left-0 top-0 block origin-top-left scale-[0.22] border-0 bg-background"
       />
@@ -480,7 +485,7 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
           src={item.previewImageUrl}
           alt=""
           loading="lazy"
-          className="h-full w-full object-contain"
+          className="h-full w-full object-cover"
         />
       </ArtifactPreviewSurface>
     );
@@ -489,9 +494,9 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
   if (previewKind === "image") {
     const thumbnailUrl = artifactCardImageSupportsTransform(item)
       ? r2ImageTransformUrl(previewUrl, {
-          width: ARTIFACT_CARD_IMAGE_SIZE,
-          height: ARTIFACT_CARD_IMAGE_SIZE,
-          fit: "cover",
+          width: ARTIFACT_CARD_IMAGE_WIDTH,
+          height: ARTIFACT_CARD_IMAGE_HEIGHT,
+          fit: "scale-down",
         })
       : previewUrl;
     return (
@@ -500,7 +505,7 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
           src={thumbnailUrl}
           alt=""
           loading="lazy"
-          className="h-full w-full object-contain"
+          className="h-full w-full object-cover"
         />
       </ArtifactPreviewSurface>
     );
@@ -730,32 +735,38 @@ function ArtifactCard({
           : undefined
       }
       className={cn(
-        "group relative aspect-square overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
+        "group flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-foreground/20",
         previewable &&
           "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
     >
-      <ArtifactPreview item={item} />
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background via-background/95 to-transparent p-3 pt-14">
-        <div className="flex min-w-0 items-end gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold text-foreground">
-              {item.filename}
-            </h2>
-            <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
-              {contextLabel}
-            </p>
-          </div>
-          <ArtifactCardActions
-            favorited={favorited}
-            item={item}
-            previewUrl={previewUrl}
-            showFavoriteAction={showFavoriteAction}
-            onOpenChat={onOpenChat}
-            onStartChat={onStartChat}
-            onToggleFavorite={onToggleFavorite}
-          />
+      <div
+        data-testid="artifact-card-preview"
+        className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-background"
+      >
+        <ArtifactPreview item={item} />
+      </div>
+      <div
+        data-testid="artifact-card-details"
+        className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-t border-border p-3"
+      >
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-semibold text-foreground">
+            {item.filename}
+          </h2>
+          <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
+            {contextLabel}
+          </p>
         </div>
+        <ArtifactCardActions
+          favorited={favorited}
+          item={item}
+          previewUrl={previewUrl}
+          showFavoriteAction={showFavoriteAction}
+          onOpenChat={onOpenChat}
+          onStartChat={onStartChat}
+          onToggleFavorite={onToggleFavorite}
+        />
       </div>
     </article>
   );
@@ -764,23 +775,23 @@ function ArtifactCard({
 function ArtifactsLoadingState() {
   return (
     <div
-      className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3"
+      className="grid gap-3"
       aria-label="Loading artifacts"
+      style={{
+        gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${String(ARTIFACT_GRID_MIN_CARD_WIDTH_PX)}px), 1fr))`,
+      }}
     >
       {Array.from({ length: 8 }, (_, index) => {
         return (
           <div
             key={index}
-            className="aspect-square overflow-hidden rounded-lg border border-border bg-card"
+            className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
           >
-            <div className="h-full bg-muted/30">
-              <div className="flex h-full flex-col justify-end p-3">
-                <div className="h-4 w-3/4 rounded bg-background/70" />
-                <div className="mt-2 h-3 w-1/2 rounded bg-background/60" />
-                <div className="mt-3 flex gap-1.5">
-                  <div className="h-5 w-16 rounded border border-border/40 bg-background/60" />
-                  <div className="h-5 w-20 rounded border border-border/40 bg-background/60" />
-                </div>
+            <div className="aspect-[16/10] w-full shrink-0 bg-muted/30" />
+            <div className="flex h-16 shrink-0 items-center p-3">
+              <div className="w-full">
+                <div className="h-4 w-3/4 rounded bg-muted/60" />
+                <div className="mt-2 h-3 w-1/2 rounded bg-muted/40" />
               </div>
             </div>
           </div>
@@ -825,11 +836,19 @@ function getArtifactGridDimensions(containerWidth: number) {
         (ARTIFACT_GRID_MIN_CARD_WIDTH_PX + ARTIFACT_GRID_GAP_PX),
     ),
   );
-  const cardSize =
+  const cardWidth =
     (containerWidth - ARTIFACT_GRID_GAP_PX * (columnCount - 1)) / columnCount;
+  const cardContentWidth = Math.max(
+    0,
+    cardWidth - ARTIFACT_CARD_BORDER_WIDTH_PX * 2,
+  );
+  const cardHeight =
+    cardContentWidth / ARTIFACT_CARD_PREVIEW_ASPECT_RATIO +
+    ARTIFACT_CARD_DETAILS_HEIGHT_PX +
+    ARTIFACT_CARD_BORDER_WIDTH_PX * 2;
   return {
     columnCount,
-    rowHeight: cardSize + ARTIFACT_GRID_GAP_PX,
+    rowHeight: cardHeight + ARTIFACT_GRID_GAP_PX,
   };
 }
 

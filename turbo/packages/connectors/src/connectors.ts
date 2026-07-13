@@ -96,6 +96,7 @@ import { axiom } from "./connectors/axiom";
 import { base44 } from "./connectors/base44";
 import { bentoml } from "./connectors/bentoml";
 import { bfl } from "./connectors/bfl";
+import { bill } from "./connectors/bill";
 import { bitrefill } from "./connectors/bitrefill";
 import { bitrix } from "./connectors/bitrix";
 import { bland } from "./connectors/bland";
@@ -125,11 +126,13 @@ import { cloudflare } from "./connectors/cloudflare";
 import { cloudinary } from "./connectors/cloudinary";
 import { coda } from "./connectors/coda";
 import { coingecko } from "./connectors/coingecko";
+import { copper } from "./connectors/copper";
 import { coresignal } from "./connectors/coresignal";
 import { cronlytic } from "./connectors/cronlytic";
 import { crustdata } from "./connectors/crustdata";
 import { cursor } from "./connectors/cursor";
 import { customerIo } from "./connectors/customer-io";
+import { datadog } from "./connectors/datadog";
 import { daytona } from "./connectors/daytona";
 import { db9 } from "./connectors/db9";
 import { deel } from "./connectors/deel";
@@ -151,6 +154,7 @@ import { elevenlabs } from "./connectors/elevenlabs";
 import { etsy } from "./connectors/etsy";
 import { etherscan } from "./connectors/etherscan";
 import { exa } from "./connectors/exa";
+import { expensify } from "./connectors/expensify";
 import { explorium } from "./connectors/explorium";
 import { faire } from "./connectors/faire";
 import { fal } from "./connectors/fal";
@@ -219,6 +223,7 @@ import { msg9 } from "./connectors/msg9";
 import { n8n } from "./connectors/n8n";
 import { neon } from "./connectors/neon";
 import { netdata } from "./connectors/netdata";
+import { netsuite } from "./connectors/netsuite";
 import { novita } from "./connectors/novita";
 import { nyne } from "./connectors/nyne";
 import { onyx } from "./connectors/onyx";
@@ -229,6 +234,7 @@ import { outlookCalendar } from "./connectors/outlook-calendar";
 import { outlookMail } from "./connectors/outlook-mail";
 import { pandadoc } from "./connectors/pandadoc";
 import { parallel } from "./connectors/parallel";
+import { paypal } from "./connectors/paypal";
 import { pdf4me } from "./connectors/pdf4me";
 import { pdfco } from "./connectors/pdfco";
 import { pdforge } from "./connectors/pdforge";
@@ -250,10 +256,11 @@ import { profound } from "./connectors/profound";
 import { productlane } from "./connectors/productlane";
 import { pushinator } from "./connectors/pushinator";
 import { qdrant } from "./connectors/qdrant";
-import { quickbooks } from "./connectors/quickbooks";
 import { qiita } from "./connectors/qiita";
+import { quickbooks } from "./connectors/quickbooks";
 import { railway } from "./connectors/railway";
 import { railwayProject } from "./connectors/railway-project";
+import { ramp } from "./connectors/ramp";
 import { reap } from "./connectors/reap";
 import { reddit } from "./connectors/reddit";
 import { reducto } from "./connectors/reducto";
@@ -305,6 +312,7 @@ import { webflow } from "./connectors/webflow";
 import { weread } from "./connectors/weread";
 import { whaleAlert } from "./connectors/whale-alert";
 import { wix } from "./connectors/wix";
+import { workday } from "./connectors/workday";
 import { workos } from "./connectors/workos";
 import { wrike } from "./connectors/wrike";
 import { youtube } from "./connectors/youtube";
@@ -517,6 +525,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...base44,
   ...bentoml,
   ...bfl,
+  ...bill,
   ...bitrefill,
   ...bitrix,
   ...bland,
@@ -546,11 +555,13 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...cloudinary,
   ...coda,
   ...coingecko,
+  ...copper,
   ...coresignal,
   ...cronlytic,
   ...crustdata,
   ...cursor,
   ...customerIo,
+  ...datadog,
   ...daytona,
   ...db9,
   ...deel,
@@ -572,6 +583,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...etsy,
   ...etherscan,
   ...exa,
+  ...expensify,
   ...explorium,
   ...faire,
   ...fal,
@@ -640,6 +652,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...n8n,
   ...neon,
   ...netdata,
+  ...netsuite,
   ...novita,
   ...nyne,
   ...onyx,
@@ -650,6 +663,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...outlookMail,
   ...pandadoc,
   ...parallel,
+  ...paypal,
   ...pdf4me,
   ...pdfco,
   ...pdforge,
@@ -671,10 +685,11 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...productlane,
   ...pushinator,
   ...qdrant,
-  ...quickbooks,
   ...qiita,
+  ...quickbooks,
   ...railway,
   ...railwayProject,
+  ...ramp,
   ...reap,
   ...reddit,
   ...reducto,
@@ -726,6 +741,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...weread,
   ...whaleAlert,
   ...wix,
+  ...workday,
   ...workos,
   ...wrike,
   ...youtube,
