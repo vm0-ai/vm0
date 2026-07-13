@@ -61,6 +61,7 @@ import {
   WorkflowTriggerEnabledSwitch,
 } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
+import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
 export type WorkflowTriggerEntryMap = ReadonlyMap<
   string,
@@ -1008,6 +1009,7 @@ export function WorkflowsPage() {
       </main>
 
       <CreateWorkflowAutomationDialog />
+      <WorkflowWebhookUpgradeDialog />
     </div>
   );
 }

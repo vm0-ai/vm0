@@ -43,6 +43,7 @@ import {
   CONCURRENCY_SUBSCRIPTION_PURPOSE,
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
+import { disableIneligibleWorkflowWebhookTriggersForOrg } from "./workflow-webhook-trigger-entitlement.service";
 
 const L = logger("WebhookStripe");
 
@@ -3517,6 +3518,11 @@ export const handleStripeWebhookEvent$ = command(
 
     signal.throwIfAborted();
     for (const orgId of billingChangedOrgIds) {
+      await disableIneligibleWorkflowWebhookTriggersForOrg(db, {
+        orgId,
+        signal,
+      });
+      signal.throwIfAborted();
       await publishBillingChangedForOrg(db, orgId);
       signal.throwIfAborted();
     }

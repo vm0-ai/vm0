@@ -555,6 +555,7 @@ export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
     scheduleSummary: z.null(),
     webhookUrl: z.url().optional(),
     secretLastFour: z.string().length(4),
+    disabledReason: z.literal("paid_plan_required").nullable().optional(),
     lastReceivedAt: z.string().datetime().nullable(),
     webhookSecret: z.string().min(1).optional(),
   });
@@ -1240,6 +1241,7 @@ export const zeroWorkflowTriggersContract = c.router({
       201: zeroWorkflowTriggerSummarySchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
@@ -1297,7 +1299,9 @@ export const zeroWorkflowTriggersContract = c.router({
     body: c.noBody(),
     responses: {
       200: zeroWorkflowTriggerSummarySchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,

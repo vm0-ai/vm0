@@ -129,8 +129,16 @@ export function createWorkflowsBddApi(context: TestContext) {
      * timezone flows through the public onboarding setup route.
      */
     async setupWorkflowOrg(
-      options: { readonly timezone?: string } = {},
-    ): Promise<{ readonly actor: ApiTestUser }> {
+      options: {
+        readonly timezone?: string;
+        readonly tier?: "pro" | "team";
+      } = {},
+    ): Promise<{
+      readonly actor: ApiTestUser;
+      readonly customerId: string;
+      readonly subscriptionId: string;
+      readonly invoiceId: string;
+    }> {
       const actor = bdd.user();
       if (options.timezone) {
         await bdd.setupOnboarding(actor, {
@@ -138,10 +146,12 @@ export function createWorkflowsBddApi(context: TestContext) {
           timezone: options.timezone,
         });
       }
-      await runs.grantProEntitlement(actor);
+      const entitlement = await runs.grantProEntitlement(actor, {
+        tier: options.tier,
+      });
       await runs.ensureOrgModelProvider(actor);
       bdd.acceptAgentStorageWrites();
-      return { actor };
+      return { actor, ...entitlement };
     },
 
     async createAgent(
