@@ -215,7 +215,6 @@ interface ThreadListItem {
   agent: { id: string; avatarUrl: string | null };
   createdAt: string;
   updatedAt: string;
-  running: boolean;
   pinnedAt?: string | null;
   renamedAt?: string | null;
   selectedModel?: string | null;
@@ -584,7 +583,6 @@ export function mockChatLifecycle(
         },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: hasActiveRun(),
         pinnedAt: null,
         selectedModel,
       },
@@ -868,11 +866,7 @@ export function mockChatLifecycle(
     return respond(200, { events: [], hasMore: false });
   });
   context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    const activeThreadIds = new Set(
-      effectiveThreadList().flatMap((thread) => {
-        return thread.running ? [thread.id] : [];
-      }),
-    );
+    const activeThreadIds = new Set<string>();
     if (
       optionActiveRunIds.length > 0 ||
       (runAssociated && !terminal.has(runStatus))

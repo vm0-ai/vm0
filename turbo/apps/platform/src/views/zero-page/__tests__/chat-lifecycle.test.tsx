@@ -370,7 +370,6 @@ function mockKeyboardNavigationThreads({
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00Z",
       updatedAt: `2026-06-01T00:0${sortMinute}:00Z`,
-      running: false,
       pinnedAt: null,
     };
   });
@@ -554,7 +553,6 @@ function mockServerQueuedThreadStories(): void {
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-09T10:00:00Z",
       updatedAt: `2026-06-09T10:0${index}:00Z`,
-      running: thread.activeRunIds.length > 0,
       pinnedAt: null,
     };
   });
@@ -1163,7 +1161,6 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
-        running: false,
       },
       {
         id: otherThreadId,
@@ -1171,7 +1168,6 @@ describe("chat lifecycle", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
 
@@ -3786,7 +3782,6 @@ describe("chat lifecycle", () => {
       agent: { id: AGENT_ID, avatarUrl: null },
       createdAt: "2026-06-01T00:00:00.000Z",
       updatedAt: "2026-06-01T00:00:00.000Z",
-      running: false,
       pinnedAt: null,
     };
     const lifecycle = mockChatLifecycle(context, {
@@ -6040,7 +6035,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -6360,7 +6354,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -6441,7 +6434,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
@@ -7385,7 +7377,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: true,
       },
       {
         id: COMPLETED_THREAD_ID,
@@ -7393,7 +7384,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:01:00Z",
         updatedAt: "2026-03-10T00:01:00Z",
-        running: false,
       },
     ];
     context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {

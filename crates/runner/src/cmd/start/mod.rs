@@ -47,7 +47,7 @@ use crate::config::{self, ProfileConfig};
 use crate::deps;
 use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
-use crate::executor::{ExecutorConfig, SessionHistoryProbe};
+use crate::executor::{ExecutorConfig, SessionHistoryCpuPool, SessionHistoryProbe};
 use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
@@ -654,6 +654,7 @@ async fn run_start_with_home(
         network_log_drain,
         mitm_jsonl_flush: Some(mitm.jsonl_flush_handle(usage_flush_tx.clone())),
         network_policy_refresh,
+        session_history_cpu: SessionHistoryCpuPool::for_host_cpus(host_cpus),
         session_history_probe: SessionHistoryProbe::default(),
         home: home.clone(),
         workspace_cache: Some(SessionWorkspaceCache::shared(

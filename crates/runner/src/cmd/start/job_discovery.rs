@@ -24,9 +24,9 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer, SessionHistoryProbe,
-    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
-    validate_resume_session_id,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryCpuPool, SessionHistoryMaterializer,
+    SessionHistoryProbe, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+    effective_cli_framework, validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{
@@ -241,18 +241,22 @@ pub(super) async fn handle_discovered_job(
             }
         };
 
-    let session_history_restore_plan = build_session_history_restore_plan(
-        &ctx.spawn_ctx.exec_config.http,
-        claimed.context(),
-        resume_session_valid,
-        &job_cancel,
-        SessionHistoryRestoreReuse {
-            entry: reuse_entry.as_ref(),
-            result: reuse_result,
-        },
-        &mut pre_spawn_timing,
-        Some(&ctx.spawn_ctx.exec_config.session_history_probe),
-    );
+    let session_history_restore_plan = if resume_session_valid {
+        build_session_history_restore_plan(
+            &ctx.spawn_ctx.exec_config.http,
+            &ctx.spawn_ctx.exec_config.session_history_cpu,
+            claimed.context(),
+            &job_cancel,
+            SessionHistoryRestoreReuse {
+                entry: reuse_entry.as_ref(),
+                result: reuse_result,
+            },
+            &mut pre_spawn_timing,
+            Some(&ctx.spawn_ctx.exec_config.session_history_probe),
+        )
+    } else {
+        SessionHistoryRestorePlan::Default
+    };
 
     // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
     // its original identity; on a fresh create, allocate a new UUID for the
@@ -307,16 +311,13 @@ struct SessionHistoryRestoreReuse<'a> {
 
 fn build_session_history_restore_plan(
     http: &HttpClient,
+    cpu: &SessionHistoryCpuPool,
     context: &ExecutionContext,
-    resume_session_valid: bool,
     cancel: &RunCancellationHandle,
     reuse: SessionHistoryRestoreReuse<'_>,
     pre_spawn_timing: &mut RunnerPreSpawnTiming,
     probe: Option<&SessionHistoryProbe>,
 ) -> SessionHistoryRestorePlan {
-    if !resume_session_valid {
-        return SessionHistoryRestorePlan::Default;
-    }
     let Some(resume_session) = context.resume_session.as_ref() else {
         return SessionHistoryRestorePlan::Default;
     };
@@ -373,6 +374,7 @@ fn build_session_history_restore_plan(
     let started_at = Instant::now();
     let materializer = SessionHistoryMaterializer::start_cancellable(
         http,
+        cpu,
         Some(resume_session),
         effective_cli_framework(&context.cli_agent_type),
         cancel.token(),
@@ -1275,8 +1277,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1340,8 +1342,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1388,8 +1390,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1418,8 +1420,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1466,8 +1468,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1500,8 +1502,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1532,8 +1534,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1565,8 +1567,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1598,8 +1600,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: None,
@@ -1635,8 +1637,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),
@@ -1677,8 +1679,8 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
+            &SessionHistoryCpuPool::with_capacity(1),
             &context,
-            true,
             &cancel,
             SessionHistoryRestoreReuse {
                 entry: Some(&reusable_sandbox),

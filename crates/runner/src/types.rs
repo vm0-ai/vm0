@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
@@ -1077,7 +1078,8 @@ pub struct ResumeSession {
 pub enum ResumeSessionHistory {
     Inline {
         #[serde(rename = "sessionHistory")]
-        session_history: String,
+        #[serde(deserialize_with = "deserialize_shared_string")]
+        session_history: Arc<String>,
     },
     Ref {
         #[serde(rename = "historyRef")]
@@ -1131,13 +1133,23 @@ impl ResumeSession {
     pub fn inline(cli_agent_session_id: String, session_history: String) -> Self {
         Self {
             cli_agent_session_id,
-            history: ResumeSessionHistory::Inline { session_history },
+            history: ResumeSessionHistory::Inline {
+                session_history: Arc::new(session_history),
+            },
         }
     }
 
+    #[cfg(test)]
     pub fn session_history(&self) -> Option<&str> {
         match &self.history {
             ResumeSessionHistory::Inline { session_history } => Some(session_history),
+            ResumeSessionHistory::Ref { .. } => None,
+        }
+    }
+
+    pub fn shared_session_history(&self) -> Option<Arc<String>> {
+        match &self.history {
+            ResumeSessionHistory::Inline { session_history } => Some(Arc::clone(session_history)),
             ResumeSessionHistory::Ref { .. } => None,
         }
     }
@@ -1148,6 +1160,13 @@ impl ResumeSession {
             ResumeSessionHistory::Ref { history_ref } => Some(history_ref),
         }
     }
+}
+
+fn deserialize_shared_string<'de, D>(deserializer: D) -> Result<Arc<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Arc::new)
 }
 
 impl ExecutionContext {
@@ -1668,6 +1687,10 @@ mod tests {
             ctx.resume_session.as_ref().unwrap().session_history(),
             Some("{}")
         );
+        let session = ctx.resume_session.as_ref().unwrap();
+        let first = session.shared_session_history().unwrap();
+        let second = session.shared_session_history().unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
     }
 
     #[test]

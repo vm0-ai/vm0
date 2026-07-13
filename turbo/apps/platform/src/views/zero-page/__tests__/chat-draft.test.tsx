@@ -44,7 +44,6 @@ function mockThreadDetails(): void {
       },
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
-      running: false,
     },
     {
       id: THREAD_TWO_ID,
@@ -55,7 +54,6 @@ function mockThreadDetails(): void {
       },
       createdAt: "2026-03-10T00:01:00Z",
       updatedAt: "2026-03-10T00:01:00Z",
-      running: false,
     },
     {
       id: THREAD_UPLOADS_ID,
@@ -66,7 +64,6 @@ function mockThreadDetails(): void {
       },
       createdAt: "2026-03-10T00:02:00Z",
       updatedAt: "2026-03-10T00:02:00Z",
-      running: false,
     },
   ];
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
