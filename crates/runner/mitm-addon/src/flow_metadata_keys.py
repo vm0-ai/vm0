@@ -110,13 +110,16 @@ Firewall and auth context
 
 Response streaming
 ------------------
+- ``RESPONSE_STREAM_STATE``: ``dict`` containing ``total_bytes`` for the
+  general response stream callback. Read for exact response-size logging and
+  removed by stream cleanup.
 - ``STREAM_BUFFER``: capped ``bytearray`` written by ``responseheaders()`` via
-  response streaming setup. Read by response logging, body capture, model JSON
-  fallback extraction, and connector fallback parsing. Removed by stream
-  cleanup after terminal hooks.
-- ``STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
-  ``total_bytes``. Written with ``STREAM_BUFFER`` and read for response size,
-  capture truncation, and connector parsing. Removed by stream cleanup.
+  response streaming setup only when body capture or usage fallback needs raw
+  response bytes. Read by body capture, model JSON fallback extraction, and
+  connector fallback parsing. Removed by stream cleanup after terminal hooks.
+- ``STREAM_BUFFER_STATE``: ``dict`` containing ``truncated``. Written only
+  with ``STREAM_BUFFER`` and read for capture truncation and connector fallback
+  parsing. Removed by stream cleanup.
 
 Request streaming
 -----------------
@@ -209,6 +212,7 @@ MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
+RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"
 STREAM_BUFFER_STATE: Final = "stream_buffer_state"
 REQUEST_STREAM_BUFFER: Final = "request_stream_buffer"

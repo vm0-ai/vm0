@@ -28,6 +28,7 @@ from .response_parser import ConnectorResponseParser
 
 _ConnectorUsageHandler = Callable[[http.HTTPFlow, str, str], None]
 _ResponseParserFactory = Callable[[http.HTTPFlow, str], ConnectorResponseParser | None]
+_ResponseBufferFallbackPredicate = Callable[[http.HTTPFlow], bool]
 
 # Map firewall_name → per-connector report_usage handler. A handler is only
 # invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True. That
@@ -45,6 +46,10 @@ _HANDLERS: dict[str, _ConnectorUsageHandler] = {
 # parser.
 _RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
     "x": x.create_response_parser,
+}
+
+_RESPONSE_BUFFER_FALLBACK_PREDICATES: dict[str, _ResponseBufferFallbackPredicate] = {
+    "x": x.needs_response_buffer_fallback,
 }
 
 # One-shot guard: first time we see a billable firewall_name with no
@@ -122,3 +127,12 @@ def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponsePa
         return None
     original_url = _require_original_url(flow)
     return factory(flow, original_url)
+
+
+def needs_connector_response_buffer_fallback(flow: http.HTTPFlow) -> bool:
+    """Return whether terminal connector billing may consume buffered response bytes."""
+    if not flow_metadata.is_firewall_billable(flow.metadata):
+        return False
+    firewall_name = flow_metadata.firewall_name(flow.metadata)
+    predicate = _RESPONSE_BUFFER_FALLBACK_PREDICATES.get(firewall_name)
+    return predicate(flow) if predicate is not None else False

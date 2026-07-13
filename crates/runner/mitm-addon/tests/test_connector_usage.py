@@ -4,7 +4,6 @@ import pytest
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
-from body_limits import STREAM_BUFFER_LIMIT
 from tests.flow_helpers import header_map, response_stream
 from tests.x_flow_helpers import make_x_response_flow
 
@@ -32,6 +31,8 @@ class TestXStreamPathRouting:
 
         assert metadata_keys.X_NDJSON_STATE in flow.metadata
         assert "connector_response_finish" in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_absolute_form_request_target_registers_ndjson_parser_from_original_url(
         self, real_flow
@@ -72,8 +73,10 @@ class TestXStreamPathRouting:
 
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
-    def test_stream_error_response_uses_bounded_forensic_buffer_only(self, real_flow):
+    def test_stream_error_response_does_not_retain_body_prefix(self, real_flow):
         flow = make_x_response_flow(
             real_flow,
             path="/2/tweets/search/stream",
@@ -86,8 +89,8 @@ class TestXStreamPathRouting:
         assert "connector_response_finish" not in flow.metadata
         callback = response_stream(flow)
         callback(b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}')
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     @pytest.mark.parametrize("path", ["/2/tweets", "/2/tweets/search/stream"])
     @pytest.mark.parametrize("firewall_billable", [False, None])
@@ -103,12 +106,12 @@ class TestXStreamPathRouting:
 
         mitm_addon.responseheaders(flow)
 
-        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+        response_stream(flow)(b"x" * (65 * 1024))
 
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
         flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
