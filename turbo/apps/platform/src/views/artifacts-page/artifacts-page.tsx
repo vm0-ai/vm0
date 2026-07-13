@@ -342,7 +342,10 @@ function ArtifactsToolbar({
             onAgentChange(value === "all" ? null : value);
           }}
         >
-          <SelectTrigger aria-label="Agent filter" className="w-full sm:w-52">
+          <SelectTrigger
+            aria-label="Agent filter"
+            className="w-full transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 sm:w-52"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -599,7 +602,7 @@ function ArtifactCardActions({
           variant="secondary"
           size="icon"
           className={cn(
-            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
+            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-gray-50",
             favorited && "text-amber-500 hover:text-amber-500",
           )}
           aria-label={
@@ -630,7 +633,7 @@ function ArtifactCardActions({
             type="button"
             variant="secondary"
             size="icon"
-            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background"
+            className="h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-gray-50"
             aria-label={`More actions for ${item.filename}`}
             title={`More actions for ${item.filename}`}
           >
@@ -648,6 +651,7 @@ function ArtifactCardActions({
           }}
         >
           <DropdownMenuItem
+            className="focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             onClick={() => {
               onStartChat(item);
             }}
@@ -656,6 +660,7 @@ function ArtifactCardActions({
             Ask about it
           </DropdownMenuItem>
           <DropdownMenuItem
+            className="focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             onClick={() => {
               onOpenChat(item.threadId);
             }}
@@ -663,7 +668,10 @@ function ArtifactCardActions({
             <IconHistory size={14} stroke={1.7} aria-hidden />
             View creation chat
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
+          <DropdownMenuItem
+            asChild
+            className="focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
             <a
               href={previewUrl}
               target="_blank"
