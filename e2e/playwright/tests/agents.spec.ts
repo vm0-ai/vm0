@@ -1,7 +1,7 @@
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
-const appUrl = deriveAppUrl(process.env.VM0_API_URL!);
+const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 
 test("navigate to agents page and verify heading", async ({ page }) => {
   await page.goto(`${appUrl}/agents`);

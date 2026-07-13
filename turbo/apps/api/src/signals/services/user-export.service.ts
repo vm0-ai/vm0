@@ -191,7 +191,7 @@ function generateUnsubscribeToken(userId: string): string {
 
 function buildUnsubscribeUrl(userId: string): string {
   const token = generateUnsubscribeToken(userId);
-  return `${env("VM0_API_URL")}/api/email/unsubscribe?token=${token}`;
+  return `${env("VM0_WEB_URL")}/api/email/unsubscribe?token=${token}`;
 }
 
 function buildUnsubscribeHeaders(url: string): Record<string, string> {

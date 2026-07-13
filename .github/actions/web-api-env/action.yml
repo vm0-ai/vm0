@@ -29,10 +29,6 @@ inputs:
     description: "Preview or production platform app URL"
     required: false
     default: ""
-  api-url:
-    description: "Preview or production API URL"
-    required: false
-    default: ""
   api-backend-url:
     description: "Backend API URL used by web proxy routes"
     required: false
@@ -51,7 +47,6 @@ runs:
         INPUT_JOB_REF: ${{ inputs.job-ref }}
         INPUT_WEB_URL: ${{ inputs.web-url }}
         INPUT_APP_URL: ${{ inputs.app-url }}
-        INPUT_API_URL: ${{ inputs.api-url }}
         INPUT_API_BACKEND_URL: ${{ inputs.api-backend-url }}
       run: |
         set -euo pipefail
@@ -148,7 +143,6 @@ runs:
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
           onboarding_url="$(first_non_empty "$(repo_var ONBOARDING_URL)" "https://www.vm0.ai")"
-          api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
           api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
           deploy_env="production"
@@ -168,7 +162,6 @@ runs:
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
           onboarding_url="$(first_non_empty "$(repo_var ONBOARDING_URL_STAGING)" "https://staging-www.vm6.ai")"
-          api_url="$INPUT_API_URL"
           api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"
           deploy_env="preview"
@@ -186,7 +179,6 @@ runs:
           machine_secret_key="$(repo_secret VM0_MACHINE_SECRET_KEY)"
         fi
 
-        add_env VM0_API_URL "$api_url"
         if [[ -n "$api_backend_url" ]]; then
           add_env VM0_API_BACKEND_URL "$api_backend_url"
         fi

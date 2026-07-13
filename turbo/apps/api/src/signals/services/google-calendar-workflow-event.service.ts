@@ -522,7 +522,7 @@ function calendarEventsUrl(calendarId: string): string {
 }
 
 function googleCalendarWebhookUrl(): string {
-  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_API_URL");
+  const baseUrl = optionalEnv("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
   return new URL("/api/webhooks/google-calendar", baseUrl).toString();
 }
 

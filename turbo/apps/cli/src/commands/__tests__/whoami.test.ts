@@ -92,7 +92,7 @@ describe("whoami command", () => {
         }),
       );
       const apiUrl = "https://api.vm0.ai";
-      vi.stubEnv("VM0_API_URL", apiUrl);
+      vi.stubEnv("VM0_API_BACKEND_URL", apiUrl);
 
       await runWhoami();
 
@@ -266,7 +266,7 @@ describe("whoami command", () => {
 
     it("should display API URL", async () => {
       const customApiUrl = "https://custom-api.vm0.ai";
-      vi.stubEnv("VM0_API_URL", customApiUrl);
+      vi.stubEnv("VM0_API_BACKEND_URL", customApiUrl);
 
       await runWhoami();
 

@@ -226,7 +226,7 @@ impl ApiHttpConfig {
     ) -> Result<Self, AgentError> {
         if base_url.is_empty() {
             return Err(AgentError::Http(
-                "VM0_API_URL is required when VM0_API_TOKEN is set".into(),
+                "VM0_API_BACKEND_URL is required when VM0_API_TOKEN is set".into(),
             ));
         }
         if token.is_empty() {

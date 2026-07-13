@@ -68,7 +68,7 @@ describe("zero search --source logs parity with zero logs search", () => {
   beforeEach(() => {
     mockExit.mockClear();
     mockConsoleError.mockClear();
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     zeroSearchCommand.setOptionValue("source", []);
   });

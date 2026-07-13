@@ -116,9 +116,9 @@ start_api_tunnel() {
 
 TUNNEL_URL="$(start_api_tunnel)"
 
-echo "[api:dev] VM0_API_URL=${TUNNEL_URL}"
+echo "[api:dev] Tunnel URL=${TUNNEL_URL}"
 
 start_stripe_webhook_forwarding
 
 cd "$API_APP_DIR"
-env VM0_API_URL="$TUNNEL_URL" VM0_DEBUG='*' tsx watch --env-file=.env.local src/server.ts
+env VM0_DEBUG='*' tsx watch --env-file=.env.local src/server.ts

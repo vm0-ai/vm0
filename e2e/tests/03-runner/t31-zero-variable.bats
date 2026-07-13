@@ -187,8 +187,8 @@ teardown_file() {
 # ============================================================================
 
 @test "vm0 run expands server-stored variables" {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
 
     local var_value="var-value-${UNIQUE_ID}"
@@ -212,8 +212,8 @@ teardown_file() {
 }
 
 @test "vm0 run CLI vars override server-stored variables" {
-    if [[ -z "$VM0_API_URL" ]]; then
-        skip "VM0_API_URL not set"
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        skip "VM0_API_BACKEND_URL not set"
     fi
 
     local server_value="server-value-${UNIQUE_ID}"

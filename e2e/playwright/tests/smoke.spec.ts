@@ -12,7 +12,7 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
 
   const email = process.env.E2E_CLERK_USER_EMAIL!;
   const orgId = process.env.E2E_CLERK_ORG_ID!;
-  const apiUrl = process.env.VM0_API_URL!;
+  const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
   const onboardingUrl = deriveOnboardingUrl(apiUrl);
 

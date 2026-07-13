@@ -42,7 +42,7 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
         serde_json::to_vec(&json!({
             "CUSTOM_USER_ENV": "visible-to-app-server",
             "OPENAI_MODEL": "gpt-runtime-model",
-            "VM0_API_URL": "https://user-env.example.invalid"
+            "VM0_API_BACKEND_URL": "https://user-env.example.invalid"
         }))?,
     )?;
     unsafe {
@@ -55,7 +55,7 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
 
     unsafe {
         std::env::set_var("HOME", tmp.path().join("stale-home"));
-        std::env::set_var("VM0_API_URL", "https://stale-api.example.invalid");
+        std::env::set_var("VM0_API_BACKEND_URL", "https://stale-api.example.invalid");
         std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
         std::env::set_var("CUSTOM_USER_ENV", "stale-process-user-env");
     }

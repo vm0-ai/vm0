@@ -41,7 +41,7 @@ unsafe fn setup_api_env(
                 ..guest_contracts::env::RunPayload::default()
             },
         )?;
-        std::env::set_var("VM0_API_URL", api_url);
+        std::env::set_var("VM0_API_BACKEND_URL", api_url);
         std::env::set_var("VM0_API_TOKEN", "test-token");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");

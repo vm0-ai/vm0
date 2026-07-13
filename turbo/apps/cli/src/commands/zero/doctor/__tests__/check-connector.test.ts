@@ -128,7 +128,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("step 1: sandbox environment name check", () => {
     it("should report environment name present when it exists", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("GH_TOKEN", "ghp_test123");
@@ -163,7 +163,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report environment name not present when it is missing", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -199,7 +199,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("step 2: connector status", () => {
     it("should report unavailable connectors without connect or authorize guidance", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -241,7 +241,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report connector not connected with a single authorize URL that covers both connect and authorize", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -282,7 +282,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report connector authorized but not connected with a connect URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -323,7 +323,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report connector expired with reconnect URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -361,7 +361,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report connector not authorized with authorize URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -395,7 +395,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report connector connected and active when healthy", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -429,7 +429,7 @@ describe("zero doctor check-connector command", () => {
     it("should use agent authorization inside workflow-triggered runs", async () => {
       const workflowId = "11111111-1111-4111-8111-111111111111";
       const triggerId = "22222222-2222-4222-8222-222222222222";
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_WORKFLOW_ID", workflowId);
@@ -480,7 +480,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("step 2c: registered base URLs", () => {
     it("should list configured domains from run context", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -515,7 +515,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report no firewall entry when connector not in run", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -548,7 +548,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("step 3: permission policy check", () => {
     it("should report permission in allow list", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -582,7 +582,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report permission in deny list", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -615,7 +615,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report permission in ask list", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -650,7 +650,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report unmatched permission as allowed by permission policy", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -690,7 +690,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("URL transformation", () => {
     it("should transform www.vm0.ai to app.vm0.ai", async () => {
-      vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -918,7 +918,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("re-diagnose hint", () => {
     it("should include re-diagnose hint with check-connector syntax", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -951,7 +951,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should include --check-permission in re-diagnose hint when used", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -988,7 +988,7 @@ describe("zero doctor check-connector command", () => {
 
   describe("--url mode", () => {
     function stubConnectedUrlConnector(type: string, authMethod: string): void {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       server.use(
         stubAvailableConnectors([type]),
@@ -1056,7 +1056,7 @@ describe("zero doctor check-connector command", () => {
     ])(
       "should select $selected from compact run firewalls in either order",
       async ({ order, selected, environmentName }) => {
-        vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+        vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
         vi.stubEnv("VM0_TOKEN", "test-token");
         vi.stubEnv("ZERO_TOKEN", buildZeroToken());
         server.use(
@@ -1098,7 +1098,7 @@ describe("zero doctor check-connector command", () => {
     );
 
     it("should reject an unsafe shared route before connector diagnosis", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
       server.use(
@@ -1328,7 +1328,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should reject a base-only selector when another owner has the winning route", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
       server.use(
@@ -1425,7 +1425,7 @@ describe("zero doctor check-connector command", () => {
     );
 
     it("should not fall back to generated routes when a run context exists", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
       server.use(
@@ -1453,7 +1453,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should report unavailable environment metadata for an unmatched inline API", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
       server.use(
@@ -1510,7 +1510,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should resolve connector from URL and run full diagnostic", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1552,7 +1552,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should accept a sibling environment alias for the matched route", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1588,7 +1588,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should resolve compact built-in run context firewalls", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1628,7 +1628,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should resolve compact built-in run context firewalls with base URL vars", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1685,7 +1685,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should keep resolved run context bases for connectors without permission routes", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1748,7 +1748,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should reject compact built-in run context base URL vars outside host policy", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1791,7 +1791,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should strip query and match permissions only on the resolved API base", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1853,7 +1853,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should shell-quote sanitized URL in re-diagnose hint", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1905,7 +1905,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should resolve parameterized connector base URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -1953,7 +1953,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should resolve parameterized connector host base URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -2005,7 +2005,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should prefer static connector base URLs over wildcard host bases", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -2059,7 +2059,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should match permissions after parameterized connector base URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -2128,7 +2128,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should suggest an unknown endpoint permission request for unmatched denied URLs", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -2199,7 +2199,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should allow matched permissions that are not denied or asked", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -2266,7 +2266,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should not describe unsafe paths as unknown endpoints", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());
@@ -2392,7 +2392,7 @@ describe("zero doctor check-connector command", () => {
     });
 
     it("should include --method in re-diagnose hint when not GET", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
       vi.stubEnv("ZERO_TOKEN", buildZeroToken());

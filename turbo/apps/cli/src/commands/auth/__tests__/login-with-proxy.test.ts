@@ -62,7 +62,7 @@ describe("auth login: proxy configuration", () => {
     vi.stubEnv("HTTPS_PROXY", undefined);
     vi.stubEnv("no_proxy", undefined);
     vi.stubEnv("NO_PROXY", undefined);
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
     const configDir = path.join(TEST_HOME, ".vm0");
     await fs.rm(configDir, { recursive: true, force: true });

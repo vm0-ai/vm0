@@ -16,10 +16,7 @@ import {
 } from "../services/zero-teams-connect.service";
 import { safeJsonParse, settle } from "../utils";
 import type { RouteEntry } from "../route-entry";
-import {
-  getOAuthCanonicalRedirectUrl,
-  getOAuthWebOrigin,
-} from "./oauth-web-origin";
+import { getOAuthApiOrigin } from "./oauth-web-origin";
 
 const L = logger("TeamsOAuth");
 const MICROSOFT_AUTHORIZATION_URL =
@@ -285,12 +282,7 @@ const resolveTeamsOauthStateAuth$ = command(
 
 const connectOauth$ = command(({ get }) => {
   const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return noStoreRedirect(canonicalRedirectUrl);
-  }
-
-  const origin = getOAuthWebOrigin(request);
+  const origin = getOAuthApiOrigin(request);
   const credentials = microsoftCredentials();
   if (!credentials) {
     return jsonErrorResponse(
@@ -329,12 +321,7 @@ const connectOauth$ = command(({ get }) => {
 
 const callbackOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$).raw;
-  const canonicalRedirectUrl = getOAuthCanonicalRedirectUrl(request);
-  if (canonicalRedirectUrl) {
-    return redirectResponse(canonicalRedirectUrl);
-  }
-
-  const origin = getOAuthWebOrigin(request);
+  const origin = getOAuthApiOrigin(request);
   const credentials = microsoftCredentials();
   if (!credentials) {
     return jsonErrorResponse(

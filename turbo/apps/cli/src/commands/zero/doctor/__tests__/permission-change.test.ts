@@ -52,6 +52,7 @@ describe("zero doctor permission-change command", () => {
     server.use(
       stubConnectorCatalogPermissions(permissionDetails, "https://app.vm0.ai"),
       stubConnectorCatalogPermissions(permissionDetails, "https://www.vm0.ai"),
+      stubConnectorCatalogPermissions(permissionDetails, "https://api.vm0.ai"),
       stubConnectorCatalogPermissions(permissionDetails),
     );
   });
@@ -64,7 +65,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("outputs an allow grant link for --enable", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -93,7 +94,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("uses the agent permission page inside a workflow-triggered run", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
     vi.stubEnv("ZERO_WORKFLOW_TRIGGER_ID", "trig-456");
@@ -122,7 +123,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("outputs an allow grant link with an explicit duration", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -143,7 +144,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("outputs a deny grant link for --disable", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -167,7 +168,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("outputs a deny grant link for unknown endpoints", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -191,7 +192,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("does not include --reason text in the grant URL", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -212,7 +213,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("uses the agents landing page when ZERO_AGENT_ID is not set", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "");
 
     await permissionChangeCommand.parseAsync([
@@ -230,7 +231,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("uses --agent when ZERO_AGENT_ID is not set", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "");
 
     await permissionChangeCommand.parseAsync([
@@ -251,7 +252,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("--agent overrides ZERO_AGENT_ID", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "env-agent-123");
 
     await permissionChangeCommand.parseAsync([
@@ -271,7 +272,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("transforms www.vm0.ai to app.vm0.ai", async () => {
-    vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-1");
 
     await permissionChangeCommand.parseAsync([
@@ -290,7 +291,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("prints sensitive Slack user-token guidance for chat:write enable", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -309,7 +310,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("prints sensitive Gmail sending guidance for messages.send enable", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
     await permissionChangeCommand.parseAsync([
@@ -328,7 +329,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("validates a server-authored connector absent from the CLI bundle", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     const serverOnlyDetail = catalogPermissionDetail({
       connectorRef: "server-only",
       label: "Server Only",
@@ -377,7 +378,7 @@ describe("zero doctor permission-change command", () => {
 
   it("exits with authentication guidance when no token is available", async () => {
     vi.stubEnv("VM0_TOKEN", "");
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
 
     await expect(async () => {
       await permissionChangeCommand.parseAsync([
@@ -396,7 +397,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("does not treat permission API authorization failures as missing metadata", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     server.use(
       http.get(
         "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
@@ -426,7 +427,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("does not treat permission API network failures as missing metadata", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     server.use(
       http.get(
         "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
@@ -453,7 +454,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("rejects permission metadata for a different connector ref", async () => {
-    vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     server.use(
       http.get(
         "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
@@ -511,7 +512,7 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("outputs a delegated authorization link for computer-use enable when authenticated", async () => {
-    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "zero-run-token");
 
     server.use(

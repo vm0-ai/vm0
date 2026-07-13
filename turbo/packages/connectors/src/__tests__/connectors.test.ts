@@ -1237,11 +1237,11 @@ describe("connector selected auth method capability checks", () => {
 
   it("builds the expected authorization URL base for every OAuth provider", async () => {
     const previousEnv = {
-      VM0_API_URL: process.env.VM0_API_URL,
+      VM0_API_BACKEND_URL: process.env.VM0_API_BACKEND_URL,
       VERCEL_INTEGRATION_SLUG: process.env.VERCEL_INTEGRATION_SLUG,
     };
 
-    process.env.VM0_API_URL = "https://api.test";
+    process.env.VM0_API_BACKEND_URL = "https://api.test";
     process.env.VERCEL_INTEGRATION_SLUG = "test-integration";
 
     try {

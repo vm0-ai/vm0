@@ -218,11 +218,15 @@ export function generateCallbackSecret(): string {
 }
 
 export function apiUrl(): string {
-  return env("VM0_API_URL");
+  return env("VM0_API_BACKEND_URL") ?? env("VM0_WEB_URL");
 }
 
 function appUrl(): string {
   return env("APP_URL");
+}
+
+function webUrl(): string {
+  return env("VM0_WEB_URL");
 }
 
 export function buildIntegrationPrompt(): string {
@@ -363,7 +367,7 @@ function generateUnsubscribeToken(userId: string): string {
 }
 
 export function buildUnsubscribeUrl(userId: string): string {
-  return `${apiUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
+  return `${webUrl()}/api/email/unsubscribe?token=${generateUnsubscribeToken(
     userId,
   )}`;
 }

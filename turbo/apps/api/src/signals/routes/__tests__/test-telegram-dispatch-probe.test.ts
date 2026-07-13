@@ -148,7 +148,7 @@ async function seedFixture(): Promise<TelegramProbeFixture> {
   const fixture = await trackFixture(seedTelegramProbeFixture());
   context.mocks.s3.send.mockResolvedValue({});
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
+  mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
   mockEnv("APP_URL", "http://localhost:3002");
   return fixture;

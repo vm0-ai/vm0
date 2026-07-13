@@ -12,8 +12,8 @@ load '../../helpers/setup'
 # Both tests write to the same connector record (orgId + userId + type),
 # so concurrent setup_test_connector calls would overwrite each other.
 setup_file() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        echo "VM0_API_URL not set" >&2
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        echo "VM0_API_BACKEND_URL not set" >&2
         return 1
     fi
     if [[ -z "$CI_GITHUB_TOKEN" ]]; then
@@ -35,8 +35,8 @@ teardown_file() {
 }
 
 setup() {
-    if [[ -z "$VM0_API_URL" ]]; then
-        fail "VM0_API_URL not set"
+    if [[ -z "$VM0_API_BACKEND_URL" ]]; then
+        fail "VM0_API_BACKEND_URL not set"
     fi
 
     export TEST_DIR="$(mktemp -d)"
@@ -90,7 +90,7 @@ setup_test_connector() {
 
     local response
     response=$(curl "${curl_args[@]}" \
-        "${VM0_API_URL}/api/cli/auth/test-connector?email=${encoded_email}")
+        "${VM0_API_BACKEND_URL}/api/cli/auth/test-connector?email=${encoded_email}")
 
     local http_code
     http_code=$(echo "$response" | tail -n1)

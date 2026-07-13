@@ -13,7 +13,7 @@
 #   VM0_AUTH_URL   - Target auth URL (e.g., https://staging-so.vm6.ai)
 #
 # Optional env vars:
-#   VM0_API_URL            - API URL, used as a local fallback for auth URL
+#   VM0_API_BACKEND_URL            - API URL, used as a local fallback for auth URL
 #   VM0_AUTH_DOMAIN        - API domain override for auth callbacks
 #   VM0_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
 #   E2E_ACCOUNT            - Test email (auto-generated if empty)
@@ -29,7 +29,7 @@ setup_file() {
   export SIGNUP_PASSWORD
 
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
-  echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_URL:-}}" >&3
+  echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}" >&3
   echo "#   Auth domain: ${VM0_AUTH_DOMAIN:-<default>}" >&3
   echo "#   Auth redirect URL: ${VM0_AUTH_REDIRECT_URL:-<default>}" >&3
   echo "#   Email: $E2E_ACCOUNT" >&3
@@ -41,7 +41,7 @@ teardown_file() {
 
 auth_url() {
   local path="$1"
-  local base="${VM0_AUTH_URL:-${VM0_API_URL:-}}"
+  local base="${VM0_AUTH_URL:-${VM0_API_BACKEND_URL:-}}"
   local url="${base%/}${path}"
 
   if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then

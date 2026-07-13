@@ -28,8 +28,8 @@ load '../../helpers/codex-oauth-setup'
 export BATS_TEST_TIMEOUT=300
 
 setup_file() {
-    if [ -z "$VM0_API_URL" ]; then
-        echo "VM0_API_URL not set" >&2
+    if [ -z "$VM0_API_BACKEND_URL" ]; then
+        echo "VM0_API_BACKEND_URL not set" >&2
         return 1
     fi
 

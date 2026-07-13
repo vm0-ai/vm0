@@ -12105,7 +12105,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* CLI no longer recognizes API_HOST environment variable. Users must update to use VM0_API_URL instead.
+* CLI no longer recognizes API_HOST environment variable. Users must update to use VM0_API_BACKEND_URL instead.
 
 ### Features
 

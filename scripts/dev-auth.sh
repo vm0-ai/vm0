@@ -11,16 +11,16 @@
 
 set -euo pipefail
 
-VM0_API_URL="${VM0_API_URL:-http://localhost:3000}"
+VM0_API_BACKEND_URL="${VM0_API_BACKEND_URL:-http://localhost:3000}"
 
 echo "=== Dev Authentication ==="
-echo "API URL: ${VM0_API_URL}"
+echo "API URL: ${VM0_API_BACKEND_URL}"
 
 # Call test-token endpoint
 RESPONSE=$(curl -s -w "\n%{http_code}" \
   -H "Content-Type: application/json" \
   -X POST \
-  "${VM0_API_URL}/api/cli/auth/test-token")
+  "${VM0_API_BACKEND_URL}/api/cli/auth/test-token")
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 BODY=$(echo "$RESPONSE" | head -n-1)
@@ -52,7 +52,7 @@ mkdir -p "$CONFIG_DIR"
 cat > "$CONFIG_FILE" << EOF
 {
   "token": "$TOKEN",
-  "apiUrl": "$VM0_API_URL"
+  "apiUrl": "$VM0_API_BACKEND_URL"
 }
 EOF
 
