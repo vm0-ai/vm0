@@ -5,7 +5,6 @@ import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { clientRequestId$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isLlmConfigured } from "../external/openrouter";
 import {
@@ -309,7 +308,7 @@ const createHtmlEditDraftInner$ = command(
       }
     }
 
-    const operationId = get(clientRequestId$) || randomUUID();
+    const operationId = randomUUID();
     const result = await set(
       createHtmlEditDraft$,
       {

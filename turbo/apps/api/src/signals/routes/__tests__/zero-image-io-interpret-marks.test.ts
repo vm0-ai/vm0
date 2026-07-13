@@ -263,7 +263,7 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
     expect(body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("does not charge duplicate usage for the same client request id", async () => {
+  it("charges each model invocation when the client request id is reused", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     let openRouterCalls = 0;
     server.use(
@@ -317,7 +317,7 @@ describe("POST /api/zero/image-io/interpret-marks", () => {
     expect(second.status).toBe(200);
     expect(openRouterCalls).toBe(2);
     await expect(orgCredits(app, token)).resolves.toBe(
-      GEMINI_INTERPRET_STARTING_CREDITS - GEMINI_INTERPRET_EXPECTED_CHARGE,
+      GEMINI_INTERPRET_STARTING_CREDITS - GEMINI_INTERPRET_EXPECTED_CHARGE * 2,
     );
   });
 

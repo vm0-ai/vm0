@@ -68,13 +68,14 @@ function usageEntries(
 }
 
 function usageIdempotencyKey(args: {
+  readonly orgId: string;
   readonly operation: string;
   readonly operationId: string;
   readonly provider: string;
   readonly category: string;
 }): string {
   return uuidv5(
-    `${args.operation}:${args.operationId}:${args.provider}:${args.category}`,
+    `${args.orgId}:${args.operation}:${args.operationId}:${args.provider}:${args.category}`,
     OPENROUTER_USAGE_IDEMPOTENCY_NAMESPACE,
   );
 }
@@ -128,6 +129,7 @@ export const recordOpenRouterUsage$ = command(
           return {
             runId: args.runId ?? null,
             idempotencyKey: usageIdempotencyKey({
+              orgId: args.orgId,
               operation: args.operation,
               operationId: args.operationId,
               provider: args.provider,

@@ -5,7 +5,6 @@ import { zeroImageIoInterpretMarksContract } from "@vm0/api-contracts/contracts/
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { clientRequestId$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { isLlmConfigured } from "../external/openrouter";
 import type { RouteEntry } from "../route-entry";
@@ -59,7 +58,7 @@ const postInterpretMarksInner$ = command(
       }
     }
 
-    const operationId = get(clientRequestId$) || randomUUID();
+    const operationId = randomUUID();
     const result = await interpretRegionMarks({
       imageUrl: bodyResult.data.imageUrl,
       regions: bodyResult.data.regions,
