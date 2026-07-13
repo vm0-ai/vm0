@@ -597,7 +597,7 @@ impl RunningExec {
         } = self;
 
         refresh_process_tree_kill_target(&mut kill_target);
-        let stdin_writer_pending = || {
+        let prepare_stdin_writer_for_pre_reap = || {
             let Some(writer) = stdin_writer.as_ref() else {
                 return false;
             };
@@ -614,7 +614,7 @@ impl RunningExec {
             request.timeout.wait_timeout_ms(),
             connection_cancel,
             exec_cancel,
-            stdin_writer_pending,
+            prepare_stdin_writer_for_pre_reap,
         );
         join_stdin_writer_after_wait(stdin_writer, request.seq, &request.label);
         if matches!(outcome, WaitOutcome::Cancelled | WaitOutcome::TimedOut)

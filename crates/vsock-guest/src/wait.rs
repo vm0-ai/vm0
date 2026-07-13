@@ -36,11 +36,6 @@ enum KillReason {
     Cancelled,
 }
 
-struct ChildKill {
-    reason: KillReason,
-    killed: bool,
-}
-
 enum WaitDecision {
     Exited,
     Kill(KillReason),
@@ -184,7 +179,7 @@ fn wait_with_kill_timeout_or_cancelled_by(
                 }
             }
             WaitDecision::Kill(reason) => {
-                let child_kill = kill_child(&mut child, kill_target, reason);
+                let child_killed = kill_child(&mut child, kill_target);
                 let observed = observer.join();
                 let status = child.wait();
 
@@ -201,10 +196,10 @@ fn wait_with_kill_timeout_or_cancelled_by(
                         "failed to observe child exit without reaping: {e}"
                     ));
                 }
-                if !child_kill.killed {
+                if !child_killed {
                     return WaitOutcome::Exited(status);
                 }
-                match child_kill.reason {
+                match reason {
                     KillReason::Timeout => WaitOutcome::TimedOut,
                     KillReason::Cancelled => WaitOutcome::Cancelled,
                 }
@@ -293,17 +288,12 @@ fn wait_for_child_exit_without_reap(child_id: u32) -> io::Result<()> {
     }
 }
 
-fn kill_child(
-    child: &mut Child,
-    kill_target: ProcessTreeKillTarget,
-    reason: KillReason,
-) -> ChildKill {
+fn kill_child(child: &mut Child, kill_target: ProcessTreeKillTarget) -> bool {
     // SAFETY: this owner has not reaped child, so its PID/process group cannot
     // have been reused since the owner refreshed kill_target.
     let tree_killed = unsafe { kill_process_tree_target(kill_target) };
     let child_killed = child.kill().is_ok();
-    let killed = tree_killed || child_killed;
-    ChildKill { reason, killed }
+    tree_killed || child_killed
 }
 
 #[cfg(test)]
@@ -387,7 +377,7 @@ mod tests {
         if let Some(mut child) = child.take() {
             let mut target = process_tree_kill_target(child.id());
             refresh_process_tree_kill_target(&mut target);
-            let _ = kill_child(&mut child, target, KillReason::Cancelled);
+            let _ = kill_child(&mut child, target);
             let _ = child.wait();
         }
     }
@@ -643,18 +633,13 @@ mod tests {
 
         let mut refreshed_target = stale_target;
         refresh_process_tree_kill_target(&mut refreshed_target);
-        let child_kill = kill_child(
-            child.as_mut().unwrap(),
-            refreshed_target,
-            KillReason::Timeout,
-        );
-        if !child_kill.killed {
+        let child_killed = kill_child(child.as_mut().unwrap(), refreshed_target);
+        if !child_killed {
             kill_spawned_child(&mut child);
             kill_pidfd_and_wait(&child_pidfd)
                 .unwrap_or_else(|e| panic!("failed to clean up setsid child pidfd: {e}"));
             panic!("owner kill should signal at least one process target");
         }
-        assert!(matches!(child_kill.reason, KillReason::Timeout));
         let _ = child.take().unwrap().wait().unwrap();
 
         match wait_for_pidfd_exit(&child_pidfd, Duration::from_secs(2)) {
