@@ -47,6 +47,7 @@ import { disableIneligibleWorkflowWebhookTriggersForOrg } from "./workflow-webho
 import {
   orgPlanEntitlementOrgIdForStripeSubscription,
   upsertOrgPlanEntitlement,
+  writeOrgMetadataWithPlanEntitlements,
 } from "./org-plan-entitlements.service";
 
 const L = logger("WebhookStripe");
@@ -1271,26 +1272,35 @@ async function processAtomGrantInvoicePaid(
     }
 
     await grantOrgCredits(tx, details.orgId, details.credits);
-    await tx
-      .update(orgMetadata)
-      .set({
-        tier: details.tier,
-        ...(details.customerId ? { stripeCustomerId: details.customerId } : {}),
-        stripeSubscriptionId: null,
-        subscriptionStatus: ATOM_GRANT_SUBSCRIPTION_STATUS,
-        cancelAtPeriodEnd: details.grantExpiresAt !== null,
-        onboardingPaymentPending: false,
-        lastProcessedInvoiceId: invoice.id,
-        currentPeriodEnd: details.grantExpiresAt,
-        pendingSubscriptionScheduleId: null,
-        pendingSubscriptionTargetTier: details.grantExpiresAt
-          ? CANCELED_SUBSCRIPTION_TARGET_TIER
-          : null,
-        pendingSubscriptionChangeAt: details.grantExpiresAt,
-        updatedAt: nowDate(),
-      })
-      .where(eq(orgMetadata.orgId, details.orgId));
-    await upsertAtomGrantPlanEntitlement(tx, invoice, details);
+    await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            tier: details.tier,
+            ...(details.customerId
+              ? { stripeCustomerId: details.customerId }
+              : {}),
+            stripeSubscriptionId: null,
+            subscriptionStatus: ATOM_GRANT_SUBSCRIPTION_STATUS,
+            cancelAtPeriodEnd: details.grantExpiresAt !== null,
+            onboardingPaymentPending: false,
+            lastProcessedInvoiceId: invoice.id,
+            currentPeriodEnd: details.grantExpiresAt,
+            pendingSubscriptionScheduleId: null,
+            pendingSubscriptionTargetTier: details.grantExpiresAt
+              ? CANCELED_SUBSCRIPTION_TARGET_TIER
+              : null,
+            pendingSubscriptionChangeAt: details.grantExpiresAt,
+            updatedAt: nowDate(),
+          })
+          .where(eq(orgMetadata.orgId, details.orgId))
+          .returning({ orgId: orgMetadata.orgId });
+      },
+      writePlanEntitlement: async (writeTx) => {
+        await upsertAtomGrantPlanEntitlement(writeTx, invoice, details);
+      },
+    });
     await cancelReplacedSubscriptionsAfterAtomGrant({
       orgId: details.orgId,
       customerId: details.customerId,
@@ -2649,28 +2659,35 @@ async function updateSubscriptionInvoiceMetadata(
     args.details.scheduledEndDate !== null;
   const pendingChangeAt = args.details.scheduledEndDate;
 
-  await tx
-    .update(orgMetadata)
-    .set({
-      tier: args.details.tier,
-      stripeSubscriptionId: args.subscriptionId,
-      subscriptionStatus: args.details.subscription.status,
-      cancelAtPeriodEnd: willCancel,
-      onboardingPaymentPending: false,
-      lastProcessedInvoiceId: args.invoiceId,
-      currentPeriodEnd: pendingChangeAt ?? args.details.periodEndDate,
-      pendingSubscriptionScheduleId: pendingChangeAt ? scheduleId : null,
-      pendingSubscriptionTargetTier: pendingChangeAt
-        ? CANCELED_SUBSCRIPTION_TARGET_TIER
-        : null,
-      pendingSubscriptionChangeAt: pendingChangeAt,
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.orgId, args.orgId));
-  await upsertSubscriptionPlanEntitlement(tx, {
-    orgId: args.orgId,
-    subscriptionId: args.subscriptionId,
-    details: args.details,
+  await writeOrgMetadataWithPlanEntitlements(tx, {
+    writeOrgMetadata: async (writeTx) => {
+      return await writeTx
+        .update(orgMetadata)
+        .set({
+          tier: args.details.tier,
+          stripeSubscriptionId: args.subscriptionId,
+          subscriptionStatus: args.details.subscription.status,
+          cancelAtPeriodEnd: willCancel,
+          onboardingPaymentPending: false,
+          lastProcessedInvoiceId: args.invoiceId,
+          currentPeriodEnd: pendingChangeAt ?? args.details.periodEndDate,
+          pendingSubscriptionScheduleId: pendingChangeAt ? scheduleId : null,
+          pendingSubscriptionTargetTier: pendingChangeAt
+            ? CANCELED_SUBSCRIPTION_TARGET_TIER
+            : null,
+          pendingSubscriptionChangeAt: pendingChangeAt,
+          updatedAt: nowDate(),
+        })
+        .where(eq(orgMetadata.orgId, args.orgId))
+        .returning({ orgId: orgMetadata.orgId });
+    },
+    writePlanEntitlement: async (writeTx, row) => {
+      await upsertSubscriptionPlanEntitlement(writeTx, {
+        orgId: row.orgId,
+        subscriptionId: args.subscriptionId,
+        details: args.details,
+      });
+    },
   });
 }
 
@@ -3484,21 +3501,33 @@ async function handleSubscriptionDeleted(
   }
 
   const rows = await db.transaction(async (tx) => {
-    const downgraded = await tx
-      .update(orgMetadata)
-      .set({
-        tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
-        subscriptionStatus: "canceled",
-        stripeSubscriptionId: null,
-        cancelAtPeriodEnd: false,
-        currentPeriodEnd: null,
-        pendingSubscriptionScheduleId: null,
-        pendingSubscriptionTargetTier: null,
-        pendingSubscriptionChangeAt: null,
-        updatedAt: nowDate(),
-      })
-      .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
-      .returning({ orgId: orgMetadata.orgId });
+    const downgraded = await writeOrgMetadataWithPlanEntitlements(tx, {
+      writeOrgMetadata: async (writeTx) => {
+        return await writeTx
+          .update(orgMetadata)
+          .set({
+            tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+            subscriptionStatus: "canceled",
+            stripeSubscriptionId: null,
+            cancelAtPeriodEnd: false,
+            currentPeriodEnd: null,
+            pendingSubscriptionScheduleId: null,
+            pendingSubscriptionTargetTier: null,
+            pendingSubscriptionChangeAt: null,
+            updatedAt: nowDate(),
+          })
+          .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+          .returning({ orgId: orgMetadata.orgId });
+      },
+      writePlanEntitlement: async (writeTx, row) => {
+        await upsertOrgPlanEntitlement(writeTx, {
+          orgId: row.orgId,
+          tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
+          source: "stripe_subscription",
+          sourceMetadata: subscription.metadata ?? {},
+        });
+      },
+    });
 
     const persistedOrgId =
       downgraded.length === 0
@@ -3522,21 +3551,20 @@ async function handleSubscriptionDeleted(
       persistedOrg.stripeSubscriptionId === null
         ? persistedOrgId
         : null;
-    const orgIds = new Set([
-      ...downgraded.map((row) => {
-        return row.orgId;
-      }),
-      ...(replayedDowngradeOrgId ? [replayedDowngradeOrgId] : []),
-    ]);
-    for (const orgId of orgIds) {
+    if (replayedDowngradeOrgId) {
       await upsertOrgPlanEntitlement(tx, {
-        orgId,
+        orgId: replayedDowngradeOrgId,
         tier: CANCELED_SUBSCRIPTION_TARGET_TIER,
         source: "stripe_subscription",
         sourceMetadata: subscription.metadata ?? {},
       });
     }
-    return [...orgIds].map((orgId) => {
+    return [
+      ...downgraded.map((row) => {
+        return row.orgId;
+      }),
+      ...(replayedDowngradeOrgId ? [replayedDowngradeOrgId] : []),
+    ].map((orgId) => {
       return { orgId };
     });
   });

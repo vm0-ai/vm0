@@ -477,6 +477,28 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       tier: "limited-free-1",
       onboardingPaymentPending: false,
     });
+    await expect(
+      readOrgPlanEntitlementFixture(orgOf(admin)),
+    ).resolves.toMatchObject({
+      orgId: orgOf(admin),
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "org_metadata_bootstrap",
+      status: "active",
+      baseConcurrencyLimit: 1,
+      canBuyConcurrency: false,
+      autoRechargeAllowed: false,
+      supportByok: false,
+      restrictedVm0Models: true,
+      videoGenerationAllowed: false,
+      audioLifetimeLimit: 10,
+      audioDailyRateLimit: 10,
+      audioDailyDurationSeconds: 600,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
+    });
     const onboardingCreditGrant = billing.creditGrants.find((grant) => {
       return grant.source === "onboarding";
     });
@@ -1922,6 +1944,17 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(downgraded.credits).toBe(0);
     expect(downgraded.hasSubscription).toBeFalsy();
     expect(downgraded.creditGrants).toHaveLength(0);
+    await expect(readOrgPlanEntitlementFixture(orgId)).resolves.toMatchObject({
+      orgId,
+      planKey: "limited-free-1",
+      planRank: 0,
+      source: "stripe_atom_grant",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodEnd: null,
+      expiresAt: null,
+    });
   });
 
   it("upserts usage allowance entitlements from Atom subscription invoices", async () => {
