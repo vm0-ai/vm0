@@ -13,9 +13,9 @@ import { now, nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
-  postAutomationUserMessage,
-  resolveAutomationChatThreadModelPin,
-} from "./zero-chat-automation-message.service";
+  postRunUserMessage,
+  resolveRunChatThreadModelPin,
+} from "./zero-chat-run-message.service";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -202,7 +202,7 @@ async function resolveModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<ModelContext> {
-  const threadModelPin = await resolveAutomationChatThreadModelPin({
+  const threadModelPin = await resolveRunChatThreadModelPin({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
@@ -443,7 +443,7 @@ async function recordWorkflowTriggerRunStart(input: {
 }): Promise<void> {
   const { db, args, runId, signal } = input;
   const { trigger, chatThreadId } = args.due;
-  await postAutomationUserMessage({
+  await postRunUserMessage({
     db,
     threadId: chatThreadId,
     userId: trigger.ownerUserId,

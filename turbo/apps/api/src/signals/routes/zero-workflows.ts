@@ -40,7 +40,7 @@ import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { postAutomationUserMessage } from "../services/zero-chat-automation-message.service";
+import { postRunUserMessage } from "../services/zero-chat-run-message.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
@@ -1134,7 +1134,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return result;
   }
 
-  await postAutomationUserMessage({
+  await postRunUserMessage({
     db: writeDb,
     threadId: chatThreadId,
     userId: auth.userId,

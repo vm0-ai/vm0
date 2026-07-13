@@ -47,7 +47,7 @@ import {
   WORKFLOW_ALL_AGENTS,
   type WorkflowFilter,
   type WorkflowSortMode,
-  type WorkflowTriggerAutomationEntry,
+  type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
@@ -65,13 +65,13 @@ import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.
 
 export type WorkflowTriggerEntryMap = ReadonlyMap<
   string,
-  readonly WorkflowTriggerAutomationEntry[]
+  readonly WorkflowAutomationEntry[]
 >;
 
 export function workflowTriggerEntryMap(
-  entries: readonly WorkflowTriggerAutomationEntry[],
+  entries: readonly WorkflowAutomationEntry[],
 ): WorkflowTriggerEntryMap {
-  const grouped = new Map<string, WorkflowTriggerAutomationEntry[]>();
+  const grouped = new Map<string, WorkflowAutomationEntry[]>();
   for (const entry of entries) {
     const workflowEntries = grouped.get(entry.workflow.id) ?? [];
     workflowEntries.push(entry);
@@ -92,7 +92,7 @@ function initials(label: string): string {
   return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
-function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
+function triggerDotClass(entry: WorkflowAutomationEntry): string {
   const trigger = entry.trigger;
   if (trigger.kind === "schedule") {
     return "bg-blue-500";
@@ -102,9 +102,7 @@ function triggerDotClass(entry: WorkflowTriggerAutomationEntry): string {
     : "bg-emerald-500";
 }
 
-function connectorNames(
-  entries: readonly WorkflowTriggerAutomationEntry[],
-): string {
+function connectorNames(entries: readonly WorkflowAutomationEntry[]): string {
   return entries
     .slice(0, 2)
     .map((entry) => {
@@ -197,7 +195,7 @@ function ConnectorPopoverList({
   entries,
   displayTimezone,
 }: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
 }) {
   return (
@@ -240,7 +238,7 @@ function ConnectorCell({
   entries,
   displayTimezone,
 }: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
 }) {
   if (entries.length === 0) {
@@ -327,7 +325,7 @@ export function WorkflowHoverContent({
 function WorkflowRowIcon({
   entries,
 }: {
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
 }) {
   const [lead] = entries;
   if (lead) {
@@ -347,7 +345,7 @@ function WorkflowRow({
   showAgentColumn,
 }: {
   readonly workflow: ZeroWorkflowSummary;
-  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly entries: readonly WorkflowAutomationEntry[];
   readonly displayTimezone: string;
   readonly showAgentColumn: boolean;
 }) {
@@ -507,7 +505,7 @@ function dayKey(date: Date, timezone: string): string {
 }
 
 function workflowNextRunBucket(
-  entries: readonly WorkflowTriggerAutomationEntry[],
+  entries: readonly WorkflowAutomationEntry[],
   now: Date,
   timezone: string,
 ): NextRunBucket {
@@ -656,7 +654,7 @@ export function WorkflowListPanel({
 }) {
   const entriesByWorkflowId =
     triggerEntriesByWorkflowId ??
-    new Map<string, readonly WorkflowTriggerAutomationEntry[]>();
+    new Map<string, readonly WorkflowAutomationEntry[]>();
 
   return (
     <section className="min-h-[520px]">

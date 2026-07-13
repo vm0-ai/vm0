@@ -6,7 +6,7 @@ import {
   type ChatThreadWorkflowTrigger,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
-  type ZeroWorkflowTriggerAutomationEntry,
+  type ZeroWorkflowAutomationEntry,
   type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -398,15 +398,16 @@ function mockScheduleSummary(
 function workflowTriggerListHandlers() {
   return [
     mockApi(zeroWorkflowTriggersContract.listWorkspace, ({ respond }) => {
-      const entries: ZeroWorkflowTriggerAutomationEntry[] =
-        mockWorkflows.flatMap((workflow) => {
+      const entries: ZeroWorkflowAutomationEntry[] = mockWorkflows.flatMap(
+        (workflow) => {
           return workflow.triggers.map((trigger) => {
             return {
               workflow: summary(workflow),
               trigger: publicWorkflowTrigger(trigger),
             };
           });
-        });
+        },
+      );
       return respond(200, entries);
     }),
 

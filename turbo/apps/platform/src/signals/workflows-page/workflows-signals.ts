@@ -19,7 +19,7 @@ import {
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
-  type ZeroWorkflowTriggerAutomationEntry,
+  type ZeroWorkflowAutomationEntry,
   type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
@@ -93,7 +93,7 @@ type WorkflowWebhookTriggerSummary = Extract<
 >;
 type WorkflowGithubLabelActor =
   GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
-export type WorkflowTriggerAutomationEntry = ZeroWorkflowTriggerAutomationEntry;
+export type WorkflowAutomationEntry = ZeroWorkflowAutomationEntry;
 export const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
 function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
@@ -693,7 +693,7 @@ export const allVisibleWorkflows$ = computed(
 );
 
 export const allWorkflowTriggerEntries$ = computed(
-  async (get): Promise<readonly WorkflowTriggerAutomationEntry[]> => {
+  async (get): Promise<readonly WorkflowAutomationEntry[]> => {
     get(internalWorkflowReload$);
     const triggerClient = get(zeroClient$)(zeroWorkflowTriggersContract);
     const triggerResult = await accept(triggerClient.listWorkspace(), [200]);

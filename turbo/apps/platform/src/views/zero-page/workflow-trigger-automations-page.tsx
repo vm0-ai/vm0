@@ -52,7 +52,7 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
   setWorkflowTriggerEnabled$,
-  type WorkflowTriggerAutomationEntry,
+  type WorkflowAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   atTimeInTimezone,
@@ -373,7 +373,7 @@ export function WorkflowTriggerEnabledSwitch({
   entry,
   size = "default",
 }: {
-  readonly entry: WorkflowTriggerAutomationEntry;
+  readonly entry: WorkflowAutomationEntry;
   readonly size?: "default" | "sm";
 }) {
   const pageSignal = useGet(pageSignal$);
