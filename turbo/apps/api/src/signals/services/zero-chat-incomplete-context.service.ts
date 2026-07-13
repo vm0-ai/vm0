@@ -1,8 +1,5 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import {
-  chatMessages,
-  type ChatMessageGenerationTemplate,
-} from "@vm0/db/schema/chat-message";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -21,9 +18,7 @@ interface IncompleteRoundSelection {
 interface IncompleteRoundMessage {
   readonly role: "user" | "assistant";
   readonly content: string | null;
-  readonly error: string | null;
   readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
 
 interface IncompleteRound extends IncompleteRoundSelection {
@@ -54,7 +49,7 @@ async function selectIncompleteRoundFrontier(
   )`;
   // Terminal chat materialization runs in waitUntil, so lifecycle rows can lag
   // behind agent_runs.status. Walk the existing recent-message index instead.
-  // The fixed 21-run frontier is the 20-round output plus one success sentinel.
+  // The fixed 21-run frontier is the 20-round output plus one boundary candidate.
   const result = await db.execute<IncompleteRoundFrontierRow>(sql`
     WITH RECURSIVE incomplete_frontier AS (
       SELECT
@@ -167,9 +162,7 @@ async function loadSelectedIncompleteRounds(
       runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
-      error: chatMessages.error,
       attachFiles: chatMessages.attachFiles,
-      generationTemplate: chatMessages.generationTemplate,
     })
     .from(chatMessages)
     .where(
@@ -212,9 +205,7 @@ async function loadSelectedIncompleteRounds(
     round.messages.push({
       role: row.role,
       content: row.content,
-      error: row.error,
       attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
     });
   }
 
