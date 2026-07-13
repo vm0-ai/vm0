@@ -149,6 +149,7 @@ export {
   listZeroConnectorCatalog,
   listZeroConnectorCatalogStatus,
   getZeroConnectorCatalogPermissions,
+  diagnoseZeroConnectorPermissionDeny,
   connectZeroConnectorManualGrant,
   listZeroCustomConnectors,
   getZeroCustomConnector,
