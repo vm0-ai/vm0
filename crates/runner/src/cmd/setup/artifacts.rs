@@ -66,9 +66,7 @@ async fn install_setup_artifact(
     client: &reqwest::Client,
     artifact: SetupArtifact,
 ) -> RunnerResult<()> {
-    if ensure_artifact_installed(&artifact.target, &artifact.installed.sha256, artifact.mode)
-        .await?
-    {
+    if ensure_artifact_installed(&artifact.target, &artifact.installed, artifact.mode).await? {
         tracing::info!(
             "[OK] {} already installed, skipping download",
             artifact.display_name
@@ -109,7 +107,7 @@ async fn install_setup_artifact(
 
     verify_and_install(
         produced,
-        &artifact.installed.sha256,
+        &artifact.installed,
         artifact.label,
         &artifact.target,
         artifact.mode,
