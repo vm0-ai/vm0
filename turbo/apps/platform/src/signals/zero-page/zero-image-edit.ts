@@ -241,8 +241,9 @@ export const loadPersistedEditableImageCanvasSnapshot$ = command(
       return { ...current, [args.key]: true };
     });
     if (
+      initialMutationRevision !== 0 ||
       (get(editableImageCanvasMutationRevisionsByKey$)[args.key] ?? 0) !==
-      initialMutationRevision
+        initialMutationRevision
     ) {
       return;
     }

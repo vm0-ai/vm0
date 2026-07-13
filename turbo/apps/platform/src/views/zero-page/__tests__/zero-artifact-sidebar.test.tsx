@@ -1580,6 +1580,13 @@ describe("zero artifact sidebar", () => {
       "https://cdn.vm7.io/artifacts/test/image-edit-navigation/second.png";
     const snapshots = new Map<string, ImageArtifactEditSnapshotState>([
       [
+        firstImageUrl,
+        {
+          items: [{ url: firstImageUrl, x: 250, y: 180, zIndex: 1 }],
+          version: 1,
+        },
+      ],
+      [
         secondImageUrl,
         {
           items: [{ url: secondImageUrl, x: 250, y: 180, zIndex: 1 }],
@@ -1587,6 +1594,13 @@ describe("zero artifact sidebar", () => {
         },
       ],
     ]);
+    const firstImageSnapshotSaveStarted = createDeferredPromise<void>(
+      context.signal,
+    );
+    const firstImageSnapshotSaveReady = createDeferredPromise<void>(
+      context.signal,
+    );
+    let firstImageSnapshotLoads = 0;
     const savedSnapshots: {
       readonly snapshot: ImageArtifactEditSnapshotState;
       readonly url: string;
@@ -1594,6 +1608,9 @@ describe("zero artifact sidebar", () => {
     context.mocks.api(
       artifactsContract.getImageEditSnapshot,
       ({ query, respond }) => {
+        if (query.url === firstImageUrl) {
+          firstImageSnapshotLoads += 1;
+        }
         const snapshot = snapshots.get(query.url) ?? null;
         return respond(200, {
           snapshot: snapshot
@@ -1608,7 +1625,11 @@ describe("zero artifact sidebar", () => {
     );
     context.mocks.api(
       artifactsContract.upsertImageEditSnapshot,
-      ({ body, respond }) => {
+      async ({ body, respond }) => {
+        if (body.url === firstImageUrl) {
+          firstImageSnapshotSaveStarted.resolve();
+          await firstImageSnapshotSaveReady.promise;
+        }
         snapshots.set(body.url, body.snapshot);
         savedSnapshots.push(body);
         return respond(200, {
@@ -1671,6 +1692,9 @@ describe("zero artifact sidebar", () => {
     await screen.findByTestId("artifact-sidebar-image-edit-canvas");
 
     const firstImage = screen.getByTestId("artifact-sidebar-body-image");
+    await waitFor(() => {
+      expect(firstImage).toHaveStyle({ left: "250px", top: "180px" });
+    });
     fireEvent.pointerDown(firstImage, {
       button: 0,
       clientX: 100,
@@ -1678,7 +1702,7 @@ describe("zero artifact sidebar", () => {
     });
     fireEvent.pointerMove(window, { clientX: 130, clientY: 140 });
     fireEvent.pointerUp(window);
-    expect(firstImage).toHaveStyle({ left: "470px", top: "370px" });
+    expect(firstImage).toHaveStyle({ left: "280px", top: "220px" });
 
     fireEvent.keyDown(document, { key: "ArrowRight" });
     await waitFor(() => {
@@ -1690,14 +1714,8 @@ describe("zero artifact sidebar", () => {
         left: "250px",
         top: "180px",
       });
-      expect(savedSnapshots).toContainEqual({
-        snapshot: {
-          items: [{ url: firstImageUrl, x: 470, y: 370, zIndex: 1 }],
-          version: 1,
-        },
-        url: firstImageUrl,
-      });
     });
+    await firstImageSnapshotSaveStarted.promise;
 
     const secondImage = screen.getByTestId("artifact-sidebar-body-image");
     fireEvent.pointerDown(secondImage, {
@@ -1711,13 +1729,25 @@ describe("zero artifact sidebar", () => {
 
     fireEvent.keyDown(document, { key: "ArrowLeft" });
     await waitFor(() => {
+      expect(firstImageSnapshotLoads).toBeGreaterThanOrEqual(2);
       expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
         "src",
         firstImageUrl,
       );
       expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveStyle({
-        left: "470px",
-        top: "370px",
+        left: "280px",
+        top: "220px",
+      });
+    });
+
+    firstImageSnapshotSaveReady.resolve();
+    await waitFor(() => {
+      expect(savedSnapshots).toContainEqual({
+        snapshot: {
+          items: [{ url: firstImageUrl, x: 280, y: 220, zIndex: 1 }],
+          version: 1,
+        },
+        url: firstImageUrl,
       });
       expect(savedSnapshots).toContainEqual({
         snapshot: {
