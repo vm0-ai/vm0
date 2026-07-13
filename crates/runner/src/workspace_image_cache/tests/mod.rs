@@ -24,11 +24,16 @@ use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_work
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
 use crate::storage_fingerprints::StorageFingerprint;
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::test_fixtures::{TEST_SANDBOX_REUSE_SCOPE, sandbox_reuse_identity_for_test};
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES, ResumeSessionHistoryRefKind};
 use sha2::{Digest, Sha256};
 use tokio::fs;
 
 const TEST_PROFILE_NAME: &str = "vm0/default";
+
+fn test_sandbox_reuse_scope() -> crate::sandbox_reuse_identity::SandboxReuseScope {
+    sandbox_reuse_identity_for_test("scope").scope()
+}
 
 fn timestamp_for_index(index: usize) -> String {
     format!("2026-05-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
@@ -64,6 +69,7 @@ async fn write_current_cache_entry(
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: session_id.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: last_completed_at.into(),
@@ -126,7 +132,7 @@ async fn promote_current_cache_entry(
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -164,6 +170,121 @@ async fn promote_current_cache_entry(
 }
 
 #[tokio::test]
+async fn identical_cli_sessions_in_different_api_scopes_use_distinct_cache_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let session_id = "shared-cli";
+    let first_identity = sandbox_reuse_identity_for_test(session_id);
+    let second_scope = crate::sandbox_reuse_identity::SandboxReuseScope::api(
+        "01980a13-532f-7000-8000-000000000002",
+    )
+    .unwrap();
+    let second_identity = second_scope.with_cli_agent_session_id(session_id).unwrap();
+    let image = b"scoped-workspace";
+    let first_run_id = RunId::new_v4();
+    let first_sandbox_id = sandbox::SandboxId::new_v4();
+
+    let first_lease = cache
+        .prepare(
+            WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id: first_run_id,
+                    sandbox_id: first_sandbox_id,
+                    profile_name: TEST_PROFILE_NAME,
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: "/workspace",
+                    image_size_bytes: image.len() as u64,
+                },
+                workspace_drive_required: false,
+            },
+            Some(first_identity.scope()),
+        )
+        .await;
+    assert_eq!(first_lease.result(), WorkspaceCacheCheckoutResult::Miss);
+    let active_image = paths.active_workspace_image(&first_sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&active_image, image).await.unwrap();
+    assert!(
+        first_lease
+            .promote(
+                first_run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-07-13T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap()
+    );
+
+    let second_run_id = RunId::new_v4();
+    let second_sandbox_id = sandbox::SandboxId::new_v4();
+    let second_lease = cache
+        .prepare(
+            WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id: second_run_id,
+                    sandbox_id: second_sandbox_id,
+                    profile_name: TEST_PROFILE_NAME,
+                    cli_agent_session_id: Some(session_id),
+                    working_dir: "/workspace",
+                    image_size_bytes: image.len() as u64,
+                },
+                workspace_drive_required: false,
+            },
+            Some(second_scope),
+        )
+        .await;
+    assert_eq!(second_lease.result(), WorkspaceCacheCheckoutResult::Miss);
+    let active_image = paths.active_workspace_image(&second_sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&active_image, image).await.unwrap();
+    assert!(
+        second_lease
+            .promote(
+                second_run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-07-13T00:00:01.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap()
+    );
+    assert_ne!(
+        cache.scoped_identity_cache_key(
+            TEST_PROFILE_NAME,
+            &first_identity,
+            "/workspace",
+            image.len() as u64,
+        ),
+        cache.scoped_identity_cache_key(
+            TEST_PROFILE_NAME,
+            &second_identity,
+            "/workspace",
+            image.len() as u64,
+        )
+    );
+
+    let held = cache.held_session_states().await;
+    assert_eq!(held.len(), 2);
+    let held_identities = held
+        .iter()
+        .filter_map(HeldSessionState::sandbox_reuse_identity)
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        held_identities,
+        std::collections::HashSet::from([first_identity, second_identity])
+    );
+}
+
+#[tokio::test]
 async fn promotion_does_not_overwrite_newer_cache_entry() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -175,7 +296,7 @@ async fn promotion_does_not_overwrite_newer_cache_entry() {
     let stale_run_id = RunId::new_v4();
     let stale_sandbox_id = sandbox::SandboxId::new_v4();
     let stale_lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: stale_run_id,
                 sandbox_id: stale_sandbox_id,
@@ -241,7 +362,7 @@ async fn promotion_does_not_overwrite_same_completed_at_cache_entry() {
     let competing_run_id = RunId::new_v4();
     let competing_sandbox_id = sandbox::SandboxId::new_v4();
     let competing_lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: competing_run_id,
                 sandbox_id: competing_sandbox_id,
@@ -313,7 +434,7 @@ async fn promotion_overwrites_older_cache_entry() {
     let newer_run_id = RunId::new_v4();
     let newer_sandbox_id = sandbox::SandboxId::new_v4();
     let newer_lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: newer_run_id,
                 sandbox_id: newer_sandbox_id,
@@ -449,6 +570,7 @@ async fn inspect_reports_reusable_entry_with_storage_counts() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -515,6 +637,7 @@ async fn inspect_reports_invalid_metadata_reason() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "other-session".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -571,6 +694,7 @@ async fn inspect_rejects_symlink_current_image() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -625,6 +749,7 @@ async fn inspect_reports_current_directory_as_invalid() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: session_id.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -924,6 +1049,7 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
         key_version: CACHE_KEY_VERSION,
         cache_scope: cache.inner.cache_scope.clone(),
         profile_name: TEST_PROFILE_NAME.into(),
+        sandbox_reuse_scope: test_sandbox_reuse_scope(),
         session_id: session_id.into(),
         working_dir: "/workspace".into(),
         last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -950,7 +1076,7 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
     std::os::unix::fs::symlink(&outside_entry, &entry_dir).unwrap();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1051,12 +1177,14 @@ fn workspace_scoped_fingerprints_do_not_match_prefix_traps() {
 fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
     let mut states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
         .map(|index| HeldSessionState {
+            sandbox_reuse_scope: Some(TEST_SANDBOX_REUSE_SCOPE.to_owned()),
             session_id: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
             reusable_sandbox: None,
         })
         .collect();
     states.push(HeldSessionState {
+        sandbox_reuse_scope: Some(TEST_SANDBOX_REUSE_SCOPE.to_owned()),
         session_id: "sess-0001".into(),
         last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
         reusable_sandbox: None,
@@ -1106,7 +1234,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     let cache = SessionWorkspaceCache::new(paths);
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1126,7 +1254,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     assert!(lease.workspace_drive_config().is_none());
 
     let no_session_lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1146,7 +1274,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     assert!(no_session_lease.workspace_drive_config().is_none());
 
     let snapshot_restore_lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1189,7 +1317,7 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
     let sandbox_id = sandbox::SandboxId::new_v4();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1228,7 +1356,7 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
     let sandbox_id = sandbox::SandboxId::new_v4();
 
     let lease = cache_a
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1260,7 +1388,7 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
     );
 
     let checkout = cache_b
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1317,7 +1445,7 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
     let image_size = fs::metadata(&current).await.unwrap().len();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id,
@@ -1367,7 +1495,7 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1411,7 +1539,7 @@ async fn abandoned_cache_hit_promotion_context_invalidates_consumed_entry() {
     );
 
     let next = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1446,7 +1574,7 @@ async fn promotion_context_preserves_existing_newer_cache_entry() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1702,7 +1830,7 @@ async fn no_lock_promotion_context_abandonment_preserves_existing_entry() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1760,7 +1888,7 @@ async fn metadata_missing_current_present_is_not_a_cache_hit() {
         .unwrap();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1804,7 +1932,7 @@ async fn consumed_cache_hit_promotion_copies_active_image_back_to_cache() {
     let active_image = paths.active_workspace_image(&sandbox_id);
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -1874,7 +2002,7 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
     let image_size = fs::metadata(&current).await.unwrap().len();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1917,7 +2045,7 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
     let cache_b = SessionWorkspaceCache::shared(runner_b, &home, "test-group");
 
     let lease_a = cache_a
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1932,7 +2060,7 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
     assert_eq!(lease_a.result(), WorkspaceCacheCheckoutResult::Miss);
 
     let blocked_checkout = cache_b
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1958,7 +2086,7 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
 
     drop(lease_a);
     let checkout_after_drop = cache_b
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -1998,7 +2126,7 @@ async fn shared_cache_is_scoped_by_runner_group() {
     let sandbox_id = sandbox::SandboxId::new_v4();
 
     let lease = cache_a
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -2030,7 +2158,7 @@ async fn shared_cache_is_scoped_by_runner_group() {
     );
 
     let checkout = cache_b
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -2072,7 +2200,7 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
     let sandbox_id = sandbox::SandboxId::new_v4();
 
     let lease = cache_a
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -2378,6 +2506,7 @@ async fn metadata_validation_rejects_metadata_mismatch() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
@@ -2396,7 +2525,7 @@ async fn metadata_validation_rejects_metadata_mismatch() {
         .unwrap();
 
     let err = cache
-        .read_valid_metadata(
+        .read_valid_metadata_for_test(
             &paths.session_workspace_cache_metadata(&key),
             TEST_PROFILE_NAME,
             "sess-1",
@@ -2405,7 +2534,11 @@ async fn metadata_validation_rejects_metadata_mismatch() {
         )
         .await;
 
-    assert!(err.unwrap_err().to_string().contains("session id mismatch"));
+    assert!(
+        err.unwrap_err()
+            .to_string()
+            .contains("sandbox reuse identity mismatch")
+    );
 }
 
 #[tokio::test]
@@ -2438,6 +2571,7 @@ async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -2489,6 +2623,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
@@ -2507,7 +2642,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
         .unwrap();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -2579,6 +2714,7 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-other".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
@@ -2624,6 +2760,7 @@ async fn held_session_states_rejects_unsafe_working_dir_metadata() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/".into(),
                 last_completed_at: local_timestamp(),
@@ -2674,6 +2811,7 @@ async fn metadata_validation_rejects_replaced_current_image() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
@@ -2697,7 +2835,7 @@ async fn metadata_validation_rejects_replaced_current_image() {
     fs::rename(&replacement, &current).await.unwrap();
 
     let err = cache
-        .read_valid_metadata(
+        .read_valid_metadata_for_test(
             &paths.session_workspace_cache_metadata(&key),
             TEST_PROFILE_NAME,
             "sess-1",
@@ -2743,6 +2881,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
@@ -2761,7 +2900,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
         .unwrap();
 
     let err = cache
-        .read_valid_metadata(
+        .read_valid_metadata_for_test(
             &paths.session_workspace_cache_metadata(&key),
             TEST_PROFILE_NAME,
             "sess-1",
@@ -2902,6 +3041,7 @@ async fn cache_hit_checkout_does_not_require_copy_headroom() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -2932,7 +3072,7 @@ async fn cache_hit_checkout_does_not_require_copy_headroom() {
     );
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -3001,7 +3141,7 @@ async fn lock_busy_checkout_cannot_promote_without_entry_lock() {
         .unwrap();
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -3057,6 +3197,7 @@ async fn active_lease_hides_cached_session_until_dropped() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -3077,7 +3218,7 @@ async fn active_lease_hides_cached_session_until_dropped() {
     assert_eq!(cache.held_session_states().await.len(), 1);
 
     let lease = cache
-        .lease_active(WorkspaceImageActiveLeaseRequest {
+        .lease_active_for_test(WorkspaceImageActiveLeaseRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -3107,7 +3248,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
     let image_size_bytes = 16 * 1024 * 1024;
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -3134,7 +3275,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
         .unwrap();
 
     let blocked_by_context = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -3152,7 +3293,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
     );
 
     let expected = cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,
@@ -3163,7 +3304,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
     let active_lease = promotion.try_into_active_lease(&expected, true).unwrap();
 
     let blocked_by_active_lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -3182,7 +3323,7 @@ async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() 
 
     drop(active_lease);
     let after_drop = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
@@ -3209,7 +3350,7 @@ async fn promotion_context_validates_expected_identity() {
     let image_size_bytes = 16 * 1024 * 1024;
 
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -3234,7 +3375,7 @@ async fn promotion_context_validates_expected_identity() {
         .unwrap();
 
     let expected = cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,
@@ -3245,7 +3386,7 @@ async fn promotion_context_validates_expected_identity() {
     assert_eq!(promotion.validate_identity(&expected), Ok(()));
 
     let wrong_sandbox = cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id: sandbox::SandboxId::new_v4(),
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,
@@ -3259,7 +3400,7 @@ async fn promotion_context_validates_expected_identity() {
     );
 
     let wrong_session = cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: "sess-other",
@@ -3273,7 +3414,7 @@ async fn promotion_context_validates_expected_identity() {
     );
 
     let wrong_size = cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,
@@ -3293,7 +3434,7 @@ async fn promotion_context_validates_expected_identity() {
         "other-scope",
     );
     let wrong_cache_key = scoped_cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,
@@ -3307,7 +3448,7 @@ async fn promotion_context_validates_expected_identity() {
     );
 
     assert_eq!(
-        cache.expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        cache.expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,
@@ -3340,6 +3481,7 @@ async fn gc_candidate_detects_replaced_image_with_same_timestamp() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -3504,6 +3646,63 @@ async fn gc_removes_unusable_current_entry_without_metadata() {
     assert!(
         !paths.session_workspace_cache_entry_dir(&key).exists(),
         "current images without metadata are not reusable and should not accumulate"
+    );
+}
+
+#[tokio::test]
+async fn legacy_unscoped_workspace_cache_entry_is_not_advertised_and_is_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = RunnerPaths::new(dir.path().join("runner"));
+    tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+    let cache = SessionWorkspaceCache::new(paths.clone());
+    let session_id = "sess-legacy";
+    let working_dir = "/workspace";
+    let key = session_workspace_cache_key(session_id, working_dir);
+    tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+        .await
+        .unwrap();
+    let current = paths.session_workspace_cache_current_image(&key);
+    tokio::fs::write(&current, b"legacy image").await.unwrap();
+    let current_metadata = tokio::fs::metadata(&current).await.unwrap();
+    let metadata = WorkspaceCacheMetadata {
+        format_version: 1,
+        key_version: 1,
+        cache_scope: cache.inner.cache_scope.clone(),
+        profile_name: TEST_PROFILE_NAME.into(),
+        sandbox_reuse_scope: test_sandbox_reuse_scope(),
+        session_id: session_id.into(),
+        working_dir: working_dir.into(),
+        last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+        last_used_at: "2026-05-01T00:00:00.000Z".into(),
+        last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+        workspace_trust: WorkspaceTrust::Clean,
+        logical_image_size_bytes: current_metadata.len(),
+        allocated_bytes: allocated_bytes(&current_metadata),
+        current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+        drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+        storage_fingerprints: StorageFingerprints::default(),
+        state: WorkspaceCacheState::Current,
+    };
+    let mut legacy_metadata = serde_json::to_value(metadata).unwrap();
+    legacy_metadata
+        .as_object_mut()
+        .unwrap()
+        .remove("sandboxReuseScope");
+    tokio::fs::write(
+        paths.session_workspace_cache_metadata(&key),
+        serde_json::to_vec(&legacy_metadata).unwrap(),
+    )
+    .await
+    .unwrap();
+
+    assert!(cache.held_session_states().await.is_empty());
+
+    let freed = cache.gc(false).await.unwrap();
+
+    assert!(freed > 0);
+    assert!(
+        !paths.session_workspace_cache_entry_dir(&key).exists(),
+        "legacy cache entries without a reuse scope must not remain reusable"
     );
 }
 
@@ -3740,6 +3939,7 @@ async fn gc_removes_current_directory_even_when_metadata_matches() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: session_id.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -3796,6 +3996,7 @@ async fn gc_counts_nested_current_directory_bytes() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
+                sandbox_reuse_scope: test_sandbox_reuse_scope(),
                 session_id: session_id.into(),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -4046,7 +4247,7 @@ async fn promote_skips_symlink_active_image_without_following_it() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let session_id = "sess-active-symlink";
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4104,7 +4305,7 @@ async fn promote_replaces_symlink_cache_entry_dir_without_following_it() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let session_id = "sess-promote-entry-symlink";
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4170,7 +4371,7 @@ async fn promote_removes_current_image_when_metadata_write_fails() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4231,7 +4432,7 @@ async fn promote_removes_stale_temporary_directory_before_copy() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4282,7 +4483,7 @@ async fn promote_replaces_stale_current_directory_before_rename() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4333,7 +4534,7 @@ async fn promote_skips_copied_image_with_unexpected_logical_size() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4382,7 +4583,7 @@ async fn promote_skips_when_capacity_lock_is_busy() {
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4434,7 +4635,7 @@ async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4473,7 +4674,7 @@ async fn no_session_checkout_can_promote_with_late_discovered_cli_agent_session_
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4531,7 +4732,7 @@ async fn late_session_promotion_skips_when_entry_lock_is_busy() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let session_id = "sess-late-lock-busy";
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4588,7 +4789,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
     let sandbox_id = sandbox::SandboxId::new_v4();
     let session_id = "sess-reused-late-context";
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -4613,7 +4814,7 @@ async fn no_lock_promotion_context_survives_reuse_active_lease() {
         .unwrap();
 
     let expected = cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
+        .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,
             profile_name: TEST_PROFILE_NAME,
             cli_agent_session_id: session_id,

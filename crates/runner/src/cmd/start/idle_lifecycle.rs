@@ -243,7 +243,9 @@ mod tests {
         let request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory,
-            cli_agent_session_id: fixture.session_id.clone(),
+            sandbox_reuse_identity: crate::test_fixtures::sandbox_reuse_identity_for_test(
+                &fixture.session_id,
+            ),
             sandbox_id: fixture.sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

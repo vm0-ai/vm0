@@ -682,6 +682,7 @@ async fn handle_ably_message_with_network_policy_refresh(
                     notif.run_id,
                     profile.to_owned(),
                     notification_received_at,
+                    notif.sandbox_reuse_scope.map(str::to_owned),
                     notif.cli_agent_session_id.map(str::to_owned),
                     notif.affinity_protected_until.map(str::to_owned),
                 ))
@@ -722,6 +723,7 @@ enum JobNotificationAction {
 struct JobNotification<'a> {
     run_id: RunId,
     profile: Option<&'a str>,
+    sandbox_reuse_scope: Option<&'a str>,
     cli_agent_session_id: Option<&'a str>,
     affinity_protected_until: Option<&'a str>,
 }
@@ -862,6 +864,11 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("profile")
         .and_then(|v| v.as_str())
         .filter(|value| !value.is_empty());
+    let sandbox_reuse_scope = msg
+        .data
+        .get("sandboxReuseScope")
+        .and_then(|v| v.as_str())
+        .filter(|value| !value.is_empty());
     let cli_agent_session_id = msg
         .data
         .get("cliAgentSessionId")
@@ -875,6 +882,7 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
     Some(JobNotification {
         run_id,
         profile,
+        sandbox_reuse_scope,
         cli_agent_session_id,
         affinity_protected_until,
     })
@@ -1724,6 +1732,7 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
+                "sandboxReuseScope": crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE,
                 "cliAgentSessionId": "sess-ably",
                 "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
@@ -1739,6 +1748,12 @@ mod tests {
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
+        assert_eq!(
+            candidate.sandbox_reuse_identity(),
+            Some(&crate::test_fixtures::sandbox_reuse_identity_for_test(
+                "sess-ably"
+            ))
+        );
         assert!(candidate.is_affinity_protected());
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
@@ -2187,12 +2202,17 @@ mod tests {
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
                 "targetRunnerId": "00000000-0000-0000-0000-000000000099",
+                "sandboxReuseScope": crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE,
                 "cliAgentSessionId": "sess-target",
                 "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
             }),
         );
         let notif = parse_job_notification(&msg).unwrap();
         assert_eq!(notif.profile, Some("vm0/default"));
+        assert_eq!(
+            notif.sandbox_reuse_scope,
+            Some(crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE)
+        );
         assert_eq!(notif.cli_agent_session_id, Some("sess-target"));
         assert_eq!(
             notif.affinity_protected_until,

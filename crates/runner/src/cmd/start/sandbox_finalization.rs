@@ -34,6 +34,7 @@ use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
+use crate::sandbox_reuse_identity::{SandboxReuseIdentity, SandboxReuseScope};
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::HeldSessionState;
@@ -59,13 +60,14 @@ fn mark_session_affinity_refresh(
 
 fn mark_workspace_cache_snapshot_promoted(
     snapshot: &HeldSessionStateSnapshot,
-    session_id: Option<&str>,
+    identity: Option<&SandboxReuseIdentity>,
     completed_at: &str,
     promoted: bool,
 ) -> bool {
-    if promoted && let Some(session_id) = session_id {
+    if promoted && let Some(identity) = identity {
         snapshot.upsert_workspace_cache_state(HeldSessionState {
-            session_id: session_id.to_owned(),
+            sandbox_reuse_scope: identity.api_scope_wire_value(),
+            session_id: identity.cli_agent_session_id().to_owned(),
             last_completed_at: completed_at.to_owned(),
             reusable_sandbox: None,
         });
@@ -77,6 +79,7 @@ pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
     pub(super) profile_name: String,
+    pub(super) sandbox_reuse_scope: Option<SandboxReuseScope>,
     pub(super) cli_agent_session_id: Option<String>,
     pub(super) discovered_cli_agent_session_id: Option<String>,
     pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
@@ -116,6 +119,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         run_id,
         sandbox_id,
         profile_name,
+        sandbox_reuse_scope,
         cli_agent_session_id,
         discovered_cli_agent_session_id,
         restored_session_identity,
@@ -154,8 +158,11 @@ pub(super) async fn finalize_sandbox_for_completion(
     let resolved_cli_agent_session_id = cli_agent_session_id
         .as_deref()
         .or(discovered_cli_agent_session_id.as_deref());
-    let parkable_cli_agent_session_id = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        resolved_cli_agent_session_id.map(str::to_owned)
+    let resolved_sandbox_reuse_identity = sandbox_reuse_scope
+        .and_then(|scope| scope.with_cli_agent_session_id(resolved_cli_agent_session_id?));
+    let parkable_sandbox_reuse_identity = if exit_code == 0 && !cancelled && parking_gate.is_open()
+    {
+        resolved_sandbox_reuse_identity.clone()
     } else {
         None
     };
@@ -170,19 +177,19 @@ pub(super) async fn finalize_sandbox_for_completion(
             storage_fingerprints: storage_fingerprints.clone(),
         })
     });
-    let workspace_promotion_session_id = workspace_promotion
+    let workspace_promotion_identity = workspace_promotion
         .as_ref()
-        .map(|promotion| promotion.cli_agent_session_id().to_owned());
-
+        .map(|promotion| promotion.sandbox_reuse_identity().clone());
     let mut session_affinity_changed = false;
-    let budget = if let Some(cli_agent_session_id) = parkable_cli_agent_session_id {
+    let budget = if let Some(sandbox_reuse_identity) = parkable_sandbox_reuse_identity {
+        let cli_agent_session_id = sandbox_reuse_identity.cli_agent_session_id().to_owned();
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
         let park_request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory: Arc::clone(&factory),
-            cli_agent_session_id: cli_agent_session_id.clone(),
+            sandbox_reuse_identity: sandbox_reuse_identity.clone(),
             sandbox_id,
             profile_name: profile_name.clone(),
             device_rate_limits: device_rate_limits.clone(),
@@ -211,7 +218,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 );
                 let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                     &held_session_snapshot,
-                    Some(&cli_agent_session_id),
+                    Some(&sandbox_reuse_identity),
                     &completed_at,
                     promote_workspace_image_from_active_sandbox(
                         sandbox.as_ref(),
@@ -263,7 +270,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             .await;
             session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                 &held_session_snapshot,
-                Some(&cli_agent_session_id),
+                Some(&sandbox_reuse_identity),
                 &completed_at,
                 destroy_result.workspace_cache_promoted,
             );
@@ -298,7 +305,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         .await;
                         let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                             &held_session_snapshot,
-                            Some(&cli_agent_session_id),
+                            Some(&sandbox_reuse_identity),
                             &completed_at,
                             destroy_result.workspace_cache_promoted,
                         );
@@ -328,7 +335,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     .await;
                     let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
                         &held_session_snapshot,
-                        Some(&cli_agent_session_id),
+                        Some(&sandbox_reuse_identity),
                         &completed_at,
                         destroy_result.workspace_cache_promoted,
                     );
@@ -414,7 +421,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         .await;
                         session_affinity_changed |= mark_workspace_cache_snapshot_promoted(
                             &held_session_snapshot,
-                            Some(&cli_agent_session_id),
+                            Some(&sandbox_reuse_identity),
                             &completed_at,
                             destroy_result.workspace_cache_promoted,
                         );
@@ -425,11 +432,11 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable session — stop + destroy.
-        let workspace_cache_snapshot_session_id =
-            resolved_cli_agent_session_id.or(workspace_promotion_session_id.as_deref());
         let workspace_cache_promoted = mark_workspace_cache_snapshot_promoted(
             &held_session_snapshot,
-            workspace_cache_snapshot_session_id,
+            resolved_sandbox_reuse_identity
+                .as_ref()
+                .or(workspace_promotion_identity.as_ref()),
             &completed_at,
             promote_workspace_image_from_active_sandbox(
                 sandbox.as_ref(),
@@ -718,6 +725,9 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default".into(),
+                sandbox_reuse_scope: Some(
+                    crate::test_fixtures::sandbox_reuse_identity_for_test(session_id).scope(),
+                ),
                 cli_agent_session_id: Some(session_id.into()),
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
@@ -751,7 +761,7 @@ mod tests {
         session_id: &str,
     ) -> WorkspaceImageLease {
         let lease = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -1023,7 +1033,7 @@ mod tests {
 
             assert!(promoted);
             let checkout = cache
-                .prepare(WorkspaceImagePrepareRequest {
+                .prepare_for_test(WorkspaceImagePrepareRequest {
                     identity: WorkspaceImageLeaseIdentity {
                         run_id: RunId::new_v4(),
                         sandbox_id: SandboxId::new_v4(),
@@ -1102,7 +1112,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -1169,7 +1179,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -1241,7 +1251,7 @@ mod tests {
         let sandbox_id = SandboxId::new_v4();
         let session_id = "sess-lease-only";
         let workspace_image = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -1321,7 +1331,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -1422,7 +1432,9 @@ mod tests {
             source_ip: existing_sandbox.source_ip().to_owned(),
             sandbox: existing_sandbox,
             factory: existing_factory,
-            cli_agent_session_id: session_id.into(),
+            sandbox_reuse_identity: crate::test_fixtures::sandbox_reuse_identity_for_test(
+                session_id,
+            ),
             sandbox_id: old_sandbox_id,
             profile_name: "vm0/default".into(),
             device_rate_limits: None,

@@ -2,9 +2,10 @@ use std::path::{Path, PathBuf};
 
 use crate::ids::RunId;
 use crate::paths::{
-    scoped_session_workspace_cache_key, workspace_image_cache_capacity_lock_path,
+    scoped_sandbox_reuse_workspace_cache_key, workspace_image_cache_capacity_lock_path,
     workspace_image_cache_lock_path,
 };
+use crate::sandbox_reuse_identity::SandboxReuseIdentity;
 
 use super::SessionWorkspaceCache;
 use super::metadata::WorkspaceCacheMetadata;
@@ -116,6 +117,23 @@ impl SessionWorkspaceCache {
             .tmp_session_history_sidecar_metadata(run_id)
     }
 
+    pub(super) fn scoped_identity_cache_key(
+        &self,
+        profile_name: &str,
+        identity: &SandboxReuseIdentity,
+        working_dir: &str,
+        image_size_bytes: u64,
+    ) -> String {
+        scoped_sandbox_reuse_workspace_cache_key(
+            &self.inner.cache_scope,
+            profile_name,
+            identity,
+            working_dir,
+            image_size_bytes,
+        )
+    }
+
+    #[cfg(test)]
     pub(super) fn scoped_cache_key(
         &self,
         profile_name: &str,
@@ -123,10 +141,9 @@ impl SessionWorkspaceCache {
         working_dir: &str,
         image_size_bytes: u64,
     ) -> String {
-        scoped_session_workspace_cache_key(
-            &self.inner.cache_scope,
+        self.scoped_identity_cache_key(
             profile_name,
-            session_id,
+            &crate::test_fixtures::sandbox_reuse_identity_for_test(session_id),
             working_dir,
             image_size_bytes,
         )
@@ -137,10 +154,13 @@ impl SessionWorkspaceCache {
         cache_key: &str,
         metadata: &WorkspaceCacheMetadata,
     ) -> bool {
-        scoped_session_workspace_cache_key(
+        let Some(identity) = metadata.sandbox_reuse_identity() else {
+            return false;
+        };
+        scoped_sandbox_reuse_workspace_cache_key(
             &metadata.cache_scope,
             &metadata.profile_name,
-            &metadata.session_id,
+            &identity,
             &metadata.working_dir,
             metadata.logical_image_size_bytes,
         ) == cache_key

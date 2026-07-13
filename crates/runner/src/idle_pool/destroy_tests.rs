@@ -3,6 +3,7 @@ use super::*;
 use std::sync::Arc;
 
 use crate::resource_budget::ResourceBudget;
+use crate::test_fixtures::sandbox_reuse_identity_for_test;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 use crate::workspace_promotion::test_support::WorkspacePromotionFixture;
 use sandbox::{ResourceLimits, SandboxConfig};
@@ -65,7 +66,7 @@ async fn make_idle_destroy_job_for(
     IdleDestroyJob {
         payload: make_idle_destroy_payload_for(sandbox_id, overrides, workspace_promotion).await,
         budget_lease,
-        cli_agent_session_id: "sess-destroy".into(),
+        sandbox_reuse_identity: sandbox_reuse_identity_for_test("sess-destroy"),
         profile_name: "vm0/default".into(),
     }
 }

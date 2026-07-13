@@ -92,7 +92,9 @@ pub(in crate::executor::tests) async fn make_reusable_idle_sandbox(
         .with_source_ip(source_ip)
         .build();
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
-    let entry = pool.take(session_id).expect("idle entry should exist");
+    let entry = pool
+        .take_for_test(session_id)
+        .expect("idle entry should exist");
     match entry.try_unpark().await {
         IdleUnparkResult::Reused {
             sandbox,

@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::RunnerResult;
 use crate::ids::RunId;
+use crate::sandbox_reuse_identity::SandboxReuseIdentity;
 
 /// Short hex digests for storage name and version components, used when
 /// building filesystem paths from untrusted manifest fields.
@@ -62,9 +63,11 @@ pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
 /// size so incompatible workspace images never share a host entry.
 #[cfg(test)]
 pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
-    scoped_session_workspace_cache_key("", "vm0/default", session_id, working_dir, 5)
+    let identity = crate::test_fixtures::sandbox_reuse_identity_for_test(session_id);
+    scoped_sandbox_reuse_workspace_cache_key("", "vm0/default", &identity, working_dir, 5)
 }
 
+#[cfg(test)]
 pub(crate) fn scoped_session_workspace_cache_key(
     cache_scope: &str,
     profile_name: &str,
@@ -72,15 +75,34 @@ pub(crate) fn scoped_session_workspace_cache_key(
     _working_dir: &str,
     image_size_bytes: u64,
 ) -> String {
+    let identity = crate::test_fixtures::sandbox_reuse_identity_for_test(session_id);
+    scoped_sandbox_reuse_workspace_cache_key(
+        cache_scope,
+        profile_name,
+        &identity,
+        _working_dir,
+        image_size_bytes,
+    )
+}
+
+pub(crate) fn scoped_sandbox_reuse_workspace_cache_key(
+    cache_scope: &str,
+    profile_name: &str,
+    identity: &SandboxReuseIdentity,
+    _working_dir: &str,
+    image_size_bytes: u64,
+) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"session-workspace-cache:v3\0");
+    hasher.update(b"session-workspace-cache:v4\0");
     hasher.update(cache_scope.as_bytes());
     hasher.update(b"\0");
     hasher.update(profile_name.as_bytes());
     hasher.update(b"\0workspace-drive-v1\0");
     hasher.update(image_size_bytes.to_le_bytes());
     hasher.update(b"\0");
-    hasher.update(session_id.as_bytes());
+    hasher.update(identity.scope().cache_key_namespace().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(identity.cli_agent_session_id().as_bytes());
     hex::encode(hasher.finalize())
 }
 

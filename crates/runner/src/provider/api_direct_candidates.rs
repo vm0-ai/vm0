@@ -17,6 +17,7 @@ pub(super) struct DirectJobCandidate {
     profile_name: String,
     discovered_at: StdInstant,
     enqueued_at: Option<StdInstant>,
+    sandbox_reuse_scope: Option<String>,
     cli_agent_session_id: Option<String>,
     affinity_protected_until: Option<String>,
 }
@@ -33,7 +34,7 @@ impl DirectJobCandidate {
         profile_name: String,
         discovered_at: StdInstant,
     ) -> Self {
-        Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None)
+        Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None, None)
     }
 
     #[cfg(test)]
@@ -44,7 +45,7 @@ impl DirectJobCandidate {
         enqueued_at: StdInstant,
     ) -> Self {
         let mut candidate =
-            Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None);
+            Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None, None);
         candidate.enqueued_at = Some(enqueued_at);
         candidate
     }
@@ -53,6 +54,7 @@ impl DirectJobCandidate {
         run_id: RunId,
         profile_name: String,
         discovered_at: StdInstant,
+        sandbox_reuse_scope: Option<String>,
         cli_agent_session_id: Option<String>,
         affinity_protected_until: Option<String>,
     ) -> Self {
@@ -61,6 +63,7 @@ impl DirectJobCandidate {
             profile_name,
             discovered_at,
             enqueued_at: None,
+            sandbox_reuse_scope,
             cli_agent_session_id,
             affinity_protected_until,
         }
@@ -99,7 +102,11 @@ impl DirectJobCandidate {
             .enqueued_at
             .map(|enqueued_at| dequeued_at.saturating_duration_since(enqueued_at));
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
-            .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
+            .with_affinity_metadata(
+                self.sandbox_reuse_scope,
+                self.cli_agent_session_id,
+                self.affinity_protected_until,
+            )
             .with_discovery_source(JobDiscoverySource::Ably)
             .with_direct_candidate_timing(notification_to_enqueue_elapsed, inbox_wait_elapsed)
     }
@@ -114,7 +121,8 @@ impl DirectJobCandidate {
             );
             return;
         }
-        if candidate.cli_agent_session_id.is_some() {
+        if candidate.sandbox_reuse_scope.is_some() && candidate.cli_agent_session_id.is_some() {
+            self.sandbox_reuse_scope = candidate.sandbox_reuse_scope;
             self.cli_agent_session_id = candidate.cli_agent_session_id;
         }
         if candidate.affinity_protected_until.is_some() {
@@ -393,6 +401,7 @@ mod tests {
                 run_id,
                 "vm0/default".to_string(),
                 first_discovered_at,
+                Some(crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE.to_string()),
                 Some("sess-1".to_string()),
                 None,
             ))
@@ -410,6 +419,7 @@ mod tests {
                 run_id,
                 "vm0/default".to_string(),
                 second_discovered_at,
+                None,
                 None,
                 Some("2999-01-01T00:00:00.000Z".to_string()),
             ))
@@ -430,6 +440,12 @@ mod tests {
         assert!(candidate.enqueued_at().is_some());
         let candidate = candidate.into_job_candidate();
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-1"));
+        assert_eq!(
+            candidate.sandbox_reuse_identity(),
+            Some(&crate::test_fixtures::sandbox_reuse_identity_for_test(
+                "sess-1"
+            ))
+        );
         assert!(candidate.is_affinity_protected());
         assert!(
             candidate

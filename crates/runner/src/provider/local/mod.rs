@@ -166,6 +166,8 @@ impl JobProvider for LocalProvider {
 
         let context = ExecutionContext {
             run_id,
+            sandbox_reuse_scope: None,
+            local_sandbox_reuse: true,
             prompt: req.prompt,
             append_system_prompt: None,
             vars: req.vars,

@@ -60,8 +60,8 @@ pub(crate) use types::{
     WorkspaceSessionHistorySidecarRepresentation,
 };
 
-const CACHE_FORMAT_VERSION: u32 = 1;
-const CACHE_KEY_VERSION: u32 = 1;
+const CACHE_FORMAT_VERSION: u32 = 2;
+const CACHE_KEY_VERSION: u32 = 2;
 const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
 const GIB: u64 = 1024 * 1024 * 1024;
 const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;

@@ -210,9 +210,21 @@ async fn serve_session_history_once(
     Ok(())
 }
 
+pub(crate) const TEST_SANDBOX_REUSE_SCOPE: &str = "01980a13-532f-7000-8000-000000000001";
+
+pub(crate) fn sandbox_reuse_identity_for_test(
+    cli_agent_session_id: &str,
+) -> crate::sandbox_reuse_identity::SandboxReuseIdentity {
+    crate::sandbox_reuse_identity::SandboxReuseScope::api(TEST_SANDBOX_REUSE_SCOPE)
+        .and_then(|scope| scope.with_cli_agent_session_id(cli_agent_session_id))
+        .expect("test sandbox reuse identity")
+}
+
 pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
     ExecutionContext {
         run_id,
+        sandbox_reuse_scope: Some(TEST_SANDBOX_REUSE_SCOPE.into()),
+        local_sandbox_reuse: false,
         prompt: "test".into(),
         append_system_prompt: None,
         vars: None,

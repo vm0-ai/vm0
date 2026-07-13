@@ -17,6 +17,7 @@ export async function notifyRunnerJob(
     readonly runnerGroup: string;
     readonly runId: string;
     readonly profile: string;
+    readonly sandboxReuseScope: string;
     readonly cliAgentSessionId: string | null;
     readonly createdAt: Date;
   },
@@ -28,6 +29,7 @@ export async function notifyRunnerJob(
       db,
       runnerGroup: args.runnerGroup,
       profile: args.profile,
+      sandboxReuseScope: args.sandboxReuseScope,
       cliAgentSessionId: args.cliAgentSessionId,
       createdAt: args.createdAt,
       currentDate,
@@ -51,6 +53,7 @@ export async function notifyRunnerJob(
     args.runId,
     args.profile,
     {
+      sandboxReuseScope: args.sandboxReuseScope,
       cliAgentSessionId: args.cliAgentSessionId,
       affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
     },

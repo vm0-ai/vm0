@@ -5320,7 +5320,8 @@ function buildRunnerJobPayload(
 }
 
 type BuildRunnerJobPayloadArgs = Parameters<typeof buildRunnerJobPayload>[1];
-type DispatchRunArgs = BuildRunnerJobPayloadArgs & {
+type DispatchRunArgs = Omit<BuildRunnerJobPayloadArgs, "run"> & {
+  readonly run: Pick<RunRecord, "id" | "sessionId">;
   readonly timing: ApiDispatchTimingCollector;
   readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
 };
@@ -5526,6 +5527,7 @@ function dispatchRun(
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
         profile: payload.profile,
+        sandboxReuseScope: args.run.sessionId,
         cliAgentSessionId: payload.cliAgentSessionId,
         createdAt: persisted.runnerJobCreatedAt,
       });
@@ -7137,6 +7139,7 @@ async function committedAtomicLaunchResponse(args: {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
+    sandboxReuseScope: args.committed.run.sessionId,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
     createdAt: args.committed.runnerJobCreatedAt,
   });

@@ -20,6 +20,10 @@ async fn discover_claim_complete() {
     let ctx = claimed.context();
     assert_eq!(ctx.run_id, job_id);
     assert_eq!(ctx.prompt, "hello world");
+    assert_eq!(
+        ctx.sandbox_reuse_scope(),
+        Some(crate::sandbox_reuse_identity::SandboxReuseScope::local())
+    );
 
     provider
         .complete(job_id, 0, None, None, None, CompletionAuth::local())

@@ -42,6 +42,7 @@ use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::sandbox_reuse_identity::SandboxReuseScope;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::telemetry::JobTelemetry;
@@ -238,6 +239,7 @@ struct FinalizationPhase {
     reuse_result: SandboxReuseResult,
     workspace_disk_mb: u32,
     profile_name: String,
+    sandbox_reuse_scope: Option<SandboxReuseScope>,
     cli_agent_session_id: Option<String>,
     storage_fingerprints: StorageFingerprints,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
@@ -271,6 +273,7 @@ impl FinalizationPhase {
             reuse_result,
             workspace_disk_mb,
             profile_name,
+            sandbox_reuse_scope,
             cli_agent_session_id,
             storage_fingerprints,
             device_rate_limits,
@@ -325,6 +328,7 @@ impl FinalizationPhase {
                 run_id,
                 sandbox_id,
                 profile_name,
+                sandbox_reuse_scope,
                 cli_agent_session_id,
                 discovered_cli_agent_session_id,
                 restored_session_identity,
@@ -495,6 +499,7 @@ pub(super) fn spawn_job(
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
+    let sandbox_reuse_scope = context.sandbox_reuse_scope();
     let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
         context.cli_agent_session_id().map(String::from)
     } else {
@@ -595,6 +600,7 @@ pub(super) fn spawn_job(
         reuse_result,
         workspace_disk_mb,
         profile_name,
+        sandbox_reuse_scope,
         cli_agent_session_id,
         storage_fingerprints,
         device_rate_limits: job_device_rate_limits,
@@ -1167,6 +1173,9 @@ mod tests {
                 reuse_result: SandboxReuseResult::PoolMiss,
                 workspace_disk_mb: 0,
                 profile_name: "vm0/default".into(),
+                sandbox_reuse_scope: Some(
+                    crate::test_fixtures::sandbox_reuse_identity_for_test(session_id).scope(),
+                ),
                 cli_agent_session_id: Some(session_id.into()),
                 storage_fingerprints: StorageFingerprints::default(),
                 device_rate_limits: None,
@@ -1277,7 +1286,7 @@ mod tests {
             .idle_pool
             .lock()
             .await
-            .take("sess-restore-plan")
+            .take_for_test("sess-restore-plan")
             .expect("parked sandbox should be in idle pool");
         let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
             panic!("parked sandbox should unpark");
@@ -1321,7 +1330,7 @@ mod tests {
             .idle_pool
             .lock()
             .await
-            .take(session_id)
+            .take_for_test(session_id)
             .expect("parked sandbox should be in idle pool");
         let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
             panic!("parked sandbox should unpark");
@@ -1359,6 +1368,7 @@ mod tests {
         let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
         let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
             Arc::clone(&active_sessions),
+            Some(crate::test_fixtures::sandbox_reuse_identity_for_test(session_id).scope()),
             Some(session_id.to_owned()),
         );
         let (usage_flush_tx, _usage_flush_rx) = mpsc::channel(1);

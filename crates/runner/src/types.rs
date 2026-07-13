@@ -9,6 +9,7 @@ use unicode_normalization::UnicodeNormalization;
 use api_contracts::generated::types::runners::storage::StorageManifest;
 
 use crate::ids::RunId;
+use crate::sandbox_reuse_identity::{SandboxReuseIdentity, SandboxReuseScope};
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
 
@@ -30,6 +31,8 @@ pub struct PollResponse {
 #[serde(rename_all = "camelCase")]
 pub struct Job {
     pub run_id: RunId,
+    #[serde(default)]
+    pub sandbox_reuse_scope: Option<String>,
     #[serde(default)]
     pub experimental_profile: Option<String>,
     #[serde(default)]
@@ -53,6 +56,12 @@ pub struct Job {
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContext {
     pub run_id: RunId,
+    #[serde(default)]
+    pub sandbox_reuse_scope: Option<String>,
+    // Local submit explicitly authorizes caller-provided reuse identity. This
+    // marker is internal and cannot be selected through API claim JSON.
+    #[serde(default, skip)]
+    pub local_sandbox_reuse: bool,
     pub prompt: String,
     #[serde(default)]
     pub append_system_prompt: Option<String>,
@@ -1180,6 +1189,20 @@ impl ExecutionContext {
             .as_ref()
             .map(|r| r.cli_agent_session_id.as_str())
     }
+
+    pub(crate) fn sandbox_reuse_scope(&self) -> Option<SandboxReuseScope> {
+        if self.local_sandbox_reuse {
+            return Some(SandboxReuseScope::local());
+        }
+        self.sandbox_reuse_scope
+            .as_deref()
+            .and_then(SandboxReuseScope::api)
+    }
+
+    pub(crate) fn sandbox_reuse_identity(&self) -> Option<SandboxReuseIdentity> {
+        self.sandbox_reuse_scope()?
+            .with_cli_agent_session_id(self.cli_agent_session_id()?)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1196,12 +1219,21 @@ pub struct ReusableSandboxState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HeldSessionState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_reuse_scope: Option<String>,
     /// Compatibility wire name is `sessionId`; semantically this is the
     /// Claude/Codex CLI agent session id used for sandbox reuse affinity.
     pub session_id: String,
     pub last_completed_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reusable_sandbox: Option<ReusableSandboxState>,
+}
+
+impl HeldSessionState {
+    pub(crate) fn sandbox_reuse_identity(&self) -> Option<SandboxReuseIdentity> {
+        SandboxReuseScope::api(self.sandbox_reuse_scope.as_deref()?)?
+            .with_cli_agent_session_id(self.session_id.clone())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1306,6 +1338,7 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile.as_deref(), Some("browser"));
+        assert!(job.sandbox_reuse_scope.is_none());
     }
 
     #[test]
@@ -1322,6 +1355,36 @@ mod tests {
         });
         let job: Job = serde_json::from_value(json).unwrap();
         assert!(job.experimental_profile.is_none());
+    }
+
+    #[test]
+    fn legacy_and_malformed_api_scopes_deserialize_without_authorizing_reuse() {
+        let legacy: ExecutionContext = serde_json::from_value(json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "resumeSession": {
+                "sessionId": "cli-session",
+                "sessionHistory": "{}"
+            }
+        }))
+        .unwrap();
+        assert!(legacy.sandbox_reuse_identity().is_none());
+
+        let malformed: ExecutionContext = serde_json::from_value(json!({
+            "runId": "11111111-1111-4111-8111-111111111111",
+            "sandboxReuseScope": "not-a-uuid",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude-code",
+            "resumeSession": {
+                "sessionId": "cli-session",
+                "sessionHistory": "{}"
+            }
+        }))
+        .unwrap();
+        assert!(malformed.sandbox_reuse_identity().is_none());
     }
 
     #[test]
@@ -1900,6 +1963,9 @@ mod tests {
             running_count: 2,
             admittable_profiles: vec!["vm0/default".into()],
             held_session_states: vec![HeldSessionState {
+                sandbox_reuse_scope: Some(
+                    crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE.to_owned(),
+                ),
                 session_id: "session-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
                 reusable_sandbox: Some(ReusableSandboxState {
@@ -1923,6 +1989,7 @@ mod tests {
         assert_eq!(
             json["heldSessionStates"],
             json!([{
+                "sandboxReuseScope": crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE,
                 "sessionId": "session-abc",
                 "lastCompletedAt": "2026-05-28T00:00:00.000Z",
                 "reusableSandbox": {
@@ -1940,6 +2007,7 @@ mod tests {
             "lastCompletedAt": "2026-05-28T00:00:00.000Z"
         }))
         .unwrap();
+        assert!(state.sandbox_reuse_identity().is_none());
         assert!(state.reusable_sandbox.is_none());
 
         let serialized = serde_json::to_value(state).unwrap();

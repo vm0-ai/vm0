@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
+use crate::sandbox_reuse_identity::{SandboxReuseIdentity, SandboxReuseScope};
 use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 
 /// Low-cardinality source that first discovered a job candidate.
@@ -81,7 +82,7 @@ pub struct JobCandidate {
     poll_reason: Option<String>,
     poll_due_to_job_discovered_elapsed: Option<Duration>,
     poll_http_request_elapsed: Option<Duration>,
-    cli_agent_session_id: Option<String>,
+    sandbox_reuse_identity: Option<SandboxReuseIdentity>,
     affinity_protected_until: Option<DateTime<Utc>>,
 }
 
@@ -112,7 +113,7 @@ impl JobCandidate {
             poll_reason: None,
             poll_due_to_job_discovered_elapsed: None,
             poll_http_request_elapsed: None,
-            cli_agent_session_id: None,
+            sandbox_reuse_identity: None,
             affinity_protected_until: None,
         }
     }
@@ -203,8 +204,15 @@ impl JobCandidate {
         self.poll_http_request_elapsed
     }
 
+    #[cfg(test)]
     pub(crate) fn cli_agent_session_id(&self) -> Option<&str> {
-        self.cli_agent_session_id.as_deref()
+        self.sandbox_reuse_identity
+            .as_ref()
+            .map(SandboxReuseIdentity::cli_agent_session_id)
+    }
+
+    pub(crate) fn sandbox_reuse_identity(&self) -> Option<&SandboxReuseIdentity> {
+        self.sandbox_reuse_identity.as_ref()
     }
 
     pub(crate) fn affinity_protection_remaining(&self) -> Option<Duration> {
@@ -217,17 +225,22 @@ impl JobCandidate {
     }
 
     pub(crate) fn is_affinity_protected(&self) -> bool {
-        self.affinity_protection_remaining()
-            .is_some_and(|remaining| !remaining.is_zero())
+        self.sandbox_reuse_identity.is_some()
+            && self
+                .affinity_protection_remaining()
+                .is_some_and(|remaining| !remaining.is_zero())
     }
 
     pub(crate) fn with_affinity_metadata(
         mut self,
+        sandbox_reuse_scope: Option<String>,
         cli_agent_session_id: Option<String>,
         affinity_protected_until: Option<String>,
     ) -> Self {
-        self.cli_agent_session_id =
-            cli_agent_session_id.filter(|session_id| !session_id.is_empty());
+        self.sandbox_reuse_identity = sandbox_reuse_scope
+            .as_deref()
+            .and_then(SandboxReuseScope::api)
+            .and_then(|scope| scope.with_cli_agent_session_id(cli_agent_session_id.as_deref()?));
         self.affinity_protected_until = affinity_protected_until
             .as_deref()
             .and_then(parse_affinity_protected_until);

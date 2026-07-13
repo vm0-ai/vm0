@@ -39,7 +39,7 @@ impl WorkspacePromotionFixture {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -99,7 +99,7 @@ impl WorkspacePromotionFixture {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let workspace_image = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -138,7 +138,7 @@ impl WorkspacePromotionFixture {
         session_id: &str,
     ) -> WorkspaceCacheCheckoutResult {
         cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id: RunId::new_v4(),
                     sandbox_id: SandboxId::new_v4(),

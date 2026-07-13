@@ -1,5 +1,6 @@
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { and, eq, gt, or, sql, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -33,6 +34,7 @@ export function runnerReusableSessionPollPriority(args: {
         AND ${runnerState.lastSeenAt} > ${freshAfter}
         AND ${runnerState.heldSessionStates} @> jsonb_build_array(
           jsonb_build_object(
+            'sandboxReuseScope', ${agentRuns.sessionId},
             'sessionId', ${runnerJobQueue.cliAgentSessionId},
             'reusableSandbox', jsonb_build_object(
               'profile', ${runnerJobQueue.profile}
@@ -76,6 +78,7 @@ export async function runnerSessionAffinityProtection(args: {
   readonly db: Pick<Db, "select">;
   readonly runnerGroup: string;
   readonly profile: string;
+  readonly sandboxReuseScope: string;
   readonly cliAgentSessionId: string | null;
   readonly createdAt: Date;
   readonly currentDate: Date;
@@ -93,10 +96,14 @@ export async function runnerSessionAffinityProtection(args: {
 
   const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
   const heldSessionProbe = JSON.stringify([
-    { sessionId: args.cliAgentSessionId },
+    {
+      sandboxReuseScope: args.sandboxReuseScope,
+      sessionId: args.cliAgentSessionId,
+    },
   ]);
   const reusableSessionProbe = JSON.stringify([
     {
+      sandboxReuseScope: args.sandboxReuseScope,
       sessionId: args.cliAgentSessionId,
       reusableSandbox: { profile: args.profile },
     },

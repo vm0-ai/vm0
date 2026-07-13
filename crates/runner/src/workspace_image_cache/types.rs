@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::ids::RunId;
+use crate::sandbox_reuse_identity::SandboxReuseScope;
 use crate::storage_fingerprints::StorageFingerprints;
 
 use super::{MAX_ENTRY_BYTES_CAP, MIN_FREE_BYTES_FLOOR};
@@ -61,6 +62,7 @@ pub(crate) struct WorkspaceImagePromotionIdentityRequest<'a> {
 pub(crate) struct WorkspaceImagePromotionIdentity {
     pub(crate) sandbox_id: sandbox::SandboxId,
     pub(crate) profile_name: String,
+    pub(crate) sandbox_reuse_scope: SandboxReuseScope,
     pub(crate) cli_agent_session_id: String,
     pub(crate) working_dir: String,
     pub(crate) image_size_bytes: u64,
@@ -73,6 +75,7 @@ pub(crate) enum WorkspaceImagePromotionIdentityMismatch {
     UnsafeWorkingDir,
     SandboxId,
     ProfileName,
+    SandboxReuseScope,
     CliAgentSessionId,
     WorkingDir,
     ImageSizeBytes,
@@ -86,6 +89,7 @@ impl WorkspaceImagePromotionIdentityMismatch {
             Self::UnsafeWorkingDir => "unsafe working directory",
             Self::SandboxId => "sandbox id mismatch",
             Self::ProfileName => "profile mismatch",
+            Self::SandboxReuseScope => "sandbox reuse scope mismatch",
             Self::CliAgentSessionId => "cli agent session id mismatch",
             Self::WorkingDir => "working directory mismatch",
             Self::ImageSizeBytes => "image size mismatch",

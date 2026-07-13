@@ -314,6 +314,9 @@ function canonicalizeHeldSessionStates(
   return states?.map((state) => {
     const cliAgentSessionId = state.sessionId;
     return {
+      ...(state.sandboxReuseScope
+        ? { sandboxReuseScope: state.sandboxReuseScope }
+        : {}),
       sessionId: cliAgentSessionId,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
       ...(state.reusableSandbox
@@ -515,6 +518,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       agentComposeVersionId: agentRuns.agentComposeVersionId,
       vars: agentRuns.vars,
       resumedFromCheckpointId: agentRuns.resumedFromCheckpointId,
+      sandboxReuseScope: agentRuns.sessionId,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
       createdAt: runnerJobQueue.createdAt,
@@ -540,6 +544,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       db,
       runnerGroup: group,
       profile: pendingJob.profile,
+      sandboxReuseScope: pendingJob.sandboxReuseScope,
       cliAgentSessionId: pendingJob.cliAgentSessionId,
       createdAt: pendingJob.createdAt,
       currentDate,
@@ -584,6 +589,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         checkpointId: pendingJob.resumedFromCheckpointId ?? null,
         experimentalProfile: pendingJob.profile,
+        sandboxReuseScope: pendingJob.sandboxReuseScope,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
         affinityProtectedUntil: affinity.protectedUntil?.toISOString() ?? null,
       },
@@ -609,6 +615,7 @@ interface ClaimableJob {
 
 interface ClaimedRun {
   readonly id: string;
+  readonly sandboxReuseScope: string;
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
@@ -679,6 +686,7 @@ async function getClaimableJob(
       },
       run: {
         id: agentRuns.id,
+        sandboxReuseScope: agentRuns.sessionId,
         userId: agentRuns.userId,
         orgId: agentRuns.orgId,
         agentId: agentSessions.agentComposeId,
@@ -1457,6 +1465,7 @@ async function buildClaimResponseBody(args: {
       return {
         ...runnerStoredContext,
         runId: args.run.id,
+        sandboxReuseScope: args.run.sandboxReuseScope,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
         agentComposeVersionId: args.run.agentComposeVersionId,

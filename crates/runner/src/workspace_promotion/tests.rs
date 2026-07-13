@@ -215,7 +215,7 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
 
     let lease = fixture
         .cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),

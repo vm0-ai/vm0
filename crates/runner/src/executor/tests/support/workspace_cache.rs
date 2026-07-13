@@ -19,7 +19,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache(
     let sandbox_id = SandboxId::new_v4();
     let run_id = RunId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,

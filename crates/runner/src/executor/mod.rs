@@ -544,7 +544,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let sandbox_id = idle_sandbox.sandbox_id();
     let ReusableIdleSandboxParts {
         sandbox,
-        cli_agent_session_id: idle_cli_agent_session_id,
+        sandbox_reuse_identity: idle_sandbox_reuse_identity,
         source_ip,
         storage_fingerprints: prev_storage,
         restored_session_identity: _restored_session_identity,
@@ -560,7 +560,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                     run_id,
                     sandbox_id,
                     params,
-                    &idle_cli_agent_session_id,
+                    Some(&idle_sandbox_reuse_identity),
                 ) {
                     Ok(lease) => Some(lease),
                     Err(identity_failure) => {
@@ -637,16 +637,13 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let workspace_image = match config.workspace_cache.as_ref() {
         Some(cache) => Some(match workspace_promotion {
             Some(promotion) => {
-                let expected_session_id = context
-                    .cli_agent_session_id()
-                    .unwrap_or(idle_cli_agent_session_id.as_str());
                 match reused_promotion_into_active_lease(
                     cache,
                     promotion,
                     run_id,
                     sandbox_id,
                     params,
-                    expected_session_id,
+                    Some(&idle_sandbox_reuse_identity),
                 ) {
                     Ok(lease) => lease,
                     Err(identity_failure) => {
@@ -682,17 +679,20 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             }
             None => {
                 cache
-                    .lease_active(WorkspaceImageActiveLeaseRequest {
-                        identity: WorkspaceImageLeaseIdentity {
-                            run_id,
-                            sandbox_id,
-                            profile_name: &params.profile_name,
-                            cli_agent_session_id: context.cli_agent_session_id(),
-                            working_dir: CANONICAL_WORKING_DIR,
-                            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                    .lease_active(
+                        WorkspaceImageActiveLeaseRequest {
+                            identity: WorkspaceImageLeaseIdentity {
+                                run_id,
+                                sandbox_id,
+                                profile_name: &params.profile_name,
+                                cli_agent_session_id: context.cli_agent_session_id(),
+                                working_dir: CANONICAL_WORKING_DIR,
+                                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                            },
+                            workspace_drive_available: true,
                         },
-                        workspace_drive_available: true,
-                    })
+                        context.sandbox_reuse_scope(),
+                    )
                     .await
             }
         }),
@@ -766,16 +766,25 @@ fn reused_promotion_into_active_lease(
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    cli_agent_session_id: &str,
+    sandbox_reuse_identity: Option<&crate::sandbox_reuse_identity::SandboxReuseIdentity>,
 ) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
+    let Some(sandbox_reuse_identity) = sandbox_reuse_identity else {
+        return Err(Box::new(WorkspaceImagePromotionIdentityFailure {
+            promotion,
+            mismatch: WorkspaceImagePromotionIdentityMismatch::SandboxReuseScope,
+        }));
+    };
     let expected = match cache
-        .expected_promotion_identity(WorkspaceImagePromotionIdentityRequest {
-            sandbox_id,
-            profile_name: &params.profile_name,
-            cli_agent_session_id,
-            working_dir: CANONICAL_WORKING_DIR,
-            image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
-        })
+        .expected_promotion_identity(
+            WorkspaceImagePromotionIdentityRequest {
+                sandbox_id,
+                profile_name: &params.profile_name,
+                cli_agent_session_id: sandbox_reuse_identity.cli_agent_session_id(),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+            },
+            sandbox_reuse_identity,
+        )
         .inspect_err(|mismatch| {
             tracing::warn!(
                 run_id = %run_id,

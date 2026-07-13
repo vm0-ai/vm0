@@ -9,6 +9,7 @@ use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
+use crate::sandbox_reuse_identity::{SandboxReuseIdentity, SandboxReuseScope};
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{HeldSessionState, MAX_HELD_SESSION_STATES};
 
@@ -40,6 +41,7 @@ pub(crate) struct WorkspaceImageLease {
     cache: SessionWorkspaceCache,
     pub(super) cache_key: Option<String>,
     profile_name: String,
+    sandbox_reuse_scope: Option<SandboxReuseScope>,
     cli_agent_session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
@@ -59,7 +61,7 @@ pub(crate) struct WorkspaceImagePromotionContext {
     run_id: RunId,
     sandbox_id: sandbox::SandboxId,
     profile_name: String,
-    cli_agent_session_id: String,
+    sandbox_reuse_identity: SandboxReuseIdentity,
     working_dir: String,
     active_image: PathBuf,
     image_size_bytes: u64,
@@ -86,7 +88,7 @@ struct WorkspaceImagePromotionInput<'a> {
     run_id: RunId,
     cache_key: &'a str,
     profile_name: &'a str,
-    cli_agent_session_id: &'a str,
+    sandbox_reuse_identity: &'a SandboxReuseIdentity,
     working_dir: &'a str,
     active_image: &'a Path,
     image_size_bytes: u64,
@@ -98,12 +100,13 @@ struct WorkspaceImagePromotionInput<'a> {
 
 struct WorkspaceImagePromotionTarget {
     cache_key: String,
-    cli_agent_session_id: String,
+    sandbox_reuse_identity: SandboxReuseIdentity,
 }
 
 struct WorkspaceImageLeaseCommon<'a> {
     run_id: RunId,
     profile_name: &'a str,
+    sandbox_reuse_scope: Option<SandboxReuseScope>,
     cli_agent_session_id: Option<&'a str>,
     raw_working_dir: &'a str,
     normalized_working_dir: Option<String>,
@@ -114,6 +117,7 @@ struct WorkspaceImageLeaseCommon<'a> {
 struct WorkspaceImageLeaseBase {
     cache: SessionWorkspaceCache,
     profile_name: String,
+    sandbox_reuse_scope: Option<SandboxReuseScope>,
     cli_agent_session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
@@ -136,10 +140,15 @@ fn workspace_image_size_mb(image_size_bytes: u64) -> u32 {
 }
 
 impl<'a> WorkspaceImageLeaseCommon<'a> {
-    fn new(cache: &SessionWorkspaceCache, identity: WorkspaceImageLeaseIdentity<'a>) -> Self {
+    fn new(
+        cache: &SessionWorkspaceCache,
+        identity: WorkspaceImageLeaseIdentity<'a>,
+        sandbox_reuse_scope: Option<SandboxReuseScope>,
+    ) -> Self {
         Self {
             run_id: identity.run_id,
             profile_name: identity.profile_name,
+            sandbox_reuse_scope,
             cli_agent_session_id: identity.cli_agent_session_id,
             raw_working_dir: identity.working_dir,
             normalized_working_dir: normalize_safe_guest_working_dir(identity.working_dir),
@@ -159,21 +168,27 @@ impl<'a> WorkspaceImageLeaseCommon<'a> {
     fn cache_key(
         &self,
         cache: &SessionWorkspaceCache,
-        cli_agent_session_id: &str,
+        identity: &SandboxReuseIdentity,
         working_dir: &str,
     ) -> String {
-        cache.scoped_cache_key(
+        cache.scoped_identity_cache_key(
             self.profile_name,
-            cli_agent_session_id,
+            identity,
             working_dir,
             self.image_size_bytes,
         )
+    }
+
+    fn sandbox_reuse_identity(&self) -> Option<SandboxReuseIdentity> {
+        self.sandbox_reuse_scope?
+            .with_cli_agent_session_id(self.cli_agent_session_id?)
     }
 
     fn lease_base(&self, cache: &SessionWorkspaceCache) -> WorkspaceImageLeaseBase {
         WorkspaceImageLeaseBase {
             cache: cache.clone(),
             profile_name: self.profile_name.to_owned(),
+            sandbox_reuse_scope: self.sandbox_reuse_scope,
             cli_agent_session_id: self.cli_agent_session_id.map(str::to_owned),
             working_dir: self.lease_working_dir().to_owned(),
             active_image: self.active_image.clone(),
@@ -188,6 +203,7 @@ impl WorkspaceImageLease {
             cache: base.cache,
             cache_key: state.cache_key,
             profile_name: base.profile_name,
+            sandbox_reuse_scope: base.sandbox_reuse_scope,
             cli_agent_session_id: base.cli_agent_session_id,
             working_dir: base.working_dir,
             active_image: base.active_image,
@@ -203,16 +219,30 @@ impl WorkspaceImageLease {
 }
 
 impl SessionWorkspaceCache {
+    #[cfg(test)]
+    pub(crate) fn expected_promotion_identity_for_test(
+        &self,
+        request: WorkspaceImagePromotionIdentityRequest<'_>,
+    ) -> Result<WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch> {
+        let identity =
+            crate::test_fixtures::sandbox_reuse_identity_for_test(request.cli_agent_session_id);
+        self.expected_promotion_identity(request, &identity)
+    }
+
     pub(crate) fn expected_promotion_identity(
         &self,
         request: WorkspaceImagePromotionIdentityRequest<'_>,
+        identity: &SandboxReuseIdentity,
     ) -> Result<WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch> {
         let Some(working_dir) = normalize_safe_guest_working_dir(request.working_dir) else {
             return Err(WorkspaceImagePromotionIdentityMismatch::UnsafeWorkingDir);
         };
-        let cache_key = self.scoped_cache_key(
+        if request.cli_agent_session_id != identity.cli_agent_session_id() {
+            return Err(WorkspaceImagePromotionIdentityMismatch::CliAgentSessionId);
+        }
+        let cache_key = self.scoped_identity_cache_key(
             request.profile_name,
-            request.cli_agent_session_id,
+            identity,
             &working_dir,
             request.image_size_bytes,
         );
@@ -220,6 +250,7 @@ impl SessionWorkspaceCache {
         Ok(WorkspaceImagePromotionIdentity {
             sandbox_id: request.sandbox_id,
             profile_name: request.profile_name.to_owned(),
+            sandbox_reuse_scope: identity.scope(),
             cli_agent_session_id: request.cli_agent_session_id.to_owned(),
             working_dir,
             image_size_bytes: request.image_size_bytes,
@@ -228,11 +259,24 @@ impl SessionWorkspaceCache {
         })
     }
 
-    pub(crate) async fn lease_active(
+    #[cfg(test)]
+    pub(crate) async fn lease_active_for_test(
         &self,
         request: WorkspaceImageActiveLeaseRequest<'_>,
     ) -> WorkspaceImageLease {
-        let common = WorkspaceImageLeaseCommon::new(self, request.identity);
+        self.lease_active(
+            request,
+            Some(crate::test_fixtures::sandbox_reuse_identity_for_test("scope").scope()),
+        )
+        .await
+    }
+
+    pub(crate) async fn lease_active(
+        &self,
+        request: WorkspaceImageActiveLeaseRequest<'_>,
+        sandbox_reuse_scope: Option<SandboxReuseScope>,
+    ) -> WorkspaceImageLease {
+        let common = WorkspaceImageLeaseCommon::new(self, request.identity, sandbox_reuse_scope);
         let active_lease = |result, entry_lock, cache_key| {
             WorkspaceImageLease::from_parts(
                 common.lease_base(self),
@@ -256,11 +300,11 @@ impl SessionWorkspaceCache {
             );
             return active_lease(WorkspaceCacheCheckoutResult::InvalidWorkingDir, None, None);
         };
-        let Some(cli_agent_session_id) = common.cli_agent_session_id else {
+        let Some(identity) = common.sandbox_reuse_identity() else {
             return active_lease(WorkspaceCacheCheckoutResult::NoSession, None, None);
         };
 
-        let cache_key = common.cache_key(self, cli_agent_session_id, working_dir);
+        let cache_key = common.cache_key(self, &identity, working_dir);
         match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
             Ok(lock) => active_lease(
                 WorkspaceCacheCheckoutResult::Miss,
@@ -279,11 +323,24 @@ impl SessionWorkspaceCache {
         }
     }
 
-    pub(crate) async fn prepare(
+    #[cfg(test)]
+    pub(crate) async fn prepare_for_test(
         &self,
         request: WorkspaceImagePrepareRequest<'_>,
     ) -> WorkspaceImageLease {
-        let common = WorkspaceImageLeaseCommon::new(self, request.identity);
+        self.prepare(
+            request,
+            Some(crate::test_fixtures::sandbox_reuse_identity_for_test("scope").scope()),
+        )
+        .await
+    }
+
+    pub(crate) async fn prepare(
+        &self,
+        request: WorkspaceImagePrepareRequest<'_>,
+        sandbox_reuse_scope: Option<SandboxReuseScope>,
+    ) -> WorkspaceImageLease {
+        let common = WorkspaceImageLeaseCommon::new(self, request.identity, sandbox_reuse_scope);
         let workspace_drive = |result,
                                source_image: Option<PathBuf>,
                                previous_storage: Option<StorageFingerprints>,
@@ -321,7 +378,7 @@ impl SessionWorkspaceCache {
                 request.workspace_drive_required,
             );
         };
-        let Some(cli_agent_session_id) = common.cli_agent_session_id else {
+        let Some(identity) = common.sandbox_reuse_identity() else {
             return workspace_drive(
                 WorkspaceCacheCheckoutResult::NoSession,
                 None,
@@ -384,7 +441,7 @@ impl SessionWorkspaceCache {
             );
         }
 
-        let cache_key = common.cache_key(self, cli_agent_session_id, working_dir);
+        let cache_key = common.cache_key(self, &identity, working_dir);
         let lock_path = self.entry_lock_path(&cache_key);
         let lock = match crate::lock::try_acquire(lock_path).await {
             Ok(lock) => lock,
@@ -450,7 +507,7 @@ impl SessionWorkspaceCache {
             .read_valid_metadata(
                 &metadata_path,
                 common.profile_name,
-                cli_agent_session_id,
+                &identity,
                 working_dir,
                 common.image_size_bytes,
             )
@@ -601,6 +658,7 @@ impl SessionWorkspaceCache {
                 .await
             {
                 states.push(HeldSessionState {
+                    sandbox_reuse_scope: metadata.sandbox_reuse_scope.api_wire_value(),
                     session_id: metadata.session_id,
                     last_completed_at: metadata.last_completed_at,
                     reusable_sandbox: None,
@@ -670,7 +728,7 @@ impl SessionWorkspaceCache {
             .read_valid_metadata(
                 &metadata_path,
                 input.profile_name,
-                input.cli_agent_session_id,
+                input.sandbox_reuse_identity,
                 input.working_dir,
                 input.image_size_bytes,
             )
@@ -885,7 +943,11 @@ impl SessionWorkspaceCache {
             key_version: CACHE_KEY_VERSION,
             cache_scope: self.inner.cache_scope.clone(),
             profile_name: input.profile_name.to_owned(),
-            session_id: input.cli_agent_session_id.to_owned(),
+            sandbox_reuse_scope: input.sandbox_reuse_identity.scope(),
+            session_id: input
+                .sandbox_reuse_identity
+                .cli_agent_session_id()
+                .to_owned(),
             working_dir: input.working_dir.to_owned(),
             last_completed_at: input.completed_at.to_owned(),
             last_used_at: local_timestamp(),
@@ -1028,25 +1090,30 @@ impl WorkspaceImageLease {
 
         match self.result {
             WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
+                let sandbox_reuse_identity = self
+                    .sandbox_reuse_scope?
+                    .with_cli_agent_session_id(self.cli_agent_session_id.as_deref()?)?;
                 Some(WorkspaceImagePromotionTarget {
                     cache_key: self.cache_key.clone()?,
-                    cli_agent_session_id: self.cli_agent_session_id.clone()?,
+                    sandbox_reuse_identity,
                 })
             }
             WorkspaceCacheCheckoutResult::NoSession => {
                 if self.cli_agent_session_id.is_some() {
                     return None;
                 }
-                let cli_agent_session_id = cli_agent_session_id_override?.to_owned();
-                let cache_key = self.cache.scoped_cache_key(
+                let sandbox_reuse_identity = self
+                    .sandbox_reuse_scope?
+                    .with_cli_agent_session_id(cli_agent_session_id_override?)?;
+                let cache_key = self.cache.scoped_identity_cache_key(
                     &self.profile_name,
-                    &cli_agent_session_id,
+                    &sandbox_reuse_identity,
                     &self.working_dir,
                     self.image_size_bytes,
                 );
                 Some(WorkspaceImagePromotionTarget {
                     cache_key,
-                    cli_agent_session_id,
+                    sandbox_reuse_identity,
                 })
             }
             WorkspaceCacheCheckoutResult::InvalidWorkingDir
@@ -1069,7 +1136,7 @@ impl WorkspaceImageLease {
             run_id: request.run_id,
             sandbox_id: request.sandbox_id,
             profile_name: self.profile_name.clone(),
-            cli_agent_session_id: target.cli_agent_session_id,
+            sandbox_reuse_identity: target.sandbox_reuse_identity,
             working_dir: self.working_dir.clone(),
             active_image: self.active_image.clone(),
             image_size_bytes: self.image_size_bytes,
@@ -1096,7 +1163,11 @@ impl WorkspaceImagePromotionContext {
     }
 
     pub(crate) fn cli_agent_session_id(&self) -> &str {
-        &self.cli_agent_session_id
+        self.sandbox_reuse_identity.cli_agent_session_id()
+    }
+
+    pub(crate) fn sandbox_reuse_identity(&self) -> &SandboxReuseIdentity {
+        &self.sandbox_reuse_identity
     }
 
     pub(crate) fn restored_session_identity(
@@ -1143,7 +1214,10 @@ impl WorkspaceImagePromotionContext {
         if self.profile_name != expected.profile_name {
             return Err(WorkspaceImagePromotionIdentityMismatch::ProfileName);
         }
-        if self.cli_agent_session_id != expected.cli_agent_session_id {
+        if self.sandbox_reuse_identity.scope() != expected.sandbox_reuse_scope {
+            return Err(WorkspaceImagePromotionIdentityMismatch::SandboxReuseScope);
+        }
+        if self.sandbox_reuse_identity.cli_agent_session_id() != expected.cli_agent_session_id {
             return Err(WorkspaceImagePromotionIdentityMismatch::CliAgentSessionId);
         }
         if self.working_dir != expected.working_dir {
@@ -1165,16 +1239,18 @@ impl WorkspaceImagePromotionContext {
         &self,
         cache: &SessionWorkspaceCache,
         request: WorkspaceImagePromotionIdentityRequest<'_>,
+        identity: &SandboxReuseIdentity,
     ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
-        let expected = cache.expected_promotion_identity(request)?;
+        let expected = cache.expected_promotion_identity(request, identity)?;
         self.validate_identity(&expected)
     }
 
     pub(crate) fn validate_stored_cache_identity(
         &self,
         request: WorkspaceImagePromotionIdentityRequest<'_>,
+        identity: &SandboxReuseIdentity,
     ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
-        self.validate_expected_identity(&self.cache, request)
+        self.validate_expected_identity(&self.cache, request, identity)
     }
 
     #[cfg(test)]
@@ -1218,7 +1294,7 @@ impl WorkspaceImagePromotionContext {
                 run_id: self.run_id,
                 cache_key: &self.cache_key,
                 profile_name: &self.profile_name,
-                cli_agent_session_id: &self.cli_agent_session_id,
+                sandbox_reuse_identity: &self.sandbox_reuse_identity,
                 working_dir: &self.working_dir,
                 active_image: &self.active_image,
                 image_size_bytes: self.image_size_bytes,
@@ -1238,7 +1314,7 @@ impl WorkspaceImagePromotionContext {
             run_id,
             sandbox_id,
             profile_name,
-            cli_agent_session_id,
+            sandbox_reuse_identity,
             consumed_cache_hit,
             ..
         } = self;
@@ -1247,7 +1323,7 @@ impl WorkspaceImagePromotionContext {
                 run_id = %run_id,
                 sandbox_id = %sandbox_id,
                 profile_name,
-                session_id = %cli_agent_session_id,
+                session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                 cache_key,
                 reason,
                 "workspace image cache promotion context abandoned without entry lock"
@@ -1335,7 +1411,7 @@ impl WorkspaceImagePromotionContext {
             run_id: _,
             sandbox_id: _,
             profile_name,
-            cli_agent_session_id,
+            sandbox_reuse_identity,
             working_dir,
             active_image,
             image_size_bytes,
@@ -1348,7 +1424,8 @@ impl WorkspaceImagePromotionContext {
         let base = WorkspaceImageLeaseBase {
             cache,
             profile_name,
-            cli_agent_session_id: Some(cli_agent_session_id),
+            sandbox_reuse_scope: Some(sandbox_reuse_identity.scope()),
+            cli_agent_session_id: Some(sandbox_reuse_identity.cli_agent_session_id().to_owned()),
             working_dir,
             active_image,
             image_size_bytes,
@@ -1371,15 +1448,18 @@ impl WorkspaceImagePromotionContext {
 pub(super) fn cap_workspace_held_session_states(
     states: Vec<HeldSessionState>,
 ) -> Vec<HeldSessionState> {
-    let mut newest_by_session = BTreeMap::<String, HeldSessionState>::new();
+    let mut newest_by_session = BTreeMap::<SandboxReuseIdentity, HeldSessionState>::new();
     for state in states {
-        match newest_by_session.get_mut(&state.session_id) {
+        let Some(identity) = state.sandbox_reuse_identity() else {
+            continue;
+        };
+        match newest_by_session.get_mut(&identity) {
             Some(existing) if state.last_completed_at > existing.last_completed_at => {
                 *existing = state;
             }
             Some(_) => {}
             None => {
-                newest_by_session.insert(state.session_id.clone(), state);
+                newest_by_session.insert(identity, state);
             }
         }
     }
@@ -1390,9 +1470,14 @@ pub(super) fn cap_workspace_held_session_states(
             b.last_completed_at
                 .cmp(&a.last_completed_at)
                 .then_with(|| a.session_id.cmp(&b.session_id))
+                .then_with(|| a.sandbox_reuse_scope.cmp(&b.sandbox_reuse_scope))
         });
         states.truncate(MAX_HELD_SESSION_STATES);
     }
-    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+    states.sort_unstable_by(|a, b| {
+        a.session_id
+            .cmp(&b.session_id)
+            .then_with(|| a.sandbox_reuse_scope.cmp(&b.sandbox_reuse_scope))
+    });
     states
 }

@@ -114,7 +114,7 @@ pub(in super::super) async fn seed_idle_pool_with_workspace_promotion(
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -169,7 +169,7 @@ pub(in super::super) async fn seed_workspace_cache_state(
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,

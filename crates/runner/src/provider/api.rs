@@ -356,6 +356,7 @@ impl JobProvider for ApiProvider {
                     // Fall back to default profile when server doesn't send one
                     // (backwards compat with pre-profile API).
                     let run_id = job.run_id;
+                    let sandbox_reuse_scope = job.sandbox_reuse_scope;
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let affinity_protected_until = job.affinity_protected_until;
                     let profile = job
@@ -363,7 +364,11 @@ impl JobProvider for ApiProvider {
                         .unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
                     info!(run_id = %run_id, %profile, poll_reason = ?reason, "poll: job found");
                     let mut candidate = JobCandidate::new(run_id, profile)
-                        .with_affinity_metadata(cli_agent_session_id, affinity_protected_until)
+                        .with_affinity_metadata(
+                            sandbox_reuse_scope,
+                            cli_agent_session_id,
+                            affinity_protected_until,
+                        )
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
                         .with_poll_timing(poll_due_started_at.elapsed(), http_request_elapsed);
@@ -1432,6 +1437,9 @@ mod tests {
             running_count: 1,
             admittable_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             held_session_states: vec![crate::types::HeldSessionState {
+                sandbox_reuse_scope: Some(
+                    crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE.to_owned(),
+                ),
                 session_id: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
                 reusable_sandbox: None,
@@ -1877,6 +1885,7 @@ mod tests {
                     "job": {
                         "runId": run_id,
                         "experimentalProfile": "vm0/default",
+                        "sandboxReuseScope": crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE,
                         "cliAgentSessionId": "sess-poll",
                         "affinityProtectedUntil": "2999-01-01T00:00:00.000Z"
                     }
@@ -1897,6 +1906,12 @@ mod tests {
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/default");
         assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
+        assert_eq!(
+            discovered.sandbox_reuse_identity(),
+            Some(&crate::test_fixtures::sandbox_reuse_identity_for_test(
+                "sess-poll"
+            ))
+        );
         assert!(discovered.is_affinity_protected());
         assert_eq!(
             discovered.discovery_source(),
@@ -2626,6 +2641,12 @@ mod tests {
         );
         assert_eq!(context.storage_manifest.as_ref().unwrap().storages.len(), 1);
         assert_eq!(context.cli_agent_session_id(), Some("fixture-session-id"));
+        assert_eq!(
+            context.sandbox_reuse_identity(),
+            Some(crate::test_fixtures::sandbox_reuse_identity_for_test(
+                "fixture-session-id"
+            ))
+        );
         assert_eq!(
             context.environment.as_ref().unwrap()["FIXTURE_MODEL"],
             "fixture-model"

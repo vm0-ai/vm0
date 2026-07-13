@@ -78,6 +78,7 @@ interface RunnerNotification {
   readonly runId: string;
   readonly runnerGroup: string;
   readonly profile: string;
+  readonly sandboxReuseScope: string;
   readonly cliAgentSessionId: string | null;
   readonly createdAt: Date;
 }
@@ -113,6 +114,7 @@ interface QueuedRunMaintenanceResult {
 
 interface LockedQueueRunRow extends Record<string, unknown> {
   readonly status: string;
+  readonly sandboxReuseScope: string;
 }
 
 async function timedOutQueuedRunsWithMarkerNotifications(
@@ -272,7 +274,9 @@ async function promoteQueuedCandidate(
     }
 
     const lockedRunRows = await tx.execute<LockedQueueRunRow>(sql`
-      SELECT ${agentRuns.status} AS "status"
+      SELECT
+        ${agentRuns.status} AS "status",
+        ${agentRuns.sessionId} AS "sandboxReuseScope"
       FROM ${agentRuns}
       WHERE ${agentRuns.id} = ${args.row.runId}
       FOR UPDATE
@@ -359,6 +363,7 @@ async function promoteQueuedCandidate(
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
         profile: args.payload.profile,
+        sandboxReuseScope: lockedRun.sandboxReuseScope,
         cliAgentSessionId: args.payload.cliAgentSessionId,
         createdAt: runnerJobCreatedAt,
       },

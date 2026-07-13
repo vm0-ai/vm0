@@ -33,6 +33,7 @@ describe("runner claim response contract", () => {
 
     expect(context).toMatchObject({
       runId: "00000000-0000-4000-8000-000000020985",
+      sandboxReuseScope: "01980a13-532f-7000-8000-000000000001",
       agentComposeVersionId:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       checkpointId: "11111111-1111-4111-8111-111111111111",

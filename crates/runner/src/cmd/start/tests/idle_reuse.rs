@@ -11,6 +11,7 @@ use super::support::{
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
+use crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE;
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
@@ -22,6 +23,7 @@ fn reusable_candidate(
     session_id: &str,
 ) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, profile_name.to_string()).with_affinity_metadata(
+        Some(TEST_SANDBOX_REUSE_SCOPE.to_string()),
         Some(session_id.to_string()),
         Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
     )
@@ -109,6 +111,44 @@ async fn job_with_session_parks_vm() {
     assert_eq!(pool.len(), 1, "VM should be parked when session is present");
     assert!(pool.held_sessions().contains(&"sess-1".to_string()));
     drop(pool);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn api_session_without_valid_reuse_scope_runs_fresh_and_never_parks() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    for (scope, session_id) in [(None, "sess-missing"), (Some("invalid"), "sess-malformed")] {
+        let run_id = RunId::new_v4();
+        let mut ctx = context_with_session_opt(run_id, Some(session_id));
+        ctx.sandbox_reuse_scope = scope.map(str::to_owned);
+        push_job(&env, run_id, "vm0/default", Some(ctx));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("job should complete");
+        assert_eq!(completion.exit_code, 0);
+        assert_eq!(
+            completion.reuse_result,
+            Some(SandboxReuseResult::NoSessionId)
+        );
+    }
+
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    assert_eq!(env.idle_pool.lock().await.len(), 0);
+    assert!(
+        env.handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .all(|heartbeat| heartbeat.held_session_states.is_empty())
+    );
 
     shutdown(&env, run_handle).await;
 }
@@ -426,6 +466,71 @@ async fn session_affinity_reuses_idle_vm() {
         budget.allocated().2,
         1,
         "budget should remain at 1 (reused, not additive)"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn identical_cli_session_in_another_api_scope_does_not_reuse_or_replace_idle_vm() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let seeded_sandbox_id =
+        seed_idle_pool(&idle_pool, &budget, "shared-cli", "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    let mut context = context_with_session(run_id, "shared-cli");
+    context.sandbox_reuse_scope = Some("01980a13-532f-7000-8000-000000000002".to_owned());
+
+    push_job(&env, run_id, "vm0/default", Some(context));
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_ne!(completion.sandbox_id, Some(seeded_sandbox_id));
+    wait_idle_pool_len(&idle_pool, 2, Duration::from_secs(5)).await;
+    let states = idle_pool.lock().await.held_session_states();
+    assert_eq!(states.len(), 2);
+    assert!(states.iter().all(|state| state.session_id == "shared-cli"));
+    assert_ne!(states[0].sandbox_reuse_scope, states[1].sandbox_reuse_scope);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn candidate_and_claim_scope_mismatch_destroys_reservation_and_runs_fresh() {
+    let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let seeded_sandbox_id =
+        seed_idle_pool(&idle_pool, &budget, "shared-cli", "vm0/default", 2, 4096).await;
+    let run_handle = tokio::spawn(run(config));
+    let run_id = RunId::new_v4();
+    let mut claimed_context = context_with_session(run_id, "shared-cli");
+    claimed_context.sandbox_reuse_scope = Some("01980a13-532f-7000-8000-000000000002".to_owned());
+    env.provider.set_claim_result(run_id, Some(claimed_context));
+    env.handle
+        .discover_tx
+        .send(reusable_candidate(run_id, "vm0/default", "shared-cli"))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("mismatched claim should run fresh");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::PoolMiss));
+    assert_ne!(completion.sandbox_id, Some(seeded_sandbox_id));
+    wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+    let states = idle_pool.lock().await.held_session_states();
+    assert_eq!(states.len(), 1);
+    assert_eq!(
+        states[0].sandbox_reuse_scope.as_deref(),
+        Some("01980a13-532f-7000-8000-000000000002")
     );
 
     shutdown(&env, run_handle).await;
@@ -1337,6 +1442,11 @@ async fn park_evicts_via_discovered_cli_agent_session_id() {
         pool.held_sessions(),
         vec!["sess-evict"],
         "parked session should match discovered_cli_agent_session_id"
+    );
+    assert_eq!(
+        pool.held_session_states()[0].sandbox_reuse_scope.as_deref(),
+        Some(TEST_SANDBOX_REUSE_SCOPE),
+        "first-turn discovery must retain the server-provided scope",
     );
     drop(pool);
 

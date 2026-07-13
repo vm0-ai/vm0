@@ -9,6 +9,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::Arc;
 
 use crate::paths::RunnerPaths;
+use crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE;
 use crate::types::SandboxReuseResult;
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
@@ -16,6 +17,7 @@ const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
 
 fn affinity_protected_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into()).with_affinity_metadata(
+        Some(TEST_SANDBOX_REUSE_SCOPE.to_string()),
         Some(session_id.to_string()),
         Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
     )

@@ -5,7 +5,9 @@ use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::sandbox_reuse_identity::SandboxReuseIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
+use crate::test_fixtures::sandbox_reuse_identity_for_test;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 
 use super::{IdleSandboxMetadata, IdleSandboxResources, ParkedIdleCandidate};
@@ -17,7 +19,7 @@ const DEFAULT_SANDBOX_NAME: &str = "idle-test";
 pub(crate) struct ParkedIdleCandidateBuilder {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
-    cli_agent_session_id: String,
+    sandbox_reuse_identity: SandboxReuseIdentity,
     sandbox_id: SandboxId,
     profile_name: String,
     device_rate_limits: Option<DeviceRateLimits>,
@@ -34,10 +36,11 @@ impl ParkedIdleCandidateBuilder {
         session_id: impl Into<String>,
         budget_lease: BudgetLease,
     ) -> ParkedIdleCandidateBuilder {
+        let session_id = session_id.into();
         Self {
             sandbox: Box::new(MockSandbox::new(DEFAULT_SANDBOX_NAME)),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            cli_agent_session_id: session_id.into(),
+            sandbox_reuse_identity: sandbox_reuse_identity_for_test(&session_id),
             sandbox_id: SandboxId::new_v4(),
             profile_name: DEFAULT_PROFILE_NAME.into(),
             device_rate_limits: None,
@@ -67,6 +70,14 @@ impl ParkedIdleCandidateBuilder {
 
     pub(crate) fn with_sandbox_id(mut self, sandbox_id: SandboxId) -> Self {
         self.sandbox_id = sandbox_id;
+        self
+    }
+
+    pub(crate) fn with_sandbox_reuse_identity(
+        mut self,
+        sandbox_reuse_identity: SandboxReuseIdentity,
+    ) -> Self {
+        self.sandbox_reuse_identity = sandbox_reuse_identity;
         self
     }
 
@@ -105,7 +116,7 @@ impl ParkedIdleCandidateBuilder {
         let Self {
             sandbox,
             factory,
-            cli_agent_session_id,
+            sandbox_reuse_identity,
             sandbox_id,
             profile_name,
             device_rate_limits,
@@ -117,7 +128,7 @@ impl ParkedIdleCandidateBuilder {
             workspace_promotion,
         } = self;
         let mut metadata = IdleSandboxMetadata::new(
-            cli_agent_session_id,
+            sandbox_reuse_identity,
             sandbox_id,
             profile_name,
             device_rate_limits,

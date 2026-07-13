@@ -42,6 +42,7 @@ mod run_cancellation;
 mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;
+mod sandbox_reuse_identity;
 mod state_file;
 mod status;
 mod status_file;

@@ -499,17 +499,20 @@ pub(super) async fn prepare_workspace_image(
     let cache = config.workspace_cache.as_ref()?;
     let prepare_started = Instant::now();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
-            identity: WorkspaceImageLeaseIdentity {
-                run_id: context.run_id,
-                sandbox_id,
-                profile_name,
-                cli_agent_session_id: context.cli_agent_session_id(),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+        .prepare(
+            WorkspaceImagePrepareRequest {
+                identity: WorkspaceImageLeaseIdentity {
+                    run_id: context.run_id,
+                    sandbox_id,
+                    profile_name,
+                    cli_agent_session_id: context.cli_agent_session_id(),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+                },
+                workspace_drive_required: true,
             },
-            workspace_drive_required: true,
-        })
+            context.sandbox_reuse_scope(),
+        )
         .await;
     let prepare_error = workspace_image_prepare_error(lease.result());
     telemetry.record(

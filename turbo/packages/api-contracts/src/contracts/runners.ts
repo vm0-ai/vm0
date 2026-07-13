@@ -162,6 +162,7 @@ export const jobSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
   experimentalProfile: z.string().optional(),
+  sandboxReuseScope: z.uuid(),
   cliAgentSessionId: z.string().nullable().optional(),
   affinityProtectedUntil: z
     .string()
@@ -171,6 +172,10 @@ export const jobSchema = z.object({
 });
 
 export const heldSessionStateSchema = z.object({
+  // Server-authoritative vm0 application session scope. Intentionally optional
+  // at this compatibility boundary; unscoped legacy heartbeats are accepted
+  // but never treated as authoritative reuse affinity.
+  sandboxReuseScope: z.uuid().optional(),
   // Compatibility wire name. Semantically this is the Claude/Codex CLI agent
   // session id used to route work toward a runner with a reusable sandbox.
   sessionId: z.string(),
@@ -436,6 +441,7 @@ export const storedExecutionContextSchema = z.object({
  */
 export const executionContextSchema = z.object({
   runId: z.uuid(),
+  sandboxReuseScope: z.uuid(),
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
   agentComposeVersionId: z.string().nullable(),

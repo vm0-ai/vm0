@@ -2479,6 +2479,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     expect(first).toMatchObject({ status: "pending" });
     const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.sandboxReuseScope).toBe(first.sessionId);
     const cliAgentSessionId = `bdd-affinity-cli-${first.runId}`;
     const affinityRunnerId = randomUUID();
     const history = `bdd affinity history ${first.runId}`;
@@ -2511,6 +2512,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         admittableProfiles: args.admittableProfiles,
         heldSessionStates: [
           {
+            sandboxReuseScope: first.sessionId,
             sessionId: cliAgentSessionId,
             lastCompletedAt: nowDate().toISOString(),
             ...(args.reusableSandbox
@@ -2537,7 +2539,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       if (poll.status !== 200) {
         throw new Error("Expected affinity poll to return 200");
       }
-      expect(poll.body.job?.runId).toBe(run.runId);
+      expect(poll.body.job).toMatchObject({
+        runId: run.runId,
+        sandboxReuseScope: first.sessionId,
+      });
       if (cancelAfterPoll) {
         await api.requestCancelRun(actor, run.runId, [200]);
       }
@@ -2606,9 +2611,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue when final heartbeat includes extra legacy fields",
     );
     expect(finalHeartbeatHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(finalHeartbeatHolder.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
-    );
+    expect(finalHeartbeatHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
@@ -2718,13 +2721,15 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     if (protectedPoll.status !== 200) {
       throw new Error("Expected affinity poll to return 200");
     }
-    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
-    expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(protectedPoll.body.job?.affinityProtectedUntil).toBe(
-      new Date(queueInsertedAt + 2000).toISOString(),
-    );
+    expect(protectedPoll.body.job).toMatchObject({
+      runId: protectedFollowUp.runId,
+      sandboxReuseScope: first.sessionId,
+      cliAgentSessionId,
+      affinityProtectedUntil: new Date(queueInsertedAt + 2000).toISOString(),
+    });
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
+    expect(protectedClaim.sandboxReuseScope).toBe(first.sessionId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
     const apiToRunnerQueueMs = sandboxOperationDurationForRun(
       protectedFollowUp.runId,
@@ -2790,6 +2795,124 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
   });
 
+  it("isolates identical CLI session IDs across application session scopes", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const cliAgentSessionId = `bdd-shared-cli-${randomUUID()}`;
+
+    async function completeFirstTurn(prompt: string) {
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+      const claim = await api.claimRunnerJob(run.runId);
+      expect(claim.sandboxReuseScope).toBe(run.sessionId);
+      const history = `${prompt} history`;
+      const historyHash = createHash("sha256").update(history).digest("hex");
+      mockSessionHistoryBlob(historyHash, history);
+      await webhooks.requestAgentCheckpoint(
+        {
+          runId: run.runId,
+          cliAgentType: "claude-code",
+          cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        },
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        [200],
+      );
+      await webhooks.requestAgentComplete(
+        { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        [200],
+      );
+      return run;
+    }
+
+    const first = await completeFirstTurn("first scoped conversation");
+    const second = await completeFirstTurn("second scoped conversation");
+    expect(second.sessionId).not.toBe(first.sessionId);
+
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: randomUUID(),
+      group: runnerGroup,
+      admittableProfiles: ["vm0/default"],
+      heldSessionStates: [
+        {
+          sandboxReuseScope: first.sessionId,
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+        },
+      ],
+    });
+
+    context.mocks.ably.publish.mockClear();
+    const secondFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: second.sessionId,
+      prompt: "continue second scope",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "job",
+      expect.objectContaining({
+        runId: secondFollowUp.runId,
+        sandboxReuseScope: second.sessionId,
+        cliAgentSessionId,
+      }),
+    );
+    const secondNotification = context.mocks.ably.publish.mock.calls.find(
+      ([topic, payload]) => {
+        return (
+          topic === "job" &&
+          isRecord(payload) &&
+          payload.runId === secondFollowUp.runId
+        );
+      },
+    );
+    expect(secondNotification?.[1]).not.toHaveProperty(
+      "affinityProtectedUntil",
+    );
+    const secondPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (secondPoll.status !== 200) {
+      throw new Error("Expected second-scope poll to succeed");
+    }
+    expect(secondPoll.body.job).toMatchObject({
+      runId: secondFollowUp.runId,
+      sandboxReuseScope: second.sessionId,
+      cliAgentSessionId,
+      affinityProtectedUntil: null,
+    });
+    await api.requestCancelRun(actor, secondFollowUp.runId, [200]);
+
+    const firstFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "continue first scope",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (firstPoll.status !== 200) {
+      throw new Error("Expected first-scope poll to succeed");
+    }
+    expect(firstPoll.body.job).toMatchObject({
+      runId: firstFollowUp.runId,
+      sandboxReuseScope: first.sessionId,
+      cliAgentSessionId,
+      affinityProtectedUntil: expect.any(String),
+    });
+    await api.requestCancelRun(actor, firstFollowUp.runId, [200]);
+  });
+
   it("prioritizes exact reusable work only for its runner and protection window", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -2801,6 +2924,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       modelProvider: "anthropic-api-key",
     });
     const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.sandboxReuseScope).toBe(first.sessionId);
     const cliAgentSessionId = `bdd-reusable-priority-${first.runId}`;
     const history = `bdd reusable priority history ${first.runId}`;
     const historyHash = createHash("sha256").update(history).digest("hex");
@@ -2833,6 +2957,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       admittableProfiles: [],
       heldSessionStates: [
         {
+          sandboxReuseScope: first.sessionId,
           sessionId: cliAgentSessionId,
           lastCompletedAt: nowDate().toISOString(),
           reusableSandbox: { profile: "vm0/default" },
@@ -2855,6 +2980,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected reusable-holder poll to return 200");
     }
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.sandboxReuseScope).toBe(first.sessionId);
     expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
       expect.any(String),
     );
@@ -2896,6 +3022,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       throw new Error("Expected reusable-priority poll to return 200");
     }
     expect(reusablePriorityPoll.body.job?.runId).toBe(newerReusable.runId);
+    expect(reusablePriorityPoll.body.job?.sandboxReuseScope).toBe(
+      first.sessionId,
+    );
 
     mockNow(priorityBase + 60_000);
     const expiredPriorityPoll = await api.requestPollRunner(
@@ -3306,6 +3435,13 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         );
       })
       .toBe(true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "job",
+      expect.objectContaining({
+        runId: queued.runId,
+        sandboxReuseScope: queued.sessionId,
+      }),
+    );
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, queued.runId, [200]);

@@ -7,6 +7,7 @@ use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
+use crate::sandbox_reuse_identity::{SandboxReuseIdentity, SandboxReuseScope};
 use crate::storage_fingerprints::StorageFingerprints;
 
 use super::fs::{
@@ -38,6 +39,7 @@ pub(super) struct WorkspaceCacheMetadata {
     pub(super) key_version: u32,
     pub(super) cache_scope: String,
     pub(super) profile_name: String,
+    pub(super) sandbox_reuse_scope: SandboxReuseScope,
     pub(super) session_id: String,
     pub(super) working_dir: String,
     pub(super) last_completed_at: String,
@@ -50,6 +52,13 @@ pub(super) struct WorkspaceCacheMetadata {
     pub(super) drive_layout: String,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) state: WorkspaceCacheState,
+}
+
+impl WorkspaceCacheMetadata {
+    pub(super) fn sandbox_reuse_identity(&self) -> Option<SandboxReuseIdentity> {
+        self.sandbox_reuse_scope
+            .with_cli_agent_session_id(self.session_id.clone())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,7 +84,7 @@ impl SessionWorkspaceCache {
         &self,
         metadata_path: &Path,
         profile_name: &str,
-        session_id: &str,
+        identity: &SandboxReuseIdentity,
         working_dir: &str,
         image_size_bytes: u64,
     ) -> RunnerResult<Option<WorkspaceCacheMetadata>> {
@@ -86,12 +95,9 @@ impl SessionWorkspaceCache {
             }
             Err(e) => return Err(e),
         };
-        let current_path = self.session_workspace_cache_current_image(&self.scoped_cache_key(
-            profile_name,
-            session_id,
-            working_dir,
-            image_size_bytes,
-        ));
+        let current_path = self.session_workspace_cache_current_image(
+            &self.scoped_identity_cache_key(profile_name, identity, working_dir, image_size_bytes),
+        );
         let current_metadata = match fs::symlink_metadata(&current_path).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -101,13 +107,32 @@ impl SessionWorkspaceCache {
             &metadata,
             &self.inner.cache_scope,
             profile_name,
-            session_id,
+            identity,
             working_dir,
             image_size_bytes,
         )?;
         validate_current_image_identity(&metadata, &current_metadata)?;
         metadata.allocated_bytes = allocated_bytes(&current_metadata);
         Ok(Some(metadata))
+    }
+
+    #[cfg(test)]
+    pub(super) async fn read_valid_metadata_for_test(
+        &self,
+        metadata_path: &Path,
+        profile_name: &str,
+        session_id: &str,
+        working_dir: &str,
+        image_size_bytes: u64,
+    ) -> RunnerResult<Option<WorkspaceCacheMetadata>> {
+        self.read_valid_metadata(
+            metadata_path,
+            profile_name,
+            &crate::test_fixtures::sandbox_reuse_identity_for_test(session_id),
+            working_dir,
+            image_size_bytes,
+        )
+        .await
     }
 
     pub(super) async fn metadata_matches_current_image(
@@ -188,7 +213,7 @@ fn validate_metadata(
     metadata: &WorkspaceCacheMetadata,
     cache_scope: &str,
     profile_name: &str,
-    session_id: &str,
+    identity: &SandboxReuseIdentity,
     working_dir: &str,
     image_size_bytes: u64,
 ) -> RunnerResult<()> {
@@ -214,9 +239,9 @@ fn validate_metadata(
             "workspace metadata profile mismatch".into(),
         ));
     }
-    if metadata.session_id != session_id {
+    if metadata.sandbox_reuse_identity().as_ref() != Some(identity) {
         return Err(RunnerError::Internal(
-            "workspace metadata session id mismatch".into(),
+            "workspace metadata sandbox reuse identity mismatch".into(),
         ));
     }
     if metadata.working_dir != working_dir {

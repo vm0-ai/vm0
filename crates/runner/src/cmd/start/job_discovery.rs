@@ -34,13 +34,13 @@ use crate::idle_pool::{
     RestoreReservedIdleResult, ReusableIdleSandbox,
 };
 use crate::ids::RunId;
-use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate, PreLocalAdmissionOutcome};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::restored_session_identity::{
     RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
+use crate::sandbox_reuse_identity::SandboxReuseIdentity;
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, HeldSessionState, SandboxReuseResult};
 
@@ -169,6 +169,7 @@ pub(super) async fn handle_discovered_job(
     // briefly advertise stale workspace-cache affinity for an active session.
     let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
         ctx.spawn_ctx.active_cli_agent_sessions.clone(),
+        claimed.context().sandbox_reuse_scope(),
         if resume_session_valid {
             claimed.context().cli_agent_session_id().map(str::to_owned)
         } else {
@@ -522,7 +523,7 @@ async fn prepare_affinity_protected_candidate(
             candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::NotProtected),
         );
     }
-    let Some(cli_agent_session_id) = candidate.cli_agent_session_id().map(str::to_owned) else {
+    let Some(sandbox_reuse_identity) = candidate.sandbox_reuse_identity().cloned() else {
         return Some(
             candidate
                 .with_pre_local_admission_outcome(PreLocalAdmissionOutcome::MissingSessionMetadata),
@@ -530,7 +531,7 @@ async fn prepare_affinity_protected_candidate(
     };
 
     let has_exact_reusable = ctx.idle_pool.lock().await.has_reusable(
-        &cli_agent_session_id,
+        &sandbox_reuse_identity,
         profile_name,
         device_rate_limits,
     );
@@ -538,7 +539,7 @@ async fn prepare_affinity_protected_candidate(
     let has_fresh_affinity = ctx.budget.can_afford(job_vcpu, job_memory)
         && held_session_states
             .iter()
-            .any(|state| state.session_id == cli_agent_session_id);
+            .any(|state| state.sandbox_reuse_identity() == Some(sandbox_reuse_identity.clone()));
     if has_exact_reusable || has_fresh_affinity {
         return Some(
             candidate.with_pre_local_admission_outcome(PreLocalAdmissionOutcome::LocalHolder),
@@ -548,7 +549,7 @@ async fn prepare_affinity_protected_candidate(
     let delay = candidate
         .affinity_protection_remaining()
         .unwrap_or_default();
-    let session_fingerprint = diagnostic_session_fingerprint(&cli_agent_session_id);
+    let session_fingerprint = sandbox_reuse_identity.diagnostic_fingerprint();
     info!(
         run_id = %candidate.run_id(),
         session_fingerprint = %session_fingerprint,
@@ -557,10 +558,6 @@ async fn prepare_affinity_protected_candidate(
     );
     ctx.spawn_ctx.provider.defer_poll_after(delay).await;
     None
-}
-
-fn diagnostic_session_fingerprint(session_id: &str) -> String {
-    short_digest(session_id)
 }
 
 async fn current_local_held_session_states(
@@ -584,9 +581,9 @@ async fn acquire_local_admission_resource(
     ctx: &mut DiscoveredJobContext<'_>,
 ) -> Option<LocalAdmissionResource> {
     loop {
-        if let Some(session_id) = candidate.cli_agent_session_id()
+        if let Some(identity) = candidate.sandbox_reuse_identity()
             && let Some(reservation) =
-                reserve_reusable_idle(session_id, profile_name, device_rate_limits, ctx).await
+                reserve_reusable_idle(identity, profile_name, device_rate_limits, ctx).await
         {
             return Some(LocalAdmissionResource::Reusable(Box::new(reservation)));
         }
@@ -622,14 +619,14 @@ async fn acquire_local_admission_resource(
 }
 
 async fn reserve_reusable_idle(
-    session_id: &str,
+    identity: &SandboxReuseIdentity,
     profile_name: &str,
     device_rate_limits: &Option<sandbox::DeviceRateLimits>,
     ctx: &DiscoveredJobContext<'_>,
 ) -> Option<ReservedIdleSandbox> {
     let (reservation, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let reservation = pool.reserve_reusable(session_id, profile_name, device_rate_limits)?;
+        let reservation = pool.reserve_reusable(identity, profile_name, device_rate_limits)?;
         let snapshot = pool.status_snapshot();
         (reservation, snapshot)
     };
@@ -691,12 +688,13 @@ async fn activate_reserved_idle(
         resume_session_valid,
     } = request;
     let started_at = Instant::now();
-    let requested_session_id = context.cli_agent_session_id();
+    let requested_identity = context.sandbox_reuse_identity();
     let reserved_session_id = reservation.cli_agent_session_id().to_owned();
+    let reserved_identity = reservation.sandbox_reuse_identity().clone();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
 
-    if !resume_session_valid || requested_session_id != Some(reserved_session_id.as_str()) {
-        let reuse_result = if requested_session_id.is_none() || !resume_session_valid {
+    if !resume_session_valid || requested_identity.as_ref() != Some(&reserved_identity) {
+        let reuse_result = if requested_identity.is_none() || !resume_session_valid {
             SandboxReuseResult::NoSessionId
         } else {
             SandboxReuseResult::PoolMiss
@@ -704,8 +702,8 @@ async fn activate_reserved_idle(
         warn!(
             run_id = %run_id,
             reserved_session_id = %reserved_session_id,
-            claimed_session_id = ?requested_session_id,
-            "claimed session does not match reserved idle VM, destroying before fresh fallback"
+            claimed_identity = ?requested_identity,
+            "claimed reuse identity does not match reserved idle VM, destroying before fresh fallback"
         );
         return cleanup_reserved_for_fresh_fallback(
             reservation.into_destroy_job(),
@@ -867,7 +865,7 @@ async fn try_reuse_from_pool(
             false,
         );
     }
-    let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
+    let Some(sandbox_reuse_identity) = context.sandbox_reuse_identity() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
         return (
             None,
@@ -881,7 +879,7 @@ async fn try_reuse_from_pool(
     // so unpark does not block other take/park operations.
     let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let taken = pool.take(cli_agent_session_id);
+        let taken = pool.take(&sandbox_reuse_identity);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         (taken, snapshot)
     };
@@ -892,7 +890,7 @@ async fn try_reuse_from_pool(
         && ctx
             .spawn_ctx
             .held_session_snapshot
-            .might_contain_workspace_cache_session(cli_agent_session_id);
+            .might_contain_workspace_cache_session(&sandbox_reuse_identity);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
     match taken {
@@ -914,7 +912,7 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
@@ -943,7 +941,7 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                         "reusing idle VM for session"
                     );
                     // Idle entry already holds budget. Drop the speculative
@@ -961,7 +959,7 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        session_id = %cli_agent_session_id,
+                        session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
@@ -979,7 +977,7 @@ async fn try_reuse_from_pool(
         Some(stale) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                 profile = %profile_name,
                 "idle VM device rate limiter mismatch, destroying"
             );
@@ -999,7 +997,7 @@ async fn try_reuse_from_pool(
         Some(stale) => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle VM profile mismatch, destroying"
@@ -1020,7 +1018,7 @@ async fn try_reuse_from_pool(
         None => {
             info!(
                 run_id = %run_id,
-                session_id = %cli_agent_session_id,
+                session_id = %sandbox_reuse_identity.cli_agent_session_id(),
                 "no idle VM found for session"
             );
             (
@@ -1130,7 +1128,7 @@ mod tests {
         });
         assert!(matches!(pool.park(candidate), ParkResult::Parked));
         let entry = pool
-            .take("sess-restore-plan")
+            .take_for_test("sess-restore-plan")
             .expect("idle entry should exist");
         let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
             panic!("idle entry should unpark");
@@ -1178,6 +1176,10 @@ mod tests {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default".into(),
+                sandbox_reuse_scope: Some(
+                    crate::test_fixtures::sandbox_reuse_identity_for_test("sess-restore-plan")
+                        .scope(),
+                ),
                 cli_agent_session_id: Some("sess-restore-plan".into()),
                 discovered_cli_agent_session_id: None,
                 restored_session_identity,
@@ -1206,7 +1208,7 @@ mod tests {
         let entry = idle_pool
             .lock()
             .await
-            .take("sess-restore-plan")
+            .take_for_test("sess-restore-plan")
             .expect("finalizer should park reusable sandbox");
         let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
             panic!("finalized idle entry should unpark");

@@ -235,7 +235,8 @@ export async function publishRunnerJobNotification(
   group: string,
   runId: string,
   profile: string,
-  affinity?: {
+  affinity: {
+    readonly sandboxReuseScope: string;
     readonly cliAgentSessionId: string | null;
     readonly affinityProtectedUntil: string | null;
   },
@@ -246,7 +247,8 @@ export async function publishRunnerJobNotification(
       await channel.publish("job", {
         runId,
         profile,
-        ...(affinity?.cliAgentSessionId
+        sandboxReuseScope: affinity.sandboxReuseScope,
+        ...(affinity.cliAgentSessionId
           ? { cliAgentSessionId: affinity.cliAgentSessionId }
           : {}),
         ...(affinity?.affinityProtectedUntil

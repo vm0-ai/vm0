@@ -9,6 +9,7 @@ use crate::config::ProfileConfig;
 use crate::idle_pool::IdlePool;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
+use crate::sandbox_reuse_identity::SandboxReuseIdentity;
 use crate::status::RunnerMode;
 use crate::types::{HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES};
 use crate::workspace_image_cache::SessionWorkspaceCache;
@@ -113,12 +114,15 @@ impl HeldSessionStateSnapshot {
     }
 
     pub(super) fn upsert_workspace_cache_state(&self, state: HeldSessionState) {
+        let Some(identity) = state.sandbox_reuse_identity() else {
+            return;
+        };
         let mut inner = self.lock_inner();
         inner.workspace_cache_loaded = true;
         match inner
             .workspace_cache_states
             .iter_mut()
-            .find(|existing| existing.session_id == state.session_id)
+            .find(|existing| existing.sandbox_reuse_identity().as_ref() == Some(&identity))
         {
             Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
             Some(existing) => *existing = state,
@@ -128,20 +132,23 @@ impl HeldSessionStateSnapshot {
         inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
     }
 
-    pub(super) fn might_contain_workspace_cache_session(&self, session_id: &str) -> bool {
+    pub(super) fn might_contain_workspace_cache_session(
+        &self,
+        identity: &SandboxReuseIdentity,
+    ) -> bool {
         let inner = self.lock_inner();
         !inner.workspace_cache_loaded
             || inner
                 .workspace_cache_states
                 .iter()
-                .any(|state| state.session_id == session_id)
+                .any(|state| state.sandbox_reuse_identity().as_ref() == Some(identity))
     }
 
     pub(super) fn current_held_session_states(
         &self,
         idle_states: Vec<HeldSessionState>,
         active_cli_agent_sessions: &ActiveCliAgentSessions,
-        extra_active_session: Option<&str>,
+        extra_active_session: Option<&SandboxReuseIdentity>,
     ) -> Vec<HeldSessionState> {
         let workspace_cache_states = self.lock_inner().workspace_cache_states.clone();
         merge_current_held_session_states(
@@ -220,11 +227,11 @@ fn merge_current_held_session_states(
     idle_states: Vec<HeldSessionState>,
     cache_states: Vec<HeldSessionState>,
     active_cli_agent_sessions: &ActiveCliAgentSessions,
-    extra_active_session: Option<&str>,
+    extra_active_session: Option<&SandboxReuseIdentity>,
 ) -> Vec<HeldSessionState> {
     let mut active_cli_agent_sessions = active_cli_agent_session_ids(active_cli_agent_sessions);
-    if let Some(session_id) = extra_active_session {
-        active_cli_agent_sessions.insert(session_id.to_owned());
+    if let Some(identity) = extra_active_session {
+        active_cli_agent_sessions.insert(identity.clone());
     }
     merge_held_session_states(idle_states, cache_states, &active_cli_agent_sessions)
 }
@@ -232,20 +239,27 @@ fn merge_current_held_session_states(
 fn merge_held_session_states(
     idle_states: Vec<HeldSessionState>,
     cache_states: Vec<HeldSessionState>,
-    active_cli_agent_sessions: &std::collections::HashSet<String>,
+    active_cli_agent_sessions: &std::collections::HashSet<SandboxReuseIdentity>,
 ) -> Vec<HeldSessionState> {
-    let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
+    let mut by_session =
+        std::collections::BTreeMap::<SandboxReuseIdentity, HeldSessionState>::new();
     for state in idle_states {
-        if active_cli_agent_sessions.contains(&state.session_id) {
+        let Some(identity) = state.sandbox_reuse_identity() else {
+            continue;
+        };
+        if active_cli_agent_sessions.contains(&identity) {
             continue;
         }
-        by_session.insert(state.session_id.clone(), state);
+        by_session.insert(identity, state);
     }
     for state in cache_states {
-        if active_cli_agent_sessions.contains(&state.session_id) {
+        let Some(identity) = state.sandbox_reuse_identity() else {
+            continue;
+        };
+        if active_cli_agent_sessions.contains(&identity) {
             continue;
         }
-        match by_session.get_mut(&state.session_id) {
+        match by_session.get_mut(&identity) {
             Some(existing) => {
                 let reusable_sandbox = existing.reusable_sandbox.take();
                 if state.last_completed_at > existing.last_completed_at {
@@ -254,7 +268,7 @@ fn merge_held_session_states(
                 existing.reusable_sandbox = reusable_sandbox.or(existing.reusable_sandbox.take());
             }
             None => {
-                by_session.insert(state.session_id.clone(), state);
+                by_session.insert(identity, state);
             }
         }
     }
@@ -263,9 +277,14 @@ fn merge_held_session_states(
         b.last_completed_at
             .cmp(&a.last_completed_at)
             .then_with(|| a.session_id.cmp(&b.session_id))
+            .then_with(|| a.sandbox_reuse_scope.cmp(&b.sandbox_reuse_scope))
     });
     states.truncate(MAX_HELD_SESSION_STATES);
-    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+    states.sort_unstable_by(|a, b| {
+        a.session_id
+            .cmp(&b.session_id)
+            .then_with(|| a.sandbox_reuse_scope.cmp(&b.sandbox_reuse_scope))
+    });
     states
 }
 
@@ -273,12 +292,16 @@ fn merge_workspace_cache_snapshot_states(
     existing_states: Vec<HeldSessionState>,
     refreshed_states: Vec<HeldSessionState>,
 ) -> Vec<HeldSessionState> {
-    let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
+    let mut by_session =
+        std::collections::BTreeMap::<SandboxReuseIdentity, HeldSessionState>::new();
     for state in refreshed_states.into_iter().chain(existing_states) {
-        match by_session.get(&state.session_id) {
+        let Some(identity) = state.sandbox_reuse_identity() else {
+            continue;
+        };
+        match by_session.get(&identity) {
             Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
             _ => {
-                by_session.insert(state.session_id.clone(), state);
+                by_session.insert(identity, state);
             }
         }
     }
@@ -293,9 +316,14 @@ fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldSessionState>) {
         b.last_completed_at
             .cmp(&a.last_completed_at)
             .then_with(|| a.session_id.cmp(&b.session_id))
+            .then_with(|| a.sandbox_reuse_scope.cmp(&b.sandbox_reuse_scope))
     });
     states.truncate(MAX_HELD_SESSION_STATES);
-    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+    states.sort_unstable_by(|a, b| {
+        a.session_id
+            .cmp(&b.session_id)
+            .then_with(|| a.sandbox_reuse_scope.cmp(&b.sandbox_reuse_scope))
+    });
 }
 
 fn admittable_profiles_for_heartbeat(
@@ -396,6 +424,14 @@ mod tests {
         m
     }
 
+    fn test_identity(session_id: &str) -> SandboxReuseIdentity {
+        crate::test_fixtures::sandbox_reuse_identity_for_test(session_id)
+    }
+
+    fn test_scope_wire() -> Option<String> {
+        Some(crate::test_fixtures::TEST_SANDBOX_REUSE_SCOPE.to_owned())
+    }
+
     fn make_synthetic_parked_candidate(session_id: &str) -> ParkedIdleCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
         ParkedIdleCandidateBuilder::new(
@@ -420,7 +456,7 @@ mod tests {
         let run_id = crate::ids::RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let lease = cache
-            .prepare(WorkspaceImagePrepareRequest {
+            .prepare_for_test(WorkspaceImagePrepareRequest {
                 identity: WorkspaceImageLeaseIdentity {
                     run_id,
                     sandbox_id,
@@ -676,17 +712,19 @@ mod tests {
         let active_cli_agent_sessions =
             super::super::active_sessions::new_active_cli_agent_sessions();
         let idle = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-idle".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
             reusable_sandbox: None,
         }];
 
         let cache_states = workspace_cache_held_session_states(Some(&cache)).await;
+        let claimed_identity = test_identity("sess-claimed");
         let states = merge_current_held_session_states(
             idle,
             cache_states,
             &active_cli_agent_sessions,
-            Some("sess-claimed"),
+            Some(&claimed_identity),
         );
 
         assert!(
@@ -712,16 +750,19 @@ mod tests {
             &snapshot,
             vec![
                 HeldSessionState {
+                    sandbox_reuse_scope: test_scope_wire(),
                     session_id: "sess-cache".into(),
                     last_completed_at: "2026-06-01T00:00:02.000Z".into(),
                     reusable_sandbox: None,
                 },
                 HeldSessionState {
+                    sandbox_reuse_scope: test_scope_wire(),
                     session_id: "sess-claimed".into(),
                     last_completed_at: "2026-06-01T00:00:03.000Z".into(),
                     reusable_sandbox: None,
                 },
                 HeldSessionState {
+                    sandbox_reuse_scope: test_scope_wire(),
                     session_id: "sess-active".into(),
                     last_completed_at: "2026-06-01T00:00:04.000Z".into(),
                     reusable_sandbox: None,
@@ -732,36 +773,41 @@ mod tests {
             super::super::active_sessions::new_active_cli_agent_sessions();
         super::super::active_sessions::insert_active_cli_agent_session(
             &active_cli_agent_sessions,
-            "sess-active",
+            &test_identity("sess-active"),
         );
         let idle = vec![
             HeldSessionState {
+                sandbox_reuse_scope: test_scope_wire(),
                 session_id: "sess-cache".into(),
                 last_completed_at: "2026-06-01T00:00:01.000Z".into(),
                 reusable_sandbox: None,
             },
             HeldSessionState {
+                sandbox_reuse_scope: test_scope_wire(),
                 session_id: "sess-idle".into(),
                 last_completed_at: "2026-06-01T00:00:05.000Z".into(),
                 reusable_sandbox: None,
             },
         ];
 
+        let claimed_identity = test_identity("sess-claimed");
         let states = snapshot.current_held_session_states(
             idle,
             &active_cli_agent_sessions,
-            Some("sess-claimed"),
+            Some(&claimed_identity),
         );
 
         assert_eq!(
             states,
             vec![
                 HeldSessionState {
+                    sandbox_reuse_scope: test_scope_wire(),
                     session_id: "sess-cache".into(),
                     last_completed_at: "2026-06-01T00:00:02.000Z".into(),
                     reusable_sandbox: None,
                 },
                 HeldSessionState {
+                    sandbox_reuse_scope: test_scope_wire(),
                     session_id: "sess-idle".into(),
                     last_completed_at: "2026-06-01T00:00:05.000Z".into(),
                     reusable_sandbox: None,
@@ -773,13 +819,14 @@ mod tests {
     #[test]
     fn held_session_snapshot_treats_unloaded_workspace_cache_as_unknown() {
         let snapshot = HeldSessionStateSnapshot::new();
+        let identity = test_identity("sess-cache");
 
         assert!(
             !snapshot.workspace_cache_loaded(),
             "new snapshot should start with unknown workspace-cache state"
         );
         assert!(
-            snapshot.might_contain_workspace_cache_session("sess-cache"),
+            snapshot.might_contain_workspace_cache_session(&identity),
             "unloaded snapshot should trigger one refresh for cache-enabled runners"
         );
 
@@ -789,20 +836,21 @@ mod tests {
             "refresh should mark workspace-cache state loaded even when empty"
         );
         assert!(
-            !snapshot.might_contain_workspace_cache_session("sess-cache"),
+            !snapshot.might_contain_workspace_cache_session(&identity),
             "loaded empty snapshot should not keep triggering cache refreshes"
         );
 
         refresh_snapshot(
             &snapshot,
             vec![HeldSessionState {
+                sandbox_reuse_scope: test_scope_wire(),
                 session_id: "sess-cache".into(),
                 last_completed_at: "2026-06-01T00:00:02.000Z".into(),
                 reusable_sandbox: None,
             }],
         );
         assert!(
-            snapshot.might_contain_workspace_cache_session("sess-cache"),
+            snapshot.might_contain_workspace_cache_session(&identity),
             "loaded matching snapshot should trigger refresh when that session is claimed"
         );
     }
@@ -812,6 +860,7 @@ mod tests {
         let snapshot = HeldSessionStateSnapshot::new();
         for index in 0..=MAX_HELD_SESSION_STATES {
             snapshot.upsert_workspace_cache_state(HeldSessionState {
+                sandbox_reuse_scope: test_scope_wire(),
                 session_id: format!("sess-{index:04}"),
                 last_completed_at: timestamp_for_index(index),
                 reusable_sandbox: None,
@@ -840,11 +889,13 @@ mod tests {
     fn held_session_snapshot_refresh_preserves_concurrent_upsert() {
         let snapshot = HeldSessionStateSnapshot::new();
         let original = HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-original".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
             reusable_sandbox: None,
         };
         let promoted = HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-promoted".into(),
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
             reusable_sandbox: None,
@@ -877,18 +928,20 @@ mod tests {
     #[test]
     fn merge_held_session_states_filters_active_sessions() {
         let idle = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-active-idle".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
             reusable_sandbox: None,
         }];
         let cache = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-active".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: None,
         }];
         let active = std::collections::HashSet::from([
-            "sess-active".to_string(),
-            "sess-active-idle".to_string(),
+            test_identity("sess-active"),
+            test_identity("sess-active-idle"),
         ]);
 
         let merged = merge_held_session_states(idle, cache, &active);
@@ -899,6 +952,7 @@ mod tests {
     #[test]
     fn merge_held_session_states_keeps_newest_duplicate() {
         let idle = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: Some(crate::types::ReusableSandboxState {
@@ -906,6 +960,7 @@ mod tests {
             }),
         }];
         let cache = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:01.000Z".into(),
             reusable_sandbox: None,
@@ -928,6 +983,7 @@ mod tests {
     #[test]
     fn merge_held_session_states_prefers_idle_on_equal_timestamp() {
         let idle = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: Some(crate::types::ReusableSandboxState {
@@ -935,6 +991,7 @@ mod tests {
             }),
         }];
         let cache = vec![HeldSessionState {
+            sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-1".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
             reusable_sandbox: None,

@@ -43,7 +43,9 @@ async fn idle_pool_park_and_reuse_cycle() {
     assert_eq!(pool.len(), 1);
 
     // Take from pool for reuse
-    let reuse_entry = pool.take("test-session").expect("should find session");
+    let reuse_entry = pool
+        .take_for_test("test-session")
+        .expect("should find session");
     assert_eq!(pool.len(), 0);
     assert_eq!(reuse_entry.profile_name(), "vm0/default");
 
@@ -86,7 +88,7 @@ async fn idle_pool_profile_mismatch_returns_none() {
     let _ = pool.park(entry);
 
     // Take and verify profile
-    let taken = pool.take("test-session").expect("should find");
+    let taken = pool.take_for_test("test-session").expect("should find");
     assert_eq!(taken.profile_name(), "vm0/default");
 
     // Simulate caller checking profile mismatch

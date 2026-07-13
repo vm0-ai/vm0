@@ -348,7 +348,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
     assert!(reuse_outcome.workspace_image.is_some());
 
     let checkout = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
@@ -412,7 +412,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
         "identity mismatch must explicitly abandon the consumed cache hit"
     );
     let checkout = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
@@ -454,7 +454,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
     assert_eq!(reuse_outcome.exit_code(), 0);
 
     let checkout = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
@@ -630,7 +630,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
     );
 
     let checkout = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
@@ -688,7 +688,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
     );
 
     let checkout = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
@@ -729,7 +729,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -776,7 +776,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     let candidate = IdleParkRequest::new(IdleParkRequestParts {
         sandbox,
         factory,
-        cli_agent_session_id: session_id.to_owned(),
+        sandbox_reuse_identity: crate::test_fixtures::sandbox_reuse_identity_for_test(session_id),
         sandbox_id,
         profile_name: params.profile_name.clone(),
         device_rate_limits: params.device_rate_limits.clone(),
@@ -800,7 +800,9 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         max_idle: 0,
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
-    let entry = pool.take(session_id).expect("idle entry should exist");
+    let entry = pool
+        .take_for_test(session_id)
+        .expect("idle entry should exist");
     let idle_sandbox = match entry.try_unpark().await {
         IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
         IdleUnparkResult::Failed { error, .. } => {
@@ -829,7 +831,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
-        .prepare(WorkspaceImagePrepareRequest {
+        .prepare_for_test(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
@@ -883,7 +885,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
     let candidate = IdleParkRequest::new(IdleParkRequestParts {
         sandbox,
         factory,
-        cli_agent_session_id: session_id.to_owned(),
+        sandbox_reuse_identity: crate::test_fixtures::sandbox_reuse_identity_for_test(session_id),
         sandbox_id,
         profile_name: params.profile_name.clone(),
         device_rate_limits: params.device_rate_limits.clone(),
@@ -907,7 +909,9 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         max_idle: 0,
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
-    let entry = pool.take(session_id).expect("idle entry should exist");
+    let entry = pool
+        .take_for_test(session_id)
+        .expect("idle entry should exist");
     let idle_sandbox = match entry.try_unpark().await {
         IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
         IdleUnparkResult::Failed { error, .. } => {
