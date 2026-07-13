@@ -6,6 +6,10 @@ import * as os from "os";
 import chalk from "chalk";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
+import {
+  catalogPermissionDetail,
+  stubConnectorCatalogPermissions,
+} from "./helpers/connector-catalog";
 import { zeroWhoamiCommand } from "../whoami";
 
 // Mock os.homedir to use temp directory for config isolation
@@ -65,11 +69,35 @@ function makePermissionGrant(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const defaultPermissionDetails = [
+  catalogPermissionDetail({
+    connectorRef: "github",
+    label: "GitHub",
+  }),
+  catalogPermissionDetail({
+    connectorRef: "slack",
+    label: "Slack",
+    permissions: [
+      {
+        name: "admin.conversations:read",
+        description: "Read conversations",
+      },
+      { name: "chat:write", description: "Send messages" },
+      { name: "reactions:read", description: "Read reactions" },
+    ],
+    defaultPolicy: {
+      permissionDefault: "allow",
+      unknownPolicy: "allow",
+    },
+  }),
+];
+
 describe("zero whoami command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(async () => {
     chalk.level = 0;
+    server.use(stubConnectorCatalogPermissions(defaultPermissionDetails));
 
     // Ensure clean config state
     const configDir = path.join(TEST_HOME, ".vm0");
@@ -561,6 +589,86 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
+    it("should show permissions for a server-authored connector ref", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      const serverOnlyDetail = catalogPermissionDetail({
+        connectorRef: "server-only",
+        label: "Server Only",
+        permissions: [
+          { name: "records.read", description: "Read server records" },
+        ],
+        defaultPolicy: {
+          permissionDefault: "deny",
+          unknownPolicy: "deny",
+        },
+      });
+      server.use(
+        stubConnectorCatalogPermissions([
+          ...defaultPermissionDetails,
+          serverOnlyDetail,
+        ]),
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "server-only",
+                authMethod: "api-token",
+                externalId: "server-user",
+                externalUsername: "server-user",
+                externalEmail: null,
+                oauthScopes: null,
+                connectionStatus: "connected",
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["server-only"],
+            connectorProvidedBindings: [],
+          });
+        }),
+        mockUserPermissionGrantsHandler([
+          makePermissionGrant({
+            connectorRef: "server-only",
+            permission: "records.read",
+            action: "allow",
+          }),
+        ]),
+        http.get(
+          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["server-only"] });
+          },
+        ),
+      );
+
+      await runWhoami(["--permissions"]);
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("server-only") && line.includes("@server-user");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("✓") && line.includes("records.read");
+        }),
+      ).toBe(true);
+    });
+
     it("should show full access with --permissions for connector with null policies", async () => {
       const token = buildZeroToken({
         userId: "user-1",
@@ -694,6 +802,79 @@ describe("zero whoami command", () => {
       expect(
         output.some((line) => {
           return line.includes("full access");
+        }),
+      ).toBe(false);
+    });
+
+    it("should omit supplementary connectors when permission metadata fails", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "octocat",
+                externalEmail: "octocat@github.com",
+                oauthScopes: ["repo"],
+                connectionStatus: "connected",
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["github"],
+            connectorProvidedBindings: [],
+          });
+        }),
+        mockUserPermissionGrantsHandler(),
+        http.get(
+          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get(
+          "http://localhost:3000/api/zero/connector-catalog/github/permissions",
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: "Permission service unavailable",
+                  code: "INTERNAL",
+                },
+              },
+              { status: 500 },
+            );
+          },
+        ),
+      );
+
+      await runWhoami(["--permissions"]);
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Agent ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Connectors:");
         }),
       ).toBe(false);
     });

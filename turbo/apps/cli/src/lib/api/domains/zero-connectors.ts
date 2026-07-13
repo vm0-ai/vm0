@@ -13,6 +13,7 @@ import {
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogPermissionDetail,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
@@ -88,6 +89,35 @@ export async function listZeroConnectorCatalogStatus(): Promise<PublicConnectorC
   }
 
   handleError(result, "Failed to list connector catalog status");
+}
+
+export async function getZeroConnectorCatalogPermissions(
+  connectorRef: string,
+): Promise<PublicConnectorCatalogPermissionDetail | null> {
+  const config = await getClientConfig();
+  const client = initClient(zeroConnectorCatalogContract, config);
+
+  const result = await client.permissions({
+    params: { connectorRef },
+  });
+
+  if (result.status === 200) {
+    if (result.body.permissions.connectorRef !== connectorRef) {
+      throw new Error(
+        `Permission metadata connectorRef mismatch: expected ${connectorRef}, got ${result.body.permissions.connectorRef}`,
+      );
+    }
+    return result.body.permissions;
+  }
+
+  if (result.status === 404) {
+    return null;
+  }
+
+  handleError(
+    result,
+    `Failed to get connector permission metadata for "${connectorRef}"`,
+  );
 }
 
 /**
