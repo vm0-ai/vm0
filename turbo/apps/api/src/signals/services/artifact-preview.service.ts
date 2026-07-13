@@ -1,7 +1,8 @@
 import { command } from "ccstate";
-import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { z } from "zod";
 
 import { env } from "../../lib/env";
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
@@ -35,6 +36,20 @@ const PREVIEW_VIEWPORT = {
 } as const;
 const PREVIEW_IMAGE_CONTENT_TYPE = "image/webp";
 const PREVIEW_IMAGE_EXTENSION = "webp";
+const PREVIEW_IMAGE_BASENAME = "preview-v2";
+const PREVIEW_WAF_COOKIE_NAME = "vm0_artifact_preview";
+
+const browserSnapshotSchema = z.object({
+  meta: z.object({
+    status: z.number().optional(),
+    title: z.string().optional(),
+  }),
+  success: z.literal(true),
+  result: z.object({
+    content: z.string().min(1),
+    screenshot: z.string().min(1),
+  }),
+});
 
 // Videos are immutable, so a fixed poster key (no versioning) is fine. The
 // Cloudflare Media Transformations frame endpoint only outputs jpg/png.
@@ -61,10 +76,12 @@ export interface RenderArtifactPreviewArgs {
   readonly deploymentId: string | null;
 }
 
-// Version the preview object by deployment so a redeploy produces a new URL
-// (busts the CDN) rather than overwriting the previous deployment's image.
+// Version the preview object by renderer and deployment so both renderer
+// upgrades and site redeploys produce a fresh CDN URL.
 function previewImageFilename(deploymentId: string | null): string {
-  const base = deploymentId ? `preview-${deploymentId}` : "preview";
+  const base = deploymentId
+    ? `${PREVIEW_IMAGE_BASENAME}-${deploymentId}`
+    : PREVIEW_IMAGE_BASENAME;
   return `${base}.${PREVIEW_IMAGE_EXTENSION}`;
 }
 
@@ -116,15 +133,23 @@ async function isArtifactPreviewEnabledForOwner(
 
 function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   const conditions = [
-    isNull(runUploadedFiles.previewImageUrl),
     sql`${runUploadedFiles.url} IS NOT NULL`,
-    // HTML/website artifacts (by artifactKind) or generated video artifacts.
-    // Ordinary user-uploaded videos are not artifacts and should not be swept.
-    sql`(${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html') OR (jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string' AND ${runUploadedFiles.contentType} LIKE 'video/%'))`,
+    // Re-render HTML previews created by the previous renderer so the new key
+    // also bypasses cached challenge images. Video posters remain null-only.
+    sql`((
+      ${runUploadedFiles.metadata}->>'artifactKind' IN ('hosted-site', 'presentation-html')
+      AND (
+        ${runUploadedFiles.previewImageUrl} IS NULL
+        OR ${runUploadedFiles.previewImageUrl} NOT LIKE ${`%/${PREVIEW_IMAGE_BASENAME}%`}
+      )
+    ) OR (
+      jsonb_typeof(${runUploadedFiles.metadata}->'generatedBy') = 'string'
+      AND ${runUploadedFiles.contentType} LIKE 'video/%'
+      AND ${runUploadedFiles.previewImageUrl} IS NULL
+    ))`,
     // Grace window: skip rows touched in the last 2 minutes so the deploy-time
-    // fast path can finish first. The cron only picks up rows it demonstrably
-    // failed on, plus pre-feature backfill (already old), avoiding a duplicate
-    // render racing the deploy trigger.
+    // fast path can finish first. The cron only picks up missing or superseded
+    // previews, avoiding a duplicate render racing the deploy trigger.
     sql`${runUploadedFiles.updatedAt} < now() - interval '2 minutes'`,
   ];
 
@@ -144,14 +169,49 @@ function previewCandidateWhere(cursor?: PreviewCandidateCursor) {
   return and(...conditions);
 }
 
-async function renderArtifactScreenshot(
+function isCloudflareChallenge(content: string, title?: string): boolean {
+  const page = `${title ?? ""}\n${content}`.toLowerCase();
+  const hasChallengeCopy = [
+    "performing security verification",
+    "incompatible browser extension or network configuration",
+    "verify you are human",
+    "checking your browser",
+    "just a moment",
+  ].some((marker) => {
+    return page.includes(marker);
+  });
+  const hasChallengeImplementation = [
+    "challenges.cloudflare.com",
+    "/cdn-cgi/challenge-platform/",
+    "challenge-platform",
+    "cf-chl-",
+    "__cf_chl_",
+  ].some((marker) => {
+    return page.includes(marker);
+  });
+  return hasChallengeCopy && hasChallengeImplementation;
+}
+
+async function renderArtifactSnapshot(
   token: string,
+  wafSecret: string,
   url: string,
   signal: AbortSignal,
 ): Promise<Buffer> {
+  const previewUrl = new URL(url);
+  const hostDomain = env("ZERO_HOST_DOMAIN");
+  if (
+    previewUrl.protocol !== "https:" ||
+    !previewUrl.hostname.endsWith(`.${hostDomain}`)
+  ) {
+    throw new Error(
+      `artifact preview URL must be a subdomain of ${hostDomain}`,
+    );
+  }
+
   const accountId = env("R2_ACCOUNT_ID");
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/browser-rendering/screenshot`,
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/browser-rendering/snapshot?cacheTTL=0`,
     {
       method: "POST",
       headers: {
@@ -160,6 +220,17 @@ async function renderArtifactScreenshot(
       },
       body: JSON.stringify({
         url,
+        cookies: [
+          {
+            name: PREVIEW_WAF_COOKIE_NAME,
+            value: wafSecret,
+            url: previewUrl.origin,
+            httpOnly: true,
+            secure: true,
+            sameSite: "Strict",
+          },
+        ],
+        formats: ["content", "screenshot"],
         viewport: PREVIEW_VIEWPORT,
         gotoOptions: { waitUntil: "networkidle0" },
         screenshotOptions: { type: "webp", quality: 80 },
@@ -169,10 +240,23 @@ async function renderArtifactScreenshot(
   );
   if (!response.ok) {
     throw new Error(
-      `browser-rendering screenshot failed (${response.status}): ${await response.text()}`,
+      `browser-rendering snapshot failed (${response.status}): ${await response.text()}`,
     );
   }
-  return Buffer.from(await response.arrayBuffer());
+
+  const responseBody: unknown = await response.json();
+  const snapshot = browserSnapshotSchema.parse(responseBody);
+  if (snapshot.meta.status !== undefined && snapshot.meta.status >= 400) {
+    throw new Error(
+      `browser-rendering snapshot returned page status ${snapshot.meta.status}`,
+    );
+  }
+  if (isCloudflareChallenge(snapshot.result.content, snapshot.meta.title)) {
+    throw new Error(
+      "browser-rendering snapshot returned a Cloudflare challenge",
+    );
+  }
+  return Buffer.from(snapshot.result.screenshot, "base64");
 }
 
 /**
@@ -214,7 +298,13 @@ const renderAndStoreArtifactPreview$ = command(
       if (!token) {
         return false;
       }
-      image = await renderArtifactScreenshot(token, args.url, signal);
+      const wafSecret = env("ARTIFACT_PREVIEW_WAF_SECRET");
+      if (!wafSecret) {
+        throw new Error(
+          "ARTIFACT_PREVIEW_WAF_SECRET is required when browser rendering is configured",
+        );
+      }
+      image = await renderArtifactSnapshot(token, wafSecret, args.url, signal);
       filename = previewImageFilename(args.deploymentId);
       contentType = PREVIEW_IMAGE_CONTENT_TYPE;
     }
@@ -257,17 +347,25 @@ export const scheduleArtifactPreviewRender$ = command(
       return;
     }
     waitUntil(
-      set(renderAndStoreArtifactPreview$, args, new AbortController().signal),
+      tapError(
+        set(renderAndStoreArtifactPreview$, args, new AbortController().signal),
+        (error) => {
+          log.warn("Failed to render artifact preview", {
+            artifactId: args.id,
+            url: args.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
+      ),
     );
   },
 );
 
 /**
- * Backfill / retry sweep: render previews for HTML/website and video artifacts
- * that still have none (never rendered, or the deploy-time trigger failed / was
- * cut off). Best-effort per artifact — a failure leaves the row's
- * `previewImageUrl` NULL so it retries next sweep and the frontend falls back to
- * the live iframe/video. Returns the count generated.
+ * Backfill / retry sweep: render previews that are missing, failed during the
+ * deploy-time trigger, or were produced by an older HTML renderer. Best-effort
+ * per artifact — a failure leaves the row eligible for the next sweep. Returns
+ * the count generated.
  */
 export const generateArtifactPreviews$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {

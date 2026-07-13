@@ -45,7 +45,7 @@ const actionHandlers = {
       .update(runUploadedFiles)
       .set({
         ...metadataPatch,
-        previewImageUrl: null,
+        previewImageUrl: body.preview_image_url ?? null,
         updatedAt: sql`now() - interval '3 minutes'`,
       })
       .where(
