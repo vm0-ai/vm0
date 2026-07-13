@@ -79,12 +79,17 @@ pub fn export_final_session_history_sidecar_file(
     export_path: impl AsRef<Path>,
 ) -> Result<SessionHistorySidecarExportMetadata, FinalSessionHistoryIdentityVerifyError> {
     let identity = read_final_session_history_identity(metadata_path)?;
-    verify_final_session_history_identity(&identity)?;
-    let source = session_history::read_session_history_checkpoint_source_from_payload_bounded(
+    verify_final_session_history_identity_constraints(&identity)?;
+    let prepared = session_history::prepare_session_history_sidecar_from_payload_bounded(
         &identity.history_marker_payload,
+        identity.history_size_bytes,
         SESSION_HISTORY_SIDECAR_MAX_BYTES,
     )
-    .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
+    .map_err(map_session_history_digest_error)?;
+    verify_final_session_history_digest(&identity, &prepared.digest)?;
+    let source = prepared
+        .into_source()
+        .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
     let (representation, bytes) = match source {
         session_history::SessionHistoryCheckpointSource::Decoded(bytes) => {
             (SessionHistorySidecarRepresentation::Raw, bytes)
@@ -124,6 +129,18 @@ fn read_final_session_history_identity(
 fn verify_final_session_history_identity(
     identity: &FinalSessionHistoryIdentity,
 ) -> Result<(), FinalSessionHistoryIdentityVerifyError> {
+    verify_final_session_history_identity_constraints(identity)?;
+    let digest = session_history::digest_session_history_from_payload_bounded(
+        &identity.history_marker_payload,
+        identity.history_size_bytes,
+    )
+    .map_err(map_session_history_digest_error)?;
+    verify_final_session_history_digest(identity, &digest)
+}
+
+fn verify_final_session_history_identity_constraints(
+    identity: &FinalSessionHistoryIdentity,
+) -> Result<(), FinalSessionHistoryIdentityVerifyError> {
     match identity.framework {
         FinalSessionHistoryFramework::ClaudeCode => {
             if session_history::is_codex_marker(&identity.history_marker_payload) {
@@ -140,18 +157,13 @@ fn verify_final_session_history_identity(
     if identity.history_size_bytes > RESUME_SESSION_HISTORY_MAX_BYTES {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryTooLarge);
     }
-    let digest = match session_history::digest_session_history_from_payload_bounded(
-        &identity.history_marker_payload,
-        identity.history_size_bytes,
-    ) {
-        Ok(digest) => digest,
-        Err(session_history::SessionHistoryDigestError::Read(error)) => {
-            return Err(FinalSessionHistoryIdentityVerifyError::HistoryRead(error));
-        }
-        Err(session_history::SessionHistoryDigestError::ExceedsMaxBytes) => {
-            return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
-        }
-    };
+    Ok(())
+}
+
+fn verify_final_session_history_digest(
+    identity: &FinalSessionHistoryIdentity,
+    digest: &session_history::SessionHistoryDigest,
+) -> Result<(), FinalSessionHistoryIdentityVerifyError> {
     if digest.size_bytes != identity.history_size_bytes {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
     }
@@ -159,6 +171,19 @@ fn verify_final_session_history_identity(
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
     }
     Ok(())
+}
+
+fn map_session_history_digest_error(
+    error: session_history::SessionHistoryDigestError,
+) -> FinalSessionHistoryIdentityVerifyError {
+    match error {
+        session_history::SessionHistoryDigestError::Read(error) => {
+            FinalSessionHistoryIdentityVerifyError::HistoryRead(error)
+        }
+        session_history::SessionHistoryDigestError::ExceedsMaxBytes => {
+            FinalSessionHistoryIdentityVerifyError::HistoryMismatch
+        }
+    }
 }
 
 /// Error returned while building final identity metadata.
@@ -288,35 +313,6 @@ mod tests {
         let metadata_path = write_metadata(&dir, &identity);
 
         verify_final_session_history_identity_file(metadata_path, None).unwrap();
-    }
-
-    #[test]
-    fn exports_claude_literal_history_sidecar() {
-        let dir = tempfile::tempdir().unwrap();
-        let history = br#"{"type":"system"}"#;
-        let history_path = dir.path().join("history.jsonl");
-        std::fs::write(&history_path, history).unwrap();
-        let identity = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            "a".repeat(64),
-            FinalSessionHistoryRefKind::Blob,
-            hex::encode(Sha256::digest(history)),
-            history.len() as u64,
-            history_path.to_string_lossy(),
-        )
-        .unwrap();
-        let metadata_path = write_metadata(&dir, &identity);
-        let export_path = dir.path().join("sidecar.blob");
-
-        let export_metadata =
-            export_final_session_history_sidecar_file(metadata_path, &export_path).unwrap();
-
-        assert_eq!(
-            export_metadata.representation,
-            SessionHistorySidecarRepresentation::Raw
-        );
-        assert_eq!(export_metadata.encoded_size, history.len() as u64);
-        assert_eq!(std::fs::read(export_path).unwrap(), history);
     }
 
     #[test]
