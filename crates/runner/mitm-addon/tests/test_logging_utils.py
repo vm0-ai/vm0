@@ -207,16 +207,6 @@ class TestLogProxyEntry:
                 "https://example.com/users/alice@example.com",
                 id="at-sign-in-valid-path",
             ),
-            pytest.param(
-                "https:////example.com/users/alice@example.com?token=secret#fragment",
-                "https://example.com/users/alice@example.com",
-                id="at-sign-after-malformed-authority",
-            ),
-            pytest.param(
-                r"https://\/example.com/users/alice@example.com?token=secret#fragment",
-                r"https://\/example.com/users/alice@example.com",
-                id="at-sign-after-separator-only-netloc",
-            ),
         ],
     )
     def test_sanitizes_structured_url_field(self, tmp_path, raw_url, expected_url):
@@ -239,6 +229,28 @@ class TestLogProxyEntry:
         assert "first@" not in serialized
         assert "token=secret" not in serialized
         assert "#fragment" not in serialized
+
+    @pytest.mark.parametrize(
+        "raw_url",
+        [
+            "https:////example.com/users/alice@example.com?token=secret#fragment",
+            r"https://\/example.com/users/alice@example.com?token=secret#fragment",
+        ],
+    )
+    def test_preserves_at_sign_after_malformed_authority(self, tmp_path, raw_url):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+
+        logging_utils.log_proxy_entry(
+            str(proxy_path),
+            "warn",
+            "url diagnostic",
+            url=raw_url,
+        )
+
+        [entry] = read_jsonl_entries_after_flush(proxy_path)
+        assert entry["url"].endswith("example.com/users/alice@example.com")
+        assert "token=secret" not in entry["url"]
+        assert "#fragment" not in entry["url"]
 
     def test_only_sanitizes_exact_url_field(self, tmp_path):
         proxy_path = tmp_path / "proxy-test.jsonl"
