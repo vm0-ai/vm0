@@ -3413,6 +3413,28 @@ async fn promotion_context_validates_expected_identity() {
         Err(WorkspaceImagePromotionIdentityMismatch::CliAgentSessionId),
     );
 
+    let wrong_scope_identity = crate::sandbox_reuse_identity::SandboxReuseScope::api(
+        "01980a13-532f-7000-8000-000000000002",
+    )
+    .and_then(|scope| scope.with_cli_agent_session_id(session_id))
+    .unwrap();
+    let wrong_scope = cache
+        .expected_promotion_identity(
+            WorkspaceImagePromotionIdentityRequest {
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                cli_agent_session_id: session_id,
+                working_dir: "/workspace/repo",
+                image_size_bytes,
+            },
+            &wrong_scope_identity,
+        )
+        .unwrap();
+    assert_eq!(
+        promotion.validate_identity(&wrong_scope),
+        Err(WorkspaceImagePromotionIdentityMismatch::SandboxReuseScope),
+    );
+
     let wrong_size = cache
         .expected_promotion_identity_for_test(WorkspaceImagePromotionIdentityRequest {
             sandbox_id,

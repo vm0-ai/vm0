@@ -128,4 +128,32 @@ mod tests {
         assert_ne!(first, local);
         assert_ne!(second, local);
     }
+
+    #[test]
+    fn local_scope_stays_internal_and_diagnostics_hide_raw_identity() {
+        let raw_api_scope = "01980a13-532f-7000-8000-000000000001";
+        let cli_agent_session_id = "sensitive-cli-session";
+        let api_scope = SandboxReuseScope::api(raw_api_scope).unwrap();
+        let local_scope = SandboxReuseScope::local();
+        let api_identity = api_scope
+            .with_cli_agent_session_id(cli_agent_session_id)
+            .unwrap();
+        let local_identity = local_scope
+            .with_cli_agent_session_id(cli_agent_session_id)
+            .unwrap();
+
+        assert_eq!(api_scope.api_wire_value().as_deref(), Some(raw_api_scope));
+        assert_eq!(local_scope.api_wire_value(), None);
+        assert_ne!(
+            api_scope.cache_key_namespace(),
+            local_scope.cache_key_namespace()
+        );
+        assert_eq!(format!("{api_scope:?}"), "Api");
+        assert_eq!(format!("{local_scope:?}"), "Local");
+
+        for diagnostic in [format!("{api_identity:?}"), format!("{local_identity:?}")] {
+            assert!(!diagnostic.contains(raw_api_scope));
+            assert!(!diagnostic.contains(cli_agent_session_id));
+        }
+    }
 }
