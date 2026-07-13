@@ -4,8 +4,9 @@
 //! For each eligible planned archive, checks a host-local
 //! cache keyed by `(vasStorageName, vasVersionId)`. On hit, reads the cached
 //! tarball from disk and pushes it into the guest via vsock. On miss, leaves
-//! the original URL for the current guest download and starts a background
-//! cache fill for future runs. Once guest staging succeeds, the plan's
+//! the original URL for the current guest download and returns a deferred
+//! cache fill for future runs. The executor starts that fill only after the
+//! agent process has spawned. Once guest staging succeeds, the plan's
 //! archive source is resolved to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
 //! so `guest-download` reads the guest-local staged archive instead of
@@ -90,6 +91,8 @@ const STORAGE_CACHE_BACKGROUND_FILL_RETRYABLE_SKIPPED: &str =
 const STORAGE_CACHE_BACKGROUND_FILL_SKIPPED: &str = "storage_cache_background_fill_skipped";
 const STORAGE_CACHE_BACKGROUND_FILL_FAILED: &str = "storage_cache_background_fill_failed";
 const STORAGE_CACHE_BACKGROUND_FILL_FAILED_ERROR: &str = "background-fill-failed";
+const STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY: &str =
+    "storage_cache_background_fill_deferred_delay";
 
 /// Guest-side filename for a cached archive.
 ///
@@ -116,6 +119,39 @@ struct CacheTarget {
 #[derive(Clone)]
 struct CacheTargetGroup {
     targets: Vec<CacheTarget>,
+}
+
+/// Cold cache work selected during storage planning but not yet started.
+///
+/// Before [`Self::start`], this value owns archive URLs but no HTTP client,
+/// task, cache lock, or file, so dropping it on a pre-spawn failure requires
+/// no asynchronous cleanup.
+#[must_use = "deferred storage cache fill must be started after agent spawn or explicitly dropped"]
+pub(crate) struct DeferredBackgroundFill {
+    groups: Vec<CacheTargetGroup>,
+    home: HomePaths,
+    selected_at: Instant,
+}
+
+impl DeferredBackgroundFill {
+    pub(crate) fn start(self, telemetry: &mut JobTelemetry) {
+        telemetry.record(
+            STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY,
+            self.selected_at.elapsed(),
+            true,
+            None,
+        );
+        telemetry.record(
+            background_fill_scheduled_count_action(self.groups.len()),
+            Duration::ZERO,
+            true,
+            None,
+        );
+        let reporter = telemetry.reporter();
+        tokio::spawn(async move {
+            run_background_fill_groups(self.groups, self.home, reporter).await;
+        });
+    }
 }
 
 enum GroupOutcome {
@@ -616,7 +652,7 @@ impl ForegroundCacheMode {
         }
     }
 
-    fn schedules_background_fill(self) -> bool {
+    fn defers_background_fill(self) -> bool {
         matches!(self, Self::HitOrPassthrough)
     }
 }
@@ -626,7 +662,7 @@ pub async fn populate_cache(
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
-) -> RunnerResult<()> {
+) -> RunnerResult<Option<DeferredBackgroundFill>> {
     populate_cache_with_mode(
         plan,
         sandbox,
@@ -644,14 +680,16 @@ async fn populate_cache_passthrough_without_background(
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
-    populate_cache_with_mode(
+    let deferred = populate_cache_with_mode(
         plan,
         sandbox,
         home,
         telemetry,
         ForegroundCacheMode::HitOrPassthroughWithoutBackgroundFill,
     )
-    .await
+    .await?;
+    assert!(deferred.is_none());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -661,14 +699,16 @@ async fn populate_cache_blocking(
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
 ) -> RunnerResult<()> {
-    populate_cache_with_mode(
+    let deferred = populate_cache_with_mode(
         plan,
         sandbox,
         home,
         telemetry,
         ForegroundCacheMode::BlockingFill,
     )
-    .await
+    .await?;
+    assert!(deferred.is_none());
+    Ok(())
 }
 
 async fn populate_cache_with_mode(
@@ -677,10 +717,10 @@ async fn populate_cache_with_mode(
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
     mode: ForegroundCacheMode,
-) -> RunnerResult<()> {
+) -> RunnerResult<Option<DeferredBackgroundFill>> {
     let targets = collect_targets(plan);
     if targets.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let target_groups = group_targets(targets);
 
@@ -793,42 +833,48 @@ async fn populate_cache_with_mode(
     stage_metrics.record_total(telemetry);
     let outcomes = stage_result?;
 
-    if mode.uses_hit_or_passthrough() {
+    let deferred = if mode.uses_hit_or_passthrough() {
         record_passthrough_summary(&outcomes, telemetry);
-        if mode.schedules_background_fill() {
-            spawn_background_fill_groups(&outcomes, home.clone(), telemetry);
+        if mode.defers_background_fill() {
+            defer_background_fill_groups(&outcomes, home.clone(), telemetry)
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
     for (group, outcome) in outcomes {
         apply_group_outcome(plan, &group, &outcome, telemetry);
     }
-    Ok(())
+    Ok(deferred)
 }
 
-fn spawn_background_fill_groups(
+fn defer_background_fill_groups(
     outcomes: &[(CacheTargetGroup, GroupOutcome)],
     home: HomePaths,
     telemetry: &mut JobTelemetry,
-) {
+) -> Option<DeferredBackgroundFill> {
     let groups = outcomes
         .iter()
         .filter(|(_, outcome)| should_background_fill(outcome))
         .map(|(group, _)| group.clone())
         .collect::<Vec<_>>();
     if groups.is_empty() {
-        return;
+        return None;
     }
 
+    let selected_at = Instant::now();
     telemetry.record(
-        background_fill_scheduled_count_action(groups.len()),
+        background_fill_deferred_count_action(groups.len()),
         Duration::ZERO,
         true,
         None,
     );
-    let reporter = telemetry.reporter();
-    tokio::spawn(async move {
-        run_background_fill_groups(groups, home, reporter).await;
-    });
+    Some(DeferredBackgroundFill {
+        groups,
+        home,
+        selected_at,
+    })
 }
 
 fn should_background_fill(outcome: &GroupOutcome) -> bool {
@@ -2300,6 +2346,18 @@ fn background_fill_scheduled_count_action(count: usize) -> &'static str {
     }
 }
 
+fn background_fill_deferred_count_action(count: usize) -> &'static str {
+    match count_bucket(count) {
+        CountBucket::Zero => "storage_cache_background_fill_deferred_count_0",
+        CountBucket::One => "storage_cache_background_fill_deferred_count_1",
+        CountBucket::Two => "storage_cache_background_fill_deferred_count_2",
+        CountBucket::ThreeToFour => "storage_cache_background_fill_deferred_count_3_4",
+        CountBucket::FiveToEight => "storage_cache_background_fill_deferred_count_5_8",
+        CountBucket::NineToSixteen => "storage_cache_background_fill_deferred_count_9_16",
+        CountBucket::SeventeenPlus => "storage_cache_background_fill_deferred_count_17_plus",
+    }
+}
+
 fn background_fill_size_bucket_action(size: u64) -> &'static str {
     if size < 64 * 1024 {
         "storage_cache_background_fill_size_lt_64_kib"
@@ -2920,6 +2978,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn production_warm_hit_returns_no_deferred_fill() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let name = "production-warm-hit";
+        let version = "v1";
+        write_cached_archive(&home, name, version, &tarball_bytes());
+        let mut manifest = fresh_storage_plan(
+            "https://r2.example.com/never-called.tar.gz".into(),
+            name,
+            version,
+        );
+
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert!(deferred.is_none());
+        assert_eq!(
+            storage_archive_url(&manifest, 0),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        assert_eq!(sandbox.write_files_calls().len(), 1);
+        let ops = telemetry.pending_ops_snapshot();
+        assert_no_op(&ops, "storage_cache_background_fill_deferred_count_1");
+        assert_no_op(&ops, "storage_cache_background_fill_scheduled_count_1");
+    }
+
+    #[tokio::test]
     async fn guarded_hit_path_reads_from_disk_and_rewrites_url() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
@@ -3050,7 +3138,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn miss_passthrough_fills_cache_in_background() {
+    async fn miss_passthrough_defers_cache_fill_until_started() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -3060,12 +3148,17 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let (allow_tx, allow_rx) = tokio::sync::oneshot::channel();
+        let (request_tx, mut request_rx) = tokio::sync::oneshot::channel();
         let server_task = tokio::spawn(async move {
             let mut allow_rx = Some(allow_rx);
+            let mut request_tx = Some(request_tx);
             for response in [partial_content_response(body.len()), ok_response(&body)] {
                 let (mut socket, _) = listener.accept().await?;
                 let mut request = [0u8; 1024];
                 let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+                if let Some(request_tx) = request_tx.take() {
+                    let _ = request_tx.send(());
+                }
                 if let Some(allow_rx) = allow_rx.take() {
                     let _ = allow_rx.await;
                 }
@@ -3078,11 +3171,16 @@ mod tests {
         let original = format!("http://{addr}/archive.tar.gz");
         let mut manifest = fresh_storage_plan(original.clone(), name, version);
 
-        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
-            .unwrap();
+            .unwrap()
+            .expect("cold miss should return deferred cache fill");
 
         assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
+        assert!(matches!(
+            request_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
         assert!(
             !home
                 .storage_cache_dir(name, version)
@@ -3092,6 +3190,17 @@ mod tests {
         assert!(sandbox.write_file_calls().is_empty());
         assert!(sandbox.write_files_calls().is_empty());
 
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
+        assert_op(&ops, "storage_cache_background_fill_deferred_count_1", true);
+        assert_no_op(&ops, "storage_cache_background_fill_scheduled_count_1");
+        assert_no_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY);
+
+        deferred.start(&mut telemetry);
+        tokio::time::timeout(Duration::from_secs(5), &mut request_rx)
+            .await
+            .expect("started background fill should contact archive server")
+            .expect("archive request sender should remain available");
         allow_tx.send(()).unwrap();
         await_raw_http_sequence(server_task).await;
         assert_eq!(
@@ -3100,14 +3209,59 @@ mod tests {
         );
 
         let ops = telemetry.pending_ops_snapshot();
-        assert_op_error(&ops, STORAGE_CACHE_MISS_PASSTHROUGH, "missing");
         assert_op(
             &ops,
             "storage_cache_background_fill_scheduled_count_1",
             true,
         );
+        assert_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY, true);
         assert_no_op(&ops, "storage_cache_miss");
         assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
+    async fn dropped_deferred_fill_starts_no_http_or_cache_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (request_tx, mut request_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let _ = request_tx.send(());
+                let _ = socket
+                    .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            }
+        });
+        let name = "dropped-background-miss";
+        let version = "v1";
+        let original = format!("http://{addr}/archive.tar.gz");
+        let mut manifest = fresh_storage_plan(original.clone(), name, version);
+
+        let deferred = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap()
+            .expect("cold miss should return deferred cache fill");
+        drop(deferred);
+        tokio::task::yield_now().await;
+
+        assert_eq!(storage_archive_url(&manifest, 0), Some(original.as_str()));
+        assert!(matches!(
+            request_rx.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(!home.storage_cache_dir(name, version).exists());
+        assert!(!home.storage_lock(name, version).exists());
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, "storage_cache_background_fill_deferred_count_1", true);
+        assert_no_op(&ops, "storage_cache_background_fill_scheduled_count_1");
+        assert_no_op(&ops, STORAGE_CACHE_BACKGROUND_FILL_DEFERRED_DELAY);
+
+        server_task.abort();
+        let _ = server_task.await;
     }
 
     #[tokio::test]
