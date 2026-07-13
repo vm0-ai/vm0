@@ -35,6 +35,11 @@ class _FailOnIterationList(list[str]):
         raise AssertionError("resolved host policy lists must not be reparsed during requests")
 
 
+class _FailOnIterationDict(dict[str, object]):
+    def __iter__(self) -> Iterator[str]:
+        raise AssertionError("resolved host policy objects must not be reparsed during requests")
+
+
 def _write_test_oauth_registry(tmp_path):
     return _write_registry(
         tmp_path,
@@ -90,7 +95,13 @@ def _write_host_policy_registry(
     )
 
 
-def _write_resolved_host_policy_registry(tmp_path):
+def _write_resolved_host_policy_registry(
+    tmp_path,
+    *,
+    firewall_name: str,
+    base: str,
+    host_policy: dict[str, object],
+):
     registry_path = _write_registry(
         tmp_path,
         client_ip="10.200.0.5",
@@ -100,9 +111,9 @@ def _write_resolved_host_policy_registry(tmp_path):
             "encryptedSecrets": "iv:tag:data",
             "networkLogPath": str(tmp_path / "net.jsonl"),
             "proxyLogPath": str(tmp_path / "proxy.jsonl"),
-            "firewalls": [{"kind": "builtin", "name": "jira"}],
+            "firewalls": [{"kind": "builtin", "name": firewall_name}],
             "networkPolicies": {
-                "jira": {
+                firewall_name: {
                     "allow": ["full-access"],
                     "deny": [],
                     "ask": [],
@@ -122,18 +133,15 @@ def _write_resolved_host_policy_registry(tmp_path):
                 "catalogVersion": "catalog-test",
                 "updatedAt": "2026-07-07T00:00:00.000Z",
                 "firewalls": {
-                    "jira": {
-                        "name": "jira",
+                    firewall_name: {
+                        "name": firewall_name,
                         "apis": [
                             {
-                                "base": "https://acme.atlassian.net",
+                                "base": base,
                                 "auth": {
                                     "headers": {"Authorization": "Bearer ${{ secrets.TEST_TOKEN }}"}
                                 },
-                                "hostPolicy": {
-                                    "kind": "providerOwned",
-                                    "suffixes": ["atlassian.net"],
-                                },
+                                "hostPolicy": host_policy,
                                 "permissions": [
                                     {
                                         "name": "full-access",
@@ -473,7 +481,12 @@ async def test_runtime_host_policy_allows_provider_owned_request_authority(
 async def test_resolved_host_policy_reuses_compiled_policy_across_requests(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_resolved_host_policy_registry(tmp_path)
+    reg_path = _write_resolved_host_policy_registry(
+        tmp_path,
+        firewall_name="jira",
+        base="https://acme.atlassian.net",
+        host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
+    )
     flows = [
         real_flow(
             with_response=False,
@@ -512,6 +525,49 @@ async def test_resolved_host_policy_reuses_compiled_policy_across_requests(
         assert flow.request.headers["Authorization"] == "Bearer x"
         assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert auth_fetch.await_count == 2
+
+
+async def test_resolved_public_destination_host_policy_uses_compiled_policy(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_resolved_host_policy_registry(
+        tmp_path,
+        firewall_name="strapi",
+        base="https://strapi.example.com",
+        host_policy={"kind": "publicDestination"},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="8.8.8.8",
+        sni="strapi.example.com",
+        path="/api/articles",
+        request_headers=headers(("Host", "strapi.example.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        context = registry.get_vm_context("10.200.0.5", str(reg_path))
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        api = vm_info["firewalls"][0]["apis"][0]
+        assert isinstance(
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+        raw_host_policy = api["hostPolicy"]
+        assert raw_host_policy == {"kind": "publicDestination"}
+        api["hostPolicy"] = _FailOnIterationDict({"kind": "publicDestination"})
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    auth_fetch.assert_awaited_once()
 
 
 async def test_runtime_host_policy_rejects_invalid_runtime_marker(
