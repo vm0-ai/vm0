@@ -19,7 +19,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
+use super::active_sessions::{ActiveSandboxReuseIdentityCounts, ActiveSandboxReuseIdentityGuard};
 use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::HeldSessionStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
@@ -80,7 +80,7 @@ pub(super) struct SpawnContext {
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
-    pub(super) active_cli_agent_sessions: ActiveCliAgentSessions,
+    pub(super) active_sandbox_reuse_identities: ActiveSandboxReuseIdentityCounts,
     pub(super) held_session_snapshot: HeldSessionStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
@@ -97,7 +97,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
-    pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
+    pub(super) active_sandbox_reuse_identity_guard: ActiveSandboxReuseIdentityGuard,
 }
 
 struct ExecutorInvocation {
@@ -390,7 +390,7 @@ struct CompletionPhase {
     status: Arc<StatusTracker>,
     usage_flush_tx: mpsc::Sender<()>,
     park_notify: Arc<tokio::sync::Notify>,
-    active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
+    active_sandbox_reuse_identity_guard: ActiveSandboxReuseIdentityGuard,
     cleanup_state: RunCleanupState,
 }
 
@@ -402,7 +402,7 @@ impl CompletionPhase {
             status,
             usage_flush_tx,
             park_notify,
-            active_cli_agent_session_guard,
+            active_sandbox_reuse_identity_guard,
             cleanup_state,
         } = self;
 
@@ -413,7 +413,7 @@ impl CompletionPhase {
         completion_ready
             .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
             .await;
-        drop(active_cli_agent_session_guard);
+        drop(active_sandbox_reuse_identity_guard);
         if session_affinity_changed {
             park_notify.notify_one();
         }
@@ -495,7 +495,7 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        active_cli_agent_session_guard,
+        active_sandbox_reuse_identity_guard,
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
@@ -629,7 +629,7 @@ pub(super) fn spawn_job(
         .record_phase_elapsed(RunnerPreSpawnPhase::SpawnJobSetup, started_at);
     executor.pre_spawn_timing.mark_task_enqueued();
     jobs.spawn(async move {
-        let mut active_cli_agent_session_guard = active_cli_agent_session_guard;
+        let mut active_sandbox_reuse_identity_guard = active_sandbox_reuse_identity_guard;
         let body = async move {
             #[cfg(test)]
             maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
@@ -640,7 +640,7 @@ pub(super) fn spawn_job(
                 .discovered_cli_agent_session_id
                 .as_deref()
             {
-                active_cli_agent_session_guard.activate_late(discovered_cli_agent_session_id);
+                active_sandbox_reuse_identity_guard.activate_late(discovered_cli_agent_session_id);
             }
             let cancelled_for_log = job_cancel.is_cancelled();
             log_terminal_job_outcome(
@@ -661,7 +661,7 @@ pub(super) fn spawn_job(
                 status,
                 usage_flush_tx,
                 park_notify,
-                active_cli_agent_session_guard,
+                active_sandbox_reuse_identity_guard,
                 cleanup_state: cleanup_state_for_body,
             }
             .complete(completion_ready)
@@ -1365,8 +1365,8 @@ mod tests {
             "finalizer should send the early park refresh"
         );
 
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
-        let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
+        let active_sessions = super::super::active_sessions::new_active_sandbox_reuse_identities();
+        let active_sandbox_reuse_identity_guard = ActiveSandboxReuseIdentityGuard::new(
             Arc::clone(&active_sessions),
             Some(crate::test_fixtures::sandbox_reuse_identity_for_test(session_id).scope()),
             Some(session_id.to_owned()),
@@ -1379,14 +1379,14 @@ mod tests {
             status: Arc::clone(&fixture.status),
             usage_flush_tx,
             park_notify: Arc::clone(&fixture.park_notify),
-            active_cli_agent_session_guard,
+            active_sandbox_reuse_identity_guard,
             cleanup_state: RunCleanupState::new(),
         }
         .complete(finalized.completion_ready)
         .await;
 
         assert!(
-            super::super::active_sessions::active_cli_agent_session_ids(&active_sessions)
+            super::super::active_sessions::active_sandbox_reuse_identity_set(&active_sessions)
                 .is_empty(),
             "completion should release the active session guard before notifying"
         );

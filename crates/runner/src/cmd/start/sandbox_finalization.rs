@@ -1302,7 +1302,7 @@ mod tests {
         let cache_states = cache.held_session_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].session_id, session_id);
-        let active_sessions = super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_sessions = super::super::active_sessions::new_active_sandbox_reuse_identities();
         let snapshot_states =
             held_session_snapshot.current_held_session_states(Vec::new(), &active_sessions, None);
         assert_eq!(snapshot_states.len(), 1);

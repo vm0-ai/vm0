@@ -560,7 +560,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                     run_id,
                     sandbox_id,
                     params,
-                    Some(&idle_sandbox_reuse_identity),
+                    &idle_sandbox_reuse_identity,
                 ) {
                     Ok(lease) => Some(lease),
                     Err(identity_failure) => {
@@ -643,7 +643,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                     run_id,
                     sandbox_id,
                     params,
-                    Some(&idle_sandbox_reuse_identity),
+                    &idle_sandbox_reuse_identity,
                 ) {
                     Ok(lease) => lease,
                     Err(identity_failure) => {
@@ -766,14 +766,8 @@ fn reused_promotion_into_active_lease(
     run_id: RunId,
     sandbox_id: SandboxId,
     params: &JobParams,
-    sandbox_reuse_identity: Option<&crate::sandbox_reuse_identity::SandboxReuseIdentity>,
+    sandbox_reuse_identity: &crate::sandbox_reuse_identity::SandboxReuseIdentity,
 ) -> Result<WorkspaceImageLease, Box<WorkspaceImagePromotionIdentityFailure>> {
-    let Some(sandbox_reuse_identity) = sandbox_reuse_identity else {
-        return Err(Box::new(WorkspaceImagePromotionIdentityFailure {
-            promotion,
-            mismatch: WorkspaceImagePromotionIdentityMismatch::SandboxReuseScope,
-        }));
-    };
     let expected = match cache
         .expected_promotion_identity(
             WorkspaceImagePromotionIdentityRequest {

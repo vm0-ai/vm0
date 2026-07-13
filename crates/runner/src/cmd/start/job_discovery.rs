@@ -13,7 +13,7 @@ use sandbox::SandboxId;
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
-use super::active_sessions::ActiveCliAgentSessionGuard;
+use super::active_sessions::ActiveSandboxReuseIdentityGuard;
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
@@ -167,8 +167,8 @@ pub(super) async fn handle_discovered_job(
     // Hide the claimed session from heartbeat affinity before unpark or
     // fallback cleanup can yield. Otherwise a concurrent heartbeat could
     // briefly advertise stale workspace-cache affinity for an active session.
-    let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
-        ctx.spawn_ctx.active_cli_agent_sessions.clone(),
+    let active_sandbox_reuse_identity_guard = ActiveSandboxReuseIdentityGuard::new(
+        ctx.spawn_ctx.active_sandbox_reuse_identities.clone(),
         claimed.context().sandbox_reuse_scope(),
         if resume_session_valid {
             claimed.context().cli_agent_session_id().map(str::to_owned)
@@ -297,7 +297,7 @@ pub(super) async fn handle_discovered_job(
             reuse_result,
             pre_spawn_timing,
             session_history_restore_plan,
-            active_cli_agent_session_guard,
+            active_sandbox_reuse_identity_guard,
         },
         ctx.spawn_ctx,
         ctx.jobs,
@@ -569,7 +569,11 @@ async fn current_local_held_session_states(
     };
     ctx.spawn_ctx
         .held_session_snapshot
-        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_cli_agent_sessions, None)
+        .current_held_session_states(
+            idle_states,
+            &ctx.spawn_ctx.active_sandbox_reuse_identities,
+            None,
+        )
 }
 
 async fn acquire_local_admission_resource(

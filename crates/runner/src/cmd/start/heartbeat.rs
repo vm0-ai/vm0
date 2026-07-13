@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tracing::{debug, info};
 
-use super::active_sessions::{ActiveCliAgentSessions, active_cli_agent_session_ids};
+use super::active_sessions::{ActiveSandboxReuseIdentityCounts, active_sandbox_reuse_identity_set};
 use crate::config::ProfileConfig;
 use crate::idle_pool::IdlePool;
 use crate::provider::JobProvider;
@@ -30,7 +30,7 @@ pub(super) struct HeartbeatContext<'a> {
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
     workspace_cache: Option<SessionWorkspaceCache>,
-    active_cli_agent_sessions: &'a ActiveCliAgentSessions,
+    active_sandbox_reuse_identities: &'a ActiveSandboxReuseIdentityCounts,
     held_session_snapshot: HeldSessionStateSnapshot,
 }
 
@@ -43,7 +43,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) budget: &'a ResourceBudget,
     pub(super) provider: &'a dyn JobProvider,
     pub(super) workspace_cache: Option<SessionWorkspaceCache>,
-    pub(super) active_cli_agent_sessions: &'a ActiveCliAgentSessions,
+    pub(super) active_sandbox_reuse_identities: &'a ActiveSandboxReuseIdentityCounts,
     pub(super) held_session_snapshot: HeldSessionStateSnapshot,
 }
 
@@ -58,7 +58,7 @@ impl<'a> HeartbeatContext<'a> {
             budget: init.budget,
             provider: init.provider,
             workspace_cache: init.workspace_cache,
-            active_cli_agent_sessions: init.active_cli_agent_sessions,
+            active_sandbox_reuse_identities: init.active_sandbox_reuse_identities,
             held_session_snapshot: init.held_session_snapshot,
         }
     }
@@ -147,14 +147,14 @@ impl HeldSessionStateSnapshot {
     pub(super) fn current_held_session_states(
         &self,
         idle_states: Vec<HeldSessionState>,
-        active_cli_agent_sessions: &ActiveCliAgentSessions,
+        active_sandbox_reuse_identities: &ActiveSandboxReuseIdentityCounts,
         extra_active_session: Option<&SandboxReuseIdentity>,
     ) -> Vec<HeldSessionState> {
         let workspace_cache_states = self.lock_inner().workspace_cache_states.clone();
         merge_current_held_session_states(
             idle_states,
             workspace_cache_states,
-            active_cli_agent_sessions,
+            active_sandbox_reuse_identities,
             extra_active_session,
         )
     }
@@ -188,7 +188,7 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
     state.held_session_states = merge_current_held_session_states(
         state.held_session_states,
         workspace_cache_states,
-        hb.active_cli_agent_sessions,
+        hb.active_sandbox_reuse_identities,
         None,
     );
     info!(
@@ -226,20 +226,21 @@ async fn workspace_cache_held_session_states(
 fn merge_current_held_session_states(
     idle_states: Vec<HeldSessionState>,
     cache_states: Vec<HeldSessionState>,
-    active_cli_agent_sessions: &ActiveCliAgentSessions,
+    active_sandbox_reuse_identities: &ActiveSandboxReuseIdentityCounts,
     extra_active_session: Option<&SandboxReuseIdentity>,
 ) -> Vec<HeldSessionState> {
-    let mut active_cli_agent_sessions = active_cli_agent_session_ids(active_cli_agent_sessions);
+    let mut active_sandbox_reuse_identities =
+        active_sandbox_reuse_identity_set(active_sandbox_reuse_identities);
     if let Some(identity) = extra_active_session {
-        active_cli_agent_sessions.insert(identity.clone());
+        active_sandbox_reuse_identities.insert(identity.clone());
     }
-    merge_held_session_states(idle_states, cache_states, &active_cli_agent_sessions)
+    merge_held_session_states(idle_states, cache_states, &active_sandbox_reuse_identities)
 }
 
 fn merge_held_session_states(
     idle_states: Vec<HeldSessionState>,
     cache_states: Vec<HeldSessionState>,
-    active_cli_agent_sessions: &std::collections::HashSet<SandboxReuseIdentity>,
+    active_sandbox_reuse_identities: &std::collections::HashSet<SandboxReuseIdentity>,
 ) -> Vec<HeldSessionState> {
     let mut by_session =
         std::collections::BTreeMap::<SandboxReuseIdentity, HeldSessionState>::new();
@@ -247,7 +248,7 @@ fn merge_held_session_states(
         let Some(identity) = state.sandbox_reuse_identity() else {
             continue;
         };
-        if active_cli_agent_sessions.contains(&identity) {
+        if active_sandbox_reuse_identities.contains(&identity) {
             continue;
         }
         by_session.insert(identity, state);
@@ -256,7 +257,7 @@ fn merge_held_session_states(
         let Some(identity) = state.sandbox_reuse_identity() else {
             continue;
         };
-        if active_cli_agent_sessions.contains(&identity) {
+        if active_sandbox_reuse_identities.contains(&identity) {
             continue;
         }
         match by_session.get_mut(&identity) {
@@ -659,8 +660,8 @@ mod tests {
         seed_workspace_cache_state(&cache, &paths, session_id, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        let active_cli_agent_sessions =
-            super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_sandbox_reuse_identities =
+            super::super::active_sessions::new_active_sandbox_reuse_identities();
         let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
         let held_session_snapshot = HeldSessionStateSnapshot::new();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
@@ -672,7 +673,7 @@ mod tests {
             budget: &budget,
             provider: provider.as_ref(),
             workspace_cache: Some(cache),
-            active_cli_agent_sessions: &active_cli_agent_sessions,
+            active_sandbox_reuse_identities: &active_sandbox_reuse_identities,
             held_session_snapshot: held_session_snapshot.clone(),
         });
 
@@ -693,7 +694,7 @@ mod tests {
         }
         let cached_states = held_session_snapshot.current_held_session_states(
             Vec::new(),
-            &active_cli_agent_sessions,
+            &active_sandbox_reuse_identities,
             None,
         );
         assert_eq!(cached_states.len(), 1);
@@ -709,8 +710,8 @@ mod tests {
         seed_workspace_cache_state(&cache, &paths, "sess-cache", "2026-06-01T00:00:00.000Z").await;
         seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
             .await;
-        let active_cli_agent_sessions =
-            super::super::active_sessions::new_active_cli_agent_sessions();
+        let active_sandbox_reuse_identities =
+            super::super::active_sessions::new_active_sandbox_reuse_identities();
         let idle = vec![HeldSessionState {
             sandbox_reuse_scope: test_scope_wire(),
             session_id: "sess-idle".into(),
@@ -723,7 +724,7 @@ mod tests {
         let states = merge_current_held_session_states(
             idle,
             cache_states,
-            &active_cli_agent_sessions,
+            &active_sandbox_reuse_identities,
             Some(&claimed_identity),
         );
 
@@ -769,10 +770,10 @@ mod tests {
                 },
             ],
         );
-        let active_cli_agent_sessions =
-            super::super::active_sessions::new_active_cli_agent_sessions();
-        super::super::active_sessions::insert_active_cli_agent_session(
-            &active_cli_agent_sessions,
+        let active_sandbox_reuse_identities =
+            super::super::active_sessions::new_active_sandbox_reuse_identities();
+        super::super::active_sessions::insert_active_sandbox_reuse_identity(
+            &active_sandbox_reuse_identities,
             &test_identity("sess-active"),
         );
         let idle = vec![
@@ -793,7 +794,7 @@ mod tests {
         let claimed_identity = test_identity("sess-claimed");
         let states = snapshot.current_held_session_states(
             idle,
-            &active_cli_agent_sessions,
+            &active_sandbox_reuse_identities,
             Some(&claimed_identity),
         );
 
@@ -867,10 +868,13 @@ mod tests {
             });
         }
 
-        let active_cli_agent_sessions =
-            super::super::active_sessions::new_active_cli_agent_sessions();
-        let states =
-            snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
+        let active_sandbox_reuse_identities =
+            super::super::active_sessions::new_active_sandbox_reuse_identities();
+        let states = snapshot.current_held_session_states(
+            Vec::new(),
+            &active_sandbox_reuse_identities,
+            None,
+        );
 
         assert_eq!(states.len(), MAX_HELD_SESSION_STATES);
         assert!(
@@ -907,17 +911,23 @@ mod tests {
         let refreshed = snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
         assert_eq!(refreshed, vec![original.clone(), promoted.clone()]);
 
-        let active_cli_agent_sessions =
-            super::super::active_sessions::new_active_cli_agent_sessions();
-        let states =
-            snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
+        let active_sandbox_reuse_identities =
+            super::super::active_sessions::new_active_sandbox_reuse_identities();
+        let states = snapshot.current_held_session_states(
+            Vec::new(),
+            &active_sandbox_reuse_identities,
+            None,
+        );
         assert_eq!(states, vec![original.clone(), promoted]);
 
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
 
-        let states =
-            snapshot.current_held_session_states(Vec::new(), &active_cli_agent_sessions, None);
+        let states = snapshot.current_held_session_states(
+            Vec::new(),
+            &active_sandbox_reuse_identities,
+            None,
+        );
         assert_eq!(states, vec![original]);
     }
 

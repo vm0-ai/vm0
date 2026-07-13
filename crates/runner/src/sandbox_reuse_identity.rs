@@ -62,8 +62,7 @@ impl SandboxReuseScope {
 }
 
 /// Complete authorization identity for idle VM and workspace-cache reuse.
-#[derive(Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct SandboxReuseIdentity {
     scope: SandboxReuseScope,
     cli_agent_session_id: String,

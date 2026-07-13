@@ -59,8 +59,9 @@ pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
 /// The raw CLI session id is untrusted and must not be embedded directly in
 /// host paths. The working-dir argument is intentionally ignored: workspace
 /// image cache identity is based on canonical workspace semantics. The key
-/// includes the cache scope, profile, drive layout version, and logical image
-/// size so incompatible workspace images never share a host entry.
+/// includes the runner cache scope, profile, sandbox-reuse scope, CLI agent
+/// session id, drive layout version, and logical image size so incompatible or
+/// differently owned workspace images never share a host entry.
 #[cfg(test)]
 pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
     let identity = crate::test_fixtures::sandbox_reuse_identity_for_test(session_id);
