@@ -246,6 +246,7 @@ pub(crate) fn execution_context_for_test(run_id: RunId) -> ExecutionContext {
 pub(crate) async fn run_ignored_child_test(
     child_test_name: &str,
     env_guard: (&str, &str),
+    child_env: &[(&str, Option<&str>)],
     timeout: Duration,
 ) {
     let (env_guard_key, env_guard_value) = env_guard;
@@ -277,6 +278,16 @@ pub(crate) async fn run_ignored_child_test(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     command.env(env_guard_key, env_guard_value);
+    for &(key, value) in child_env {
+        match value {
+            Some(value) => {
+                command.env(key, value);
+            }
+            None => {
+                command.env_remove(key);
+            }
+        }
+    }
 
     let mut child = command.spawn().expect("spawn ignored child test");
     let stdout = child
@@ -501,6 +512,7 @@ mod tests {
         run_ignored_child_test(
             "test_fixtures::tests::run_ignored_child_test_large_success_output_child",
             (LARGE_SUCCESS_OUTPUT_CHILD_ENV, "1"),
+            &[],
             Duration::from_secs(5),
         )
         .await;
@@ -522,6 +534,7 @@ mod tests {
         run_ignored_child_test(
             "test_fixtures::tests::run_ignored_child_test_large_output_child",
             (LARGE_OUTPUT_CHILD_ENV, "1"),
+            &[],
             Duration::from_secs(5),
         )
         .await;
@@ -556,6 +569,7 @@ mod tests {
         run_ignored_child_test(
             "test_fixtures::tests::run_ignored_child_test_timeout_child",
             (TIMEOUT_CHILD_ENV, "1"),
+            &[],
             Duration::from_millis(10),
         )
         .await;
