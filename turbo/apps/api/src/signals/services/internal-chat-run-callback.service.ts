@@ -59,6 +59,7 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
@@ -83,7 +84,6 @@ const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
-const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 
 type ChatCallbackPreCreateTimingSpanKind = "top_level" | "nested";
 
@@ -299,30 +299,6 @@ interface CompletedChatOutputLoad {
   readonly resultFallback: ResultEventItem | null;
   readonly lastResultText: string | null;
   readonly skipExistingAssistantLookup: boolean;
-}
-
-interface IncompleteRoundRow {
-  readonly runId: string;
-  readonly runStatus: "cancelled" | "failed" | "timeout";
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly error: string | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
-}
-
-interface IncompleteRound {
-  readonly runId: string;
-  readonly status: "cancelled" | "failed" | "timeout";
-  readonly messages: IncompleteRoundMessage[];
-}
-
-interface IncompleteRoundMessage {
-  readonly role: "user" | "assistant";
-  readonly content: string | null;
-  readonly error: string | null;
-  readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
 }
 
 interface PriorRunMessage {
@@ -1291,13 +1267,6 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function truncateIncomplete(value: string): string {
-  if (value.length <= INCOMPLETE_MESSAGE_CHAR_CAP) {
-    return value;
-  }
-  return `${value.slice(0, INCOMPLETE_MESSAGE_CHAR_CAP)}...[truncated]`;
-}
-
 function formatPriorRunMessage(message: PriorRunMessage): string {
   const roleLabel = message.role === "user" ? "User" : "Assistant";
   const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
@@ -1336,181 +1305,6 @@ function buildWebChatPriorRunsContext(runs: readonly PriorRun[]): string {
     "",
     ...sections,
   ].join("\n");
-}
-
-function formatIncompleteMessage(message: IncompleteRoundMessage): string {
-  const attach = formatAttachFileIds(message.attachFiles);
-  if (message.role === "user") {
-    const body =
-      message.content !== null && message.content !== ""
-        ? truncateIncomplete(message.content)
-        : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
-  }
-  if (message.content !== null && message.content !== "") {
-    return `Assistant (partial): ${truncateIncomplete(message.content)}`;
-  }
-  return "Assistant: [no response before run ended]";
-}
-
-function buildWebChatIncompleteContext(
-  rounds: readonly IncompleteRound[],
-): string {
-  if (rounds.length === 0) {
-    return "";
-  }
-  const total = rounds.length;
-  const blocks = rounds.map((round, index) => {
-    const relativeIndex = index - total + 1;
-    const rendered = round.messages.map(formatIncompleteMessage);
-    const hasAssistant = round.messages.some((message) => {
-      return message.role === "assistant";
-    });
-    if (!hasAssistant) {
-      rendered.push("Assistant: [no response before run ended]");
-    }
-    return [
-      "---",
-      "",
-      `- RELATIVE_INDEX: ${relativeIndex}`,
-      `- RUN_STATUS: ${round.status}`,
-      "",
-      ...rendered,
-    ].join("\n");
-  });
-  return [
-    "# Incomplete Rounds Context",
-    "",
-    "The rounds below were sent in this thread but their runs did not complete",
-    "(cancelled, failed, or timed out), so the CLI session history does not",
-    "contain them. Treat them as part of the conversation you are having with",
-    "the user. RELATIVE_INDEX 0 is the most recent incomplete round.",
-    "",
-    blocks.join("\n\n"),
-    "",
-    "---",
-  ].join("\n");
-}
-
-function isIncompleteRunStatus(
-  value: string | null,
-): value is "cancelled" | "failed" | "timeout" {
-  return value === "cancelled" || value === "failed" || value === "timeout";
-}
-
-function groupIncompleteRoundsByRunId(
-  rows: readonly IncompleteRoundRow[],
-): readonly IncompleteRound[] {
-  const byRunId = new Map<string, IncompleteRound>();
-  const order: string[] = [];
-  for (const row of rows) {
-    let round = byRunId.get(row.runId);
-    if (!round) {
-      round = {
-        runId: row.runId,
-        status: row.runStatus,
-        messages: [],
-      };
-      byRunId.set(row.runId, round);
-      order.push(row.runId);
-    }
-    round.messages.push({
-      role: row.role,
-      content: row.content,
-      error: row.error,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-  }
-  return order.map((runId) => {
-    const round = byRunId.get(runId);
-    if (!round) {
-      throw new Error("Incomplete round grouping lost run id");
-    }
-    return round;
-  });
-}
-
-async function getIncompleteRoundsSinceLastSuccess(
-  db: Db,
-  threadId: string,
-  maxRounds = 20,
-): Promise<readonly IncompleteRoundRow[]> {
-  const rows = await db
-    .select({
-      runId: chatMessages.runId,
-      role: chatMessages.role,
-      content: chatMessages.content,
-      error: chatMessages.error,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
-      runStatus: agentRuns.status,
-      generationTemplate: chatMessages.generationTemplate,
-    })
-    .from(chatMessages)
-    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        visibleChatMessageCondition(),
-        inArray(agentRuns.status, ["cancelled", "failed", "timeout"]),
-        inArray(chatMessages.role, ["user", "assistant"]),
-        sql`${chatMessages.createdAt} > COALESCE(
-          (
-            SELECT MAX(cm2.created_at)
-            FROM chat_messages cm2
-            INNER JOIN agent_runs ar2 ON ar2.id = cm2.run_id
-            WHERE cm2.chat_thread_id = ${threadId}
-              AND NOT EXISTS (
-                SELECT 1
-                FROM chat_messages revoker2
-                WHERE revoker2.revokes_message_id = cm2.id
-              )
-              AND ar2.result ? 'agentSessionId'
-              AND jsonb_typeof(ar2.result->'agentSessionId') = 'string'
-          ),
-          '-infinity'::timestamptz
-        )`,
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
-
-  const candidates: IncompleteRoundRow[] = [];
-  for (const row of rows) {
-    if (row.runId === null || !isIncompleteRunStatus(row.runStatus)) {
-      continue;
-    }
-    if (row.role !== "user" && row.role !== "assistant") {
-      continue;
-    }
-    candidates.push({
-      runId: row.runId,
-      runStatus: row.runStatus,
-      role: row.role,
-      content: row.content,
-      error: row.error,
-      attachFiles: row.attachFiles,
-      generationTemplate: row.generationTemplate,
-    });
-  }
-
-  const orderedRunIds: string[] = [];
-  const seen = new Set<string>();
-  for (const row of candidates) {
-    if (!seen.has(row.runId)) {
-      seen.add(row.runId);
-      orderedRunIds.push(row.runId);
-    }
-  }
-  if (orderedRunIds.length <= maxRounds) {
-    return candidates;
-  }
-
-  const keep = new Set(orderedRunIds.slice(orderedRunIds.length - maxRounds));
-  return candidates.filter((row) => {
-    return keep.has(row.runId);
-  });
 }
 
 async function getLatestRunsByThreadId(
@@ -1866,7 +1660,7 @@ async function buildCreateQueuedChatRunInput(args: {
     },
   );
 
-  const [latestSession, incompleteRows] =
+  const [latestSession, loadedIncompleteContext] =
     await measureChatCallbackPreCreateTiming(
       args.timing,
       "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state",
@@ -1874,7 +1668,7 @@ async function buildCreateQueuedChatRunInput(args: {
       () => {
         return Promise.all([
           latestSessionForThreadFromDb(args.db, args.threadId),
-          getIncompleteRoundsSinceLastSuccess(args.db, args.threadId),
+          loadWebChatIncompleteContext(args.db, args.threadId),
         ]);
       },
     );
@@ -1882,11 +1676,7 @@ async function buildCreateQueuedChatRunInput(args: {
     latestSession,
     queuedMessage: resolvedQueuedMessage,
   });
-  const incompleteContext = startNewSession
-    ? ""
-    : buildWebChatIncompleteContext(
-        groupIncompleteRoundsByRunId(incompleteRows),
-      );
+  const incompleteContext = startNewSession ? "" : loadedIncompleteContext;
   const priorContext = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context",

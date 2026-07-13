@@ -440,6 +440,7 @@ async fn run_start_with_home(
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
+        ca_lock_path: home.ca_lock(),
         addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
@@ -568,7 +569,25 @@ async fn run_start_with_home(
         )
         .await
         {
-            Ok(handle) => break (runtime, handle),
+            Ok(handle) => {
+                if let Err(e) = runtime.activate_dns_readiness().await {
+                    memory_prefetch.cancel();
+                    handle.stop().await;
+                    runtime.shutdown().await;
+                    if let Err(kill_error) = mitm.kill_now().await {
+                        warn!(
+                            error = %kill_error,
+                            "failed to kill proxy after namespace DNS readiness failed"
+                        );
+                    }
+                    kmsg_handle.stop().await;
+                    memory_prefetch.drain().await;
+                    return Err(RunnerError::Internal(format!(
+                        "sandbox runtime DNS readiness: {e}"
+                    )));
+                }
+                break (runtime, handle);
+            }
             Err(e)
                 if e.kind() == std::io::ErrorKind::AddrInUse
                     && dns_start_attempt < DNS_START_MAX_ATTEMPTS =>

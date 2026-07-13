@@ -63,10 +63,13 @@ import { asanaProvider } from "./connectors/asana/provider";
 import { awsProvider } from "./connectors/aws/provider";
 import { base44Provider } from "./connectors/base44/provider";
 import { boxProvider } from "./connectors/box/provider";
+import { calComProvider } from "./connectors/cal-com/provider";
 import { canvaProvider } from "./connectors/canva/provider";
 import { closeProvider } from "./connectors/close/provider";
+import { copperProvider } from "./connectors/copper/provider";
 import { cloudflareProvider } from "./connectors/cloudflare/provider";
 import { deelProvider } from "./connectors/deel/provider";
+import { datadogProvider } from "./connectors/datadog/provider";
 import { docusignProvider } from "./connectors/docusign/provider";
 import { dropboxProvider } from "./connectors/dropbox/provider";
 import { figmaProvider } from "./connectors/figma/provider";
@@ -97,6 +100,7 @@ import { neonProvider } from "./connectors/neon/provider";
 import { nintendoSwitchParentalControlsProvider } from "./connectors/nintendo-switch-parental-controls/provider";
 import { nintendoStoreProvider } from "./connectors/nintendo-store/provider";
 import { notionProvider } from "./connectors/notion/provider";
+import { netsuiteProvider } from "./connectors/netsuite/provider";
 import { outlookCalendarProvider } from "./connectors/outlook-calendar/provider";
 import { outlookMailProvider } from "./connectors/outlook-mail/provider";
 import { redditProvider } from "./connectors/reddit/provider";
@@ -115,7 +119,9 @@ import { webflowProvider } from "./connectors/webflow/provider";
 import { supabaseProvider } from "./connectors/supabase/provider";
 import { metaAdsProvider } from "./connectors/meta-ads/provider";
 import { posthogProvider } from "./connectors/posthog/provider";
+import { paypalProvider } from "./connectors/paypal/provider";
 import { quickbooksProvider } from "./connectors/quickbooks/provider";
+import { rampProvider } from "./connectors/ramp/provider";
 import { playstationProvider } from "./connectors/playstation/provider";
 import { spotifyProvider } from "./connectors/spotify/provider";
 import { steamProvider } from "./connectors/steam/provider";
@@ -124,6 +130,7 @@ import { xProvider } from "./connectors/x/provider";
 import { xeroProvider } from "./connectors/xero/provider";
 import { youtubeProvider } from "./connectors/youtube/provider";
 import { zoomProvider } from "./connectors/zoom/provider";
+import { workdayProvider } from "./connectors/workday/provider";
 import {
   testOauthApiTokenProvider,
   testOauthApiProvider,
@@ -659,14 +666,17 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   externalCodeRefreshProviderEntry("aws", "cli", awsProvider),
   deviceAuthRefreshProviderEntry("base44", "oauth", base44Provider),
   authCodeRefreshProviderEntry("box", "oauth", boxProvider),
+  authCodeRefreshProviderEntry("cal-com", "oauth", calComProvider),
   authCodeRefreshProviderEntry("canva", "oauth", canvaProvider),
   authCodeRefreshProviderEntry("close", "oauth", closeProvider),
+  authCodeProviderEntry("copper", "oauth", copperProvider),
   authCodeRefreshTokenRevokeProviderEntry(
     "cloudflare",
     "oauth",
     cloudflareProvider,
   ),
   authCodeRefreshProviderEntry("deel", "oauth", deelProvider),
+  authCodeRefreshProviderEntry("datadog", "oauth", datadogProvider),
   authCodeRefreshProviderEntry("docusign", "oauth", docusignProvider),
   authCodeRefreshProviderEntry("dropbox", "oauth", dropboxProvider),
   authCodeRefreshProviderEntry("figma", "oauth", figmaProvider),
@@ -715,6 +725,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("microsoft-365", "oauth", microsoft365Provider),
   authCodeRefreshProviderEntry("monday", "oauth", mondayProvider),
   authCodeRefreshProviderEntry("neon", "oauth", neonProvider),
+  refreshProviderEntry("netsuite", "api-token", netsuiteProvider),
   externalCodeRefreshProviderEntry(
     "nintendo-store",
     "api",
@@ -733,8 +744,10 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   ),
   authCodeRefreshProviderEntry("outlook-mail", "oauth", outlookMailProvider),
   authCodeRefreshProviderEntry("posthog", "oauth", posthogProvider),
+  refreshProviderEntry("paypal", "api-token", paypalProvider),
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
+  refreshProviderEntry("ramp", "api-token", rampProvider),
   authCodeRefreshProviderEntry("reddit", "oauth", redditProvider),
   authCodeRefreshProviderEntry("sentry", "oauth", sentryProvider),
   authCodeTokenRevokeProviderEntry("slack", "oauth", slackProvider),
@@ -767,6 +780,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   authCodeRefreshProviderEntry("xero", "oauth", xeroProvider),
   authCodeRefreshTokenRevokeProviderEntry("youtube", "oauth", youtubeProvider),
   authCodeRefreshProviderEntry("zoom", "oauth", zoomProvider),
+  refreshProviderEntry("workday", "api-token", workdayProvider),
 ];
 
 const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY = buildRuntimeProviderRegistry(

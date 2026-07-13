@@ -46,7 +46,10 @@ interface BankingFixture {
 }
 
 interface SeedBankingFixtureArgs {
-  readonly triggerSource?: "automation";
+  readonly triggerSource?:
+    | "automation"
+    | "workflow-schedule"
+    | "workflow-event";
   readonly operationScopes?: readonly BankingOperationScope[];
   readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
@@ -98,21 +101,20 @@ async function seedBankingFixture(
     visibility: "private",
   });
 
-  const run =
-    args.triggerSource === "automation"
-      ? await api.createDirectRun(actor, {
-          agentComposeId: agent.agentId,
-          prompt: "banking automation precondition",
-          modelProviderType: "anthropic-api-key",
-          triggerSource: "automation",
-          vars: { ZERO_AGENT_ID: agent.agentId },
-          secrets: { ZERO_TOKEN: "bdd-banking-zero-token" },
-        })
-      : await api.createRun(actor, {
-          agentId: agent.agentId,
-          prompt: "banking precondition",
-          modelProvider: "anthropic-api-key",
-        });
+  const run = args.triggerSource
+    ? await api.createDirectRun(actor, {
+        agentComposeId: agent.agentId,
+        prompt: "banking automation precondition",
+        modelProviderType: "anthropic-api-key",
+        triggerSource: args.triggerSource,
+        vars: { ZERO_AGENT_ID: agent.agentId },
+        secrets: { ZERO_TOKEN: "bdd-banking-zero-token" },
+      })
+    : await api.createRun(actor, {
+        agentId: agent.agentId,
+        prompt: "banking precondition",
+        modelProvider: "anthropic-api-key",
+      });
 
   const providerCustomerId = randomProviderId("customer");
   const enabledAccountId = randomProviderId("acct-enabled");
@@ -411,37 +413,81 @@ describe("POST /api/zero/banking/*", () => {
     expect(authRequestCount).toBe(0);
   });
 
-  it("denies automation-triggered runs unless the banking grant allows them", async () => {
-    const fixture = await seedBankingFixture({ triggerSource: "automation" });
-    let authRequestCount = 0;
-    server.use(
-      http.post(FINICITY_AUTH_URL, () => {
-        authRequestCount += 1;
-        return HttpResponse.json({ token: "test-app-token" });
-      }),
-    );
+  it.each(["automation", "workflow-schedule", "workflow-event"] as const)(
+    "denies %s runs unless the banking grant allows automations",
+    async (triggerSource) => {
+      const fixture = await seedBankingFixture({ triggerSource });
+      let authRequestCount = 0;
+      server.use(
+        http.post(FINICITY_AUTH_URL, () => {
+          authRequestCount += 1;
+          return HttpResponse.json({ token: "test-app-token" });
+        }),
+      );
 
-    const client = setupApp({ context })(zeroBankingContract);
-    const response = await accept(
-      client.accounts({
-        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
-        body: {},
-      }),
-      [403],
-    );
+      const client = setupApp({ context })(zeroBankingContract);
+      const response = await accept(
+        client.accounts({
+          headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+          body: {},
+        }),
+        [403],
+      );
 
-    expect(response.body.error.message).toBe(
-      "Banking is not enabled for automation runs",
-    );
-    expect(authRequestCount).toBe(0);
-    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
-      {
-        action: "accounts.read",
-        status: "denied",
-        failureCode: "AUTOMATION_NOT_ALLOWED",
-      },
-    ]);
-  });
+      expect(response.body.error.message).toBe(
+        "Banking is not enabled for automation runs",
+      );
+      expect(authRequestCount).toBe(0);
+      await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+        {
+          action: "accounts.read",
+          status: "denied",
+          failureCode: "AUTOMATION_NOT_ALLOWED",
+        },
+      ]);
+    },
+  );
+
+  it.each(["workflow-schedule", "workflow-event"] as const)(
+    "allows %s runs when the banking grant allows automations",
+    async (triggerSource) => {
+      const fixture = await seedBankingFixture({
+        triggerSource,
+        allowAutomationRuns: true,
+      });
+      server.use(
+        finicityAuthHandler(),
+        http.get(
+          `${FINICITY_BASE_URL}/aggregation/v1/customers/${fixture.providerCustomerId}/accounts`,
+          () => {
+            return HttpResponse.json({ accounts: [] });
+          },
+        ),
+      );
+
+      const client = setupApp({ context })(zeroBankingContract);
+      const response = await accept(
+        client.accounts({
+          headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+          body: {},
+        }),
+        [200],
+      );
+
+      expect(response.body).toMatchObject({
+        operation: "accounts",
+        provider: "finicity",
+      });
+      expect(response.body.accounts).toHaveLength(1);
+      await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+        {
+          action: "accounts.read",
+          status: "allowed",
+          failureCode: null,
+        },
+      ]);
+    },
+  );
 
   it("denies revoked banking connections before provider access", async () => {
     const fixture = await seedBankingFixture({ connectionStatus: "revoked" });

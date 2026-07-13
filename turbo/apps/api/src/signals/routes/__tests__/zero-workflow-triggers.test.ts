@@ -761,7 +761,10 @@ describe("zero workflow triggers", () => {
   });
 
   it("rejects webhook event triggers when webhook trigger creation is disabled", async () => {
-    const { workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
+    });
     const rejected = await accept(
       triggersClient().create({
         headers: authHeaders(),

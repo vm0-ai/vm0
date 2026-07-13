@@ -24,7 +24,7 @@ from collections.abc import Awaitable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NoReturn
 
 from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -467,7 +467,7 @@ def _prebind_requestheaders_upstream_destination(
     if classification.kind != "firewall_allow":
         return
     allow = classification.firewall_allow
-    if allow is None or not _firewall_allow_injects_ordinary_upstream_credentials(allow):
+    if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
         return
     upstream_admission.ensure_bound_destination(
         flow,
@@ -542,10 +542,19 @@ def _builtin_host_policy_error_for_firewall_allow(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> builtin_host_policy.BuiltinRuntimeHostPolicyError | None:
-    if allow.api_entry.get(builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER) is not True:
+    marker_name = builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER
+    if marker_name not in allow.api_entry:
         return None
     if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
         return None
+    runtime_host_policy = allow.api_entry[marker_name]
+    if runtime_host_policy is True:
+        runtime_host_policy = allow.api_entry.get("hostPolicy")
+    elif not isinstance(runtime_host_policy, builtin_host_policy.CompiledBuiltinHostPolicy):
+        return builtin_host_policy.BuiltinRuntimeHostPolicyError(
+            reason="invalid_host_policy",
+            message=(f'builtin firewall "{allow.name}" runtime host policy state is invalid'),
+        )
     trusted_host = flow_metadata.trusted_authority_host(flow.metadata)
     if not trusted_host:
         return builtin_host_policy.BuiltinRuntimeHostPolicyError(
@@ -562,7 +571,7 @@ def _builtin_host_policy_error_for_firewall_allow(
             trusted_host=trusted_host,
             trusted_port=flow.request.port,
             auth_config=allow.api_entry.get("auth"),
-            host_policy=allow.api_entry.get("hostPolicy"),
+            host_policy=runtime_host_policy,
             upstream_endpoint=upstream_endpoint,
         )
     except builtin_host_policy.BuiltinRuntimeHostPolicyError as e:
@@ -812,59 +821,13 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         flow,
         defer_unresolved_public_destination=True,
     )
-    allow = classification.firewall_allow
-    vm_info = classification.vm_info
-    auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
     if classification.kind == "public_destination_denied":
-        public_destination_denial = classification.public_destination_denial
-        if public_destination_denial is not None:
-            _start_request_timing(flow)
-            _block_public_destination_denied(
-                flow,
-                public_destination_denial,
-                send_response=False,
-            )
-            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-            upstream_admission.forget_server_binding(flow.server_conn)
-            flow.kill()
-        return None
-
-    if connector_diagnostics.maybe_make_firewall_allow_local_response(
-        flow,
-        classification,
-        commit=False,
-    ):
-        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        upstream_admission.forget_server_binding(flow.server_conn)
-        return None
-
-    _prebind_requestheaders_upstream_destination(flow, classification)
-    if (
-        classification.kind == "firewall_allow"
-        and allow is not None
-        and vm_info is not None
-        and body_check.kind != "ok"
-        and auth_base
-    ):
         _start_request_timing(flow)
-        prepare_firewall_metadata(flow, allow, vm_info)
-        proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
-        firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-        if body_check.kind == "too_large":
-            mark_auth_base_request_too_large(
-                flow,
-                proxy_log_path=proxy_log_path,
-                firewall_base=firewall_base,
-                observed_size=body_check.observed_size,
-            )
-        else:
-            mark_auth_base_request_length_required(
-                flow,
-                proxy_log_path=proxy_log_path,
-                firewall_base=firewall_base,
-                reason=body_check.reason,
-            )
-        request_classification.pop_cached_classification(flow)
+        _block_public_destination_denied(
+            flow,
+            classification.public_destination_denial,
+            send_response=False,
+        )
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
         upstream_admission.forget_server_binding(flow.server_conn)
         flow.kill()
@@ -872,42 +835,83 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     if (
         classification.kind == "firewall_allow"
-        and allow is not None
-        and vm_info is not None
-        and auth_base
-        and body_check.kind == "ok"
+        and connector_diagnostics.maybe_make_firewall_allow_local_response(
+            flow,
+            classification,
+            commit=False,
+        )
     ):
-        try:
-            admission = auth_base_forwarder.reserve_forward_request_admission(
-                body_check.observed_size
-            )
-        except (
-            auth_base_forwarder.AuthBaseForwardingSaturatedError,
-            RuntimeError,
-        ):
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_admission.forget_server_binding(flow.server_conn)
+        return None
+
+    _prebind_requestheaders_upstream_destination(flow, classification)
+    if classification.kind == "firewall_allow":
+        allow = classification.firewall_allow
+        vm_info = classification.vm_info
+        auth_base = _firewall_allow_auth_base(allow)
+        if body_check.kind != "ok" and auth_base:
             _start_request_timing(flow)
             prepare_firewall_metadata(flow, allow, vm_info)
             proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
             firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
-            mark_auth_base_forwarding_saturated(
-                flow,
-                proxy_log_path=proxy_log_path,
-                firewall_base=firewall_base,
-            )
+            if body_check.kind == "too_large":
+                mark_auth_base_request_too_large(
+                    flow,
+                    proxy_log_path=proxy_log_path,
+                    firewall_base=firewall_base,
+                    observed_size=body_check.observed_size,
+                )
+            else:
+                mark_auth_base_request_length_required(
+                    flow,
+                    proxy_log_path=proxy_log_path,
+                    firewall_base=firewall_base,
+                    reason=body_check.reason,
+                )
             request_classification.pop_cached_classification(flow)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
             upstream_admission.forget_server_binding(flow.server_conn)
             flow.kill()
             return None
-        try:
-            auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
-        except BaseException:
-            auth_base_forwarder.release_forward_request_admission(admission)
-            raise
-        request_classification.cache_classification(flow, classification)
-        return None
 
-    if request_classification.should_stream_capture_request(classification):
+        if auth_base and body_check.kind == "ok":
+            try:
+                admission = auth_base_forwarder.reserve_forward_request_admission(
+                    body_check.observed_size
+                )
+            except (
+                auth_base_forwarder.AuthBaseForwardingSaturatedError,
+                RuntimeError,
+            ):
+                _start_request_timing(flow)
+                prepare_firewall_metadata(flow, allow, vm_info)
+                proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
+                firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+                mark_auth_base_forwarding_saturated(
+                    flow,
+                    proxy_log_path=proxy_log_path,
+                    firewall_base=firewall_base,
+                )
+                request_classification.pop_cached_classification(flow)
+                flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+                upstream_admission.forget_server_binding(flow.server_conn)
+                flow.kill()
+                return None
+            try:
+                auth_base_forwarder.attach_forward_request_admission_to_flow(flow, admission)
+            except BaseException:
+                auth_base_forwarder.release_forward_request_admission(admission)
+                raise
+            request_classification.cache_classification(flow, classification)
+            return None
+
+    if isinstance(
+        classification,
+        request_classification.ApiAllow
+        | request_classification.BrowserAllow
+        | request_classification.Allow,
+    ) and request_classification.should_stream_capture_request(classification):
         if classification.kind == "api_allow" and not upstream_admission.ensure_bound_destination(
             flow,
             kind="api_allow",
@@ -915,13 +919,17 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         ):
             _restore_request_headers_probe_metadata(flow, metadata_snapshot)
             return None
-        connector_diagnostics.record_allow_context(flow, classification)
+        if classification.kind == "allow":
+            connector_diagnostics.record_allow_context(flow, classification)
         request_classification.cache_classification(flow, classification)
         _start_request_timing(flow)
         request_streaming.configure_request_stream(flow)
         return None
 
-    if request_classification.should_try_firewall_stream_capture_request(classification):
+    if (
+        classification.kind == "firewall_allow"
+        and request_classification.should_try_firewall_stream_capture_request(classification)
+    ):
         return _try_firewall_request_stream_capture_from_headers(
             flow,
             classification=classification,
@@ -935,14 +943,11 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
 async def _try_firewall_request_stream_capture_from_headers(
     flow: http.HTTPFlow,
     *,
-    classification: request_classification.RequestClassification,
+    classification: request_classification.FirewallAllow,
     metadata_snapshot: dict[str, object],
 ) -> None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
-    if allow is None or vm_info is None:
-        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
-        return
     if _firewall_allow_injects_ordinary_upstream_credentials(
         allow
     ) and not upstream_admission.ensure_bound_destination(
@@ -1006,6 +1011,10 @@ def _block_public_destination_denied(
     )
 
 
+def _unhandled_request_classification(classification: NoReturn) -> NoReturn:
+    raise AssertionError(f"Unhandled request classification: {classification!r}")
+
+
 async def request(flow: http.HTTPFlow) -> None:
     """
     Intercept request: inject firewall auth headers for configured firewall rules.
@@ -1042,24 +1051,18 @@ async def request(flow: http.HTTPFlow) -> None:
             ctx.log.warn("No client IP available, passing through")
             return
         if classification.kind == "registry_unavailable":
-            unavailable = classification.registry_unavailable
-            if unavailable is not None:
-                _block_registry_unavailable(flow, unavailable)
+            _block_registry_unavailable(flow, classification.registry_unavailable)
             return
         if classification.kind == "stale_tls_admission":
             _block_stale_tls_admission(flow, reason=classification.stale_tls_reason)
             return
         if classification.kind == "invalid_registry_vm":
-            invalid_vm = classification.invalid_vm
-            if invalid_vm is not None:
-                _block_invalid_registry_vm(flow, invalid_vm)
+            _block_invalid_registry_vm(flow, classification.invalid_vm)
             return
         if classification.kind == "pass_through":
             return
         if classification.kind == "authority_denied":
-            authority_error = classification.authority_error
-            if authority_error is not None:
-                _block_authority_validation_error(flow, authority_error)
+            _block_authority_validation_error(flow, classification.authority_error)
             return
         if classification.kind == "api_allow":
             if not upstream_admission.ensure_bound_destination(
@@ -1079,25 +1082,17 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
             return
         if classification.kind == "firewall_ambiguous":
-            firewall_ambiguous = classification.firewall_ambiguous
-            if firewall_ambiguous is not None:
-                _set_firewall_ambiguous_response(flow, firewall_ambiguous)
+            _set_firewall_ambiguous_response(flow, classification.firewall_ambiguous)
             return
         if classification.kind == "firewall_block":
-            firewall_block = classification.firewall_block
-            if firewall_block is not None:
-                _set_firewall_block_response(flow, firewall_block)
+            _set_firewall_block_response(flow, classification.firewall_block)
             return
         if classification.kind == "public_destination_denied":
-            public_destination_denial = classification.public_destination_denial
-            if public_destination_denial is not None:
-                _block_public_destination_denied(flow, public_destination_denial)
+            _block_public_destination_denied(flow, classification.public_destination_denial)
             return
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
             vm_info = classification.vm_info
-            if allow is None or vm_info is None:
-                return
             public_destination_denial = request_classification.current_public_destination_denial(
                 flow,
                 allow,
@@ -1151,18 +1146,21 @@ async def request(flow: http.HTTPFlow) -> None:
                 terminal_usage.release_tracked_flow(flow)
             return
 
-        vm_info = classification.vm_info
-        if vm_info is None:
+        if classification.kind == "allow":
+            connector_diagnostics.record_allow_context(flow, classification)
+            if request_streaming.streamed_request_size(flow) is None:
+                original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+                if isinstance(
+                    original_url, str
+                ) and connector_diagnostics.maybe_make_local_response(
+                    flow,
+                    original_url=original_url,
+                ):
+                    return
+            flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             return
-        connector_diagnostics.record_allow_context(flow, classification)
-        if request_streaming.streamed_request_size(flow) is None:
-            original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-            if isinstance(original_url, str) and connector_diagnostics.maybe_make_local_response(
-                flow,
-                original_url=original_url,
-            ):
-                return
-        flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
+
+        _unhandled_request_classification(classification)
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)

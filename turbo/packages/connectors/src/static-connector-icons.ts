@@ -62,6 +62,7 @@ const STATIC_CONNECTOR_ICON_PATHS = {
     "views/zero-page/components/settings/icons/bentolabs-ai-b3d6223fb7a9.png",
   bentoml: "views/zero-page/components/settings/icons/bentoml-2f0b56c3ad28.svg",
   bfl: "views/zero-page/components/settings/icons/bfl-c8dada65dc9e.svg",
+  bill: "views/zero-page/components/settings/icons/bill-c897cc11b29d.png",
   bitrefill:
     "views/zero-page/components/settings/icons/bitrefill-b8e5facc9514.svg",
   bitrix: "views/zero-page/components/settings/icons/bitrix-6bdd38c9a309.svg",
@@ -111,6 +112,7 @@ const STATIC_CONNECTOR_ICON_PATHS = {
     "views/zero-page/components/settings/icons/coingecko-5267811161ec.svg",
   coresignal:
     "views/zero-page/components/settings/icons/coresignal-2b7ff39b9e1a.svg",
+  copper: "views/zero-page/components/settings/icons/copper-9af856b34cde.svg",
   cronlytic:
     "views/zero-page/components/settings/icons/cronlytic-76fb40c74299.svg",
   crustdata:
@@ -118,6 +120,7 @@ const STATIC_CONNECTOR_ICON_PATHS = {
   cursor: "views/zero-page/components/settings/icons/cursor-0375fe0bba07.svg",
   "customer-io":
     "views/zero-page/components/settings/icons/customer-io-3592b474801b.svg",
+  datadog: "views/zero-page/components/settings/icons/datadog-0aee184a0e7d.png",
   daytona: "views/zero-page/components/settings/icons/daytona-aed50e967460.svg",
   db9: "views/zero-page/components/settings/icons/db9-0d3f5466120d.svg",
   deel: "views/zero-page/components/settings/icons/deel-3ab75a49a804.svg",
@@ -147,6 +150,8 @@ const STATIC_CONNECTOR_ICON_PATHS = {
     "views/zero-page/components/settings/icons/etherscan-0d8b09b0f756.svg",
   etsy: "views/zero-page/components/settings/icons/etsy-ac890f8bb332.svg",
   exa: "views/zero-page/components/settings/icons/exa-9a6e04de6b38.svg",
+  expensify:
+    "views/zero-page/components/settings/icons/expensify-388c924adb5f.png",
   explorium:
     "views/zero-page/components/settings/icons/explorium-356f27323ba2.svg",
   faire: "views/zero-page/components/settings/icons/faire-c16be6b57fa8.svg",
@@ -279,6 +284,8 @@ const STATIC_CONNECTOR_ICON_PATHS = {
   n8n: "views/zero-page/components/settings/icons/n8n-2355976a50d0.svg",
   neon: "views/zero-page/components/settings/icons/neon-2b1aaef0b2de.svg",
   netdata: "views/zero-page/components/settings/icons/netdata-df49d68a3ecd.svg",
+  netsuite:
+    "views/zero-page/components/settings/icons/netsuite-8e3b16dcbad9.png",
   netter: "views/zero-page/components/settings/icons/netter-4c7de538303c.svg",
   "nintendo-store":
     "views/zero-page/components/settings/icons/nintendo-store-f3c8ad8b8d85.svg",
@@ -302,6 +309,7 @@ const STATIC_CONNECTOR_ICON_PATHS = {
     "views/zero-page/components/settings/icons/pandadoc-50d5db7dbe0d.svg",
   parallel:
     "views/zero-page/components/settings/icons/parallel-8999315ceac1.svg",
+  paypal: "views/zero-page/components/settings/icons/paypal-9e6353008c49.png",
   pdf4me: "views/zero-page/components/settings/icons/pdf4me-72901b68f016.svg",
   pdfco: "views/zero-page/components/settings/icons/pdfco-3e7abac71518.svg",
   pdforge: "views/zero-page/components/settings/icons/pdforge-bdafb344440c.svg",
@@ -345,6 +353,7 @@ const STATIC_CONNECTOR_ICON_PATHS = {
   quickbooks:
     "views/zero-page/components/settings/icons/quickbooks-fcc0886d32c3.svg",
   railway: "views/zero-page/components/settings/icons/railway-22723db2f4f9.svg",
+  ramp: "views/zero-page/components/settings/icons/ramp-19b1ec05a6b3.png",
   reap: "views/zero-page/components/settings/icons/reap-dd68e029348e.svg",
   recraft: "views/zero-page/components/settings/icons/recraft-fac1a92b013f.svg",
   reddit: "views/zero-page/components/settings/icons/reddit-e1ac3f0da2b6.svg",
@@ -447,6 +456,7 @@ const STATIC_CONNECTOR_ICON_PATHS = {
   "whale-alert":
     "views/zero-page/components/settings/icons/whale-alert-98cbb1bbfdf6.png",
   wix: "views/zero-page/components/settings/icons/wix-53a609ed8e78.svg",
+  workday: "views/zero-page/components/settings/icons/workday-0d00781435b5.png",
   workos: "views/zero-page/components/settings/icons/workos-c7ad66d8b5a0.svg",
   wrike: "views/zero-page/components/settings/icons/wrike-86c509db0d0c.svg",
   x: "views/zero-page/components/settings/icons/x-c6644387ea39.svg",
@@ -481,6 +491,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "aws",
   "base44",
   "bentolabs-ai",
+  "bill",
   "bitrefill",
   "bitrix",
   "bland",
@@ -504,11 +515,13 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "cloudinary",
   "coda",
   "coingecko",
+  "copper",
   "coresignal",
   "cronlytic",
   "crustdata",
   "cursor",
   "customer-io",
+  "datadog",
   "deepseek",
   "defillama",
   "dify",
@@ -523,6 +536,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "etherscan",
   "etsy",
   "exa",
+  "expensify",
   "explorium",
   "fal",
   "figma",
@@ -601,6 +615,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "n8n",
   "neon",
   "netdata",
+  "netsuite",
   "nintendo-store",
   "nintendo-switch-parental-controls",
   "nyne",
@@ -608,6 +623,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "outlook-calendar",
   "outlook-mail",
   "pandadoc",
+  "paypal",
   "pdf4me",
   "pdfco",
   "pdforge",
@@ -629,6 +645,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "qdrant",
   "qiita",
   "quickbooks",
+  "ramp",
   "reap",
   "recraft",
   "reddit",
@@ -682,6 +699,7 @@ const CONNECTOR_ICON_ORIGINAL_COLOR: ReadonlySet<ConnectorType> = new Set([
   "webflow",
   "weread",
   "whale-alert",
+  "workday",
   "workos",
   "wrike",
   "xero",

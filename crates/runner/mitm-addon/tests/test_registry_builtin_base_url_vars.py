@@ -270,7 +270,10 @@ class TestRegistryBuiltinBaseUrlVars:
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         api = vm_info["firewalls"][0]["apis"][0]
-        assert api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] is True
+        assert isinstance(
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
 
     def test_builtin_provider_owned_accepts_idna_dot_equivalent_host(self, tmp_path):
         for index, dot in enumerate(("\u3002", "\uff0e", "\uff61")):

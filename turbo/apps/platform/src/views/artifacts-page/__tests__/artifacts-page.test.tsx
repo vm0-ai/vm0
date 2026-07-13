@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
   artifactsContract,
   type ArtifactItem,
@@ -573,7 +573,7 @@ describe("artifacts page", () => {
     expect(screen.getByText("hosted site")).toBeInTheDocument();
     expect(screen.queryByText(/Jan 15/u)).not.toBeInTheDocument();
     expect(screen.getByTitle("launch-plan.html preview")).toHaveStyle({
-      height: "1280px",
+      height: "800px",
       width: "1280px",
     });
   });
@@ -593,7 +593,7 @@ describe("artifacts page", () => {
     );
   });
 
-  it("renders preview images without cropping while preserving the HTML iframe fallback", async () => {
+  it("renders unified 16:10 previews above card metadata while preserving the HTML fallback", async () => {
     setupTeam();
     const scope = testAuthScope("preview-image");
     const previewImageUrl =
@@ -628,23 +628,89 @@ describe("artifacts page", () => {
     await screen.findByText("static-preview.html");
     await screen.findByText("full-image.png");
     await screen.findByText("fallback-preview.html");
-    for (const src of [previewImageUrl, imageUrl]) {
-      const previewImages = Array.from(
-        document.querySelectorAll<HTMLImageElement>(`img[src="${src}"]`),
-      );
-      expect(previewImages).toHaveLength(1);
-      expect(previewImages[0]).toHaveClass(
-        "h-full",
-        "w-full",
-        "object-contain",
-      );
-      expect(previewImages[0]).not.toHaveClass("object-cover");
-    }
+    const staticCard = buttonByLabel("Preview static-preview.html");
+    const staticPreview = within(staticCard).getByTestId(
+      "artifact-card-preview",
+    );
+    const staticDetails = within(staticCard).getByTestId(
+      "artifact-card-details",
+    );
+    expect(staticCard).toHaveClass("flex", "flex-col");
+    expect(staticCard).not.toHaveClass("aspect-square");
+    expect(staticPreview).toHaveClass(
+      "aspect-[16/10]",
+      "w-full",
+      "shrink-0",
+      "overflow-hidden",
+    );
+    expect(staticPreview.nextElementSibling).toBe(staticDetails);
+    expect(staticDetails).not.toHaveClass("absolute");
+    expect(staticDetails).toHaveClass("h-16", "shrink-0");
+    expect(
+      within(staticDetails).getByRole("heading", {
+        name: "static-preview.html",
+      }),
+    ).toBeInTheDocument();
+    const htmlPreviewImages = Array.from(
+      document.querySelectorAll<HTMLImageElement>(
+        `img[src="${previewImageUrl}"]`,
+      ),
+    );
+    expect(htmlPreviewImages).toHaveLength(1);
+    expect(htmlPreviewImages[0]).toHaveClass(
+      "h-full",
+      "w-full",
+      "object-cover",
+    );
+    const artifactImages = Array.from(
+      document.querySelectorAll<HTMLImageElement>(`img[src="${imageUrl}"]`),
+    );
+    expect(artifactImages).toHaveLength(1);
+    expect(artifactImages[0]).toHaveClass("h-full", "w-full", "object-cover");
     expect(screen.queryByTitle("static-preview.html preview")).toBeNull();
     expect(screen.getByTitle("fallback-preview.html preview")).toHaveAttribute(
       "src",
       "https://artifacts.example.com/fallback-preview.html",
     );
+  });
+
+  it("keeps card widths fluid without squeezing in a third column", async () => {
+    setupTeam();
+    const scope = testAuthScope("fluid-grid-width");
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+      function (this: HTMLElement) {
+        return this.dataset.testid === "artifacts-virtual-grid" ? 700 : 0;
+      },
+    );
+    mockArtifacts([
+      createArtifact({
+        artifactItemId: "fluid-grid-1:file-1",
+        runId: "fluid-grid-1",
+        filename: "fluid-grid-1.html",
+      }),
+      createArtifact({
+        artifactItemId: "fluid-grid-2:file-1",
+        runId: "fluid-grid-2",
+        filename: "fluid-grid-2.html",
+      }),
+      createArtifact({
+        artifactItemId: "fluid-grid-3:file-1",
+        runId: "fluid-grid-3",
+        filename: "fluid-grid-3.html",
+      }),
+    ]);
+
+    setupArtifactsPage({ scope });
+
+    await screen.findByText("fluid-grid-1.html");
+    await waitFor(() => {
+      expect(screen.getByTestId("artifacts-virtual-grid-items")).toHaveStyle({
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+      });
+      expect(screen.getByTestId("artifacts-virtual-grid")).toHaveStyle({
+        height: "571.5px",
+      });
+    });
   });
 
   it("loads CDN image cards as thumbnails while preserving original previews", async () => {
@@ -653,7 +719,7 @@ describe("artifacts page", () => {
     const cdnImageUrl =
       "https://cdn.vm7.io/artifacts/user/image-run/generated.png";
     const thumbnailUrl =
-      "https://cdn.vm7.io/cdn-cgi/image/width=640,height=640,fit=cover,format=auto,quality=85,metadata=none/artifacts/user/image-run/generated.png";
+      "https://cdn.vm7.io/cdn-cgi/image/width=640,height=400,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/user/image-run/generated.png";
     const externalImageUrl =
       "https://images.example.com/artifacts/external-image.png";
     const unsupportedCdnImageUrl =
@@ -929,6 +995,10 @@ describe("artifacts page", () => {
       },
     );
     expect(posterImages).toHaveLength(1);
+    expect(posterImages[0]).toHaveClass("object-cover");
+    expect(
+      posterImages[0]?.closest('[data-testid="artifact-card-preview"]'),
+    ).toHaveClass("aspect-[16/10]");
     expect(
       document.querySelector(".tabler-icon-player-play-filled"),
     ).not.toBeInTheDocument();
@@ -1105,7 +1175,11 @@ describe("artifacts page", () => {
     await screen.findByText("favorite-brief.html");
     await screen.findByText("archive.html");
 
-    click(buttonByLabel("Add launch-plan.html to favorites"));
+    const favoriteButton = buttonByLabel("Add launch-plan.html to favorites");
+    expect(
+      favoriteButton.closest('[data-testid="artifact-card-details"]'),
+    ).not.toBeNull();
+    click(favoriteButton);
     await waitFor(() => {
       expect(favoriteBody).toStrictEqual({ artifactUrl: launch.url });
       expect(
@@ -1437,33 +1511,33 @@ describe("artifacts page", () => {
 
     await screen.findByText("windowed-000.html");
     expect(screen.queryByText("Load more")).not.toBeInTheDocument();
-    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
 
     const scrollViewport = screen.getByRole("main");
     const setScrollMetrics = mockScrollViewport(scrollViewport, {
       clientHeight: 800,
-      scrollHeight: 6068,
-      scrollTop: 5300,
+      scrollHeight: 5173,
+      scrollTop: 4373,
     });
     fireEvent.scroll(scrollViewport);
 
     await screen.findByText("windowed-064.html");
     expect(screen.queryByText("windowed-000.html")).not.toBeInTheDocument();
-    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
 
-    setScrollMetrics({ scrollHeight: 12_148, scrollTop: 11_400 });
+    setScrollMetrics({ scrollHeight: 10_358, scrollTop: 9558 });
     fireEvent.scroll(scrollViewport);
 
     await screen.findByText("windowed-119.html");
     expect(screen.queryByText("windowed-064.html")).not.toBeInTheDocument();
-    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
 
-    setScrollMetrics({ scrollHeight: 18_228, scrollTop: 17_400 });
+    setScrollMetrics({ scrollHeight: 15_543, scrollTop: 14_743 });
     fireEvent.scroll(scrollViewport);
 
     await screen.findByText("windowed-179.html");
     expect(screen.queryByText("windowed-119.html")).not.toBeInTheDocument();
-    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(21);
+    expect(document.querySelectorAll("article").length).toBeLessThanOrEqual(24);
   });
 
   it("continues keyboard navigation through virtualized artifacts", async () => {
@@ -1493,9 +1567,9 @@ describe("artifacts page", () => {
     fireEvent.focus(buttonByText("Continue browsing artifacts"));
 
     await waitFor(() => {
-      expect(focusedArtifactIndex()).toBe("15");
+      expect(focusedArtifactIndex()).toBe("18");
     });
-    await screen.findByText("keyboard-windowed-015.html");
+    await screen.findByText("keyboard-windowed-018.html");
 
     setScrollMetrics({ scrollHeight: 20_000, scrollTop: 4560 });
     fireEvent.scroll(scrollViewport);

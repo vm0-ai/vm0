@@ -2,6 +2,19 @@
 
 import urllib.parse
 
+_URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in range(0x21))
+_URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
+_SPECIAL_URL_SCHEMES = ("http", "https")
+_SPECIAL_URL_SEPARATORS = "/\\"
+
+
+def _normalize_for_urlsplit(value: str) -> str:
+    """Apply current URL preprocessing consistently on Python 3.10+."""
+    value = value.lstrip(_URLSPLIT_LEADING_STRIP_CHARACTERS)
+    for character in _URLSPLIT_REMOVABLE_CHARACTERS:
+        value = value.replace(character, "")
+    return value
+
 
 def _sanitize_netloc_for_network_log(netloc: str) -> str:
     if "@" not in netloc:
@@ -28,17 +41,58 @@ def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
     return value
 
 
+def _sanitize_malformed_authority_for_network_log(
+    value: str, parts: urllib.parse.SplitResult
+) -> str | None:
+    # A mixed separator run can leave only backslashes in netloc while the
+    # actual authority-like segment lands in path.
+    if parts.netloc.strip(_SPECIAL_URL_SEPARATORS):
+        return None
+
+    has_special_scheme = parts.scheme in _SPECIAL_URL_SCHEMES
+    is_protocol_relative = not parts.scheme and value.startswith("//")
+    if not has_special_scheme and not is_protocol_relative:
+        return None
+
+    authority_path = parts.path.lstrip(_SPECIAL_URL_SEPARATORS)
+    cut_points = [
+        index
+        for separator in _SPECIAL_URL_SEPARATORS
+        if (index := authority_path.find(separator)) != -1
+    ]
+    if cut_points:
+        path_start = min(cut_points)
+        authority = authority_path[:path_start]
+        path = authority_path[path_start:].replace("\\", "/")
+    else:
+        authority = authority_path
+        path = ""
+
+    if "@" not in authority:
+        return None
+
+    netloc = _sanitize_netloc_for_network_log(authority)
+    return urllib.parse.urlunsplit((parts.scheme, netloc, path, "", ""))
+
+
 def sanitize_url_for_network_log(value: str) -> str:
     """Return a primary request/proxy URL string for persistent logs.
 
     Runtime metadata can keep raw URLs because firewall/auth and connector
     billing may need query parameters. Persistent logs do not. This sanitizer
-    still preserves path for request diagnostics and is not appropriate for
-    arbitrary captured header values.
+    also removes userinfo from malformed HTTP(S) authority positions, but it
+    still preserves ordinary paths for request diagnostics. It is not a general
+    sanitizer for arbitrary captured header values or path contents.
     """
+    normalized_value = _normalize_for_urlsplit(value)
     try:
-        parts = urllib.parse.urlsplit(value)
+        parts = urllib.parse.urlsplit(normalized_value)
     except ValueError:
-        return _sanitize_url_text_fallback_for_network_log(value)
+        return _sanitize_url_text_fallback_for_network_log(normalized_value)
+
+    malformed_authority_url = _sanitize_malformed_authority_for_network_log(normalized_value, parts)
+    if malformed_authority_url is not None:
+        return malformed_authority_url
+
     netloc = _sanitize_netloc_for_network_log(parts.netloc)
     return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))

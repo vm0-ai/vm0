@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.6...guest-agent-v0.50.7) (2026-07-13)
+
+
+### Performance Improvements
+
+* **guest-agent:** avoid directory probes for artifact files ([#21275](https://github.com/vm0-ai/vm0/issues/21275)) ([85db30c](https://github.com/vm0-ai/vm0/commit/85db30ce599dd9f0e4ac391649e43db1b23c08ce))
+
 ## [0.50.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.5...guest-agent-v0.50.6) (2026-07-13)
 
 

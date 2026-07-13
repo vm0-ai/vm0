@@ -960,10 +960,6 @@ function ArtifactPreviewDialogThreadResolver({
   const messageGroups = useLastResolved(thread.messageImageGroups$, {
     equalityFn: equalMessageImageGroups,
   });
-  const features = useGet(featureSwitch$);
-  const imageNavigationEnabled = Boolean(
-    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
-  );
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
@@ -971,9 +967,7 @@ function ArtifactPreviewDialogThreadResolver({
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
       : undefined;
   const imageNavigation =
-    imageNavigationEnabled &&
-    preview.kind === "image" &&
-    loadable.state === "hasData"
+    preview.kind === "image" && loadable.state === "hasData"
       ? currentMessageImageArtifactNavigation(
           loadable.data,
           messageGroups ?? [],

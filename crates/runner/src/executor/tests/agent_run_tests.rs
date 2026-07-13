@@ -47,8 +47,8 @@ use super::super::{
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, StartProcessGateSandbox, api_artifact,
     api_storage, create_overridden_sandbox, minimal_context, sandbox_exec_error,
-    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts, test_executor_config,
-    test_telemetry,
+    sandbox_read_file_error, spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
+    test_executor_config, test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -165,6 +165,42 @@ fn final_identity_metadata_bytes(
     .unwrap()
     .to_json_vec()
     .unwrap()
+}
+
+fn context_with_checkpointed_session_identity(
+    session_id: &str,
+    history: &[u8],
+) -> (crate::types::ExecutionContext, RestoredSessionIdentity) {
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: format!("https://example.com/{session_id}.blob"),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+    let runtime_dir = format!("/home/user/.vm0/guest-agent/runs/{session_id}-previous");
+    let metadata_path = format!("{runtime_dir}/final-session-history-identity.json");
+    let metadata = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        hex::encode(Sha256::digest(session_id.as_bytes())),
+        FinalSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+        claude_history_path(session_id),
+    )
+    .unwrap();
+    let identity =
+        RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
+            .expect("checkpointed identity");
+    (ctx, identity)
 }
 
 fn assert_successful_action(ops: &[(String, bool, Option<String>)], action: &str) {
@@ -347,7 +383,7 @@ async fn assert_checkpointed_final_identity_helper_failure_falls_back(
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     assert_eq!(sandbox.exec_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
@@ -453,6 +489,15 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
         bytes: b"partial stdout".to_vec(),
         truncated: true,
     }]);
+    let ctx = minimal_context();
+    let session_id = "sess-late-cancel-123";
+    let history = br#"{"type":"done"}"#;
+    let (metadata_path, _) = final_identity_runtime_paths(&ctx);
+    overrides.push_read_file_result(Ok(Some(final_identity_metadata_bytes(
+        session_id,
+        history,
+        claude_history_path(session_id),
+    ))));
     let cancel = tokio_util::sync::CancellationToken::new();
     let factory = MockSandboxFactory::with_overrides(overrides);
     let sandbox = CancelAfterWaitSandbox {
@@ -470,7 +515,6 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
             .unwrap(),
         cancel: cancel.clone(),
     };
-    let ctx = minimal_context();
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -490,6 +534,15 @@ async fn run_in_sandbox_preserves_wait_result_when_cancel_arrives_after_wait() {
 
     assert!(cancel.is_cancelled());
     assert!(result.failure.is_none());
+    let identity = result
+        .reusable_session_identity
+        .as_ref()
+        .expect("completed agent identity should survive late cancellation");
+    assert_eq!(
+        identity.history_hash(),
+        hex::encode(Sha256::digest(history))
+    );
+    assert_eq!(identity.final_metadata_path(), Some(metadata_path.as_str()));
     assert_eq!(
         result.stdout_stream_diagnostics,
         AgentStdoutStreamDiagnostics {
@@ -1860,10 +1913,10 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert_eq!(result.restored_session_identity, Some(final_identity));
+    assert_eq!(result.reusable_session_identity, Some(final_identity));
     assert_eq!(
         result
-            .restored_session_identity
+            .reusable_session_identity
             .as_ref()
             .and_then(RestoredSessionIdentity::final_metadata_path),
         Some(metadata_path.as_str())
@@ -1903,6 +1956,141 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         ops.iter()
             .any(|op| op.0 == "session_history_restore_skip" && op.1),
         "expected checkpointed skip telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_drops_checkpointed_identity_when_agent_is_cancelled() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let start_process_entered = Arc::new(Notify::new());
+    let start_process_release = Arc::new(Notify::new());
+    let sandbox = StartProcessGateSandbox {
+        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
+        entered: Arc::clone(&start_process_entered),
+        release: Arc::clone(&start_process_release),
+    };
+    let (ctx, idle_identity) = context_with_checkpointed_session_identity(
+        "sess-cancelled-reuse-123",
+        br#"{"type":"before"}"#,
+    );
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let run = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(cancel.clone(), None).with_session_history_restore_plan(
+            SessionHistoryRestorePlan::SkipVerified(idle_identity),
+        ),
+    );
+    tokio::pin!(run);
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        tokio::select! {
+            result = &mut run => {
+                let _ = result;
+                panic!("run finished before the start-process barrier");
+            }
+            () = start_process_entered.notified() => {}
+        }
+    })
+    .await
+    .expect("run should verify the checkpointed identity before starting the agent");
+    assert_eq!(overrides.exec_calls().len(), 1);
+
+    cancel.cancel();
+    let release_wait = tokio::spawn({
+        let overrides = Arc::clone(&overrides);
+        let wait_gate = Arc::clone(&wait_gate);
+        async move {
+            assert!(
+                overrides
+                    .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+                    .await
+            );
+            wait_gate.notify_one();
+        }
+    });
+    start_process_release.notify_one();
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut run)
+        .await
+        .expect("cancelled run should finish")
+        .unwrap();
+    release_wait.await.unwrap();
+
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+    assert!(result.reusable_session_identity.is_none());
+    assert_eq!(overrides.exec_calls().len(), 1);
+}
+
+#[tokio::test]
+async fn run_in_sandbox_drops_checkpointed_identity_when_agent_exits_nonzero() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(
+        1,
+        42,
+        Vec::new(),
+        b"agent failed".to_vec(),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let (ctx, idle_identity) = context_with_checkpointed_session_identity(
+        "sess-nonzero-reuse-123",
+        br#"{"type":"before"}"#,
+    );
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &*sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
+                idle_identity,
+            )),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(42)
+    );
+    assert!(result.reusable_session_identity.is_none());
+    let exec_calls = overrides.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("verify-session-history-identity")
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .all(|op| !op.0.starts_with("session_history_identity_finalize")),
+        "failed agent should not inspect final identity metadata: {ops:?}"
     );
 }
 
@@ -2026,7 +2214,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].cmd.contains(&metadata_path));
@@ -2116,7 +2304,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     assert_eq!(sandbox.exec_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
@@ -2225,7 +2413,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -2308,7 +2496,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -2395,7 +2583,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -2489,7 +2677,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
 
     assert!(result.failure.is_none());
     let identity = result
-        .restored_session_identity
+        .reusable_session_identity
         .as_ref()
         .expect("final identity");
     assert_eq!(
@@ -2549,7 +2737,7 @@ async fn run_in_sandbox_uses_final_identity_without_resume_request() {
 
     assert!(result.failure.is_none());
     let identity = result
-        .restored_session_identity
+        .reusable_session_identity
         .as_ref()
         .expect("final identity");
     assert_eq!(
@@ -2594,7 +2782,7 @@ async fn run_in_sandbox_records_invalid_final_identity_metadata_reason() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action(&ops, "session_history_identity_finalize_invalid_metadata");
     assert!(
@@ -2640,7 +2828,7 @@ async fn run_in_sandbox_records_large_final_identity_metadata() {
 
     assert!(result.failure.is_none());
     let identity = result
-        .restored_session_identity
+        .reusable_session_identity
         .as_ref()
         .expect("large final identity");
     assert_eq!(
@@ -2662,7 +2850,7 @@ async fn run_in_sandbox_records_final_identity_metadata_read_failure_reason() {
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let ctx = minimal_context();
-    sandbox.push_read_file_result(Err(sandbox_exec_error("vsock read failed")));
+    sandbox.push_read_file_result(Err(sandbox_read_file_error("guest read failed")));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -2681,7 +2869,7 @@ async fn run_in_sandbox_records_final_identity_metadata_read_failure_reason() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
+    assert!(result.reusable_session_identity.is_none());
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action(
         &ops,

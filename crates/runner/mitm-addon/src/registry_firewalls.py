@@ -173,7 +173,7 @@ def _resolve_builtin_firewall_entry(
                 base=raw_base,
                 vars_map=vars_map,
             )
-            builtin_host_policy.validate_credentialed_builtin_base(
+            compiled_host_policy = builtin_host_policy.validate_credentialed_builtin_base(
                 firewall_name=raw_name,
                 base=resolved_base,
                 auth_config=api.get("auth"),
@@ -186,7 +186,9 @@ def _resolve_builtin_firewall_entry(
             raise _resolution_error(e) from e
         api["base"] = resolved_base
         if api.get("hostPolicy") is not None:
-            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] = True
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] = (
+                compiled_host_policy if compiled_host_policy is not None else True
+            )
         resolved_bases.append(resolved_base)
 
     return _ResolvedBuiltinFirewallEntry(

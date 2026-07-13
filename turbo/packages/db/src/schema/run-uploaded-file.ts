@@ -13,6 +13,8 @@ import { agentRuns } from "./agent-run";
 import type { RunUploadedFileMetadata } from "@vm0/db/jsonb-contracts/run-uploaded-file";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
+  "workflow-schedule",
+  "workflow-event",
   "schedule",
   "automation",
   "web",

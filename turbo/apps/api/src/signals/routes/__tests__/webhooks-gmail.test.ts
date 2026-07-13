@@ -1,5 +1,10 @@
 import { Buffer } from "node:buffer";
-import { generateKeyPairSync, randomUUID, sign as signData } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  randomUUID,
+  sign as signData,
+} from "node:crypto";
 
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -9,6 +14,7 @@ import {
   zeroWorkflowTriggersContract,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -16,6 +22,7 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createBddApi,
   expectApiError,
@@ -28,6 +35,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-messages";
@@ -38,6 +46,7 @@ const bdd = createBddApi(context);
 const chatApi = createChatFilesBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const miscApi = createMiscRoutesApi(context);
+const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "gmail-webhook-workflow";
@@ -83,6 +92,21 @@ function sandboxOperationEvents(): readonly Record<string, unknown>[] {
       return isRecord(event);
     });
   });
+}
+
+function gmailEventContextFromPrompt(
+  appendSystemPrompt: string,
+): Record<string, unknown> {
+  const marker = "# Gmail event\n";
+  const markerIndex = appendSystemPrompt.indexOf(marker);
+  expect(markerIndex).toBeGreaterThanOrEqual(0);
+  const parsed: unknown = JSON.parse(
+    appendSystemPrompt.slice(markerIndex + marker.length),
+  );
+  if (!isRecord(parsed)) {
+    throw new Error("Expected Gmail event context to be an object");
+  }
+  return parsed;
 }
 
 function encodeJwtPart(value: unknown): string {
@@ -336,8 +360,13 @@ function expectResponseStatus(
 
 async function enableGmailWorkflowTriggers(
   actor: ApiTestUser & { readonly orgId: string },
+  options: { readonly workflowQueue?: boolean } = {},
 ): Promise<void> {
-  await updateFeatureSwitchesForUser(context, actor, {});
+  await updateFeatureSwitchesForUser(
+    context,
+    actor,
+    options.workflowQueue ? { [FeatureSwitchKey.WorkflowQueue]: true } : {},
+  );
 }
 
 async function configureWorkspaceModelProvider(
@@ -558,10 +587,57 @@ async function workflowTriggerBriefs(
     });
 }
 
+async function workflowRunIds(
+  actor: ApiTestUser,
+  chatThreadId: string,
+): Promise<readonly string[]> {
+  const { messages } = await chatApi.listThreadMessages(actor, chatThreadId, {
+    limit: 20,
+  });
+  return messages.flatMap((message) => {
+    if (
+      message.role !== "user" ||
+      message.content !== `/${WORKFLOW_NAME}` ||
+      !message.runId
+    ) {
+      return [];
+    }
+    return [message.runId];
+  });
+}
+
+async function completeRunThroughSandbox(
+  runnerGroup: string,
+  runId: string,
+): Promise<void> {
+  await runsApi.heartbeatRunner(runnerGroup);
+  const claim = await runsApi.claimRunnerJob(runId);
+  const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+  await webhooksApi.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `gmail-workflow-cli-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`gmail workflow history ${runId}`)
+        .digest("hex"),
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooksApi.requestAgentComplete(
+    { runId, exitCode: 0 },
+    sandboxHeaders,
+    [200],
+  );
+  await flushWaitUntilForTest();
+}
+
 describe("POST /api/webhooks/gmail", () => {
   it("dispatches matching new inbound messages and de-duplicates retries", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
+    const runnerGroup = runsApi.configureRunnerGroup();
     configureGmailWatchMock();
     configureGmailMessageMocks(gmailEmail);
 
@@ -614,6 +690,31 @@ describe("POST /api/webhooks/gmail", () => {
     );
     await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({
       lastRunAt: expect.any(String),
+    });
+    const [runId] = await workflowRunIds(actor, chatThreadId);
+    if (!runId) {
+      throw new Error("Expected a dispatched Gmail workflow run");
+    }
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runId);
+    const appendSystemPrompt = claim.appendSystemPrompt;
+    if (typeof appendSystemPrompt !== "string") {
+      throw new Error("Expected appendSystemPrompt on the claimed run");
+    }
+    expect(appendSystemPrompt).toContain(
+      "This context intentionally includes only event metadata. It does not include the email body.",
+    );
+    expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
+    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toStrictEqual({
+      triggerId: created.body.id,
+      event: "new_message",
+      emailAddress: gmailEmail,
+      messageId: "msg-1",
+      threadId: "gmail-thread-1",
+      from: "Customer Example <customer@example.com>",
+      to: [gmailEmail],
+      cc: [],
+      subject: "Invoice needs a reply",
     });
     const timingEvents = sandboxOperationEvents().filter((event) => {
       return event.workflow_event_source === "gmail";
@@ -819,6 +920,78 @@ describe("POST /api/webhooks/gmail", () => {
     );
     await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({
       lastRunAt: expect.any(String),
+    });
+  });
+
+  it("preserves metadata-only context through the workflow queue", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    const runnerGroup = runsApi.configureRunnerGroup();
+    configureGmailWatchMock();
+    configureGmailMessageMocks(gmailEmail);
+
+    const { actor, workflowId } = await setupFixture();
+    await enableGmailWorkflowTriggers(actor, { workflowQueue: true });
+    await connectGmail(actor, gmailEmail);
+    await configureWorkspaceModelProvider(actor);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: { body: { contains: "helpful reply" } },
+          },
+        },
+      }),
+      [201],
+    );
+    const chatThreadId = requireTriggerChatThreadId(created.body);
+    await configureTriggerThreadModel(actor, chatThreadId);
+    const activeRun = await runTriggerNow(actor, created.body.id);
+
+    const response = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 101,
+        messageId: "pubsub-queued",
+      }),
+    );
+
+    expectResponseStatus(response, 200);
+    expect(response.body).toMatchObject({ dispatched: 1, duplicates: 0 });
+    await expect(workflowRunIds(actor, chatThreadId)).resolves.toStrictEqual([
+      activeRun.runId,
+    ]);
+
+    await completeRunThroughSandbox(runnerGroup, activeRun.runId);
+    const runIds = await workflowRunIds(actor, chatThreadId);
+    expect(runIds).toHaveLength(2);
+    const queuedRunId = runIds.find((runId) => {
+      return runId !== activeRun.runId;
+    });
+    if (!queuedRunId) {
+      throw new Error("Expected the queued Gmail event to start a run");
+    }
+
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(queuedRunId);
+    const appendSystemPrompt = claim.appendSystemPrompt;
+    if (typeof appendSystemPrompt !== "string") {
+      throw new Error("Expected appendSystemPrompt on the queued run");
+    }
+    expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
+    expect(gmailEventContextFromPrompt(appendSystemPrompt)).toMatchObject({
+      triggerId: created.body.id,
+      event: "new_message",
+      messageId: "msg-1",
+      threadId: "gmail-thread-1",
+      subject: "Invoice needs a reply",
     });
   });
 });

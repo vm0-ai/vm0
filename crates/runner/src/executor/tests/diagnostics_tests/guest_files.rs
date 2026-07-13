@@ -8,7 +8,7 @@ use super::super::super::diagnostics::{
     read_guest_cli_agent_session_id, read_guest_error_file, read_guest_failure_diagnostic_file,
 };
 use super::super::super::{SMALL_GUEST_FILE_MAX_BYTES, guest_runtime_path};
-use super::super::support::sandbox_exec_error;
+use super::super::support::sandbox_read_file_error;
 use crate::ids::RunId;
 
 #[tokio::test]
@@ -47,9 +47,9 @@ async fn read_guest_error_file_returns_none_on_empty_content() {
 }
 
 #[tokio::test]
-async fn read_guest_error_file_returns_none_on_exec_error() {
+async fn read_guest_error_file_returns_none_on_read_error() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_read_file_result(Err(sandbox_exec_error("vsock timeout")));
+    sandbox.push_read_file_result(Err(sandbox_read_file_error("guest read failed")));
     let msg = read_guest_error_file(&sandbox, RunId::nil()).await;
     assert!(msg.is_none());
 }
@@ -193,7 +193,7 @@ async fn read_guest_failure_diagnostic_file_returns_none_on_unsupported_schema()
 #[tokio::test]
 async fn read_guest_failure_diagnostic_file_returns_none_on_read_error() {
     let sandbox = MockSandbox::new("test");
-    sandbox.push_read_file_result(Err(sandbox_exec_error("vsock timeout")));
+    sandbox.push_read_file_result(Err(sandbox_read_file_error("guest read failed")));
 
     let diagnostic = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
 

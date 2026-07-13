@@ -46,8 +46,8 @@ export const zeroWorkflowQueueEvents = pgTable(
     // Short human-readable event summary, safe to render in the queue UI.
     triggerBrief: text("trigger_brief"),
     // Persistent-secret encrypted remainder of the trigger run args
-    // (prompt / appendSystemPrompt / callbacks). appendSystemPrompt carries
-    // event content such as email bodies, so it must not be stored plaintext.
+    // (prompt / appendSystemPrompt / callbacks). appendSystemPrompt may carry
+    // external event content such as webhook bodies, so it stays encrypted.
     encryptedParams: text("encrypted_params").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

@@ -7,6 +7,7 @@ import pytest
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
+import request_classification
 import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import auth_cache_key, has_auth_state
@@ -96,6 +97,26 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "registry_unavailable"
     assert metadata_keys.VM_RUN_ID not in flow.metadata
+
+
+async def test_unknown_cached_classification_does_not_bypass_registry_gate(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
+    reg_path = tmp_path / "proxy-registry.json"
+    reg_path.write_text("{ broken registry")
+    flow = real_flow(with_response=False, host="api.vm0.ai")
+    flow.metadata[request_classification.REQUEST_CLASSIFICATION_METADATA_KEY] = object()
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 503
+    assert json.loads(flow.response.content)["error"] == "registry_unavailable"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert request_classification.REQUEST_CLASSIFICATION_METADATA_KEY not in flow.metadata
 
 
 async def test_vm0_api_test_paths_skip_auto_allow(
