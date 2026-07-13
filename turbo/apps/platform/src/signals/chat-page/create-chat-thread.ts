@@ -15,7 +15,6 @@ import {
   resetSignal,
   withCleanup,
 } from "../utils.ts";
-import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import { createWorkflowQueueChangedHandler as workflowQueueHandler } from "./workflow-queue.ts";
 import {
@@ -2099,28 +2098,7 @@ function createArtifacts(threadId: string) {
     });
   });
 
-  const reloadArtifactsFromRealtime$ = command(({ set }) => {
-    set(reloadArtifacts$);
-    return false;
-  });
-  const setArtifactsRealtimeRef$ = onRef(
-    command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-      await set(
-        setAblyLoop$,
-        {
-          topic: `chatThreadArtifactsChanged:${threadId}`,
-          loopCommand$: reloadArtifactsFromRealtime$,
-        },
-        signal,
-      );
-    }),
-  );
-
-  return {
-    artifacts$,
-    reloadArtifacts$,
-    setArtifactsRealtimeRef$,
-  };
+  return { artifacts$, reloadArtifacts$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -2203,6 +2181,7 @@ interface RunTrackingDeps {
   initializeIndexedDbMessages$: Command<Promise<void>, [AbortSignal]>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
   fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
+  reloadArtifacts$: Command<void, []>;
   autoScroll$: Command<void, []>;
   dataSource: ChatThreadRemote;
 }
@@ -2396,6 +2375,7 @@ function createRunTracking({
   initializeIndexedDbMessages$,
   syncRemoteMessages$,
   fetchUpdatedMessage$,
+  reloadArtifacts$,
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
@@ -2415,6 +2395,7 @@ function createRunTracking({
   const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
     set(reloadThread$);
+    set(reloadArtifacts$);
     await Promise.all([
       get(remoteThreadDetail$),
       get(optimisticCreateUnsettled$)
@@ -2481,6 +2462,12 @@ function createRunTracking({
       return false;
     });
 
+    const onArtifactsChanged$ = command(({ set }) => {
+      L.debug("onArtifactsChanged$ fired", { threadId });
+      set(reloadArtifacts$);
+      return false;
+    });
+
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
     const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
     const subscriptionSignal = subscriptionScope.signal;
@@ -2498,6 +2485,7 @@ function createRunTracking({
               onMessageUpdated$,
               onRunChanged$,
               onAutomationsChanged$,
+              onArtifactsChanged$,
               onWorkflowQueueChanged$: workflowQueueHandler(threadId),
               onSubscribed$,
             },
@@ -3208,6 +3196,7 @@ export function createChatThreadSignals(
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
+  const artifact = createArtifacts(threadId);
   const runTracking = createRunTracking({
     threadId,
     reloadThread$,
@@ -3217,6 +3206,7 @@ export function createChatThreadSignals(
     initializeIndexedDbMessages$: messages.initializeIndexedDbMessages$,
     syncRemoteMessages$: messages.syncRemoteMessages$,
     fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
+    reloadArtifacts$: artifact.reloadArtifacts$,
     autoScroll$: scrollSignals.autoScroll$,
     dataSource,
   });
@@ -3235,7 +3225,6 @@ export function createChatThreadSignals(
   });
   const workflowComposer = createWorkflowComposerSignals(draft);
   const thinkingIndicator = createThinkingIndicatorSignals();
-  const artifact = createArtifacts(threadId);
   return {
     threadId,
     remoteThreadDetail$,

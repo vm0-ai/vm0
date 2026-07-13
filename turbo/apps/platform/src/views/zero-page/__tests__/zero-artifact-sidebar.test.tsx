@@ -2934,6 +2934,75 @@ ${openFencedHostedSiteUrl}`,
     });
   });
 
+  it("refreshes artifact metadata while another artifact preview is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    const existingUrl =
+      "https://cdn.vm7.io/artifacts/test/realtime-preview/existing-notes.md";
+    const presentationUrl =
+      "https://cdn.vm7.io/artifacts/test/realtime-preview/later-presentation.html";
+    const existingArtifact = artifactFile(existingUrl, {
+      id: "artifact-existing-notes",
+      filename: "existing-notes.md",
+    });
+    const laterPresentation = artifactFile(presentationUrl, {
+      id: "artifact-later-presentation",
+      filename: "later-presentation.html",
+      contentType: "text/html",
+      artifactKind: "presentation-html",
+    });
+    let artifactRuns = [
+      { runId: "run-existing-artifact", files: [existingArtifact] },
+    ];
+    context.mocks.http.get(existingUrl, () => {
+      return new Response("# Existing notes\n\nThe first artifact is ready.", {
+        headers: { "Content-Type": "text/markdown" },
+      });
+    });
+    context.mocks.http.get(presentationUrl, () => {
+      return new Response(presentationHtml(), {
+        headers: { "Content-Type": "text/html" },
+      });
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, { runs: artifactRuns });
+    });
+    setupChatThread({
+      content: `[Existing notes](${existingUrl})
+
+[Later presentation](${presentationUrl})`,
+    });
+
+    click(await screen.findByLabelText("Open artifacts"));
+    await waitFor(() => {
+      expect(screen.getByText("existing-notes.md")).toBeInTheDocument();
+    });
+
+    const topic = `chatThreadArtifactsChanged:${THREAD_ID}`;
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    await openArtifactFromInbox("existing-notes.md");
+    await waitFor(() => {
+      expect(
+        screen.getByText("The first artifact is ready."),
+      ).toBeInTheDocument();
+    });
+
+    artifactRuns = [
+      ...artifactRuns,
+      { runId: "run-later-artifact", files: [laterPresentation] },
+    ];
+    context.mocks.ably.trigger(topic);
+
+    await user.click(
+      screen.getByLabelText("Open html preview for Later presentation"),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit presentation")).toBeInTheDocument();
+    });
+  });
+
   it("browses artifact inbox sections, searches, and opens a result", async () => {
     const markdownUrl =
       "https://cdn.vm7.io/artifacts/test/run-1/release-notes.md";

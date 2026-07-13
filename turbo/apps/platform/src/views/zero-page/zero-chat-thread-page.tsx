@@ -1603,7 +1603,6 @@ function ChatArtifactInboxBody({ thread }: { thread: ChatThreadSignals }) {
 
 function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
-  const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
   const fullscreen = useGet(artifactFullscreen$);
   const searchOpen = useGet(artifactInboxSearchOpen$);
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
@@ -1632,10 +1631,7 @@ function ChatArtifactInboxList({ thread }: { thread: ChatThreadSignals }) {
         onToggleFullscreen={toggleFullscreen}
         onClose={close}
       />
-      <div
-        ref={setArtifactsRealtimeRef}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <ChatArtifactInboxBody thread={thread} />
       </div>
     </div>

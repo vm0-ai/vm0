@@ -150,8 +150,4 @@ export interface ChatThreadSignals {
   // -- Artifacts ------------------------------------------------------------
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   reloadArtifacts$: Command<void, []>;
-  setArtifactsRealtimeRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
 }
