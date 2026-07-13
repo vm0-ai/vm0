@@ -79,6 +79,10 @@ import {
   classifyChatAttachment,
   type BodyPreviewKind,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import {
+  featureSwitch$,
+  LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY,
+} from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   lightboxUrl$,
@@ -276,6 +280,7 @@ function ArtifactsToolbar({
   selectedAgentId,
   selectedCategory,
   favoritesOnly,
+  showFavoritesFilter,
   agents,
   onSearchChange,
   onAgentChange,
@@ -286,6 +291,7 @@ function ArtifactsToolbar({
   readonly selectedAgentId: string | null;
   readonly selectedCategory: ArtifactCategory | null;
   readonly favoritesOnly: boolean;
+  readonly showFavoritesFilter: boolean;
   readonly agents: readonly TeamComposeItem[];
   readonly onSearchChange: (value: string) => void;
   readonly onAgentChange: (value: string | null) => void;
@@ -313,27 +319,29 @@ function ArtifactsToolbar({
               className="pl-9"
             />
           </div>
-          <button
-            type="button"
-            aria-label="Show favorite artifacts"
-            aria-pressed={favoritesOnly}
-            onClick={() => {
-              onFavoritesOnlyChange(!favoritesOnly);
-            }}
-            className={cn(
-              "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium leading-none transition-colors",
-              favoritesOnly
-                ? "bg-muted text-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-            )}
-          >
-            {favoritesOnly ? (
-              <IconCarambolaFilled size={14} aria-hidden />
-            ) : (
-              <IconCarambola size={14} stroke={1.7} aria-hidden />
-            )}
-            Favorites
-          </button>
+          {showFavoritesFilter && (
+            <button
+              type="button"
+              aria-label="Show favorite artifacts"
+              aria-pressed={favoritesOnly}
+              onClick={() => {
+                onFavoritesOnlyChange(!favoritesOnly);
+              }}
+              className={cn(
+                "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium leading-none transition-colors",
+                favoritesOnly
+                  ? "bg-muted text-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+              )}
+            >
+              {favoritesOnly ? (
+                <IconCarambolaFilled size={14} aria-hidden />
+              ) : (
+                <IconCarambola size={14} stroke={1.7} aria-hidden />
+              )}
+              Favorites
+            </button>
+          )}
         </div>
         <Select
           value={selectedAgentId ?? "all"}
@@ -569,6 +577,7 @@ function ArtifactCardActions({
   favorited,
   item,
   previewUrl,
+  showFavoriteAction,
   onOpenChat,
   onStartChat,
   onToggleFavorite,
@@ -576,6 +585,7 @@ function ArtifactCardActions({
   readonly favorited: boolean;
   readonly item: ArtifactItem;
   readonly previewUrl: string;
+  readonly showFavoriteAction: boolean;
   readonly onOpenChat: (threadId: string) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
   readonly onToggleFavorite: (item: ArtifactItem) => void;
@@ -590,35 +600,37 @@ function ArtifactCardActions({
         event.stopPropagation();
       }}
     >
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon"
-        className={cn(
-          "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
-          favorited && "text-amber-500 hover:text-amber-500",
-        )}
-        aria-label={
-          favorited
-            ? `Remove ${item.filename} from favorites`
-            : `Add ${item.filename} to favorites`
-        }
-        aria-pressed={favorited}
-        title={
-          favorited
-            ? `Remove ${item.filename} from favorites`
-            : `Add ${item.filename} to favorites`
-        }
-        onClick={() => {
-          onToggleFavorite(item);
-        }}
-      >
-        {favorited ? (
-          <IconCarambolaFilled size={14} aria-hidden />
-        ) : (
-          <IconCarambola size={14} stroke={1.7} aria-hidden />
-        )}
-      </Button>
+      {showFavoriteAction && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className={cn(
+            "h-8 w-8 rounded-lg bg-background/95 text-foreground shadow-sm hover:bg-background",
+            favorited && "text-amber-500 hover:text-amber-500",
+          )}
+          aria-label={
+            favorited
+              ? `Remove ${item.filename} from favorites`
+              : `Add ${item.filename} to favorites`
+          }
+          aria-pressed={favorited}
+          title={
+            favorited
+              ? `Remove ${item.filename} from favorites`
+              : `Add ${item.filename} to favorites`
+          }
+          onClick={() => {
+            onToggleFavorite(item);
+          }}
+        >
+          {favorited ? (
+            <IconCarambolaFilled size={14} aria-hidden />
+          ) : (
+            <IconCarambola size={14} stroke={1.7} aria-hidden />
+          )}
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -683,6 +695,7 @@ function ArtifactCard({
   onOpenPreview,
   onStartChat,
   onToggleFavorite,
+  showFavoriteAction,
 }: {
   readonly cardRef: (element: HTMLElement | null) => void;
   readonly index: number;
@@ -691,6 +704,7 @@ function ArtifactCard({
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
   readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly showFavoriteAction: boolean;
 }) {
   const kindLabel = formatArtifactKind(item.artifactKind);
   const contextLabel = artifactContextLabel({ item, kindLabel });
@@ -750,6 +764,7 @@ function ArtifactCard({
           favorited={favorited}
           item={item}
           previewUrl={previewUrl}
+          showFavoriteAction={showFavoriteAction}
           onOpenChat={onOpenChat}
           onStartChat={onStartChat}
           onToggleFavorite={onToggleFavorite}
@@ -1005,6 +1020,7 @@ function ArtifactsList({
   onOpenPreview,
   onStartChat,
   onToggleFavorite,
+  showFavoriteAction,
 }: {
   readonly artifacts: readonly ArtifactItem[];
   readonly hasFilters: boolean;
@@ -1016,6 +1032,7 @@ function ArtifactsList({
   readonly onOpenPreview: (item: ArtifactItem) => void;
   readonly onStartChat: (item: ArtifactItem) => void;
   readonly onToggleFavorite: (item: ArtifactItem) => void;
+  readonly showFavoriteAction: boolean;
 }) {
   const scrollViewport = useGet(artifactsScrollViewport$);
   const scrollMetrics = useGet(artifactsScrollMetrics$);
@@ -1107,6 +1124,7 @@ function ArtifactsList({
               onOpenPreview={onOpenPreview}
               onStartChat={onStartChat}
               onToggleFavorite={onToggleFavorite}
+              showFavoriteAction={showFavoriteAction}
             />
           );
         })}
@@ -1141,6 +1159,9 @@ export function ArtifactsPage() {
   const remoteLoadable = useLastLoadable(remoteArtifacts$);
   const cachedLoadable = useLastLoadable(cachedArtifacts$);
   const agents = useLastResolved(agents$) ?? [];
+  const features = useLastResolved(featureSwitch$);
+  const artifactFavoritesEnabled =
+    features?.[LEGACY_ARTIFACT_FAVORITES_SWITCH_KEY] !== false;
   const remoteData =
     remoteLoadable.state === "hasData" ? remoteLoadable.data : null;
   const cachedData =
@@ -1157,7 +1178,7 @@ export function ArtifactsPage() {
     search,
     agentId: selectedAgentId,
     category: selectedCategory,
-    favoritesOnly,
+    favoritesOnly: artifactFavoritesEnabled && favoritesOnly,
   });
   // Drive first-paint loading / error off the source set (not the filtered
   // view, which is legitimately empty when a filter matches nothing).
@@ -1170,7 +1191,7 @@ export function ArtifactsPage() {
     search.trim().length > 0 ||
     selectedAgentId !== null ||
     selectedCategory !== null ||
-    favoritesOnly;
+    (artifactFavoritesEnabled && favoritesOnly);
   const handleScroll = (event: ReactUIEvent<HTMLElement>) => {
     const viewport = event.currentTarget;
     syncScrollMetrics(viewport);
@@ -1210,7 +1231,8 @@ export function ArtifactsPage() {
             search={search}
             selectedAgentId={selectedAgentId}
             selectedCategory={selectedCategory}
-            favoritesOnly={favoritesOnly}
+            favoritesOnly={artifactFavoritesEnabled && favoritesOnly}
+            showFavoritesFilter={artifactFavoritesEnabled}
             agents={agents}
             onSearchChange={setSearch}
             onAgentChange={setSelectedAgentId}
@@ -1232,6 +1254,7 @@ export function ArtifactsPage() {
             onToggleFavorite={(item) => {
               detach(toggleFavorite(item, pageSignal), Reason.DomCallback);
             }}
+            showFavoriteAction={artifactFavoritesEnabled}
           />
         </div>
       </main>
