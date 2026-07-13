@@ -6,10 +6,12 @@ import type {
   TestSlackStateResponse,
 } from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
+import { sql } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { db } from "../../../lib/db";
 import { server } from "../../../mocks/server";
 import { now } from "../../external/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -31,6 +33,9 @@ import {
 const context = testContext();
 const store = createStore();
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
+const REMOVED_CONNECTOR_TYPE = "removed-connector";
+const REMOVED_AUTH_CONNECTOR_TYPE = "github";
+const MISMATCHED_AUTH_CONNECTOR_TYPE = "gitlab";
 
 interface SlackFixture {
   readonly userId: string;
@@ -134,12 +139,28 @@ async function deleteSlackConnection(fixture: SlackFixture): Promise<void> {
 
 describe("GET /api/zero/integrations/slack", () => {
   let fixture: SlackFixture;
+  const historicalConnectorFixtures: SlackFixture[] = [];
 
   beforeEach(async () => {
     fixture = await seedSlackFixture();
   });
 
   afterEach(async () => {
+    while (historicalConnectorFixtures.length > 0) {
+      const historicalFixture = historicalConnectorFixtures.pop();
+      if (historicalFixture) {
+        await db().execute(sql`
+          DELETE FROM connectors
+          WHERE org_id = ${historicalFixture.orgId}
+            AND user_id = ${historicalFixture.userId}
+            AND type IN (
+              ${REMOVED_CONNECTOR_TYPE},
+              ${REMOVED_AUTH_CONNECTOR_TYPE},
+              ${MISMATCHED_AUTH_CONNECTOR_TYPE}
+            )
+        `);
+      }
+    }
     await cleanupSlackFixture(fixture);
   });
 
@@ -344,6 +365,42 @@ describe("GET /api/zero/integrations/slack", () => {
         "SEC_A",
       ]);
       expect(response.body.environment!.missingVars).toStrictEqual(["VAR_A"]);
+    });
+
+    it("ignores unsupported historical connectors when loading environment", async () => {
+      await seedEnvironmentVersion();
+
+      // These rows model identities accepted by an older registry. The current
+      // production API cannot construct these historical states.
+      await db().execute(sql`
+        INSERT INTO connectors (type, auth_method, user_id, org_id)
+        VALUES
+          (${REMOVED_CONNECTOR_TYPE}, 'api-token', ${fixture.userId}, ${fixture.orgId}),
+          (${REMOVED_AUTH_CONNECTOR_TYPE}, 'removed-auth-method', ${fixture.userId}, ${fixture.orgId}),
+          (${MISMATCHED_AUTH_CONNECTOR_TYPE}, 'oauth', ${fixture.userId}, ${fixture.orgId})
+      `);
+      historicalConnectorFixtures.push(fixture);
+
+      mockAdminAuth();
+
+      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+      const response = await accept(
+        client.getStatus({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body).toMatchObject({
+        isConnected: true,
+        defaultAgentName: "Slack Bot",
+        environment: {
+          requiredSecrets: ["SEC_A"],
+          requiredVars: ["VAR_A"],
+          missingSecrets: ["SEC_A"],
+          missingVars: ["VAR_A"],
+        },
+      });
     });
 
     it("omits environment when isConnected is false", async () => {
