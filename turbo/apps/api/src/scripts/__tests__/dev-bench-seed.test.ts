@@ -13,8 +13,8 @@ const EXPECTED_PROFILE_SHAPES = {
     failedLifecycleMessages: 1,
     recommendedFollowupMessages: 72,
     usageMessages: 32,
-    automationIdMessages: 19,
-    automationTitleMessages: 46,
+    workflowScheduleRuns: 46,
+    triggerBriefRuns: 46,
     revokeMessages: 6,
   },
   "release-pr-auto-merge": {
@@ -27,8 +27,8 @@ const EXPECTED_PROFILE_SHAPES = {
     failedLifecycleMessages: 0,
     recommendedFollowupMessages: 142,
     usageMessages: 0,
-    automationIdMessages: 51,
-    automationTitleMessages: 135,
+    workflowScheduleRuns: 135,
+    triggerBriefRuns: 135,
     revokeMessages: 6,
   },
 } as const;
@@ -104,14 +104,24 @@ describe("dev bench seed profile rows", () => {
         countWhere(rows.messageRows, (row) => {
           return row.automationId !== null && row.automationId !== undefined;
         }),
-      ).toBe(expected.automationIdMessages);
+      ).toBe(0);
       expect(
         countWhere(rows.messageRows, (row) => {
           return (
             row.automationTitle !== null && row.automationTitle !== undefined
           );
         }),
-      ).toBe(expected.automationTitleMessages);
+      ).toBe(0);
+      expect(
+        countWhere(rows.zeroRunRows, (row) => {
+          return row.triggerSource === "workflow-schedule";
+        }),
+      ).toBe(expected.workflowScheduleRuns);
+      expect(
+        countWhere(rows.zeroRunRows, (row) => {
+          return row.triggerBrief !== null && row.triggerBrief !== undefined;
+        }),
+      ).toBe(expected.triggerBriefRuns);
       expect(
         countWhere(rows.messageRows, (row) => {
           return (

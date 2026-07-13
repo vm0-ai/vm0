@@ -122,6 +122,14 @@ function serviceUnavailable(message: string, code = "NOT_CONFIGURED") {
   return errorResponse(503, code, message);
 }
 
+function isAutomationTriggerSource(triggerSource: string | null): boolean {
+  return (
+    triggerSource === "automation" ||
+    triggerSource === "workflow-schedule" ||
+    triggerSource === "workflow-event"
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -532,7 +540,10 @@ async function authorizeBankingAccess(
     });
   }
 
-  if (run.triggerSource === "automation" && !grant.allowAutomationRuns) {
+  if (
+    isAutomationTriggerSource(run.triggerSource) &&
+    !grant.allowAutomationRuns
+  ) {
     // Historical audit rows persist the former "SCHEDULE_NOT_ALLOWED" code;
     // nothing filters on the literal, so new denials emit the automation name.
     return await denyBankingAccess(db, auth, action, providerAccountId, {

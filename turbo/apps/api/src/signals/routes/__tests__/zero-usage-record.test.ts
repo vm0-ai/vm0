@@ -25,11 +25,9 @@ const chatCallbacks = createChatCallbacksApi(context);
 const mocks = createZeroRouteMocks(context);
 
 /*
- * Timezone/DST period-boundary reads ("today"/"yesterday" row membership) and
- * automation-threaded rows are not covered here: usage_event.created_at is a
- * database default, so sandbox webhooks cannot backdate ledger rows into a
- * past period, and no product path currently creates automation-sourced runs
- * inside a chat thread.
+ * Timezone/DST period-boundary reads ("today"/"yesterday" row membership) are
+ * not covered here: usage_event.created_at is a database default, so sandbox
+ * webhooks cannot backdate ledger rows into a past period.
  */
 
 const MODEL_TOKEN_CATEGORIES = {
@@ -421,6 +419,51 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.rows[2]?.source).toBe("chat");
     expect(response.body.rows[2]?.threadId).toBe(older.threadId);
     expect(response.body.rows[2]?.credits).toBe(80);
+  });
+
+  it("normalizes current Workflow Automation sources without changing credits", async () => {
+    const fixture = await entitledRecordActor();
+    const connectorProvider = uniqueProvider("bdd-connector");
+    await seedConnectorPricing(connectorProvider);
+
+    const sources = [
+      ["automation", 1],
+      ["workflow-schedule", 2],
+      ["workflow-event", 3],
+    ] as const;
+    for (const [triggerSource, quantity] of sources) {
+      const run = await createUnthreadedRun(fixture.actor, {
+        prompt: `${triggerSource} usage`,
+        triggerSource,
+      });
+      await recordConnectorUsage(
+        fixture.actor,
+        run.runId,
+        connectorProvider,
+        quantity,
+      );
+    }
+
+    await billing.processUsageEvents();
+    mocks.clerk.session(fixture.actor.userId, fixture.actor.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        query: { source: "automation", range: "7d", tz: "UTC" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body.rows).toHaveLength(1);
+    expect(response.body.totalCredits).toBe(60);
+    expect(response.body.rows[0]).toMatchObject({
+      source: "automation",
+      threadId: null,
+      runId: null,
+      credits: 60,
+      tokens: 0,
+    });
   });
 
   it("aggregates deleted chat threads into a synthetic usage row", async () => {
