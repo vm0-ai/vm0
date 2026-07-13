@@ -8397,15 +8397,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         }),
       ],
     );
-    const sandboxOperationIngestCall =
-      context.mocks.axiom.sdkIngest.mock.calls.find(([dataset]) => {
-        return dataset === "vm0-sandbox-op-log-dev";
-      });
-    expect(sandboxOperationIngestCall?.[1]).toStrictEqual([
-      expect.not.objectContaining({
-        session_history_ref_hash: "should-not-forward",
-      }),
-    ]);
+    const sessionHistoryDownloadEvents = sandboxOperationEventsForRunByAction(
+      created.runId,
+      "session_history_download",
+    );
+    expect(sessionHistoryDownloadEvents).toHaveLength(1);
+    expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "session_history_ref_hash",
+    );
 
     const observed = await webhooks.requestAgentModelUsageObservation(
       {
