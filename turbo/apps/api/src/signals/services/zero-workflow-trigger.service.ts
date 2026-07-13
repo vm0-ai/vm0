@@ -857,43 +857,18 @@ function chatThreadTriggerFromSummary(args: {
   if (!summary || chatThreadId === null) {
     return [];
   }
-  const base = {
-    id: summary.id,
-    enabled: summary.enabled,
-    chatThreadId,
-    nextRunAt: summary.nextRunAt,
-    lastRunAt: summary.lastRunAt,
-    ownerUserId: summary.ownerUserId,
-    workflow: {
-      id: workflow.id,
-      agentId: workflow.agentId,
-      name: workflow.name,
-      displayName: workflow.displayName,
-      description: workflow.description,
-    },
-  };
-  if (summary.kind === "schedule") {
-    return [
-      {
-        ...base,
-        kind: "schedule",
-        schedule: summary.schedule,
-        scheduleSummary: summary.scheduleSummary,
-      },
-    ];
-  }
-  if (summary.kind !== "event") {
-    return [];
-  }
   return [
     {
-      ...base,
-      kind: "event",
-      eventType: summary.eventType,
-      eventConfig: summary.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    } as ChatThreadWorkflowTrigger,
+      ...summary,
+      chatThreadId,
+      workflow: {
+        id: workflow.id,
+        agentId: workflow.agentId,
+        name: workflow.name,
+        displayName: workflow.displayName,
+        description: workflow.description,
+      },
+    },
   ];
 }
 
