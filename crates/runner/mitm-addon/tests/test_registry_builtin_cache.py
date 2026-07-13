@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import builtin_firewall_cache
+import builtin_host_policy
 import matching
 import registry
 import registry_firewalls
@@ -251,7 +252,10 @@ class TestRegistryBuiltinCache:
         assert api["base"] == "https://cache-only.example.com"
         assert api["auth"]["awsSigv4"]["accessKeyId"] == "${{ secrets.AWS_ACCESS_KEY_ID }}"
         assert api["hostPolicy"]["exactHosts"] == ["cache-only.example.com"]
-        assert api["_builtinHostPolicyRuntime"] is True
+        assert isinstance(
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER],
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
 
     def test_catalog_api_ids_are_reassigned_per_vm(self, tmp_path, mitm_ctx):
         registry_path = tmp_path / "registry.json"
@@ -857,8 +861,21 @@ class TestRegistryBuiltinCache:
         second_vm_info, second_compiled, _ = second_context
         assert first_compiled is not None
         assert second_compiled is not None
-        assert first_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache-a.example.com"
-        assert second_vm_info["firewalls"][0]["apis"][0]["base"] == "https://cache-b.example.com"
+        first_api = first_vm_info["firewalls"][0]["apis"][0]
+        second_api = second_vm_info["firewalls"][0]["apis"][0]
+        assert first_api["base"] == "https://cache-a.example.com"
+        assert second_api["base"] == "https://cache-b.example.com"
+        first_runtime_policy = first_api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER]
+        second_runtime_policy = second_api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER]
+        assert isinstance(
+            first_runtime_policy,
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+        assert isinstance(
+            second_runtime_policy,
+            builtin_host_policy.CompiledBuiltinHostPolicy,
+        )
+        assert first_runtime_policy is not second_runtime_policy
         assert _first_firewall_core(first_compiled) is not _first_firewall_core(second_compiled)
 
     def test_runner_catalog_cache_change_recompiles_core_when_metadata_is_unchanged(
