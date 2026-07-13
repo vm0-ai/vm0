@@ -264,6 +264,10 @@ describe("AUTH-02 and AUTH-03", () => {
       description: "BDD secret",
       type: "user",
     });
+    await api.setSecret(admin, {
+      name: "GITHUB_ACCESS_TOKEN",
+      value: "github-user-secret-value",
+    });
 
     const invalidSecret = await api.requestSetSecret(
       admin,
@@ -276,8 +280,20 @@ describe("AUTH-02 and AUTH-03", () => {
     const listedSecret = secrets.secrets.find((candidate) => {
       return candidate.name === secretName;
     });
-    expect(listedSecret).toBeDefined();
+    expect(listedSecret).toMatchObject({ connectorDisplay: null });
+    expect(
+      secrets.secrets.find((candidate) => {
+        return candidate.name === "GITHUB_ACCESS_TOKEN";
+      }),
+    ).toMatchObject({
+      type: "user",
+      connectorDisplay: {
+        label: "GitHub",
+        environmentNames: ["GH_TOKEN", "GITHUB_TOKEN"],
+      },
+    });
     expect(JSON.stringify(secrets)).not.toContain("super-secret-value");
+    expect(JSON.stringify(secrets)).not.toContain("github-user-secret-value");
 
     const variableName = upperName("BDD_VARIABLE");
     const variable = await api.setVariable(admin, {
@@ -315,11 +331,15 @@ describe("AUTH-02 and AUTH-03", () => {
     expect(readBack).toStrictEqual(preferences);
 
     await api.deleteSecret(admin, secretName);
+    await api.deleteSecret(admin, "GITHUB_ACCESS_TOKEN");
     await api.deleteVariable(admin, variableName);
     const afterSecretDelete = await api.listSecrets(admin);
     expect(
       afterSecretDelete.secrets.some((candidate) => {
-        return candidate.name === secretName;
+        return (
+          candidate.name === secretName ||
+          candidate.name === "GITHUB_ACCESS_TOKEN"
+        );
       }),
     ).toBeFalsy();
     const afterVariableDelete = await api.listVariables(admin);

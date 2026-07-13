@@ -8,23 +8,16 @@ import {
   Card,
   CardContent,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Switch,
   cn,
 } from "@vm0/ui";
-import { IconAlertTriangle, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import {
   Alert,
   AlertDescription,
@@ -41,6 +34,11 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
+import {
+  AgentDeleteDialog,
+  type AgentDeleteWorkflow,
+  type AgentDeleteCopyTarget,
+} from "./components/zero-delete-agent-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { serializeAvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
@@ -59,29 +57,13 @@ import {
   initSettingsForm$,
   resetSettingsForm$,
   markSettingsSaved$,
-  deleteAgent$,
   settingsVisibility$,
   setSettingsVisibility$,
   agentDemoteConfirmOpen$,
   setAgentDemoteConfirmOpen$,
-  agentDeleteCopyChoices$,
-  setAgentDeleteCopyChoices$,
-  agentDeleteCopying$,
-  setAgentDeleteCopying$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 
-export interface AgentDeleteWorkflow {
-  readonly id: string;
-  readonly title: string;
-}
-
-export interface AgentDeleteCopyTarget {
-  readonly id: string;
-  readonly displayName: string | null;
-}
-
-/** Sentinel Select value meaning "let this workflow be deleted with the agent". */
-const DELETE_WITH_AGENT = "__delete_with_agent__";
+export type { AgentDeleteWorkflow, AgentDeleteCopyTarget };
 
 interface ZeroSettingsTabProps {
   displayName: string;
@@ -156,9 +138,6 @@ export function ZeroSettingsTab({
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
 
-  const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
-  const deleting = deleteLoadable.state === "loading";
-
   const [settingsLoadable, triggerUpdateSettings] =
     useLoadableSet(updateSettings$);
   const saving = settingsLoadable.state === "loading";
@@ -200,50 +179,6 @@ export function ZeroSettingsTab({
       return;
     }
     runSaveSettings();
-  };
-
-  // Delete reconcile: each bound workflow maps to a Select value that is either
-  // DELETE_WITH_AGENT (default) or a target agent id to copy it onto first.
-  const copyChoices = useGet(agentDeleteCopyChoices$);
-  const setCopyChoices = useSet(setAgentDeleteCopyChoices$);
-  const copying = useGet(agentDeleteCopying$);
-  const setCopying = useSet(setAgentDeleteCopying$);
-  const canReconcile =
-    deleteWorkflows.length > 0 &&
-    deleteCopyTargets.length > 0 &&
-    onCopyWorkflowBeforeDelete !== undefined;
-
-  const handleDelete = () => {
-    if (!onDelete) {
-      return;
-    }
-    // Scope rescues to this agent's workflows so stale choices from a
-    // previously opened delete dialog never trigger an unrelated copy.
-    const currentWorkflowIds = new Set(
-      deleteWorkflows.map((workflow) => {
-        return workflow.id;
-      }),
-    );
-    const rescues = Object.entries(copyChoices).filter(
-      ([workflowId, target]) => {
-        return (
-          target !== DELETE_WITH_AGENT && currentWorkflowIds.has(workflowId)
-        );
-      },
-    );
-    detach(
-      (async () => {
-        if (rescues.length > 0 && onCopyWorkflowBeforeDelete) {
-          setCopying(true);
-          for (const [workflowId, toAgentId] of rescues) {
-            await onCopyWorkflowBeforeDelete(workflowId, toAgentId);
-          }
-          setCopying(false);
-        }
-        await deleteAgentFn(onDelete, pageSignal);
-      })(),
-      Reason.DomCallback,
-    );
   };
 
   return (
@@ -409,139 +344,13 @@ export function ZeroSettingsTab({
         </Card>
 
         {!isDefaultAgent && onDelete && (
-          <Card className="zero-card overflow-hidden border-destructive/20 mt-4">
-            <CardContent className="p-4 sm:p-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                <div className="min-w-0 sm:max-w-[46%]">
-                  <h3 className="text-sm font-medium text-foreground">
-                    Danger zone
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                    Permanently remove this agent and all its data. This action
-                    cannot be undone.
-                  </p>
-                </div>
-                <div className="flex w-full shrink-0 justify-end sm:w-auto">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <IconTrash size={14} stroke={1.5} />
-                        Delete agent
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
-                        <DialogDescription>
-                          This is a dangerous operation. Deleting this agent
-                          also permanently deletes every workflow bound to it
-                          and every member&apos;s chat history under it,
-                          including automations and chats other people created.
-                          This action cannot be undone.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <Alert variant="destructive">
-                        <IconAlertTriangle size={16} stroke={1.5} />
-                        <AlertTitle>This can&apos;t be undone</AlertTitle>
-                        <AlertDescription>
-                          {resolvedAgentName} and every member&apos;s workflows,
-                          automations, and chat history under it will be
-                          permanently deleted.
-                        </AlertDescription>
-                      </Alert>
-                      {canReconcile && (
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-foreground">
-                            Keep any of these workflows?
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Copy a workflow to another agent to keep it.
-                            Anything left as &quot;Delete with agent&quot; is
-                            removed.
-                          </p>
-                          <div className="flex flex-col gap-2">
-                            {deleteWorkflows.map((workflow) => {
-                              return (
-                                <div
-                                  key={workflow.id}
-                                  className="flex items-center justify-between gap-3"
-                                >
-                                  <span
-                                    className="min-w-0 truncate text-sm text-foreground"
-                                    title={workflow.title}
-                                  >
-                                    {workflow.title}
-                                  </span>
-                                  <Select
-                                    value={
-                                      copyChoices[workflow.id] ??
-                                      DELETE_WITH_AGENT
-                                    }
-                                    onValueChange={(value) => {
-                                      setCopyChoices({
-                                        ...copyChoices,
-                                        [workflow.id]: value,
-                                      });
-                                    }}
-                                  >
-                                    <SelectTrigger
-                                      className="h-8 w-[210px] shrink-0"
-                                      aria-label={`Handle workflow ${workflow.title}`}
-                                    >
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value={DELETE_WITH_AGENT}>
-                                        Delete with agent
-                                      </SelectItem>
-                                      {deleteCopyTargets.map((target) => {
-                                        return (
-                                          <SelectItem
-                                            key={target.id}
-                                            value={target.id}
-                                          >
-                                            Copy to{" "}
-                                            {target.displayName ?? target.id}
-                                          </SelectItem>
-                                        );
-                                      })}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      <DialogFooter>
-                        <DialogClose asChild>
-                          <Button variant="outline" size="sm">
-                            Cancel
-                          </Button>
-                        </DialogClose>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          disabled={deleting || copying}
-                          onClick={handleDelete}
-                        >
-                          {copying
-                            ? "Copying…"
-                            : deleting
-                              ? "Deleting…"
-                              : "Delete agent"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <AgentDeleteDialog
+            resolvedAgentName={resolvedAgentName}
+            onDelete={onDelete}
+            deleteWorkflows={deleteWorkflows}
+            deleteCopyTargets={deleteCopyTargets}
+            onCopyWorkflowBeforeDelete={onCopyWorkflowBeforeDelete}
+          />
         )}
       </div>
 

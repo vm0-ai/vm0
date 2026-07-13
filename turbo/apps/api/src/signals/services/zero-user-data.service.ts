@@ -14,7 +14,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type {
-  SecretListResponse,
   SecretResponse,
   SetSecretRequest,
   SecretType,
@@ -417,8 +416,8 @@ export const setUserVariable$ = command(
 export function userSecrets({
   orgId,
   userId,
-}: UserScopedQuery): Computed<Promise<SecretListResponse>> {
-  return computed(async (get): Promise<SecretListResponse> => {
+}: UserScopedQuery): Computed<Promise<{ readonly secrets: SecretResponse[] }>> {
+  return computed(async (get) => {
     const db = get(db$);
     const rows = await db
       .select({
