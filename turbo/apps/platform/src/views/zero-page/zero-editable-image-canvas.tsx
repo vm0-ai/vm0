@@ -50,7 +50,9 @@ const IMAGE_VIEWER_PADDING = 24;
 const SELECTED_IMAGE_OUTLINE_WIDTH = 4;
 const SELECTED_IMAGE_HALO_WIDTH = 3;
 const TOOLBAR_OFFSET = 12;
+const TOP_TOOLBAR_Z_INDEX_OFFSET = 4;
 const MIN_REGION_SELECTION_SIZE = 6;
+const IMAGE_EDIT_ACCENT_COLOR = "hsl(var(--primary))";
 
 type EditableImageCanvasProps = {
   alt: string;
@@ -584,7 +586,7 @@ function CanvasItemView({
           : undefined,
         left: item.x,
         outline: selected
-          ? `${selectedImageOutlineWidth}px solid rgb(59,130,246)`
+          ? `${selectedImageOutlineWidth}px solid ${IMAGE_EDIT_ACCENT_COLOR}`
           : undefined,
         height: item.displayHeight,
         pointerEvents: "auto",
@@ -606,9 +608,11 @@ function inverseScaleFromTransformState({
 function SelectionToolbarAnchor({
   renderSelectionToolbar,
   selectedItem,
+  zIndex,
 }: {
   renderSelectionToolbar: (item: EditableImageCanvasItem) => ReactNode;
   selectedItem: EditableImageCanvasItem;
+  zIndex: number;
 }) {
   const inverseScale = useTransformComponent(inverseScaleFromTransformState);
 
@@ -618,7 +622,7 @@ function SelectionToolbarAnchor({
       style={{
         left: selectedItem.x + selectedItem.displayWidth / 2,
         top: selectedItem.y - TOOLBAR_OFFSET,
-        zIndex: selectedItem.zIndex + 2,
+        zIndex,
       }}
     >
       <div className="-translate-x-1/2 -translate-y-full">
@@ -656,7 +660,7 @@ function RegionSelectionFrame({
       style={{
         height: displayRegion.height,
         left: item.x + displayRegion.x,
-        outline: `${2 * inverseScale}px solid rgb(37,99,235)`,
+        outline: `${2 * inverseScale}px solid ${IMAGE_EDIT_ACCENT_COLOR}`,
         top: item.y + displayRegion.y,
         width: displayRegion.width,
         zIndex: item.zIndex + 1,
@@ -738,7 +742,7 @@ function RegionCommentAnchor({
     >
       <div
         data-testid="image-edit-region-comment-frame"
-        className="absolute inset-0 rounded-sm border border-dashed border-blue-600/90 bg-blue-600/10 opacity-0 transition-opacity group-hover:opacity-100"
+        className="absolute inset-0 rounded-sm border border-dashed border-primary/90 bg-primary/10 opacity-0 transition-opacity group-hover:opacity-100"
         style={{
           borderWidth: `${2 * inverseScale}px`,
         }}
@@ -815,6 +819,13 @@ function EditableCanvasSurface({
     });
     return item ? [{ comment, item }] : [];
   });
+  const topToolbarZIndex =
+    Math.max(
+      0,
+      ...items.map((item) => {
+        return item.zIndex;
+      }),
+    ) + TOP_TOOLBAR_Z_INDEX_OFFSET;
 
   return (
     <div
@@ -872,6 +883,7 @@ function EditableCanvasSurface({
           <SelectionToolbarAnchor
             renderSelectionToolbar={renderSelectionToolbar}
             selectedItem={selectedItem}
+            zIndex={topToolbarZIndex}
           />
         )}
       </div>
