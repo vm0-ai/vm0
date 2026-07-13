@@ -28,10 +28,10 @@ import {
   resolveModelSelectionPin,
 } from "./zero-model-selection.service";
 
-type AutomationChatThreadModelPin = ModelFirstPin;
+type RunChatThreadModelPin = ModelFirstPin;
 
-type AutomationChatThreadModelPinResult =
-  | AutomationChatThreadModelPin
+type RunChatThreadModelPinResult =
+  | RunChatThreadModelPin
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof insufficientCredits>;
@@ -39,7 +39,7 @@ type AutomationChatThreadModelPinResult =
 async function getStoredThreadModelPin(
   db: Db,
   threadId: string,
-): Promise<AutomationChatThreadModelPin | null> {
+): Promise<RunChatThreadModelPin | null> {
   const [thread] = await db
     .select({ selectedModel: chatThreads.selectedModel })
     .from(chatThreads)
@@ -54,7 +54,7 @@ async function getStoredThreadModelPin(
 async function getFirstRunModelPin(
   db: Db,
   threadId: string,
-): Promise<AutomationChatThreadModelPin | null> {
+): Promise<RunChatThreadModelPin | null> {
   const [run] = await db
     .select({ selectedModel: zeroRuns.selectedModel })
     .from(chatMessages)
@@ -78,7 +78,7 @@ async function getFirstRunModelPin(
 async function existingModelFirstThreadPin(
   db: Db,
   threadId: string,
-): Promise<AutomationChatThreadModelPin | null> {
+): Promise<RunChatThreadModelPin | null> {
   return (
     (await getStoredThreadModelPin(db, threadId)) ??
     (await getFirstRunModelPin(db, threadId))
@@ -89,8 +89,8 @@ async function resolveStoredModelFirstPin(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly pin: AutomationChatThreadModelPin;
-}): Promise<AutomationChatThreadModelPinResult> {
+  readonly pin: RunChatThreadModelPin;
+}): Promise<RunChatThreadModelPinResult> {
   if (!params.pin.selectedModel) {
     return params.pin;
   }
@@ -121,15 +121,15 @@ async function resolveStoredModelFirstPin(params: {
 }
 
 /**
- * Resolve the model pin for a chat-mode automation run from its linked thread:
+ * Resolve the model pin for a chat-mode run from its linked thread:
  * the thread's stored pin, else its first-run pin, else the org default.
  */
-export async function resolveAutomationChatThreadModelPin(params: {
+export async function resolveRunChatThreadModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
-}): Promise<AutomationChatThreadModelPinResult> {
+}): Promise<RunChatThreadModelPinResult> {
   const existing = await existingModelFirstThreadPin(
     params.db,
     params.threadId,
@@ -146,10 +146,10 @@ export async function resolveAutomationChatThreadModelPin(params: {
 }
 
 /**
- * Post an automation run's prompt as a user chat message into its linked
+ * Post a run's prompt as a user chat message into its linked
  * thread and publish realtime signals so the client surfaces the run.
  */
-export async function postAutomationUserMessage(params: {
+export async function postRunUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;

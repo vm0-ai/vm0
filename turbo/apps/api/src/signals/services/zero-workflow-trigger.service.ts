@@ -27,7 +27,7 @@ import {
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
-  type ZeroWorkflowTriggerAutomationEntry,
+  type ZeroWorkflowAutomationEntry,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
@@ -783,7 +783,7 @@ export async function listWorkspaceWorkflowTriggers(
     readonly orgId: string;
     readonly member: WorkflowMember;
   },
-): Promise<readonly ZeroWorkflowTriggerAutomationEntry[]> {
+): Promise<readonly ZeroWorkflowAutomationEntry[]> {
   const rows = await db
     .select({
       trigger: zeroWorkflowTriggers,
@@ -824,24 +824,22 @@ export async function listWorkspaceWorkflowTriggers(
     .orderBy(asc(zeroWorkflowTriggers.createdAt), asc(zeroWorkflowTriggers.id));
 
   const entries = await Promise.all(
-    rows.map(
-      async (row): Promise<ZeroWorkflowTriggerAutomationEntry | null> => {
-        const trigger = await rowToPublicSummary(db, row.trigger, {
-          chatThreadId: row.chatThreadId ?? null,
-        });
-        if (!trigger) {
-          return null;
-        }
-        return {
-          workflow: workflowSummary({
-            workflow: row.workflow,
-            agent: row.agent,
-            member: args.member,
-          }),
-          trigger,
-        };
-      },
-    ),
+    rows.map(async (row): Promise<ZeroWorkflowAutomationEntry | null> => {
+      const trigger = await rowToPublicSummary(db, row.trigger, {
+        chatThreadId: row.chatThreadId ?? null,
+      });
+      if (!trigger) {
+        return null;
+      }
+      return {
+        workflow: workflowSummary({
+          workflow: row.workflow,
+          agent: row.agent,
+          member: args.member,
+        }),
+        trigger,
+      };
+    }),
   );
   return entries.flatMap((entry) => {
     return entry ? [entry] : [];

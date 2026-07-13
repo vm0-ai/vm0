@@ -923,12 +923,12 @@ export const zeroWorkflowListResponseSchema = z.array(
   zeroWorkflowSummarySchema,
 );
 
-export const zeroWorkflowTriggerAutomationEntrySchema = z.object({
+export const zeroWorkflowAutomationEntrySchema = z.object({
   workflow: zeroWorkflowSummarySchema,
   trigger: zeroWorkflowTriggerSummarySchema,
 });
-export const zeroWorkflowTriggerAutomationListResponseSchema = z.array(
-  zeroWorkflowTriggerAutomationEntrySchema,
+export const zeroWorkflowAutomationListResponseSchema = z.array(
+  zeroWorkflowAutomationEntrySchema,
 );
 
 export const zeroWorkflowCreateRequestSchema = z.object({
@@ -1207,7 +1207,7 @@ export const zeroWorkflowTriggersContract = c.router({
     path: "/api/zero/workflow-triggers",
     headers: authHeadersSchema,
     responses: {
-      200: zeroWorkflowTriggerAutomationListResponseSchema,
+      200: zeroWorkflowAutomationListResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
@@ -1383,8 +1383,8 @@ export type ZeroWorkflowChatThreadResponse = z.infer<
 export type ZeroWorkflowRunResponse = z.infer<
   typeof zeroWorkflowRunResponseSchema
 >;
-export type ZeroWorkflowTriggerAutomationEntry = z.infer<
-  typeof zeroWorkflowTriggerAutomationEntrySchema
+export type ZeroWorkflowAutomationEntry = z.infer<
+  typeof zeroWorkflowAutomationEntrySchema
 >;
 export type ZeroWorkflowsCollectionContract =
   typeof zeroWorkflowsCollectionContract;

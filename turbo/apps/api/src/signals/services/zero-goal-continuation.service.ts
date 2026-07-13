@@ -11,9 +11,9 @@ import { now } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
-  postAutomationUserMessage,
-  resolveAutomationChatThreadModelPin,
-} from "./zero-chat-automation-message.service";
+  postRunUserMessage,
+  resolveRunChatThreadModelPin,
+} from "./zero-chat-run-message.service";
 import { hasUnclaimedQueuedUserMessage } from "./zero-chat-queued-message.service";
 import {
   pauseActiveGoalForThread,
@@ -335,7 +335,7 @@ async function resolveModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<ModelContext> {
-  const threadModelPin = await resolveAutomationChatThreadModelPin({
+  const threadModelPin = await resolveRunChatThreadModelPin({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
@@ -449,7 +449,7 @@ const runGoalNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    await postAutomationUserMessage({
+    await postRunUserMessage({
       db,
       threadId: goal.threadId,
       userId: goal.userId,
