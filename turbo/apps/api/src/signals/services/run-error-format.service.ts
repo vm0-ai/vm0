@@ -30,6 +30,7 @@ interface RunErrorProviderContext {
   readonly orgId: string;
   readonly modelProviderType: ModelProviderType | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
 }
 
 interface FormatRunErrorLikeWebMessageParams {
@@ -38,6 +39,7 @@ interface FormatRunErrorLikeWebMessageParams {
   readonly errorMessage: string;
   readonly modelProviderType?: ModelProviderType | null;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope | null;
+  readonly selectedModel?: string | null;
   readonly canManageOrgModelProviders?: boolean;
 }
 
@@ -148,6 +150,7 @@ function runErrorProviderContext(
         orgId: agentRuns.orgId,
         modelProviderType: zeroRuns.modelProvider,
         modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
       })
       .from(agentRuns)
       .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -165,6 +168,7 @@ function runErrorProviderContext(
       modelProviderCredentialScope: formatRunModelProviderCredentialScope(
         run.modelProviderCredentialScope,
       ),
+      selectedModel: run.selectedModel,
     };
   });
 }
@@ -183,7 +187,8 @@ function formatRunErrorLikeWebMessage(
 
     const providerContext =
       params.modelProviderType !== undefined &&
-      params.modelProviderCredentialScope !== undefined
+      params.modelProviderCredentialScope !== undefined &&
+      params.selectedModel !== undefined
         ? undefined
         : await get(runErrorProviderContext(params.runId));
     const modelProviderType =
@@ -194,9 +199,14 @@ function formatRunErrorLikeWebMessage(
       params.modelProviderCredentialScope !== undefined
         ? params.modelProviderCredentialScope
         : providerContext?.modelProviderCredentialScope;
+    const selectedModel =
+      params.selectedModel !== undefined
+        ? params.selectedModel
+        : providerContext?.selectedModel;
     const displayErrorMessage = formatRunErrorForExternalSurface({
       code: "INTERNAL_SERVER_ERROR",
       message: errorMessage,
+      selectedModel,
       claudeCodeCredentialRecovery: {
         modelProviderType,
         modelProviderCredentialScope,
@@ -266,6 +276,7 @@ export const formatRunErrorForRunOwner$ = command(
         modelProviderType: providerContext?.modelProviderType ?? null,
         modelProviderCredentialScope:
           providerContext?.modelProviderCredentialScope ?? null,
+        selectedModel: providerContext?.selectedModel ?? null,
         canManageOrgModelProviders,
       }),
     );
