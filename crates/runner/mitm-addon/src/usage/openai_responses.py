@@ -364,7 +364,23 @@ def _store_sse_result_values(
 def create_openai_responses_sse_usage_extractor(
     on_parse_error: _SseUsageParseErrorCallback | None = None,
 ) -> tuple[SseUsageScanner, dict]:
-    """Create an incremental SSE parser for OpenAI Responses streams."""
+    """Create an incremental usage parser for content-decoded Responses SSE bytes.
+
+    Returns ``(scanner, usage)``. Callers feed arbitrary byte chunks that still
+    contain SSE framing to the callable *scanner* (or its ``feed()`` method) and
+    retain *usage* as a live mutable accumulator. Usage extracted at a complete
+    event boundary updates that same dict in place. After the final chunk,
+    callers invoke ``scanner.finish()`` to flush an event without a trailing
+    blank line.
+
+    When captured event JSON cannot be parsed or exceeds an extractor bound,
+    ``on_parse_error(event_type, error)`` is called only if the final event
+    identity is ``response.completed``, ``response.done``,
+    ``response.incomplete``, or ``response.failed``. Known non-usage events and
+    malformed non-terminal or unknown events remain silent. HTTP content
+    decoding and its errors are outside this parser; callers feed decoded output
+    and handle decoder completion separately.
+    """
 
     usage: dict = {}
     parser = SseUsageScanner(
@@ -544,7 +560,19 @@ class _OpenAIResponsesSseUsageHandler:
 
 
 class OpenAIResponsesJsonUsageExtractor:
-    """Incrementally extract usage from non-streaming OpenAI Responses JSON."""
+    """Incrementally extract usage from content-decoded OpenAI Responses JSON.
+
+    Callers pass arbitrary JSON byte chunks to ``feed()`` and call ``finish()``
+    after the final chunk. HTTP content decoding and its errors are owned by the
+    caller.
+
+    ``finish()`` returns ``(usage, None)`` when a complete document produces at
+    least one valid platform usage category, including a category whose value is
+    zero. Non-empty model and response-id metadata accompany reportable usage.
+    It returns ``(None, error)`` when JSON parsing fails or an extractor bound is
+    exceeded, and ``(None, None)`` when a complete document has no reportable
+    usage category. Model or response-id metadata alone is not reportable.
+    """
 
     def __init__(self) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_RESPONSE_SCALAR_FIELDS)
@@ -566,7 +594,11 @@ class OpenAIResponsesJsonUsageExtractor:
 
 
 def create_openai_responses_json_usage_extractor() -> OpenAIResponsesJsonUsageExtractor:
-    """Create an incremental parser for non-SSE OpenAI Responses JSON chunks."""
+    """Create an incremental parser for content-decoded non-SSE Responses JSON.
+
+    The returned :class:`OpenAIResponsesJsonUsageExtractor` defines the
+    ``feed()`` / ``finish()`` lifecycle and result contract.
+    """
 
     return OpenAIResponsesJsonUsageExtractor()
 
