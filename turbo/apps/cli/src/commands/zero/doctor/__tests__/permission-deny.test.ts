@@ -407,7 +407,7 @@ describe("zero doctor permission-deny command", () => {
         "--method",
         "GET",
         "--url",
-        "mailto:user@example.com",
+        "ftp://slack.com/api/conversations.list",
       ],
       expectedMessage: "permission-deny requires --url to be a valid absolute",
     },
