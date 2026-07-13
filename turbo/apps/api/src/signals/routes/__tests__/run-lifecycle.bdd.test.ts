@@ -41,6 +41,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
@@ -56,7 +57,6 @@ import {
   enableAutomationsFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
-  readAutomationComposeHeadVersion,
   readAutomationsFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   releaseOrgAdmissionLock,
@@ -996,10 +996,6 @@ function zeroBackedDirectRunBody(args: {
   };
 }
 
-async function readAgentHeadVersionId(agentId: string): Promise<string> {
-  return await readAutomationComposeHeadVersion(context, agentId);
-}
-
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 
 function failIfChatCallbackRouteIsFetched(): void {
@@ -1507,10 +1503,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = await readAutomationComposeHeadVersion(
-      context,
-      compose.composeId,
-    );
+    const headVersionId = compose.versionId;
 
     context.mocks.s3.send.mockClear();
     const created = await api.createDirectRun(actor, {
@@ -1599,10 +1592,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = await readAutomationComposeHeadVersion(
-      context,
-      compose.composeId,
-    );
+    const headVersionId = compose.versionId;
 
     const created = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
@@ -1874,10 +1864,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = await readAutomationComposeHeadVersion(
-      context,
-      compose.composeId,
-    );
+    const headVersionId = compose.versionId;
 
     const initialRun = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
@@ -2076,10 +2063,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const headVersionId = await readAutomationComposeHeadVersion(
-      context,
-      compose.composeId,
-    );
+    const headVersionId = compose.versionId;
 
     const created = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
@@ -4459,7 +4443,15 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
-    const agentComposeVersionId = await readAgentHeadVersionId(agentId);
+    const compose = await createComposesBddApi(context).requestReadComposeById(
+      actor,
+      agentId,
+      [200],
+    );
+    const agentComposeVersionId = compose.body.headVersionId;
+    if (!agentComposeVersionId) {
+      throw new Error("Expected the Zero-backed agent compose to have a head");
+    }
 
     await fw.seedTestConnector(actor, {
       connectorName: "x",
