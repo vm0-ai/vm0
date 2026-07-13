@@ -724,24 +724,27 @@ fn log_job_execution_failed(
     reused: bool,
     failure: &executor::ExecutionFailure,
 ) {
+    let diagnostic = failure.diagnostic.as_ref();
+    let cli_termination_fields = JobCliTerminationLogFields::from(
+        diagnostic.and_then(|diagnostic| diagnostic.cli_termination.as_ref()),
+    );
+    let cli_observed_exit_fields = JobCliObservedExitLogFields::from(
+        diagnostic.and_then(|diagnostic| diagnostic.cli_observed_exit.as_ref()),
+    );
     let resource_fields = JobResourceLogFields::from(failure.resource_diagnostics);
+    let (timeout_ms, elapsed_ms, guest_duration_ms) = match failure.kind {
+        ExecutionFailureKind::Generic => (None, None, None),
+        ExecutionFailureKind::RunnerJobTimeout {
+            timeout_ms,
+            elapsed_ms,
+            guest_duration_ms,
+        } => (Some(timeout_ms), Some(elapsed_ms), guest_duration_ms),
+    };
 
-    if let ExecutionFailureKind::RunnerJobTimeout {
-        timeout_ms,
-        elapsed_ms,
-        guest_duration_ms,
-    } = failure.kind
-    {
-        if let Some(diagnostic) = failure.diagnostic.as_ref() {
-            let failure_detail_source = diagnostic
-                .failure_detail_source
-                .map(|source| source.as_str());
-            let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
-            let cli_termination_fields =
-                JobCliTerminationLogFields::from(diagnostic.cli_termination.as_ref());
-            let cli_observed_exit_fields =
-                JobCliObservedExitLogFields::from(diagnostic.cli_observed_exit.as_ref());
-            error!(
+    macro_rules! emit_job_execution_failed {
+        ($level:expr, $message:literal) => {
+            tracing::event!(
+                $level,
                 run_id = %run_id,
                 exit_code,
                 reused,
@@ -749,12 +752,18 @@ fn log_job_execution_failed(
                 timeout_ms,
                 elapsed_ms,
                 guest_duration_ms,
-                failure_class = diagnostic.failure_class.as_str(),
-                failure_framework = diagnostic.framework.as_str(),
-                failure_cli_exit_code = diagnostic.cli_exit_code,
-                failure_claude_num_turns = diagnostic.claude_num_turns,
-                failure_detail_source,
-                failure_reason,
+                failure_class = diagnostic.map(|diagnostic| diagnostic.failure_class.as_str()),
+                failure_framework = diagnostic.map(|diagnostic| diagnostic.framework.as_str()),
+                failure_cli_exit_code =
+                    diagnostic.and_then(|diagnostic| diagnostic.cli_exit_code),
+                failure_claude_num_turns =
+                    diagnostic.and_then(|diagnostic| diagnostic.claude_num_turns),
+                failure_detail_source = diagnostic
+                    .and_then(|diagnostic| diagnostic.failure_detail_source)
+                    .map(|source| source.as_str()),
+                failure_reason = diagnostic
+                    .and_then(|diagnostic| diagnostic.failure_reason)
+                    .map(|reason| reason.as_str()),
                 cli_termination_initiator = cli_termination_fields.initiator,
                 cli_termination_reason = cli_termination_fields.reason,
                 cli_termination_signal_sent = cli_termination_fields.signal_sent,
@@ -767,102 +776,31 @@ fn log_job_execution_failed(
                 cli_observed_signal_number = cli_observed_exit_fields.signal_number,
                 cli_observed_signal_name = cli_observed_exit_fields.signal_name,
                 cli_observed_mapped_exit_code = cli_observed_exit_fields.mapped_exit_code,
-                session_history_status = diagnostic.session_history_status.as_str(),
-                prompt_shape = diagnostic.prompt_shape.as_str(),
-                prompt_bytes = diagnostic.prompt_bytes,
-                first_line_bytes = diagnostic.first_line_bytes,
+                session_history_status =
+                    diagnostic.map(|diagnostic| diagnostic.session_history_status.as_str()),
+                prompt_shape = diagnostic.map(|diagnostic| diagnostic.prompt_shape.as_str()),
+                prompt_bytes = diagnostic.map(|diagnostic| diagnostic.prompt_bytes),
+                first_line_bytes = diagnostic.map(|diagnostic| diagnostic.first_line_bytes),
                 resource_failure_kind = resource_fields.resource_failure_kind,
                 guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
                 guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
                 guest_workspace_fs_used_percent = resource_fields.guest_workspace_fs_used_percent,
                 guest_memory_available_mb = resource_fields.guest_memory_available_mb,
-                "runner job timed out"
-            );
-        } else {
-            error!(
-                run_id = %run_id,
-                exit_code,
-                reused,
-                error = %failure.error,
-                timeout_ms,
-                elapsed_ms,
-                guest_duration_ms,
-                resource_failure_kind = resource_fields.resource_failure_kind,
-                guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
-                guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
-                guest_workspace_fs_used_percent = resource_fields.guest_workspace_fs_used_percent,
-                guest_memory_available_mb = resource_fields.guest_memory_available_mb,
-                "runner job timed out"
-            );
-        }
-        return;
+                $message
+            )
+        };
     }
 
-    if let Some(diagnostic) = failure.diagnostic.as_ref() {
-        let failure_detail_source = diagnostic
-            .failure_detail_source
-            .map(|source| source.as_str());
-        let failure_reason = diagnostic.failure_reason.map(|reason| reason.as_str());
-        let cli_termination_fields =
-            JobCliTerminationLogFields::from(diagnostic.cli_termination.as_ref());
-        let cli_observed_exit_fields =
-            JobCliObservedExitLogFields::from(diagnostic.cli_observed_exit.as_ref());
-        macro_rules! log_with_diagnostic {
-            ($level:ident) => {
-                $level!(
-                    run_id = %run_id,
-                    exit_code,
-                    reused,
-                    error = %failure.error,
-                    failure_class = diagnostic.failure_class.as_str(),
-                    failure_framework = diagnostic.framework.as_str(),
-                    failure_cli_exit_code = diagnostic.cli_exit_code,
-                    failure_claude_num_turns = diagnostic.claude_num_turns,
-                    failure_detail_source,
-                    failure_reason,
-                    cli_termination_initiator = cli_termination_fields.initiator,
-                    cli_termination_reason = cli_termination_fields.reason,
-                    cli_termination_signal_sent = cli_termination_fields.signal_sent,
-                    cli_termination_signal_pgid = cli_termination_fields.signal_pgid,
-                    cli_termination_signal_grace_ms = cli_termination_fields.signal_grace_ms,
-                    cli_termination_escalated = cli_termination_fields.escalated,
-                    cli_termination_observed_exit_code = cli_termination_fields.observed_exit_code,
-                    cli_observed_exit_kind = cli_observed_exit_fields.kind,
-                    cli_observed_exit_code = cli_observed_exit_fields.exit_code,
-                    cli_observed_signal_number = cli_observed_exit_fields.signal_number,
-                    cli_observed_signal_name = cli_observed_exit_fields.signal_name,
-                    cli_observed_mapped_exit_code = cli_observed_exit_fields.mapped_exit_code,
-                    session_history_status = diagnostic.session_history_status.as_str(),
-                    prompt_shape = diagnostic.prompt_shape.as_str(),
-                    prompt_bytes = diagnostic.prompt_bytes,
-                    first_line_bytes = diagnostic.first_line_bytes,
-                    resource_failure_kind = resource_fields.resource_failure_kind,
-                    guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
-                    guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
-                    guest_workspace_fs_used_percent = resource_fields.guest_workspace_fs_used_percent,
-                    guest_memory_available_mb = resource_fields.guest_memory_available_mb,
-                    "job execution failed"
-                )
-            };
+    match failure.kind {
+        ExecutionFailureKind::RunnerJobTimeout { .. } => {
+            emit_job_execution_failed!(tracing::Level::ERROR, "runner job timed out");
         }
-        if is_info_level_job_failure(diagnostic) {
-            log_with_diagnostic!(info);
-        } else {
-            log_with_diagnostic!(error);
+        ExecutionFailureKind::Generic if diagnostic.is_some_and(is_info_level_job_failure) => {
+            emit_job_execution_failed!(tracing::Level::INFO, "job execution failed");
         }
-    } else {
-        error!(
-            run_id = %run_id,
-            exit_code,
-            reused,
-            error = %failure.error,
-            resource_failure_kind = resource_fields.resource_failure_kind,
-            guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
-            guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
-            guest_workspace_fs_used_percent = resource_fields.guest_workspace_fs_used_percent,
-            guest_memory_available_mb = resource_fields.guest_memory_available_mb,
-            "job execution failed"
-        );
+        ExecutionFailureKind::Generic => {
+            emit_job_execution_failed!(tracing::Level::ERROR, "job execution failed");
+        }
     }
 }
 
@@ -1119,6 +1057,39 @@ mod tests {
             .get(field)
             .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
         assert_eq!(value, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    fn assert_field_kind(event: &CapturedEvent, field: &str, expected: &str) {
+        let kind = event
+            .field_kinds
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field kind {field}; event={event:#?}"));
+        assert_eq!(
+            kind, &expected,
+            "field {field} kind mismatch; event={event:#?}"
+        );
+    }
+
+    fn assert_shared_failure_log_fields(generic: &CapturedEvent, timeout: &CapturedEvent) {
+        let mut generic_fields = generic.fields.clone();
+        let mut timeout_fields = timeout.fields.clone();
+        generic_fields.remove("message");
+        timeout_fields.remove("message");
+
+        let mut generic_field_kinds = generic.field_kinds.clone();
+        let mut timeout_field_kinds = timeout.field_kinds.clone();
+        generic_field_kinds.remove("message");
+        timeout_field_kinds.remove("message");
+
+        for timeout_field in ["timeout_ms", "elapsed_ms", "guest_duration_ms"] {
+            assert!(!generic_fields.contains_key(timeout_field));
+            assert!(!generic_field_kinds.contains_key(timeout_field));
+            assert!(timeout_fields.remove(timeout_field).is_some());
+            assert!(timeout_field_kinds.remove(timeout_field).is_some());
+        }
+
+        assert_eq!(generic_fields, timeout_fields);
+        assert_eq!(generic_field_kinds, timeout_field_kinds);
     }
 
     fn test_http_client() -> HttpClient {
@@ -1590,6 +1561,7 @@ mod tests {
             Some("job execution failed")
         );
         assert!(!event.fields.contains_key("failure_reason"));
+        assert!(!event.fields.contains_key("timeout_ms"));
         assert!(!event.fields.contains_key("cli_termination_reason"));
         assert!(!event.fields.contains_key("cli_observed_exit_kind"));
     }
@@ -1688,7 +1660,10 @@ mod tests {
             event.fields.get("message").map(String::as_str),
             Some("job execution failed")
         );
+        assert!(!event.fields.contains_key("failure_class"));
         assert!(!event.fields.contains_key("failure_reason"));
+        assert!(!event.fields.contains_key("prompt_shape"));
+        assert!(!event.fields.contains_key("timeout_ms"));
     }
 
     #[test]
@@ -1769,43 +1744,103 @@ mod tests {
         assert_field_eq(&event, "timeout_ms", "7200000");
         assert_field_eq(&event, "elapsed_ms", "7199949");
         assert_field_eq(&event, "guest_duration_ms", "7200084");
+        assert!(!event.fields.contains_key("failure_class"));
+        assert!(!event.fields.contains_key("failure_reason"));
+        assert!(!event.fields.contains_key("prompt_shape"));
     }
 
     #[test]
-    fn runner_job_timeout_preserves_diagnostic_fields() {
+    fn generic_and_timeout_failures_share_diagnostic_and_resource_fields() {
         let diagnostic = job_failure_diagnostic(Some(FailureReason::UsageLimit))
-            .with_cli_termination(post_result_cli_termination());
-        let failure = executor::ExecutionFailure::runner_job_timeout(
+            .with_claude_num_turns(Some(2))
+            .with_cli_termination(post_result_cli_termination())
+            .with_cli_observed_exit(CliObservedExitDiagnostic::from_signal(libc::SIGKILL));
+        let resource_diagnostics = executor::ResourceFailureDiagnostics {
+            failure_kind: Some(executor::ResourceFailureKind::GuestRootFilesystemFull),
+            guest_root_fs_used_percent: Some(100),
+            guest_root_fs_available_kb: Some(20),
+            guest_workspace_fs_used_percent: Some(1),
+            guest_memory_available_mb: Some(624),
+        };
+        let generic_failure =
+            executor::ExecutionFailure::new(124, "Timeout", Some(diagnostic.clone()))
+                .with_resource_diagnostics(Some(resource_diagnostics));
+        let timeout_failure = executor::ExecutionFailure::runner_job_timeout(
             124,
             "Timeout",
             Some(diagnostic),
             Duration::from_secs(7200),
             Duration::from_millis(7_200_100),
             Some(7_200_000),
-        );
+        )
+        .with_resource_diagnostics(Some(resource_diagnostics));
 
-        let event = capture_job_failure_log(&failure);
+        let generic_event = capture_job_failure_log(&generic_failure);
+        let timeout_event = capture_job_failure_log(&timeout_failure);
 
-        assert_eq!(event.level, Level::ERROR);
+        assert_eq!(generic_event.level, Level::INFO);
+        assert_eq!(timeout_event.level, Level::ERROR);
         assert_eq!(
-            event.fields.get("message").map(String::as_str),
+            generic_event.fields.get("message").map(String::as_str),
+            Some("job execution failed")
+        );
+        assert_eq!(
+            timeout_event.fields.get("message").map(String::as_str),
             Some("runner job timed out")
         );
-        assert_field_eq(&event, "timeout_ms", "7200000");
-        assert_field_eq(&event, "elapsed_ms", "7200100");
-        assert_field_eq(&event, "guest_duration_ms", "7200000");
-        assert_field_eq(&event, "failure_reason", "usage_limit");
-        assert_field_eq(&event, "failure_class", "cli_nonzero");
-        assert_field_eq(&event, "failure_framework", "codex");
-        assert_field_eq(&event, "failure_detail_source", "codex_jsonl");
-        assert_field_eq(&event, "session_history_status", "not_applicable");
-        assert_field_eq(&event, "cli_termination_initiator", "guest_agent");
-        assert_field_eq(&event, "cli_termination_reason", "post_result_reap");
-        assert_field_eq(&event, "cli_termination_signal_sent", "sigterm");
-        assert_field_eq(&event, "cli_termination_signal_pgid", "1401");
-        assert_field_eq(&event, "cli_termination_signal_grace_ms", "10000");
-        assert_field_eq(&event, "cli_termination_escalated", "false");
-        assert_field_eq(&event, "cli_termination_observed_exit_code", "143");
+        assert_field_eq(&timeout_event, "timeout_ms", "7200000");
+        assert_field_eq(&timeout_event, "elapsed_ms", "7200100");
+        assert_field_eq(&timeout_event, "guest_duration_ms", "7200000");
+        assert_field_kind(&timeout_event, "timeout_ms", "u128");
+        assert_field_kind(&timeout_event, "elapsed_ms", "u128");
+        assert_field_kind(&timeout_event, "guest_duration_ms", "u64");
+
+        for event in [&generic_event, &timeout_event] {
+            assert_field_eq(event, "run_id", &RunId::nil().to_string());
+            assert_field_eq(event, "exit_code", "124");
+            assert_field_eq(event, "reused", "false");
+            assert_field_eq(event, "error", "Timeout");
+            assert_field_eq(event, "failure_reason", "usage_limit");
+            assert_field_eq(event, "failure_class", "cli_nonzero");
+            assert_field_eq(event, "failure_framework", "codex");
+            assert_field_eq(event, "failure_cli_exit_code", "1");
+            assert_field_eq(event, "failure_claude_num_turns", "2");
+            assert_field_eq(event, "failure_detail_source", "codex_jsonl");
+            assert_field_eq(event, "session_history_status", "not_applicable");
+            assert_field_eq(event, "prompt_shape", "plain");
+            assert_field_eq(event, "prompt_bytes", "12");
+            assert_field_eq(event, "first_line_bytes", "12");
+            assert_field_eq(event, "cli_termination_initiator", "guest_agent");
+            assert_field_eq(event, "cli_termination_reason", "post_result_reap");
+            assert_field_eq(event, "cli_termination_signal_sent", "sigterm");
+            assert_field_eq(event, "cli_termination_signal_pgid", "1401");
+            assert_field_eq(event, "cli_termination_signal_grace_ms", "10000");
+            assert_field_eq(event, "cli_termination_escalated", "false");
+            assert_field_eq(event, "cli_termination_observed_exit_code", "143");
+            assert_field_eq(event, "cli_observed_exit_kind", "signal");
+            assert_field_eq(event, "cli_observed_signal_number", "9");
+            assert_field_eq(event, "cli_observed_signal_name", "sigkill");
+            assert_field_eq(event, "cli_observed_mapped_exit_code", "137");
+            assert_field_eq(event, "resource_failure_kind", "guest_root_filesystem_full");
+            assert_field_eq(event, "guest_root_fs_used_percent", "100");
+            assert_field_eq(event, "guest_root_fs_available_kb", "20");
+            assert_field_eq(event, "guest_workspace_fs_used_percent", "1");
+            assert_field_eq(event, "guest_memory_available_mb", "624");
+
+            assert_field_kind(event, "message", "debug");
+            assert_field_kind(event, "run_id", "debug");
+            assert_field_kind(event, "exit_code", "i64");
+            assert_field_kind(event, "reused", "bool");
+            assert_field_kind(event, "error", "debug");
+            assert_field_kind(event, "failure_class", "str");
+            assert_field_kind(event, "failure_cli_exit_code", "i64");
+            assert_field_kind(event, "failure_claude_num_turns", "u64");
+            assert_field_kind(event, "cli_termination_escalated", "bool");
+            assert_field_kind(event, "prompt_bytes", "u64");
+            assert_field_kind(event, "guest_root_fs_used_percent", "u64");
+        }
+
+        assert_shared_failure_log_fields(&generic_event, &timeout_event);
     }
 
     async fn status_idle_sessions_and_active_runs(
