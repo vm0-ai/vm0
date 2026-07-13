@@ -254,6 +254,7 @@ fn build_mock_run_config_with_runtime(
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             mitm_jsonl_flush: None,
             network_policy_refresh: None,
+            session_history_cpu: executor::SessionHistoryCpuPool::with_capacity(1),
             session_history_probe: executor::SessionHistoryProbe::default(),
             home,
             workspace_cache: None,

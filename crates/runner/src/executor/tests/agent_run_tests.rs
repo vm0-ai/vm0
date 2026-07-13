@@ -1078,6 +1078,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
 
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
+        &config.session_history_cpu,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -1410,6 +1411,113 @@ async fn run_in_sandbox_restores_codex_zstd_sidecar_with_session_timestamp() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_restores_codex_raw_sidecar_with_session_timestamp() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history =
+        b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let sidecar_path = dir.path().join("session-history.jsonl");
+    tokio::fs::write(&sidecar_path, history).await.unwrap();
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
+                sidecar: WorkspaceSessionHistorySidecar {
+                    path: sidecar_path,
+                    representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+                    encoded_size: history.len() as u64,
+                },
+                fallback: None,
+            }),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    history_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_restores_inline_codex_history_with_session_timestamp() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history =
+        "{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08Z\"}}\n";
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession::inline(session_id.into(), history.into()));
+
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl"
+    );
+    assert_eq!(writes[0].content, history.as_bytes());
+}
+
+#[tokio::test]
 async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
@@ -1434,6 +1542,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
 
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
+        &config.session_history_cpu,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -1985,6 +2094,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
     sandbox.push_read_file_result(Ok(None));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
+        &config.session_history_cpu,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -2073,6 +2183,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
     sandbox.push_read_file_result(Ok(None));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
+        &config.session_history_cpu,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -2165,6 +2276,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
     ))));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
+        &config.session_history_cpu,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
