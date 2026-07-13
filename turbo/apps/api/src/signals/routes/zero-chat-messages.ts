@@ -2251,12 +2251,12 @@ const handleInterruptSend$ = command(
   },
 );
 
-async function loadTimedAuthorizedAgent(
+function loadTimedAuthorizedAgent(
   args: NormalSendArgs,
   db: Db,
   signal: AbortSignal,
 ): Promise<AgentForChatSend | NormalSendFailure> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
     "nested",
@@ -2274,16 +2274,16 @@ async function loadTimedAuthorizedAgent(
   );
 }
 
-async function validateTimedModelSelection(
+function validateTimedModelSelection(
   args: NormalSendArgs,
   db: Db,
 ): ReturnType<typeof validateModelSelection> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_model_selection",
     "nested",
-    async () => {
-      return await validateModelSelection({
+    () => {
+      return validateModelSelection({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2293,35 +2293,31 @@ async function validateTimedModelSelection(
   );
 }
 
-async function resolveTimedNormalSendFeatureSwitches(
+function resolveTimedNormalSendFeatureSwitches(
   args: NormalSendArgs,
   db: Db,
 ): ReturnType<typeof resolveNormalSendFeatureSwitches> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_feature_switches",
     "nested",
-    async () => {
-      return await resolveNormalSendFeatureSwitches(
-        db,
-        args.orgId,
-        args.userId,
-      );
+    () => {
+      return resolveNormalSendFeatureSwitches(db, args.orgId, args.userId);
     },
   );
 }
 
-async function validateTimedCodexServiceTierBeforeThread(
+function validateTimedCodexServiceTierBeforeThread(
   args: NormalSendArgs,
   db: Db,
   featureSwitches: NormalSendFeatureSwitches,
 ): ReturnType<typeof validateCodexServiceTierBeforeThread> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_validate_codex_service_tier",
     "nested",
-    async () => {
-      return await validateCodexServiceTierBeforeThread({
+    () => {
+      return validateCodexServiceTierBeforeThread({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2332,16 +2328,16 @@ async function validateTimedCodexServiceTierBeforeThread(
   );
 }
 
-async function resolveTimedInitialThreadModelPin(
+function resolveTimedInitialThreadModelPin(
   args: NormalSendArgs,
   db: Db,
 ): ReturnType<typeof resolveInitialThreadModelPin> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
     "nested",
-    async () => {
-      return await resolveInitialThreadModelPin({
+    () => {
+      return resolveInitialThreadModelPin({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2352,17 +2348,17 @@ async function resolveTimedInitialThreadModelPin(
   );
 }
 
-async function resolveTimedThread(
+function resolveTimedThread(
   args: NormalSendArgs,
   db: Db,
   initialPin: ThreadModelPin,
 ): ReturnType<typeof resolveThread> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
     "nested",
-    async () => {
-      return await resolveThread({
+    () => {
+      return resolveThread({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2378,17 +2374,17 @@ async function resolveTimedThread(
   );
 }
 
-async function prepareTimedRecentChatContext(
+function prepareTimedRecentChatContext(
   args: NormalSendArgs,
   db: Db,
   thread: ResolvedThread,
 ): ReturnType<typeof prepareRecentChatContext> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_prepare_recent_chat_context",
     "nested",
-    async () => {
-      return await prepareRecentChatContext(
+    () => {
+      return prepareRecentChatContext(
         db,
         thread.threadId,
         thread.isNewThread,
@@ -2398,16 +2394,16 @@ async function prepareTimedRecentChatContext(
   );
 }
 
-async function maybePersistTimedExplicitModelFirstSelection(
+function maybePersistTimedExplicitModelFirstSelection(
   args: NormalSendArgs,
   db: Db,
 ): ReturnType<typeof maybePersistExplicitModelFirstSelection> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_model_selection",
     "nested",
-    async () => {
-      return await maybePersistExplicitModelFirstSelection({
+    () => {
+      return maybePersistExplicitModelFirstSelection({
         db,
         orgId: args.orgId,
         userId: args.userId,
@@ -2417,17 +2413,17 @@ async function maybePersistTimedExplicitModelFirstSelection(
   );
 }
 
-async function maybePersistTimedExplicitCodexServiceTier(
+function maybePersistTimedExplicitCodexServiceTier(
   args: NormalSendArgs,
   db: Db,
   threadId: string,
 ): ReturnType<typeof maybePersistExplicitCodexServiceTier> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
     "nested",
-    async () => {
-      return await maybePersistExplicitCodexServiceTier({
+    () => {
+      return maybePersistExplicitCodexServiceTier({
         db,
         threadId,
         userId: args.userId,
@@ -2437,17 +2433,17 @@ async function maybePersistTimedExplicitCodexServiceTier(
   );
 }
 
-async function resolveTimedComputerUseHostGrant(
+function resolveTimedComputerUseHostGrant(
   args: NormalSendArgs,
   db: Db,
   thread: ResolvedThread,
 ): ReturnType<typeof resolveComputerUseHostGrant> {
-  return await measureApiDispatchTiming(
+  return measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
     "nested",
-    async () => {
-      return await resolveComputerUseHostGrant({
+    () => {
+      return resolveComputerUseHostGrant({
         db,
         orgId: args.orgId,
         userId: args.userId,
