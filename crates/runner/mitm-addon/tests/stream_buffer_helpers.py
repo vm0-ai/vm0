@@ -18,10 +18,7 @@ def set_response_stream_buffer(
 ) -> None:
     """Seed response stream metadata with the hook-owned key/state shape."""
     flow.metadata[metadata_keys.STREAM_BUFFER] = bytearray(body)
-    flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {
-        "truncated": truncated,
-        "total_bytes": len(body) + 1 if truncated else len(body),
-    }
+    flow.metadata[metadata_keys.STREAM_BUFFER_STATE] = {"truncated": truncated}
 
 
 def set_request_stream_buffer(
