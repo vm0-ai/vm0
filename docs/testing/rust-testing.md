@@ -90,9 +90,9 @@ async fn post_json_success() {
 
 ### Shared State and Process Environment
 
-Use `std::sync::Mutex` only for Rust-owned shared state when every access participates in the same lock. A Tokio mutex does not coordinate separate `#[tokio::test]` runtimes.
+Use a mutex only for Rust-owned shared state when every access participates in the same lock. Prefer `std::sync::Mutex` when the guard does not cross an `.await`; use an async mutex when it must.
 
-Do not use a mutex to justify `std::env::set_var` or `std::env::remove_var` in a multi-threaded test process. On non-Windows platforms, unrelated standard-library or dependency code may read the environment without taking the project lock, so the lock cannot satisfy those functions' safety contract.
+Neither kind of mutex makes `std::env::set_var` or `std::env::remove_var` safe in a multi-threaded test process. On non-Windows platforms, unrelated standard-library or dependency code may read the environment without taking the project lock, so the lock cannot satisfy those functions' safety contract.
 
 Configure environment-dependent scenarios before spawning a child process instead:
 
