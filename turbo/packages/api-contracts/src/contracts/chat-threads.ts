@@ -1207,7 +1207,7 @@ export const artifactsContract = c.router({
       403: apiErrorSchema,
     },
     summary:
-      "List generated artifacts for the caller's current organization (keyset-paginated)",
+      "List artifacts for the caller's current organization (keyset-paginated)",
   },
   favorite: {
     method: "POST",
@@ -1221,7 +1221,7 @@ export const artifactsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Favorite a generated artifact for the caller",
+    summary: "Favorite an artifact for the caller",
   },
   unfavorite: {
     method: "POST",
@@ -1235,7 +1235,7 @@ export const artifactsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Remove a generated artifact favorite for the caller",
+    summary: "Remove an artifact favorite for the caller",
   },
 });
 

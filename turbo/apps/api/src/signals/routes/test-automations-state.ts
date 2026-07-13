@@ -11,11 +11,9 @@ import {
 } from "@aws-sdk/client-kms";
 import { command } from "ccstate";
 import { testAutomationsStateContract } from "@vm0/api-contracts/contracts/test-automations-state";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { eq, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -158,24 +156,6 @@ async function readOrgAdmissionLockState(
   return state;
 }
 
-async function seedCompose(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly composeId?: string;
-  },
-): Promise<string> {
-  const composeId = args.composeId ?? randomUUID();
-  await db.insert(agentComposes).values({
-    id: composeId,
-    userId: args.userId,
-    orgId: args.orgId,
-    name: `agent-extra-${composeId.slice(0, 8)}`,
-  });
-  return composeId;
-}
-
 function fakeSecretKmsClient(): SecretKmsClient {
   function send(
     command: GenerateDataKeyCommand,
@@ -199,20 +179,6 @@ function fakeSecretKmsClient(): SecretKmsClient {
     return Promise.resolve({ $metadata: {}, Plaintext: fakeKmsDataKey });
   }
   return { send };
-}
-
-async function readComposeHeadVersion(
-  db: Db,
-  composeId: string,
-  signal: AbortSignal,
-): Promise<string | null> {
-  const [composeRow] = await db
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  signal.throwIfAborted();
-  return composeRow?.headVersionId ?? null;
 }
 
 async function seedVm0ManagedDefaultModelKey(
@@ -292,31 +258,6 @@ const postAutomationsStateAction$ = command(
     const body = bodyResult.data;
     const db = set(writeDb$);
     switch (body.action) {
-      case "seed-compose": {
-        const composeId = await seedCompose(db, {
-          orgId: body.org_id,
-          userId: body.user_id,
-          composeId: body.compose_id,
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: { ok: true as const, compose_id: composeId },
-        };
-      }
-      case "read-compose-head-version": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            head_version_id: await readComposeHeadVersion(
-              db,
-              body.compose_id,
-              signal,
-            ),
-          },
-        };
-      }
       case "seed-vm0-managed-default-model-key": {
         return {
           status: 200 as const,

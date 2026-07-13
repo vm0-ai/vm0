@@ -160,6 +160,12 @@ def can_stream_decode_usage(headers: http.Headers) -> bool:
     return False
 
 
+def can_decode_json_usage_body(headers: http.Headers) -> bool:
+    """Return whether bounded terminal JSON usage decoding supports the response."""
+    encoding = headers.get("content-encoding", "").strip().lower()
+    return not encoding or encoding == "identity" or encoding in _SUPPORTED_ONE_SHOT_BODY_ENCODINGS
+
+
 def create_stream_decode_session(
     headers: http.Headers,
     feed: _StreamDecodeFeed,

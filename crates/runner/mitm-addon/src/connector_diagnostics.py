@@ -664,6 +664,7 @@ def _replace_response_content(
 ) -> bytes | None:
     if flow.response is None:
         return None
+    flow.metadata.pop(metadata_keys.RESPONSE_STREAM_STATE, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
     for header in ("content-encoding", "content-length", "transfer-encoding"):

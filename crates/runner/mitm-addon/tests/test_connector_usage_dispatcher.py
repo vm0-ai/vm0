@@ -45,14 +45,12 @@ class TestConnectorUsageDispatcher:
             for event in body["events"]
         ]
 
-    def test_x_usage_flow_stream_state_matches_response_stream_contract(self, tmp_path, real_flow):
+    def test_x_usage_flow_buffer_state_matches_response_stream_contract(self, tmp_path, real_flow):
         body = b'{"data":[{"id":"1","text":"hi"}]}'
         flow = self._make_x_flow(real_flow, tmp_path, body=body)
 
         assert flow.metadata[metadata_keys.STREAM_BUFFER] == bytearray(body)
-        stream_state = flow.metadata[metadata_keys.STREAM_BUFFER_STATE]
-        assert stream_state["truncated"] is False
-        assert stream_state["total_bytes"] == len(body)
+        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE] == {"truncated": False}
 
     def test_skips_for_model_provider(self, tmp_path, real_flow):
         """Model-provider flows go through report_model_provider_usage instead.

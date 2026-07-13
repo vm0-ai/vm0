@@ -21,6 +21,7 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "tracing-test-support",
  "url",
 ]
 
@@ -1255,7 +1256,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.50.4"
+version = "0.50.5"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1291,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.35"
+version = "0.2.36"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1314,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.59"
+version = "0.20.60"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2566,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.144.1"
+version = "0.144.2"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2818,7 +2819,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.28"
+version = "0.8.29"
 dependencies = [
  "async-trait",
  "guest-contracts",

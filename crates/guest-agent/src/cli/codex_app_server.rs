@@ -1150,19 +1150,23 @@ fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerE
             line.len()
         ))
     })?;
+    let Value::Object(mut fields) = value else {
+        return Err(missing_id_or_method_error());
+    };
 
-    if let Some(method_value) = value.get("method") {
-        if value.get("result").is_some() || value.get("error").is_some() {
+    if fields.contains_key("method") {
+        if fields.contains_key("result") || fields.contains_key("error") {
             return Err(CodexAppServerError::Protocol(
                 "request or notification contains response fields".to_string(),
             ));
         }
-        let method = method_value
-            .as_str()
-            .ok_or_else(|| CodexAppServerError::Protocol("method must be a string".to_string()))?
-            .to_string();
-        let params = value.get("params").cloned();
-        if let Some(id_value) = value.get("id") {
+        let Some(Value::String(method)) = fields.remove("method") else {
+            return Err(CodexAppServerError::Protocol(
+                "method must be a string".to_string(),
+            ));
+        };
+        let params = fields.remove("params");
+        if let Some(id_value) = fields.remove("id") {
             return Ok(IncomingMessage::Request(ServerRequest {
                 id: parse_id(id_value)?,
                 method,
@@ -1175,18 +1179,13 @@ fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerE
         });
     }
 
-    let Some(id_value) = value.get("id") else {
-        return Err(CodexAppServerError::Protocol(
-            "message has neither id nor method".to_string(),
-        ));
+    let Some(id_value) = fields.remove("id") else {
+        return Err(missing_id_or_method_error());
     };
     let id = parse_id(id_value)?;
 
-    match (value.get("result"), value.get("error")) {
-        (Some(result), None) => Ok(IncomingMessage::Success {
-            id,
-            result: result.clone(),
-        }),
+    match (fields.remove("result"), fields.remove("error")) {
+        (Some(result), None) => Ok(IncomingMessage::Success { id, result }),
         (None, Some(error)) => Ok(IncomingMessage::Error {
             id,
             error: parse_error_object(error)?,
@@ -1200,13 +1199,17 @@ fn parse_incoming_message(line: &str) -> Result<IncomingMessage, CodexAppServerE
     }
 }
 
-fn parse_id(value: &Value) -> Result<JsonRpcId, CodexAppServerError> {
+fn missing_id_or_method_error() -> CodexAppServerError {
+    CodexAppServerError::Protocol("message has neither id nor method".to_string())
+}
+
+fn parse_id(value: Value) -> Result<JsonRpcId, CodexAppServerError> {
     match value {
         Value::Number(number) => number
             .as_i64()
             .map(JsonRpcId::Number)
             .ok_or_else(invalid_id_error),
-        Value::String(value) => Ok(JsonRpcId::String(value.clone())),
+        Value::String(value) => Ok(JsonRpcId::String(value)),
         Value::Null => Ok(JsonRpcId::Null),
         _ => Err(invalid_id_error()),
     }
@@ -1218,28 +1221,27 @@ fn invalid_id_error() -> CodexAppServerError {
     )
 }
 
-fn parse_error_object(value: &Value) -> Result<JsonRpcError, CodexAppServerError> {
-    let Value::Object(fields) = value else {
+fn parse_error_object(value: Value) -> Result<JsonRpcError, CodexAppServerError> {
+    let Value::Object(mut fields) = value else {
         return Err(CodexAppServerError::Protocol(
             "error response must be an object".to_string(),
         ));
     };
-    let code = fields.get("code").and_then(Value::as_i64).ok_or_else(|| {
-        CodexAppServerError::Protocol("error response must contain an integer code".to_string())
-    })?;
-    let message = fields
-        .get("message")
-        .and_then(Value::as_str)
+    let code = fields
+        .remove("code")
+        .and_then(|value| value.as_i64())
         .ok_or_else(|| {
-            CodexAppServerError::Protocol(
-                "error response must contain a string message".to_string(),
-            )
-        })?
-        .to_string();
+            CodexAppServerError::Protocol("error response must contain an integer code".to_string())
+        })?;
+    let Some(Value::String(message)) = fields.remove("message") else {
+        return Err(CodexAppServerError::Protocol(
+            "error response must contain a string message".to_string(),
+        ));
+    };
     Ok(JsonRpcError {
         code,
         message,
-        data: fields.get("data").cloned(),
+        data: fields.remove("data"),
     })
 }
 

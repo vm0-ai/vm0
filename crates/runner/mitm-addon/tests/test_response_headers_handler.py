@@ -10,8 +10,8 @@ from tests.flow_helpers import header_map, response_stream
 class TestResponseHeadersHandler:
     """Tests for the responseheaders() hook contract."""
 
-    def test_enables_streaming_with_buffer(self, real_flow):
-        """All responses should be streamed via a buffer callback."""
+    def test_enables_streaming_without_body_buffer(self, real_flow):
+        """Ordinary responses should stream with metrics but no retained prefix."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
@@ -20,9 +20,9 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
-        assert metadata_keys.STREAM_BUFFER in flow.metadata
-        assert isinstance(flow.metadata[metadata_keys.STREAM_BUFFER], bytearray)
-        assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
+        assert flow.metadata[metadata_keys.RESPONSE_STREAM_STATE] == {"total_bytes": 0}
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_capture_body_also_streams(self, real_flow):
         """When capture_body is set, streaming should still be enabled."""
@@ -35,6 +35,7 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         assert callable(response_stream(flow))
+        assert flow.metadata[metadata_keys.RESPONSE_STREAM_STATE] == {"total_bytes": 0}
         assert metadata_keys.STREAM_BUFFER in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE in flow.metadata
 
@@ -44,3 +45,5 @@ class TestResponseHeadersHandler:
         flow.response = None
 
         mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata

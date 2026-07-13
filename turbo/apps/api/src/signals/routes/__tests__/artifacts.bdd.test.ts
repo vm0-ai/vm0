@@ -28,12 +28,11 @@ const chat = createChatFilesBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const host = createHostMapsBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
-const CLOUDFLARE_SNAPSHOT_URL =
-  "https://api.cloudflare.com/client/v4/accounts/test-account/browser-rendering/snapshot";
+const CLOUDFLARE_SCREENSHOT_URL =
+  "https://api.cloudflare.com/client/v4/accounts/test-account/browser-rendering/screenshot";
 const CLOUDFLARE_MEDIA_FRAME_URL =
   /^https:\/\/cdn\.vm7\.io\/cdn-cgi\/media\/mode=frame,time=1s,width=640,format=jpg\//;
 const CRON_SECRET = "test-cron-secret";
-const ARTIFACT_PREVIEW_WAF_SECRET = "test-artifact-preview-waf-secret-value";
 
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 type ChatObjectStorage = ReturnType<
@@ -47,17 +46,9 @@ interface ArtifactActor {
   readonly objectStore: ChatObjectStorage;
 }
 
-interface SnapshotRequest {
+interface ScreenshotRequest {
   readonly authorization: string | null;
-  readonly url: string;
   readonly body: unknown;
-}
-
-interface SnapshotFixture {
-  readonly content?: string;
-  readonly screenshot?: string;
-  readonly status?: number;
-  readonly title?: string;
 }
 
 interface MediaFrameRequest {
@@ -72,30 +63,16 @@ function cronHeaders(secret = CRON_SECRET) {
   return { authorization: `Bearer ${secret}` };
 }
 
-function mockCloudflareSnapshot(
-  fixture: SnapshotFixture = {},
-): SnapshotRequest[] {
-  const requests: SnapshotRequest[] = [];
+function mockCloudflareScreenshot(): ScreenshotRequest[] {
+  const requests: ScreenshotRequest[] = [];
   server.use(
-    http.post(CLOUDFLARE_SNAPSHOT_URL, async ({ request }) => {
+    http.post(CLOUDFLARE_SCREENSHOT_URL, async ({ request }) => {
       requests.push({
         authorization: request.headers.get("authorization"),
-        url: request.url,
         body: await request.json(),
       });
-      return HttpResponse.json({
-        meta: {
-          status: fixture.status ?? 200,
-          title: fixture.title ?? "Artifact",
-        },
-        success: true,
-        errors: [],
-        result: {
-          content:
-            fixture.content ??
-            "<!doctype html><html><body>artifact</body></html>",
-          screenshot: fixture.screenshot ?? "UklGRg==",
-        },
+      return new HttpResponse(new Uint8Array([0x52, 0x49, 0x46, 0x46]), {
+        headers: { "Content-Type": "image/webp" },
       });
     }),
   );
@@ -384,7 +361,7 @@ describe("GET /api/cron/artifact-preview", () => {
     }
     mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", undefined);
-    const snapshotRequests = mockCloudflareSnapshot();
+    const screenshotRequests = mockCloudflareScreenshot();
 
     const artifact = await createHostedArtifact({
       actor: owner.actor,
@@ -401,7 +378,7 @@ describe("GET /api/cron/artifact-preview", () => {
       }),
     });
     await flushWaitUntilForTest();
-    expect(snapshotRequests).toHaveLength(0);
+    expect(screenshotRequests).toHaveLength(0);
 
     await markHostedArtifactEligibleForPreviewCron(context, artifact);
     for (const disabledArtifact of disabledArtifacts) {
@@ -431,7 +408,6 @@ describe("GET /api/cron/artifact-preview", () => {
       },
     );
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
 
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),
@@ -446,23 +422,11 @@ describe("GET /api/cron/artifact-preview", () => {
     expect(previewedArtifact?.previewImageUrl).toContain(
       `/preview-${artifact.deploymentId}.webp`,
     );
-    expect(snapshotRequests).toHaveLength(1);
-    expect(snapshotRequests[0]).toMatchObject({
+    expect(screenshotRequests).toHaveLength(1);
+    expect(screenshotRequests[0]).toMatchObject({
       authorization: "Bearer preview-token",
-      url: `${CLOUDFLARE_SNAPSHOT_URL}?cacheTTL=0`,
       body: {
         url: artifact.url,
-        cookies: [
-          {
-            name: "vm0_artifact_preview",
-            value: ARTIFACT_PREVIEW_WAF_SECRET,
-            url: new URL(artifact.url).origin,
-            httpOnly: true,
-            secure: true,
-            sameSite: "Strict",
-          },
-        ],
-        formats: ["content", "screenshot"],
         viewport: {
           width: 1280,
           height: 800,
@@ -491,7 +455,7 @@ describe("GET /api/cron/artifact-preview", () => {
     }
   }, 180_000);
 
-  it("generates poster frames for generated video artifacts and ignores ordinary video uploads", async () => {
+  it("generates poster frames for generated video artifacts without previewing ordinary video uploads", async () => {
     const owner = await artifactActor("Artifacts API video preview agent");
     if (!owner.actor.orgId) {
       throw new Error("Expected video preview test actor to have an org");
@@ -563,11 +527,11 @@ describe("GET /api/cron/artifact-preview", () => {
     expect(previewedArtifact?.previewImageUrl).toContain(
       `/${videoArtifactRowId}/poster.jpg`,
     );
-    expect(
-      response.artifacts.some((item) => {
-        return item.fileId === ordinaryVideoUpload.fileId;
-      }),
-    ).toBeFalsy();
+    const ordinaryArtifact = response.artifacts.find((item) => {
+      return item.fileId === ordinaryVideoUpload.fileId;
+    });
+    expect(ordinaryArtifact).toBeDefined();
+    expect(ordinaryArtifact).not.toHaveProperty("previewImageUrl");
   }, 180_000);
 
   it("does not render video posters when the video preview switch is disabled", async () => {
@@ -683,7 +647,7 @@ describe("GET /api/cron/artifact-preview", () => {
 });
 
 describe("GET /api/zero/artifacts", () => {
-  it("lists generated artifacts for the active organization and excludes ordinary uploads", async () => {
+  it("lists chat-thread artifacts for the active organization and hides uploads shadowed by hosted artifacts", async () => {
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ userId, orgId: `org_${randomUUID()}` });
     const otherOrgActor = bdd.user({
@@ -691,6 +655,13 @@ describe("GET /api/zero/artifacts", () => {
       orgId: `org_${randomUUID()}`,
     });
     const current = await artifactActor("Artifacts API org agent", actor);
+    const standaloneUpload = await createRunUploadedFile({
+      owner: current,
+      prompt: "upload standalone artifact",
+      filename: "standalone-notes.txt",
+      contentType: "text/plain",
+      sizeBytes: 256,
+    });
     const otherOrg = await artifactActor(
       "Artifacts API other org agent",
       otherOrgActor,
@@ -731,16 +702,31 @@ describe("GET /api/zero/artifacts", () => {
     });
 
     const response = await chat.listArtifacts(actor);
-    expect(response.artifacts).toHaveLength(1);
-    expect(response.artifacts[0]).toMatchObject({
-      threadId: run.threadId,
-      runId: run.runId,
-      fileId: prepared.url,
-      url: prepared.url,
-      size: hostedFile.size,
-      artifactKind: "hosted-site",
+    expect(response.artifacts).toHaveLength(2);
+    expect(response.artifacts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          threadId: run.threadId,
+          runId: run.runId,
+          fileId: prepared.url,
+          url: prepared.url,
+          size: hostedFile.size,
+          artifactKind: "hosted-site",
+        }),
+        expect.objectContaining({
+          threadId: standaloneUpload.threadId,
+          runId: standaloneUpload.runId,
+          fileId: standaloneUpload.fileId,
+          url: standaloneUpload.url,
+          size: 256,
+          contentType: "text/plain",
+        }),
+      ]),
+    );
+    const hostedArtifact = response.artifacts.find((artifact) => {
+      return artifact.fileId === prepared.url;
     });
-    expect(response.artifacts[0]).not.toHaveProperty("previewImageUrl");
+    expect(hostedArtifact).not.toHaveProperty("previewImageUrl");
     expect(
       response.artifacts.some((artifact) => {
         return artifact.fileId === ordinaryUploadId;
@@ -771,8 +757,7 @@ describe("GET /api/zero/artifacts", () => {
       },
     );
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-    const snapshotRequests = mockCloudflareSnapshot();
+    const screenshotRequests = mockCloudflareScreenshot();
 
     const artifact = await createHostedArtifact({
       actor: owner.actor,
@@ -789,23 +774,11 @@ describe("GET /api/zero/artifacts", () => {
     expect(firstArtifact?.previewImageUrl).toContain(
       `/preview-${artifact.deploymentId}.webp`,
     );
-    expect(snapshotRequests).toHaveLength(1);
-    expect(snapshotRequests[0]).toMatchObject({
+    expect(screenshotRequests).toHaveLength(1);
+    expect(screenshotRequests[0]).toMatchObject({
       authorization: "Bearer preview-token",
-      url: `${CLOUDFLARE_SNAPSHOT_URL}?cacheTTL=0`,
       body: {
         url: artifact.url,
-        cookies: [
-          {
-            name: "vm0_artifact_preview",
-            value: ARTIFACT_PREVIEW_WAF_SECRET,
-            url: new URL(artifact.url).origin,
-            httpOnly: true,
-            secure: true,
-            sameSite: "Strict",
-          },
-        ],
-        formats: ["content", "screenshot"],
         viewport: {
           width: 1280,
           height: 800,
@@ -841,54 +814,8 @@ describe("GET /api/zero/artifacts", () => {
     expect(refreshedArtifact?.previewImageUrl).not.toBe(
       firstArtifact?.previewImageUrl,
     );
-    expect(snapshotRequests).toHaveLength(2);
-    expect(snapshotRequests[1]?.body).toMatchObject({ url: artifact.url });
-  }, 120_000);
-
-  it("rejects Cloudflare challenge pages instead of saving them as previews", async () => {
-    const owner = await artifactActor("Artifacts API challenge preview agent");
-    if (!owner.actor.orgId) {
-      throw new Error("Expected challenge preview test actor to have an org");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactPreviewImage]: true,
-      },
-    );
-    mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-    const snapshotRequests = mockCloudflareSnapshot({
-      title: "Just a moment...",
-      content:
-        '<!doctype html><html><body><h1>Performing security verification</h1><p>Incompatible browser extension or network configuration</p><script src="https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script></body></html>',
-    });
-
-    const artifact = await createHostedArtifact({
-      actor: owner.actor,
-      agentId: owner.agentId,
-      runnerGroup: owner.runnerGroup,
-      site: `challenge-preview-${randomUUID().slice(0, 8)}`,
-    });
-    await flushWaitUntilForTest();
-
-    const response = await chat.listArtifacts(owner.actor);
-    const challengedArtifact = response.artifacts.find((item) => {
-      return item.fileId === artifact.fileId;
-    });
-    expect(challengedArtifact).toBeDefined();
-    expect(challengedArtifact).not.toHaveProperty("previewImageUrl");
-    expect(snapshotRequests).toHaveLength(1);
-    expect(
-      owner.objectStore.puts.some((put) => {
-        return put.key.endsWith(`/preview-${artifact.deploymentId}.webp`);
-      }),
-    ).toBeFalsy();
+    expect(screenshotRequests).toHaveLength(2);
+    expect(screenshotRequests[1]?.body).toMatchObject({ url: artifact.url });
   }, 120_000);
 
   it("does not render previews when the feature switch is disabled with browser rendering configured", async () => {
@@ -908,8 +835,7 @@ describe("GET /api/zero/artifacts", () => {
       },
     );
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
-    mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
-    const snapshotRequests = mockCloudflareSnapshot();
+    const screenshotRequests = mockCloudflareScreenshot();
 
     const artifact = await createHostedArtifact({
       actor: owner.actor,
@@ -925,7 +851,7 @@ describe("GET /api/zero/artifacts", () => {
     });
     expect(disabledArtifact).toBeDefined();
     expect(disabledArtifact).not.toHaveProperty("previewImageUrl");
-    expect(snapshotRequests).toHaveLength(0);
+    expect(screenshotRequests).toHaveLength(0);
     expect(
       owner.objectStore.puts.some((put) => {
         return put.key.endsWith(`/preview-${artifact.deploymentId}.webp`);
@@ -933,7 +859,7 @@ describe("GET /api/zero/artifacts", () => {
     ).toBeFalsy();
   }, 120_000);
 
-  it("returns every generated artifact for the org in one bulk response", async () => {
+  it("returns every artifact for the org in one bulk response", async () => {
     const first = await artifactActor("Artifacts API bulk agent");
     const secondAgent = await bdd.createAgent(first.actor, {
       displayName: "Artifacts API bulk second agent",

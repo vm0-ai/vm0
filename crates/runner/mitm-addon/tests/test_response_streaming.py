@@ -21,8 +21,16 @@ _OVERSIZED_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 class TestResponseStreamBuffer:
     """Tests for generic response stream buffering behavior."""
 
-    def _json_response_flow(self, real_flow, *, host: str = "api.example.com") -> http.HTTPFlow:
+    def _json_response_flow(
+        self,
+        real_flow,
+        *,
+        host: str = "api.example.com",
+        capture_body: bool = True,
+    ) -> http.HTTPFlow:
         flow = real_flow(with_response=False, host=host)
+        if capture_body:
+            flow.metadata[metadata_keys.CAPTURE_BODY] = True
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
@@ -95,18 +103,28 @@ class TestResponseStreamBuffer:
         callback(b"hello")
         assert bytes(flow.metadata[metadata_keys.STREAM_BUFFER]) == b"hello"
 
-    def test_non_model_provider_buffer_truncated(self, real_flow):
-        flow = self._json_response_flow(real_flow, host="api.github.com")
+    def test_non_capture_response_does_not_retain_body_prefix(self, real_flow):
+        flow = self._json_response_flow(
+            real_flow,
+            host="api.github.com",
+            capture_body=False,
+        )
 
         mitm_addon.responseheaders(flow)
 
-        response_stream(flow)(b"x" * (STREAM_BUFFER_LIMIT + 1000))
+        body = b"x" * (STREAM_BUFFER_LIMIT + 1000)
+        assert response_stream(flow)(body) == body
 
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        assert flow.metadata[metadata_keys.RESPONSE_STREAM_STATE]["total_bytes"] == len(body)
 
-    def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow):
-        flow = self._json_response_flow(real_flow, host="api.gamma.example")
+    def test_billable_connector_without_body_parser_does_not_retain_prefix(self, real_flow):
+        flow = self._json_response_flow(
+            real_flow,
+            host="api.gamma.example",
+            capture_body=False,
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "gamma"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
 
@@ -114,8 +132,8 @@ class TestResponseStreamBuffer:
 
         response_stream(flow)(b"g" * (STREAM_BUFFER_LIMIT + 1000))
 
-        assert len(flow.metadata[metadata_keys.STREAM_BUFFER]) == STREAM_BUFFER_LIMIT
-        assert flow.metadata[metadata_keys.STREAM_BUFFER_STATE]["truncated"] is True
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
@@ -224,6 +242,8 @@ class TestResponseEncodingInspectionRisk:
         assert "private-encoding-value" not in str(entry)
         assert "private-encoding-value" not in log.debug.call_args.args[0]
         assert entry["decode_skip_reason"] == "unsupported content encoding"
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_stream_safe_model_response_keeps_parser_without_risk(
         self, real_flow, tmp_path, mitm_ctx
@@ -246,6 +266,8 @@ class TestResponseEncodingInspectionRisk:
             mitm_addon.responseheaders(flow)
 
         assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     @pytest.mark.parametrize(
         ("request_method", "response_status"),
@@ -275,6 +297,8 @@ class TestResponseEncodingInspectionRisk:
             mitm_addon.responseheaders(flow)
 
         assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_successful_billable_connector_logs_non_streamable_encoding_risk(
         self, real_flow, tmp_path, mitm_ctx
@@ -291,6 +315,24 @@ class TestResponseEncodingInspectionRisk:
         assert entry["firewall_name"] == "x"
         assert entry["status_code"] == 200
         assert entry["decode_skip_reason"] == "zstd streaming output cannot be hard-bounded"
+
+    def test_unknown_connector_encoding_does_not_retain_unusable_fallback(
+        self, real_flow, tmp_path, mitm_ctx
+    ) -> None:
+        flow = make_x_pipeline_flow(
+            real_flow,
+            tmp_path,
+            content_encoding="private-encoding-value",
+        )
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert entry["reason"] == "response_encoding_not_stream_decodable"
+        assert entry["decode_skip_reason"] == "unsupported content encoding"
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     @pytest.mark.parametrize(
         ("firewall_name", "firewall_billable", "response_status"),
@@ -323,13 +365,17 @@ class TestResponseEncodingInspectionRisk:
             mitm_addon.responseheaders(flow)
 
         assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
 
 class TestNdjsonExtractor:
     """Tests for X NDJSON extraction through responseheaders (issue #9534)."""
 
-    def _stream_flow(self, real_flow):
+    def _stream_flow(self, real_flow, *, capture_body=False):
         flow = make_x_response_flow(real_flow, path="/2/tweets/search/stream")
+        if capture_body:
+            flow.metadata[metadata_keys.CAPTURE_BODY] = True
         mitm_addon.responseheaders(flow)
         return flow
 
@@ -354,7 +400,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_forensic_buffer_truncation_does_not_stop_parser(self, real_flow):
-        flow = self._stream_flow(real_flow)
+        flow = self._stream_flow(real_flow, capture_body=True)
         parse = response_stream(flow)
         state = flow.metadata[metadata_keys.X_NDJSON_STATE]
 
@@ -646,6 +692,7 @@ class TestXJsonFinalize:
             path="/2/users/by",
             original_url="https://api.x.com/2/users/by?ids=1,2,3",
         )
+        flow.metadata[metadata_keys.CAPTURE_BODY] = True
         mitm_addon.responseheaders(flow)
 
         callback = response_stream(flow)
@@ -1053,6 +1100,7 @@ class TestReleaseResponseStreamState:
 
         assert flow.response.stream is external_stream
         assert "_vm0_response_stream_callback" not in flow.metadata
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
@@ -1132,6 +1180,7 @@ class TestReleaseResponseStreamState:
         response_streaming.release_response_stream_state(flow)
 
         assert finish_key not in flow.metadata
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert flow.response.stream is False
@@ -1163,6 +1212,7 @@ class TestReleaseResponseStreamState:
 
         assert flow.response.stream is False
         assert "_vm0_response_stream_callback" not in flow.metadata
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
@@ -1185,6 +1235,7 @@ class TestReleaseResponseStreamState:
 
         assert flow.response is None
         assert "_vm0_response_stream_callback" not in flow.metadata
+        assert metadata_keys.RESPONSE_STREAM_STATE not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         assert "model_json_usage_finish" not in flow.metadata

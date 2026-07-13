@@ -180,6 +180,8 @@ class TestModelProviderWebSocketUsage:
         assert flow.metadata["model_websocket_usage_enabled"] is True
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
         _set_websocket_message(
             flow,
