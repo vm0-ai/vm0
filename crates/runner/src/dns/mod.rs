@@ -6,13 +6,13 @@
 //!
 //! Defense-in-depth:
 //! - Layer 1: iptables REDIRECT → dnsmasq port (working path, preserves source IP)
-//! - Layer 2: iptables DROP external UDP 53 / TCP 853 (bypass prevention)
+//! - Layer 2: iptables DROP external UDP/TCP 53 and TCP 853 (bypass prevention)
 //! - Layer 3: dnsmasq binds to VM-facing veth interfaces instead of external
 //!   host interfaces (listener restriction)
 //!
 //! VM resolv.conf points to an external nameserver (e.g. 8.8.8.8) as a dummy
-//! target. The REDIRECT rule in PREROUTING intercepts all UDP 53 from the VM
-//! subnet and redirects to dnsmasq before the packet reaches FORWARD/POSTROUTING.
+//! target. The REDIRECT rules in PREROUTING intercept UDP and TCP 53 from the
+//! VM subnet and redirect to dnsmasq before packets reach FORWARD/POSTROUTING.
 //!
 //! Log format: dnsmasq `--log-queries=extra` outputs to stderr, parsed by a background
 //! async task that submits per-VM network JSON rows through `NetworkLogManager`.
