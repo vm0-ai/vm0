@@ -136,6 +136,7 @@ pub async fn run_benchmark(
     let (mut mitm, _crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
+        ca_lock_path: home.ca_lock(),
         addon_dir: runner_paths.mitm_addon_dir(),
         registry_path: runner_paths.proxy_registry(),
         registry_lock_path: runner_paths.proxy_registry_lock(),
