@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.0...runner-rs-v0.144.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **mitm-addon:** report non-streamable usage responses ([#21172](https://github.com/vm0-ai/vm0/issues/21172)) ([269da9f](https://github.com/vm0-ai/vm0/commit/269da9f4c622e042889e0810ce02699df9c114e8))
+
 ## [0.144.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.13...runner-rs-v0.144.0) (2026-07-12)
 
 
