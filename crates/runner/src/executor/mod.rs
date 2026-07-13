@@ -30,6 +30,7 @@ mod diagnostics;
 mod env;
 mod guest_state;
 mod sandbox_run;
+mod session_history_cpu;
 mod session_history_download;
 mod session_id;
 mod session_restore;
@@ -40,6 +41,7 @@ pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use agent_run::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
 pub(crate) use cli_framework::effective_cli_framework;
 pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
+pub(crate) use session_history_cpu::SessionHistoryCpuPool;
 pub(crate) use session_history_download::{SessionHistoryMaterializer, SessionHistoryProbe};
 
 use crate::active_input::ActiveInputSource;
@@ -157,6 +159,7 @@ pub struct ExecutorConfig {
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub mitm_jsonl_flush: Option<MitmJsonlFlushHandle>,
     pub(crate) network_policy_refresh: Option<crate::provider::NetworkPolicyRefreshHandle>,
+    pub(crate) session_history_cpu: SessionHistoryCpuPool,
     pub(crate) session_history_probe: SessionHistoryProbe,
     pub home: HomePaths,
     pub workspace_cache: Option<SessionWorkspaceCache>,

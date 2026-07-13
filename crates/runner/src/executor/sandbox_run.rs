@@ -618,6 +618,7 @@ fn start_fresh_session_history_materializer(
     let started = Instant::now();
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
+        &config.session_history_cpu,
         context.resume_session.as_ref(),
         effective_cli_framework(&context.cli_agent_type),
         cancel,
