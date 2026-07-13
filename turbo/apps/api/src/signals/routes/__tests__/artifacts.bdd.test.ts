@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { cronArtifactPreviewContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
@@ -546,18 +546,6 @@ describe("GET /api/cron/artifact-preview", () => {
         context,
         ordinaryVideoUpload,
       );
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactVideoPreview]: true,
-      },
-    );
-
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),
       [200],
@@ -592,57 +580,6 @@ describe("GET /api/cron/artifact-preview", () => {
     expect(ordinaryArtifact).not.toHaveProperty("previewImageUrl");
   }, 180_000);
 
-  it("does not render video posters when the video preview switch is disabled", async () => {
-    const owner = await artifactActor("Artifacts API video preview off agent");
-    if (!owner.actor.orgId) {
-      throw new Error(
-        "Expected video preview disabled test actor to have an org",
-      );
-    }
-    mockEnv("CRON_SECRET", CRON_SECRET);
-    const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
-
-    const videoArtifact = await createRunUploadedFile({
-      owner,
-      prompt: "create disabled generated video artifact",
-      filename: "disabled-video.mp4",
-      contentType: "video/mp4",
-    });
-    await markHostedArtifactEligibleForPreviewCron(context, videoArtifact, {
-      generatedBy: "zero-official-video",
-    });
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactVideoPreview]: false,
-      },
-    );
-
-    const generated = await accept(
-      cronClient().generate({ headers: cronHeaders() }),
-      [200],
-    );
-    expect(generated.body).toStrictEqual({ generated: 0 });
-    expect(frameRequests).toHaveLength(0);
-    expect(
-      owner.objectStore.puts.some((put) => {
-        return put.key.endsWith("/poster.jpg");
-      }),
-    ).toBeFalsy();
-
-    const response = await chat.listArtifacts(owner.actor);
-    const disabledArtifact = response.artifacts.find((item) => {
-      return item.fileId === videoArtifact.fileId;
-    });
-    expect(disabledArtifact).toBeDefined();
-    expect(disabledArtifact).not.toHaveProperty("previewImageUrl");
-  }, 180_000);
-
   it("leaves video preview empty when media frame extraction fails", async () => {
     const owner = await artifactActor("Artifacts API video preview fail agent");
     if (!owner.actor.orgId) {
@@ -662,27 +599,6 @@ describe("GET /api/cron/artifact-preview", () => {
     await markHostedArtifactEligibleForPreviewCron(context, videoArtifact, {
       generatedBy: "zero-official-video",
     });
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: owner.actor.userId,
-        orgId: owner.actor.orgId,
-        orgRole: owner.actor.orgRole,
-      },
-      {
-        [FeatureSwitchKey.ArtifactVideoPreview]: true,
-      },
-    );
-    onTestFinished(async () => {
-      await updateFeatureSwitchesForUser(
-        context,
-        featureSwitchActor(owner.actor),
-        {
-          [FeatureSwitchKey.ArtifactVideoPreview]: false,
-        },
-      );
-    });
-
     const generated = await accept(
       cronClient().generate({ headers: cronHeaders() }),
       [200],

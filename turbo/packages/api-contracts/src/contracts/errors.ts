@@ -1,7 +1,9 @@
 import { z } from "zod";
-import type {
-  ModelProviderCredentialScope,
-  ModelProviderType,
+import {
+  getCanonicalModelDisplayName,
+  normalizeRunModelId,
+  type ModelProviderCredentialScope,
+  type ModelProviderType,
 } from "./model-providers";
 
 /**
@@ -146,6 +148,10 @@ const CLAUDE_CODE_ANTHROPIC_API_KEY_ADMIN_MESSAGE =
 const CLAUDE_CODE_ANTHROPIC_API_KEY_MEMBER_MESSAGE =
   "Claude Code could not authenticate with the configured Anthropic API key. Ask a workspace admin to update or replace the API key.";
 
+const CLAUDE_PROVIDER_OVERLOADED_FALLBACK_MODEL = "Claude Model";
+const CLAUDE_PROVIDER_OVERLOADED_GUIDANCE =
+  "is overloaded. Please wait a few minutes and try again, or switch to another model.";
+
 const CLAUDE_CODE_LIMIT_SNIPPETS = [
   "usage limit",
   "usage_limit",
@@ -213,6 +219,77 @@ type ClaudeCodeCredentialRecovery = {
   readonly canManageOrgModelProviders: boolean;
   readonly modelProvidersUrl: string | undefined;
 };
+
+function isWordBoundaryChar(char: string | undefined): boolean {
+  return char === undefined || !/[a-z0-9_-]/u.test(char);
+}
+
+function startsWithOverloadedWord(value: string): boolean {
+  return (
+    value.startsWith("overloaded") &&
+    isWordBoundaryChar(value["overloaded".length])
+  );
+}
+
+function containsOverloadedErrorType(value: string): boolean {
+  return /(^|[^a-z0-9_])overloaded_error([^a-z0-9_]|$)/u.test(value);
+}
+
+function claude529ErrorDetail(value: string): string | undefined {
+  const detail = value.trimStart();
+  const repeatedMatch = /^repeated\s+529\b/u.exec(detail);
+  if (repeatedMatch) {
+    return detail.slice(repeatedMatch[0].length).trimStart();
+  }
+
+  const statusMatch = /^529\b/u.exec(detail);
+  if (!statusMatch) {
+    return undefined;
+  }
+  return detail.slice(statusMatch[0].length).trimStart();
+}
+
+function isClaudeProviderOverloadedErrorMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const marker = "api error:";
+  let markerIndex = normalized.indexOf(marker);
+
+  while (markerIndex !== -1) {
+    const detail = claude529ErrorDetail(
+      normalized.slice(markerIndex + marker.length),
+    );
+    if (
+      detail !== undefined &&
+      (startsWithOverloadedWord(detail) || containsOverloadedErrorType(detail))
+    ) {
+      return true;
+    }
+    markerIndex = normalized.indexOf(marker, markerIndex + marker.length);
+  }
+
+  return false;
+}
+
+function formatClaudeProviderOverloadedMessage(
+  selectedModel: string | null | undefined,
+): string {
+  const trimmedModel = selectedModel?.trim();
+  const modelLabel = trimmedModel
+    ? getCanonicalModelDisplayName(normalizeRunModelId(trimmedModel))
+    : CLAUDE_PROVIDER_OVERLOADED_FALLBACK_MODEL;
+  return `${modelLabel} ${CLAUDE_PROVIDER_OVERLOADED_GUIDANCE}`;
+}
+
+export function formatClaudeProviderOverloadedRunError(params: {
+  readonly message: string;
+  readonly selectedModel?: string | null;
+}): string | undefined {
+  const errorMessage = params.message.trim();
+  if (!isClaudeProviderOverloadedErrorMessage(errorMessage)) {
+    return undefined;
+  }
+  return formatClaudeProviderOverloadedMessage(params.selectedModel);
+}
 
 function isJsonWhitespace(char: string | undefined): boolean {
   return char === " " || char === "\n" || char === "\r" || char === "\t";
@@ -411,6 +488,7 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 export function formatRunErrorForExternalSurface(params: {
   readonly code: string;
   readonly message: string;
+  readonly selectedModel?: string | null;
   readonly claudeCodeCredentialRecovery?: ClaudeCodeCredentialRecovery;
   readonly insufficientCredits?:
     | {
@@ -425,6 +503,14 @@ export function formatRunErrorForExternalSurface(params: {
       };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
+
+  const claudeOverloadedMessage = formatClaudeProviderOverloadedRunError({
+    message: errorMessage,
+    selectedModel: params.selectedModel,
+  });
+  if (claudeOverloadedMessage !== undefined) {
+    return claudeOverloadedMessage;
+  }
 
   if (
     params.claudeCodeCredentialRecovery !== undefined &&
