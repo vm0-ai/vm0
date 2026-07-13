@@ -18,6 +18,8 @@ import {
   mockGmailConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   createWorkflowsBddApi,
   mockGoogleCalendarConnectorOAuth,
@@ -31,6 +33,8 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const gh = createGithubBddApi(context);
+const runs = createRunsAutomationsApi(context);
+const webhookCallbacks = createWebhookCallbackApi(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -87,6 +91,8 @@ interface TriggerScenario {
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly workflowId: string;
+  readonly customerId: string;
+  readonly subscriptionId: string;
 }
 
 function futureIso(offsetMs: number): string {
@@ -300,8 +306,12 @@ function configureNotionDatabaseMock(args?: {
 }
 
 describe("zero workflow triggers", () => {
-  async function setupFixture(): Promise<TriggerScenario> {
-    const { actor } = await wf.setupWorkflowOrg();
+  async function setupFixture(
+    tier: "pro" | "team" = "pro",
+  ): Promise<TriggerScenario> {
+    const { actor, customerId, subscriptionId } = await wf.setupWorkflowOrg({
+      tier,
+    });
     if (!actor.orgId) {
       throw new Error("Expected an org-scoped workflow actor");
     }
@@ -315,7 +325,14 @@ describe("zero workflow triggers", () => {
     const fixture = { orgId: actor.orgId, userId: actor.userId };
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     context.mocks.s3.send.mockResolvedValue({});
-    return { fixture, actor, agentId: agent.agentId, workflowId };
+    return {
+      fixture,
+      actor,
+      agentId: agent.agentId,
+      workflowId,
+      customerId,
+      subscriptionId,
+    };
   }
 
   /**
@@ -516,6 +533,60 @@ describe("zero workflow triggers", () => {
     ]);
   });
 
+  it("lists thread-bound webhook triggers", async () => {
+    const { fixture, workflowId } = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received" ||
+      !created.body.chatThreadId
+    ) {
+      throw new Error("Expected a thread-bound webhook trigger");
+    }
+
+    const listed = await accept(
+      triggersClient().listForChatThread({
+        headers: authHeaders(),
+        params: { threadId: created.body.chatThreadId },
+      }),
+      [200],
+    );
+    const [listedTrigger] = listed.body;
+    expect(listedTrigger).toMatchObject({
+      id: created.body.id,
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      chatThreadId: created.body.chatThreadId,
+      secretLastFour: created.body.secretLastFour,
+      disabledReason: null,
+      lastReceivedAt: null,
+      workflow: expect.objectContaining({ id: workflowId }),
+    });
+    if (
+      !listedTrigger ||
+      listedTrigger.kind !== "event" ||
+      listedTrigger.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected the webhook trigger to be listed");
+    }
+    expect(listedTrigger.webhookUrl).toBeUndefined();
+    expect(listedTrigger.webhookSecret).toBeUndefined();
+  });
+
   it("stores trigger chat threads at the workflow-user level", async () => {
     const { workflowId } = await setupFixture();
     const first = await accept(
@@ -708,6 +779,78 @@ describe("zero workflow triggers", () => {
     );
   });
 
+  it("requires Team or Custom after the webhook feature switch is enabled", async () => {
+    const { fixture, actor, customerId, subscriptionId, workflowId } =
+      await setupFixture();
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+    });
+
+    const proRejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [402],
+    );
+    expect(proRejected.body.error).toStrictEqual({
+      code: "TEAM_REQUIRED",
+      message: "Webhook triggers require a Team or Custom workspace",
+    });
+
+    await runs.grantProEntitlement(actor, {
+      customerId,
+      subscriptionId,
+      tier: "team",
+    });
+    const teamCreated = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    expect(teamCreated.body).toMatchObject({
+      kind: "event",
+      eventType: "webhook-received",
+    });
+  });
+
+  it("serializes webhook creation with an effective downgrade", async () => {
+    const { fixture, subscriptionId, workflowId } = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const [created] = await Promise.all([
+      accept(
+        triggersClient().create({
+          headers: authHeaders(),
+          params: { workflowId },
+          body: { kind: "event", eventType: "webhook-received" },
+        }),
+        [201, 402],
+      ),
+      webhookCallbacks.postStripeEvent(
+        {
+          id: `evt_trigger_create_race_${randomUUID()}`,
+          type: "customer.subscription.deleted",
+          data: { object: { id: subscriptionId } },
+        },
+        [200],
+      ),
+    ]);
+
+    if (created.status === 201) {
+      await expect(wf.readTrigger(created.body.id)).resolves.toMatchObject({
+        enabled: false,
+        disabledReason: "paid_plan_required",
+      });
+    } else {
+      expect(created.body.error.code).toBe("TEAM_REQUIRED");
+    }
+  });
+
   it("lists owned workflow triggers across visible workflows", async () => {
     const scenario = await setupFixture();
     const { agentId, workflowId } = scenario;
@@ -774,7 +917,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates webhook event triggers with a signed endpoint secret shown once", async () => {
-    const { fixture, workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture("team");
     await enableWebhookWorkflowTriggers(fixture);
 
     const created = await accept(
@@ -836,6 +979,175 @@ describe("zero workflow triggers", () => {
     expect(listedWebhook.secretLastFour).toBe(created.body.secretLastFour);
     expect(listedWebhook.webhookSecret).toBeUndefined();
 
+    const revealed = await accept(
+      triggersClient().revealWebhookSecret({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    expect(revealed.body).toStrictEqual({
+      webhookUrl: created.body.webhookUrl,
+      webhookSecret: created.body.webhookSecret,
+    });
+  });
+
+  it("rejects webhook re-enable for Pro and evaluates the feature switch first", async () => {
+    const { fixture, actor, customerId, workflowId, subscriptionId } =
+      await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    await webhookCallbacks.postStripeEvent(
+      {
+        id: `evt_trigger_pro_${randomUUID()}`,
+        type: "customer.subscription.deleted",
+        data: { object: { id: subscriptionId } },
+      },
+      [200],
+    );
+    await runs.grantProEntitlement(actor, { customerId, subscriptionId });
+
+    const teamRequired = await accept(
+      triggersClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [402],
+    );
+    expect(teamRequired.body.error.code).toBe("TEAM_REQUIRED");
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
+    });
+    const switchRequired = await accept(
+      triggersClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [400],
+    );
+    expect(switchRequired.body.error.message).toBe(
+      "Workflow webhook triggers are not enabled",
+    );
+  });
+
+  it("serializes webhook re-enable with an effective downgrade", async () => {
+    const { fixture, subscriptionId, workflowId } = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+
+    const [enabled] = await Promise.all([
+      accept(
+        triggersClient().enable({
+          headers: authHeaders(),
+          params: { id: created.body.id },
+          body: undefined,
+        }),
+        [200, 402],
+      ),
+      webhookCallbacks.postStripeEvent(
+        {
+          id: `evt_trigger_enable_race_${randomUUID()}`,
+          type: "customer.subscription.deleted",
+          data: { object: { id: subscriptionId } },
+        },
+        [200],
+      ),
+    ]);
+
+    const after = await wf.readTrigger(created.body.id);
+    expect(after.enabled).toBeFalsy();
+    if (enabled.status === 200) {
+      expect(after).toMatchObject({
+        disabledReason: "paid_plan_required",
+      });
+    } else {
+      expect(enabled.body.error.code).toBe("TEAM_REQUIRED");
+    }
+  });
+
+  it("clears the plan-disabled reason without rotating webhook credentials", async () => {
+    const { fixture, actor, customerId, workflowId, subscriptionId } =
+      await setupFixture("team");
+    await enableWebhookWorkflowTriggers(fixture);
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected a webhook trigger");
+    }
+    await webhookCallbacks.postStripeEvent(
+      {
+        id: `evt_trigger_restore_${randomUUID()}`,
+        type: "customer.subscription.deleted",
+        data: { object: { id: subscriptionId } },
+      },
+      [200],
+    );
+    const disabled = await wf.readTrigger(created.body.id);
+    expect(disabled).toMatchObject({
+      enabled: false,
+      disabledReason: "paid_plan_required",
+    });
+    await runs.grantProEntitlement(actor, {
+      customerId,
+      subscriptionId,
+      tier: "team",
+    });
+
+    const enabled = await accept(
+      triggersClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+    expect(enabled.body).toMatchObject({
+      enabled: true,
+      disabledReason: null,
+    });
     const revealed = await accept(
       triggersClient().revealWebhookSecret({
         headers: authHeaders(),

@@ -12,13 +12,20 @@ use flate2::{Compression, write::GzEncoder};
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use httpmock::prelude::*;
 use sandbox::{
-    ExecResult, ExecTermination, ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory,
-    SandboxId,
+    ExecResult, ExecTermination, ProcessExit, ProcessOutputChunk, ProcessOutputMode, SandboxConfig,
+    SandboxFactory, SandboxId,
 };
 use sandbox_mock::MockSandboxFactory;
 use sha2::{Digest, Sha256};
@@ -31,15 +38,17 @@ use super::super::agent_run::{
 };
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
+use super::super::telemetry::RunnerSpawnTiming;
 use super::super::{
     EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, RestoredSessionIdentity,
     SessionHistoryMaterializer, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
     effective_cli_framework,
 };
 use super::support::{
-    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_artifact, api_storage,
-    create_overridden_sandbox, minimal_context, sandbox_exec_error, spawn_run_in_sandbox_test,
-    spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
+    CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, StartProcessGateSandbox, api_artifact,
+    api_storage, create_overridden_sandbox, minimal_context, sandbox_exec_error,
+    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts, test_executor_config,
+    test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -75,9 +84,10 @@ async fn serve_history_once(body: &[u8]) -> OneShotSessionHistoryServer {
 
 async fn serve_storage_archive_for_cache(
     body: &'static [u8],
-) -> (String, tokio::task::JoinHandle<()>) {
+) -> (String, tokio::task::JoinHandle<()>, oneshot::Receiver<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
+    let (request_tx, request_rx) = oneshot::channel();
     let handle = tokio::spawn(async move {
         let probe_response = format!(
             "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{}\r\nContent-Length: 1\r\nConnection: close\r\n\r\nx",
@@ -91,14 +101,22 @@ async fn serve_storage_archive_for_cache(
         .into_bytes();
         full_response.extend_from_slice(body);
 
+        let mut request_tx = Some(request_tx);
         for response in [probe_response, full_response] {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = [0u8; 1024];
             let _ = stream.read(&mut request).await;
+            if let Some(request_tx) = request_tx.take() {
+                let _ = request_tx.send(());
+            }
             stream.write_all(&response).await.unwrap();
         }
     });
-    (format!("http://{address}/archive.tar.gz"), handle)
+    (
+        format!("http://{address}/archive.tar.gz"),
+        handle,
+        request_rx,
+    )
 }
 
 async fn serve_history_once_after_request(
@@ -544,12 +562,20 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
 }
 
 #[tokio::test]
-async fn run_in_sandbox_storage_cache_miss_passthrough_reaches_guest_download() {
+async fn run_in_sandbox_starts_deferred_cache_fill_after_agent_spawn() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let start_process_entered = Arc::new(Notify::new());
+    let start_process_release = Arc::new(Notify::new());
+    let sandbox = StartProcessGateSandbox {
+        inner: create_overridden_sandbox(Arc::clone(&overrides)).await,
+        entered: Arc::clone(&start_process_entered),
+        release: Arc::clone(&start_process_release),
+    };
     let mut ctx = minimal_context();
-    let (archive_url, archive_server) = serve_storage_archive_for_cache(b"cache-archive").await;
+    let (archive_url, archive_server, mut archive_request) =
+        serve_storage_archive_for_cache(b"cache-archive").await;
     let storage = api_storage("instructions", "/home/user/.codex", "v1", &archive_url);
     ctx.storage_manifest = Some(StorageManifest {
         storages: vec![storage],
@@ -557,7 +583,173 @@ async fn run_in_sandbox_storage_cache_miss_passthrough_reaches_guest_download() 
     });
     let mut telemetry = test_telemetry(&config, &ctx);
 
-    run_in_sandbox(
+    {
+        let run = run_in_sandbox(
+            &sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                .with_spawn_timing(RunnerSpawnTiming::start(None)),
+        );
+        tokio::pin!(run);
+
+        tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+            tokio::select! {
+                result = &mut run => {
+                    let _ = result;
+                    panic!("run finished before the start-process barrier");
+                },
+                () = start_process_entered.notified() => {}
+            }
+        })
+        .await
+        .expect("run should reach the start-process barrier");
+
+        assert!(matches!(
+            archive_request.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        let exec_calls = overrides.exec_calls();
+        assert!(
+            exec_calls
+                .iter()
+                .any(|call| call.cmd == guest_download_stdin_command()),
+            "cache miss passthrough should reach guest-download before process spawn; calls: {exec_calls:?}"
+        );
+
+        start_process_release.notify_one();
+        run.await.unwrap();
+    }
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, &mut archive_request)
+        .await
+        .expect("deferred cache fill should contact the archive after spawn")
+        .expect("archive server should report its first request");
+    tokio::time::timeout(Duration::from_secs(5), archive_server)
+        .await
+        .expect("background cache fill should fetch archive")
+        .expect("background cache fill server task should not panic");
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
+    assert_successful_action_once(&ops, "runner_storage_manifest_guest_download");
+    assert_successful_action_once(&ops, "runner_storage_manifest_apply");
+    assert_successful_action_once(&ops, "storage_cache_miss_passthrough");
+    assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_count_1");
+    assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_delay");
+    assert_successful_action_once(&ops, "storage_cache_background_fill_scheduled_count_1");
+    assert_successful_action_once(&ops, "runner_agent_start_process");
+    assert_successful_action_once(&ops, "runner_executor_start_to_spawn");
+    assert_no_action(&ops, "storage_cache_miss");
+    assert_no_action(&ops, "storage_cache_download");
+
+    let spawn_index = ops
+        .iter()
+        .position(|op| op.0 == "runner_executor_start_to_spawn")
+        .unwrap();
+    let deferred_start_index = ops
+        .iter()
+        .position(|op| op.0 == "storage_cache_background_fill_deferred_delay")
+        .unwrap();
+    let scheduled_index = ops
+        .iter()
+        .position(|op| op.0 == "storage_cache_background_fill_scheduled_count_1")
+        .unwrap();
+    assert!(spawn_index < deferred_start_index);
+    assert!(deferred_start_index < scheduled_index);
+}
+
+#[tokio::test]
+async fn run_in_sandbox_drops_deferred_cache_fill_when_agent_spawn_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_process_stdout_chunks(
+        (0..=ProcessOutputMode::DEFAULT_QUEUE_CAPACITY)
+            .map(|_| ProcessOutputChunk {
+                bytes: Vec::new(),
+                truncated: false,
+            })
+            .collect(),
+    );
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let mut ctx = minimal_context();
+    let (archive_url, archive_server, mut archive_request) =
+        serve_storage_archive_for_cache(b"cache-archive").await;
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![api_storage(
+            "instructions",
+            "/home/user/.codex",
+            "v1",
+            &archive_url,
+        )],
+        artifacts: vec![],
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_spawn_timing(RunnerSpawnTiming::start(None)),
+    )
+    .await;
+    assert!(result.is_err());
+    tokio::task::yield_now().await;
+
+    assert!(matches!(
+        archive_request.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_count_1");
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "runner_agent_start_process" && !op.1),
+        "expected failed process spawn telemetry, got: {ops:?}"
+    );
+    assert_no_action(&ops, "storage_cache_background_fill_deferred_delay");
+    assert_no_action(&ops, "storage_cache_background_fill_scheduled_count_1");
+    assert_no_action(&ops, "runner_executor_start_to_spawn");
+
+    archive_server.abort();
+    let _ = archive_server.await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_drops_deferred_cache_fill_when_guest_download_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
+    let mut ctx = minimal_context();
+    let (archive_url, archive_server, mut archive_request) =
+        serve_storage_archive_for_cache(b"cache-archive").await;
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![api_storage(
+            "instructions",
+            "/home/user/.codex",
+            "v1",
+            &archive_url,
+        )],
+        artifacts: vec![],
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
         &sandbox,
         &ctx,
         &config,
@@ -569,28 +761,27 @@ async fn run_in_sandbox_storage_cache_miss_passthrough_reaches_guest_download() 
         &mut telemetry,
         RunControls::new(tokio_util::sync::CancellationToken::new(), None),
     )
-    .await
-    .unwrap();
+    .await;
+    assert!(result.is_err());
+    tokio::task::yield_now().await;
 
-    let exec_calls = sandbox.exec_calls();
-    assert!(
-        exec_calls
-            .iter()
-            .any(|call| call.cmd == guest_download_stdin_command()),
-        "cache miss passthrough should leave work for guest-download; calls: {exec_calls:?}"
-    );
-    tokio::time::timeout(Duration::from_secs(5), archive_server)
-        .await
-        .expect("background cache fill should fetch archive")
-        .expect("background cache fill server task should not panic");
+    assert!(matches!(
+        archive_request.try_recv(),
+        Err(oneshot::error::TryRecvError::Empty)
+    ));
     let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
-    assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
-    assert_successful_action_once(&ops, "runner_storage_manifest_guest_download");
-    assert_successful_action_once(&ops, "runner_storage_manifest_apply");
-    assert_successful_action_once(&ops, "storage_cache_miss_passthrough");
-    assert_no_action(&ops, "storage_cache_miss");
-    assert_no_action(&ops, "storage_cache_download");
+    assert_successful_action_once(&ops, "storage_cache_background_fill_deferred_count_1");
+    assert_no_action(&ops, "storage_cache_background_fill_deferred_delay");
+    assert_no_action(&ops, "storage_cache_background_fill_scheduled_count_1");
+    assert_no_action(&ops, "runner_agent_start_process");
+    assert_failed_action_error_once(
+        &ops,
+        "runner_storage_manifest_guest_download",
+        "storage-download-failed",
+    );
+
+    archive_server.abort();
+    let _ = archive_server.await;
 }
 
 #[tokio::test]
@@ -1604,6 +1795,57 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
             .any(|op| op.0 == "session_history_restore_skip" && op.1),
         "expected checkpointed skip telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_classifies_checkpointed_final_identity_helper_failure_codes() {
+    let cases = [
+        (
+            "generic",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+            "session_history_identity_verify_helper_failed",
+        ),
+        (
+            "invalid-args",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+            "session_history_identity_verify_helper_invalid_args",
+        ),
+        (
+            "metadata-read",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+            "session_history_identity_verify_helper_metadata_read_failed",
+        ),
+        (
+            "invalid-metadata",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+            "session_history_identity_verify_helper_invalid_metadata",
+        ),
+        (
+            "framework-mismatch",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
+            "session_history_identity_verify_helper_framework_mismatch",
+        ),
+        (
+            "expected-mismatch",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+            "session_history_identity_verify_helper_expected_mismatch",
+        ),
+        (
+            "history-read",
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+            "session_history_identity_verify_helper_history_read_failed",
+        ),
+    ];
+
+    for (name, exit_code, expected_reason_action) in cases {
+        let session_id = format!("sess-final-helper-{name}-123");
+        assert_checkpointed_final_identity_helper_failure_falls_back(
+            &session_id,
+            ExecResult::new(exit_code, Vec::new(), Vec::new()),
+            expected_reason_action,
+        )
+        .await;
+    }
 }
 
 #[tokio::test]

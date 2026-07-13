@@ -447,7 +447,7 @@ def _matches_model_provider_exclusion(
         catalog.compiled_model_provider_exclusions,
         catalog.compiled_model_provider_exclusion_policies,
     )
-    return isinstance(match, matching.FirewallAllow)
+    return isinstance(match, (matching.FirewallAllow, matching.FirewallAmbiguous))
 
 
 def _diagnostic_reference_names(value: object) -> tuple[str, ...]:

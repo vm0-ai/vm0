@@ -6,18 +6,18 @@ _ADDRESS_PAIR_LENGTH = 2
 
 
 def server_address(server: object) -> tuple[str, int] | None:
-    return _address_pair(getattr(server, "address", None))
+    return address_pair(getattr(server, "address", None))
 
 
 def server_peername(server: object) -> tuple[str, int] | None:
-    return _address_pair(getattr(server, "peername", None))
+    return address_pair(getattr(server, "peername", None))
 
 
 def connection_sockname(connection: object) -> tuple[str, int] | None:
-    return _address_pair(getattr(connection, "sockname", None))
+    return address_pair(getattr(connection, "sockname", None))
 
 
-def _address_pair(address: object) -> tuple[str, int] | None:
+def address_pair(address: object) -> tuple[str, int] | None:
     if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
         return None
     host, port = address[:_ADDRESS_PAIR_LENGTH]
@@ -26,15 +26,18 @@ def _address_pair(address: object) -> tuple[str, int] | None:
     return host, port
 
 
-def _is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
-    if endpoint is None:
-        return False
-    endpoint_host, _endpoint_port = endpoint
+def authoritative_connected_endpoint(endpoint: object) -> tuple[str, int] | None:
+    endpoint_pair = address_pair(endpoint)
+    if endpoint_pair is None:
+        return None
+    endpoint_host, _endpoint_port = endpoint_pair
     try:
         endpoint_ip = ipaddress.ip_address(endpoint_host)
     except ValueError:
-        return False
-    return not endpoint_ip.is_loopback and not endpoint_ip.is_unspecified
+        return None
+    if endpoint_ip.is_loopback or endpoint_ip.is_unspecified:
+        return None
+    return endpoint_pair
 
 
 def connected_ip_destination_endpoint(
@@ -43,34 +46,17 @@ def connected_ip_destination_endpoint(
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
-    for peer in _connected_destination_candidate_endpoints(
-        server,
-        extra_endpoints=extra_endpoints,
-    ):
-        if peer is None:
-            continue
+    peername = authoritative_connected_endpoint(server_peername(server))
+    if peername is not None:
+        return peername if peername[1] == port else None
 
-        _peer_host, peer_port = peer
-        if peer_port != port:
-            continue
+    address = authoritative_connected_endpoint(server_address(server))
+    if address is not None:
+        return address if address[1] == port else None
 
-        if _is_authoritative_connected_endpoint(peer):
-            return peer
+    for extra_endpoint in extra_endpoints:
+        endpoint = authoritative_connected_endpoint(extra_endpoint)
+        if endpoint is not None and endpoint[1] == port:
+            return endpoint
 
     return None
-
-
-def _connected_destination_candidate_endpoints(
-    server: object,
-    *,
-    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
-) -> tuple[tuple[str, int] | None, ...]:
-    peername = server_peername(server)
-    if _is_authoritative_connected_endpoint(peername):
-        return (peername,)
-
-    address = server_address(server)
-    if _is_authoritative_connected_endpoint(address):
-        return (address,)
-
-    return (peername, address, *extra_endpoints)

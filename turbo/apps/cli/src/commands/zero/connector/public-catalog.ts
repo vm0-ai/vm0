@@ -3,12 +3,6 @@ import type {
   PublicConnectorCatalogItem,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import {
-  connectorAuthMethodIdSchema,
-  connectorTypeSchema,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
 
 export type PublicConnectorStatus = PublicConnectorCatalogStatusItem;
 
@@ -258,38 +252,6 @@ export function availableConnectorRefs(
       return connector.connectorRef;
     })
     .join(", ");
-}
-
-export function parseConnectorTypeForAction(
-  connectorRef: string,
-): ConnectorType {
-  const parsed = connectorTypeSchema.safeParse(connectorRef);
-  if (parsed.success) return parsed.data;
-
-  throw new Error(
-    `Connector ${connectorRef} cannot be used by this CLI action`,
-    {
-      cause: new Error(
-        "This action still uses the connector action API, which only accepts built-in connector refs.",
-      ),
-    },
-  );
-}
-
-export function parseConnectorAuthMethodIdForAction(
-  authMethodId: string,
-): ConnectorAuthMethodId {
-  const parsed = connectorAuthMethodIdSchema.safeParse(authMethodId);
-  if (parsed.success) return parsed.data;
-
-  throw new Error(
-    `Auth method ${authMethodId} cannot be used by this CLI action`,
-    {
-      cause: new Error(
-        "This action still uses the connector action API, which only accepts built-in auth method ids.",
-      ),
-    },
-  );
 }
 
 export function resolveManualGrantAuthMethod(

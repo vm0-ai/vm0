@@ -55,8 +55,11 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   deleteVm0ManagedDefaultModelKey,
   enableAutomationsFakeKms,
+  holdOrgAdmissionLock,
   mutateRunnerJobSecretValueEnvironmentKeys,
   readAutomationsFakeKmsDecryptCallCount,
+  readOrgAdmissionLockState,
+  releaseOrgAdmissionLock,
   resetAutomationsFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
@@ -103,6 +106,12 @@ const CLAIM_ROUTE_PREPARED_PATH_OMITTED_ACTION_TYPES = [
   "claim_route_feature_switch_context",
   "claim_route_secret_materialization",
 ] as const;
+const CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES = [
+  "claim_route_response_resume_session",
+  "claim_route_response_network_policy_refresh",
+] as const;
+type ClaimRouteResponseTimingActionType =
+  (typeof CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES)[number];
 const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
   "claim_route_transition_execute",
 ] as const;
@@ -567,6 +576,28 @@ function sandboxOperationEventsForRun(
   });
 }
 
+function sandboxOperationEventsForRunByAction(
+  runId: string,
+  actionType: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return event.op_type === actionType;
+  });
+}
+
+function sandboxOperationDurationForRun(
+  runId: string,
+  actionType: string,
+): number {
+  const event = sandboxOperationEventsForRun(runId).find((candidate) => {
+    return candidate.op_type === actionType;
+  });
+  if (!event || typeof event.duration_ms !== "number") {
+    throw new Error(`Missing ${actionType} duration for run ${runId}`);
+  }
+  return event.duration_ms;
+}
+
 function claimRouteTimingEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -657,6 +688,46 @@ function singleSandboxOperationEvent(
   });
   expect(matchingEvents).toHaveLength(1);
   return matchingEvents[0]!;
+}
+
+function expectClaimRouteResponseTimingActions(args: {
+  readonly runId: string;
+  readonly expectedActionTypes: readonly ClaimRouteResponseTimingActionType[];
+  readonly forbiddenValues: readonly string[];
+}): void {
+  const events = claimRouteTimingEventsForRun(args.runId);
+  const expectedActionTypes = new Set(args.expectedActionTypes);
+  for (const actionType of CLAIM_ROUTE_RESPONSE_TIMING_ACTION_TYPES) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    if (!expectedActionTypes.has(actionType)) {
+      expect(matchingEvents).toHaveLength(0);
+      continue;
+    }
+
+    expect(matchingEvents).toHaveLength(1);
+    const event = matchingEvents[0];
+    expect(event).toStrictEqual(
+      expect.objectContaining({
+        source: "api",
+        op_type: actionType,
+        sandbox_type: "runner",
+        success: true,
+        run_id: args.runId,
+        span_kind: "nested",
+      }),
+    );
+    expect(event?.duration_ms).toStrictEqual(expect.any(Number));
+    expect(Number(event?.duration_ms)).toBeGreaterThanOrEqual(0);
+    for (const forbiddenKey of FORBIDDEN_CLAIM_ROUTE_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of args.forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
 }
 
 function expectCustomConnectorRuntimePhaseTimingEvents(
@@ -2088,6 +2159,25 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(serialized).not.toContain(historyHash);
       expect(serialized).not.toContain(first.sessionId);
     }
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-timing-cli-${first.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+    expectClaimRouteResponseTimingActions({
+      runId: resumed.runId,
+      expectedActionTypes: ["claim_route_response_resume_session"],
+      forbiddenValues: [
+        history,
+        historyHash,
+        first.sessionId,
+        resumedClaim.sandboxToken,
+      ],
+    });
 
     const checkpointZeroToken = "bdd-checkpoint-zero-token";
     const checkpointRun = await api.createDirectRun(actor, {
@@ -2412,6 +2502,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     async function heartbeatHolder(args: {
       readonly admittableProfiles?: string[];
       readonly mode?: "starting" | "running" | "draining" | "stopping";
+      readonly reusableSandbox?: { readonly profile: string };
     }): Promise<void> {
       await api.requestHeartbeatRunner(true, [200], {
         runnerId: affinityRunnerId,
@@ -2421,6 +2512,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           {
             sessionId: cliAgentSessionId,
             lastCompletedAt: nowDate().toISOString(),
+            ...(args.reusableSandbox
+              ? { reusableSandbox: args.reusableSandbox }
+              : {}),
           },
         ],
         mode: args.mode,
@@ -2544,7 +2638,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     onTestFinished(() => {
       clearMockNow();
     });
-    await heartbeatHolder({ admittableProfiles: ["vm0/default"] });
+    await heartbeatHolder({
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/default" },
+    });
     clearMockNow();
     const staleHolder = await pollFollowUp(
       "continue after holder heartbeat is stale",
@@ -2553,7 +2650,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(staleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      admittableProfiles: ["vm0/large"],
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/large" },
     });
     const profileIncompatibleHolder = await pollFollowUp(
       "continue when holder cannot run requested profile",
@@ -2564,7 +2662,8 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expect(profileIncompatibleHolder.job?.affinityProtectedUntil).toBeNull();
 
     await heartbeatHolder({
-      admittableProfiles: ["vm0/default"],
+      admittableProfiles: [],
+      reusableSandbox: { profile: "vm0/default" },
       mode: "draining",
     });
     const drainingHolder = await pollFollowUp(
@@ -2576,12 +2675,39 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
     });
-    const protectedFollowUp = await api.createRun(actor, {
+    if (!actor.orgId) {
+      throw new Error("Expected affinity actor to have an organization");
+    }
+    const requestStartedAt = now();
+    const queueInsertedAt = requestStartedAt + 5000;
+    mockNow(requestStartedAt);
+    const admissionLockRequest = holdOrgAdmissionLock(context, actor.orgId);
+    onTestFinished(async () => {
+      clearMockNow();
+      await releaseOrgAdmissionLock(context);
+      await admissionLockRequest;
+    });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).held;
+      })
+      .toBe(true);
+
+    const protectedFollowUpRequest = api.createRun(actor, {
       agentId,
       sessionId: first.sessionId,
       prompt: "continue affinity-protected session",
       modelProvider: "anthropic-api-key",
     });
+    await expect
+      .poll(async () => {
+        return (await readOrgAdmissionLockState(context)).waiting;
+      })
+      .toBe(true);
+    mockNow(queueInsertedAt);
+    await releaseOrgAdmissionLock(context);
+    await admissionLockRequest;
+    const protectedFollowUp = await protectedFollowUpRequest;
 
     const protectedPoll = await api.requestPollRunner(
       true,
@@ -2593,12 +2719,53 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
     expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
     expect(protectedPoll.body.job?.cliAgentSessionId).toBe(cliAgentSessionId);
-    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
-      expect.any(String),
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toBe(
+      new Date(queueInsertedAt + 2000).toISOString(),
     );
 
     const protectedClaim = await api.claimRunnerJob(protectedFollowUp.runId);
     expect(protectedClaim.prompt).toBe("continue affinity-protected session");
+    const apiToRunnerQueueMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "api_to_runner_queue",
+    );
+    const runnerQueueToClaimRequestMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "runner_queue_to_claim_request",
+    );
+    const apiToClaimRequestMs = sandboxOperationDurationForRun(
+      protectedFollowUp.runId,
+      "api_to_claim_request",
+    );
+    expect(apiToRunnerQueueMs).toBe(queueInsertedAt - requestStartedAt);
+    expect(runnerQueueToClaimRequestMs).toBe(0);
+    expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
+      apiToClaimRequestMs,
+    );
+    for (const actionType of [
+      "runner_notification_queue_to_entry",
+      "runner_notification_affinity_lookup",
+      "runner_notification_queue_to_publish_start",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        protectedFollowUp.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          session_affinity: "protected",
+        }),
+      );
+    }
     await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
 
     const expiredFollowUp = await api.createRun(actor, {
@@ -2620,6 +2787,132 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       "continue after affinity protection expires",
     );
     await api.requestCancelRun(actor, expiredFollowUp.runId, [200]);
+  });
+
+  it("prioritizes exact reusable work only for its runner and protection window", async () => {
+    const api = createRunsAutomationsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "start reusable-priority session",
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    const cliAgentSessionId = `bdd-reusable-priority-${first.runId}`;
+    const history = `bdd reusable priority history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+
+    const affinityRunnerId = randomUUID();
+    const priorityBase = now();
+    mockNow(priorityBase);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [
+        {
+          sessionId: cliAgentSessionId,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+
+    const protectedFollowUp = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "verify reusable holder protection",
+      modelProvider: "anthropic-api-key",
+    });
+    const protectedPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (protectedPoll.status !== 200) {
+      throw new Error("Expected reusable-holder poll to return 200");
+    }
+    expect(protectedPoll.body.job?.runId).toBe(protectedFollowUp.runId);
+    expect(protectedPoll.body.job?.affinityProtectedUntil).toStrictEqual(
+      expect.any(String),
+    );
+    await api.requestCancelRun(actor, protectedFollowUp.runId, [200]);
+
+    const olderGeneric = await api.createRun(actor, {
+      agentId,
+      prompt: "older generic FIFO work",
+      modelProvider: "anthropic-api-key",
+    });
+    mockNow(priorityBase + 1);
+    const newerReusable = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: "newer exact reusable work",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const legacyPriorityPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (legacyPriorityPoll.status !== 200) {
+      throw new Error("Expected legacy FIFO poll to return 200");
+    }
+    expect(legacyPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    const reusablePriorityPoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (reusablePriorityPoll.status !== 200) {
+      throw new Error("Expected reusable-priority poll to return 200");
+    }
+    expect(reusablePriorityPoll.body.job?.runId).toBe(newerReusable.runId);
+
+    mockNow(priorityBase + 60_000);
+    const expiredPriorityPoll = await api.requestPollRunner(
+      true,
+      {
+        runnerId: affinityRunnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (expiredPriorityPoll.status !== 200) {
+      throw new Error("Expected expired reusable-priority poll to return 200");
+    }
+    expect(expiredPriorityPoll.body.job?.runId).toBe(olderGeneric.runId);
+
+    await api.requestCancelRun(actor, newerReusable.runId, [200]);
+    await api.requestCancelRun(actor, olderGeneric.runId, [200]);
   });
 });
 
@@ -2719,6 +3012,76 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("keeps runner expiry on the database clock", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockNow(now() - 3 * 60 * 60 * 1000);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "runner ttl should use the database insertion clock",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const poll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (poll.status !== 200) {
+      throw new Error("Expected runner expiry poll to succeed");
+    }
+    expect(poll.body.job?.runId).toBe(run.runId);
+    await api.claimRunnerJob(run.runId);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("orders equal runner queue timestamps deterministically", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    mockNow(now());
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "same timestamp runner job one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "same timestamp runner job two",
+      modelProvider: "anthropic-api-key",
+    });
+    const orderedRunIds = [first.runId, second.runId].sort();
+
+    const firstPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (firstPoll.status !== 200) {
+      throw new Error("Expected first deterministic runner poll to succeed");
+    }
+    expect(firstPoll.body.job?.runId).toBe(orderedRunIds[0]);
+    if (!orderedRunIds[0]) {
+      throw new Error("Expected a first ordered runner job");
+    }
+    await api.claimRunnerJob(orderedRunIds[0]);
+
+    const secondPoll = await api.requestPollRunner(
+      true,
+      { group: runnerGroup, supportedProfiles: ["vm0/default"] },
+      [200],
+    );
+    if (secondPoll.status !== 200) {
+      throw new Error("Expected second deterministic runner poll to succeed");
+    }
+    expect(secondPoll.body.job?.runId).toBe(orderedRunIds[1]);
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -2752,6 +3115,8 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(queued.body.queue).toHaveLength(1);
     expect(queued.body.queue[0]?.runId).toBe(third.runId);
 
+    const promotedAt = now() + 5000;
+    mockNow(promotedAt);
     await api.requestCancelRun(actor, first.runId, [200]);
 
     const promoted = await waitForRunStatus(api, actor, third.runId, "pending");
@@ -2769,6 +3134,47 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     }
     expect(thirdClaim.secretValues).toContain(zeroToken);
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
+    const apiToRunnerQueueMs = sandboxOperationDurationForRun(
+      third.runId,
+      "api_to_runner_queue",
+    );
+    const runnerQueueToClaimRequestMs = sandboxOperationDurationForRun(
+      third.runId,
+      "runner_queue_to_claim_request",
+    );
+    const apiToClaimRequestMs = sandboxOperationDurationForRun(
+      third.runId,
+      "api_to_claim_request",
+    );
+    expect(apiToRunnerQueueMs).toBe(0);
+    expect(runnerQueueToClaimRequestMs).toBe(0);
+    expect(apiToRunnerQueueMs + runnerQueueToClaimRequestMs).toBe(
+      apiToClaimRequestMs,
+    );
+    for (const actionType of [
+      "runner_notification_queue_to_entry",
+      "runner_notification_affinity_lookup",
+      "runner_notification_queue_to_publish_start",
+    ]) {
+      const events = sandboxOperationEventsForRunByAction(
+        third.runId,
+        actionType,
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0]).toStrictEqual(
+        expect.objectContaining({
+          source: "api",
+          op_type: actionType,
+          sandbox_type: "runner",
+          duration_ms: 0,
+          success: true,
+          runner_group: runnerGroup,
+          profile: "vm0/default",
+          notification_target: "broadcast",
+          session_affinity: "no_session",
+        }),
+      );
+    }
     await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
       decryptCountBeforeClaim,
     );
@@ -5844,6 +6250,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const grantedContext = await claimSlackContext("granted permissions");
     const granted = grantedContext.policy;
+    expectClaimRouteResponseTimingActions({
+      runId: grantedContext.claim.runId,
+      expectedActionTypes: ["claim_route_response_network_policy_refresh"],
+      forbiddenValues: [
+        "granted permissions",
+        "slack",
+        grantedContext.claim.sandboxToken,
+      ],
+    });
     expect(
       grantedContext.claim.networkPolicyRefreshes?.slack?.nextRefreshAt,
     ).toStrictEqual(expect.any(String));
@@ -5963,6 +6378,88 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("records co-occurring resume and policy response timing", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-claim-response-timing",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["slack"]);
+    await api.heartbeatRunner(runnerGroup);
+
+    const firstPrompt = "start combined claim response timing";
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
+    expect(firstClaim.networkPolicies?.slack).toBeDefined();
+
+    const history = `bdd combined claim history ${first.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-combined-cli-${first.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 0, lastEventSequence: 0 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    const completed = await api.readRun(actor, first.runId);
+    expect(completed.status).toBe("completed");
+
+    const resumedPrompt = "continue combined claim response timing";
+    const resumed = await api.createRun(actor, {
+      agentId,
+      sessionId: first.sessionId,
+      prompt: resumedPrompt,
+      modelProvider: "anthropic-api-key",
+    });
+    const resumedClaim = await api.claimRunnerJob(resumed.runId);
+    expect(resumedClaim.resumeSession).toMatchObject({
+      sessionId: `bdd-combined-cli-${first.runId}`,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+    expect(resumedClaim.networkPolicies?.slack).toBeDefined();
+    expectClaimRouteResponseTimingActions({
+      runId: resumed.runId,
+      expectedActionTypes: [
+        "claim_route_response_resume_session",
+        "claim_route_response_network_policy_refresh",
+      ],
+      forbiddenValues: [
+        firstPrompt,
+        resumedPrompt,
+        history,
+        historyHash,
+        first.sessionId,
+        "slack",
+        "xoxb-bdd-claim-response-timing",
+        resumedClaim.sandboxToken,
+      ],
+    });
+
+    await api.requestCancelRun(actor, resumed.runId, [200]);
   });
 
   it("preserves session agent identity when compose versions are shared", async () => {
@@ -6611,6 +7108,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     }
     expect(claimed.body.prompt).toBe("user runner job one");
     expect(claimed.body.sandboxToken).not.toBe("");
+    expectClaimRouteResponseTimingActions({
+      runId: first.runId,
+      expectedActionTypes: [],
+      forbiddenValues: [firstPrompt, claimed.body.sandboxToken, apiKey.token],
+    });
     const claimRouteTimingEvents = claimRouteTimingEventsForRun(first.runId);
     expect(claimRouteTimingEvents).toHaveLength(
       CLAIM_ROUTE_TIMING_ACTION_TYPES.length,
@@ -7887,15 +8389,14 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         }),
       ],
     );
-    const sandboxOperationIngestCall =
-      context.mocks.axiom.sdkIngest.mock.calls.find(([dataset]) => {
-        return dataset === "vm0-sandbox-op-log-dev";
-      });
-    expect(sandboxOperationIngestCall?.[1]).toStrictEqual([
-      expect.not.objectContaining({
-        session_history_ref_hash: "should-not-forward",
-      }),
-    ]);
+    const sessionHistoryDownloadEvents = sandboxOperationEventsForRunByAction(
+      created.runId,
+      "session_history_download",
+    );
+    expect(sessionHistoryDownloadEvents).toHaveLength(1);
+    expect(sessionHistoryDownloadEvents[0]).not.toHaveProperty(
+      "session_history_ref_hash",
+    );
 
     const observed = await webhooks.requestAgentModelUsageObservation(
       {

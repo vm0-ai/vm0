@@ -35,6 +35,7 @@ import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, safeUrlParse, settle } from "../utils";
@@ -52,6 +53,8 @@ import {
 } from "./zero-workflow-trigger-run.service";
 import { recordNotionPageMemorySource } from "./notion-memory-source.service";
 
+const log = logger("api:notion-workflow-event");
+
 const NOTION_ACCESS_TOKEN_SECRET = "NOTION_ACCESS_TOKEN";
 const NOTION_REFRESH_TOKEN_SECRET = "NOTION_REFRESH_TOKEN";
 const CONNECTOR_SECRET_TYPE = "connector";
@@ -62,6 +65,7 @@ const NOTION_CHILD_PAGE_SETTLE_MS = 15 * 60 * 1000;
 const NOTION_PENDING_RETRY_MS = 5 * 60 * 1000;
 const NOTION_PENDING_MAX_ATTEMPTS = 8;
 const NOTION_PENDING_BATCH_SIZE = 25;
+const NOTION_VALIDATION_ISSUE_LOG_LIMIT = 10;
 const NOTION_CHILD_PAGE_MOVED_SKIP_REASON =
   "Notion page is no longer a direct child of the configured parent";
 const NOTION_DATABASE_ITEM_MOVED_SKIP_REASON =
@@ -97,6 +101,31 @@ const notionWebhookVerificationSchema = z
   })
   .passthrough();
 
+const notionWebhookEventTypeSchema = z.enum([
+  "page.created",
+  "page.content_updated",
+  "page.properties_updated",
+]);
+
+const notionWebhookLogMetadataSchema = z
+  .object({
+    id: z.string().optional(),
+    type: z.string().optional(),
+    subscription_id: z.string().optional(),
+    api_version: z.string().optional(),
+    attempt_number: z.number().optional(),
+  })
+  .passthrough()
+  .transform((value) => {
+    return {
+      notionEventId: value.id,
+      notionEventType: value.type,
+      notionSubscriptionId: value.subscription_id,
+      notionApiVersion: value.api_version,
+      attemptNumber: value.attempt_number,
+    };
+  });
+
 const notionWebhookEventSchema = z
   .object({
     id: z.string().uuid(),
@@ -105,11 +134,7 @@ const notionWebhookEventSchema = z
     workspace_name: z.string().optional(),
     subscription_id: z.string().uuid(),
     integration_id: z.string().uuid(),
-    type: z.enum([
-      "page.created",
-      "page.content_updated",
-      "page.properties_updated",
-    ]),
+    type: notionWebhookEventTypeSchema,
     authors: z.array(notionAuthorSchema).default([]),
     attempt_number: z.number().int().positive().optional(),
     entity: notionEntitySchema,
@@ -242,6 +267,14 @@ type NotionWebhookDispatchResult =
   | { readonly kind: "unauthorized" }
   | { readonly kind: "bad_request"; readonly message: string }
   | { readonly kind: "config_error"; readonly message: string };
+
+const ACKNOWLEDGED_NOTION_EVENT_RESULT = {
+  kind: "ok",
+  webhookKind: "event",
+  pending: 0,
+  refreshed: 0,
+  duplicates: 0,
+} as const satisfies NotionWebhookDispatchResult;
 
 type ExecuteDueNotionEventsResult = {
   readonly executed: number;
@@ -1693,9 +1726,42 @@ export const dispatchNotionWebhook$ = command(
       return { kind: "unauthorized" };
     }
 
+    const metadataResult = notionWebhookLogMetadataSchema.safeParse(rawJson);
+    const metadata = metadataResult.success ? metadataResult.data : null;
+    if (
+      metadata?.notionEventType !== undefined &&
+      !notionWebhookEventTypeSchema.safeParse(metadata.notionEventType).success
+    ) {
+      log.error("Notion webhook event type is unsupported", {
+        type: "notion_webhook_unsupported_event_type",
+        ...metadata,
+      });
+      return ACKNOWLEDGED_NOTION_EVENT_RESULT;
+    }
+
     const event = notionWebhookEventSchema.safeParse(rawJson);
     if (!event.success) {
-      return { kind: "bad_request", message: "Invalid Notion webhook event" };
+      log.error("Notion webhook event schema validation failed", {
+        type: "notion_webhook_schema_validation_failed",
+        ...metadata,
+        validationIssueCount: event.error.issues.length,
+        validationIssues: event.error.issues
+          .slice(0, NOTION_VALIDATION_ISSUE_LOG_LIMIT)
+          .map((issue) => {
+            return {
+              path:
+                issue.path.length === 0
+                  ? "<root>"
+                  : issue.path.map(String).join("."),
+              code: issue.code,
+            };
+          }),
+        validationIssuesOmitted: Math.max(
+          0,
+          event.error.issues.length - NOTION_VALIDATION_ISSUE_LOG_LIMIT,
+        ),
+      });
+      return ACKNOWLEDGED_NOTION_EVENT_RESULT;
     }
 
     const result = await dispatchNotionEvent({

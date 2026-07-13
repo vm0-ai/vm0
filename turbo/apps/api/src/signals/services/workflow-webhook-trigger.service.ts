@@ -2,9 +2,10 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 
 import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   workflowUserTriggerThreads,
   zeroWorkflowTriggers,
@@ -36,6 +37,7 @@ import {
 } from "./zero-workflow-trigger-run.service";
 import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+import { WORKFLOW_WEBHOOK_TRIGGER_ELIGIBLE_TIERS } from "./workflow-webhook-trigger-entitlement.service";
 
 export const WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
 const WORKFLOW_WEBHOOK_BODY_PREVIEW_CHARS = 16_000;
@@ -124,6 +126,7 @@ export async function buildWorkflowWebhookSummaryFields(
 ): Promise<{
   readonly webhookUrl?: string;
   readonly secretLastFour: string;
+  readonly disabledReason: "paid_plan_required" | null;
   readonly lastReceivedAt: string | null;
   readonly webhookSecret?: string;
 }> {
@@ -143,6 +146,7 @@ export async function buildWorkflowWebhookSummaryFields(
       ? { webhookUrl: workflowWebhookUrlForToken(args.webhookToken) }
       : {}),
     secretLastFour: webhook.secretLastFour,
+    disabledReason: webhook.disabledReason,
     lastReceivedAt: webhook.lastReceivedAt
       ? webhook.lastReceivedAt.toISOString()
       : null,
@@ -345,6 +349,7 @@ async function loadWebhookTriggerForToken(args: {
       zeroWorkflows,
       eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
     )
+    .innerJoin(orgMetadata, eq(zeroWorkflowTriggers.orgId, orgMetadata.orgId))
     .leftJoin(
       workflowUserTriggerThreads,
       and(
@@ -365,6 +370,7 @@ async function loadWebhookTriggerForToken(args: {
         eq(zeroWorkflowTriggers.kind, "event"),
         eq(zeroWorkflowTriggers.eventType, "webhook-received"),
         eq(zeroWorkflowTriggers.enabled, true),
+        inArray(orgMetadata.tier, WORKFLOW_WEBHOOK_TRIGGER_ELIGIBLE_TIERS),
       ),
     )
     .limit(1);

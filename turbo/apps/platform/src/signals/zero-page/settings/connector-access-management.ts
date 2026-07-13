@@ -1,5 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef as ConnectorType } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -21,7 +21,7 @@ export interface ConnectorAgentAccessRow {
 
 interface ConnectorAgentAuthorizationRow {
   readonly agent: TeamComposeItem;
-  readonly enabledTypes: readonly string[];
+  readonly enabledTypes: readonly ConnectorType[];
 }
 
 interface ConnectorAgentAccessRowsParams {

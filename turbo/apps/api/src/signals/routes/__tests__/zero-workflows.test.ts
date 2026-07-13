@@ -326,18 +326,30 @@ describe("zero workflows", () => {
       {
         connectorRef: "gmail",
         label: "Gmail",
+        icon: {
+          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gmail-18f42e2c6f80.svg",
+          invertInDarkMode: false,
+        },
         reason: "The workflow reads Gmail messages.",
         status: "not-connected",
       },
       {
         connectorRef: "runtime",
         label: "Runtime",
+        icon: {
+          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/runtime-529df4ae1f3f.svg",
+          invertInDarkMode: true,
+        },
         reason: "The workflow reads Runtime jobs.",
         status: "not-enabled-for-agent",
       },
       {
         connectorRef: "gitlab",
         label: "GitLab",
+        icon: {
+          url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/gitlab-3f258ed8cb9a.svg",
+          invertInDarkMode: false,
+        },
         reason: "The workflow reads GitLab projects.",
         status: "connected",
       },
@@ -950,6 +962,7 @@ describe("zero workflows", () => {
     if (!actor.orgId) {
       throw new Error("Expected workflow copy actor to belong to an org");
     }
+    await api.grantProEntitlement(actor, { tier: "team" });
     const featureSwitchActor = {
       userId: actor.userId,
       orgId: actor.orgId,

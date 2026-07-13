@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
+import { connectorCatalogRefSchema } from "./connector-identity";
 
 const c = initContract();
 
@@ -9,7 +10,7 @@ export const connectorsTypeCallbackContract = c.router({
     method: "GET",
     path: "/api/connectors/:type/callback",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: z.string() }),
+    pathParams: z.object({ type: connectorCatalogRefSchema }),
     query: z
       .object({
         code: z.string().optional(),

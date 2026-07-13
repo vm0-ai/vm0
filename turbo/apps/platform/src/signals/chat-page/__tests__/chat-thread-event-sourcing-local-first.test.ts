@@ -31,7 +31,8 @@ import {
   threadMeta,
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
-import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
+import { loadIndexedDbChatMessages$ } from "../chat-message-indexed-db.ts";
+import { createRemoteChatThreadDataSource } from "../remote-chat-thread-data-source.ts";
 
 const idbThreadEventStoreMock = vi.hoisted(() => {
   let snapshot: {
@@ -697,7 +698,7 @@ describe("chat thread event sourcing local-first list", () => {
       },
     );
 
-    const dataSource = createIdbCachedDataSource(OPTIMISTIC_THREAD_ID);
+    const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
     await expect(
       context.store.get(dataSource.remoteThreadDetail$),
     ).resolves.toBeNull();
@@ -705,8 +706,12 @@ describe("chat thread event sourcing local-first list", () => {
       context.store.get(dataSource.threadDraft$),
     ).resolves.toBeNull();
     await expect(
-      context.store.get(dataSource.initialPage$),
-    ).resolves.toBeNull();
+      context.store.set(
+        loadIndexedDbChatMessages$,
+        OPTIMISTIC_THREAD_ID,
+        context.signal,
+      ),
+    ).resolves.toStrictEqual([]);
     expect(threadDetailRequests).toBe(0);
     expect(threadDraftRequests).toBe(0);
     expect(initialMessagesRequests).toBe(0);
@@ -730,11 +735,14 @@ describe("chat thread event sourcing local-first list", () => {
       draftAttachments: null,
     });
     await expect(
-      context.store.get(dataSource.initialPage$),
+      context.store.set(
+        dataSource.listMessagesAfter$,
+        { threadId: OPTIMISTIC_THREAD_ID, sinceId: undefined },
+        context.signal,
+      ),
     ).resolves.toStrictEqual({
       messages: [],
       hasHistoryBefore: false,
-      fetchedFromRemote: true,
     });
     expect(threadDetailRequests).toBe(1);
     expect(threadDraftRequests).toBe(1);

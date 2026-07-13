@@ -26,10 +26,14 @@ function catalogPermissionDetail(
       "connectorRef" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const { connectorRef, label, permissions, ...rest } = overrides;
+  const { connectorRef, label, permissions, icon, ...rest } = overrides;
   return {
     connectorRef,
     label,
+    icon: icon ?? {
+      url: `https://icons.example.test/${connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     permissionCount: permissions.length,
     permissions,
     categories: null,
@@ -89,6 +93,10 @@ describe("permission allow page", () => {
           permissions: catalogPermissionDetail({
             connectorRef: "slack",
             label: "Catalog Slack",
+            icon: {
+              url: "https://icons.example.test/permission-slack.svg",
+              invertInDarkMode: false,
+            },
             permissions: [
               {
                 name: "catalog.analytics:read",
@@ -140,6 +148,11 @@ describe("permission allow page", () => {
     });
     expect(screen.getByText("Research Bot")).toBeInTheDocument();
     expect(screen.getByText("Catalog Slack")).toBeInTheDocument();
+    expect(
+      document.querySelector(
+        'img[src="https://icons.example.test/permission-slack.svg"]',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Catalog analytics access")).toBeInTheDocument();
     expect(screen.getByText("catalog.analytics:read")).toBeInTheDocument();
     expect(screen.getByText("Duration")).toBeInTheDocument();

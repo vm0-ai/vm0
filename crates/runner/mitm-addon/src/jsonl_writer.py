@@ -12,7 +12,6 @@ from mitmproxy import ctx
 
 MAX_PENDING_JSONL_WRITES = 4096
 MAX_PENDING_JSONL_BYTES = 32 * 1024 * 1024
-JSONL_CONTROL_QUEUE_SLOTS = 1
 SHUTDOWN_JOIN_TIMEOUT_SECONDS = 1.0
 
 
@@ -27,9 +26,7 @@ class _WriteItem:
 _STOP = object()
 _lock = threading.Lock()
 _condition = threading.Condition(_lock)
-_queue: queue.Queue[_WriteItem | object] = queue.Queue(
-    maxsize=MAX_PENDING_JSONL_WRITES + JSONL_CONTROL_QUEUE_SLOTS
-)
+_queue: queue.SimpleQueue[_WriteItem | object] = queue.SimpleQueue()
 _worker: threading.Thread | None = None
 _shutdown = False
 _stop_enqueued = False
@@ -69,14 +66,10 @@ def write_jsonl_line(log_path: str, line: bytes, log_name: str) -> None:
                 log_name=log_name,
                 sequence=sequence,
             )
-            try:
-                _queue.put_nowait(item)
-            except queue.Full:
-                dropped = True
-            else:
-                _accepted_by_path[log_path] = sequence
-                _pending_bytes += line_size
-                _queued_writes += 1
+            _queue.put_nowait(item)
+            _accepted_by_path[log_path] = sequence
+            _pending_bytes += line_size
+            _queued_writes += 1
 
     if dropped:
         _warn_drop_once(log_name)
@@ -127,7 +120,6 @@ def shutdown_writer(*, timeout: float | None = SHUTDOWN_JOIN_TIMEOUT_SECONDS) ->
     """Drain accepted writes and stop the background writer."""
     global _worker, _shutdown, _stop_enqueued
 
-    failed_to_signal_stop = False
     with _condition:
         worker = _worker
         if worker is None:
@@ -136,15 +128,9 @@ def shutdown_writer(*, timeout: float | None = SHUTDOWN_JOIN_TIMEOUT_SECONDS) ->
         _shutdown = True
         should_signal_stop = not _stop_enqueued
         if should_signal_stop:
-            try:
-                _queue.put_nowait(_STOP)
-            except queue.Full:
-                failed_to_signal_stop = True
-            else:
-                _stop_enqueued = True
+            _queue.put_nowait(_STOP)
+            _stop_enqueued = True
 
-    if failed_to_signal_stop:
-        _warn("Failed to signal JSONL writer shutdown because the control queue is full")
     if worker is not threading.current_thread():
         worker.join(timeout=timeout)
         if worker.is_alive():
@@ -166,7 +152,7 @@ def reset_for_tests() -> None:
 
     shutdown_writer(timeout=None)
     with _condition:
-        _queue = queue.Queue(maxsize=MAX_PENDING_JSONL_WRITES + JSONL_CONTROL_QUEUE_SLOTS)
+        _queue = queue.SimpleQueue()
         _worker = None
         _shutdown = False
         _stop_enqueued = False
@@ -202,7 +188,6 @@ def _run_writer() -> None:
     while True:
         item = _queue.get()
         if item is _STOP:
-            _queue.task_done()
             return
 
         batch = [item]
@@ -213,16 +198,12 @@ def _run_writer() -> None:
             except queue.Empty:
                 break
             if next_item is _STOP:
-                _queue.task_done()
                 should_stop = True
                 break
             batch.append(next_item)
 
         _write_batch(batch)
-        for completed in batch:
-            if isinstance(completed, _WriteItem):
-                _complete_item(completed)
-            _queue.task_done()
+        _complete_batch(batch)
 
         if should_stop:
             return
@@ -257,17 +238,32 @@ def _append_lines(log_path: str, content: bytes) -> None:
         os.close(fd)
 
 
-def _complete_item(item: _WriteItem) -> None:
+def _complete_batch(items: list[object]) -> None:
     global _pending_bytes, _queued_writes
 
-    with _condition:
-        _completed_by_path[item.log_path] = max(
-            _completed_by_path[item.log_path],
+    completed_by_path: dict[str, int] = {}
+    completed_bytes = 0
+    completed_writes = 0
+    for item in items:
+        if not isinstance(item, _WriteItem):
+            continue
+        completed_by_path[item.log_path] = max(
+            completed_by_path.get(item.log_path, 0),
             item.sequence,
         )
-        _pending_bytes = max(0, _pending_bytes - len(item.line))
-        _queued_writes = max(0, _queued_writes - 1)
-        _prune_completed_path_locked(item.log_path, item.sequence)
+        completed_bytes += len(item.line)
+        completed_writes += 1
+
+    with _condition:
+        for log_path, sequence in completed_by_path.items():
+            _completed_by_path[log_path] = max(
+                _completed_by_path[log_path],
+                sequence,
+            )
+        _pending_bytes = max(0, _pending_bytes - completed_bytes)
+        _queued_writes = max(0, _queued_writes - completed_writes)
+        for log_path, sequence in completed_by_path.items():
+            _prune_completed_path_locked(log_path, sequence)
         _condition.notify_all()
 
 

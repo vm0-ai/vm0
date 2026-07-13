@@ -26,78 +26,76 @@ _BROWSER_USER_AGENT = (
 
 
 @pytest.mark.parametrize(
-    ("header_pairs", "changed", "values"),
+    ("header_pairs", "values"),
     [
-        pytest.param([], True, ["identity"], id="absent"),
+        pytest.param([], ["identity"], id="absent"),
+        pytest.param(
+            [("Accept-Encoding", "identity")],
+            ["identity"],
+            id="identity-already-normalized",
+        ),
+        pytest.param(
+            [("Accept-Encoding", "gzip")],
+            ["gzip"],
+            id="gzip-already-normalized",
+        ),
         pytest.param(
             [("Accept-Encoding", "gzip, zstd, br")],
-            True,
             ["gzip"],
             id="drops-unsafe-keeps-gzip",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0, deflate;q=0.5, identity;q=1")],
-            True,
             ["deflate;q=0.5, identity;q=1"],
             id="drops-safe-q-zero",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip, identity;q=0, zstd")],
-            True,
             ["gzip, identity;q=0"],
             id="preserves-explicit-identity-rejection-with-safe-coding",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip, *;q=0, zstd")],
-            True,
             ["gzip, identity;q=0"],
             id="preserves-wildcard-identity-rejection-with-safe-coding",
         ),
         pytest.param(
             [("Accept-Encoding", "zstd, br, *")],
-            True,
             ["identity"],
             id="unsafe-only-falls-back-to-identity",
         ),
         pytest.param(
             [("Accept-Encoding", "identity;q=0, zstd")],
-            False,
             ["identity;q=0, zstd"],
             id="respects-explicit-identity-rejection",
         ),
         pytest.param(
             [("Accept-Encoding", "*;q=0, zstd")],
-            False,
             ["*;q=0, zstd"],
             id="wildcard-zero-rejects-implicit-identity",
         ),
         pytest.param(
             [("Accept-Encoding", "zstd, br, *;q=0.5, identity;q=0")],
-            True,
             ["gzip;q=0.5, deflate;q=0.5, identity;q=0"],
             id="wildcard-allows-safe-compression-when-identity-rejected",
         ),
         pytest.param(
             [("Accept-Encoding", "zstd, br, *, identity;q=0")],
-            True,
             ["gzip, deflate, identity;q=0"],
             id="wildcard-default-q-allows-safe-compression-when-identity-rejected",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0, zstd, *;q=0.5, identity;q=0")],
-            True,
             ["deflate;q=0.5, identity;q=0"],
             id="wildcard-safe-compression-respects-explicit-safe-rejection",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0.2, zstd, *;q=0.8, identity;q=0")],
-            True,
             ["gzip;q=0.2, deflate;q=0.8, identity;q=0"],
             id="wildcard-adds-missing-safe-compression-after-explicit-safe-coding",
         ),
         pytest.param(
             [("Accept-Encoding", "deflate, br"), ("Accept-Encoding", "*;q=0.5, identity;q=0")],
-            True,
             ["deflate, gzip;q=0.5, identity;q=0"],
             id="wildcard-adds-missing-safe-compression-across-header-fields",
         ),
@@ -108,133 +106,111 @@ _BROWSER_USER_AGENT = (
                     "gzip;q=0, deflate;q=0, zstd, *;q=0.5, identity;q=0",
                 )
             ],
-            False,
             ["gzip;q=0, deflate;q=0, zstd, *;q=0.5, identity;q=0"],
             id="wildcard-keeps-original-when-all-safe-codings-rejected",
         ),
         pytest.param(
             [("Accept-Encoding", "*;q=0.5, *;q=0, identity;q=0, zstd")],
-            False,
             ["*;q=0.5, *;q=0, identity;q=0, zstd"],
             id="duplicate-wildcard-rejection-wins",
         ),
         pytest.param(
             [("Accept-Encoding", "GZip;q=1, zstd"), ("Accept-Encoding", "deflate;q=0.5, br")],
-            True,
             ["gzip;q=1, deflate;q=0.5"],
             id="case-insensitive-and-multiple-fields",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip, gzip;q=0.5, deflate")],
-            True,
             ["gzip, deflate"],
             id="collapses-duplicate-safe-codings",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=1, gzip;q=0, zstd")],
-            True,
             ["identity"],
             id="duplicate-safe-coding-rejection-wins-after-acceptance",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0, gzip;q=1, zstd")],
-            True,
             ["identity"],
             id="duplicate-safe-coding-rejection-wins-before-acceptance",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=1;q=0, zstd")],
-            True,
             ["identity"],
             id="duplicate-q-parameter-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;foo=bar, zstd")],
-            True,
             ["identity"],
             id="non-q-parameter-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0.5;foo=bar, zstd")],
-            True,
             ["identity"],
             id="q-with-extra-parameter-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;, zstd")],
-            True,
             ["identity"],
             id="empty-parameter-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip\u2028, zstd")],
-            True,
             ["identity"],
             id="unicode-whitespace-suffix-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "\u2028gzip, zstd")],
-            True,
             ["identity"],
             id="unicode-whitespace-prefix-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip\v, zstd")],
-            True,
             ["identity"],
             id="vertical-tab-suffix-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip\n, zstd")],
-            True,
             ["identity"],
             id="newline-suffix-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=0.5\u2028, zstd")],
-            True,
             ["identity"],
             id="unicode-whitespace-q-value-is-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip, identity;q=1, identity;q=0, zstd")],
-            True,
             ["gzip, identity;q=0"],
             id="duplicate-identity-rejection-is-preserved-with-safe-coding",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=2, zstd")],
-            True,
             ["identity"],
             id="invalid-q-value-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=1.0000, zstd")],
-            True,
             ["identity"],
             id="q-value-with-too-many-digits-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=.5, zstd")],
-            True,
             ["identity"],
             id="q-value-without-leading-zero-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "gzip;q=1e-1, zstd")],
-            True,
             ["identity"],
             id="exponent-q-value-not-readvertised",
         ),
         pytest.param(
             [("Accept-Encoding", "identity;q=bogus, zstd")],
-            True,
             ["identity"],
             id="malformed-identity-q-is-not-explicit-rejection",
         ),
         pytest.param(
             [("Accept-Encoding", "identity;q=0.0000, zstd")],
-            True,
             ["identity"],
             id="malformed-identity-zero-is-not-explicit-rejection",
         ),
@@ -243,14 +219,13 @@ _BROWSER_USER_AGENT = (
 def test_normalize_accept_encoding_for_body_inspection(
     headers,
     header_pairs: list[tuple[str, str]],
-    changed: bool,
     values: list[str],
 ) -> None:
     request_headers = headers(*header_pairs)
 
     assert (
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(request_headers)
-        is changed
+        is None
     )
     assert request_headers.get_all(_ACCEPT_ENCODING) == values
 

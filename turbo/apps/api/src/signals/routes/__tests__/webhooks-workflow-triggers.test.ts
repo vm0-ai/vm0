@@ -8,6 +8,7 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -55,9 +56,10 @@ async function setupFixture(): Promise<{
   readonly actor: ApiTestUser;
   readonly agentId: string;
   readonly workflowId: string;
+  readonly subscriptionId: string;
 }> {
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-  const { actor } = await wf.setupWorkflowOrg();
+  const { actor, subscriptionId } = await wf.setupWorkflowOrg({ tier: "team" });
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped workflow actor");
   }
@@ -71,7 +73,13 @@ async function setupFixture(): Promise<{
   const fixture = { orgId: actor.orgId, userId: actor.userId };
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
   context.mocks.s3.send.mockResolvedValue({});
-  return { fixture, actor, agentId: agent.agentId, workflowId };
+  return {
+    fixture,
+    actor,
+    agentId: agent.agentId,
+    workflowId,
+    subscriptionId,
+  };
 }
 
 async function enableWebhookWorkflowTriggers(
@@ -310,6 +318,122 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       duplicate: false,
       runId: expect.any(String),
     });
+  });
+
+  it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {
+    const { fixture, workflowId, subscriptionId } = await setupFixture();
+    await enableWebhookWorkflowTriggers(fixture);
+    const enabled = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      enabled.body.kind !== "event" ||
+      enabled.body.eventType !== "webhook-received" ||
+      !enabled.body.webhookUrl ||
+      !enabled.body.webhookSecret
+    ) {
+      throw new Error("Expected a webhook trigger with credentials");
+    }
+    const manuallyDisabled = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: manuallyDisabled.body.id },
+        body: undefined,
+      }),
+      [200],
+    );
+
+    const stripeApi = createWebhookCallbackApi(context);
+    await stripeApi.postStripeEvent(
+      {
+        id: `evt_webhook_downgrade_${fixture.orgId}`,
+        type: "customer.subscription.deleted",
+        data: { object: { id: subscriptionId } },
+      },
+      [200],
+    );
+
+    const enabledAfter = await wf.readTrigger(enabled.body.id);
+    expect(enabledAfter).toMatchObject({
+      enabled: false,
+      disabledReason: "paid_plan_required",
+    });
+    const manualAfter = await wf.readTrigger(manuallyDisabled.body.id);
+    expect(manualAfter.enabled).toBeFalsy();
+    if (
+      manualAfter.kind !== "event" ||
+      manualAfter.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected a webhook trigger");
+    }
+    expect(manualAfter.disabledReason).toBeNull();
+    const token = new URL(enabled.body.webhookUrl).pathname.split("/").at(-1);
+    if (!token) {
+      throw new Error("Expected webhook URL token");
+    }
+    const response = await postWorkflowWebhook({
+      token,
+      rawBody: JSON.stringify({ event: "after-downgrade" }),
+      secret: enabled.body.webhookSecret,
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it("keeps webhooks enabled through a scheduled cancellation period", async () => {
+    const { fixture, workflowId, subscriptionId } = await setupFixture();
+    await enableWebhookWorkflowTriggers(fixture);
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    const stripeApi = createWebhookCallbackApi(context);
+    await stripeApi.postStripeEvent(
+      {
+        id: `evt_webhook_cancel_scheduled_${fixture.orgId}`,
+        type: "customer.subscription.updated",
+        data: {
+          object: {
+            id: subscriptionId,
+            status: "active",
+            cancel_at_period_end: true,
+            items: {
+              data: [
+                {
+                  price: { id: "price_bdd_pro" },
+                  current_period_end: Math.floor(now() / 1000) + 86_400,
+                },
+              ],
+            },
+          },
+          previous_attributes: { cancel_at_period_end: false },
+        },
+      },
+      [200],
+    );
+
+    const after = await wf.readTrigger(created.body.id);
+    expect(after.enabled).toBeTruthy();
+    if (after.kind !== "event" || after.eventType !== "webhook-received") {
+      throw new Error("Expected a webhook trigger");
+    }
+    expect(after.disabledReason).toBeNull();
   });
 
   it("starts an event run when the trigger's previous run is still active", async () => {

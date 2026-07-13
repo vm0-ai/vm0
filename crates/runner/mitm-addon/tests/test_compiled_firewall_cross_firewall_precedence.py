@@ -2,6 +2,7 @@
 
 import pytest
 
+import connector_intent
 import matching
 from tests.firewall_helpers import (
     compile_firewalls_or_fail,
@@ -165,7 +166,7 @@ def test_later_denied_firewall_wins_after_earlier_unknown_allow():
     assert result.reason == "permission_denied"
 
 
-def test_later_allowed_firewall_wins_after_earlier_denied_permission_match():
+def test_equal_route_owners_require_connector_intent():
     fws = [
         _auditor_firewall(),
         _primary_firewall(),
@@ -177,24 +178,30 @@ def test_later_allowed_firewall_wins_after_earlier_denied_permission_match():
 
     result = match_compiled_firewalls(ITEMS_URL, fws, policies)
 
-    assert isinstance(result, matching.FirewallAllow)
-    assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
-    assert result.name == "primary"
-    assert result.permission == "items-read"
-    assert result.rule == "GET /items/{id}"
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.candidates == ("auditor", "primary")
+    assert result.reason == "connector_intent_required"
 
 
-def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match():
-    fws = [
-        _primary_firewall(),
-        _auditor_firewall(),
-    ]
+@pytest.mark.parametrize(
+    "fws",
+    [
+        [_auditor_firewall(), _primary_firewall()],
+        [_primary_firewall(), _auditor_firewall()],
+    ],
+)
+def test_connector_intent_selects_allowed_route_owner_in_both_orders(fws):
     policies = {
         "primary": network_policy(allow=[ITEMS_READ_PERMISSION]),
         "auditor": network_policy(deny=[AUDIT_READ_PERMISSION]),
     }
 
-    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
+    result = match_compiled_firewalls(
+        ITEMS_URL,
+        fws,
+        policies,
+        intent=connector_intent.ConnectorIntent("present", "primary"),
+    )
 
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
@@ -203,7 +210,7 @@ def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match
     assert result.rule == "GET /items/{id}"
 
 
-def test_denied_permission_names_collect_across_firewalls():
+def test_connector_intent_enforces_selected_denied_owner_without_fallback():
     fws = [
         _auditor_firewall(),
         _primary_firewall(),
@@ -213,9 +220,38 @@ def test_denied_permission_names_collect_across_firewalls():
         "primary": network_policy(deny=[ITEMS_READ_PERMISSION]),
     }
 
-    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
+    result = match_compiled_firewalls(
+        ITEMS_URL,
+        fws,
+        policies,
+        intent=connector_intent.ConnectorIntent("present", "auditor"),
+    )
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.name == "auditor"
-    assert result.permissions == ("audit-read", "items-read")
+    assert result.permissions == ("audit-read",)
     assert result.reason == "permission_denied"
+
+
+@pytest.mark.parametrize(
+    ("intent", "reason"),
+    [
+        (connector_intent.MALFORMED, "malformed_connector_intent"),
+        (
+            connector_intent.ConnectorIntent("present", "inactive"),
+            "connector_intent_not_candidate",
+        ),
+    ],
+)
+def test_unusable_connector_intent_fails_closed(intent, reason):
+    fws = [_primary_firewall(), _auditor_firewall()]
+    policies = {
+        "primary": network_policy(allow=[ITEMS_READ_PERMISSION]),
+        "auditor": network_policy(allow=[AUDIT_READ_PERMISSION]),
+    }
+
+    result = match_compiled_firewalls(ITEMS_URL, fws, policies, intent=intent)
+
+    assert isinstance(result, matching.FirewallAmbiguous)
+    assert result.reason == reason
+    assert result.candidates == ("auditor", "primary")

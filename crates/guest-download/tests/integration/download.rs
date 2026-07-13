@@ -1,10 +1,10 @@
 use crate::support::{
-    TarEntry, create_tar_gz, create_tar_gz_entries, manifest_json, run_guest_download,
-    run_guest_download_manifest_json, write_manifest,
+    TarEntry, create_tar_gz, create_tar_gz_entries, manifest_json, read_http_request_path,
+    run_guest_download, run_guest_download_manifest_json, write_manifest,
 };
 use httpmock::prelude::*;
 use httpmock::{HttpMockRequest, HttpMockResponse, Mock};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -112,7 +112,7 @@ fn start_truncated_then_valid_server(
         let mut storage_requests = 0;
         loop {
             let (mut stream, _) = listener.accept()?;
-            let path = read_request_path(&mut stream)?;
+            let path = read_http_request_path(&mut stream)?;
             if path == "/__unblock" {
                 write_response(&mut stream, &[], 0)?;
                 break;
@@ -134,26 +134,6 @@ fn start_truncated_then_valid_server(
     });
 
     Ok((base_url, handle))
-}
-
-fn read_request_path(stream: &mut TcpStream) -> std::io::Result<String> {
-    let mut request = Vec::new();
-    let mut buffer = [0_u8; 512];
-    while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-        let bytes_read = stream.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        request.extend(buffer.iter().take(bytes_read).copied());
-    }
-
-    let request = String::from_utf8_lossy(&request);
-    Ok(request
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap_or_default()
-        .to_owned())
 }
 
 fn write_response(

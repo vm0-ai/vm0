@@ -74,6 +74,17 @@ def firewall_error(meta: Mapping[str, object]) -> str | None:
     return _metadata_optional_str(meta, metadata_keys.FIREWALL_ERROR)
 
 
+def connector_route_reason(meta: Mapping[str, object]) -> str | None:
+    return _metadata_optional_str(meta, metadata_keys.CONNECTOR_ROUTE_REASON)
+
+
+def connector_route_candidates(meta: Mapping[str, object]) -> list[str]:
+    value = meta.get(metadata_keys.CONNECTOR_ROUTE_CANDIDATES)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        return []
+    return list(value)
+
+
 def is_firewall_billable(meta: Mapping[str, object]) -> bool:
     return _metadata_bool(meta, metadata_keys.FIREWALL_BILLABLE)
 

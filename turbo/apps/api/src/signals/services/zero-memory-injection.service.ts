@@ -7,6 +7,7 @@ import type { MemoryKind } from "@vm0/db/schema/memory-substrate";
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
 
 import type { ReadonlyDb } from "../external/db";
+import type { MemoryEmbeddingLoader } from "./zero-memory-embedding.service";
 import {
   getZeroMemoryProfile,
   toMemoryInjectionItem,
@@ -23,6 +24,7 @@ interface ZeroMemoryInjectionParams extends MemoryScope {
   readonly prompt: string;
   readonly retrievalQuery?: string;
   readonly timing?: ZeroMemoryTimingObserver;
+  readonly semanticEmbeddingLoader?: MemoryEmbeddingLoader;
 }
 
 const STATIC_PROFILE_KINDS = [
@@ -244,6 +246,9 @@ export async function buildZeroMemoryRuntimeInjection(
       searchLimit: DEFAULT_QUERY_LIMIT,
       includeGraphExpansion: true,
       timing: params.timing,
+      ...(params.semanticEmbeddingLoader
+        ? { semanticEmbeddingLoader: params.semanticEmbeddingLoader }
+        : {}),
     }),
     searchZeroMemory(db, {
       orgId: params.orgId,

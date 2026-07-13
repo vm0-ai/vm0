@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { MODEL_PROVIDER_FIREWALL_CONFIGS } from "@vm0/api-contracts/contracts/model-provider-firewalls";
+import { extractFirewallTemplateReferences } from "@vm0/connectors/firewall-types";
 import {
   generatedFirewallExportName,
   generatedConnectorMetadataFileName,
@@ -124,8 +125,12 @@ function routingMetadataFromSource(source: ConnectorFirewallSource): unknown {
     type: source.type,
     label: source.label,
     apis: source.firewall.apis.map((api) => {
+      const references = extractFirewallTemplateReferences([api]);
       return {
         base: api.base,
+        environmentNames: [
+          ...new Set([...references.secrets, ...references.vars]),
+        ].sort(compareStrings),
         routes: (api.permissions ?? []).flatMap((permission) => {
           return permission.rules.map((rule) => {
             return {
@@ -742,6 +747,7 @@ describe("firewall metadata generator", () => {
     expect(source).toContain('"daytona"');
     expect(source).toContain('"modal"');
     expect(sourceHasObjectKey(source, "base")).toBe(true);
+    expect(sourceHasObjectKey(source, "environmentNames")).toBe(false);
     expect(sourceHasObjectKey(source, "routes")).toBe(false);
     expect(sourceHasObjectKey(source, "permissionName")).toBe(false);
     expect(sourceHasObjectKey(source, "rule")).toBe(false);
@@ -793,6 +799,9 @@ describe("firewall metadata generator", () => {
     expect(slackDetailSource).toContain("JSON.parse");
     expect(slackDetailSource).toContain(
       "firewallRoutingMetadataValue as FirewallRoutingMetadata",
+    );
+    expect(sourceHasObjectKey(slackDetailSource, "environmentNames")).toBe(
+      true,
     );
     expect(slackDetailSource).toContain('\\"base\\"');
     expect(slackDetailSource).toContain('\\"routes\\"');

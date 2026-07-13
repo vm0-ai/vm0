@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import connector_intent
 import matching
 from firewall_matching.patterns import _split_path_segments
 
@@ -131,6 +132,14 @@ def _normalize_final_decision(result: object | None) -> dict[str, object]:
             "reason": result.reason,
             "permissions": list(result.permissions),
         }
+    if isinstance(result, matching.FirewallAmbiguous):
+        return {
+            "kind": "ambiguous",
+            "method": result.method,
+            "path": result.path,
+            "candidates": list(result.candidates),
+            "reason": result.reason,
+        }
     raise TypeError(f"unexpected firewall decision result: {result!r}")
 
 
@@ -242,12 +251,24 @@ def test_final_decision_matches_shared_contract(case: dict[str, object]):
     expected = case["expected"]
     assert isinstance(expected, dict)
 
+    raw_intent = request.get("connectorIntent")
+    intent = connector_intent.ABSENT
+    if isinstance(raw_intent, dict):
+        status = raw_intent.get("status")
+        if status == "malformed":
+            intent = connector_intent.MALFORMED
+        elif status == "present":
+            value = raw_intent.get("value")
+            assert isinstance(value, str)
+            intent = connector_intent.ConnectorIntent("present", value)
+
     compiled_firewalls = matching.compile_firewalls(firewalls)
     result = matching.match_compiled_firewall_request(
         url,
         method,
         compiled_firewalls,
         case.get("networkPolicies"),
+        intent,
     )
 
     assert _normalize_final_decision(result) == expected

@@ -38,6 +38,10 @@ function createMetadata(): PublicConnectorCatalogPermissionDetail {
   return {
     connectorRef: "slack",
     label: "Slack",
+    icon: {
+      url: "https://icons.example.test/slack.svg",
+      invertInDarkMode: false,
+    },
     permissionCount: READ_PERMISSIONS.length,
     permissions: [...READ_PERMISSIONS],
     categories: {

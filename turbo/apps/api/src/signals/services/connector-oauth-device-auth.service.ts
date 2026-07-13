@@ -7,8 +7,12 @@ import type {
   ConnectorOauthDeviceAuthSessionStartResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  connectorCatalogAuthMethodIdSchema,
+  type ConnectorCatalogAuthMethodId,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
   connectorAuthMethodIdSchema,
-  type ConnectorAuthMethodId,
   type ConnectorType,
   type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
@@ -44,7 +48,11 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
-import { userConnectorAvailability } from "./connector-availability.service";
+import {
+  userConnectorActionResolver,
+  type ConnectorActionMethodResolution,
+  type ConnectorActionResolver,
+} from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
@@ -136,6 +144,57 @@ const connectorOauthDeviceAuthDisabled = Object.freeze({
     }),
   }),
 });
+
+function deviceAuthResolutionError(
+  resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
+  args: {
+    readonly connectorRef: ConnectorCatalogRef;
+    readonly authMethodId: ConnectorCatalogAuthMethodId;
+  },
+) {
+  switch (resolution.reason) {
+    case "unknown_connector": {
+      return badRequestMessage(
+        `${args.connectorRef} connector is not supported`,
+      );
+    }
+    case "unknown_auth_method":
+    case "wrong_grant_kind": {
+      const hasDeviceAuth = resolution.catalogConnector.authMethods.some(
+        (method) => {
+          return method.grantKind === "device-auth";
+        },
+      );
+      if (!hasDeviceAuth) {
+        const hasAuthCode = resolution.catalogConnector.authMethods.some(
+          (method) => {
+            return method.grantKind === "auth-code";
+          },
+        );
+        return badRequestMessage(
+          hasAuthCode
+            ? `${args.connectorRef} connector does not support a device-auth grant`
+            : `${args.connectorRef} connector does not use an auth-code or device-auth grant`,
+        );
+      }
+      if (resolution.reason === "unknown_auth_method") {
+        return badRequestMessage(
+          `${args.connectorRef} connector does not have ${args.authMethodId} auth method`,
+        );
+      }
+      return badRequestMessage(
+        `${args.connectorRef} ${args.authMethodId} auth method does not use a device-auth grant`,
+      );
+    }
+    case "unavailable_connector":
+    case "unavailable_auth_method": {
+      return connectorOauthDeviceAuthDisabled;
+    }
+    case "missing_executable_capability": {
+      return internalServerError("Connector execution is not configured");
+    }
+  }
+}
 
 function internalServerError(message: string) {
   return {
@@ -253,17 +312,6 @@ function resolveDeviceAuthMethod(
   return authMethodRef;
 }
 
-function resolveStoredDeviceAuthMethod(
-  type: ConnectorType,
-  authMethod: string,
-): ResolvedDeviceAuthMethod | ReturnType<typeof internalServerError> {
-  const resolved = resolveDeviceAuthMethod(type, authMethod);
-  if ("status" in resolved) {
-    return internalServerError("Invalid OAuth device authorization session");
-  }
-  return resolved;
-}
-
 function resolveRequiredAuthClient(
   method: DeviceAuthMethodRef,
 ): DeviceAuthResolvedMethodClient | ReturnType<typeof internalServerError> {
@@ -275,6 +323,62 @@ function resolveRequiredAuthClient(
     return internalServerError(`${method.type} auth client not configured`);
   }
   return resolvedClient;
+}
+
+async function resolveRequestedDeviceAuthMethod(args: {
+  readonly resolver: ConnectorActionResolver;
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly authMethodId: ConnectorCatalogAuthMethodId;
+}) {
+  const resolved = await args.resolver.resolveMethod({
+    connectorRef: args.connectorRef,
+    authMethodId: args.authMethodId,
+    expectedGrantKind: "device-auth",
+  });
+  if (!resolved.ok) {
+    return deviceAuthResolutionError(resolved, args);
+  }
+  const resolvedMethod = resolveDeviceAuthMethod(
+    resolved.type,
+    resolved.authMethod,
+  );
+  return "status" in resolvedMethod
+    ? internalServerError("Connector execution is not configured")
+    : resolvedMethod;
+}
+
+async function resolveStoredDeviceAuthMethod(args: {
+  readonly resolver: ConnectorActionResolver;
+  readonly connectorRef: ConnectorCatalogRef;
+  readonly authMethodId: string;
+}) {
+  const storedAuthMethod = connectorCatalogAuthMethodIdSchema.safeParse(
+    args.authMethodId,
+  );
+  if (!storedAuthMethod.success) {
+    return internalServerError("Invalid OAuth device authorization session");
+  }
+  const resolved = await args.resolver.resolveMethod({
+    connectorRef: args.connectorRef,
+    authMethodId: storedAuthMethod.data,
+    expectedGrantKind: "device-auth",
+  });
+  if (!resolved.ok) {
+    if (
+      resolved.reason === "unavailable_connector" ||
+      resolved.reason === "unavailable_auth_method"
+    ) {
+      return connectorOauthDeviceAuthDisabled;
+    }
+    return internalServerError("Invalid OAuth device authorization session");
+  }
+  const resolvedMethod = resolveDeviceAuthMethod(
+    resolved.type,
+    resolved.authMethod,
+  );
+  return "status" in resolvedMethod
+    ? internalServerError("Invalid OAuth device authorization session")
+    : resolvedMethod;
 }
 
 async function lockDeviceAuthSessionOwner(
@@ -351,7 +455,7 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorType;
+  readonly type: ConnectorCatalogRef;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
@@ -742,29 +846,24 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorType;
-      readonly authMethod: ConnectorAuthMethodId;
+      readonly type: ConnectorCatalogRef;
+      readonly authMethod: ConnectorCatalogAuthMethodId;
       readonly options?: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
   ) => {
-    const resolvedMethod = resolveDeviceAuthMethod(args.type, args.authMethod);
-    if ("status" in resolvedMethod) {
-      return resolvedMethod;
-    }
-
-    const availability = await get(
-      userConnectorAvailability(args.orgId, args.userId),
+    const resolver = await get(
+      userConnectorActionResolver(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-
-    if (
-      !availability.isAuthMethodAvailable(
-        resolvedMethod.type,
-        resolvedMethod.authMethod,
-      )
-    ) {
-      return connectorOauthDeviceAuthDisabled;
+    const resolvedMethod = await resolveRequestedDeviceAuthMethod({
+      resolver,
+      connectorRef: args.type,
+      authMethodId: args.authMethod,
+    });
+    signal.throwIfAborted();
+    if ("status" in resolvedMethod) {
+      return resolvedMethod;
     }
 
     const resolvedClient = resolveRequiredAuthClient(resolvedMethod);
@@ -878,7 +977,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorType;
+      readonly type: ConnectorCatalogRef;
       readonly sessionId: string;
       readonly sessionToken: string;
     },
@@ -898,25 +997,18 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       return notFound("OAuth device authorization session not found");
     }
 
-    const resolvedMethod = resolveStoredDeviceAuthMethod(
-      args.type,
-      session.authMethod,
-    );
-    if ("status" in resolvedMethod) {
-      return resolvedMethod;
-    }
-
-    const availability = await get(
-      userConnectorAvailability(args.orgId, args.userId),
+    const resolver = await get(
+      userConnectorActionResolver(args.orgId, args.userId),
     );
     signal.throwIfAborted();
-    if (
-      !availability.isAuthMethodAvailable(
-        resolvedMethod.type,
-        resolvedMethod.authMethod,
-      )
-    ) {
-      return connectorOauthDeviceAuthDisabled;
+    const resolvedMethod = await resolveStoredDeviceAuthMethod({
+      resolver,
+      connectorRef: args.type,
+      authMethodId: session.authMethod,
+    });
+    signal.throwIfAborted();
+    if ("status" in resolvedMethod) {
+      return resolvedMethod;
     }
 
     const resolvedClient = resolveRequiredAuthClient(resolvedMethod);

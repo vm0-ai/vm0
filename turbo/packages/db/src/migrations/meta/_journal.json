@@ -4019,6 +4019,34 @@
       "when": 1783760942390,
       "tag": "0573_burly_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 574,
+      "version": "7",
+      "when": 1783830792266,
+      "tag": "0574_solid_wildside",
+      "breakpoints": true
+    },
+    {
+      "idx": 575,
+      "version": "7",
+      "when": 1783835352818,
+      "tag": "0575_damp_nightshade",
+      "breakpoints": true
+    },
+    {
+      "idx": 576,
+      "version": "7",
+      "when": 1783865726667,
+      "tag": "0576_concerned_warstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 577,
+      "version": "7",
+      "when": 1783907531076,
+      "tag": "0577_early_phantom_reporter",
+      "breakpoints": true
     }
   ]
 }

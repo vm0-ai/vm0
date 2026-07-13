@@ -19,7 +19,7 @@ export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    type: varchar("type", { length: 50 }).notNull(), // "github"
+    type: varchar("type", { length: 64 }).notNull(), // "github"
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
 
     // External account info (from OAuth)

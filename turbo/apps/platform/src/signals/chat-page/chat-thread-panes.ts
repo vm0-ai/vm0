@@ -12,7 +12,7 @@ import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
-import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
+import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 
@@ -108,7 +108,6 @@ const resolvePaneThread$ = command(
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
-      set(thread.runPhraseLoop$, signal),
       set(thread.subscribeChatThread$, signal),
     ]);
     signal.throwIfAborted();
@@ -130,7 +129,7 @@ const setupPaneThread$ = command(
     L.debug("setupPaneThread$ start", { threadId });
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    const dataSource = createIdbCachedDataSource(threadId);
+    const dataSource = createRemoteChatThreadDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
     set(spec.setPaneThread$, thread);
 

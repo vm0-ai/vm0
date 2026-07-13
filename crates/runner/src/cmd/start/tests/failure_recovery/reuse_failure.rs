@@ -7,6 +7,15 @@ use super::super::support::{
 
 use crate::types::SandboxReuseResult;
 
+const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
+
+fn reusable_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
+    crate::provider::JobCandidate::new(run_id, "vm0/default".into()).with_affinity_metadata(
+        Some(session_id.to_string()),
+        Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+    )
+}
+
 /// When the runner takes a sandbox out of the idle pool for reuse and
 /// `Sandbox::unpark()` returns an error, the idle entry is destroyed
 /// and the runner falls through to a fresh sandbox create.
@@ -22,7 +31,7 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
         transition: sandbox::SandboxIdleTransition::Unpark,
         message: "simulated unpark failure".into(),
     }));
-    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
     let budget = Arc::clone(&config.capacity.budget);
     let idle_pool = Arc::clone(&config.shared.idle_pool);
 
@@ -39,18 +48,24 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
     )
     .await;
     assert_eq!(idle_pool.lock().await.len(), 1, "pool seeded");
+    assert!(
+        !budget.can_afford(2, 4096),
+        "the idle lease should exhaust fresh admission capacity"
+    );
 
     let run_handle = tokio::spawn(run(config));
 
     // Push a job for the same session — runner will try to reuse,
     // unpark() will fail, idle entry gets destroyed, fresh create runs.
     let run_id = RunId::new_v4();
-    push_job(
-        &env,
+    env.provider.set_claim_result(
         run_id,
-        "vm0/default",
         Some(context_with_session(run_id, "sess-unpark-fail")),
     );
+    env.handle
+        .discover_tx
+        .send(reusable_candidate(run_id, "sess-unpark-fail"))
+        .unwrap();
 
     let c = env
         .handle
@@ -191,6 +206,68 @@ async fn unpark_panic_destroys_idle_entry_and_falls_through() {
     assert_eq!(counter.unpark_call_count(), 1);
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(idle_pool.lock().await.len(), 1);
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn uncertain_reserved_cleanup_fails_claim_without_starting_replacement() {
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let counter = Arc::clone(&overrides);
+    overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Unpark,
+        message: "simulated unpark failure".into(),
+    }));
+    overrides.push_destroy_panic("simulated destroy panic");
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let session_id = "sess-uncertain-cleanup";
+
+    seed_idle_pool_with_overrides(
+        &idle_pool,
+        &budget,
+        &counter,
+        session_id,
+        "vm0/default",
+        2,
+        4096,
+    )
+    .await;
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    env.provider
+        .set_claim_result(run_id, Some(context_with_session(run_id, session_id)));
+    env.handle
+        .discover_tx
+        .send(reusable_candidate(run_id, session_id))
+        .unwrap();
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("uncertain cleanup should fail the claimed run");
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(completion.sandbox_id, None);
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::UnparkFailed)
+    );
+    assert_eq!(
+        completion.error.as_deref(),
+        Some("reserved idle sandbox cleanup was uncertain; fresh replacement was not started")
+    );
+    assert!(
+        counter.start_process_calls().is_empty(),
+        "uncertain cleanup must not start a fresh sandbox"
+    );
+    assert_eq!(counter.park_call_count(), 0);
+    assert_eq!(counter.unpark_call_count(), 1);
+    assert_eq!(counter.destroy_call_count(), 1);
+    assert_eq!(idle_pool.lock().await.len(), 0);
+    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
 
     shutdown(&env, run_handle).await;
 }

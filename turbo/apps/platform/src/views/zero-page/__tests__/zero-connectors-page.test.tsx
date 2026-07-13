@@ -22,6 +22,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAuthMethodId,
   ConnectorType,
@@ -122,6 +123,14 @@ function connectorCardByLabel(label: string): HTMLElement {
     throw new Error(`${label} connector card not found`);
   }
   return card;
+}
+
+function connectorIconByLabel(label: string): HTMLImageElement {
+  const icon = connectorCardByLabel(label).querySelector("img");
+  if (!(icon instanceof HTMLImageElement)) {
+    throw new Error(`${label} connector icon not found`);
+  }
+  return icon;
 }
 
 function applyUserConnectorUpdate(
@@ -238,10 +247,11 @@ function customConnector(
 }
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
+  readonly icon?: PublicConnectorCatalogStatusItem["icon"];
   readonly authMethods: PublicConnectorCatalogStatusItem["authMethods"];
   readonly singleAuthCodeAuthMethodId?: string | null;
   readonly connectNotice?: PublicConnectorCatalogStatusItem["connectNotice"];
@@ -250,6 +260,10 @@ function publicStatusItem(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
+    icon: args.icon ?? {
+      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: args.category ?? "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -423,6 +437,54 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("renders connector icons from server-authored catalog descriptors", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "github",
+        label: "GitHub",
+        icon: {
+          url: "https://icons.example.test/github.svg",
+          invertInDarkMode: true,
+        },
+        authMethods: [],
+      }),
+      publicStatusItem({
+        connectorRef: "slack",
+        label: "Slack",
+        icon: {
+          url: "https://icons.example.test/slack.svg",
+          invertInDarkMode: false,
+          scale: 1.5,
+        },
+        authMethods: [],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(queryConnectorCardByLabel("GitHub")).toBeInTheDocument();
+      expect(queryConnectorCardByLabel("Slack")).toBeInTheDocument();
+    });
+
+    const githubIcon = connectorIconByLabel("GitHub");
+    expect(githubIcon).toHaveAttribute(
+      "src",
+      "https://icons.example.test/github.svg",
+    );
+    expect(githubIcon).toHaveClass("zero-icon-mono");
+
+    const slackIcon = connectorIconByLabel("Slack");
+    expect(slackIcon).toHaveAttribute(
+      "src",
+      "https://icons.example.test/slack.svg",
+    );
+    expect(slackIcon).not.toHaveClass("zero-icon-mono");
+    expect(slackIcon).toHaveStyle({ transform: "scale(1.5)" });
+    expect(slackIcon.closest(".overflow-hidden")).toBeInTheDocument();
   });
 
   it("renders server-authored connector categories unknown to the browser", async () => {
@@ -1374,17 +1436,23 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("starts single OpenID auth connector directly without opening the connect dialog", async () => {
+  it("routes a server-authored connector from its catalog grant metadata", async () => {
+    const connectorRef = "server-authored-steam";
+    const authMethod = "partner-openid";
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "steam",
-        label: "Steam",
-        description: "Steam player data",
+        connectorRef,
+        label: "Partner Steam",
+        description: "Server-authored Steam player data",
+        icon: {
+          url: "https://icons.example.test/partner-steam.svg",
+          invertInDarkMode: false,
+        },
         authMethods: [
           {
-            id: "openid",
-            label: "Steam OpenID",
+            id: authMethod,
+            label: "Partner OpenID",
             description: null,
             grantKind: "openid-auth",
             manualFields: [],
@@ -1397,10 +1465,11 @@ describe("connectors page", () => {
     context.mocks.browser.open(authWindow);
     context.mocks.api(
       zeroConnectorOpenIdStartContract.start,
-      ({ params, respond }) => {
-        expect(params.type).toBe("steam");
+      ({ body, params, respond }) => {
+        expect(params.type).toBe(connectorRef);
+        expect(body.authMethod).toBe(authMethod);
         return respond(200, {
-          authorizationUrl: "https://openid.test/steam/authorize",
+          authorizationUrl: "https://openid.test/partner-steam/authorize",
         });
       },
     );
@@ -1410,16 +1479,23 @@ describe("connectors page", () => {
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    await fill(await screen.findByPlaceholderText("Find connectors"), "steam");
-    click(await screen.findByLabelText("Connect Steam"));
+    await fill(
+      await screen.findByPlaceholderText("Find connectors"),
+      "partner steam",
+    );
+    expect(connectorIconByLabel("Partner Steam")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/partner-steam.svg",
+    );
+    click(await screen.findByLabelText("Connect Partner Steam"));
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
-        "https://openid.test/steam/authorize",
+        "https://openid.test/partner-steam/authorize",
       );
     });
     expect(
-      screen.queryByRole("dialog", { name: "Steam" }),
+      screen.queryByRole("dialog", { name: "Partner Steam" }),
     ).not.toBeInTheDocument();
   });
 
@@ -1928,6 +2004,10 @@ describe("connectors page", () => {
       connectorRef: "axiom",
       label: "Public Axiom",
       description: "Public Axiom description",
+      icon: {
+        url: "https://icons.example.test/axiom-v1.svg",
+        invertInDarkMode: false,
+      },
       authMethods: [
         {
           id: "api-token",
@@ -1963,6 +2043,10 @@ describe("connectors page", () => {
         catalogStatusItems = [
           {
             ...disconnectedAxiom,
+            icon: {
+              url: "https://icons.example.test/axiom-v2.svg",
+              invertInDarkMode: true,
+            },
             connection: {
               authMethod: body.authMethod,
               externalUsername: null,
@@ -1998,6 +2082,15 @@ describe("connectors page", () => {
     expect(
       within(connectorCardByLabel("Public Axiom")).queryByText("Connected"),
     ).not.toBeInTheDocument();
+    const initialIcon = connectorIconByLabel("Public Axiom");
+    expect(initialIcon).toHaveAttribute(
+      "src",
+      "https://icons.example.test/axiom-v1.svg",
+    );
+    fireEvent.error(initialIcon);
+    expect(
+      within(connectorCardByLabel("Public Axiom")).getByRole("img"),
+    ).toHaveAccessibleName("Connector icon unavailable");
 
     const abortScope = context.store.set(
       abortAfterManualGrantConnectSignalScope$,
@@ -2033,6 +2126,13 @@ describe("connectors page", () => {
       expect(
         within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
+      expect(connectorIconByLabel("Public Axiom")).toHaveAttribute(
+        "src",
+        "https://icons.example.test/axiom-v2.svg",
+      );
+      expect(connectorIconByLabel("Public Axiom")).toHaveClass(
+        "zero-icon-mono",
+      );
     });
   });
 
@@ -2652,6 +2752,9 @@ describe("connectors page", () => {
     click(await screen.findByText("Rename"));
 
     const renameDialog = await screen.findByRole("dialog");
+    await waitFor(() => {
+      expect(renameDialog).toHaveStyle({ pointerEvents: "auto" });
+    });
     await fill(
       within(renameDialog).getByLabelText("Display name"),
       "Acme Billing API",

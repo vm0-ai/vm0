@@ -44,6 +44,10 @@ function publicStatusItem(args: {
     connectorRef: args.connectorRef,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
+    icon: {
+      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      invertInDarkMode: false,
+    },
     category: args.category ?? "data-automation-infrastructure",
     generation: [],
     tags: [],

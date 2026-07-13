@@ -1,0 +1,1 @@
+ALTER TABLE "zero_workflow_webhook_triggers" ADD COLUMN "disabled_reason" varchar(64);

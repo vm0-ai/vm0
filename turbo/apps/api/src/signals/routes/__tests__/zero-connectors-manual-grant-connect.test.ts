@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsByTypeContract,
+  zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -167,6 +168,55 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({ values: { OPENAI_TOKEN: "sk-test" } }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("accepts server-authored identity syntax before catalog rejection", async () => {
+    await seedFixture();
+    const connectorRef = "server-authored-connector";
+    const authMethod = "server-authored-method";
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+
+    const response = await accept(
+      client.connect({
+        params: { type: connectorRef },
+        body: { authMethod, values: { apiKey: "secret" } },
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: `${connectorRef} connector is not supported`,
+      code: "BAD_REQUEST",
+    });
+    const list = await accept(
+      setupApp({ context })(zeroConnectorsMainContract).list({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(list.body.connectors).not.toContainEqual(
+      expect.objectContaining({ type: connectorRef }),
+    );
+  });
+
+  it("rejects invalid server-authored identity syntax at the contract", async () => {
+    await seedFixture();
+    const app = createApp({ signal: context.signal });
+
+    const response = await app.request(
+      "/api/zero/connectors/invalid_ref/manual-grant",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ authMethod: "api-token", values: {} }),
       },
     );
 

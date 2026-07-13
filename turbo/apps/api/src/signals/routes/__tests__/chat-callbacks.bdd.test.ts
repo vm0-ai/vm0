@@ -11,6 +11,7 @@ import type {
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -22,8 +23,10 @@ import { now } from "../../external/time";
 import {
   seedLexicalRelationshipMemory,
   seedSemanticRecallMemory,
+  semanticRecallEmbeddingForTest,
 } from "../../../test-fixtures/relationship-memory";
 import { createDeferredPromise } from "../../utils";
+import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -54,6 +57,9 @@ function goalsClient() {
 }
 
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
+const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
+const GOAL_SEMANTIC_EMBEDDING_TIMING_ACTION =
+  "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
 const GOAL_CAPABILITIES = [
@@ -80,6 +86,18 @@ const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
   "fileId",
   "model_id",
   "modelId",
+  "model",
+  "embedding_model",
+  "embeddingModel",
+  "embedding",
+  "goal_id",
+  "goalId",
+  "query",
+  "query_hash",
+  "queryHash",
+  "objective",
+  "objective_brief",
+  "objectiveBrief",
   "prompt",
   "vars",
   "secrets",
@@ -109,6 +127,47 @@ interface EntitledChatActor {
       readonly size: number;
     }): void;
   };
+}
+
+interface ObservedEmbeddingRequest {
+  readonly model: string;
+  readonly input: string;
+}
+
+function configureGoalEmbeddingMock(args: {
+  readonly requests: ObservedEmbeddingRequest[];
+  readonly shouldFail?: (request: ObservedEmbeddingRequest) => boolean;
+}): void {
+  mockEnv("VITEST", "false");
+  mockEnv("OPENAI_API_KEY", "test-openai-key");
+  mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", undefined);
+  server.use(
+    http.post(OPENAI_EMBEDDINGS_URL, async ({ request }) => {
+      const body: unknown = await request.json();
+      if (
+        !isRecord(body) ||
+        typeof body.model !== "string" ||
+        typeof body.input !== "string"
+      ) {
+        throw new Error("Expected an OpenAI embedding request");
+      }
+      const observed = { model: body.model, input: body.input };
+      args.requests.push(observed);
+      if (args.shouldFail?.(observed)) {
+        return HttpResponse.json(
+          { error: { message: "embedding unavailable" } },
+          { status: 503 },
+        );
+      }
+      return HttpResponse.json({
+        data: [
+          {
+            embedding: semanticRecallEmbeddingForTest(body.input),
+          },
+        ],
+      });
+    }),
+  );
 }
 
 async function entitledChatActor(): Promise<EntitledChatActor> {
@@ -242,6 +301,24 @@ async function enableGoalWorkflows(actor: ApiTestUser): Promise<void> {
       orgRole: actor.orgRole,
     },
     {},
+  );
+}
+
+async function enableGoalRuntimeMemory(actor: ApiTestUser): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected an org-scoped actor for goal memory");
+  }
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      orgRole: actor.orgRole,
+    },
+    {
+      [FeatureSwitchKey.RelationshipMemory]: true,
+      [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+    },
   );
 }
 
@@ -448,6 +525,59 @@ function isGoalContinuationUserMessage(
   );
 }
 
+async function waitForNewGoalContinuationRunId(args: {
+  readonly actor: ApiTestUser;
+  readonly threadId: string;
+  readonly knownRunIds: ReadonlySet<string>;
+}): Promise<string> {
+  const messages = await waitForThreadMessages(
+    args.actor,
+    args.threadId,
+    (items) => {
+      return userMessages(items).some((message) => {
+        return (
+          message.isGoalRun === true &&
+          message.runId !== undefined &&
+          !args.knownRunIds.has(message.runId)
+        );
+      });
+    },
+  );
+  const continuation = userMessages(messages.messages).find((message) => {
+    return (
+      message.isGoalRun === true &&
+      message.runId !== undefined &&
+      !args.knownRunIds.has(message.runId)
+    );
+  });
+  if (!continuation?.runId) {
+    throw new Error("Expected a new goal continuation run");
+  }
+  return continuation.runId;
+}
+
+async function completeRunAndWaitForGoalContinuation(args: {
+  readonly actor: ApiTestUser;
+  readonly runnerGroup: string;
+  readonly threadId: string;
+  readonly runId: string;
+  readonly knownGoalRunIds: Set<string>;
+  readonly output: string;
+}): Promise<string> {
+  chatCallbacks.mockChatOutputEvents([assistantEvent(0, args.output)]);
+  const sandboxHeaders = await claimChatRun(args.runnerGroup, args.runId);
+  await completeChatRunOk(args.runId, sandboxHeaders, {
+    lastEventSequence: 0,
+  });
+  const nextRunId = await waitForNewGoalContinuationRunId({
+    actor: args.actor,
+    threadId: args.threadId,
+    knownRunIds: args.knownGoalRunIds,
+  });
+  args.knownGoalRunIds.add(nextRunId);
+  return nextRunId;
+}
+
 function eventBackedContents(
   messages: readonly PagedChatMessage[],
   runId: string,
@@ -480,19 +610,6 @@ function recommendedFollowupMessages(
       message.runId === runId &&
       message.runLifecycleEvent === undefined &&
       (message.recommendedFollowups?.length ?? 0) > 0
-    );
-  });
-}
-
-function publishedChatThreadFollowupsFinished(threadId: string): boolean {
-  return context.mocks.ably.publish.mock.calls.some((call) => {
-    const payload = call[1];
-    return (
-      call[0] === "chatThreadFollowupsFinished" &&
-      payload !== null &&
-      typeof payload === "object" &&
-      "threadId" in payload &&
-      payload.threadId === threadId
     );
   });
 }
@@ -581,6 +698,43 @@ function expectNoForbiddenChatCallbackPreCreateTimingKeys(
       expect(event).not.toHaveProperty(key);
     }
   }
+}
+
+async function expectGoalSemanticEmbeddingTiming(
+  runId: string,
+  args: {
+    readonly cacheResult:
+      | "hit"
+      | "miss_absent"
+      | "miss_model_changed"
+      | "miss_query_changed"
+      | "miss_invalid"
+      | "miss_read_failed"
+      | "miss_write_failed";
+    readonly embeddingResult: "present" | "empty";
+  },
+): Promise<Record<string, unknown>> {
+  await expect
+    .poll(() => {
+      return sandboxOperationEventsForRun(runId).find((event) => {
+        return event.op_type === GOAL_SEMANTIC_EMBEDDING_TIMING_ACTION;
+      });
+    })
+    .toEqual(
+      expect.objectContaining({
+        op_type: GOAL_SEMANTIC_EMBEDDING_TIMING_ACTION,
+        memory_profile_semantic_embedding_cache_result: args.cacheResult,
+        memory_profile_semantic_embedding_result: args.embeddingResult,
+      }),
+    );
+  const event = sandboxOperationEventsForRun(runId).find((candidate) => {
+    return candidate.op_type === GOAL_SEMANTIC_EMBEDDING_TIMING_ACTION;
+  });
+  if (!event) {
+    throw new Error("Expected goal semantic embedding timing");
+  }
+  expectNoForbiddenChatCallbackPreCreateTimingKeys([event]);
+  return event;
 }
 
 async function expectChatCallbackPreCreateTimingActions(
@@ -794,11 +948,6 @@ describe("CHAT-02: completed chat callback", () => {
         'The "prompt" values are shown as plain text, not rendered as Markdown',
       ),
     ]);
-    await expect
-      .poll(() => {
-        return publishedChatThreadFollowupsFinished(first.threadId);
-      })
-      .toBe(true);
 
     await waitForThreadTitle(actor, first.threadId, "Debugging Node Apps");
     expect(titlePrompts).toHaveLength(titlePromptCountBeforeComplete);
@@ -974,7 +1123,6 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker.recommendedFollowups).toBeUndefined();
-    expect(publishedChatThreadFollowupsFinished(run.threadId)).toBeTruthy();
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
@@ -1242,6 +1390,294 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 
     await api.requestCancelRun(actor, goalContinuation.runId, [200]);
     await waitForRunStatus(actor, goalContinuation.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("persists goal query embeddings, reuses them, and invalidates them with goal lifecycle changes", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal embedding cache");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    const initialEmbeddingModel = "test-deterministic-embedding";
+    const changedEmbeddingModel = "test-deterministic-embedding-v2";
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", initialEmbeddingModel);
+    const embeddingRequests: ObservedEmbeddingRequest[] = [];
+    configureGoalEmbeddingMock({ requests: embeddingRequests });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before cached goal continuation",
+    });
+    const goalObjective =
+      "Continue the Lucent treasury cache validation for Acme";
+    const normalizedGoalQuery = goalObjective.toLowerCase();
+    await seedSemanticRecallMemory(
+      { orgId: actor.orgId, userId: actor.userId },
+      normalizedGoalQuery,
+    );
+    await createGoalForRun(actor, first.runId, goalObjective);
+    await enableGoalRuntimeMemory(actor);
+
+    const knownGoalRunIds = new Set<string>();
+    const firstGoalRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: first.runId,
+      knownGoalRunIds,
+      output: "completed before the initial goal cache miss",
+    });
+    const firstGoalContext = await waitForRunContext(actor, firstGoalRunId);
+    expect(firstGoalContext.body.appendSystemPrompt ?? "").toContain(
+      "The user prefers JPM IJTXX Treasury allocation.",
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === initialEmbeddingModel &&
+          request.input === normalizedGoalQuery
+        );
+      }),
+    ).toHaveLength(1);
+    await expectGoalSemanticEmbeddingTiming(firstGoalRunId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "present",
+    });
+
+    const freshMemoryText =
+      "The Lucent validation now includes the newly added treasury control.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Fresh Lucent Control",
+      kind: "key_fact",
+      text: freshMemoryText,
+      query: normalizedGoalQuery,
+    });
+    const secondGoalRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: firstGoalRunId,
+      knownGoalRunIds,
+      output: "completed before the stable goal cache hit",
+    });
+    const secondGoalContext = await waitForRunContext(actor, secondGoalRunId);
+    expect(secondGoalContext.body.appendSystemPrompt ?? "").toContain(
+      freshMemoryText,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === initialEmbeddingModel &&
+          request.input === normalizedGoalQuery
+        );
+      }),
+    ).toHaveLength(1);
+    await expectGoalSemanticEmbeddingTiming(secondGoalRunId, {
+      cacheResult: "hit",
+      embeddingResult: "present",
+    });
+
+    const editedGoalObjective =
+      "Continue the Lucent treasury cache validation for Fabrikam";
+    const normalizedEditedQuery = editedGoalObjective.toLowerCase();
+    await accept(
+      goalsClient().edit({
+        headers: zeroGoalHeaders(actor, secondGoalRunId),
+        body: { objective: editedGoalObjective },
+      }),
+      [200],
+    );
+    const editedMemoryText =
+      "The Fabrikam validation uses the refreshed treasury control.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Fabrikam Treasury Control",
+      kind: "key_fact",
+      text: editedMemoryText,
+      query: normalizedEditedQuery,
+    });
+    const editedGoalRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: secondGoalRunId,
+      knownGoalRunIds,
+      output: "completed before the edited goal cache miss",
+    });
+    const editedGoalContext = await waitForRunContext(actor, editedGoalRunId);
+    expect(editedGoalContext.body.appendSystemPrompt ?? "").toContain(
+      editedMemoryText,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === initialEmbeddingModel &&
+          request.input === normalizedEditedQuery
+        );
+      }),
+    ).toHaveLength(1);
+    await expectGoalSemanticEmbeddingTiming(editedGoalRunId, {
+      cacheResult: "miss_query_changed",
+      embeddingResult: "present",
+    });
+
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", changedEmbeddingModel);
+    const changedModelGoalRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: editedGoalRunId,
+      knownGoalRunIds,
+      output: "completed before the changed model cache miss",
+    });
+    await waitForRunContext(actor, changedModelGoalRunId);
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === changedEmbeddingModel &&
+          request.input === normalizedEditedQuery
+        );
+      }),
+    ).toHaveLength(1);
+    await expectGoalSemanticEmbeddingTiming(changedModelGoalRunId, {
+      cacheResult: "miss_model_changed",
+      embeddingResult: "present",
+    });
+
+    await accept(
+      goalsClient().clear({
+        headers: zeroGoalHeaders(actor, changedModelGoalRunId),
+      }),
+      [200],
+    );
+    await createGoalForRun(actor, changedModelGoalRunId, editedGoalObjective);
+    const replacementGoalRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: changedModelGoalRunId,
+      knownGoalRunIds,
+      output: "completed before the replacement goal cache miss",
+    });
+    await waitForRunContext(actor, replacementGoalRunId);
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === changedEmbeddingModel &&
+          request.input === normalizedEditedQuery
+        );
+      }),
+    ).toHaveLength(2);
+    await expectGoalSemanticEmbeddingTiming(replacementGoalRunId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "present",
+    });
+
+    await api.requestCancelRun(actor, replacementGoalRunId, [200]);
+    await waitForRunStatus(actor, replacementGoalRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("retries a goal query embedding after the provider fails open", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for goal embedding retry");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    const embeddingModel = "test-deterministic-embedding";
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", embeddingModel);
+    const goalObjective = "Continue the fail-open goal memory validation";
+    const normalizedGoalQuery = goalObjective.toLowerCase();
+    let embeddingShouldFail = true;
+    const embeddingRequests: ObservedEmbeddingRequest[] = [];
+    configureGoalEmbeddingMock({
+      requests: embeddingRequests,
+      shouldFail(request) {
+        return embeddingShouldFail && request.input === normalizedGoalQuery;
+      },
+    });
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before fail-open goal continuation",
+    });
+    const staticMemoryText =
+      "The fail-open validation must retain the user's static preference.";
+    await seedLexicalRelationshipMemory({
+      fixture: { orgId: actor.orgId, userId: actor.userId },
+      displayName: "Fail-open Preference",
+      kind: "preference",
+      text: staticMemoryText,
+    });
+    await createGoalForRun(actor, first.runId, goalObjective);
+    await enableGoalRuntimeMemory(actor);
+
+    const knownGoalRunIds = new Set<string>();
+    const failedEmbeddingRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: first.runId,
+      knownGoalRunIds,
+      output: "completed before the provider embedding failure",
+    });
+    const failedEmbeddingContext = await waitForRunContext(
+      actor,
+      failedEmbeddingRunId,
+    );
+    expect(failedEmbeddingContext.body.appendSystemPrompt ?? "").toContain(
+      staticMemoryText,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === embeddingModel &&
+          request.input === normalizedGoalQuery
+        );
+      }),
+    ).toHaveLength(1);
+    await expectGoalSemanticEmbeddingTiming(failedEmbeddingRunId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "empty",
+    });
+
+    embeddingShouldFail = false;
+    const retriedEmbeddingRunId = await completeRunAndWaitForGoalContinuation({
+      actor,
+      runnerGroup,
+      threadId: first.threadId,
+      runId: failedEmbeddingRunId,
+      knownGoalRunIds,
+      output: "completed before the provider embedding retry",
+    });
+    const retriedEmbeddingContext = await waitForRunContext(
+      actor,
+      retriedEmbeddingRunId,
+    );
+    expect(retriedEmbeddingContext.body.appendSystemPrompt ?? "").toContain(
+      staticMemoryText,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === embeddingModel &&
+          request.input === normalizedGoalQuery
+        );
+      }),
+    ).toHaveLength(2);
+    await expectGoalSemanticEmbeddingTiming(retriedEmbeddingRunId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "present",
+    });
+
+    await api.requestCancelRun(actor, retriedEmbeddingRunId, [200]);
+    await waitForRunStatus(actor, retriedEmbeddingRunId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
 

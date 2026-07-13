@@ -46,6 +46,7 @@ import {
   buildZeroMemoryRuntimeInjection,
   zeroMemoryRuntimeRetrievalQuery,
 } from "./zero-memory-injection.service";
+import { loadGoalMemoryEmbedding } from "./zero-goal-memory-embedding.service";
 import {
   measureZeroMemoryTiming,
   type ZeroMemoryTimingObserver,
@@ -702,6 +703,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly prompt: string;
     readonly retrievalQuery?: string;
     readonly timing?: ZeroMemoryTimingObserver;
+    readonly goalId?: string;
   },
 ): Promise<string | undefined> {
   const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
@@ -712,6 +714,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
       if (!args.enabled) {
         return undefined;
       }
+      const goalId = args.goalId;
       const result = await buildZeroMemoryRuntimeInjection(db, {
         orgId: args.orgId,
         userId: args.userId,
@@ -720,6 +723,16 @@ async function loadMemoryRuntimeAppendSystemPrompt(
           ? { retrievalQuery: args.retrievalQuery }
           : {}),
         timing: args.timing,
+        ...(goalId
+          ? {
+              semanticEmbeddingLoader: async (query: string) => {
+                return await loadGoalMemoryEmbedding(db, {
+                  goalId,
+                  query,
+                });
+              },
+            }
+          : {}),
       });
       return result.appendSystemPrompt || undefined;
     },
@@ -940,6 +953,9 @@ async function buildZeroCreateAgentRunArgs(args: {
         ? { retrievalQuery: command.memoryRuntimeRetrievalQuery }
         : {}),
       timing: memoryTiming,
+      ...(command.zeroRunMetadata?.goalId
+        ? { goalId: command.zeroRunMetadata.goalId }
+        : {}),
     });
   return {
     userId: command.auth.userId,

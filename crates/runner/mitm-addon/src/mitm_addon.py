@@ -31,11 +31,12 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# auth_base_forwarder/body_capture/connector_diagnostics/matching/registry/
+# auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
 # response_encoding_negotiation/response_streaming/terminal_usage/upstream_admission/
 # usage are imported by module (not selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
+#      ``connector_intent.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
 #      ``terminal_usage.X(...)`` / ``upstream_admission.X(...)`` / ``usage.X(...)``,
 #      making the module boundary visible at call sites.
@@ -45,6 +46,7 @@ import auth_base_forwarder
 import body_capture
 import builtin_host_policy
 import connector_diagnostics
+import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_local_responses
@@ -110,6 +112,7 @@ _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _WEBSOCKET_KEY_BYTES = 16
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
+_UsageFlushPhase = Literal["running", "draining", "closed"]
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,9 @@ class _AuthBaseBodyCheck:
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
 _usage_flush_requested = threading.Event()
 _usage_flush_signal_lock = threading.Lock()
+# Running workers own requests under the lock. During shutdown, done() changes
+# the phase before waiting for that lock and becomes the sole draining owner.
+_usage_flush_phase: _UsageFlushPhase = "running"
 _jsonl_flush_state_write_lock = threading.Lock()
 _last_jsonl_flush_request_id: str | None = None
 _JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
@@ -224,6 +230,8 @@ def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
     file I/O, usage flushing, and JSONL flushing.
     """
     del signum
+    if _usage_flush_phase == "closed":
+        return
     _usage_flush_requested.set()
     _start_usage_flush_worker()
 
@@ -247,12 +255,13 @@ def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -
 
 
 def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
-    global _last_jsonl_flush_request_id
+    global _last_jsonl_flush_request_id, _usage_flush_phase
 
     acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
     if not acquired:
         raise AssertionError("runner usage flush worker did not stop")
     try:
+        _usage_flush_phase = "running"
         _usage_flush_requested.clear()
         _last_jsonl_flush_request_id = None
     finally:
@@ -261,7 +270,12 @@ def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
 
 def _start_usage_flush_worker() -> None:
     """Start one flush worker, coalescing repeated signals while active."""
+    if _usage_flush_phase != "running":
+        return
     if not _usage_flush_signal_lock.acquire(blocking=False):
+        return
+    if _usage_flush_phase != "running":
+        _usage_flush_signal_lock.release()
         return
 
     thread = threading.Thread(
@@ -282,20 +296,23 @@ def _run_usage_flush_worker() -> None:
     """Drain coalesced runner flush requests under the worker lock.
 
     The event can be set again while a flush is running. Loop until no request
-    is pending, and restart after releasing the lock if a signal arrives during
-    the worker exit path.
+    is pending. After releasing the lock, restart for a running-phase signal;
+    draining-phase requests belong to ``done()``.
     """
     try:
-        while True:
-            _usage_flush_requested.clear()
-            _flush_usage_for_runner_request()
-            _flush_jsonl_for_runner_request()
-            if not _usage_flush_requested.is_set():
-                return
+        _drain_runner_usage_flush_requests()
     finally:
         _usage_flush_signal_lock.release()
         if _usage_flush_requested.is_set():
             _start_usage_flush_worker()
+
+
+def _drain_runner_usage_flush_requests() -> None:
+    """Drain coalesced runner requests while the caller owns the signal lock."""
+    while _usage_flush_requested.is_set():
+        _usage_flush_requested.clear()
+        _flush_usage_for_runner_request()
+        _flush_jsonl_for_runner_request()
 
 
 def _flush_usage_for_runner_request() -> None:
@@ -406,7 +423,7 @@ def get_registry_path() -> str:
 def _request_headers_probe_metadata_keys() -> tuple[str, ...]:
     return (
         *request_classification.REQUEST_HEADERS_PROBE_METADATA_KEYS,
-        *connector_diagnostics.REQUEST_HEADERS_PROBE_METADATA_KEYS,
+        *connector_intent.REQUEST_HEADERS_PROBE_METADATA_KEYS,
     )
 
 
@@ -634,7 +651,7 @@ def _restore_request_headers_probe_metadata(
     request_classification.restore_request_headers_probe_metadata(
         flow,
         snapshot,
-        extra_keys=connector_diagnostics.REQUEST_HEADERS_PROBE_METADATA_KEYS,
+        extra_keys=connector_intent.REQUEST_HEADERS_PROBE_METADATA_KEYS,
     )
 
 
@@ -664,6 +681,12 @@ def _http_network_log_entry(
     firewall_error = flow_metadata.firewall_error(flow.metadata)
     if firewall_error is not None:
         entry["firewall_error"] = firewall_error
+    connector_route_reason = flow_metadata.connector_route_reason(flow.metadata)
+    if connector_route_reason is not None:
+        entry["connector_route_reason"] = connector_route_reason
+    connector_route_candidates = flow_metadata.connector_route_candidates(flow.metadata)
+    if connector_route_candidates:
+        entry["connector_route_candidates"] = connector_route_candidates
     entry.update(upstream_admission.upstream_binding_log_fields(flow))
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         entry["browser_user_agent"] = True
@@ -772,7 +795,7 @@ def client_disconnected(client: connection.Client) -> None:
 
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
-    connector_diagnostics.capture_and_strip_connector_intent_header(flow)
+    connector_intent.capture_and_strip(flow)
 
     body_check = _auth_base_body_header_check(flow)
     body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
@@ -959,6 +982,13 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
     http_local_responses.set_firewall_block_response(flow, result)
 
 
+def _set_firewall_ambiguous_response(
+    flow: http.HTTPFlow,
+    result: matching.FirewallAmbiguous,
+) -> None:
+    http_local_responses.set_firewall_ambiguous_response(flow, result)
+
+
 def _block_public_destination_denied(
     flow: http.HTTPFlow,
     denial: request_classification.PublicDestinationDenial,
@@ -985,7 +1015,7 @@ async def request(flow: http.HTTPFlow) -> None:
     2. VM0 API auto-allow (agent must always reach the platform)
     3. Firewall match (inject auth headers for allowed requests)
     """
-    connector_diagnostics.capture_and_strip_connector_intent_header(flow)
+    connector_intent.capture_and_strip(flow)
 
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
@@ -1047,6 +1077,11 @@ async def request(flow: http.HTTPFlow) -> None:
             # business passthrough, not trusted provenance.
             flow_metadata.set_firewall_decision(flow.metadata, "ALLOW")
             flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+            return
+        if classification.kind == "firewall_ambiguous":
+            firewall_ambiguous = classification.firewall_ambiguous
+            if firewall_ambiguous is not None:
+                _set_firewall_ambiguous_response(flow, firewall_ambiguous)
             return
         if classification.kind == "firewall_block":
             firewall_block = classification.firewall_block
@@ -1559,17 +1594,28 @@ def done():
     Runner-triggered flush workers and shutdown flush share
     ``_usage_flush_signal_lock``. Waiting here keeps shutdown from closing the
     executor while a SIGUSR1 worker is still converting buffered usage into
-    webhook reports. After that, ``shutdown(wait=True)`` drains submitted
-    webhook futures during graceful stop. Auth.base forwarding does not need
-    to finish running work during shutdown, so its worker shutdown stops new
-    forwards and best-effort closes active upstream sockets without waiting for
-    slow upstream responses.
+    webhook reports. Shutdown then owns signals received before the request
+    cutoff and acknowledges them before ``shutdown(wait=True)`` drains submitted
+    webhook futures. Auth.base forwarding does not need to finish running work
+    during shutdown, so its worker shutdown stops new forwards and best-effort
+    closes active upstream sockets without waiting for slow upstream responses.
     """
+    global _usage_flush_phase
+
+    _usage_flush_phase = "draining"
     try:
         # Wait for any in-flight runner-triggered flush before closing the
-        # executor used by webhook report delivery.
+        # executor used by webhook report delivery. Once the lock is ours,
+        # shutdown also owns requests recorded while the final drain runs.
         with _usage_flush_signal_lock:
-            usage.flush_usage_events(trigger="shutdown")
+            try:
+                usage.flush_usage_events(trigger="shutdown")
+                _drain_runner_usage_flush_requests()
+            finally:
+                # Close request admission while still owning the lock, then
+                # consume any event recorded immediately before this cutoff.
+                _usage_flush_phase = "closed"
+                _drain_runner_usage_flush_requests()
     finally:
         try:
             usage.webhook.usage_executor.shutdown(wait=True)

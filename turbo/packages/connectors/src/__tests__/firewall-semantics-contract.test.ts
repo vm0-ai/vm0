@@ -77,6 +77,23 @@ const firewallDecisionExpectedSchema = z.discriminatedUnion("kind", [
     ]),
     permissions: z.array(z.string()),
   }),
+  z.object({
+    kind: z.literal("ambiguous"),
+    method: z.string(),
+    path: z.string(),
+    candidates: z.array(z.string()),
+    reason: z.union([
+      z.literal("connector_intent_required"),
+      z.literal("malformed_connector_intent"),
+      z.literal("connector_intent_not_candidate"),
+    ]),
+  }),
+]);
+
+const connectorIntentSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("absent") }),
+  z.object({ status: z.literal("malformed") }),
+  z.object({ status: z.literal("present"), value: z.string() }),
 ]);
 
 const contractSchema = z.object({
@@ -134,6 +151,7 @@ const contractSchema = z.object({
       request: z.object({
         method: z.string(),
         url: z.string(),
+        connectorIntent: connectorIntentSchema.optional(),
       }),
       expected: firewallDecisionExpectedSchema,
     }),
@@ -276,6 +294,7 @@ describe("firewall semantics contract", () => {
             testCase.request.method,
             testCase.request.url,
             testCase.networkPolicies,
+            testCase.request.connectorIntent,
           ),
           testCase.expected,
         );

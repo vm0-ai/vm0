@@ -5,19 +5,21 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
+  type PublicConnectorCatalogIcon,
   type PublicConnectorCatalogStatusItem,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorCatalogRef } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
 
 export interface ConnectorCatalogDisplayMetadata {
-  readonly connectorRef: string;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly label: string;
   readonly helpText: string;
+  readonly icon: PublicConnectorCatalogIcon;
 }
 
 /**
@@ -72,6 +74,7 @@ function connectorCatalogDisplayMetadata(
     connectorRef: connector.connectorRef,
     label: connector.label,
     helpText: connector.description,
+    icon: connector.icon,
   };
 }
 
@@ -100,7 +103,7 @@ export const reloadConnectors$ = command(({ set }) => {
  * Delete a connector by type.
  */
 export const deleteConnector$ = command(
-  async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
+  async ({ get, set }, type: ConnectorCatalogRef, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
     await accept(

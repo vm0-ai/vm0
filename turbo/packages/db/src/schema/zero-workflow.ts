@@ -166,6 +166,8 @@ export type ZeroWorkflowEventType =
   | "notion-page-content-updated"
   | "webhook-received";
 
+export type ZeroWorkflowWebhookDisabledReason = "paid_plan_required";
+
 /**
  * Workflow triggers.
  *
@@ -265,6 +267,9 @@ export const zeroWorkflowWebhookTriggers = pgTable(
     encryptedToken: text("encrypted_token").notNull(),
     encryptedSecret: text("encrypted_secret").notNull(),
     secretLastFour: varchar("secret_last_four", { length: 4 }).notNull(),
+    disabledReason: varchar("disabled_reason", {
+      length: 64,
+    }).$type<ZeroWorkflowWebhookDisabledReason>(),
     lastReceivedAt: timestamp("last_received_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

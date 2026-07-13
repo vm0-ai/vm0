@@ -145,6 +145,7 @@ export const runnerGroupSchema = z
   );
 
 const runnersPollBodySchema = z.object({
+  runnerId: z.uuid().optional(),
   group: runnerGroupSchema,
   supportedProfiles: runnerSupportedProfileListSchema,
   telemetry: runnerPollTelemetrySchema.optional(),
@@ -174,6 +175,11 @@ export const heldSessionStateSchema = z.object({
   // session id used to route work toward a runner with a reusable sandbox.
   sessionId: z.string(),
   lastCompletedAt: z.string().datetime({ offset: true }),
+  reusableSandbox: z
+    .object({
+      profile: z.string(),
+    })
+    .optional(),
 });
 
 /**
@@ -518,7 +524,6 @@ export const runnersJobClaimContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema, // Job does not belong to user
       404: apiErrorSchema,
-      409: apiErrorSchema, // Already claimed
       500: apiErrorSchema,
     },
     summary: "Claim a pending job for execution",

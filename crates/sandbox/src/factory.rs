@@ -66,6 +66,25 @@ impl SandboxNbdCowCreateStage {
     ];
 }
 
+/// Fixed details nested under [`SandboxNbdCowCreateStage::NetlinkConnect`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SandboxNbdNetlinkConnectStage {
+    BlockingTaskQueue,
+    SocketSetup,
+    FamilyResolve,
+    ConnectCommand,
+}
+
+impl SandboxNbdNetlinkConnectStage {
+    /// All NBD netlink connect stages in stable telemetry order.
+    pub const ALL: [Self; 4] = [
+        Self::BlockingTaskQueue,
+        Self::SocketSetup,
+        Self::FamilyResolve,
+        Self::ConnectCommand,
+    ];
+}
+
 /// Fixed low-cardinality NBD COW outcomes for sandbox-create telemetry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SandboxNbdCowCreateOutcome {
@@ -87,6 +106,15 @@ pub trait SandboxCreateObserver: Send {
     fn record_nbd_cow_stage(
         &mut self,
         _stage: SandboxNbdCowCreateStage,
+        _duration: Duration,
+        _success: bool,
+    ) {
+    }
+
+    /// Record one aggregate stage nested inside NBD netlink connect.
+    fn record_nbd_netlink_connect_stage(
+        &mut self,
+        _stage: SandboxNbdNetlinkConnectStage,
         _duration: Duration,
         _success: bool,
     ) {

@@ -111,3 +111,37 @@ export async function mutateRunnerJobSecretValueEnvironmentKeys(
     mode,
   });
 }
+
+export async function holdOrgAdmissionLock(
+  context: TestContext,
+  orgId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "hold-org-admission-lock",
+    org_id: orgId,
+  });
+}
+
+export async function readOrgAdmissionLockState(
+  context: TestContext,
+): Promise<{ readonly held: boolean; readonly waiting: boolean }> {
+  const response = await postAction(context, {
+    action: "read-org-admission-lock-state",
+  });
+  if (
+    response.admission_lock_held === undefined ||
+    response.admission_lock_waiting === undefined
+  ) {
+    throw new Error("readOrgAdmissionLockState missing lock state");
+  }
+  return {
+    held: response.admission_lock_held,
+    waiting: response.admission_lock_waiting,
+  };
+}
+
+export async function releaseOrgAdmissionLock(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, { action: "release-org-admission-lock" });
+}

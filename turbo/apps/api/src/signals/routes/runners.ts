@@ -26,7 +26,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runnerState } from "@vm0/db/schema/runner-state";
-import { and, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
 
 import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
@@ -65,6 +65,7 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  runnerReusableSessionPollPriority,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
 } from "../services/runner-session-affinity";
@@ -132,6 +133,8 @@ type ClaimRouteTimingActionType =
   | "claim_route_context_parse"
   | "claim_route_secret_materialization"
   | "claim_route_response_assembly"
+  | "claim_route_response_network_policy_refresh"
+  | "claim_route_response_resume_session"
   | "claim_route_transition_running"
   | "claim_route_transition_execute";
 
@@ -313,6 +316,13 @@ function canonicalizeHeldSessionStates(
     return {
       sessionId: cliAgentSessionId,
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+      ...(state.reusableSandbox
+        ? {
+            reusableSandbox: {
+              profile: state.reusableSandbox.profile,
+            },
+          }
+        : {}),
     };
   });
 }
@@ -485,6 +495,18 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   whereConditions.push(inArray(runnerJobQueue.profile, supportedProfiles));
   const db = set(writeDb$);
   const pendingJobLookupStartedAtMs = now();
+  const currentDate = nowDate();
+  const reusableSessionPriorityOrder = body.data.runnerId
+    ? [
+        desc(
+          runnerReusableSessionPollPriority({
+            runnerId: body.data.runnerId,
+            runnerGroup: group,
+            currentDate,
+          }),
+        ),
+      ]
+    : [];
   const [pendingJob] = await db
     .select({
       runId: runnerJobQueue.runId,
@@ -500,7 +522,11 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .from(runnerJobQueue)
     .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
     .where(and(...whereConditions))
-    .orderBy(runnerJobQueue.createdAt)
+    .orderBy(
+      ...reusableSessionPriorityOrder,
+      runnerJobQueue.createdAt,
+      runnerJobQueue.runId,
+    )
     .limit(1);
   signal.throwIfAborted();
   const pendingJobLookupFinishedAtMs = now();
@@ -516,7 +542,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       profile: pendingJob.profile,
       cliAgentSessionId: pendingJob.cliAgentSessionId,
       createdAt: pendingJob.createdAt,
-      currentDate: nowDate(),
+      currentDate,
     }),
     signal,
   );
@@ -1014,6 +1040,7 @@ async function refreshClaimNetworkPolicies(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
+  readonly timing: ClaimRouteTimingCollector;
 }): Promise<
   Pick<StoredExecutionContext, "networkPolicies" | "networkPolicyRefreshes">
 > {
@@ -1027,22 +1054,28 @@ async function refreshClaimNetworkPolicies(args: {
     };
   }
 
-  const refreshes = await resolveActiveNetworkPolicyRefreshes(
-    args.db,
-    {
-      orgId: args.run.orgId,
-      userId: args.run.userId,
-      agentId: args.run.agentId,
+  return await args.timing.measure(
+    "claim_route_response_network_policy_refresh",
+    "nested",
+    async () => {
+      const refreshes = await resolveActiveNetworkPolicyRefreshes(
+        args.db,
+        {
+          orgId: args.run.orgId,
+          userId: args.run.userId,
+          agentId: args.run.agentId,
+        },
+        connectorRefs,
+      );
+      return {
+        networkPolicies: mergeNetworkPolicyRefreshes(
+          args.storedContext.networkPolicies,
+          refreshes,
+        ),
+        networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
+      };
     },
-    connectorRefs,
   );
-  return {
-    networkPolicies: mergeNetworkPolicyRefreshes(
-      args.storedContext.networkPolicies,
-      refreshes,
-    ),
-    networkPolicyRefreshes: networkPolicyRefreshesRecord(refreshes),
-  };
 }
 
 type StoredResumeSessionWithHistoryRef = Extract<
@@ -1266,6 +1299,7 @@ const loadIdentityResumeSessionHistoryRepresentation$ = command(
 
 async function resolveResumeSessionForClaim(args: {
   readonly resumeSession: StoredExecutionContext["resumeSession"];
+  readonly timing: ClaimRouteTimingCollector;
   readonly loadIdentityRepresentation: (
     hash: string,
   ) => Promise<IdentityResumeSessionHistoryRepresentation | undefined>;
@@ -1283,63 +1317,67 @@ async function resolveResumeSessionForClaim(args: {
     return resumeSession;
   }
 
-  const { sessionId, historyRef } = resumeSession;
-  const encoding = historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
-  if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
-    const compressedRepresentation = await args.loadCompressedRepresentation(
-      historyRef.hash,
-      encoding,
-    );
-    if (compressedRepresentation === undefined) {
-      throw invalidResumeSessionHistoryError(
-        historyRef.hash,
-        new Error(`${encoding} session history metadata is missing`),
-      );
-    }
-    validateCompressedResumeSessionHistoryRepresentation(
-      historyRef.hash,
-      compressedRepresentation,
-    );
-    const url = await args.generateResumeSessionHistoryObjectUrl(
-      compressedRepresentation.objectKey,
-    );
-    return {
-      sessionId,
-      historyRef: {
-        kind: historyRef.kind,
-        hash: historyRef.hash,
-        url,
-        encoding: compressedRepresentation.encoding,
-        rawSize: compressedRepresentation.rawSize,
-        encodedSize: compressedRepresentation.encodedSize,
-        downloadSource: compressedRepresentation.downloadSource,
-      },
-    };
-  }
+  return await args.timing.measure(
+    "claim_route_response_resume_session",
+    "nested",
+    async () => {
+      const { sessionId, historyRef } = resumeSession;
+      const encoding = historyRef.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+      if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
+        const compressedRepresentation =
+          await args.loadCompressedRepresentation(historyRef.hash, encoding);
+        if (compressedRepresentation === undefined) {
+          throw invalidResumeSessionHistoryError(
+            historyRef.hash,
+            new Error(`${encoding} session history metadata is missing`),
+          );
+        }
+        validateCompressedResumeSessionHistoryRepresentation(
+          historyRef.hash,
+          compressedRepresentation,
+        );
+        const url = await args.generateResumeSessionHistoryObjectUrl(
+          compressedRepresentation.objectKey,
+        );
+        return {
+          sessionId,
+          historyRef: {
+            kind: historyRef.kind,
+            hash: historyRef.hash,
+            url,
+            encoding: compressedRepresentation.encoding,
+            rawSize: compressedRepresentation.rawSize,
+            encodedSize: compressedRepresentation.encodedSize,
+            downloadSource: compressedRepresentation.downloadSource,
+          },
+        };
+      }
 
-  const identityRepresentation = await args.loadIdentityRepresentation(
-    historyRef.hash,
-  );
-  if (identityRepresentation === undefined) {
-    throw new ResumeSessionHistoryLoadError(
-      historyRef.hash,
-      RESUME_SESSION_HISTORY_LOAD_ERROR,
-      new Error("identity session history metadata is missing"),
-    );
-  }
-  const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
-  return {
-    sessionId,
-    historyRef: {
-      kind: historyRef.kind,
-      hash: historyRef.hash,
-      url,
-      encoding: identityRepresentation.encoding,
-      rawSize: identityRepresentation.rawSize,
-      encodedSize: identityRepresentation.encodedSize,
-      downloadSource: identityRepresentation.downloadSource,
+      const identityRepresentation = await args.loadIdentityRepresentation(
+        historyRef.hash,
+      );
+      if (identityRepresentation === undefined) {
+        throw new ResumeSessionHistoryLoadError(
+          historyRef.hash,
+          RESUME_SESSION_HISTORY_LOAD_ERROR,
+          new Error("identity session history metadata is missing"),
+        );
+      }
+      const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
+      return {
+        sessionId,
+        historyRef: {
+          kind: historyRef.kind,
+          hash: historyRef.hash,
+          url,
+          encoding: identityRepresentation.encoding,
+          rawSize: identityRepresentation.rawSize,
+          encodedSize: identityRepresentation.encodedSize,
+          downloadSource: identityRepresentation.downloadSource,
+        },
+      };
     },
-  };
+  );
 }
 
 async function buildClaimResponseBody(args: {
@@ -1371,6 +1409,7 @@ async function buildClaimResponseBody(args: {
     async () => {
       const resumeSession = await resolveResumeSessionForClaim({
         resumeSession: args.storedContext.resumeSession,
+        timing: args.timing,
         loadIdentityRepresentation(hash: string) {
           return args.loadIdentityRepresentation(hash);
         },
@@ -1394,6 +1433,7 @@ async function buildClaimResponseBody(args: {
         db: args.db,
         run: args.run,
         storedContext: args.storedContext,
+        timing: args.timing,
       });
       args.signal.throwIfAborted();
       const {

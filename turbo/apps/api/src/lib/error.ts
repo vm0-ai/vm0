@@ -54,6 +54,10 @@ export function insufficientCredits() {
   );
 }
 
+export function teamRequired(message: string) {
+  return httpError(402, "TEAM_REQUIRED", message);
+}
+
 export function badRequestMessage(message: string) {
   return httpError(400, "BAD_REQUEST", message);
 }

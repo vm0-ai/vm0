@@ -17,6 +17,7 @@ import { logger } from "../../lib/log";
 import { activePendingRunPredicate } from "./agent-run-activity.service";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
+import { runnerJobQueueTimestamps } from "./runner-job-queue-lifecycle.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   revokeQueuedRunAssistantMarkers,
@@ -182,6 +183,7 @@ async function insertPromotedRunnerJob(
     },
   });
 
+  const timestamps = runnerJobQueueTimestamps();
   const [runnerJob] = await tx
     .insert(runnerJobQueue)
     .values({
@@ -193,7 +195,7 @@ async function insertPromotedRunnerJob(
         ...args.payload.executionContext,
         apiStartTime: promotedAt,
       },
-      expiresAt: sql`now() + interval '2 hours'`,
+      ...timestamps,
     })
     .returning({ createdAt: runnerJobQueue.createdAt });
   if (!runnerJob) {

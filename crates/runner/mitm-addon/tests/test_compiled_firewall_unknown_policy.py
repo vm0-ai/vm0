@@ -282,7 +282,7 @@ def test_compiled_unknown_allow_preserves_base_params(network_policies):
     assert result.params == {"workspace": "acme", "tenant": "customer-1"}
 
 
-def test_compiled_unknown_allow_uses_first_matching_best_base_api_entry():
+def test_compiled_unknown_allow_fails_closed_for_conflicting_same_owner_auth():
     first_api_entry = {
         "base": "https://api.example.com",
         "auth": {"headers": {"Authorization": "Bearer first"}},
@@ -291,6 +291,33 @@ def test_compiled_unknown_allow_uses_first_matching_best_base_api_entry():
     second_api_entry = {
         "base": "https://api.example.com",
         "auth": {"headers": {"Authorization": "Bearer second"}},
+        "permissions": [],
+    }
+    fws = wrap_firewalls([first_api_entry, second_api_entry], name="example")
+    policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+    result = matching.match_compiled_firewall_request(
+        "https://api.example.com/items",
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallBlock)
+    assert result.name == "example"
+    assert result.reason == "malformed_firewall_config"
+
+
+def test_compiled_unknown_allow_combines_same_owner_routing_identity():
+    auth = {"headers": {"Authorization": "Bearer shared"}}
+    first_api_entry = {
+        "base": "https://api.example.com",
+        "auth": auth,
+        "permissions": [],
+    }
+    second_api_entry = {
+        "base": "https://api.example.com",
+        "auth": auth,
         "permissions": [],
     }
     fws = wrap_firewalls([first_api_entry, second_api_entry], name="example")

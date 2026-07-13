@@ -1,6 +1,6 @@
 import { publishRunnerJobNotification } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
-import { now, nowDate } from "../external/time";
+import { now } from "../external/time";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import {
@@ -21,7 +21,8 @@ export async function notifyRunnerJob(
     readonly createdAt: Date;
   },
 ): Promise<boolean> {
-  const currentDate = nowDate();
+  const notificationEnteredAt = now();
+  const currentDate = new Date(notificationEnteredAt);
   const affinityResult = await settle(
     runnerSessionAffinityProtection({
       db,
@@ -32,6 +33,7 @@ export async function notifyRunnerJob(
       currentDate,
     }),
   );
+  const affinityFinishedAt = now();
   const affinity = affinityResult.ok
     ? affinityResult.value
     : runnerSessionAffinityLookupError();
@@ -61,7 +63,33 @@ export async function notifyRunnerJob(
     notification_target: "broadcast",
     session_affinity: affinity.status,
   };
+  // Queue-relative actions are cumulative boundaries. Affinity and publish
+  // durations are nested children and must not be added to those boundaries.
   recordSandboxOperations([
+    {
+      sandboxType: "runner",
+      actionType: "runner_notification_queue_to_entry",
+      durationMs: Math.max(0, notificationEnteredAt - args.createdAt.getTime()),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_notification_affinity_lookup",
+      durationMs: Math.max(0, affinityFinishedAt - notificationEnteredAt),
+      success: affinityResult.ok,
+      runId: args.runId,
+      dimensions,
+    },
+    {
+      sandboxType: "runner",
+      actionType: "runner_notification_queue_to_publish_start",
+      durationMs: Math.max(0, publishStartedAt - args.createdAt.getTime()),
+      success: true,
+      runId: args.runId,
+      dimensions,
+    },
     {
       sandboxType: "runner",
       actionType: "runner_notification_realtime_publish",

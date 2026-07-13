@@ -717,6 +717,8 @@ function mixedNetworkLogs(): NetworkLogEntry[] {
       response_size: 128,
       firewall_name: "blocked-service",
       firewall_error: "connector_not_configured",
+      connector_route_reason: "connector_intent_required",
+      connector_route_candidates: ["auditor", "primary"],
     },
     {
       timestamp: "2026-03-10T14:56:12.000Z",
@@ -1989,6 +1991,16 @@ describe("activity detail polling", () => {
     await waitFor(() => {
       expect(screen.getByText("BLOCK")).toBeInTheDocument();
       expect(screen.getByText("blocked.service.test:443")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("blocked.service.test:443"));
+    await waitFor(() => {
+      expect(screen.getByText("Connector Route Reason")).toBeInTheDocument();
+      expect(screen.getByText("connector_intent_required")).toBeInTheDocument();
+      expect(
+        screen.getByText("Connector Route Candidates"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("auditor, primary")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Type filter"));

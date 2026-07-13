@@ -41,10 +41,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { VM0Logo } from "../components/vm0-logo.tsx";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { useUserPermissionGrantExpiryTick } from "../user-permission-grant-expiry-tick.ts";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "../zero-page/components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
 function TargetPill({
@@ -97,12 +94,12 @@ function resolvePermissionGrantTarget({
 }
 
 function ConnectorPermissionCard({
-  connectorRef,
+  icon,
   connectorLabel,
   permission,
   action,
 }: {
-  connectorRef: string;
+  icon: PublicConnectorCatalogPermissionDetail["icon"];
   connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
@@ -111,11 +108,9 @@ function ConnectorPermissionCard({
     <div className="w-full rounded-lg border border-border px-4 py-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 border-b border-border/70 pb-4 pt-1">
-          {isConnectorIconType(connectorRef) && (
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
-              <ConnectorIcon type={connectorRef} size={20} />
-            </span>
-          )}
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
+            <ConnectorIcon icon={icon} size={20} />
+          </span>
           <div className="min-w-0 flex-1 flex flex-col gap-1.5">
             <p className="text-sm font-medium text-foreground">
               {connectorLabel}
@@ -312,6 +307,7 @@ function resolveExistingPermissionGrantResult({
 
 function ConfirmGrantCard({
   target,
+  icon,
   connectorRef,
   connectorLabel,
   permission,
@@ -322,6 +318,7 @@ function ConfirmGrantCard({
   applyGrant,
 }: {
   target: PermissionGrantTarget;
+  icon: PublicConnectorCatalogPermissionDetail["icon"];
   connectorRef: string;
   connectorLabel: string;
   permission: Permission;
@@ -386,7 +383,7 @@ function ConfirmGrantCard({
           <div className="w-full flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">Would like to</p>
             <ConnectorPermissionCard
-              connectorRef={connectorRef}
+              icon={icon}
               connectorLabel={connectorLabel}
               permission={permission}
               action={action}
@@ -530,6 +527,7 @@ function PermissionAllowDoctorPage({
   return (
     <ConfirmGrantCard
       target={targetResult.target}
+      icon={metadata.icon}
       connectorRef={ref}
       connectorLabel={metadata.label}
       permission={focusedPermission}

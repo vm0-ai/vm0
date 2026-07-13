@@ -4,8 +4,11 @@ import type {
   ZeroWorkflowConnectorReadinessStatus,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
+  connectorCatalogRefSchema,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
+import {
   CONNECTOR_TYPES,
-  connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { getAllFeatureStates } from "@vm0/core/feature-switch";
@@ -21,7 +24,10 @@ import { db$, type ReadonlyDb } from "../external/db";
 import { generateText } from "../external/openrouter";
 import { safeJsonParse } from "../utils";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
-import { listPublicConnectorCatalogStatus } from "./connector-catalog-reader.service";
+import {
+  getPublicConnectorCatalogIcon,
+  listPublicConnectorCatalogStatus,
+} from "./connector-catalog-reader.service";
 import { zeroConnectorList } from "./zero-connector-data.service";
 
 const CONNECTOR_READINESS_MODEL = "google/gemini-3.1-flash-lite-preview";
@@ -108,7 +114,7 @@ function triggerConnectorDependency(
 
 const modelConnectorSchema = z
   .object({
-    connectorRef: connectorTypeSchema,
+    connectorRef: connectorCatalogRefSchema,
     reason: z.string().trim().min(1).max(280),
   })
   .strict();
@@ -159,8 +165,30 @@ async function loadTriggerConnectorDependencies(
   return dependencies;
 }
 
+function triggerConnectorFallbackMetadata(
+  dependencies: ReadonlyMap<ConnectorType, TriggerConnectorDependency>,
+): ReadonlyMap<
+  ConnectorCatalogRef,
+  {
+    readonly label: string;
+    readonly icon: ZeroWorkflowConnectorReadinessEntry["icon"];
+  }
+> {
+  return new Map(
+    [...dependencies.values()].map((dependency) => {
+      return [
+        dependency.connectorRef,
+        {
+          label: CONNECTOR_TYPES[dependency.connectorRef].label,
+          icon: getPublicConnectorCatalogIcon(dependency.connectorRef),
+        },
+      ];
+    }),
+  );
+}
+
 interface ModelCatalogEntry {
-  readonly connectorRef: ConnectorType;
+  readonly connectorRef: ConnectorCatalogRef;
   readonly label: string;
   readonly description: string;
 }
@@ -169,7 +197,7 @@ async function detectModelConnectorDependencies(args: {
   readonly workflow: WorkflowConnectorReadinessInput;
   readonly catalog: readonly ModelCatalogEntry[];
   readonly signal: AbortSignal;
-}): Promise<ReadonlyMap<ConnectorType, string>> {
+}): Promise<ReadonlyMap<ConnectorCatalogRef, string>> {
   const signal = AbortSignal.any([
     args.signal,
     AbortSignal.timeout(CONNECTOR_READINESS_TIMEOUT_MS),
@@ -213,7 +241,7 @@ async function detectModelConnectorDependencies(args: {
       return entry.connectorRef;
     }),
   );
-  const dependencies = new Map<ConnectorType, string>();
+  const dependencies = new Map<ConnectorCatalogRef, string>();
   for (const connector of modelResult.connectors) {
     if (!catalogRefs.has(connector.connectorRef)) {
       throw new Error(
@@ -303,7 +331,7 @@ export const detectWorkflowConnectorReadiness$ = command(
     const modelCatalog: ModelCatalogEntry[] = statusCatalog.connectors.map(
       (connector) => {
         return {
-          connectorRef: connectorTypeSchema.parse(connector.connectorRef),
+          connectorRef: connector.connectorRef,
           label: connector.label,
           description: connector.description,
         };
@@ -321,21 +349,32 @@ export const detectWorkflowConnectorReadiness$ = command(
         return [connector.connectorRef, connector];
       }),
     );
-    const enabledForAgent = new Set(agentScope.allowedConnectorTypes);
-    const mergedDependencies = new Map<ConnectorType, string>(
+    const enabledForAgent = new Set<ConnectorCatalogRef>(
+      agentScope.allowedConnectorTypes,
+    );
+    const mergedDependencies = new Map<ConnectorCatalogRef, string>(
       modelDependencies,
     );
     for (const dependency of triggerDependencies.values()) {
       mergedDependencies.set(dependency.connectorRef, dependency.reason);
     }
+    const triggerFallbackMetadata =
+      triggerConnectorFallbackMetadata(triggerDependencies);
 
     const connectors: ZeroWorkflowConnectorReadinessEntry[] = [];
     for (const [connectorRef, reason] of mergedDependencies) {
       const catalogEntry = statusByRef.get(connectorRef);
       if (!catalogEntry) {
+        const fallbackMetadata = triggerFallbackMetadata.get(connectorRef);
+        if (!fallbackMetadata) {
+          throw new Error(
+            `Missing connector catalog metadata: ${connectorRef}`,
+          );
+        }
         connectors.push({
           connectorRef,
-          label: CONNECTOR_TYPES[connectorRef].label,
+          label: fallbackMetadata.label,
+          icon: fallbackMetadata.icon,
           reason,
           status: "unavailable",
         });
@@ -344,6 +383,7 @@ export const detectWorkflowConnectorReadiness$ = command(
       connectors.push({
         connectorRef,
         label: catalogEntry.label,
+        icon: catalogEntry.icon,
         reason,
         status: readinessStatus({
           connectionStatus: catalogEntry.connectionStatus,

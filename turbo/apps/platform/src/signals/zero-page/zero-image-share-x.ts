@@ -4,6 +4,7 @@ import {
   type ZeroImageShareXResponse,
 } from "@vm0/api-contracts/contracts/zero-image-share-x";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 import { accept } from "../../lib/accept.ts";
@@ -14,7 +15,10 @@ import {
   reloadConnectors$,
 } from "../external/connectors.ts";
 import { tapError } from "../utils.ts";
-import { connectConnectorOAuthAuthCode$ } from "./settings/connectors.ts";
+import {
+  connectConnectorOAuthAuthCode$,
+  getOnlyAvailableCatalogBrowserAuthMethodDetail,
+} from "./settings/connectors.ts";
 
 const X_IMAGE_SHARE_CARD_TITLE = "Image from Zero";
 const X_IMAGE_SHARE_CARD_DESCRIPTION = "Shared from Zero.";
@@ -88,12 +92,22 @@ export const xImageShareConnectorStatus$ = computed(async (get) => {
 });
 
 export const connectXForImageShare$ = command(
-  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+  async (
+    { set },
+    connector: PublicConnectorCatalogStatusItem | null,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const authMethod = connector
+      ? getOnlyAvailableCatalogBrowserAuthMethodDetail(connector)
+      : null;
+    if (!connector || !authMethod) {
+      return false;
+    }
     const connected = await set(
       connectConnectorOAuthAuthCode$,
-      "x",
-      "oauth",
-      { connectorLabel: "X" },
+      connector.connectorRef,
+      authMethod,
+      { connectorLabel: connector.label },
       signal,
     );
     signal.throwIfAborted();

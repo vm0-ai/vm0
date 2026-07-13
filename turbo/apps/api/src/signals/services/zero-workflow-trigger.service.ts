@@ -69,6 +69,7 @@ import {
   notionWorkflowTriggerCreationEnabledForOwner,
   workflowWebhookTriggerCreationEnabledForOwner,
 } from "./workflow-webhook-trigger-feature-switch.service";
+import { lockWorkflowWebhookTriggerTierEligibleForOrg } from "./workflow-webhook-trigger-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
   defaultWebhookReceivedEventConfig,
@@ -127,6 +128,7 @@ export type TriggerResult =
   | { readonly kind: "not-found" }
   | { readonly kind: "forbidden"; readonly message: string }
   | { readonly kind: "conflict"; readonly message: string }
+  | { readonly kind: "team-required"; readonly message: string }
   | { readonly kind: "bad-request"; readonly message: string };
 
 function workflowWebhookTriggersDisabledResult(): {
@@ -136,6 +138,16 @@ function workflowWebhookTriggersDisabledResult(): {
   return {
     kind: "bad-request",
     message: "Workflow webhook triggers are not enabled",
+  };
+}
+
+function workflowWebhookTeamRequiredResult(): {
+  readonly kind: "team-required";
+  readonly message: string;
+} {
+  return {
+    kind: "team-required",
+    message: "Webhook triggers require a Team or Custom workspace",
   };
 }
 
@@ -845,43 +857,18 @@ function chatThreadTriggerFromSummary(args: {
   if (!summary || chatThreadId === null) {
     return [];
   }
-  const base = {
-    id: summary.id,
-    enabled: summary.enabled,
-    chatThreadId,
-    nextRunAt: summary.nextRunAt,
-    lastRunAt: summary.lastRunAt,
-    ownerUserId: summary.ownerUserId,
-    workflow: {
-      id: workflow.id,
-      agentId: workflow.agentId,
-      name: workflow.name,
-      displayName: workflow.displayName,
-      description: workflow.description,
-    },
-  };
-  if (summary.kind === "schedule") {
-    return [
-      {
-        ...base,
-        kind: "schedule",
-        schedule: summary.schedule,
-        scheduleSummary: summary.scheduleSummary,
-      },
-    ];
-  }
-  if (summary.kind !== "event") {
-    return [];
-  }
   return [
     {
-      ...base,
-      kind: "event",
-      eventType: summary.eventType,
-      eventConfig: summary.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    } as ChatThreadWorkflowTrigger,
+      ...summary,
+      chatThreadId,
+      workflow: {
+        id: workflow.id,
+        agentId: workflow.agentId,
+        name: workflow.name,
+        displayName: workflow.displayName,
+        description: workflow.description,
+      },
+    },
   ];
 }
 
@@ -1174,9 +1161,18 @@ async function insertWebhookEventTrigger(
     readonly agentId: string;
     readonly workflowTitle: string;
     readonly currentTime: Date;
+    readonly signal: AbortSignal;
   },
-): Promise<ZeroWorkflowTriggerSummary> {
+): Promise<ZeroWorkflowTriggerSummary | null> {
   return await db.transaction(async (tx) => {
+    const tierEligible = await lockWorkflowWebhookTriggerTierEligibleForOrg(
+      tx,
+      { orgId: args.input.orgId, signal: args.signal },
+    );
+    if (!tierEligible) {
+      return null;
+    }
+
     const chatThreadId = await ensureWorkflowUserTriggerThread(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
@@ -1349,8 +1345,12 @@ async function createWebhookEventTriggerForWorkflow(args: {
     agentId: args.context.agentId,
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
+    signal: args.signal,
   });
   args.signal.throwIfAborted();
+  if (!summary) {
+    return workflowWebhookTeamRequiredResult();
+  }
   return { kind: "ok", summary };
 }
 
@@ -2270,9 +2270,60 @@ const ensureEventTriggerCanBeEnabled$ = command(
   },
 );
 
+async function persistEnabledWorkflowTrigger(
+  db: Db,
+  args: {
+    readonly trigger: TriggerRow;
+    readonly orgId: string;
+    readonly nextRunAt: Date | null;
+    readonly now: Date;
+    readonly signal: AbortSignal;
+  },
+): Promise<
+  | { readonly status: "team-required" }
+  | { readonly status: "ok"; readonly row: TriggerRow | undefined }
+> {
+  return await db.transaction(async (tx) => {
+    if (
+      args.trigger.kind === "event" &&
+      args.trigger.eventType === "webhook-received"
+    ) {
+      const tierEligible = await lockWorkflowWebhookTriggerTierEligibleForOrg(
+        tx,
+        { orgId: args.orgId, signal: args.signal },
+      );
+      if (!tierEligible) {
+        return { status: "team-required" };
+      }
+    }
+
+    const [enabledRow] = await tx
+      .update(zeroWorkflowTriggers)
+      .set({
+        enabled: true,
+        nextRunAt: args.nextRunAt,
+        consecutiveFailures: 0,
+        updatedAt: args.now,
+      })
+      .where(eq(zeroWorkflowTriggers.id, args.trigger.id))
+      .returning();
+    if (
+      enabledRow &&
+      args.trigger.kind === "event" &&
+      args.trigger.eventType === "webhook-received"
+    ) {
+      await tx
+        .update(zeroWorkflowWebhookTriggers)
+        .set({ disabledReason: null, updatedAt: args.now })
+        .where(eq(zeroWorkflowWebhookTriggers.triggerId, args.trigger.id));
+    }
+    return { status: "ok", row: enabledRow };
+  });
+}
+
 export const enableWorkflowTrigger$ = command(
   async (
-    { set },
+    { get, set },
     args: TriggerActionInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -2283,6 +2334,19 @@ export const enableWorkflowTrigger$ = command(
       return owned;
     }
     const { trigger } = owned;
+
+    if (trigger.kind === "event" && trigger.eventType === "webhook-received") {
+      const featureEnabled = await get(
+        workflowWebhookTriggerCreationEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return workflowWebhookTriggersDisabledResult();
+      }
+    }
 
     // The owning agent is derived from the workflow row (hard 1:N); it always
     // exists. Re-confirm the owner can still run it before re-enabling.
@@ -2333,12 +2397,18 @@ export const enableWorkflowTrigger$ = command(
         return failure;
       }
     }
-    const [row] = await writeDb
-      .update(zeroWorkflowTriggers)
-      .set({ enabled: true, nextRunAt, consecutiveFailures: 0, updatedAt: now })
-      .where(eq(zeroWorkflowTriggers.id, trigger.id))
-      .returning();
+    const enabled = await persistEnabledWorkflowTrigger(writeDb, {
+      trigger,
+      orgId: args.orgId,
+      nextRunAt,
+      now,
+      signal,
+    });
     signal.throwIfAborted();
+    if (enabled.status === "team-required") {
+      return workflowWebhookTeamRequiredResult();
+    }
+    const row = enabled.row;
     if (!row) {
       throw new Error("Failed to enable workflow trigger");
     }

@@ -1,5 +1,8 @@
 import { command, computed, state } from "ccstate";
-import type { ConnectorType } from "@vm0/connectors/connectors";
+import {
+  connectorCatalogRefSchema,
+  type ConnectorCatalogRef,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
@@ -9,7 +12,10 @@ import { agents$ } from "../agent.ts";
 export const directedConnectType$ = computed((get): string | null => {
   const params = get(pathParams$);
   const type = params?.type;
-  return typeof type === "string" ? type.toLowerCase() : null;
+  const parsed = connectorCatalogRefSchema.safeParse(
+    typeof type === "string" ? type.toLowerCase() : null,
+  );
+  return parsed.success ? parsed.data : null;
 });
 
 /**
@@ -34,13 +40,13 @@ export const directedConnectAgentName$ = computed(async (get) => {
 });
 
 export type DirectedConnectManualGrantDialogKey = {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorCatalogRef;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };
 
 export type DirectedConnectModalKey = {
-  readonly connectorType: ConnectorType;
+  readonly connectorType: ConnectorCatalogRef;
   readonly agentId: string | null;
   readonly signal: AbortSignal;
 };

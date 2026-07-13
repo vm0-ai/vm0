@@ -29,7 +29,7 @@ export const userConnectors = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    connectorType: varchar("connector_type", { length: 50 }).notNull(),
+    connectorType: varchar("connector_type", { length: 64 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

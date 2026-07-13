@@ -25,6 +25,7 @@ import {
   CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
   isConcurrencyPriceId,
 } from "./org-concurrency-entitlements.service";
+import { disableIneligibleWorkflowWebhookTriggersForOrg } from "./workflow-webhook-trigger-entitlement.service";
 
 const L = logger("CronBillingEntitlements");
 const PAID_TIERS = ["pro", "team", "custom"] as const;
@@ -801,6 +802,18 @@ export const reconcileBillingEntitlements$ = command(
           },
         )),
       );
+    }
+
+    for (const orgId of new Set(
+      downgraded.map((subscription) => {
+        return subscription.orgId;
+      }),
+    )) {
+      await disableIneligibleWorkflowWebhookTriggersForOrg(db, {
+        orgId,
+        signal,
+      });
+      signal.throwIfAborted();
     }
 
     if (downgraded.length > 0) {

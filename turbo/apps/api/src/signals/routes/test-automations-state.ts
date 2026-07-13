@@ -25,6 +25,7 @@ import {
 } from "../../lib/secret-kms-client";
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
+import { createDeferredPromise, onRejection } from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -32,8 +33,8 @@ import {
 
 // Test-only support actions. The legacy automation seeding endpoints that
 // used to live here were removed together with the automations tables
-// (#20101); the remaining actions cover infrastructure-only fixtures (fake
-// KMS and the vm0-managed default model key) still used by the API test suites.
+// (#20101); the remaining actions cover generic infrastructure fixtures still
+// used by the API test suites.
 
 const actionBody$ = bodyResultOf(testAutomationsStateContract.action);
 const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
@@ -42,6 +43,118 @@ const RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY =
 const fakeKmsDecryptCallCount = testOverride<number>(() => {
   return 0;
 });
+
+interface OrgAdmissionLockGate {
+  holderPid: number | null;
+  readonly released: ReturnType<typeof createDeferredPromise<void>>;
+  readonly release: () => void;
+}
+
+const orgAdmissionLockGate = testOverride<OrgAdmissionLockGate | null>(() => {
+  return null;
+});
+
+interface OrgAdmissionLockHolderRow extends Record<string, unknown> {
+  readonly holderPid: number;
+}
+
+interface OrgAdmissionLockStateRow extends Record<string, unknown> {
+  readonly held: boolean;
+  readonly waiting: boolean;
+}
+
+function createOrgAdmissionLockGate(signal: AbortSignal): OrgAdmissionLockGate {
+  const released = createDeferredPromise<void>(signal);
+  return {
+    holderPid: null,
+    released,
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+  };
+}
+
+function clearOrgAdmissionLockGate(gate: OrgAdmissionLockGate): void {
+  if (orgAdmissionLockGate.get() === gate) {
+    orgAdmissionLockGate.clear();
+  }
+}
+
+async function holdOrgAdmissionLock(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  if (orgAdmissionLockGate.get()) {
+    throw new Error("An org admission lock gate is already active");
+  }
+  const gate = createOrgAdmissionLockGate(signal);
+  orgAdmissionLockGate.set(gate);
+  await onRejection(
+    db.transaction(async (tx) => {
+      const result = await tx.execute<OrgAdmissionLockHolderRow>(sql`
+        SELECT
+          pg_backend_pid() AS "holderPid",
+          pg_advisory_xact_lock(hashtext(${orgId}))
+      `);
+      signal.throwIfAborted();
+      const holder = result.rows[0];
+      if (!holder) {
+        throw new Error("Failed to acquire org admission lock");
+      }
+      gate.holderPid = holder.holderPid;
+      await gate.released.promise;
+    }),
+    () => {
+      clearOrgAdmissionLockGate(gate);
+    },
+  );
+  clearOrgAdmissionLockGate(gate);
+}
+
+async function readOrgAdmissionLockState(
+  db: Db,
+  signal: AbortSignal,
+): Promise<{ readonly held: boolean; readonly waiting: boolean }> {
+  const holderPid = orgAdmissionLockGate.get()?.holderPid;
+  if (holderPid === null || holderPid === undefined) {
+    return { held: false, waiting: false };
+  }
+  const result = await db.execute<OrgAdmissionLockStateRow>(sql`
+    SELECT
+      EXISTS (
+        SELECT 1
+        FROM pg_locks held
+        WHERE
+          held.pid = ${holderPid}
+          AND held.locktype = 'advisory'
+          AND held.granted
+      ) AS "held",
+      EXISTS (
+        SELECT 1
+        FROM pg_locks held
+        INNER JOIN pg_locks waiting
+          ON waiting.locktype = held.locktype
+          AND waiting.database IS NOT DISTINCT FROM held.database
+          AND waiting.classid IS NOT DISTINCT FROM held.classid
+          AND waiting.objid IS NOT DISTINCT FROM held.objid
+          AND waiting.objsubid IS NOT DISTINCT FROM held.objsubid
+        WHERE
+          held.pid = ${holderPid}
+          AND held.locktype = 'advisory'
+          AND held.granted
+          AND NOT waiting.granted
+      ) AS "waiting"
+  `);
+  signal.throwIfAborted();
+  const state = result.rows[0];
+  if (!state) {
+    throw new Error("Failed to read org admission lock state");
+  }
+  return state;
+}
 
 function fakeSecretKmsClient(): SecretKmsClient {
   function send(
@@ -197,6 +310,25 @@ const postAutomationsStateAction$ = command(
           body.mode,
           signal,
         );
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "hold-org-admission-lock": {
+        await holdOrgAdmissionLock(db, body.org_id, signal);
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "read-org-admission-lock-state": {
+        const state = await readOrgAdmissionLockState(db, signal);
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            admission_lock_held: state.held,
+            admission_lock_waiting: state.waiting,
+          },
+        };
+      }
+      case "release-org-admission-lock": {
+        orgAdmissionLockGate.get()?.release();
         return { status: 200 as const, body: { ok: true as const } };
       }
     }

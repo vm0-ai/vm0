@@ -77,6 +77,14 @@ const NINTENDO_SWITCH_PARENTAL_CONTROLS_SCOPES = [
   "moonDailySummary",
   "moonMonthlySummary",
 ] as const;
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE =
+  "bdd-switch-parental-controls-code";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN_CODE =
+  "bdd-switch-parental-controls-replacement-code";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN =
+  "bdd-switch-parental-controls-session-token";
+const NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN =
+  "bdd-switch-parental-controls-replacement-session-token";
 
 async function awsActor(): Promise<ApiTestUser> {
   const bdd = createBddApi(context);
@@ -151,23 +159,57 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
   readonly federatedSmartDeviceIds: string[];
   readonly federationBodies: unknown[];
   readonly failLogout: () => void;
+  readonly initialIdToken: string;
+  readonly logoutAuthorizations: (string | null)[];
   readonly logoutBodies: unknown[];
+  readonly replacementIdToken: string;
   readonly sessionTokenBodies: URLSearchParams[];
   readonly tokenBodies: Readonly<Record<string, unknown>>[];
 } {
   const federatedSmartDeviceIds: string[] = [];
   const federationBodies: unknown[] = [];
+  const initialIdToken = jwtPayload({
+    sub: "bdd-switch-parental-controls-account-id",
+    preferred_username: "bdd-nintendo-parent",
+    email: "bdd-nintendo-parent@example.test",
+  });
+  const logoutAuthorizations: (string | null)[] = [];
   const logoutBodies: unknown[] = [];
+  const replacementIdToken = jwtPayload({
+    sub: "bdd-switch-parental-controls-replacement-account-id",
+    preferred_username: "bdd-nintendo-replacement-parent",
+    email: "bdd-nintendo-replacement-parent@example.test",
+  });
   const sessionTokenBodies: URLSearchParams[] = [];
   const tokenBodies: Readonly<Record<string, unknown>>[] = [];
   let logoutStatus = 204;
 
   server.use(
     http.post(NINTENDO_STORE_SESSION_TOKEN_URL, async ({ request }) => {
-      sessionTokenBodies.push(new URLSearchParams(await request.text()));
-      return HttpResponse.json({
-        session_token: "bdd-switch-parental-controls-session-token",
-      });
+      const body = new URLSearchParams(await request.text());
+      sessionTokenBodies.push(body);
+      const sessionTokenCode = body.get("session_token_code");
+      if (
+        sessionTokenCode ===
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE
+      ) {
+        return HttpResponse.json({
+          session_token:
+            NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+        });
+      }
+      if (
+        sessionTokenCode ===
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN_CODE
+      ) {
+        return HttpResponse.json({
+          session_token:
+            NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN,
+        });
+      }
+      throw new Error(
+        `Unexpected Nintendo Switch Parental Controls session token code: ${sessionTokenCode}`,
+      );
     }),
     http.post(NINTENDO_STORE_TOKEN_URL, async ({ request }) => {
       const body: unknown = await request.json();
@@ -177,14 +219,26 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
         );
       }
       tokenBodies.push(body);
+      const sessionToken = body["session_token"];
+      if (
+        sessionToken !==
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN &&
+        sessionToken !==
+          NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN
+      ) {
+        throw new Error(
+          "Expected a known Nintendo Switch Parental Controls session token",
+        );
+      }
+      const isReplacement =
+        sessionToken ===
+        NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN;
       return HttpResponse.json({
-        access_token: "bdd-switch-parental-controls-access-token",
+        access_token: isReplacement
+          ? "bdd-switch-parental-controls-replacement-access-token"
+          : "bdd-switch-parental-controls-access-token",
         expires_in: 3600,
-        id_token: jwtPayload({
-          sub: "bdd-switch-parental-controls-account-id",
-          preferred_username: "bdd-nintendo-parent",
-          email: "bdd-nintendo-parent@example.test",
-        }),
+        id_token: isReplacement ? replacementIdToken : initialIdToken,
         token_type: "Bearer",
         scope: NINTENDO_SWITCH_PARENTAL_CONTROLS_SCOPES.join(" "),
       });
@@ -225,6 +279,7 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
     http.post(
       NINTENDO_SWITCH_PARENTAL_CONTROLS_LOGOUT_URL,
       async ({ request }) => {
+        logoutAuthorizations.push(request.headers.get("authorization"));
         logoutBodies.push(await request.json());
         return logoutStatus === 204
           ? new HttpResponse(null, { status: 204 })
@@ -242,7 +297,10 @@ function mockNintendoSwitchParentalControlsExternalCodeProvider(): {
     failLogout: () => {
       logoutStatus = 503;
     },
+    initialIdToken,
+    logoutAuthorizations,
     logoutBodies,
+    replacementIdToken,
     sessionTokenBodies,
     tokenBodies,
   };
@@ -681,7 +739,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       {
         sessionId: session.sessionId,
         sessionToken: session.sessionToken,
-        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=bdd-switch-parental-controls-code&state=${state}`,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=${NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN_CODE}&state=${state}`,
       },
     );
 
@@ -692,7 +750,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(provider.tokenBodies).toStrictEqual([
       {
         client_id: NINTENDO_SWITCH_PARENTAL_CONTROLS_CLIENT_ID,
-        session_token: "bdd-switch-parental-controls-session-token",
+        session_token: NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer-session-token",
       },
     ]);
@@ -714,7 +772,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     expect(complete.connector.tokenExpiresAt).not.toBeNull();
     expectNoVisibleSecret(
       complete,
-      "bdd-switch-parental-controls-session-token",
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
     );
     expectNoVisibleSecret(
       complete,
@@ -786,7 +844,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       {
         sessionId: replacementSession.sessionId,
         sessionToken: replacementSession.sessionToken,
-        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=bdd-switch-parental-controls-replacement-code&state=${replacementState}`,
+        code: `${NINTENDO_SWITCH_PARENTAL_CONTROLS_REDIRECT_URI}#session_token_code=${NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN_CODE}&state=${replacementState}`,
       },
     );
     expect(provider.federatedSmartDeviceIds).toHaveLength(2);
@@ -802,7 +860,20 @@ describe("CONN-02: external-code session lifecycle", () => {
       actor,
       "nintendo-switch-parental-controls",
     );
-    expect(provider.tokenBodies).toHaveLength(4);
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body["session_token"];
+      }),
+    ).toStrictEqual([
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_INITIAL_SESSION_TOKEN,
+      NINTENDO_SWITCH_PARENTAL_CONTROLS_REPLACEMENT_SESSION_TOKEN,
+    ]);
+    expect(provider.logoutAuthorizations).toStrictEqual([
+      `Bearer ${provider.initialIdToken}`,
+      `Bearer ${provider.replacementIdToken}`,
+    ]);
     expect(provider.logoutBodies).toStrictEqual([
       { smartDeviceId: provider.federatedSmartDeviceIds[0] },
       { smartDeviceId: provider.federatedSmartDeviceIds[1] },

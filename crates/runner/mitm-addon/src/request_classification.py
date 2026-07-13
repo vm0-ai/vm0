@@ -20,6 +20,7 @@ from typing import Literal, Protocol
 from mitmproxy import http
 
 import connection_endpoints
+import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 import http_network_log
@@ -70,6 +71,7 @@ RequestClassificationKind = Literal[
     "authority_denied",
     "api_allow",
     "browser_allow",
+    "firewall_ambiguous",
     "firewall_block",
     "firewall_allow",
     "public_destination_denied",
@@ -111,6 +113,7 @@ class RequestClassification:
     - `invalid_registry_vm`: `invalid_vm`.
     - `authority_denied`: `vm_info` and `authority_error`.
     - `firewall_block`: `vm_info` and `firewall_block`.
+    - `firewall_ambiguous`: `vm_info` and `firewall_ambiguous`.
     - `firewall_allow`: `vm_info` and `firewall_allow`.
     - `public_destination_denied`: `vm_info` and
       `public_destination_denial`.
@@ -128,6 +131,7 @@ class RequestClassification:
     registry_unavailable: registry.RegistryUnavailable | None = None
     invalid_vm: registry.InvalidVmEntry | None = None
     authority_error: AuthorityValidationError | None = None
+    firewall_ambiguous: matching.FirewallAmbiguous | None = None
     firewall_block: matching.FirewallBlock | None = None
     firewall_allow: matching.FirewallAllow | None = None
     public_destination_denial: PublicDestinationDenial | None = None
@@ -302,7 +306,14 @@ def classify_request(
             flow.request.method,
             compiled_firewalls,
             compiled_network_policies,
+            connector_intent.from_flow(flow),
         )
+        if isinstance(result, matching.FirewallAmbiguous):
+            return RequestClassification(
+                kind="firewall_ambiguous",
+                vm_info=vm_info,
+                firewall_ambiguous=result,
+            )
         if isinstance(result, matching.FirewallBlock):
             return RequestClassification(
                 kind="firewall_block",
@@ -343,6 +354,7 @@ def classification_needs_request_timing(classification: RequestClassification) -
         "authority_denied",
         "api_allow",
         "browser_allow",
+        "firewall_ambiguous",
         "firewall_block",
         "firewall_allow",
         "public_destination_denied",

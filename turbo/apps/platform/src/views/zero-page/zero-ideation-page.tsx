@@ -7,10 +7,7 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { Card, CardContent, cn, Input } from "@vm0/ui";
-import {
-  ConnectorIcon,
-  isConnectorIconType,
-} from "./components/settings/connector-icons.tsx";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { connectorCatalogStatusByRef$ } from "../../signals/external/connectors.ts";
@@ -214,9 +211,14 @@ export function ZeroIdeationPage() {
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {category.cases.map((useCase) => {
-                          const connectorIconTypes =
-                            useCase.connectors?.filter(isConnectorIconType) ??
-                            [];
+                          const connectors =
+                            useCase.connectors?.flatMap((connectorRef) => {
+                              const connector =
+                                connectorStatusByRef?.get(connectorRef);
+                              return connector
+                                ? [{ connectorRef, icon: connector.icon }]
+                                : [];
+                            }) ?? [];
                           return (
                             <Card
                               key={useCase.title}
@@ -237,16 +239,16 @@ export function ZeroIdeationPage() {
                                 <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                                   {useCase.description}
                                 </p>
-                                {connectorIconTypes.length > 0 && (
+                                {connectors.length > 0 && (
                                   <div className="flex items-center gap-1.5 mt-2.5">
-                                    {connectorIconTypes.map((type) => {
+                                    {connectors.map((connector) => {
                                       return (
                                         <span
-                                          key={type}
+                                          key={connector.connectorRef}
                                           className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
                                         >
                                           <ConnectorIcon
-                                            type={type}
+                                            icon={connector.icon}
                                             size={14}
                                           />
                                         </span>

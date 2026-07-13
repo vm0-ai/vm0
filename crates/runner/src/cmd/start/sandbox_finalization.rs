@@ -67,6 +67,7 @@ fn mark_workspace_cache_snapshot_promoted(
         snapshot.upsert_workspace_cache_state(HeldSessionState {
             session_id: session_id.to_owned(),
             last_completed_at: completed_at.to_owned(),
+            reusable_sandbox: None,
         });
     }
     promoted

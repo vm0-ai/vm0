@@ -16,11 +16,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
+import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connectors";
 import type {
-  ConnectorAuthMethodId,
-  ConnectorDeviceAuthStartOptions,
-  ConnectorType,
-} from "@vm0/connectors/connectors";
+  ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
+  ConnectorCatalogRef as ConnectorType,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import type { FormEvent, ReactElement } from "react";
 import type { PublicConnectorCatalogStartOption } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
@@ -104,7 +104,7 @@ type SubmitManualGrantFn = (
 
 type ConnectOAuthAuthCodeAndSettleFn = (
   type: ConnectorType,
-  authMethod: ConnectorAuthMethodId,
+  method: ConnectorStatusAuthMethodDetail,
   onSuccess: () => void | Promise<void>,
   options: PostConnectOptions,
   signal: AbortSignal,
@@ -359,13 +359,13 @@ function getOAuthAuthCodeProgressContent({
 
 function OAuthAuthCodeConnectButton({
   item,
-  authMethod,
+  method,
   onSuccess,
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   signal,
 }: ConnectModalContentProps & {
-  authMethod: ConnectorAuthMethodId;
+  method: ConnectorStatusAuthMethodDetail;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
@@ -376,7 +376,7 @@ function OAuthAuthCodeConnectButton({
         return detach(
           connectOAuthAuthCodeAndSettle(
             item.type,
-            authMethod,
+            method,
             onSuccess,
             {
               showPermissionDialog: showPermissionDialogOnConnect,
@@ -398,7 +398,7 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthAuthCodeConnectButton
       item={props.item}
-      authMethod={props.authMethod}
+      method={props.method}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
@@ -1170,13 +1170,18 @@ function ConnectModalContent({
   };
   const connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn = async (
     type,
-    authMethod,
+    method,
     connectSuccess,
     options,
     signal,
   ) => {
     await connectOAuthAuthCodeAndSettleCommand(
-      { type, authMethod, onSuccess: connectSuccess, options },
+      {
+        type,
+        method,
+        onSuccess: connectSuccess,
+        options,
+      },
       signal,
     );
   };
@@ -1306,7 +1311,7 @@ export function ConnectModal({
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <ConnectorIcon type={selectedType} size={20} />
+              <ConnectorIcon icon={item.icon} size={20} />
             </div>
             <DialogTitle>{item.label}</DialogTitle>
           </div>

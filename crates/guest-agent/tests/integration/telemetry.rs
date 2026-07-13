@@ -2,6 +2,7 @@ use crate::support::*;
 use base64::Engine;
 use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
@@ -114,21 +115,22 @@ async fn flush_is_incremental_between_calls() {
     let files = ExplicitTelemetryFiles::new("flush-incremental").unwrap();
     let paths = &files.paths;
 
-    // Two mocks, registered in this order. httpmock matches by ID ascending
-    // and returns the first hit, so `first_op_mock` wins when the payload
-    // contains that substring; `catchup_mock` catches subsequent POSTs.
-    let first_op_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/telemetry")
-            .body_includes("first_op");
-        then.status(200);
-    });
-    let catchup_mock = server.mock(|when, then| {
+    // Capture every telemetry request so the assertions below can verify
+    // both the exact upload count and the content of each ordered delta.
+    let request_bodies = Arc::new(Mutex::new(Vec::new()));
+    let request_bodies_for_mock = Arc::clone(&request_bodies);
+    let upload_mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/telemetry");
-        then.status(200);
+        then.respond_with(move |request| {
+            request_bodies_for_mock
+                .lock()
+                .unwrap()
+                .push(request.body_vec());
+            http_status(200)
+        });
     });
 
-    let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
+    let masker = Arc::new(SecretMasker::from_raw(""));
     let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
         "test-run-001".to_string(),
         paths,
@@ -153,15 +155,40 @@ async fn flush_is_incremental_between_calls() {
 
     telemetry.shutdown().await;
 
-    // The first upload carried `first_op` and matched `first_op_mock`.
-    // The catch-up MUST NOT have carried `first_op` (position tracking
-    // advanced past it) — otherwise `first_op_mock` would have matched
-    // twice and `catchup_mock` zero times.
-    first_op_mock.assert_calls_async(1).await;
-    catchup_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(2).await;
 
-    first_op_mock.delete_async().await;
-    catchup_mock.delete_async().await;
+    // Each flush is awaited before the next operation is recorded, so the
+    // captured order is the live upload followed by the catch-up upload.
+    {
+        let request_bodies = request_bodies.lock().unwrap();
+        assert_eq!(request_bodies.len(), 2, "expected two captured uploads");
+
+        let first_payload: serde_json::Value = serde_json::from_slice(&request_bodies[0])
+            .expect("first telemetry request should contain valid JSON");
+        let first_operations = first_payload["sandboxOperations"]
+            .as_array()
+            .expect("first telemetry request should contain sandbox operations");
+        assert_eq!(
+            first_operations.len(),
+            1,
+            "first upload should contain exactly one sandbox operation"
+        );
+        assert_eq!(first_operations[0]["action_type"], "first_op");
+
+        let catchup_payload: serde_json::Value = serde_json::from_slice(&request_bodies[1])
+            .expect("catch-up telemetry request should contain valid JSON");
+        let catchup_operations = catchup_payload["sandboxOperations"]
+            .as_array()
+            .expect("catch-up telemetry request should contain sandbox operations");
+        assert_eq!(
+            catchup_operations.len(),
+            1,
+            "catch-up upload should contain exactly one sandbox operation"
+        );
+        assert_eq!(catchup_operations[0]["action_type"], "second_op");
+    }
+
+    upload_mock.delete_async().await;
     remove_telemetry_files(paths);
 }
 

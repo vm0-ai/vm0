@@ -146,7 +146,12 @@ describe("zero sidebar mac shortcuts", () => {
 
     composer.focus();
     expect(composer).toHaveFocus();
-    fireEvent.keyDown(composer, { key: "b", metaKey: true });
+    fireEvent.keyDown(composer, {
+      key: "b",
+      code: "KeyB",
+      keyCode: 66,
+      metaKey: true,
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();

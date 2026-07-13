@@ -4,6 +4,7 @@ import type {
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogDetail,
+  PublicConnectorCatalogIcon,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogListResponse,
   PublicConnectorCatalogManualField,
@@ -25,6 +26,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getAvailableConnectorAuthMethodIds,
+  getConfiguredConnectorAuthMethodIds,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
   getConnectorPrivateNames,
@@ -34,6 +36,7 @@ import {
   type ApiAuthMethodPolicy,
   type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-utils";
+import { getStaticConnectorIconMetadata } from "@vm0/connectors/static-connector-icons";
 import {
   getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
@@ -60,6 +63,12 @@ interface ConnectorCatalogConnectorReadArgs extends ConnectorCatalogReadArgs {
 
 function isConnectorType(connectorRef: string): connectorRef is ConnectorType {
   return Object.prototype.hasOwnProperty.call(CONNECTOR_TYPES, connectorRef);
+}
+
+export function getPublicConnectorCatalogIcon(
+  connectorRef: ConnectorType,
+): PublicConnectorCatalogIcon {
+  return getStaticConnectorIconMetadata(connectorRef);
 }
 
 function availableAuthMethodsForCatalog(
@@ -201,6 +210,7 @@ function connectorCatalogItem(
     connectorRef: type,
     label: config.label,
     description: config.helpText,
+    icon: getPublicConnectorCatalogIcon(type),
     category: config.category,
     generation: [...getConnectorGenerationTypes(type)],
     tags: [...getConnectorTags(type)],
@@ -416,6 +426,26 @@ export function getPublicConnectorCatalogDetail(
   );
 }
 
+/**
+ * Read catalog membership before user-specific availability filtering.
+ *
+ * Action resolution uses this view to distinguish an unknown catalog identity
+ * from a known connector or method that is unavailable to the current user.
+ */
+export function getConnectorCatalogResolutionDetail(
+  connectorRef: string,
+): Promise<PublicConnectorCatalogDetail | null> {
+  if (!isConnectorType(connectorRef)) {
+    return Promise.resolve(null);
+  }
+  return Promise.resolve(
+    connectorCatalogDetail(
+      connectorRef,
+      getConfiguredConnectorAuthMethodIds(connectorRef),
+    ),
+  );
+}
+
 export async function getPublicConnectorCatalogPermissionDetail(
   args: ConnectorCatalogConnectorReadArgs,
 ): Promise<PublicConnectorCatalogPermissionDetail | null> {
@@ -435,6 +465,7 @@ export async function getPublicConnectorCatalogPermissionDetail(
   return {
     connectorRef: args.connectorRef,
     label: metadata.label,
+    icon: getPublicConnectorCatalogIcon(args.connectorRef),
     permissionCount: metadata.permissionCount,
     permissions: metadata.permissions.map((permission) => {
       return {

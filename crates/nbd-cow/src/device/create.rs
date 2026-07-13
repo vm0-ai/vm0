@@ -16,7 +16,9 @@ use super::connection::{
     disconnect_connected_if_owned_result_with_lease_critical_section,
     disconnect_device_with_lease_critical_section,
 };
-use super::create_timing::{NbdCowCreateObserver, NbdCowCreateStage, NbdCowCreateTiming};
+use super::create_timing::{
+    NbdCowCreateObserver, NbdCowCreateStage, NbdCowCreateTiming, NbdNetlinkConnectTiming,
+};
 
 const MAX_SIZE_RETRIES: u32 = 5;
 const MAX_EBUSY_RETRIES: u32 = 16;
@@ -41,6 +43,11 @@ enum CreateDisconnectCleanupMode {
 enum CreateDisconnectStatus {
     Disconnected,
     Uncertain,
+}
+
+struct ConnectAttemptResult {
+    timing: NbdNetlinkConnectTiming,
+    result: std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError>,
 }
 
 impl CreateDisconnectStatus {
@@ -171,12 +178,17 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             };
 
             let connect_started_at = Instant::now();
-            let connect_result = self.connect_attempt(&mut attempt, client_fds).await;
+            let connect_attempt = self.connect_attempt(&mut attempt, client_fds).await;
+            // End the existing parent before merging child timing so its
+            // before/after boundary remains comparable.
             self.timing.record_stage(
                 NbdCowCreateStage::NetlinkConnect,
                 connect_started_at,
-                connect_result.is_ok(),
+                connect_attempt.result.is_ok(),
             );
+            self.timing
+                .record_netlink_connect_timing(connect_attempt.timing);
+            let connect_result = connect_attempt.result;
             match connect_result {
                 Ok(connected) => {
                     attempt.mark_connected(connected.connect_tid);
@@ -260,17 +272,20 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
         &mut self,
         attempt: &mut CreateAttemptGuard,
         client_fds: Vec<OwnedFd>,
-    ) -> std::result::Result<netlink::ConnectDeviceSuccess, netlink::ConnectDeviceError> {
+    ) -> ConnectAttemptResult {
         let device_index = attempt.device_index();
         let Some(lease) = attempt.take_lease() else {
-            return Err(netlink::ConnectDeviceError::NotSent {
-                source: error::NbdCowError::Io(std::io::Error::other(
-                    "pool lease missing during NBD connect",
-                )),
-            });
+            return ConnectAttemptResult {
+                timing: NbdNetlinkConnectTiming::default(),
+                result: Err(netlink::ConnectDeviceError::NotSent {
+                    source: error::NbdCowError::Io(std::io::Error::other(
+                        "pool lease missing during NBD connect",
+                    )),
+                }),
+            };
         };
 
-        match connect_device_with_state_critical_section(
+        let critical_section = connect_device_with_state_critical_section(
             device_index,
             client_fds,
             self.size,
@@ -278,8 +293,9 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
             self.device_pool.clone(),
             lease,
         )
-        .await
-        {
+        .await;
+        let (timing, critical_result) = critical_section.into_parts();
+        let result = match critical_result {
             Ok(outcome) => match outcome.into_parts() {
                 Ok((lease, result)) => {
                     attempt.restore_lease(lease);
@@ -288,7 +304,9 @@ impl<'a, 'observer> CreateContext<'a, 'observer> {
                 Err(e) => Err(e),
             },
             Err(e) => Err(e),
-        }
+        };
+
+        ConnectAttemptResult { timing, result }
     }
 }
 

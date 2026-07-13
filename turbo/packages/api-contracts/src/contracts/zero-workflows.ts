@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { authHeadersSchema, initContract } from "./base";
+import { connectorCatalogRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
+import { publicConnectorCatalogIconSchema } from "./zero-connector-catalog";
 
 const c = initContract();
 
@@ -554,6 +555,7 @@ export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
     scheduleSummary: z.null(),
     webhookUrl: z.url().optional(),
     secretLastFour: z.string().length(4),
+    disabledReason: z.literal("paid_plan_required").nullable().optional(),
     lastReceivedAt: z.string().datetime().nullable(),
     webhookSecret: z.string().min(1).optional(),
   });
@@ -695,6 +697,13 @@ export const chatThreadWorkflowNotionPageContentUpdatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowWebhookReceivedTriggerSchema =
+  zeroWorkflowWebhookReceivedTriggerSummarySchema.extend({
+    id: z.string().uuid(),
+    chatThreadId: z.string().min(1),
+    workflow: chatThreadWorkflowSchema,
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
@@ -707,6 +716,7 @@ export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowNotionChildPageCreatedTriggerSchema,
   chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema,
   chatThreadWorkflowNotionPageContentUpdatedTriggerSchema,
+  chatThreadWorkflowWebhookReceivedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -981,8 +991,9 @@ export type ZeroWorkflowConnectorReadinessStatus = z.infer<
 
 export const zeroWorkflowConnectorReadinessEntrySchema = z
   .object({
-    connectorRef: connectorTypeSchema,
+    connectorRef: connectorCatalogRefSchema,
     label: z.string().min(1),
+    icon: publicConnectorCatalogIconSchema,
     reason: z.string().min(1),
     status: zeroWorkflowConnectorReadinessStatusSchema,
   })
@@ -1238,6 +1249,7 @@ export const zeroWorkflowTriggersContract = c.router({
       201: zeroWorkflowTriggerSummarySchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
@@ -1295,7 +1307,9 @@ export const zeroWorkflowTriggersContract = c.router({
     body: c.noBody(),
     responses: {
       200: zeroWorkflowTriggerSummarySchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
+      402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,

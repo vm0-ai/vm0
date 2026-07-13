@@ -36,6 +36,7 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowTriggersContract,
+  type ChatThreadWorkflowTrigger,
   type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -754,129 +755,6 @@ function setScrollMetrics(
     scrollHeight: { configurable: true, value: metrics.scrollHeight },
     clientHeight: { configurable: true, value: metrics.clientHeight },
   });
-}
-
-function mockThinkingTypewriterLayout({
-  text,
-  labelWidth,
-  parentWidth,
-  graphemeWidth,
-  measureTextWidth = (value) => {
-    return Array.from(value).length * graphemeWidth;
-  },
-}: {
-  readonly text: string;
-  readonly labelWidth: number;
-  readonly parentWidth: number;
-  readonly graphemeWidth: number;
-  readonly measureTextWidth?: (value: string) => number;
-}): void {
-  const getContextDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLCanvasElement.prototype,
-    "getContext",
-  );
-  const getBoundingClientRectDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    "getBoundingClientRect",
-  );
-  const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
-    HTMLElement.prototype,
-    "clientWidth",
-  );
-
-  const rectForWidth = (width: number): DOMRect => {
-    return {
-      bottom: 20,
-      height: 20,
-      left: 0,
-      right: width,
-      toJSON: () => {
-        return {};
-      },
-      top: 0,
-      width,
-      x: 0,
-      y: 0,
-    } as DOMRect;
-  };
-  const elementWidth = (el: HTMLElement): number => {
-    if (el.getAttribute("aria-label") === text) {
-      return labelWidth;
-    }
-    if (
-      Array.from(el.children).some((child) => {
-        return child.getAttribute("aria-label") === text;
-      })
-    ) {
-      return parentWidth;
-    }
-    return 0;
-  };
-
-  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-    configurable: true,
-    value: (contextId: string) => {
-      if (contextId !== "2d") {
-        return null;
-      }
-      return {
-        measureText: (value: string) => {
-          return {
-            width: measureTextWidth(value),
-          } as TextMetrics;
-        },
-      } as CanvasRenderingContext2D;
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
-    configurable: true,
-    value(this: HTMLElement) {
-      return rectForWidth(elementWidth(this));
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-    configurable: true,
-    get(this: HTMLElement) {
-      return elementWidth(this);
-    },
-  });
-
-  context.signal.addEventListener(
-    "abort",
-    () => {
-      if (getContextDescriptor) {
-        Object.defineProperty(
-          HTMLCanvasElement.prototype,
-          "getContext",
-          getContextDescriptor,
-        );
-      }
-      if (!getContextDescriptor) {
-        Reflect.deleteProperty(HTMLCanvasElement.prototype, "getContext");
-      }
-      if (getBoundingClientRectDescriptor) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "getBoundingClientRect",
-          getBoundingClientRectDescriptor,
-        );
-      }
-      if (!getBoundingClientRectDescriptor) {
-        Reflect.deleteProperty(HTMLElement.prototype, "getBoundingClientRect");
-      }
-      if (clientWidthDescriptor) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "clientWidth",
-          clientWidthDescriptor,
-        );
-      }
-      if (!clientWidthDescriptor) {
-        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
-      }
-    },
-    { once: true },
-  );
 }
 
 function mockResizeObserver(): { triggerAll: () => void } {
@@ -3035,6 +2913,7 @@ describe("chat lifecycle", () => {
       return makeMessage(`burst-${index}`, `Burst ${index}`);
     });
     let page = 0;
+    let emptyForwardPageRequested = false;
 
     mockSubagentThread(context, threadId);
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -3053,8 +2932,12 @@ describe("chat lifecycle", () => {
       }
       const startIndex = page * 50;
       page += 1;
+      const messages = burstMessages.slice(startIndex, startIndex + 50);
+      if (messages.length === 0) {
+        emptyForwardPageRequested = true;
+      }
       return respond(200, {
-        messages: burstMessages.slice(startIndex, startIndex + 50),
+        messages,
       });
     });
     context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
@@ -3071,10 +2954,104 @@ describe("chat lifecycle", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("Burst 119")).toBeInTheDocument();
+      expect(emptyForwardPageRequested).toBeTruthy();
     });
   });
 
-  it("silently loads older chat history after rendering latest messages", async () => {
+  it("loads older pages after a delayed initial remote message page", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000730";
+    const messages = Array.from({ length: 60 }, (_, index) => {
+      const itemNumber = index + 1;
+      return {
+        id: `00000000-0000-4000-8000-${String(itemNumber).padStart(12, "0")}`,
+        role: "assistant" as const,
+        content: `Delayed history reply ${itemNumber}`,
+        createdAt: new Date(Date.UTC(2026, 5, 9, 10, index, 0)).toISOString(),
+      } satisfies PagedChatMessage;
+    });
+    const initialPageGate = context.mocks.deferred<void>();
+    let initialPageRequested = false;
+    const beforeIds: string[] = [];
+    const sinceIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Delayed history",
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        computerUseHostId: null,
+        codexServiceTier: null,
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      async ({ query, respond }) => {
+        if (query.beforeId) {
+          beforeIds.push(query.beforeId);
+          return respond(200, {
+            messages: messages.slice(0, 10),
+            hasHistoryBefore: false,
+          });
+        }
+        if (query.sinceId) {
+          sinceIds.push(query.sinceId);
+          return respond(200, { messages: [] });
+        }
+
+        initialPageRequested = true;
+        await initialPageGate.promise;
+        return respond(200, {
+          messages: messages.slice(10),
+          hasHistoryBefore: true,
+        });
+      },
+    );
+    context.mocks.api(chatThreadMarkReadContract.markRead, ({ respond }) => {
+      return respond(200, { lastReadAt: null, unreads: [] });
+    });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      await waitFor(() => {
+        expect(initialPageRequested).toBeTruthy();
+      });
+      expect(beforeIds).toStrictEqual([]);
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+
+      initialPageGate.resolve();
+      await waitFor(() => {
+        expect(beforeIds).toStrictEqual([messages[10]!.id]);
+      });
+    } finally {
+      if (!initialPageGate.settled()) {
+        initialPageGate.resolve();
+      }
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("Delayed history reply 1")).toBeInTheDocument();
+      expect(screen.getByText("Delayed history reply 60")).toBeInTheDocument();
+    });
+
+    const forwardRequestCount = sinceIds.length;
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription(
+          `chatThreadMessageCreated:${threadId}`,
+        ),
+      ).toBeTruthy();
+    });
+    context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`, {});
+    await waitFor(() => {
+      expect(sinceIds).toHaveLength(forwardRequestCount + 1);
+    });
+    expect(beforeIds).toStrictEqual([messages[10]!.id]);
+  });
+
+  it("automatically loads older chat history after rendering latest messages", async () => {
     const olderReply = "Earlier launch notes from last week.";
     const beforeHistoryGate = context.mocks.deferred<void>();
 
@@ -3521,6 +3498,41 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("moves the main chat when a page shortcut comes from the sidebar thread link", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/b0000000-0000-4000-a000-000000000708",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Previous keyboard thread")).toBeInTheDocument();
+      expect(screen.getByText("Next keyboard thread")).toBeInTheDocument();
+    });
+
+    const currentThreadLink = linkByText("Current keyboard thread");
+    currentThreadLink.focus();
+    expect(currentThreadLink).toHaveFocus();
+    expect(
+      fireEvent.keyDown(currentThreadLink, {
+        key: "ArrowUp",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    ).toBeFalsy();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Previous thread launch note"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("opens the current chat rename dialog with F2", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -3604,7 +3616,9 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Current keyboard thread",
+      );
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -4532,6 +4546,44 @@ describe("chat lifecycle", () => {
     expect(
       within(editDialog).queryByLabelText("Interval seconds"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows webhook automations in the sidebar without edit controls", async () => {
+    const trigger: ChatThreadWorkflowTrigger = {
+      id: "e0000001-0000-4000-a000-000000000006",
+      ownerUserId: "test-user-123",
+      enabled: true,
+      chatThreadId: AUTOMATION_THREAD_ID,
+      nextRunAt: null,
+      lastRunAt: null,
+      workflow: {
+        id: "a0000001-0000-4000-a000-000000000006",
+        agentId: AGENT_ID,
+        name: "webhook-sync",
+        displayName: "Webhook sync",
+        description: "Sync external webhook events",
+      },
+      kind: "event",
+      eventType: "webhook-received",
+      eventConfig: {
+        provider: "webhook",
+        event: "received",
+        auth: { mode: "hmac-sha256" },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      secretLastFour: "cafe",
+      disabledReason: null,
+      lastReceivedAt: null,
+    };
+
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(trigger);
+
+    expect(within(sidebar).getByText("Webhook sync")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Webhook automation")).toBeInTheDocument();
+    expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Run now")).toBeInTheDocument();
+    expect(within(sidebar).queryByText("Edit")).not.toBeInTheDocument();
   });
 
   it("updates a schedule workflow automation from the sidebar", async () => {
@@ -7422,53 +7474,21 @@ describe("initial thinking indicator", () => {
     threadGate.resolve();
   });
 
-  it("restarts on every follow-up line instead of sliding a short tail", async () => {
-    const threadId = "thread-initial-thinking-rollover";
-    const thinking = "ABCDEFG";
-    mockThinkingTypewriterLayout({
-      text: thinking,
-      labelWidth: 38,
-      parentWidth: 160,
-      graphemeWidth: 10,
-      measureTextWidth: (value) => {
-        return (
-          Array.from(value).filter((grapheme) => {
-            return grapheme !== ".";
-          }).length * 10
-        );
-      },
-    });
-    const displayedLabels = new Set<string>();
-    const labelObserver = new MutationObserver(() => {
-      const label = document.querySelector(`[aria-label="${thinking}"]`);
-      if (label?.textContent) {
-        displayedLabels.add(label.textContent);
-      }
-    });
-    labelObserver.observe(document.body, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-    });
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        labelObserver.disconnect();
-      },
-      { once: true },
-    );
+  it("renders the full thinking text without incremental animation", async () => {
+    const threadId = "thread-initial-thinking-full-text";
+    const thinking = "Reviewing the complete request";
     mockChatLifecycle(context, {
       threadId,
       chatMessages: [
         {
-          id: "msg-thinking-rollover-user",
+          id: "msg-thinking-full-text-user",
           role: "user",
           content: "Draft a launch checklist",
           runId: "run-active",
           createdAt: "2026-03-10T00:00:00Z",
         },
         {
-          id: "msg-thinking-rollover-marker",
+          id: "msg-thinking-full-text-marker",
           role: "assistant",
           content: null,
           thinking,
@@ -7485,22 +7505,7 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
-    const sawFollowUpLine = () => {
-      if (label.textContent) {
-        displayedLabels.add(label.textContent);
-      }
-      return Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      });
-    };
-    await waitFor(() => {
-      expect(sawFollowUpLine()).toBeTruthy();
-    });
-    await waitFor(() => {
-      expect(label).toHaveTextContent(/^G$/);
-    });
-    expect(displayedLabels.has("...EFG")).toBeFalsy();
-    expect(label).not.toHaveTextContent(thinking);
+    expect(label).toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });
 

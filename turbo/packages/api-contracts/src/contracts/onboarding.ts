@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { initContract, authHeadersSchema } from "./base";
+import { connectorCatalogRefSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
 
 const c = initContract();
 
@@ -55,7 +55,7 @@ export const onboardingSetupContract = c.router({
       workspaceName: z.string().optional(),
       sound: z.string().optional(),
       avatarUrl: z.string().optional(),
-      selectedConnectors: z.array(connectorTypeSchema).optional(),
+      selectedConnectors: z.array(connectorCatalogRefSchema).optional(),
       timezone: z.string().optional(),
       role: z.string().optional(),
     }),

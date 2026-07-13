@@ -111,6 +111,7 @@ enum DiscoveryWakeup {
 /// - **Complete**: `POST /api/webhooks/agent/complete` with per-job sandbox token
 pub struct ApiProvider {
     api: ApiClient,
+    runner_id: String,
     group: String,
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
@@ -133,17 +134,27 @@ pub struct BuiltinFirewallCatalogCachePaths {
     pub lock_path: PathBuf,
 }
 
+pub struct ApiProviderConfig {
+    pub runner_id: String,
+    pub group: String,
+    pub supported_profiles: Vec<String>,
+}
+
 impl ApiProvider {
     /// Create a new API-backed provider.
     pub fn new(
         http: HttpClient,
         token: String,
-        group: String,
-        supported_profiles: Vec<String>,
+        config: ApiProviderConfig,
         builtin_firewall_catalog_cache_paths: BuiltinFirewallCatalogCachePaths,
         cancel: CancellationToken,
         cancel_tokens: SharedRunCancellationMap,
     ) -> Arc<Self> {
+        let ApiProviderConfig {
+            runner_id,
+            group,
+            supported_profiles,
+        } = config;
         let api = ApiClient::new(http, token);
         let network_policy_refresh = NetworkPolicyRefreshHandle::new(api.clone());
         let builtin_firewall_catalog_refresh = BuiltinFirewallCatalogRefreshController::new(
@@ -160,6 +171,7 @@ impl ApiProvider {
 
         Arc::new(Self {
             api,
+            runner_id,
             group,
             supported_profiles,
             poll_wakeups,
@@ -313,7 +325,12 @@ impl JobProvider for ApiProvider {
                     }
                     return None;
                 }
-                result = self.api.poll(&self.group, &self.supported_profiles, reason) => result,
+                result = self.api.poll(
+                    &self.runner_id,
+                    &self.group,
+                    &self.supported_profiles,
+                    reason,
+                ) => result,
             };
 
             match poll_result {
@@ -591,11 +608,12 @@ impl ApiClient {
     /// Poll for a pending job. The response contains `job: None` when no work is available.
     async fn poll(
         &self,
+        runner_id: &str,
         group: &str,
         supported_profiles: &[String],
         reason: PollReason,
     ) -> RunnerResult<PollApiResult> {
-        let body = poll_request_body(group, supported_profiles, reason);
+        let body = poll_request_body(runner_id, group, supported_profiles, reason);
         let poll_started_at = Instant::now();
         let resp = send_api(
             self.http
@@ -631,11 +649,9 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
-    /// HTTP 409 (job row still present, already claimed) and HTTP 404 (job
-    /// row already dequeued by the winner) so callers can continue gracefully.
-    /// Both outcomes are normal contention signals when multiple runners race
-    /// for the same job.
+    /// Claim a job for execution. Treats the current HTTP 404 unavailable
+    /// response and the legacy HTTP 409 conflict response as
+    /// [`RunnerError::AlreadyClaimed`] so callers can continue gracefully.
     async fn claim(&self, candidate: &JobCandidate) -> RunnerResult<ExecutionContext> {
         let run_id = candidate.run_id();
         let body = claim_request_body(candidate);
@@ -838,11 +854,13 @@ fn claim_telemetry_duration_ms(duration: Duration) -> u64 {
 }
 
 fn poll_request_body(
+    runner_id: &str,
     group: &str,
     supported_profiles: &[String],
     reason: PollReason,
 ) -> serde_json::Value {
     serde_json::json!({
+        "runnerId": runner_id,
         "group": group,
         "supportedProfiles": supported_profiles,
         "telemetry": {
@@ -1354,6 +1372,7 @@ mod tests {
             network_policy_refresh: NetworkPolicyRefreshHandle::new(api.clone()),
             builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController::disabled(),
             api,
+            runner_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
             group: "default".to_string(),
             supported_profiles: vec![crate::profile::DEFAULT_PROFILE.to_string()],
             poll_wakeups,
@@ -1415,6 +1434,7 @@ mod tests {
             held_session_states: vec![crate::types::HeldSessionState {
                 session_id: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
+                reusable_sandbox: None,
             }],
             mode: "running".to_string(),
         }
@@ -1582,8 +1602,14 @@ mod tests {
     #[test]
     fn poll_request_body_serializes_poll_reason_telemetry() {
         let profiles = vec![crate::profile::DEFAULT_PROFILE.to_string()];
-        let body = poll_request_body("vm0/test", &profiles, PollReason::Immediate);
+        let body = poll_request_body(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "vm0/test",
+            &profiles,
+            PollReason::Immediate,
+        );
 
+        assert_eq!(body["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(body["group"], "vm0/test");
         assert_eq!(
             body["supportedProfiles"][0],
@@ -1985,6 +2011,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::runners::poll::POLL.path)
                     .json_body(serde_json::json!({
+                        "runnerId": "550e8400-e29b-41d4-a716-446655440000",
                         "group": "default",
                         "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
@@ -2053,6 +2080,7 @@ mod tests {
                 when.method(POST)
                     .path(routes::runners::poll::POLL.path)
                     .json_body(serde_json::json!({
+                        "runnerId": "550e8400-e29b-41d4-a716-446655440000",
                         "group": "default",
                         "supportedProfiles": [crate::profile::DEFAULT_PROFILE],
                         "telemetry": {
@@ -2225,7 +2253,12 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], PollReason::Immediate)
+            .poll(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "default",
+                &[],
+                PollReason::Immediate,
+            )
             .await
             .unwrap_err();
 
@@ -2250,7 +2283,12 @@ mod tests {
         let api = api_client_for_server(&server);
 
         let err = api
-            .poll("default", &[], PollReason::Immediate)
+            .poll(
+                "550e8400-e29b-41d4-a716-446655440000",
+                "default",
+                &[],
+                PollReason::Immediate,
+            )
             .await
             .unwrap_err();
 
@@ -2265,7 +2303,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_client_claim_conflict_or_not_found_is_already_claimed() {
+    async fn api_client_claim_not_found_or_legacy_conflict_is_already_claimed() {
         for status in [409_u16, 404] {
             let server = MockServer::start_async().await;
             let run_id = RunId::nil();
@@ -2500,6 +2538,7 @@ mod tests {
 
         let err = api
             .poll(
+                "550e8400-e29b-41d4-a716-446655440000",
                 "default",
                 &[crate::profile::DEFAULT_PROFILE.to_string()],
                 PollReason::Immediate,

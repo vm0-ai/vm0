@@ -52,9 +52,13 @@ scenario more than once and retain the raw results.
 
 ## Instrument React Commits
 
-The React DevTools global hook can observe commits without adding permanent
-profiling components to the application. Install the following script from the
-browser console after the page has loaded:
+The React DevTools global hook can count root commits without adding permanent
+profiling components to the application. Keep this instrumentation deliberately
+small: the hook is reliable for root commit boundaries, but a traversal of
+private Fiber fields is not a reliable component execution log.
+
+Install the following script from the browser console after the page has
+loaded:
 
 ```js
 (() => {
@@ -62,53 +66,12 @@ browser console after the page has loaded:
   if (!hook) throw new Error("React DevTools hook is unavailable");
   if (window.__vm0ReactCommitProfiler) return;
 
-  const starts = new WeakMap();
   const state = {
-    root: null,
     profile: null,
   };
   const originalOnCommitFiberRoot = hook.onCommitFiberRoot;
 
-  function componentName(fiber) {
-    const type = fiber.type;
-    if (typeof type === "string") return type;
-    if (typeof type === "function") {
-      return type.displayName || type.name || "Anonymous";
-    }
-    if (type && typeof type === "object") {
-      return (
-        type.displayName ||
-        type.render?.displayName ||
-        type.render?.name ||
-        type.type?.displayName ||
-        type.type?.name ||
-        null
-      );
-    }
-    return null;
-  }
-
-  function visit(rootFiber, callback) {
-    const stack = [rootFiber];
-    while (stack.length > 0) {
-      const fiber = stack.pop();
-      callback(fiber);
-      if (fiber.child) stack.push(fiber.child);
-      if (fiber.sibling) stack.push(fiber.sibling);
-    }
-  }
-
-  function rememberTree(rootFiber) {
-    visit(rootFiber, (fiber) => {
-      starts.set(fiber, fiber.actualStartTime);
-      if (fiber.alternate) {
-        starts.set(fiber.alternate, fiber.alternate.actualStartTime);
-      }
-    });
-  }
-
   hook.onCommitFiberRoot = function onCommitFiberRoot(id, root) {
-    state.root = root;
     const profile = state.profile;
 
     if (profile) {
@@ -117,104 +80,102 @@ browser console after the page has loaded:
       if (typeof duration === "number" && Number.isFinite(duration)) {
         profile.duration += duration;
       }
-
-      visit(root.current, (fiber) => {
-        const previousStart = starts.get(fiber);
-        const rendered =
-          previousStart === undefined ||
-          previousStart !== fiber.actualStartTime;
-
-        if (rendered) {
-          const name = componentName(fiber);
-          if (name) {
-            profile.components[name] = (profile.components[name] || 0) + 1;
-          }
-        }
-
-        starts.set(fiber, fiber.actualStartTime);
+      profile.timeline.push({
+        atMs: performance.now() - profile.startedAt,
+        duration,
       });
-    } else {
-      rememberTree(root.current);
     }
 
-    return originalOnCommitFiberRoot.apply(this, arguments);
+    return originalOnCommitFiberRoot?.apply(this, arguments);
   };
 
   window.__vm0ReactCommitProfiler = {
     start() {
-      if (!state.root) {
-        throw new Error("Trigger one warm-up commit before profiling");
-      }
-      rememberTree(state.root.current);
-      state.profile = { commits: 0, duration: 0, components: {} };
+      state.profile = {
+        startedAt: performance.now(),
+        commits: 0,
+        duration: 0,
+        timeline: [],
+      };
     },
     stop() {
       const result = state.profile;
       state.profile = null;
       return result;
     },
+    uninstall() {
+      hook.onCommitFiberRoot = originalOnCommitFiberRoot;
+      delete window.__vm0ReactCommitProfiler;
+    },
   };
 })();
 ```
 
-Trigger one harmless warm-up update, such as entering the prompt, and then
-start the measurement:
+Start immediately before the measured action:
 
 ```js
 window.__vm0ReactCommitProfiler.start();
 ```
 
-After the run finishes:
+After the run finishes, retain both the total and timeline:
 
 ```js
 const result = window.__vm0ReactCommitProfiler.stop();
-console.table(
-  Object.entries(result.components)
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 50),
-);
 result;
 ```
 
-The script is intended for local development diagnostics. Fiber fields are
-React internals and may change between React versions. Revalidate the profiler
-after a React upgrade.
+Call `uninstall()` after the investigation so a later console session does not
+stack another wrapper around the hook. `actualDuration` is a private React
+field and development-only relative metric; revalidate the script after a
+React upgrade.
 
-### Complement Commit Counts with a CPU Profile
+### Use React Performance Tracks for Attribution
 
-The repository includes scripts for analyzing component render samples and
-high-frequency function calls from a V8 CPU profile. Capture the same bounded
-interaction with `agent-browser`:
+Capture the same bounded interaction with `agent-browser`:
 
 ```bash
 agent-browser profiler start
 # Perform the measured interaction in the browser.
-agent-browser profiler stop tmp/chat-send.cpuprofile
-
-cd turbo
-node scripts/analyze-react-renders.mjs ../tmp/chat-send.cpuprofile --top 50
-node scripts/analyze-call-frequency.mjs ../tmp/chat-send.cpuprofile --top 50
+agent-browser profiler stop tmp/chat-send.trace.json
 ```
 
-Adjust the profile path when running the commands from a different directory.
-CPU profiles are sample-based: they are useful for finding expensive or
-frequently called functions, but they do not provide an exact React commit
-count. Use the DevTools hook for exact commits and the CPU profile to explain
-where the sampled time went.
+The resulting file is a Chrome trace containing React Performance tracks, not
+a raw V8 `.cpuprofile`. Load it in the Chrome Performance panel and inspect:
+
+- `Update` and `Cascading Update` events in `Scheduler ⚛` for the component
+  and hook that scheduled work;
+- component spans in `Components ⚛` for changed props, referentially unequal
+  closures, and deeply equal objects;
+- the span duration for the expensive subtree, while remembering that parent
+  and child durations are inclusive and must not be added together.
+
+The repository's `analyze-react-renders.mjs` and
+`analyze-call-frequency.mjs` scripts accept a raw V8 CPU profile. Do not pass
+the Chrome trace container to those scripts. Capture a raw CPU profile or
+extract its `Profile` and `ProfileChunk` events first when sampled JavaScript
+stacks are needed.
 
 ## Avoid Fiber Counting False Positives
 
-Two tempting approaches overcount component executions:
+Do not infer component executions by traversing every Fiber after a root
+commit. The following approaches all overcount in current React builds:
 
 - Counting every fiber with the `PerformedWork` flag. Flags can remain visible
   on reused or bailed-out subtrees after a commit.
 - Comparing `fiber.actualStartTime` directly with
   `fiber.alternate.actualStartTime`. React alternates between two fiber objects,
   so this can count historical work from the other buffer.
+- Keeping a `WeakMap` of each Fiber's previous `actualStartTime`. React can
+  retain or copy timing data while traversing an ancestor or bailed-out
+  subtree, so a changed value is still not proof that the component function
+  executed.
 
-Keep a `WeakMap` of the last observed `actualStartTime` for each fiber object
-across commits. Establish the baseline before starting the measurement. This
-distinguishes new executions from values retained on an alternate tree.
+In one chat sample, the `WeakMap` technique reported 76 sidebar executions.
+The React Performance track for the same trace showed no execution spans for
+`SidebarLayout`, `ZeroSidebar`, or `ChatThreadsContent`; the only visible
+sidebar update initiator was one `ChatThreadItem`. Use the root hook for exact
+commit boundaries and React Performance tracks or a deliberately placed React
+`Profiler` for component attribution.
 
 Also account for these sources of noise:
 
@@ -223,8 +184,8 @@ Also account for these sources of noise:
 - Hot module replacement invalidates the current sample.
 - Opening a popover, typing, scrolling, or changing focus adds unrelated work.
 - Development-mode `actualDuration` is useful for relative comparisons only.
-- A newly mounted component has no historical fiber value and should count as
-  work.
+- A newly mounted component legitimately appears as work and should be
+  separated from repeated updates.
 
 ## Divide the Page into Regions
 
@@ -486,6 +447,263 @@ The same optimized sample still executed `ChatThreadContent` and
 `ChatThreadComposer` 13 times. Those components consume real message, run, and
 composer primitives, so collection equality alone cannot eliminate their work.
 Continue by attributing each execution to a specific primitive transition.
+
+## Current Chat Send Attribution (2026-07-12)
+
+The initial sample below measured an existing chat thread in a local
+development build before removing the React-driven thinking typewriter. The
+prompt was entered before profiling, and the measurement began immediately
+before Send. The local run produced and fully revealed a thinking message but
+did not emit a final or terminal event, so it was cancelled after profiling.
+The results identify update sources; they are not a send-to-completion
+benchmark.
+
+Two immediately repeated sends with the same thread, model, and prompt provided
+complementary data:
+
+| Sample                                              | Result                                                      |
+| --------------------------------------------------- | ----------------------------------------------------------- |
+| Root commit counter, first five seconds             | 62 commits; the final measured commit was at 3.439 seconds  |
+| Root commit counter, first second                   | 20 commits                                                  |
+| Root commit counter, 1.0 through 3.439 seconds      | 42 commits; 45 adjacent intervals were between 20 and 45 ms |
+| React scheduler track, separate equivalent send     | 49 `Update` events and 7 `Cascading Update` events          |
+| Scheduler activity after thinking text was revealed | None before the run was manually cancelled                  |
+
+Scheduler events are update initiators, not commits. React may batch multiple
+initiators into one commit, schedule cascading work from a commit, or commit
+work without a separately labelled scheduler event. Do not add or compare the
+two totals directly.
+
+### Scheduler update sources
+
+The React scheduler track attributed the 56 labelled updates as follows:
+
+| Update initiator              | Count | Interpretation                                                     |
+| ----------------------------- | ----: | ------------------------------------------------------------------ |
+| `ThinkingIndicator`           |    39 | Typewriter frames written at a nominal 28 ms interval              |
+| `AgentListDialog`             |     5 | A closed dialog remained subscribed to changing thread-list data   |
+| `ChatThreadContent`           |     4 | Optimistic message, reconciliation, and remote message projections |
+| `ChatThreadComposer`          |     4 | Send/loading/run-state transitions                                 |
+| `WorkflowComposerPlaceholder` |     1 | Draft/composer transition during Send                              |
+| `ChatThreadHeader`            |     1 | Thread metadata transition                                         |
+| `AssistantBubbleAvatar`       |     1 | Assistant identity became available to the new response row        |
+| `ChatThreadItem`              |     1 | The visible sidebar row changed to its active-run indicator        |
+
+A pre-change ccstate watcher probe showed the same separation. During one sample,
+`displayedThinkingText$` notified its React watcher 42 times, while the main
+message and run projections such as `groupedChatMessages$`,
+`renderedGroupedChatMessages$`, `allFinished$`, `hasChatGroups$`, and
+`lastAssistantCancelled$` each notified watchers about five times. A watcher
+notification is only a computed reevaluation: primitive equality in
+`useLastResolved` can still prevent a React update when its semantic result did
+not change.
+
+### Work by page region
+
+The component track gives a more accurate region picture than Fiber traversal:
+
+| Region            | Observed component work                                                                                               |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Visible sidebar   | One direct `ChatThreadItem` update; no spans for `SidebarLayout`, `ZeroSidebar`, or `ChatThreadsContent`              |
+| Hidden sidebar UI | Five direct `AgentListDialog` updates while the dialog was closed                                                     |
+| Message list      | Four direct `ChatThreadContent` updates; `ChatThreadMessagesMain` and `ChatThreadMessageGroups` each executed 8 times |
+| Composer          | Four direct `ChatThreadComposer` updates; its main leaf slots executed 11 times                                       |
+| Thinking row      | 39 direct `ThinkingIndicator` updates; `WaitingForAssistantResponse` executed 46 times                                |
+
+The direct update component is the root of that scheduled work and may not have
+its own component span. Descendant span counts can therefore be higher than the
+direct update count.
+
+The message-list spans exposed unnecessary identity churn:
+
+- `PagedUserMessage` executed five times. Four executions only received a new,
+  deeply equal `message.blocks`; one was the real optimistic-to-persistent
+  reconciliation.
+- `PagedAssistantMessageItem` executed three times, and all three received new,
+  deeply equal `message.blocks`.
+- `UserMessageActions` executed 14 times with only a new `onCopy` closure.
+
+`createTranscriptMessagesComputed` currently maps the complete raw transcript
+whenever persistent or optimistic messages change. It calls
+`parseBodyRenderBlocks` and `enrichBlocksWithTextPreviews` for every message,
+creating new enriched messages and block arrays. `groupMessagesForDisplay` then
+creates new group and message arrays. The shallow `equalArrays` used by
+`ChatThreadContent` cannot suppress this update because the group objects are
+new even when every old message is semantically unchanged.
+
+The composer spans showed a different hot path:
+
+- `TiptapWorkflowComposer` executed 11 times and consumed about 3.8 ms of
+  inclusive development-mode span time. Ten executions only changed
+  `onDraftChange`, `onKeyDown`, and `onPaste` closure identities; one also
+  changed the semantic `sending` prop.
+- `ComposerModelPickerSlot` also executed 11 times. Its `modelPicker.value` was
+  repeatedly referentially unequal but deeply equal, and its callbacks were
+  recreated.
+- The closed model picker still rendered its select-content tree. The trace
+  contained 176 `SelectItem` executions, and the model-picker slot consumed
+  about 127 ms of inclusive development-mode span time. This was substantially
+  more work than Tiptap in the same sample.
+
+`thread.selectedModel$` already resolves to a primitive model identifier, but
+`useChatComposerModel` immediately wraps it in new `modelSelection` and
+`modelPicker` objects. `useZeroChatComposer` also recreates its event handlers
+and passes them through every composer leaf. This makes otherwise unrelated
+run and message transitions re-execute the closed picker and editor leaves.
+
+Finally, most of the pre-change commit count came from an intentional animation
+policy, not server event volume. `setThinkingIndicatorTextRef$` wrote a new
+`thinkingTypewriterFrame$` every `THINKING_TYPEWRITER_INTERVAL_MS` (28 ms), and
+`ThinkingIndicator` subscribed to the derived primitive
+`displayedThinkingText$`. Primitive equality correctly suppressed identical
+strings, but each typewriter frame was a different string. Each render also
+allocated new `blockStyle` and `serverThinkingLabel` objects, which propagated
+the frame through the waiting-row subtree.
+
+### Result after removing the thinking animations
+
+The typewriter state, 28 ms loop, canvas text measurement, DOM ref command, and
+React subscription were removed. A thinking marker now renders its full text in
+one update. The CSS shimmer, block-pop, and entrance animations were also
+removed so the indicator is fully static. Two repeated sends on the same stable
+thread produced the first two post-change rows below:
+
+| Sample                           | First-second commits | Five-second commits | Last measured commit |
+| -------------------------------- | -------------------: | ------------------: | -------------------: |
+| Without typewriter, first run    |                   11 |                  29 |              3.310 s |
+| Without typewriter, traced run   |                   11 |                  24 |              3.281 s |
+| Without any React thinking loops |                   22 |                  24 |              1.461 s |
+
+The matching pre-change sample had 62 commits in five seconds. The fixed 28 ms
+cadence disappeared completely. The remaining count still varies with remote
+event timing.
+
+The first implementation pass exposed one remaining periodic update at about
+3.3 seconds: `runPhraseLoop$` still rotated the fallback phrase and refreshed a
+done phrase every 3.5 seconds. That loop was also removed. Each thread now picks
+one stable fallback phrase, while the done phrase is derived from messages and
+subscribed only by the finished row. In the final trace, all React work ended by
+1.461 seconds and no timer-driven `ThinkingIndicator` update remained.
+
+The phrase "first-second commits" is only a time bucket, not a causal phase. In
+the traced run, all initial local work finished within 301 ms, followed by no
+labelled scheduler update until 1.194 seconds. In another run, a remote thinking
+event arrived at 0.91 seconds and was counted in the first-second bucket. Split
+profiles into an initial local burst and later remote events instead of treating
+one second as a stable boundary.
+
+The 11 commits in the initial local burst had ten labelled scheduler update
+initiators:
+
+| Update initiator              | Count | Immediate cause                                                      |
+| ----------------------------- | ----: | -------------------------------------------------------------------- |
+| `ChatThreadComposer`          |     3 | Send loadable, run state, and composer-derived lifecycle transitions |
+| `WorkflowComposerPlaceholder` |     1 | The submitted draft was cleared                                      |
+| `ThinkingIndicator`           |     1 | The optimistic user/run projection made the indicator visible        |
+| `ChatThreadHeader`            |     1 | A new `threadMeta$` object reached the header                        |
+| `AssistantBubbleAvatar`       |     1 | The newly mounted waiting row resolved its async `agentId$`          |
+| `MobileTopBar`                |     1 | A new `mobileBreadcrumb$` object reached the hidden mobile header    |
+| `ChatThreadItem`              |     1 | The current sidebar row gained its active-run state                  |
+| `AgentListDialog`             |     1 | The closed dialog observed changing thread-list data                 |
+
+One root commit had no separate scheduler label. Several labelled transitions
+are user-visible and valid, but their descendant work is still much broader
+than necessary:
+
+- The composer leaves executed five times in the first 500 ms.
+  `uploadsReady` changed `true -> false -> true`, while four of five Tiptap
+  executions changed only callback identities. The closed model picker also
+  executed five times, expanded 80 `SelectItem` executions, and occupied about
+  70 ms of inclusive component span time; Tiptap occupied about 1.8 ms.
+- `ChatThreadMessagesMain` and `ChatThreadMessageGroups` each executed three
+  times. Four old user rows and four old assistant rows received new, deeply
+  equal `blocks` arrays during the initial burst.
+- The visible sidebar container still did not execute. Its one row update was
+  semantic; the closed dialog and hidden mobile header were avoidable work.
+
+After the initial burst in the intermediate trace, there were four
+`ChatThreadContent` updates, one composer update, two closed-dialog updates, one
+sidebar-row update, one mobile-header update, and the periodic phrase-loop
+update that prompted the second cleanup.
+
+The final trace contained 20 labelled scheduler updates in total: six from the
+closed `AgentListDialog`, four from `ChatThreadContent`, three from
+`ChatThreadItem`, three from `ChatThreadComposer`, and one each from
+`WorkflowComposerPlaceholder`, the initial `ThinkingIndicator`,
+`AssistantBubbleAvatar`, and the hidden `MobileTopBar`. There were no
+per-character, phrase-rotation, or delayed done-phrase React updates.
+
+### Result after moving subscriptions to leaf components
+
+The next pass removed the object-level `threadMeta$` subscription from the
+header, made title fields and server settlement primitive async computed values,
+and changed `ChatThreadContent` into a subscription-free layout shell. The
+message pane now subscribes to the rendered group window and server settlement,
+while a dedicated thinking leaf subscribes to the complete group list. The
+composer is a sibling of that message pane, so message projection updates no
+longer execute the composer subtree through their parent.
+
+The attachment upload summary object was also replaced with an async readiness
+primitive. React observes only `useLoadableState(attachmentUploadsReady$)`.
+With no attachments the computed returns synchronously, so clearing an already
+empty draft does not create a false `loading -> hasData` transition.
+
+A real-browser trace of the same send shape showed the following component
+execution counts. The runs had different remote event timings and message
+history lengths, so the table is evidence about subtree isolation rather than
+a controlled comparison of total render cost:
+
+| Component or subtree       | Earlier final trace | Leaf-subscription trace |
+| -------------------------- | ------------------: | ----------------------: |
+| `TiptapWorkflowComposer`   |                  11 |                       4 |
+| `ComposerModelPickerSlot`  |                  11 |                       4 |
+| `ChatThreadMessagesMain`   |                   8 |                       3 |
+| `ChatThreadMessageGroups`  |                   8 |                       3 |
+| Closed-picker `SelectItem` |                 176 |                       0 |
+
+The closed picker reached zero items by mounting
+`ModelFirstModelPickerContent` only when a controlled picker is open. The
+trigger and its primitive model subscriptions remain mounted, so opening and
+changing the model retain their normal behavior. Uncontrolled picker callers
+keep the previous mounting behavior.
+
+The final five-second browser sample recorded 23 root commits and about 192 ms
+of cumulative development-mode `actualDuration`. All commits ended within
+1.631 seconds of the first send-triggered commit. Its 18 labelled scheduler
+initiators were:
+
+| Update initiator              | Count |
+| ----------------------------- | ----: |
+| Closed `AgentListDialog`      |     4 |
+| `ChatThreadMessagesPane`      |     3 |
+| `ChatThreadComposer`          |     3 |
+| `ChatThreadItem`              |     2 |
+| Hidden `MobileTopBar`         |     2 |
+| `ChatThreadThinkingIndicator` |     1 |
+| Initial `ThinkingIndicator`   |     1 |
+| `WorkflowComposerPlaceholder` |     1 |
+| `AssistantBubbleAvatar`       |     1 |
+
+`ChatThreadContent` and `ChatThreadHeader` were absent from the scheduler
+update sources. The three composer updates are direct subscriptions for the
+send and run lifecycle; message-list updates no longer cause additional
+composer executions. The message pane and thinking leaf still update when their
+different semantic projections change, which is expected.
+
+### Prioritized follow-up
+
+1. Preserve enriched message and block identity for unchanged raw message
+   objects. Use structural sharing at the transcript projection boundary
+   instead of a recursive deep-equality check in React.
+2. Stabilize the remaining composer callbacks only if a controlled trace shows
+   that their cost is material after the subscription split.
+3. Remove object-level subscriptions from `MobileTopBar` and other leaves that
+   render primitive fields. Split `AgentListDialog` into an always-mounted
+   open-state shell and a body that subscribes to thread-list data only while
+   the dialog is open.
+4. Repeat the measurement with a fixed mocked event sequence that reaches a
+   terminal state. Compare commits per event and retain separate counts for the
+   initial send transition, stream events, and settlement.
 
 ## Memory Leaks Are a Separate Investigation
 

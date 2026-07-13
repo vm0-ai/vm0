@@ -615,6 +615,7 @@ mod tests {
         run_ignored_child_test(
             "host_file::tests::ensure_dir_handles_restrictive_umask_child",
             (RESTRICTIVE_UMASK_CHILD_ENV, "1"),
+            &[],
             Duration::from_secs(60),
         )
         .await;

@@ -14,6 +14,8 @@ use crate::process;
 use crate::status_file::{self, StatusForDoctor};
 use chrono::{DateTime, Utc};
 use clap::Args;
+use futures_util::{StreamExt, stream};
+use reqwest::Client;
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -36,9 +38,15 @@ const RECHECK_DELAY: Duration = Duration::from_secs(3);
 
 /// Maximum number of recheck attempts before reporting persistent anomalies.
 ///
-/// Worst-case latency: `RECHECK_MAX_ATTEMPTS × RECHECK_DELAY` = 9 s (only
-/// when anomalies persist across all attempts; zero overhead when healthy).
+/// The explicit sleep budget is `RECHECK_MAX_ATTEMPTS × RECHECK_DELAY` = 9 s.
+/// Total latency also includes the bounded I/O performed during each recheck.
 const RECHECK_MAX_ATTEMPTS: u32 = 3;
+
+/// Maximum number of runner reports built or rechecked concurrently.
+const DOCTOR_IO_CONCURRENCY: usize = 4;
+
+/// Total timeout for each API connectivity probe.
+const API_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Grace period where a freshly claimed new-sandbox run may still be preparing
 /// and may not have a stable Firecracker process yet.
@@ -174,25 +182,21 @@ impl Warning {
     /// Process-related checks use the pre-scanned `fresh` data (a single
     /// `/proc` scan shared across all warnings). Other checks do their own
     /// minimal I/O (status.json read, HTTP HEAD, flock).
-    async fn persists(&self, fresh: &process::DiscoveredProcesses, runner_pids: &[u32]) -> bool {
+    async fn persists(
+        &self,
+        api_client: Option<&Client>,
+        fresh: &process::DiscoveredProcesses,
+        runner_pids: &[u32],
+    ) -> bool {
         match self {
             Self::ApiUnreachable {
                 server_url,
                 server_token,
             } => {
-                let client = match reqwest::Client::builder()
-                    .timeout(Duration::from_secs(5))
-                    .build()
-                {
-                    Ok(c) => c,
-                    Err(_) => return true,
+                let Some(client) = api_client else {
+                    return true;
                 };
-                client
-                    .head(server_url)
-                    .bearer_auth(server_token)
-                    .send()
-                    .await
-                    .is_err()
+                !probe_api(client, server_url, server_token).await
             }
             Self::NoMitmproxy { port, base_dir } => {
                 // Resolved if mitmproxy process now exists on this port.
@@ -403,7 +407,15 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
 
     // Phase 3: Build runner reports
     let live_runners = crate::live_runner_instances::try_list(&home).await?;
-    let reports = build_runner_reports(&live_runners, &discovered, &installed_services).await;
+    let api_client = build_api_client();
+    let mut reports = build_runner_reports(
+        &live_runners,
+        args.name.as_deref(),
+        api_client.as_ref(),
+        &discovered,
+        &installed_services,
+    )
+    .await;
 
     // Phase 4: Find stopped services (installed but no matching running process)
     // Skip when filtering by name — other runners' stopped services are irrelevant
@@ -432,7 +444,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
             .find(|r| r.name.as_deref() == args.name.as_deref())
             .and_then(|r| r.base_dir.clone());
         if let Some(base_dir) = named_base_dir {
-            let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
+            let runner_pids: Vec<u32> = live_runners.iter().map(|runner| runner.pid).collect();
             warnings.extend(
                 detect_orphan_firecrackers(&discovered.firecrackers, &runner_pids, Some(&base_dir))
                     .await,
@@ -440,16 +452,6 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         }
 
         warnings
-    };
-
-    // Filter reports by name after global detection (which needs full list)
-    let mut reports = if let Some(ref name_filter) = args.name {
-        reports
-            .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
-            .collect()
-    } else {
-        reports
     };
 
     // Phase 6: Targeted recheck of anomalies
@@ -468,7 +470,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         // Single /proc scan shared across all warning rechecks.
         let fresh = process::discover_all().await;
 
-        recheck_per_runner_warnings(&home, &fresh, &mut reports).await?;
+        recheck_per_runner_warnings(&home, api_client.as_ref(), &fresh, &mut reports).await?;
 
         let rechecks_orphan_process = global_warnings.iter().any(|warning| {
             matches!(
@@ -487,7 +489,10 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         };
         let mut rechecked_global = Vec::new();
         for warning in global_warnings.drain(..) {
-            if warning.persists(&fresh, &fresh_runner_pids).await {
+            if warning
+                .persists(api_client.as_ref(), &fresh, &fresh_runner_pids)
+                .await
+            {
                 rechecked_global.push(warning);
             }
         }
@@ -506,47 +511,72 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
 
 async fn recheck_per_runner_warnings(
     home: &HomePaths,
+    api_client: Option<&Client>,
     fresh: &process::DiscoveredProcesses,
     reports: &mut [RunnerReport],
 ) -> RunnerResult<()> {
-    for report in reports {
+    for report in reports.iter_mut() {
         if report.warnings.is_empty() {
             continue;
         }
         if !crate::live_runner_instances::is_current(home, &report.live_runner).await? {
             report.warnings.clear();
-            continue;
         }
+    }
 
+    recheck_current_runner_warnings(api_client, fresh, reports).await;
+    Ok(())
+}
+
+async fn recheck_current_runner_warnings(
+    api_client: Option<&Client>,
+    fresh: &process::DiscoveredProcesses,
+    reports: &mut [RunnerReport],
+) {
+    stream::iter(
+        reports
+            .iter_mut()
+            .filter(|report| !report.warnings.is_empty()),
+    )
+    .map(|report| async move {
         let mut rechecked = Vec::new();
         for warning in report.warnings.drain(..) {
-            if warning.persists(fresh, &[]).await {
+            if warning.persists(api_client, fresh, &[]).await {
                 rechecked.push(warning);
             }
         }
         report.warnings = rechecked;
-    }
-    Ok(())
+    })
+    .buffered(DOCTOR_IO_CONCURRENCY)
+    .for_each(|_| async {})
+    .await;
 }
 
 async fn build_runner_reports(
     live_runners: &[LiveRunnerInstance],
+    name_filter: Option<&str>,
+    api_client: Option<&Client>,
     discovered: &process::DiscoveredProcesses,
     installed: &[InstalledService],
 ) -> Vec<RunnerReport> {
-    let mut reports = Vec::new();
-    for runner in live_runners {
-        let report = build_runner_report(
+    stream::iter(
+        live_runners
+            .iter()
+            .filter(|runner| name_filter.is_none_or(|name| runner.runner_name == name)),
+    )
+    .map(|runner| {
+        build_runner_report(
             runner,
+            api_client,
             &discovered.firecrackers,
             &discovered.mitmdumps,
             &discovered.dnsmasqs,
             installed,
         )
-        .await;
-        reports.push(report);
-    }
-    reports
+    })
+    .buffered(DOCTOR_IO_CONCURRENCY)
+    .collect()
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +585,7 @@ async fn build_runner_reports(
 
 async fn build_runner_report(
     runner: &LiveRunnerInstance,
+    api_client: Option<&Client>,
     fc_procs: &[process::FirecrackerProcessInfo],
     mitm_procs: &[process::MitmproxyProcessInfo],
     dns_procs: &[process::DnsmasqProcessInfo],
@@ -574,7 +605,7 @@ async fn build_runner_report(
 
     // API connectivity check (only when server is configured)
     let api_ok = match &config {
-        Some(cfg) => check_api(cfg).await,
+        Some(cfg) => check_api(api_client, cfg).await,
         None => None,
     };
     if api_ok == Some(false)
@@ -849,24 +880,26 @@ fn is_test_tld(url: &str) -> bool {
 
 /// Returns `None` if no server configured or URL uses `.test` TLD (RFC 2606),
 /// `Some(true)` if reachable, `Some(false)` if unreachable.
-async fn check_api(config: &RunnerConfig) -> Option<bool> {
+async fn check_api(client: Option<&Client>, config: &RunnerConfig) -> Option<bool> {
     let server = config.server.as_ref()?;
     // Skip connectivity check for .test domains (reserved per RFC 2606, used in CI)
     if is_test_tld(&server.url) {
         return None;
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .ok()?;
-    Some(
-        client
-            .head(&server.url)
-            .bearer_auth(&server.token)
-            .send()
-            .await
-            .is_ok(),
-    )
+    Some(probe_api(client?, &server.url, &server.token).await)
+}
+
+fn build_api_client() -> Option<Client> {
+    Client::builder().timeout(API_CHECK_TIMEOUT).build().ok()
+}
+
+async fn probe_api(client: &Client, server_url: &str, server_token: &str) -> bool {
+    client
+        .head(server_url)
+        .bearer_auth(server_token)
+        .send()
+        .await
+        .is_ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -1809,7 +1842,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(&empty_fresh(), &[]).await,
+            !warning.persists(None, &empty_fresh(), &[]).await,
             "warning about R1 must clear after R1 leaves active_runs even though S1 is reused"
         );
     }
@@ -1837,7 +1870,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         // R1 is still active and there's no FC in fresh. Warning persists.
-        assert!(warning.persists(&empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1870,7 +1903,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(&empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1904,7 +1937,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(&empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1938,7 +1971,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(&empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -1970,7 +2003,7 @@ mod tests {
         };
         assert!(
             !warning
-                .persists(&fresh_with_firecracker(123, "S1", &base_dir), &[])
+                .persists(None, &fresh_with_firecracker(123, "S1", &base_dir), &[])
                 .await
         );
     }
@@ -2002,7 +2035,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(&empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -2027,7 +2060,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(&empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -2059,7 +2092,7 @@ mod tests {
             base_dir: base_dir.clone(),
         };
         assert!(
-            !warning.persists(&empty_fresh(), &[]).await,
+            !warning.persists(None, &empty_fresh(), &[]).await,
             "warning must clear once the sandbox is tracked as idle"
         );
     }
@@ -2087,7 +2120,7 @@ mod tests {
             sandbox_id: "S1".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(!warning.persists(&empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -2111,7 +2144,7 @@ mod tests {
             sandbox_id: "S-ghost".into(),
             base_dir: base_dir.clone(),
         };
-        assert!(warning.persists(&empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -2124,7 +2157,7 @@ mod tests {
             sandbox_id: "S-anything".into(),
             base_dir,
         };
-        assert!(!warning.persists(&empty_fresh(), &[]).await);
+        assert!(!warning.persists(None, &empty_fresh(), &[]).await);
     }
 
     #[tokio::test]
@@ -2150,10 +2183,10 @@ mod tests {
             ppid: Some(std::process::id()),
         };
 
-        assert!(warning.persists(&empty_fresh(), &[]).await);
+        assert!(warning.persists(None, &empty_fresh(), &[]).await);
         assert!(
             !warning
-                .persists(&empty_fresh(), &[std::process::id()])
+                .persists(None, &empty_fresh(), &[std::process::id()])
                 .await
         );
     }
@@ -2215,33 +2248,6 @@ mod tests {
             jobs: vec![],
             warnings: vec![],
         }
-    }
-
-    #[test]
-    fn filter_by_name_keeps_matching() {
-        let reports = vec![
-            make_report(Some("pr-100-1")),
-            make_report(Some("pr-200-1")),
-            make_report(None),
-        ];
-        let name_filter = "pr-100-1";
-        let filtered: Vec<_> = reports
-            .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter))
-            .collect();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].name.as_deref(), Some("pr-100-1"));
-    }
-
-    #[test]
-    fn filter_by_name_no_match_returns_empty() {
-        let reports = vec![make_report(Some("pr-100-1")), make_report(None)];
-        let name_filter = "nonexistent";
-        let filtered: Vec<_> = reports
-            .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter))
-            .collect();
-        assert!(filtered.is_empty());
     }
 
     #[test]
@@ -2356,13 +2362,23 @@ mod tests {
         proxy_port: Option<u16>,
         dns_port: Option<u16>,
     ) -> DoctorReportFixture {
+        doctor_report_fixture_for_runner("test-runner", mode, proxy_port, dns_port, None)
+    }
+
+    fn doctor_report_fixture_for_runner(
+        runner_name: &str,
+        mode: &str,
+        proxy_port: Option<u16>,
+        dns_port: Option<u16>,
+        server: Option<(&str, &str)>,
+    ) -> DoctorReportFixture {
         let dir = tempfile::tempdir().unwrap();
         let base_dir = dir.path().join("runner");
         std::fs::create_dir_all(&base_dir).unwrap();
 
         let config_path = dir.path().join("runner.yaml");
-        let config = serde_json::json!({
-            "name": "test-runner",
+        let mut config = serde_json::json!({
+            "name": runner_name,
             "group": "vm0/test",
             "base_dir": base_dir.display().to_string(),
             "ca_dir": dir.path().join("ca").display().to_string(),
@@ -2381,6 +2397,12 @@ mod tests {
                 },
             },
         });
+        if let Some((url, token)) = server {
+            config["server"] = serde_json::json!({
+                "url": url,
+                "token": token,
+            });
+        }
         std::fs::write(&config_path, serde_yaml_ng::to_string(&config).unwrap()).unwrap();
 
         let status = serde_json::json!({
@@ -2404,12 +2426,21 @@ mod tests {
         config_path: PathBuf,
         base_dir: PathBuf,
     ) -> LiveRunnerInstance {
+        live_runner_instance_named(pid, config_path, base_dir, "test-runner")
+    }
+
+    fn live_runner_instance_named(
+        pid: u32,
+        config_path: PathBuf,
+        base_dir: PathBuf,
+        runner_name: &str,
+    ) -> LiveRunnerInstance {
         LiveRunnerInstance {
             pid,
             starttime: 0,
             config_path,
             base_dir,
-            runner_name: "test-runner".into(),
+            runner_name: runner_name.into(),
             runner_group: "vm0/test".into(),
             subcommand: "start".into(),
             started_at: "2026-01-01T00:00:00.000Z".into(),
@@ -2429,7 +2460,7 @@ mod tests {
             fixture.config_path.clone(),
             fixture.base_dir.clone(),
         );
-        let report = build_runner_report(&runner, &[], &mitm_procs, &dns_procs, &[]).await;
+        let report = build_runner_report(&runner, None, &[], &mitm_procs, &dns_procs, &[]).await;
         assert!(report.base_dir.is_some(), "test config should load");
         assert!(report.status.is_some(), "test status should load");
         report
@@ -2500,7 +2531,7 @@ mod tests {
             }],
         }];
 
-        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports)
+        recheck_per_runner_warnings(&home, None, &empty_discovered(), &mut reports)
             .await
             .unwrap();
 
@@ -2560,7 +2591,7 @@ mod tests {
             }],
         }];
 
-        recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports)
+        recheck_per_runner_warnings(&home, None, &empty_discovered(), &mut reports)
             .await
             .unwrap();
 
@@ -2616,7 +2647,8 @@ mod tests {
         }];
 
         let error =
-            match recheck_per_runner_warnings(&home, &empty_discovered(), &mut reports).await {
+            match recheck_per_runner_warnings(&home, None, &empty_discovered(), &mut reports).await
+            {
                 Ok(_) => panic!("expected invalid live registry entry to fail"),
                 Err(error) => error,
             };
@@ -2649,7 +2681,7 @@ mod tests {
             base_dir.clone(),
         );
 
-        let report = build_runner_report(&runner, &[], &[], &[], &[]).await;
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
 
         assert_eq!(report.name.as_deref(), Some("test-runner"));
         assert_eq!(report.base_dir.as_deref(), Some(base_dir.as_path()));
@@ -2670,7 +2702,7 @@ mod tests {
         );
         runner.subcommand = "benchmark".into();
 
-        let report = build_runner_report(&runner, &[], &[], &[], &[]).await;
+        let report = build_runner_report(&runner, None, &[], &[], &[], &[]).await;
 
         assert_eq!(report.subcommand, "benchmark");
     }
@@ -2716,10 +2748,251 @@ mod tests {
         .unwrap();
         let discovered = empty_discovered();
 
-        let reports = build_runner_reports(&[], &discovered, &[]).await;
+        let reports = build_runner_reports(&[], None, None, &discovered, &[]).await;
 
         assert!(reports.is_empty());
         api.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn build_runner_reports_overlaps_api_checks_and_preserves_order() {
+        let server = MockServer::start_async().await;
+        let slow = server
+            .mock_async(|when, then| {
+                when.method("HEAD")
+                    .path("/slow")
+                    .header("authorization", "Bearer token-slow");
+                then.status(503).delay(Duration::from_millis(1200));
+            })
+            .await;
+        let fast_a = server
+            .mock_async(|when, then| {
+                when.method("HEAD")
+                    .path("/fast-a")
+                    .header("authorization", "Bearer token-a");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+        let fast_b = server
+            .mock_async(|when, then| {
+                when.method("HEAD")
+                    .path("/fast-b")
+                    .header("authorization", "Bearer token-b");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+        let fast_c = server
+            .mock_async(|when, then| {
+                when.method("HEAD")
+                    .path("/fast-c")
+                    .header("authorization", "Bearer token-c");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+
+        let slow_url = server.url("/slow");
+        let fast_a_url = server.url("/fast-a");
+        let fast_b_url = server.url("/fast-b");
+        let fast_c_url = server.url("/fast-c");
+        let slow_fixture = doctor_report_fixture_for_runner(
+            "runner-a",
+            "running",
+            None,
+            None,
+            Some((&slow_url, "token-slow")),
+        );
+        let fast_a_fixture = doctor_report_fixture_for_runner(
+            "runner-b",
+            "running",
+            None,
+            None,
+            Some((&fast_a_url, "token-a")),
+        );
+        let fast_b_fixture = doctor_report_fixture_for_runner(
+            "runner-c",
+            "running",
+            None,
+            None,
+            Some((&fast_b_url, "token-b")),
+        );
+        let fast_c_fixture = doctor_report_fixture_for_runner(
+            "runner-d",
+            "running",
+            None,
+            None,
+            Some((&fast_c_url, "token-c")),
+        );
+        let runners = vec![
+            live_runner_instance_named(
+                u32::MAX - 3,
+                slow_fixture.config_path.clone(),
+                slow_fixture.base_dir.clone(),
+                "runner-a",
+            ),
+            live_runner_instance_named(
+                u32::MAX - 2,
+                fast_a_fixture.config_path.clone(),
+                fast_a_fixture.base_dir.clone(),
+                "runner-b",
+            ),
+            live_runner_instance_named(
+                u32::MAX - 1,
+                fast_b_fixture.config_path.clone(),
+                fast_b_fixture.base_dir.clone(),
+                "runner-c",
+            ),
+            live_runner_instance_named(
+                u32::MAX,
+                fast_c_fixture.config_path.clone(),
+                fast_c_fixture.base_dir.clone(),
+                "runner-d",
+            ),
+        ];
+        let client = build_api_client();
+
+        let reports = tokio::time::timeout(
+            Duration::from_secs(3),
+            build_runner_reports(&runners, None, client.as_ref(), &empty_discovered(), &[]),
+        )
+        .await
+        .expect("four delayed API checks should complete in one concurrent batch");
+
+        assert_eq!(
+            reports
+                .iter()
+                .map(|report| report.name.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["runner-a", "runner-b", "runner-c", "runner-d"]
+        );
+        assert!(reports.iter().all(|report| report.api_ok == Some(true)));
+        slow.assert_calls_async(1).await;
+        fast_a.assert_calls_async(1).await;
+        fast_b.assert_calls_async(1).await;
+        fast_c.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn build_runner_reports_filters_non_target_before_api_check() {
+        let server = MockServer::start_async().await;
+        let target_api = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/target");
+                then.status(200);
+            })
+            .await;
+        let other_api = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/other");
+                then.status(200);
+            })
+            .await;
+        let target_url = server.url("/target");
+        let other_url = server.url("/other");
+        let target_fixture = doctor_report_fixture_for_runner(
+            "target-runner",
+            "running",
+            None,
+            None,
+            Some((&target_url, "target-token")),
+        );
+        let other_fixture = doctor_report_fixture_for_runner(
+            "other-runner",
+            "running",
+            None,
+            None,
+            Some((&other_url, "other-token")),
+        );
+        let runners = vec![
+            live_runner_instance_named(
+                u32::MAX - 1,
+                other_fixture.config_path.clone(),
+                other_fixture.base_dir.clone(),
+                "other-runner",
+            ),
+            live_runner_instance_named(
+                u32::MAX,
+                target_fixture.config_path.clone(),
+                target_fixture.base_dir.clone(),
+                "target-runner",
+            ),
+        ];
+        let client = build_api_client();
+
+        let reports = build_runner_reports(
+            &runners,
+            Some("target-runner"),
+            client.as_ref(),
+            &empty_discovered(),
+            &[],
+        )
+        .await;
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].name.as_deref(), Some("target-runner"));
+        target_api.assert_calls_async(1).await;
+        other_api.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn recheck_current_runner_warnings_overlaps_api_checks_and_preserves_order() {
+        let server = MockServer::start_async().await;
+        let api_a = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/a");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+        let api_b = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/b");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+        let api_c = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/c");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+        let api_d = server
+            .mock_async(|when, then| {
+                when.method("HEAD").path("/d");
+                then.status(200).delay(Duration::from_secs(1));
+            })
+            .await;
+        let mut reports = [
+            make_report(Some("runner-a")),
+            make_report(Some("runner-b")),
+            make_report(Some("runner-c")),
+            make_report(Some("runner-d")),
+        ];
+        for (report, path) in reports.iter_mut().zip(["/a", "/b", "/c", "/d"]) {
+            report.warnings.push(Warning::ApiUnreachable {
+                server_url: server.url(path),
+                server_token: format!("token-{path}"),
+            });
+        }
+        let client = build_api_client();
+
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            recheck_current_runner_warnings(client.as_ref(), &empty_discovered(), &mut reports),
+        )
+        .await
+        .expect("four delayed API rechecks should complete in one concurrent batch");
+
+        assert_eq!(
+            reports
+                .iter()
+                .map(|report| report.name.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["runner-a", "runner-b", "runner-c", "runner-d"]
+        );
+        assert!(reports.iter().all(|report| report.warnings.is_empty()));
+        api_a.assert_calls_async(1).await;
+        api_b.assert_calls_async(1).await;
+        api_c.assert_calls_async(1).await;
+        api_d.assert_calls_async(1).await;
     }
 
     #[tokio::test]

@@ -14,7 +14,7 @@ use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::status::IdleVm;
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::HeldSessionState;
+use crate::types::{HeldSessionState, ReusableSandboxState};
 use crate::workspace_image_cache::{
     SessionWorkspaceCache, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest,
@@ -460,6 +460,16 @@ pub struct IdleEntry {
     idle_timeout: Duration,
 }
 
+#[must_use = "reserved idle sandboxes must be activated, restored, or destroyed"]
+pub struct ReservedIdleSandbox {
+    entry: IdleEntry,
+}
+
+pub enum RestoreReservedIdleResult {
+    Restored,
+    Rejected(Box<IdleDestroyJob>),
+}
+
 /// Idle pool status snapshot paired with a monotonic mutation revision.
 ///
 /// Status writes happen after dropping the pool lock, so an older snapshot can
@@ -549,6 +559,12 @@ pub(crate) struct IdleDestroyResult {
     pub(crate) workspace_cache_promoted: bool,
 }
 
+pub(crate) struct RetainedIdleDestroyResult {
+    pub(crate) outcome: DestroyOutcome,
+    pub(crate) workspace_cache_promoted: bool,
+    pub(crate) budget_lease: BudgetLease,
+}
+
 impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
     #[cfg(test)]
@@ -629,6 +645,15 @@ impl IdleDestroyJob {
     }
 
     pub async fn run_with_context(self, context: &'static str) -> bool {
+        let result = self.run_retaining_lease(context).await;
+        drop(result.budget_lease);
+        result.workspace_cache_promoted
+    }
+
+    pub(crate) async fn run_retaining_lease(
+        self,
+        context: &'static str,
+    ) -> RetainedIdleDestroyResult {
         let Self {
             payload,
             budget_lease,
@@ -636,8 +661,11 @@ impl IdleDestroyJob {
             profile_name: _,
         } = self;
         let result = payload.promote_then_stop_and_destroy(context).await;
-        drop(budget_lease);
-        result.workspace_cache_promoted
+        RetainedIdleDestroyResult {
+            outcome: result.outcome,
+            workspace_cache_promoted: result.workspace_cache_promoted,
+            budget_lease,
+        }
     }
 
     pub fn cli_agent_session_id(&self) -> &str {
@@ -689,6 +717,10 @@ pub enum IdleUnparkResult {
 }
 
 impl IdleEntry {
+    fn cli_agent_session_id(&self) -> &str {
+        self.metadata.cli_agent_session_id()
+    }
+
     pub fn profile_name(&self) -> &str {
         &self.metadata.profile_name
     }
@@ -823,6 +855,35 @@ impl IdleEntry {
     }
 }
 
+impl ReservedIdleSandbox {
+    pub fn cli_agent_session_id(&self) -> &str {
+        self.entry.cli_agent_session_id()
+    }
+
+    pub fn validate_workspace_promotion_identity(
+        &self,
+        cache: &SessionWorkspaceCache,
+        working_dir: &str,
+        image_size_bytes: u64,
+    ) -> Result<(), WorkspaceImagePromotionIdentityMismatch> {
+        self.entry
+            .validate_workspace_promotion_identity(cache, working_dir, image_size_bytes)
+    }
+
+    pub async fn try_unpark(self) -> IdleUnparkResult {
+        self.entry.try_unpark().await
+    }
+
+    pub fn into_destroy_job(self) -> IdleDestroyJob {
+        self.entry.into_destroy_job()
+    }
+
+    pub fn into_destroy_job_without_workspace_promotion_for_mismatch(self) -> IdleDestroyJob {
+        self.entry
+            .into_destroy_job_without_workspace_promotion_for_mismatch()
+    }
+}
+
 /// Pool of idle sandboxes keyed by session ID.
 ///
 /// After a job completes successfully, its sandbox can be parked here
@@ -901,6 +962,53 @@ impl IdlePool {
             self.bump_revision();
         }
         entry
+    }
+
+    pub fn has_reusable(
+        &self,
+        session_id: &str,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+    ) -> bool {
+        self.entries.get(session_id).is_some_and(|entry| {
+            !entry.is_expired_at(Instant::now())
+                && entry.profile_name() == profile_name
+                && entry.device_rate_limits() == device_rate_limits
+        })
+    }
+
+    pub fn reserve_reusable(
+        &mut self,
+        session_id: &str,
+        profile_name: &str,
+        device_rate_limits: &Option<DeviceRateLimits>,
+    ) -> Option<ReservedIdleSandbox> {
+        if !self.has_reusable(session_id, profile_name, device_rate_limits) {
+            return None;
+        }
+        let entry = self.entries.remove(session_id)?;
+        self.bump_revision();
+        Some(ReservedIdleSandbox { entry })
+    }
+
+    pub fn restore_reserved(
+        &mut self,
+        reservation: ReservedIdleSandbox,
+    ) -> RestoreReservedIdleResult {
+        let entry = reservation.entry;
+        let session_id = entry.cli_agent_session_id().to_owned();
+        let has_capacity = self.config.max_idle == 0 || self.entries.len() < self.config.max_idle;
+        if !self.parking_gate.is_open()
+            || entry.is_expired_at(Instant::now())
+            || !has_capacity
+            || self.entries.contains_key(&session_id)
+        {
+            return RestoreReservedIdleResult::Rejected(Box::new(entry.into_destroy_job()));
+        }
+
+        self.entries.insert(session_id, entry);
+        self.bump_revision();
+        RestoreReservedIdleResult::Restored
     }
 
     /// Remove and return all entries that have exceeded their idle timeout.
@@ -991,6 +1099,9 @@ impl IdlePool {
                     .map(|last_completed_at| HeldSessionState {
                         session_id: session_id.clone(),
                         last_completed_at: last_completed_at.clone(),
+                        reusable_sandbox: Some(ReusableSandboxState {
+                            profile: entry.metadata.profile_name.clone(),
+                        }),
                     })
             })
             .collect();
@@ -1326,6 +1437,85 @@ mod tests {
     }
 
     #[test]
+    fn reusable_reservation_is_exclusive_and_restorable() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let candidate = make_candidate_for("session-reserved", 2, 2048);
+        let sandbox_id = candidate.sandbox_id();
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let parked_revision = pool.status_snapshot().revision;
+
+        assert!(
+            pool.reserve_reusable("session-reserved", "vm0/large", &None)
+                .is_none(),
+            "profile mismatch must not reserve the idle entry"
+        );
+        let reservation = pool
+            .reserve_reusable("session-reserved", "vm0/default", &None)
+            .expect("matching idle entry should be reserved");
+        assert_eq!(pool.len(), 0);
+        assert_eq!(pool.status_snapshot().revision, parked_revision + 1);
+        assert!(
+            pool.reserve_reusable("session-reserved", "vm0/default", &None)
+                .is_none(),
+            "a removed reservation cannot be acquired twice"
+        );
+
+        assert!(matches!(
+            pool.restore_reserved(reservation),
+            RestoreReservedIdleResult::Restored
+        ));
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.status_snapshot().revision, parked_revision + 2);
+        assert_eq!(pool.status_snapshot().idle_vms[0].sandbox_id, sandbox_id);
+    }
+
+    #[tokio::test]
+    async fn reserved_restore_preserves_newer_same_session_entry() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let old = make_candidate_for("session-collision", 2, 2048);
+        let old_sandbox_id = old.sandbox_id();
+        assert!(matches!(pool.park(old), ParkResult::Parked));
+        let reservation = pool
+            .reserve_reusable("session-collision", "vm0/default", &None)
+            .expect("old entry should reserve");
+
+        let replacement = make_candidate_for("session-collision", 2, 2048);
+        let replacement_sandbox_id = replacement.sandbox_id();
+        assert!(matches!(pool.park(replacement), ParkResult::Parked));
+        let RestoreReservedIdleResult::Rejected(rejected) = pool.restore_reserved(reservation)
+        else {
+            panic!("collision must reject the older reservation");
+        };
+        assert_eq!(
+            pool.status_snapshot().idle_vms[0].sandbox_id,
+            replacement_sandbox_id
+        );
+        assert_ne!(old_sandbox_id, replacement_sandbox_id);
+        rejected.run().await;
+        assert_eq!(pool.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn reserved_restore_rejects_after_parking_closes() {
+        let mut pool = IdlePool::new(pool_config(0));
+        assert!(matches!(
+            pool.park(make_candidate_for("session-closed", 2, 2048)),
+            ParkResult::Parked
+        ));
+        let reservation = pool
+            .reserve_reusable("session-closed", "vm0/default", &None)
+            .expect("entry should reserve");
+        pool.parking_gate().close();
+
+        let RestoreReservedIdleResult::Rejected(rejected) = pool.restore_reserved(reservation)
+        else {
+            panic!("closed parking must reject reservation restore");
+        };
+        rejected.run().await;
+        assert_eq!(pool.len(), 0);
+    }
+
+    #[test]
     fn park_uses_candidate_session_as_pool_key() {
         let mut pool = IdlePool::new(pool_config(0));
         let result = pool.park(make_candidate_for("candidate-session", 2, 2048));
@@ -1593,10 +1783,16 @@ mod tests {
                 HeldSessionState {
                     session_id: "sess-a".to_string(),
                     last_completed_at: "2026-05-28T00:00:00.000Z".to_string(),
+                    reusable_sandbox: Some(ReusableSandboxState {
+                        profile: "vm0/default".to_string(),
+                    }),
                 },
                 HeldSessionState {
                     session_id: "sess-b".to_string(),
                     last_completed_at: "2026-05-28T00:00:01.000Z".to_string(),
+                    reusable_sandbox: Some(ReusableSandboxState {
+                        profile: "vm0/default".to_string(),
+                    }),
                 },
             ],
         );

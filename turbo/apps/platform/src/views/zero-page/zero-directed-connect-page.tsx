@@ -1,9 +1,9 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  connectorTypeSchema,
-  type ConnectorAuthMethodId,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+  connectorCatalogRefSchema,
+  type ConnectorCatalogAuthMethodId as ConnectorAuthMethodId,
+  type ConnectorCatalogRef as ConnectorType,
+} from "@vm0/api-contracts/contracts/connector-identity";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -17,7 +17,7 @@ import {
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
   connectFlowType$,
-  getOnlyAvailableStatusBrowserAuthMethod,
+  getOnlyAvailableStatusBrowserAuthMethodDetail,
   getOnlyAvailableStatusNoAuthMethod,
   getConnectorStatusConnectLaunchMode,
   justConnectedTypes$,
@@ -68,7 +68,7 @@ function runDirectedConnect(params: {
   signal: AbortSignal;
   connect: (
     type: ConnectorType,
-    authMethod: ConnectorAuthMethodId,
+    method: ConnectorStatusAuthMethodDetail,
     options: {
       readonly showPermissionDialog?: boolean;
       readonly connectorLabel?: string;
@@ -114,34 +114,38 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod =
-    launchMode === "browser-auth"
-      ? getOnlyAvailableStatusBrowserAuthMethod(params.item)
-      : getOnlyAvailableStatusNoAuthMethod(params.item);
-
   detach(
     (async () => {
-      let connected = true;
-      if (!authMethod) {
-        params.openConnectModal();
-        return;
+      let connected: boolean;
+      if (launchMode === "browser-auth") {
+        const authMethod = getOnlyAvailableStatusBrowserAuthMethodDetail(
+          params.item,
+        );
+        if (!authMethod) {
+          params.openConnectModal();
+          return;
+        }
+        connected = await params.connect(
+          params.connectorType,
+          authMethod,
+          { connectorLabel: params.item.label },
+          params.signal,
+        );
+      } else {
+        const authMethod = getOnlyAvailableStatusNoAuthMethod(params.item);
+        if (!authMethod) {
+          params.openConnectModal();
+          return;
+        }
+        connected = await params.connectNoAuth(
+          {
+            type: params.connectorType,
+            authMethod,
+            options: { connectorLabel: params.item.label },
+          },
+          params.signal,
+        );
       }
-      connected =
-        launchMode === "browser-auth"
-          ? await params.connect(
-              params.connectorType,
-              authMethod,
-              { connectorLabel: params.item.label },
-              params.signal,
-            )
-          : await params.connectNoAuth(
-              {
-                type: params.connectorType,
-                authMethod,
-                options: { connectorLabel: params.item.label },
-              },
-              params.signal,
-            );
       if (connected) {
         await params.onConnected();
       }
@@ -249,6 +253,7 @@ function ManualGrantForm({
 
 function ManualGrantDialog({
   type,
+  icon,
   connectorLabel,
   manualGrantMethod,
   open,
@@ -256,6 +261,7 @@ function ManualGrantDialog({
   onConnected,
 }: {
   type: ConnectorType;
+  icon: ConnectorTypeWithStatus["icon"] | undefined;
   connectorLabel: string;
   manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   open: boolean;
@@ -270,7 +276,7 @@ function ManualGrantDialog({
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <ConnectorIcon type={type} size={20} />
+            <ConnectorIcon icon={icon} size={20} />
             <DialogTitle>{connectorLabel}</DialogTitle>
           </div>
         </DialogHeader>
@@ -356,6 +362,7 @@ function DirectedConnectModal({
 
 function DirectedConnectDialogs({
   connectorType,
+  icon,
   connectorLabel,
   manualGrantMethod,
   manualGrantDialogOpen,
@@ -366,6 +373,7 @@ function DirectedConnectDialogs({
   setConnectModalOpen,
 }: {
   readonly connectorType: ConnectorType;
+  readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
   readonly connectorLabel: string;
   readonly manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   readonly manualGrantDialogOpen: boolean;
@@ -379,6 +387,7 @@ function DirectedConnectDialogs({
     <>
       <ManualGrantDialog
         type={connectorType}
+        icon={icon}
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         open={manualGrantDialogOpen}
@@ -402,7 +411,7 @@ function useDirectedConnectConnectorType(): ConnectorType | null {
   if (!type) {
     return null;
   }
-  const parsed = connectorTypeSchema.safeParse(type);
+  const parsed = connectorCatalogRefSchema.safeParse(type);
   return parsed.success ? parsed.data : null;
 }
 
@@ -470,7 +479,7 @@ function directedConnectModalOpen(
 }
 
 function DirectedConnectCardContent({
-  connectorType,
+  icon,
   connectorLabel,
   connectorDescription,
   agentName,
@@ -480,7 +489,7 @@ function DirectedConnectCardContent({
   canConnect,
   onConnect,
 }: {
-  readonly connectorType: ConnectorType;
+  readonly icon: ConnectorTypeWithStatus["icon"] | undefined;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;
@@ -509,7 +518,7 @@ function DirectedConnectCardContent({
                     : `${agentName} needs ${connectorLabel} to proceed`}
                 </h1>
                 <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
-                  <ConnectorIcon type={connectorType} size={20} />
+                  <ConnectorIcon icon={icon} size={20} />
                 </div>
                 <p className="w-60 text-sm text-muted-foreground">
                   {connectorDescription}
@@ -614,7 +623,7 @@ function DirectedConnectCard() {
   return (
     <>
       <DirectedConnectCardContent
-        connectorType={connectorType}
+        icon={item?.icon}
         connectorLabel={connectorLabel}
         connectorDescription={connectorDescription}
         agentName={agentName}
@@ -626,6 +635,7 @@ function DirectedConnectCard() {
       />
       <DirectedConnectDialogs
         connectorType={connectorType}
+        icon={item?.icon}
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         manualGrantDialogOpen={manualGrantDialogOpen}

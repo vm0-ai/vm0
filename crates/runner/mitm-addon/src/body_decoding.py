@@ -68,10 +68,10 @@ def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
         ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
 
 
-def _log_streaming_decode_skipped(encoding_label: str, reason: str) -> None:
+def _log_streaming_decode_skipped(reason: str) -> None:
     with contextlib.suppress(AttributeError):
         # ctx.log unavailable outside mitmproxy runtime
-        ctx.log.debug(f"Streaming decompression skipped ({encoding_label}): {reason}")
+        ctx.log.debug(f"Streaming decompression skipped: {reason}")
 
 
 def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -> None:
@@ -145,13 +145,18 @@ def _stream_decode_skip_reason(encoding: str) -> str | None:
     return "unsupported content encoding"
 
 
+def stream_decode_skip_reason(headers: http.Headers) -> str | None:
+    """Return a fixed reason when usage streams cannot decode the response."""
+    encoding = headers.get("content-encoding", "").strip().lower()
+    return _stream_decode_skip_reason(encoding)
+
+
 def can_stream_decode_usage(headers: http.Headers) -> bool:
     """Return whether usage parsers can safely consume this response stream."""
-    encoding = headers.get("content-encoding", "").strip().lower()
-    reason = _stream_decode_skip_reason(encoding)
+    reason = stream_decode_skip_reason(headers)
     if reason is None:
         return True
-    _log_streaming_decode_skipped(encoding, reason)
+    _log_streaming_decode_skipped(reason)
     return False
 
 

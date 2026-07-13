@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.144.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.0...runner-rs-v0.144.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **mitm-addon:** report non-streamable usage responses ([#21172](https://github.com/vm0-ai/vm0/issues/21172)) ([269da9f](https://github.com/vm0-ai/vm0/commit/269da9f4c622e042889e0810ce02699df9c114e8))
+
+## [0.144.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.13...runner-rs-v0.144.0) (2026-07-12)
+
+
+### Features
+
+* **runner:** make session affinity admission-aware ([#21111](https://github.com/vm0-ai/vm0/issues/21111)) ([ecf0021](https://github.com/vm0-ai/vm0/commit/ecf00216864b70cc5cea5fb0c148aa4f14705b90))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+* **mitm-addon:** hand off runner flushes during shutdown ([#21106](https://github.com/vm0-ai/vm0/issues/21106)) ([7eb8820](https://github.com/vm0-ai/vm0/commit/7eb882076a81bfa07ce2954cea02ce2936724d8c))
+* **mitm-addon:** preserve invalid bytes at capture boundary ([#21127](https://github.com/vm0-ai/vm0/issues/21127)) ([8e02192](https://github.com/vm0-ai/vm0/commit/8e021929a40ea740241f5b069e95627a13e3f652))
+* **runner:** bound doctor api probe concurrency ([#21117](https://github.com/vm0-ai/vm0/issues/21117)) ([522e9f0](https://github.com/vm0-ai/vm0/commit/522e9f01cf0c050b7a77eb76939180ae92468eb0))
+* **runner:** reject duplicate atomic usage member keys ([#21125](https://github.com/vm0-ai/vm0/issues/21125)) ([4ed3f54](https://github.com/vm0-ai/vm0/commit/4ed3f54aa3cd07564a95ad4f4894eca08f029b74))
+
+
+### Documentation
+
+* **runner:** correct mitm_ctx fixture description ([#21131](https://github.com/vm0-ai/vm0/issues/21131)) ([0ab6686](https://github.com/vm0-ai/vm0/commit/0ab66868220741b4f746484671e4bb24fd8cd205))
+
+
+### Refactoring
+
+* **mitm-addon:** centralize connected endpoint validation ([#21103](https://github.com/vm0-ai/vm0/issues/21103)) ([46a9231](https://github.com/vm0-ai/vm0/commit/46a9231d047f6a258d1f6cf7f37dbe8aa191b199))
+
+
+### Performance Improvements
+
+* attribute nbd netlink connect latency ([#21121](https://github.com/vm0-ai/vm0/issues/21121)) ([7ff85a6](https://github.com/vm0-ai/vm0/commit/7ff85a6d10e757e24534f5f9a00a1cab1342eb4d))
+* **mitm-addon:** aggregate jsonl batch completion ([#21126](https://github.com/vm0-ai/vm0/issues/21126)) ([f9925b4](https://github.com/vm0-ai/vm0/commit/f9925b435d8f1d1f396c9ebfa60cbc50f90cc7dc))
+* **mitm-addon:** avoid rescanning responses sse prefixes ([#21104](https://github.com/vm0-ai/vm0/issues/21104)) ([fb9e5a1](https://github.com/vm0-ai/vm0/commit/fb9e5a178b1fde66942360b60fe204053a14976a))
+
+## [0.143.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.12...runner-rs-v0.143.13) (2026-07-12)
+
+
+### Documentation
+
+* **mitm-addon:** document connector diagnostic lifecycle ([#21077](https://github.com/vm0-ai/vm0/issues/21077)) ([0af4542](https://github.com/vm0-ai/vm0/commit/0af4542fea0a12f6133f73e2bf194915a8d8bd7f))
+* **mitm-addon:** document flow metadata linter helpers ([#21089](https://github.com/vm0-ai/vm0/issues/21089)) ([f4665a6](https://github.com/vm0-ai/vm0/commit/f4665a64c4bb4e2ec829ac7e9bf59565a1e56547))
+
 ## [0.143.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.143.11...runner-rs-v0.143.12) (2026-07-11)
 
 

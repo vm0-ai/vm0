@@ -294,6 +294,9 @@ export function createRunsAutomationsApi(context: TestContext) {
     async grantProEntitlement(
       actor: ApiTestUser,
       options: {
+        readonly customerId?: string;
+        readonly subscriptionId?: string;
+        readonly tier?: "pro" | "team";
         readonly periodEndUnix?: number;
         readonly subscriptionMetadata?: Record<string, string>;
         readonly cancelAtUnix?: number | null;
@@ -309,6 +312,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       mockEnv("ATOM_GRANT_PRICE", "price_bdd_atom_grant");
       mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
+      const tier = options.tier ?? "pro";
 
       await accept(
         runsAutomationApp(context)(onboardingSetupContract).setup({
@@ -319,8 +323,8 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
 
       const suffix = randomUUID().slice(0, 8);
-      const customerId = `cus_bdd_${suffix}`;
-      const subscriptionId = `sub_bdd_${suffix}`;
+      const customerId = options.customerId ?? `cus_bdd_${suffix}`;
+      const subscriptionId = options.subscriptionId ?? `sub_bdd_${suffix}`;
       const invoiceId = `in_bdd_${suffix}`;
       context.mocks.stripe.customers.retrieve.mockResolvedValue({
         id: customerId,
@@ -335,8 +339,19 @@ export function createRunsAutomationsApi(context: TestContext) {
         schedule: null,
         trial_end: null,
         metadata: options.subscriptionMetadata ?? {},
-        items: { data: [{ price: { id: "price_bdd_pro" } }] },
+        items: {
+          data: [
+            {
+              price: {
+                id: tier === "team" ? "price_bdd_team" : "price_bdd_pro",
+              },
+            },
+          ],
+        },
       });
+      if (tier === "team") {
+        context.mocks.stripe.subscriptions.list.mockResolvedValue({ data: [] });
+      }
       const invoicePaidEvent = {
         type: "invoice.paid",
         data: {
@@ -377,9 +392,9 @@ export function createRunsAutomationsApi(context: TestContext) {
         }),
         [200],
       );
-      if (billingStatus.body.tier !== "pro") {
+      if (billingStatus.body.tier !== tier) {
         throw new Error(
-          `Entitlement grant did not reach pro tier: ${billingStatus.body.tier}`,
+          `Entitlement grant did not reach ${tier} tier: ${billingStatus.body.tier}`,
         );
       }
       return { customerId, subscriptionId, invoiceId };
@@ -490,7 +505,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     async requestClaimRunnerJobAs(
       authorization: string | undefined,
       runId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
     ) {
       return await accept(
@@ -1024,7 +1039,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     async requestClaimRunnerJob(
       validAuth: boolean,
       runId: string,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
       body: RunnerJobClaimRequest = {},
     ) {
       return await accept(

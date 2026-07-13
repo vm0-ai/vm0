@@ -15,10 +15,6 @@ import type {
 } from "./chat-message.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 
-export interface LoadHistoryResult {
-  hasMore: boolean;
-}
-
 /** The thread's current active goal, folded from its message stream. */
 export interface ActiveGoalState {
   readonly objective: string;
@@ -37,8 +33,10 @@ export interface ChatThreadSignals {
   threadDraft$: Computed<Promise<ChatThreadDraft | null>>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
   reloadThread$: Command<void, []>;
+  threadTitle$: Computed<Promise<string | null>>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
+  threadSettledInServer$: Computed<Promise<boolean>>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
@@ -101,7 +99,6 @@ export interface ChatThreadSignals {
   // -- Draft sync -----------------------------------------------------------
   queueDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // -- Paged messages (sole rendering path) --------------------------------
-  earliestChatMessageId$: Computed<Promise<string | undefined>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
@@ -112,7 +109,6 @@ export interface ChatThreadSignals {
   queuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
   emptyQueuedUserMessages$: Computed<Promise<readonly EnrichedChatMessage[]>>;
   lastAssistantCancelled$: Computed<Promise<boolean>>;
-  hasOlderHistory$: Computed<Promise<boolean>>;
   messageRunIndicatorState$: Computed<Promise<"running" | "queued" | null>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   // The thread's active goal, folded from goal-state marker messages. Null when
@@ -121,19 +117,11 @@ export interface ChatThreadSignals {
   allFinished$: Computed<Promise<boolean>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
-  fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
-  loadHistory$: Command<Promise<LoadHistoryResult>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // -- Thinking indicator ---------------------------------------------------
   blockColors$: Computed<[string, string, string]>;
-  rotatingPhrase$: Computed<string>;
-  donePhrase$: Computed<string>;
-  displayedThinkingText$: Computed<Promise<string>>;
-  setThinkingIndicatorTextRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
-  runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
+  thinkingPhrase$: Computed<string>;
+  donePhrase$: Computed<Promise<string>>;
   // -- Artifacts ------------------------------------------------------------
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   reloadArtifacts$: Command<void, []>;

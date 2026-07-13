@@ -24,6 +24,7 @@ use nbd_fixture::{NbdTestFixture, default_device_pool};
 #[derive(Default)]
 struct RecordingCreateObserver {
     stages: Vec<(nbd_cow::NbdCowCreateStage, Duration, bool)>,
+    netlink_connect_stages: Vec<(nbd_cow::NbdNetlinkConnectStage, Duration, bool)>,
     outcomes: Vec<nbd_cow::NbdCowCreateOutcome>,
 }
 
@@ -35,6 +36,15 @@ impl nbd_cow::NbdCowCreateObserver for RecordingCreateObserver {
         success: bool,
     ) {
         self.stages.push((stage, duration, success));
+    }
+
+    fn record_netlink_connect_stage(
+        &mut self,
+        stage: nbd_cow::NbdNetlinkConnectStage,
+        duration: Duration,
+        success: bool,
+    ) {
+        self.netlink_connect_stages.push((stage, duration, success));
     }
 
     fn record_outcome(&mut self, outcome: nbd_cow::NbdCowCreateOutcome) {
@@ -52,6 +62,29 @@ impl RecordingCreateObserver {
         assert_eq!(matches.len(), 1, "stage {expected:?}: {:?}", self.stages);
         let (_, duration, success) = matches[0];
         assert!(*success, "stage {expected:?} should succeed");
+        *duration
+    }
+
+    fn netlink_connect_stage_duration(
+        &self,
+        expected: nbd_cow::NbdNetlinkConnectStage,
+    ) -> Duration {
+        let matches: Vec<_> = self
+            .netlink_connect_stages
+            .iter()
+            .filter(|(stage, _, _)| *stage == expected)
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "netlink connect stage {expected:?}: {:?}",
+            self.netlink_connect_stages,
+        );
+        let (_, duration, success) = matches[0];
+        assert!(
+            *success,
+            "netlink connect stage {expected:?} should succeed"
+        );
         *duration
     }
 }
@@ -141,6 +174,16 @@ async fn create_and_destroy() {
             <= observer.stage_duration(nbd_cow::NbdCowCreateStage::DeviceAcquire),
         "device scan is nested inside device acquire: {:?}",
         observer.stages,
+    );
+    let netlink_child_duration: Duration = nbd_cow::NbdNetlinkConnectStage::ALL
+        .into_iter()
+        .map(|stage| observer.netlink_connect_stage_duration(stage))
+        .sum();
+    assert!(
+        netlink_child_duration
+            <= observer.stage_duration(nbd_cow::NbdCowCreateStage::NetlinkConnect),
+        "netlink connect children are nested inside their parent: {:?}",
+        observer.netlink_connect_stages,
     );
     assert!(
         observer

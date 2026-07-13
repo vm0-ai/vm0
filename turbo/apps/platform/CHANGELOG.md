@@ -1,5 +1,85 @@
 # Changelog
 
+## [0.595.2](https://github.com/vm0-ai/vm0/compare/app-v0.595.1...app-v0.595.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* keep chat thread shortcuts active across the chat page ([#21173](https://github.com/vm0-ai/vm0/issues/21173)) ([380eeba](https://github.com/vm0-ai/vm0/commit/380eebaacb096a1cd1608820d90065cad8c12049))
+
+## [0.595.1](https://github.com/vm0-ai/vm0/compare/app-v0.595.0...app-v0.595.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* align image edit toolbar layer and accent color ([#20965](https://github.com/vm0-ai/vm0/issues/20965)) ([d4a18c5](https://github.com/vm0-ai/vm0/commit/d4a18c5e80b6495f88be6b0b3bda1e8d717c3414))
+
+## [0.595.0](https://github.com/vm0-ai/vm0/compare/app-v0.594.0...app-v0.595.0) (2026-07-13)
+
+
+### Features
+
+* restrict webhook triggers to team and custom workspaces ([#20966](https://github.com/vm0-ai/vm0/issues/20966)) ([18b727b](https://github.com/vm0-ai/vm0/commit/18b727b45cf337c76b73bf89f9d893eeb4cbd0b5))
+
+
+### Bug Fixes
+
+* **platform:** batch indexeddb chat persistence ([#21136](https://github.com/vm0-ai/vm0/issues/21136)) ([7286f3d](https://github.com/vm0-ai/vm0/commit/7286f3da7a31fd564b145f5a18324b342ead65d9))
+* use opaque ios pwa status bar ([#21056](https://github.com/vm0-ai/vm0/issues/21056)) ([347ed8e](https://github.com/vm0-ai/vm0/commit/347ed8e7b4eb5c0c61ed1936d779e9c35f424ade))
+
+
+### Performance Improvements
+
+* **platform:** reduce chat render work ([#21137](https://github.com/vm0-ai/vm0/issues/21137)) ([80851d4](https://github.com/vm0-ai/vm0/commit/80851d4728b5403a5d6c7efb1082ffed004c01d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.0
+    * @vm0/core bumped to 8.425.3
+
+## [0.594.0](https://github.com/vm0-ai/vm0/compare/app-v0.593.1...app-v0.594.0) (2026-07-12)
+
+
+### Features
+
+* expose connector catalog icon descriptors ([#21092](https://github.com/vm0-ai/vm0/issues/21092)) ([c0b8e0f](https://github.com/vm0-ai/vm0/commit/c0b8e0f4c485c69884cae063c2c15dd68ea5c112))
+
+
+### Bug Fixes
+
+* **mitm-addon:** fail closed on ambiguous connector owners ([#21109](https://github.com/vm0-ai/vm0/issues/21109)) ([19bc1ca](https://github.com/vm0-ai/vm0/commit/19bc1ca3694afd1ee0b1814c099d8575e1a08534))
+
+
+### Refactoring
+
+* **connectors:** make catalog identities server-authored ([#21128](https://github.com/vm0-ai/vm0/issues/21128)) ([fceb0b2](https://github.com/vm0-ai/vm0/commit/fceb0b2d2afa301c9edd05fbd3c2898ec4ae186f))
+* **platform:** remove custom chat pagination loops ([#21119](https://github.com/vm0-ai/vm0/issues/21119)) ([41284bf](https://github.com/vm0-ai/vm0/commit/41284bfa5480aba96e69815e0087c7ec4ed3c76d))
+* **platform:** render connector icons from catalog metadata ([#21108](https://github.com/vm0-ai/vm0/issues/21108)) ([71209cb](https://github.com/vm0-ai/vm0/commit/71209cbc7906dd741e9677854d248a9128e0ebd3))
+* **platform:** simplify chat message persistence ([#21059](https://github.com/vm0-ai/vm0/issues/21059)) ([756abcf](https://github.com/vm0-ai/vm0/commit/756abcf36614f1d7236d85e6d706e3a0e089456e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+    * @vm0/connectors bumped to 1.156.0
+    * @vm0/core bumped to 8.425.2
+
+## [0.593.1](https://github.com/vm0-ai/vm0/compare/app-v0.593.0...app-v0.593.1) (2026-07-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.4
+    * @vm0/connectors bumped to 1.155.1
+    * @vm0/core bumped to 8.425.1
+
 ## [0.593.0](https://github.com/vm0-ai/vm0/compare/app-v0.592.4...app-v0.593.0) (2026-07-11)
 
 

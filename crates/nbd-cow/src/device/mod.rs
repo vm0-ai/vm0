@@ -12,7 +12,10 @@ mod finalizer;
 mod pooled;
 
 pub use connection::is_our_thread;
-pub use create_timing::{NbdCowCreateObserver, NbdCowCreateOutcome, NbdCowCreateStage};
+pub(crate) use create_timing::NbdNetlinkConnectTiming;
+pub use create_timing::{
+    NbdCowCreateObserver, NbdCowCreateOutcome, NbdCowCreateStage, NbdNetlinkConnectStage,
+};
 pub use pooled::{DestroyRetryPolicy, KeptCow, PooledDestroyError, PooledNbdCowDevice};
 
 use connection::{

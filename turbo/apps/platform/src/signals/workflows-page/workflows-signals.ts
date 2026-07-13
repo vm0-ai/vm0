@@ -206,6 +206,7 @@ const internalWorkflowTriggerCreateDialog$ =
 const internalCreatedWorkflowWebhookTrigger$ =
   state<WorkflowWebhookTriggerSummary | null>(null);
 const internalWorkflowTriggerPickerOpen$ = state(false);
+const internalWorkflowWebhookUpgradeDialogOpen$ = state(false);
 const internalWorkflowTriggerPickerCategory$ =
   state<WorkflowTriggerCategoryKey>("schedule");
 const internalCreateNotionPageContentUpdatedScope$ =
@@ -513,6 +514,16 @@ export const setWorkflowTriggerPickerOpen$ = command(
     if (open) {
       set(internalWorkflowTriggerPickerCategory$, "schedule");
     }
+  },
+);
+
+export const workflowWebhookUpgradeDialogOpen$ = computed((get) => {
+  return get(internalWorkflowWebhookUpgradeDialogOpen$);
+});
+
+export const setWorkflowWebhookUpgradeDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalWorkflowWebhookUpgradeDialogOpen$, open);
   },
 );
 
@@ -1175,10 +1186,10 @@ export const createWorkflowNotionPageContentUpdatedTrigger$ = command(
 
 export const createWorkflowWebhookTrigger$ = command(
   async (
-    { get },
+    { get, set },
     input: { readonly workflowId: string },
     signal: AbortSignal,
-  ): Promise<WorkflowWebhookTriggerSummary> => {
+  ): Promise<WorkflowWebhookTriggerSummary | null> => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     const result = await accept(
       client.create({
@@ -1194,9 +1205,16 @@ export const createWorkflowWebhookTrigger$ = command(
         },
         fetchOptions: { signal },
       }),
-      [201],
+      [201, 402],
     );
     signal.throwIfAborted();
+    if (result.status === 402) {
+      if (result.body.error.code === "TEAM_REQUIRED") {
+        set(internalWorkflowWebhookUpgradeDialogOpen$, true);
+        return null;
+      }
+      throw new Error(result.body.error.message);
+    }
     if (
       result.body.kind !== "event" ||
       result.body.eventType !== "webhook-received"
@@ -1335,8 +1353,15 @@ export const setWorkflowTriggerEnabled$ = command(
           params: { id: input.triggerId },
           fetchOptions: { signal },
         });
-    await accept(request, [200]);
+    const result = await accept(request, [200, 402]);
     signal.throwIfAborted();
+    if (result.status === 402) {
+      if (result.body.error.code === "TEAM_REQUIRED") {
+        set(internalWorkflowWebhookUpgradeDialogOpen$, true);
+        return;
+      }
+      throw new Error(result.body.error.message);
+    }
     set(reloadWorkflows$);
   },
 );

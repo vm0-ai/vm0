@@ -1,5 +1,9 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-billing";
+import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
@@ -60,16 +64,50 @@ function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
+function connectorIcon(connectorRef: string) {
+  return {
+    url: `https://icons.example.test/${connectorRef}.svg`,
+    invertInDarkMode: false,
+  };
+}
+
 function detachedSetupWorkflowDetailPage(
   path: string,
   featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+  billingTier = "team",
 ) {
+  mockBillingTier(billingTier);
   detachedSetupPage({
     context,
     path,
     featureSwitches: {
       ...featureSwitches,
     },
+  });
+}
+
+function billingStatus(tier: string): BillingStatusResponse {
+  return {
+    tier,
+    credits: 20_000,
+    onboardingPaymentPending: false,
+    subscriptionStatus: tier === "team" ? "active" : null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: tier === "pro" || tier === "team",
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+    creditBreakdown: [],
+    creditGrants: [],
+    concurrencyLimit: 0,
+    concurrencySubscriptions: [],
+  };
+}
+
+function mockBillingTier(tier: string): void {
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, billingStatus(tier));
   });
 }
 
@@ -1464,24 +1502,28 @@ describe("workflow detail page", () => {
             {
               connectorRef: "google-drive",
               label: "Google Drive",
+              icon: connectorIcon("google-drive"),
               reason: "The workflow reads account documents.",
               status: "connected",
             },
             {
               connectorRef: "github",
               label: "GitHub",
+              icon: connectorIcon("github"),
               reason: "A GitHub trigger requires this connector.",
               status: "unavailable",
             },
             {
               connectorRef: "slack",
               label: "Slack",
+              icon: connectorIcon("slack"),
               reason: "The workflow posts a summary to Slack.",
               status: "not-enabled-for-agent",
             },
             {
               connectorRef: "notion",
               label: "Notion",
+              icon: connectorIcon("notion"),
               reason: "The workflow updates a Notion page.",
               status: "scope-mismatch",
             },
@@ -1490,10 +1532,16 @@ describe("workflow detail page", () => {
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
               status: "reconnect-required",
+              icon: {
+                url: "https://icons.example.test/gmail.svg",
+                invertInDarkMode: true,
+                scale: 1.25,
+              },
             },
             {
               connectorRef: "linear",
               label: "Linear",
+              icon: connectorIcon("linear"),
               reason: "The workflow creates follow-up issues.",
               status: "not-connected",
             },
@@ -1548,6 +1596,28 @@ describe("workflow detail page", () => {
       within(readiness).getByText("Currently unavailable"),
     ).toBeInTheDocument();
     expect(within(readiness).getByText("Connected")).toBeInTheDocument();
+
+    const gmailRow = within(readiness).getByText("Gmail").closest("li");
+    if (!(gmailRow instanceof HTMLElement)) {
+      throw new Error("Gmail readiness row not found");
+    }
+    expect(gmailRow.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/gmail.svg",
+    );
+    expect(gmailRow.querySelector("img")).toHaveClass("zero-icon-mono");
+    expect(gmailRow.querySelector("img")).toHaveStyle({
+      transform: "scale(1.25)",
+    });
+
+    const unavailableRow = within(readiness).getByText("GitHub").closest("li");
+    if (!(unavailableRow instanceof HTMLElement)) {
+      throw new Error("Unavailable readiness row not found");
+    }
+    expect(unavailableRow.querySelector("img")).toHaveAttribute(
+      "src",
+      "https://icons.example.test/github.svg",
+    );
 
     expect(linkByText("Reconnect Gmail", readiness)).toHaveAttribute(
       "href",
@@ -1627,6 +1697,7 @@ describe("workflow detail page", () => {
             {
               connectorRef: "gmail",
               label: "Gmail",
+              icon: connectorIcon("gmail"),
               reason: "The workflow reads outreach replies.",
               status: "connected",
             },
@@ -2444,6 +2515,105 @@ describe("workflow detail page", () => {
       .closest("pre");
     expect(signedCurlExample).toBeInTheDocument();
     expect(signedCurlExample).toHaveClass("whitespace-pre-wrap", "break-all");
+  });
+
+  it("shows Pro admins a locked Team webhook card and upgrade action", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    mockWorkflowApis([salesResearch()]);
+    detachedSetupWorkflowDetailPage(
+      workflowDetailPath("automations"),
+      { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+      "pro",
+    );
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    click(buttonByText("Integrations", picker));
+    const webhookCard = buttonByText(/^Webhook/u, picker);
+    expect(within(webhookCard).getByText("Team")).toBeInTheDocument();
+    click(webhookCard);
+
+    const upgradeTitle = await screen.findByText(
+      "Upgrade for webhook triggers",
+    );
+    expect(upgradeTitle).toBeInTheDocument();
+    expect(
+      screen.getByText("Webhook triggers require a Team or Custom workspace."),
+    ).toBeInTheDocument();
+    expect(buttonByText("Upgrade to Team")).toBeInTheDocument();
+  });
+
+  it("asks non-admins to contact an admin for webhook access", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    mockWorkflowApis([salesResearch()]);
+    detachedSetupWorkflowDetailPage(
+      workflowDetailPath("automations"),
+      { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+      "pro",
+    );
+
+    click(await screen.findByText("Add automation"));
+    const picker = await screen.findByRole("dialog");
+    click(buttonByText("Integrations", picker));
+    click(buttonByText(/^Webhook/u, picker));
+
+    const askAdmin = await screen.findByText(
+      "Ask a workspace admin to upgrade.",
+    );
+    expect(askAdmin).toBeInTheDocument();
+    expect(screen.queryByText("Upgrade to Team")).not.toBeInTheDocument();
+  });
+
+  it("opens the Team upgrade dialog when webhook enable returns TEAM_REQUIRED", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    const workflow = {
+      ...salesResearch(),
+      triggers: [
+        {
+          ...webhookWorkflowTrigger(),
+          enabled: false,
+          disabledReason: "paid_plan_required" as const,
+        },
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    context.mocks.api(zeroWorkflowTriggersContract.enable, ({ respond }) => {
+      return respond(402, {
+        error: {
+          code: "TEAM_REQUIRED",
+          message: "Webhook triggers require a Team or Custom workspace",
+        },
+      });
+    });
+    detachedSetupWorkflowDetailPage(
+      workflowDetailPath("automations"),
+      { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+      "pro",
+    );
+
+    click(await screen.findByRole("switch", { name: "Enable Webhook" }));
+    const upgradeTitle = await screen.findByText(
+      "Upgrade for webhook triggers",
+    );
+    expect(upgradeTitle).toBeInTheDocument();
+    expect(
+      screen.getByText("Disabled — paid plan required"),
+    ).toBeInTheDocument();
   });
 
   it("reveals an existing webhook secret on demand", async () => {

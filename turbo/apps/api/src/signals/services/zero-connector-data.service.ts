@@ -79,6 +79,11 @@ type StoredConnectorRow = {
   readonly updatedAt: Date;
 };
 
+type ExecutableConnectorResponse = ConnectorResponse & {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+};
+
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
@@ -180,11 +185,12 @@ function parseStoredReconnectReason(
 function storedConnectorRowToResponse(
   row: StoredConnectorRow,
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   now: Date,
-): ConnectorResponse {
+): ExecutableConnectorResponse {
   const credentialStatus = connectorCredentialStatus({
     type,
-    authMethod: row.authMethod,
+    authMethod,
     storedNeedsReconnect: row.needsReconnect,
     tokenExpiresAt: row.tokenExpiresAt,
     now,
@@ -196,7 +202,7 @@ function storedConnectorRowToResponse(
   return {
     id: row.id,
     type,
-    authMethod: row.authMethod,
+    authMethod,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
     externalEmail: row.externalEmail,
@@ -207,7 +213,7 @@ function storedConnectorRowToResponse(
         ? (parseStoredReconnectReason(row.reconnectReason) ??
           connectorCredentialReconnectReason({
             type,
-            authMethod: row.authMethod,
+            authMethod,
             storedNeedsReconnect: row.needsReconnect,
             tokenExpiresAt: row.tokenExpiresAt,
             now,
@@ -470,16 +476,29 @@ export function zeroConnectorList(args: {
     ]);
 
     const now = nowDate();
-    const connectorList: ConnectorResponse[] = storedRows.flatMap((row) => {
-      const parsed = connectorTypeSchema.safeParse(row.type);
-      if (!parsed.success) {
-        return [];
-      }
-      if (!storedConnectorTypeIsVisible(parsed.data, featureStates)) {
-        return [];
-      }
-      return [storedConnectorRowToResponse(row, parsed.data, now)];
-    });
+    const connectorList: ExecutableConnectorResponse[] = storedRows.flatMap(
+      (row) => {
+        const type = connectorTypeSchema.safeParse(row.type);
+        if (
+          !type.success ||
+          !storedConnectorTypeIsVisible(type.data, featureStates)
+        ) {
+          return [];
+        }
+        const authMethod = connectorAuthMethodIdSchema.safeParse(
+          row.authMethod,
+        );
+        if (
+          !authMethod.success ||
+          !getConnectorAuthMethod(type.data, authMethod.data)
+        ) {
+          return [];
+        }
+        return [
+          storedConnectorRowToResponse(row, type.data, authMethod.data, now),
+        ];
+      },
+    );
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
@@ -498,7 +517,7 @@ export function zeroConnectorList(args: {
 }
 
 function connectorProvidedBindingsForStoredConnectors(
-  connectorList: readonly ConnectorResponse[],
+  connectorList: readonly ExecutableConnectorResponse[],
 ): ConnectorProvidedBinding[] {
   const provided: ConnectorProvidedBinding[] = [];
   for (const connector of connectorList) {
@@ -579,7 +598,21 @@ function storedConnectorByType(args: {
 
     const oauthRow = oauthRows[0];
     if (oauthRow) {
-      return storedConnectorRowToResponse(oauthRow, args.type, nowDate());
+      const authMethod = connectorAuthMethodIdSchema.safeParse(
+        oauthRow.authMethod,
+      );
+      if (
+        !authMethod.success ||
+        !getConnectorAuthMethod(args.type, authMethod.data)
+      ) {
+        return null;
+      }
+      return storedConnectorRowToResponse(
+        oauthRow,
+        args.type,
+        authMethod.data,
+        nowDate(),
+      );
     }
 
     return null;
@@ -1352,6 +1385,7 @@ export const connectManualGrantConnector$ = command(
       connector: storedConnectorRowToResponse(
         connectorRow,
         args.type,
+        args.authMethod,
         nowDate(),
       ),
     };
@@ -1427,6 +1461,7 @@ export const connectNoAuthConnector$ = command(
       connector: storedConnectorRowToResponse(
         connectorRow,
         args.type,
+        args.authMethod,
         nowDate(),
       ),
     };
@@ -2144,6 +2179,7 @@ export const upsertConnectorTokenConnection$ = command(
       connector: storedConnectorRowToResponse(
         connectionResult.connectorRow,
         args.type,
+        args.authMethod,
         nowDate(),
       ),
       created:

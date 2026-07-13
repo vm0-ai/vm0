@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.27.19](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.18...desktop-v0.27.19) (2026-07-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.186.0
+
+## [0.27.18](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.17...desktop-v0.27.18) (2026-07-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.185.0
+
+## [0.27.17](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.16...desktop-v0.27.17) (2026-07-12)
+
+
+### Refactoring
+
+* reduce fallback slop in desktop mcp errors ([#21079](https://github.com/vm0-ai/vm0/issues/21079)) ([a53aa24](https://github.com/vm0-ai/vm0/commit/a53aa24d0d4c524661c176748a86232bd56a40ae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.184.4
+
 ## [0.27.16](https://github.com/vm0-ai/vm0/compare/desktop-v0.27.15...desktop-v0.27.16) (2026-07-11)
 
 

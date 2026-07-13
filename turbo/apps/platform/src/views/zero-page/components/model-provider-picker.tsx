@@ -774,17 +774,19 @@ function ModelFirstSelectPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      <ModelFirstModelPickerContent
-        selectValue={state.selectValue}
-        placeholder={placeholder}
-        policies={state.policies}
-        selectableValue={state.selectableValue}
-        limitedFree1={limitedFree1}
-        codexFastModeAvailable={state.codexFastModeAvailable}
-        selectedModel={state.selectedModel}
-        codexServiceTier={state.codexServiceTier}
-        onChange={onChange}
-      />
+      {open !== false && (
+        <ModelFirstModelPickerContent
+          selectValue={state.selectValue}
+          placeholder={placeholder}
+          policies={state.policies}
+          selectableValue={state.selectableValue}
+          limitedFree1={limitedFree1}
+          codexFastModeAvailable={state.codexFastModeAvailable}
+          selectedModel={state.selectedModel}
+          codexServiceTier={state.codexServiceTier}
+          onChange={onChange}
+        />
+      )}
     </Select>
   );
 }

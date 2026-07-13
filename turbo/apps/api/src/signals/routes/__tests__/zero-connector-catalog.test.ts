@@ -8,9 +8,11 @@ import {
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createStore } from "ccstate";
+import { sql } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { db } from "../../../lib/db";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
@@ -33,6 +35,9 @@ const bdd = createBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
+const REMOVED_CONNECTOR_TYPE = "removed-connector";
+const REMOVED_AUTH_CONNECTOR_TYPE = "github";
+const MISMATCHED_AUTH_CONNECTOR_TYPE = "gitlab";
 
 async function enableFeatureSwitches(
   orgId: string,
@@ -136,6 +141,10 @@ describe("GET /api/zero/connector-catalog", () => {
     readonly userId: string;
   }[] = [];
   const seededOrgs: OrgMembershipFixture[] = [];
+  const historicalConnectorFixtures: {
+    readonly orgId: string;
+    readonly userId: string;
+  }[] = [];
 
   async function enableConnectorFeatureSwitches(
     orgId: string,
@@ -157,6 +166,21 @@ describe("GET /api/zero/connector-catalog", () => {
       const fixture = seededOrgs.pop();
       if (fixture) {
         await store.set(deleteOrgMembership$, fixture, context.signal);
+      }
+    }
+    while (historicalConnectorFixtures.length > 0) {
+      const fixture = historicalConnectorFixtures.pop();
+      if (fixture) {
+        await db().execute(sql`
+          DELETE FROM connectors
+          WHERE org_id = ${fixture.orgId}
+            AND user_id = ${fixture.userId}
+            AND type IN (
+              ${REMOVED_CONNECTOR_TYPE},
+              ${REMOVED_AUTH_CONNECTOR_TYPE},
+              ${MISMATCHED_AUTH_CONNECTOR_TYPE}
+            )
+        `);
       }
     }
   });
@@ -229,6 +253,47 @@ describe("GET /api/zero/connector-catalog", () => {
       hasDefaultPolicyOverrides: false,
     });
     expect(openai?.permissionSummary).not.toHaveProperty("permissions");
+  });
+
+  it("returns shared public icon descriptors across catalog views", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const headers = { authorization: "Bearer clerk-session" };
+    const listResponse = await accept(client.list({ headers }), [200]);
+    const statusResponse = await accept(client.status({ headers }), [200]);
+    const detailResponse = await accept(
+      client.get({ params: { connectorRef: "openai" }, headers }),
+      [200],
+    );
+
+    const openai = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    const openaiStatus = statusResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    expect(openai?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/openai-df8a3d9c4274.svg",
+      invertInDarkMode: true,
+    });
+    expect(openaiStatus?.icon).toStrictEqual(openai?.icon);
+    expect(detailResponse.body.connector.icon).toStrictEqual(openai?.icon);
+
+    const slack = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "slack";
+    });
+    const slackWebhook = listResponse.body.connectors.find((connector) => {
+      return connector.connectorRef === "slack-webhook";
+    });
+    expect(slack?.icon).toStrictEqual({
+      url: "https://static.vm0.io/platform/views/zero-page/components/settings/icons/slack-198390069136.svg?v=568fa471",
+      invertInDarkMode: false,
+      scale: 2.2,
+    });
+    expect(slackWebhook?.icon).toStrictEqual(slack?.icon);
   });
 
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
@@ -600,6 +665,77 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(openai?.connection).not.toHaveProperty("updatedAt");
   });
 
+  it("ignores unsupported historical connector identities", async () => {
+    const actor = bdd.user();
+    if (!actor.orgId) {
+      throw new Error("Historical connector fixture requires an organization");
+    }
+    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
+      apiKey: "sk-public-status",
+    });
+
+    // These rows model identities accepted by an older registry. The current
+    // production API cannot construct these historical states.
+    await db().execute(sql`
+      INSERT INTO connectors (type, auth_method, user_id, org_id)
+      VALUES
+        (${REMOVED_CONNECTOR_TYPE}, 'api-token', ${actor.userId}, ${actor.orgId}),
+        (${REMOVED_AUTH_CONNECTOR_TYPE}, 'removed-auth-method', ${actor.userId}, ${actor.orgId}),
+        (${MISMATCHED_AUTH_CONNECTOR_TYPE}, 'oauth', ${actor.userId}, ${actor.orgId})
+    `);
+    historicalConnectorFixtures.push({
+      orgId: actor.orgId,
+      userId: actor.userId,
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const openai = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    expect(openai).toMatchObject({
+      connected: true,
+      connectionStatus: "connected",
+    });
+    const github = response.body.connectors.find((connector) => {
+      return connector.connectorRef === REMOVED_AUTH_CONNECTOR_TYPE;
+    });
+    expect(github).toMatchObject({
+      connected: false,
+      connection: null,
+      connectionStatus: "not-connected",
+    });
+    const gitlab = response.body.connectors.find((connector) => {
+      return connector.connectorRef === MISMATCHED_AUTH_CONNECTOR_TYPE;
+    });
+    expect(gitlab).toMatchObject({
+      connected: false,
+      connection: null,
+      connectionStatus: "not-connected",
+    });
+
+    const removedAuthConnector = await connectorsApi.requestReadConnectorByType(
+      actor,
+      REMOVED_AUTH_CONNECTOR_TYPE,
+      [404],
+    );
+    expect(removedAuthConnector.status).toBe(404);
+    const mismatchedAuthConnector =
+      await connectorsApi.requestReadConnectorByType(
+        actor,
+        MISMATCHED_AUTH_CONNECTOR_TYPE,
+        [404],
+      );
+    expect(mismatchedAuthConnector.status).toBe(404);
+  });
+
   it("returns connected auth-code status without exposing stored scopes", async () => {
     const actor = bdd.user();
     mockGitHubConnectorOAuth();
@@ -940,9 +1076,19 @@ describe("GET /api/zero/connector-catalog", () => {
       }),
       [200],
     );
+    const detailResponse = await accept(
+      client.get({
+        params: { connectorRef: "google-docs" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     expect(response.body.permissions.connectorRef).toBe("google-docs");
+    expect(response.body.permissions.icon).toStrictEqual(
+      detailResponse.body.connector.icon,
+    );
     expect(response.body.permissions.permissionCount).toBeGreaterThan(0);
     expect(response.body.permissions.permissions).toHaveLength(
       response.body.permissions.permissionCount,

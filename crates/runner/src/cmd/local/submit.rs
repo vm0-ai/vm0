@@ -744,11 +744,13 @@ async fn run_submit_with_home(args: SubmitArgs, home: HomePaths) -> RunnerResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::{ignored_child_test_env_guard_enabled, run_ignored_child_test};
     use std::os::unix::fs::{PermissionsExt, symlink};
-    use std::sync::Mutex;
 
-    /// Serialize tests that mutate environment variables to prevent UB.
-    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+    const TIMEZONE_CHILD_SCENARIO: &str = "VM0_RUNNER_TIMEZONE_TEST_SCENARIO";
+    const TIMEZONE_CHILD_TEST: &str = "cmd::local::submit::tests::detect_system_timezone_child";
+    const TIMEZONE_FROM_ENV_SCENARIO: &str = "from-env";
+    const TIMEZONE_EMPTY_ENV_SCENARIO: &str = "empty-env";
     const TEST_QUEUE_WATCH_TIMEOUT: Duration = Duration::from_secs(5);
     const TEST_QUEUE_WATCH_INTERVAL: Duration = Duration::from_millis(1);
 
@@ -767,33 +769,49 @@ mod tests {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
-    #[test]
-    fn detect_system_timezone_from_env() {
-        let _lock = ENV_MUTEX.lock().unwrap();
-        let original = std::env::var("TZ").ok();
-        // SAFETY: ENV_MUTEX ensures no other test mutates env concurrently.
-        unsafe { std::env::set_var("TZ", "America/New_York") };
-        let tz = detect_system_timezone();
-        match original {
-            Some(orig) => unsafe { std::env::set_var("TZ", orig) },
-            None => unsafe { std::env::remove_var("TZ") },
-        }
-        assert_eq!(tz, Some("America/New_York".to_string()));
+    #[tokio::test]
+    async fn detect_system_timezone_from_env() {
+        run_timezone_child(TIMEZONE_FROM_ENV_SCENARIO, "America/New_York").await;
+    }
+
+    #[tokio::test]
+    async fn detect_system_timezone_empty_env() {
+        run_timezone_child(TIMEZONE_EMPTY_ENV_SCENARIO, "").await;
+    }
+
+    async fn run_timezone_child(scenario: &'static str, timezone: &'static str) {
+        run_ignored_child_test(
+            TIMEZONE_CHILD_TEST,
+            (TIMEZONE_CHILD_SCENARIO, scenario),
+            &[("TZ", Some(timezone))],
+            Duration::from_secs(5),
+        )
+        .await;
     }
 
     #[test]
-    fn detect_system_timezone_empty_env() {
-        let _lock = ENV_MUTEX.lock().unwrap();
-        let original = std::env::var("TZ").ok();
-        // SAFETY: ENV_MUTEX ensures no other test mutates env concurrently.
-        unsafe { std::env::set_var("TZ", "") };
-        let tz = detect_system_timezone();
-        match original {
-            Some(orig) => unsafe { std::env::set_var("TZ", orig) },
-            None => unsafe { std::env::remove_var("TZ") },
+    #[ignore = "spawned by timezone environment scenario tests"]
+    fn detect_system_timezone_child() {
+        let Ok(scenario) = std::env::var(TIMEZONE_CHILD_SCENARIO) else {
+            return;
+        };
+        if !ignored_child_test_env_guard_enabled((TIMEZONE_CHILD_SCENARIO, &scenario)) {
+            return;
         }
-        // Empty TZ falls through to /etc/timezone
-        assert_ne!(tz, Some("".to_string()));
+
+        match scenario.as_str() {
+            TIMEZONE_FROM_ENV_SCENARIO => {
+                assert_eq!(
+                    detect_system_timezone(),
+                    Some("America/New_York".to_string())
+                );
+            }
+            TIMEZONE_EMPTY_ENV_SCENARIO => {
+                // Empty TZ falls through to /etc/timezone.
+                assert_ne!(detect_system_timezone(), Some("".to_string()));
+            }
+            other => panic!("unknown timezone test scenario: {other}"),
+        }
     }
 
     #[test]
