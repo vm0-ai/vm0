@@ -12,9 +12,12 @@
 //! ```
 
 use std::fs;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::time::Duration;
+
+use nix::sys::socket::{Shutdown, shutdown as shutdown_socket};
 
 #[path = "support/nbd_fixture.rs"]
 mod nbd_fixture;
@@ -668,11 +671,19 @@ async fn connect_device_survives_connection_loss() {
         false
     };
 
+    let connection_shutdown_result = if connected {
+        // Closing only the userspace server races with the kernel noticing EOF.
+        // Shut down the socket retained after connect so I/O assigned to this
+        // NBD queue fails and is requeued immediately.
+        Some(shutdown_socket(client_fds[0].as_raw_fd(), Shutdown::Both))
+    } else {
+        None
+    };
+
     let read_after_connection_loss = if connected {
         let lost_server = server_handles.remove(0);
         lost_server.abort();
         let _ = lost_server.await;
-        tokio::task::yield_now().await;
 
         let device_path = format!("/dev/nbd{device_index}");
         Some(
@@ -706,6 +717,9 @@ async fn connect_device_survives_connection_loss() {
 
     connect_result.expect("socketpair setup or connect_device");
     assert!(device_has_correct_size, "device should have correct size");
+    connection_shutdown_result
+        .expect("connected device should lose a connection")
+        .expect("lost client connection should shut down");
     let block = read_after_connection_loss
         .expect("connected device should be read")
         .expect("read after connection loss should not time out")
