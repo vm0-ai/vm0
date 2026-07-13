@@ -27,13 +27,11 @@ export interface ConnectorDiagnosticCatalogApi {
   readonly base: string;
   readonly routes: readonly FirewallRoutingRouteMetadata[];
   readonly environmentNames: readonly string[];
-  readonly executionTemplate: ConnectorDiagnosticExecutionTemplate | null;
 }
 
 export interface ConnectorDiagnosticCatalogView {
   readonly type: ConnectorType;
   readonly label: string;
-  readonly credentialResolution: "network-boundary" | "none";
   readonly baseUrlVarNames: readonly string[];
   readonly apis: readonly ConnectorDiagnosticCatalogApi[];
 }
@@ -156,7 +154,6 @@ export async function loadConnectorDiagnosticCatalogView(
       base: api.base,
       routes: api.routes,
       environmentNames: api.environmentNames,
-      executionTemplate,
     });
   }
 
@@ -170,8 +167,6 @@ export async function loadConnectorDiagnosticCatalogView(
   return {
     type: routing.type,
     label: routing.label,
-    credentialResolution:
-      execution.secretPlaceholderNames.length > 0 ? "network-boundary" : "none",
     baseUrlVarNames: [...routingBaseUrlVarNames].sort(),
     apis,
   };

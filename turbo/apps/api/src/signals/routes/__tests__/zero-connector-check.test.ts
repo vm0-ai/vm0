@@ -402,6 +402,17 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       run: { status: "not-scoped" },
       permission: { outcome: "unavailable", basis: "not-run-scoped" },
     });
+    const siblingAlias = await checkWithSession(actor, {
+      mode: "url",
+      method: "GET",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+      environmentName: "GH_TOKEN",
+    });
+    expect(siblingAlias.body).toMatchObject({
+      outcome: "resolved",
+      connector: { connectorRef: "github" },
+      environmentNames: ["GH_TOKEN"],
+    });
     const unknownEnvironment = await checkWithSession(actor, {
       mode: "environment",
       environmentName: "UNKNOWN_CONNECTOR_VALUE",
@@ -489,6 +500,16 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     });
     expect(unknownConnector.body).toStrictEqual({
       outcome: "unknown-connector",
+    });
+
+    const segmentBoundary = await checkWithSession(actor, {
+      mode: "url",
+      method: "GET",
+      url: "https://api.github.com.evil.example/repos/vm0-ai/vm0",
+    });
+    expect(segmentBoundary.body).toStrictEqual({
+      outcome: "no-match",
+      scope: "catalog",
     });
   });
 
@@ -664,6 +685,33 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       connector: { connectorRef: "reap" },
     });
 
+    context.mocks.axiom.query.mockResolvedValue([
+      {
+        runId,
+        firewalls: [
+          {
+            kind: "builtin",
+            name: "reap",
+            baseUrlVars: { REAP_API_BASE_URL: runBase },
+          },
+        ],
+      },
+    ]);
+    const unavailablePolicies = await checkWithToken(token, {
+      mode: "environment",
+      environmentName: "REAP_API_KEY",
+      permission: "read",
+    });
+    expect(unavailablePolicies.body).toMatchObject({
+      outcome: "resolved",
+      connector: { connectorRef: "reap" },
+      run: { status: "configured", bases: [runBase] },
+      permission: {
+        outcome: "unavailable",
+        basis: "policies-unavailable",
+      },
+    });
+
     context.mocks.axiom.query.mockResolvedValue([]);
     const missingSnapshot = await checkWithToken(token, {
       mode: "environment",
@@ -734,6 +782,20 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
               },
             ],
           },
+          {
+            name: "github",
+            apis: [
+              {
+                base: "https://api.github.com",
+                permissions: [
+                  {
+                    name: "repository.read",
+                    rules: ["GET /repos/{owner}/{repo}"],
+                  },
+                ],
+              },
+            ],
+          },
           { kind: "builtin", name: "unknown-non-connector" },
         ],
         networkPolicyEntries: [
@@ -760,7 +822,10 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       outcome: "resolved",
       connector: { connectorRef: "github" },
       environmentNames: null,
-      run: { status: "configured", bases: [inlineBase] },
+      run: {
+        status: "configured",
+        bases: ["https://api.github.com", inlineBase],
+      },
       relativePath: "/repos/vm0-ai/vm0/issues",
       permission: {
         kind: "matched",
@@ -786,5 +851,41 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
+
+    const recoveredEnvironment = await checkWithToken(token, {
+      mode: "url",
+      method: "GET",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+      connectorRef: "github",
+    });
+    expect(recoveredEnvironment.body).toMatchObject({
+      outcome: "resolved",
+      connector: { connectorRef: "github" },
+      environmentNames: ["GITHUB_TOKEN"],
+      permission: {
+        kind: "matched",
+        permissions: [
+          {
+            name: "repository.read",
+            policy: { outcome: "allow", basis: "allow-list" },
+          },
+        ],
+      },
+    });
+
+    const inlineUnknownEndpoint = await checkWithToken(token, {
+      mode: "url",
+      method: "OPTIONS",
+      url: `${inlineBase}/not-a-real-endpoint`,
+      connectorRef: "github",
+    });
+    expect(inlineUnknownEndpoint.body).toMatchObject({
+      outcome: "resolved",
+      connector: { connectorRef: "github" },
+      permission: {
+        kind: "unknown-endpoint",
+        policy: { outcome: "deny", basis: "unknown-policy" },
+      },
+    });
   });
 });
