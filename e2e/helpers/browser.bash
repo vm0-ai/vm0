@@ -156,6 +156,45 @@ wait_for_otp_screen() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_sign_in_next_step — Wait for Clerk sign-in to choose a stable branch
+# Emits one of:
+#   complete — auth redirected away from sign-in
+#   password — password challenge is visible
+#   otp      — email verification code challenge is visible
+# ---------------------------------------------------------------------------
+wait_for_sign_in_next_step() {
+  local timeout_secs="${1:-30}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local current_url snap
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" \
+      && "$current_url" == "${VM0_AUTH_REDIRECT_URL}"* ]]; then
+      echo "complete"
+      return 0
+    fi
+    if [[ -z "${VM0_AUTH_REDIRECT_URL:-}" \
+      && -n "$current_url" \
+      && ! "$current_url" =~ sign-in ]]; then
+      echo "complete"
+      return 0
+    fi
+
+    snap=$(full_snapshot)
+    if contains "$snap" "verify\|verification code\|enter.*code"; then
+      echo "otp"
+      return 0
+    fi
+    if contains "$snap" "enter your password\|forgot password\|password"; then
+      echo "password"
+      return 0
+    fi
+
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # enter_otp — Enter OTP verification code
 # ---------------------------------------------------------------------------
 enter_otp() {

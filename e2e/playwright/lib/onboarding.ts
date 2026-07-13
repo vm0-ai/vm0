@@ -70,12 +70,7 @@ export async function waitForPaidOnboardingAppHandoff(
   page: Page,
   options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
 ): Promise<URL> {
-  return await waitForOnboardingHandoff(
-    page,
-    options,
-    isPromptOrChatUrl,
-    180_000,
-  );
+  return await waitForPaidOnboardingHandoff(page, options, 180_000);
 }
 
 async function openOnboarding(
@@ -321,4 +316,82 @@ function isOnboardingUrl(url: URL): boolean {
 function redirectOriginFromAuthUrl(url: URL): string | null {
   const redirectUrl = url.searchParams.get("redirect_url");
   return redirectUrl ? new URL(redirectUrl).origin : null;
+}
+
+async function waitForPaidOnboardingHandoff(
+  page: Page,
+  options: Pick<OnboardingFlowOptions, "appUrl" | "auth">,
+  timeout: number,
+): Promise<URL> {
+  const configuredAppOrigin = new URL(options.appUrl).origin;
+  const deadline = Date.now() + timeout;
+  let nextBillingReturnReloadAt: number | null = null;
+
+  while (true) {
+    const currentUrl = new URL(page.url());
+    const rewrittenUrl = rewritePreviewAppFallbackUrl(
+      currentUrl,
+      configuredAppOrigin,
+    );
+    if (rewrittenUrl) {
+      console.log("[e2e] rewriting paid onboarding preview handoff", {
+        from: currentUrl.toString(),
+        to: rewrittenUrl,
+      });
+      await page.goto(rewrittenUrl, { waitUntil: "domcontentloaded" });
+      continue;
+    }
+
+    if (
+      currentUrl.origin === configuredAppOrigin &&
+      isPromptOrChatUrl(currentUrl)
+    ) {
+      return currentUrl;
+    }
+
+    const checkoutSessionId = paidBillingSessionId(currentUrl);
+    if (checkoutSessionId !== null && isOnboardingUrl(currentUrl)) {
+      const now = Date.now();
+      nextBillingReturnReloadAt ??= now + 15_000;
+      if (now >= nextBillingReturnReloadAt) {
+        console.log("[e2e] reloading paid onboarding return page", {
+          url: currentUrl.toString(),
+        });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        nextBillingReturnReloadAt = now + 15_000;
+      }
+    }
+
+    if (isHostedSignInUrl(currentUrl)) {
+      if (!options.auth) {
+        throw new Error(
+          `Paid onboarding handoff required sign-in at ${currentUrl.origin}, but no auth options were provided`,
+        );
+      }
+      await signInFromCurrentHostedAuthPage(page, options.auth.email, {
+        activeOrganizationId: options.auth.activeOrganizationId,
+      });
+      continue;
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for paid onboarding handoff to ${configuredAppOrigin}; current URL is ${page.url()}`,
+      );
+    }
+
+    await page.waitForTimeout(Math.min(1_000, remainingMs));
+  }
+}
+
+function paidBillingSessionId(url: URL): string | null {
+  if (url.searchParams.get("billing") !== "pro") {
+    return null;
+  }
+  const sessionId = url.searchParams.get("billing_session_id");
+  if (!sessionId || sessionId === "{CHECKOUT_SESSION_ID}") {
+    return null;
+  }
+  return sessionId;
 }
