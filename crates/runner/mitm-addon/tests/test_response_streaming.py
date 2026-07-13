@@ -131,7 +131,12 @@ class TestResponseEncodingInspectionRisk:
         content_encoding: str,
         content_type: str = "application/json",
     ) -> http.HTTPFlow:
-        flow = real_flow(with_response=False, host="api.anthropic.com", path="/v1/messages")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -242,6 +247,35 @@ class TestResponseEncodingInspectionRisk:
 
         assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
 
+    @pytest.mark.parametrize(
+        ("request_method", "response_status"),
+        [
+            pytest.param("GET", 101, id="informational"),
+            pytest.param("GET", 204, id="no-content"),
+            pytest.param("GET", 205, id="reset-content"),
+            pytest.param("GET", 304, id="not-modified"),
+            pytest.param("HEAD", 200, id="head"),
+            pytest.param("CONNECT", 200, id="successful-connect"),
+        ],
+    )
+    def test_bodyless_model_response_does_not_log_encoding_risk(
+        self,
+        real_flow,
+        tmp_path,
+        mitm_ctx,
+        request_method: str,
+        response_status: int,
+    ) -> None:
+        flow = self._model_flow(real_flow, tmp_path, content_encoding="zstd")
+        flow.request.method = request_method
+        assert flow.response is not None
+        flow.response.status_code = response_status
+
+        with mitm_ctx():
+            mitm_addon.responseheaders(flow)
+
+        assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+
     def test_successful_billable_connector_logs_non_streamable_encoding_risk(
         self, real_flow, tmp_path, mitm_ctx
     ) -> None:
@@ -264,6 +298,7 @@ class TestResponseEncodingInspectionRisk:
             pytest.param("x", False, 200, id="non-billable"),
             pytest.param("stripe", True, 200, id="no-registered-parser"),
             pytest.param("x", True, 400, id="unsuccessful-response"),
+            pytest.param("x", True, 204, id="bodyless-response"),
         ],
     )
     def test_non_inspected_connector_does_not_log_encoding_risk(
