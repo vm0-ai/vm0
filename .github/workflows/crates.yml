@@ -1026,12 +1026,17 @@ jobs:
 
           DNS_READINESS_LOGGED=false
           for _ in $(seq 1 30); do
-            STARTUP_LOGS=$(sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 300 2>&1) \
-              || fail "failed to read runner startup logs"
-            if printf '%s\n' "$STARTUP_LOGS" \
-              | grep -F "namespace DNS readiness probe succeeded" >/dev/null; then
-              DNS_READINESS_LOGGED=true
-              break
+            INVOCATION_ID=$(sudo systemctl show "vm0-runner-${SVC}.service" \
+              --property=InvocationID --value 2>/dev/null) || true
+            if [ -n "$INVOCATION_ID" ]; then
+              STARTUP_LOGS=$(sudo journalctl --no-pager --lines 300 \
+                "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
+                || fail "failed to read runner startup logs"
+              if printf '%s\n' "$STARTUP_LOGS" \
+                | grep -F "namespace DNS readiness probe succeeded" >/dev/null; then
+                DNS_READINESS_LOGGED=true
+                break
+              fi
             fi
             sleep 1
           done
