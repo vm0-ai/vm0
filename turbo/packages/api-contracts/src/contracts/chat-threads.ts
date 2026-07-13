@@ -152,39 +152,6 @@ const chatThreadUnreadAgentsSchema = z.object({
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
 
-const chatThreadListItemSchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  /**
-   * Owning agent snapshot emitted by the server for every list row.
-   */
-  agent: z.object({
-    id: z.string(),
-    avatarUrl: z.string().nullable(),
-  }),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  /**
-   * True when the thread has at least one non-terminal run
-   * (queued / pending / running). Drives the sidebar running indicator,
-   * which is mutually exclusive with the unread dot.
-   */
-  running: z.boolean(),
-  /**
-   * ISO timestamp at which the user pinned this thread. Null/undefined means
-   * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
-   * keep recency order. Optional for back-compat with fixtures that predate
-   * the field.
-   */
-  pinnedAt: z.string().nullable().optional(),
-  /**
-   * ISO timestamp at which the user manually renamed this thread. Null/undefined
-   * means never renamed. When set, automated title generation is suppressed.
-   * Optional for back-compat with fixtures that predate the field.
-   */
-  renamedAt: z.string().nullable().optional(),
-});
-
 const chatThreadSnapshotProjectionSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
@@ -1263,7 +1230,6 @@ export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
 export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 
 export {
-  chatThreadListItemSchema,
   chatThreadSnapshotProjectionSchema,
   chatThreadEventSchema,
   chatThreadDetailSchema,
@@ -1331,7 +1297,6 @@ export type WebsiteGenerationTemplateRequest = z.infer<
 >;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
-export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadSnapshotProjection = z.infer<
   typeof chatThreadSnapshotProjectionSchema
 >;

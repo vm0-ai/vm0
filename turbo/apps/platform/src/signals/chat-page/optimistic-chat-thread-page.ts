@@ -14,7 +14,7 @@ import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/z
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
+import { currentChatThreadId$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { loadRightThread$ } from "./chat-thread-panes.ts";
 import {
@@ -366,8 +366,6 @@ export const createNewChatThread$ = command(
     await result.createResult;
   },
 );
-
-export const sidebarChatThreads$ = chatThreads$;
 
 const sendNewThreadMessage$ = command(
   async (

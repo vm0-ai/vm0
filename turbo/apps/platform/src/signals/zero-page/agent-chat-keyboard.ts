@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { matchShortcut } from "@vm0/ui";
-import { sidebarChatThreads$ } from "../chat-page/optimistic-chat-thread-page.ts";
+import { currentChatThreadListIds$ } from "../agent-chat.ts";
 import { onDomEventFn } from "../utils.ts";
 import { navigateToChat$ } from "./zero-nav.ts";
 
@@ -17,12 +17,12 @@ export const setupAgentChatKeyboardShortcuts$ = command(
         }
 
         event.preventDefault();
-        const [firstThread] = await get(sidebarChatThreads$);
+        const [firstThreadId] = await get(currentChatThreadListIds$);
         signal.throwIfAborted();
-        if (!firstThread) {
+        if (!firstThreadId) {
           return;
         }
-        set(navigateToChat$, firstThread.id);
+        set(navigateToChat$, firstThreadId);
       }),
       { signal },
     );

@@ -381,12 +381,7 @@ function MobileUnreadThreadShortcuts() {
   const features = useGet(featureSwitch$);
   const enabled =
     features[FeatureSwitchKey.MobileUnreadChatThreadShortcuts] ?? false;
-  const unreadThreadsLoadable = useLoadable(currentAgentUnreadChatThreads$);
-  const lastUnreadThreads = useLastResolved(currentAgentUnreadChatThreads$);
-  const unreadThreads =
-    unreadThreadsLoadable.state === "hasData"
-      ? unreadThreadsLoadable.data
-      : (lastUnreadThreads ?? []);
+  const unreadThreads = useLastResolved(currentAgentUnreadChatThreads$) ?? [];
 
   if (!enabled || unreadThreads.length === 0) {
     return null;
@@ -411,12 +406,12 @@ function MobileUnreadThreadShortcuts() {
                   {thread.title ?? "New chat"}
                 </span>
               </span>
-              {thread.running ? (
+              {thread.hasActiveRun ? (
                 <IconLoader2
                   size={14}
                   stroke={1.8}
                   className="shrink-0 animate-spin text-primary"
-                  aria-hidden
+                  aria-label="Running"
                 />
               ) : (
                 <IconChevronRight

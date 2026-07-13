@@ -11,7 +11,6 @@ import {
   chatThreadRenameContract,
   chatThreadUnpinContract,
   chatThreadsContract,
-  type ChatThreadListItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -41,7 +40,15 @@ const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
 const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 
-type SidebarThread = ChatThreadListItem;
+interface SidebarThread {
+  readonly id: string;
+  readonly title: string | null;
+  readonly agent: { readonly id: string; readonly avatarUrl: string | null };
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly pinnedAt?: string | null;
+  readonly renamedAt?: string | null;
+}
 
 function prepareDefaultAgent(): void {
   context.mocks.data.team([
@@ -126,13 +133,17 @@ function createThread(
     agent: { id: AGENT_ID, avatarUrl: null },
     createdAt: "2026-03-10T00:00:00Z",
     updatedAt: "2026-03-10T00:00:00Z",
-    running: false,
     pinnedAt: null,
     ...overrides,
   };
 }
 
-function mockChatThreadSnapshot(threads: () => readonly SidebarThread[]): void {
+function mockChatThreadSnapshot(
+  threads: () => readonly SidebarThread[],
+  activeThreadIds: () => readonly string[] = () => {
+    return [];
+  },
+): void {
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
     const snapshotThreads = threads();
     return respond(200, {
@@ -159,11 +170,7 @@ function mockChatThreadSnapshot(threads: () => readonly SidebarThread[]): void {
     return respond(200, { events: [], hasMore: false });
   });
   context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, {
-      threadIds: threads().flatMap((thread) => {
-        return thread.running ? [thread.id] : [];
-      }),
-    });
+    return respond(200, { threadIds: [...activeThreadIds()] });
   });
 }
 
@@ -272,14 +279,20 @@ function openChatListMenu(): void {
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
+  activeThreadIds: readonly string[] = [],
 ): {
   threads: SidebarThread[];
 } {
   let threads = [...firstPageThreads];
 
-  mockChatThreadSnapshot(() => {
-    return [...threads, ...extraThreads];
-  });
+  mockChatThreadSnapshot(
+    () => {
+      return [...threads, ...extraThreads];
+    },
+    () => {
+      return activeThreadIds;
+    },
+  );
 
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     return respond(200, {
@@ -338,7 +351,6 @@ describe("zero sidebar", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ];
     mockChatThreadSnapshot(() => {
@@ -445,7 +457,6 @@ describe("zero sidebar", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
         pinnedAt: null,
       },
       {
@@ -454,7 +465,6 @@ describe("zero sidebar", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-11T00:00:00Z",
-        running: false,
         pinnedAt: null,
       },
       {
@@ -463,7 +473,6 @@ describe("zero sidebar", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-12T00:00:00Z",
-        running: false,
         pinnedAt: null,
       },
     ];
@@ -533,7 +542,6 @@ describe("zero sidebar", () => {
         agent: { id: AGENT_ID, avatarUrl: null },
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-        running: false,
       },
     ];
     mockChatThreadSnapshot(() => {
@@ -789,12 +797,16 @@ describe("zero sidebar", () => {
 
   it("pins and unpins a chat thread from the sidebar menu", async () => {
     prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-      createThread(AUTOMATION_THREAD_ID, "Running analysis", { running: true }),
-      createThread(ARCHIVED_THREAD_ID, "Draft brief"),
-    ]);
+    mockSidebarThreadStory(
+      [
+        createThread(EXISTING_THREAD_ID, "Release plan"),
+        createThread(INCIDENT_THREAD_ID, "Incident notes"),
+        createThread(AUTOMATION_THREAD_ID, "Running analysis"),
+        createThread(ARCHIVED_THREAD_ID, "Draft brief"),
+      ],
+      [],
+      [AUTOMATION_THREAD_ID],
+    );
     context.mocks.api(chatThreadsContract.drafts, ({ respond }) => {
       return respond(200, { draftThreadIds: [ARCHIVED_THREAD_ID] });
     });
@@ -1550,10 +1562,13 @@ describe("zero sidebar", () => {
       "Support escalation",
       {
         agent: { id: SUPPORT_AGENT_ID, avatarUrl: null },
-        running: true,
       },
     );
-    mockSidebarThreadStory([defaultThread, researchThread, supportThread]);
+    mockSidebarThreadStory(
+      [defaultThread, researchThread, supportThread],
+      [],
+      [INCIDENT_THREAD_ID],
+    );
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
       return respond(200, {
         unreads: [

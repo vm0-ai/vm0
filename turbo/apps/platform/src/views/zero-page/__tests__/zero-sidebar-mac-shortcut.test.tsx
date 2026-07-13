@@ -4,7 +4,6 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
-  type ChatThreadListItem,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -14,7 +13,15 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
-type SidebarThread = ChatThreadListItem;
+interface SidebarThread {
+  readonly id: string;
+  readonly title: string | null;
+  readonly agent: { readonly id: string; readonly avatarUrl: string | null };
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly pinnedAt?: string | null;
+  readonly renamedAt?: string | null;
+}
 
 const restoreNavigator = vi.hoisted(() => {
   const macUserAgent =
@@ -81,7 +88,6 @@ function createThread(id: string, title: string): SidebarThread {
     agent: { id: AGENT_ID, avatarUrl: null },
     createdAt: "2026-03-10T00:00:00Z",
     updatedAt: "2026-03-10T00:00:00Z",
-    running: false,
     pinnedAt: null,
   };
 }
