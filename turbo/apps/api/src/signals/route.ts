@@ -41,6 +41,7 @@ import { desktopUpdateRoutes } from "./routes/desktop-updates";
 import { emailUnsubscribeRoutes } from "./routes/email-unsubscribe";
 import { apiHealth$ } from "./routes/health";
 import { apiBuildInfo$ } from "./routes/build-info";
+import { legacyWebClientCompatibilityRoutes } from "./routes/legacy-web-client-compatibility";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
@@ -205,6 +206,7 @@ export const ROUTES: readonly RouteEntry[] = [
     route: buildInfoContract.get,
     handler: apiBuildInfo$,
   },
+  ...legacyWebClientCompatibilityRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...desktopAuthRoutes,

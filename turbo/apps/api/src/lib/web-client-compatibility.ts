@@ -21,6 +21,8 @@ const webClientCompatibilityConfigSchema = z.object({
 const { minimumSupportedVersion } =
   webClientCompatibilityConfigSchema.parse(compatibilityConfig);
 
+export const minimumSupportedWebClientVersion = minimumSupportedVersion;
+
 function parseAppVersion(version: string): AppVersion | null {
   const match = APP_VERSION_PATTERN.exec(version);
   if (!match?.groups) {
