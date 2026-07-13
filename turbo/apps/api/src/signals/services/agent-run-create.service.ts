@@ -384,7 +384,9 @@ interface ExplicitConnectorScope {
 // - agentSessionId is the vm0 application session (`agent_sessions.id`) used
 //   for product-level continuation and future correctness checks.
 // - cliAgentSessionId is the Claude/Codex CLI agent session stored on
-//   `conversations.cli_agent_session_id`; runner sandbox reuse is keyed by it.
+//   `conversations.cli_agent_session_id`. Runner sandbox reuse combines it with
+//   the application-session-derived `sandboxReuseScope`; it is not sufficient
+//   for reuse authorization by itself.
 // Existing API/runner wire fields named `sessionId` are preserved for
 // compatibility and normalized to these semantic names at the boundary.
 

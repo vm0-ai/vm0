@@ -177,7 +177,8 @@ export const heldSessionStateSchema = z.object({
   // but never treated as authoritative reuse affinity.
   sandboxReuseScope: z.uuid().optional(),
   // Compatibility wire name. Semantically this is the Claude/Codex CLI agent
-  // session id used to route work toward a runner with a reusable sandbox.
+  // session component of scoped reuse affinity; it is not authoritative
+  // without sandboxReuseScope.
   sessionId: z.string(),
   lastCompletedAt: z.string().datetime({ offset: true }),
   reusableSandbox: z

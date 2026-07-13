@@ -17,7 +17,9 @@ const queuedRunnerJobPayloadWireSchema = z.object({
   runnerGroup: z.string(),
   profile: z.string(),
   // Wire/backing payload compatibility field. Semantically this is the
-  // Claude/Codex CLI agent session id used for runner sandbox reuse affinity.
+  // CLI component of runner sandbox reuse affinity. The API derives the
+  // authoritative scope from agent_runs at dispatch/claim time rather than
+  // persisting it in this queued payload.
   sessionId: z.string().nullable(),
   executionContext: storedExecutionContextSchema,
 });

@@ -6,7 +6,8 @@ export interface RunnerHeldSessionState {
   // server-authoritative application session id.
   readonly sandboxReuseScope?: string;
   // Compatibility JSON field name. Semantically this is the CLI agent session
-  // id that keys runner sandbox reuse affinity.
+  // component of the scoped runner reuse identity and is not authoritative by
+  // itself.
   readonly sessionId: string;
   readonly lastCompletedAt: string;
   readonly reusableSandbox?: {

@@ -1222,7 +1222,8 @@ pub struct HeldSessionState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_reuse_scope: Option<String>,
     /// Compatibility wire name is `sessionId`; semantically this is the
-    /// Claude/Codex CLI agent session id used for sandbox reuse affinity.
+    /// CLI agent session component of scoped reuse affinity and is not
+    /// authoritative without `sandbox_reuse_scope`.
     pub session_id: String,
     pub last_completed_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
