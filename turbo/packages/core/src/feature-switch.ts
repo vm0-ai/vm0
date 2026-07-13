@@ -51,6 +51,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
+  [FeatureSwitchKey.BillConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the BILL Spend & Expense connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.BentomlConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the BentoML model serving connector",
@@ -64,6 +69,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Canva design connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CalComConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Cal.com scheduling connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CopperConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Copper CRM connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.DatadogConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Datadog observability connector",
     enabled: false,
   },
   [FeatureSwitchKey.DeelConnector]: {
@@ -84,6 +104,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Figma design connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ExpensifyConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Expensify accounting connector",
     enabled: false,
   },
   [FeatureSwitchKey.GoogleContactsConnector]: {
@@ -109,6 +134,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Neon serverless Postgres connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.NetSuiteConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Oracle NetSuite ERP connector",
     enabled: false,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
@@ -177,6 +207,16 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.PayPalConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the PayPal payments connector",
+    enabled: false,
+  },
+  [FeatureSwitchKey.RampConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Ramp spend management connector",
     enabled: false,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
@@ -258,6 +298,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable the Zoom connector (OAuth 2.0) for meetings, past participants, and cloud recordings access",
+    enabled: false,
+  },
+  [FeatureSwitchKey.WorkdayConnector]: {
+    maintainer: "yuma@vm0.ai",
+    description: "Enable the Workday HCM and finance connector",
     enabled: false,
   },
 
