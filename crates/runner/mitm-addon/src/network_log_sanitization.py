@@ -5,6 +5,7 @@ import urllib.parse
 _URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in range(0x21))
 _URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
 _SPECIAL_URL_SCHEMES = ("http", "https")
+_SPECIAL_URL_SEPARATORS = "/\\"
 
 
 def _normalize_for_urlsplit(value: str) -> str:
@@ -43,7 +44,9 @@ def _sanitize_url_text_fallback_for_network_log(value: str) -> str:
 def _sanitize_malformed_authority_for_network_log(
     value: str, parts: urllib.parse.SplitResult
 ) -> str | None:
-    if parts.netloc:
+    # A mixed separator run can leave only backslashes in netloc while the
+    # actual authority-like segment lands in path.
+    if parts.netloc.strip(_SPECIAL_URL_SEPARATORS):
         return None
 
     has_special_scheme = parts.scheme in _SPECIAL_URL_SCHEMES
@@ -51,9 +54,11 @@ def _sanitize_malformed_authority_for_network_log(
     if not has_special_scheme and not is_protocol_relative:
         return None
 
-    authority_path = parts.path.lstrip("/\\")
+    authority_path = parts.path.lstrip(_SPECIAL_URL_SEPARATORS)
     cut_points = [
-        index for separator in ("/", "\\") if (index := authority_path.find(separator)) != -1
+        index
+        for separator in _SPECIAL_URL_SEPARATORS
+        if (index := authority_path.find(separator)) != -1
     ]
     if cut_points:
         path_start = min(cut_points)

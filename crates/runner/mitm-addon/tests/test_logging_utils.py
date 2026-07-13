@@ -163,9 +163,19 @@ class TestLogProxyEntry:
                 id="mixed-separators",
             ),
             pytest.param(
+                r"https://\/user:pass@example.com/path?token=secret#fragment",
+                "https://example.com/path",
+                id="separator-only-netloc",
+            ),
+            pytest.param(
                 "///user:pass@example.com/path?token=secret#fragment",
                 "//example.com/path",
                 id="extra-protocol-relative-slash",
+            ),
+            pytest.param(
+                r"//\/user:pass@example.com/path?token=secret#fragment",
+                "//example.com/path",
+                id="separator-only-protocol-relative-netloc",
             ),
             pytest.param(
                 "\x00 https:////user:pass@example.com/path?token=secret#fragment",
@@ -201,6 +211,11 @@ class TestLogProxyEntry:
                 "https:////example.com/users/alice@example.com?token=secret#fragment",
                 "https://example.com/users/alice@example.com",
                 id="at-sign-after-malformed-authority",
+            ),
+            pytest.param(
+                r"https://\/example.com/users/alice@example.com?token=secret#fragment",
+                r"https://\/example.com/users/alice@example.com",
+                id="at-sign-after-separator-only-netloc",
             ),
         ],
     )
