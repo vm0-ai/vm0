@@ -24,6 +24,11 @@ from tests.x_flow_helpers import (
     make_x_stream_pipeline_flow,
 )
 
+_STREAM_DECODE_SKIP_REASONS = {
+    "br": "brotli streaming output cannot be bounded",
+    "zstd": "zstd streaming output cannot be hard-bounded",
+}
+
 
 def _compress_body(encoding: str, payload: bytes) -> bytes:
     if encoding == "gzip":
@@ -106,7 +111,10 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert log.debug.call_count == 1
-        assert f"Streaming decompression skipped ({encoding_case})" in log.debug.call_args[0][0]
+        assert (
+            f"Streaming decompression skipped: {_STREAM_DECODE_SKIP_REASONS[encoding_case]}"
+            in log.debug.call_args[0][0]
+        )
 
     @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
     def test_responseheaders_unsafe_compressed_x_stream_does_not_leave_parser_state(
@@ -122,7 +130,10 @@ class TestXConnectorResponsePipeline:
         assert "connector_response_finish" not in flow.metadata
         assert metadata_keys.X_NDJSON_STATE not in flow.metadata
         assert log.debug.call_count == 1
-        assert f"Streaming decompression skipped ({encoding_case})" in log.debug.call_args[0][0]
+        assert (
+            f"Streaming decompression skipped: {_STREAM_DECODE_SKIP_REASONS[encoding_case]}"
+            in log.debug.call_args[0][0]
+        )
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate", "br", "zstd"])
     def test_full_response_pipeline_truncated_compressed_x_json_does_not_bill(

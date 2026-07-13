@@ -28,8 +28,11 @@ import flow_metadata_keys as metadata_keys
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
+from usage.underbilling import log_usage_underbilling
 
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
+_HTTP_STATUS_OK_MIN = 200
+_HTTP_STATUS_REDIRECT_MIN = 300
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
@@ -101,6 +104,26 @@ def _make_model_sse_parse_error_logger(
     return log_parse_error
 
 
+def _log_response_encoding_inspection_risk(
+    flow: http.HTTPFlow,
+    *,
+    skip_reason: str,
+) -> None:
+    response = flow.response
+    if response is None:
+        return
+    log_usage_underbilling(
+        flow_metadata.proxy_log_path(flow.metadata),
+        "Response encoding prevents incremental usage inspection",
+        "response_encoding_not_stream_decodable",
+        "risk",
+        run_id=flow_metadata.run_id(flow.metadata),
+        firewall_name=flow_metadata.firewall_name(flow.metadata),
+        status_code=response.status_code,
+        decode_skip_reason=skip_reason,
+    )
+
+
 def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParser | None:
     # Set up usage extraction for response classes that need body inspection.
     # The forensic stream_buffer remains capped; usage parsers consume chunks
@@ -146,6 +169,9 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
                 )
             decode_session = _make_response_decode_session(parser_fn, flow.response.headers)
             if decode_session is None:
+                skip_reason = body_decoding.stream_decode_skip_reason(flow.response.headers)
+                if skip_reason is not None:
+                    _log_response_encoding_inspection_risk(flow, skip_reason=skip_reason)
                 return None
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = usage_dict
 
@@ -166,6 +192,9 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
             extractor = usage.create_anthropic_messages_json_usage_extractor()
         decode_session = _make_response_decode_session(extractor.feed, flow.response.headers)
         if decode_session is None:
+            skip_reason = body_decoding.stream_decode_skip_reason(flow.response.headers)
+            if skip_reason is not None:
+                _log_response_encoding_inspection_risk(flow, skip_reason=skip_reason)
             return None
 
         def finish_json_usage() -> tuple[dict | None, str | None]:
@@ -180,6 +209,14 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
     if not is_billable_flow:
         return None
     if not body_decoding.can_stream_decode_usage(flow.response.headers):
+        firewall_name = flow_metadata.firewall_name(flow.metadata)
+        if (
+            _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
+            and usage.has_connector_response_parser(firewall_name)
+        ):
+            skip_reason = body_decoding.stream_decode_skip_reason(flow.response.headers)
+            if skip_reason is not None:
+                _log_response_encoding_inspection_risk(flow, skip_reason=skip_reason)
         return None
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
