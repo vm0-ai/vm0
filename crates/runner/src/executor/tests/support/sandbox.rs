@@ -138,6 +138,97 @@ pub(in crate::executor::tests) struct CancelAfterWaitSandbox {
     pub(in crate::executor::tests) cancel: tokio_util::sync::CancellationToken,
 }
 
+pub(in crate::executor::tests) struct StartProcessGateSandbox {
+    pub(in crate::executor::tests) inner: Box<dyn Sandbox>,
+    pub(in crate::executor::tests) entered: Arc<tokio::sync::Notify>,
+    pub(in crate::executor::tests) release: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait]
+impl Sandbox for StartProcessGateSandbox {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+
+    fn source_ip(&self) -> &str {
+        self.inner.source_ip()
+    }
+
+    fn host_process_pid(&self) -> Option<u32> {
+        self.inner.host_process_pid()
+    }
+
+    async fn start(&mut self) -> sandbox::Result<()> {
+        self.inner.start().await
+    }
+
+    async fn stop(&mut self) -> sandbox::Result<()> {
+        self.inner.stop().await
+    }
+
+    async fn kill(&mut self) -> sandbox::Result<()> {
+        self.inner.kill().await
+    }
+
+    async fn park(&mut self) -> sandbox::Result<()> {
+        self.inner.park().await
+    }
+
+    async fn unpark(&mut self) -> sandbox::Result<()> {
+        self.inner.unpark().await
+    }
+
+    async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+        self.inner.exec(request).await
+    }
+
+    async fn exec_with_diagnostic_label(
+        &self,
+        request: &ExecRequest<'_>,
+        label: &'static str,
+    ) -> sandbox::Result<ExecResult> {
+        self.inner.exec_with_diagnostic_label(request, label).await
+    }
+
+    async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+        self.inner.read_file(path, max_bytes).await
+    }
+
+    async fn copy_file(
+        &self,
+        path: &str,
+        host_path: &Path,
+        options: CopyFileOptions,
+    ) -> sandbox::Result<sandbox::CopyFileResult> {
+        self.inner.copy_file(path, host_path, options).await
+    }
+
+    async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.inner.write_file(path, content).await
+    }
+
+    async fn write_private_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+        self.inner.write_private_file(path, content).await
+    }
+
+    async fn start_process(
+        &self,
+        request: &StartProcessRequest<'_>,
+    ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        self.inner.start_process(request).await
+    }
+
+    async fn wait_process(
+        &self,
+        handle: sandbox::GuestProcessHandle,
+        timeout: Duration,
+    ) -> sandbox::Result<ProcessExit> {
+        self.inner.wait_process(handle, timeout).await
+    }
+}
+
 #[async_trait]
 impl Sandbox for CancelAfterWaitSandbox {
     fn id(&self) -> &str {
