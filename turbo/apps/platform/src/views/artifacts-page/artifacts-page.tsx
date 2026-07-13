@@ -447,7 +447,7 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
           src={item.previewImageUrl}
           alt=""
           loading="lazy"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
         />
       </ArtifactPreviewSurface>
     );
@@ -460,7 +460,7 @@ function ArtifactPreview({ item }: { readonly item: ArtifactItem }) {
           src={previewUrl}
           alt=""
           loading="lazy"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
         />
       </ArtifactPreviewSurface>
     );
