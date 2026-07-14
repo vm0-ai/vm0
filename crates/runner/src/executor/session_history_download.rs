@@ -2714,7 +2714,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn materializer_records_body_read_failure_timing() {
+    async fn attributed_materializer_preserves_body_read_failure() {
         let server = MultiShotSessionHistoryServer::respond_many(vec![
             MultiShotSessionHistoryResponse::ok(b"short", Some(999));
             SESSION_HISTORY_DOWNLOAD_MAX_ATTEMPTS
@@ -2727,9 +2727,13 @@ mod tests {
             999,
         );
 
-        let result = start_materializer(&session)
-            .finish(&CancellationToken::new())
-            .await;
+        let result = start_materializer_with_prefix_attribution(
+            &session,
+            EffectiveCliFramework::ClaudeCode,
+            prefix_attribution(b"x"),
+        )
+        .finish(&CancellationToken::new())
+        .await;
 
         match result {
             SessionHistoryMaterialization::Failed { timings, .. } => {

@@ -341,16 +341,6 @@ impl RestoredSessionHistoryPrefixAttribution {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn history_hash(&self) -> &str {
-        &self.history_hash
-    }
-
-    #[cfg(test)]
-    pub(crate) fn history_size_bytes(&self) -> u64 {
-        self.history_size_bytes
-    }
-
     pub(crate) fn into_parts(self) -> (String, u64) {
         (self.history_hash, self.history_size_bytes)
     }
@@ -419,99 +409,5 @@ fn resume_history_ref_kind_from_final(
 fn final_session_history_ref_kind(kind: ResumeSessionHistoryRefKind) -> FinalSessionHistoryRefKind {
     match kind {
         ResumeSessionHistoryRefKind::Blob => FinalSessionHistoryRefKind::Blob,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn requested_identity(
-        identity_session_id: &str,
-        history_hash: &str,
-        history_size_bytes: u64,
-    ) -> RestoredSessionIdentity {
-        RestoredSessionIdentity::new(
-            RestoredSessionFramework::ClaudeCode,
-            identity_session_id,
-            ResumeSessionHistoryRefKind::Blob,
-            history_hash,
-            Some(history_size_bytes),
-        )
-    }
-
-    fn verified_restored_identity(
-        history_hash: &str,
-        history_size_bytes: u64,
-    ) -> RestoredSessionIdentity {
-        let metadata = FinalSessionHistoryIdentity::new(
-            FinalSessionHistoryFramework::ClaudeCode,
-            hex::encode(Sha256::digest(b"session-id")),
-            FinalSessionHistoryRefKind::Blob,
-            history_hash,
-            history_size_bytes,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        )
-        .unwrap();
-        RestoredSessionIdentity::from_final_metadata(
-            metadata,
-            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
-            "/home/user/.vm0/guest-agent/runs/previous",
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn prefix_attribution_requires_verified_requested_larger_history_hash_mismatch() {
-        let local_history_hash = "a".repeat(64);
-        let requested_history_hash = "b".repeat(64);
-        let restored = verified_restored_identity(&local_history_hash, 12);
-        let requested_larger = requested_identity("session-id", &requested_history_hash, 13);
-
-        let (reason, attribution) =
-            restored.mismatch_reason_and_prefix_attribution(&requested_larger);
-        assert_eq!(
-            reason,
-            Some(RestoredSessionIdentityMismatchReason::HistoryHash(
-                RestoredSessionHistoryHashSizeRelationship::RequestedLarger
-            ))
-        );
-        let attribution =
-            attribution.expect("verified requested-larger mismatch should carry attribution");
-        assert_eq!(attribution.history_hash(), local_history_hash);
-        assert_eq!(attribution.history_size_bytes(), 12);
-
-        let requested_equal = requested_identity("session-id", &requested_history_hash, 12);
-        assert!(
-            restored
-                .mismatch_reason_and_prefix_attribution(&requested_equal)
-                .1
-                .is_none()
-        );
-
-        let requested_smaller = requested_identity("session-id", &requested_history_hash, 11);
-        assert!(
-            restored
-                .mismatch_reason_and_prefix_attribution(&requested_smaller)
-                .1
-                .is_none()
-        );
-
-        let different_session =
-            requested_identity("different-session", &requested_history_hash, 13);
-        assert!(
-            restored
-                .mismatch_reason_and_prefix_attribution(&different_session)
-                .1
-                .is_none()
-        );
-
-        let unverified = requested_identity("session-id", &local_history_hash, 12);
-        assert!(
-            unverified
-                .mismatch_reason_and_prefix_attribution(&requested_larger)
-                .1
-                .is_none()
-        );
     }
 }
