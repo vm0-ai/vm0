@@ -4166,6 +4166,13 @@
       "when": 1784032122160,
       "tag": "0594_expand_workflow_event_automation_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 595,
+      "version": "7",
+      "when": 1784032582497,
+      "tag": "0595_expand_zero_runs_workflow_automation_id",
+      "breakpoints": true
     }
   ]
 }

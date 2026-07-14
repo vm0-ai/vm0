@@ -30,8 +30,15 @@ export const zeroRuns = pgTable(
         { onDelete: "cascade" },
       ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
-    // Run provenance for workflow schedule triggers.
+    // Legacy column retained during the Automation ID expand window.
     workflowTriggerId: uuid("workflow_trigger_id").references(
+      (): AnyPgColumn => {
+        return zeroWorkflowTriggers.id;
+      },
+      { onDelete: "set null" },
+    ),
+    // Canonical run provenance for the Automation that started this run.
+    workflowAutomationId: uuid("workflow_automation_id").references(
       (): AnyPgColumn => {
         return zeroWorkflowTriggers.id;
       },
@@ -81,6 +88,9 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_workflow_trigger")
         .on(table.workflowTriggerId)
         .where(sql`workflow_trigger_id IS NOT NULL`),
+      index("idx_zero_runs_workflow_automation")
+        .on(table.workflowAutomationId)
+        .where(sql`workflow_automation_id IS NOT NULL`),
       index("idx_zero_runs_run_group")
         .on(table.runGroupId)
         .where(sql`run_group_id IS NOT NULL`),
