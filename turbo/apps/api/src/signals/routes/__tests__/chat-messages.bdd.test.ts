@@ -218,8 +218,31 @@ async function sendChatRun(
   actor: ApiTestUser,
   body: ChatRunSendBody,
 ): Promise<{ readonly runId: string; readonly threadId: string }> {
-  const sent = await chat.requestSendMessage(actor, body, [201]);
-  if (sent.status !== 201 || sent.body.runId === null) {
+  const requestBody = {
+    ...body,
+    clientMessageId: body.clientMessageId ?? randomUUID(),
+  };
+  let sent = await chat.requestSendMessage(actor, requestBody, [201]);
+  if (sent.status !== 201) {
+    throw new Error("Expected the entitled chat send to create a run");
+  }
+  if (sent.body.runId === null) {
+    const threadId = sent.body.threadId;
+    // Queue-first sends may be claimed by a terminal callback drain between
+    // enqueue and the inline dispatch decision. Replay the idempotent client
+    // message id until that winning run association is visible.
+    await expect
+      .poll(async () => {
+        sent = await chat.requestSendMessage(
+          actor,
+          { ...requestBody, threadId },
+          [201],
+        );
+        return sent.status === 201 ? sent.body.runId : null;
+      })
+      .not.toBeNull();
+  }
+  if (sent.body.runId === null) {
     throw new Error("Expected the entitled chat send to create a run");
   }
   return { runId: sent.body.runId, threadId: sent.body.threadId };
