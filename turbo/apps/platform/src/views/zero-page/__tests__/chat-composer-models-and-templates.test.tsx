@@ -1354,8 +1354,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000911",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1378,7 +1378,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.5"));
+    click(await findComposerModel("GPT 5.6 Sol"));
     const runSpeed = await screen.findByRole("group", { name: "Run speed" });
     click(buttonContainingText("Fast", runSpeed));
     await waitFor(() => {
@@ -1399,7 +1399,7 @@ describe("chat composer models", () => {
     );
 
     await waitFor(() => {
-      expect(createdBody?.model).toBe("gpt-5.5");
+      expect(createdBody?.model).toBe("gpt-5.6-sol");
       expect(sentBody?.model).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
@@ -1767,7 +1767,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("hides Codex fast mode for non GPT 5.5 subscription models", async () => {
+  it("hides Codex fast mode for unsupported subscription models", async () => {
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000932",
       type: "codex-oauth-token",
