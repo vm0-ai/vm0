@@ -41,6 +41,7 @@ import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { alias } from "drizzle-orm/pg-core";
 import {
   and,
   asc,
@@ -78,12 +79,21 @@ export { insertAssistantEventMessages$ };
 
 const messageRoleSchema = z.enum(["user", "assistant"]);
 const TERMINAL_MESSAGE_ORDER_SEQUENCE = 2_147_483_647;
+const matchedChatMessage = alias(chatMessages, "matched_chat_message");
 
 function chatMessageOrderSequenceSql() {
   return sql<number>`CASE
     WHEN ${chatMessages.runLifecycleEvent} IS NOT NULL THEN ${TERMINAL_MESSAGE_ORDER_SEQUENCE}
     ELSE COALESCE(${chatMessages.sequenceNumber}, -1)
   END`;
+}
+
+function matchedMessageCreatedAtSql(messageId: string) {
+  return sql<Date>`(
+    SELECT ${matchedChatMessage.createdAt}
+    FROM ${matchedChatMessage}
+    WHERE ${matchedChatMessage.id} = ${messageId}
+  )`;
 }
 
 type ChatMessageRow = {
@@ -1358,6 +1368,9 @@ export function zeroChatSearch(args: {
 
     const results = await Promise.all(
       truncated.map(async (match): Promise<ChatSearchResult> => {
+        // Keep the comparison inside Postgres so timestamp microseconds are
+        // not lost when the match is round-tripped through JavaScript Date.
+        const matchedCreatedAt = matchedMessageCreatedAtSql(match.messageId);
         const [contextBeforeRows, contextAfterRows] = await Promise.all([
           args.before > 0
             ? db
@@ -1366,7 +1379,7 @@ export function zeroChatSearch(args: {
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
-                    lt(chatMessages.createdAt, match.createdAt),
+                    lt(chatMessages.createdAt, matchedCreatedAt),
                     isNotNull(chatMessages.content),
                     visibleChatMessageCondition(),
                     excludeGoalMarkerCondition(),
@@ -1382,7 +1395,7 @@ export function zeroChatSearch(args: {
                 .where(
                   and(
                     eq(chatMessages.chatThreadId, match.chatThreadId),
-                    gt(chatMessages.createdAt, match.createdAt),
+                    gt(chatMessages.createdAt, matchedCreatedAt),
                     isNotNull(chatMessages.content),
                     visibleChatMessageCondition(),
                     excludeGoalMarkerCondition(),
