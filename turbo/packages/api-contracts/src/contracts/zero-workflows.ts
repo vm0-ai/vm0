@@ -95,9 +95,9 @@ export type ZeroWorkflowScheduleType = z.infer<
   typeof zeroWorkflowScheduleTypeSchema
 >;
 
-export const zeroWorkflowTriggerKindSchema = z.enum(["schedule", "event"]);
-export type ZeroWorkflowTriggerKind = z.infer<
-  typeof zeroWorkflowTriggerKindSchema
+export const zeroWorkflowAutomationKindSchema = z.enum(["schedule", "event"]);
+export type ZeroWorkflowAutomationKind = z.infer<
+  typeof zeroWorkflowAutomationKindSchema
 >;
 
 export const zeroWorkflowEventTypeSchema = z.enum([
@@ -436,11 +436,11 @@ export const zeroWorkflowScheduleSchema = z.discriminatedUnion("type", [
 export type ZeroWorkflowSchedule = z.infer<typeof zeroWorkflowScheduleSchema>;
 
 /**
- * Trigger summary. Under 1:N the agent is derived from the workflow, so triggers
- * no longer carry an agentId. Detail responses only ever list the caller's own
- * triggers.
+ * Automation summary. Under 1:N the agent is derived from the workflow, so
+ * automations no longer carry an agentId. Detail responses only ever list the
+ * caller's own automations.
  */
-const zeroWorkflowTriggerSummaryBaseSchema = z.object({
+const zeroWorkflowAutomationSummaryBaseSchema = z.object({
   id: z.string(),
   ownerUserId: z.string(),
   enabled: z.boolean(),
@@ -449,15 +449,15 @@ const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   lastRunAt: z.string().datetime().nullable(),
 });
 
-export const zeroWorkflowScheduleTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowScheduleAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("schedule"),
     schedule: zeroWorkflowScheduleSchema,
     scheduleSummary: z.string(),
   });
 
-export const zeroWorkflowGmailNewMessageTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGmailNewMessageAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("gmail-new-message"),
     eventConfig: gmailNewMessageEventConfigSchema,
@@ -465,8 +465,8 @@ export const zeroWorkflowGmailNewMessageTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGmailLabelAppliedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGmailLabelAppliedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("gmail-label-applied"),
     eventConfig: gmailLabelAppliedEventConfigSchema,
@@ -474,8 +474,8 @@ export const zeroWorkflowGmailLabelAppliedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGithubLabelAppliedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGithubLabelAppliedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("github-label-applied"),
     eventConfig: githubLabelAppliedEventConfigSchema,
@@ -483,8 +483,8 @@ export const zeroWorkflowGithubLabelAppliedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-created"),
     eventConfig: googleCalendarEventCreatedEventConfigSchema,
@@ -492,8 +492,8 @@ export const zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGoogleCalendarEventUpdatedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGoogleCalendarEventUpdatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-updated"),
     eventConfig: googleCalendarEventUpdatedEventConfigSchema,
@@ -501,8 +501,8 @@ export const zeroWorkflowGoogleCalendarEventUpdatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-cancelled"),
     eventConfig: googleCalendarEventCancelledEventConfigSchema,
@@ -510,8 +510,8 @@ export const zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowGoogleMeetTranscriptGeneratedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-meet-transcript-generated"),
     eventConfig: googleMeetTranscriptGeneratedEventConfigSchema,
@@ -519,8 +519,8 @@ export const zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowNotionChildPageCreatedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowNotionChildPageCreatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("notion-child-page-created"),
     eventConfig: notionChildPageCreatedEventConfigSchema,
@@ -528,8 +528,8 @@ export const zeroWorkflowNotionChildPageCreatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowNotionDatabaseItemCreatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("notion-database-item-created"),
     eventConfig: notionDatabaseItemCreatedEventConfigSchema,
@@ -537,8 +537,8 @@ export const zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowNotionPageContentUpdatedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("notion-page-content-updated"),
     eventConfig: notionPageContentUpdatedEventConfigSchema,
@@ -546,8 +546,8 @@ export const zeroWorkflowNotionPageContentUpdatedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("webhook-received"),
     eventConfig: webhookReceivedEventConfigSchema,
@@ -560,29 +560,29 @@ export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
     webhookSecret: z.string().min(1).optional(),
   });
 
-export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
+export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
   "eventType",
   [
-    zeroWorkflowGmailNewMessageTriggerSummarySchema,
-    zeroWorkflowGmailLabelAppliedTriggerSummarySchema,
-    zeroWorkflowGithubLabelAppliedTriggerSummarySchema,
-    zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema,
-    zeroWorkflowGoogleCalendarEventUpdatedTriggerSummarySchema,
-    zeroWorkflowGoogleCalendarEventCancelledTriggerSummarySchema,
-    zeroWorkflowGoogleMeetTranscriptGeneratedTriggerSummarySchema,
-    zeroWorkflowNotionChildPageCreatedTriggerSummarySchema,
-    zeroWorkflowNotionDatabaseItemCreatedTriggerSummarySchema,
-    zeroWorkflowNotionPageContentUpdatedTriggerSummarySchema,
-    zeroWorkflowWebhookReceivedTriggerSummarySchema,
+    zeroWorkflowGmailNewMessageAutomationSummarySchema,
+    zeroWorkflowGmailLabelAppliedAutomationSummarySchema,
+    zeroWorkflowGithubLabelAppliedAutomationSummarySchema,
+    zeroWorkflowGoogleCalendarEventCreatedAutomationSummarySchema,
+    zeroWorkflowGoogleCalendarEventUpdatedAutomationSummarySchema,
+    zeroWorkflowGoogleCalendarEventCancelledAutomationSummarySchema,
+    zeroWorkflowGoogleMeetTranscriptGeneratedAutomationSummarySchema,
+    zeroWorkflowNotionChildPageCreatedAutomationSummarySchema,
+    zeroWorkflowNotionDatabaseItemCreatedAutomationSummarySchema,
+    zeroWorkflowNotionPageContentUpdatedAutomationSummarySchema,
+    zeroWorkflowWebhookReceivedAutomationSummarySchema,
   ],
 );
 
-export const zeroWorkflowTriggerSummarySchema = z.union([
-  zeroWorkflowScheduleTriggerSummarySchema,
-  zeroWorkflowEventTriggerSummarySchema,
+export const zeroWorkflowAutomationSummarySchema = z.union([
+  zeroWorkflowScheduleAutomationSummarySchema,
+  zeroWorkflowEventAutomationSummarySchema,
 ]);
-export type ZeroWorkflowTriggerSummary = z.infer<
-  typeof zeroWorkflowTriggerSummarySchema
+export type ZeroWorkflowAutomationSummary = z.infer<
+  typeof zeroWorkflowAutomationSummarySchema
 >;
 
 const chatThreadWorkflowSchema = z.object({
@@ -593,22 +593,22 @@ const chatThreadWorkflowSchema = z.object({
   description: z.string().nullable(),
 });
 
-const chatThreadWorkflowTriggerBaseSchema =
-  zeroWorkflowTriggerSummaryBaseSchema.extend({
+const chatThreadWorkflowAutomationBaseSchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
     id: z.string().uuid(),
     chatThreadId: z.string().min(1),
     workflow: chatThreadWorkflowSchema,
   });
 
-export const chatThreadWorkflowScheduleTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowScheduleAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("schedule"),
     schedule: zeroWorkflowScheduleSchema,
     scheduleSummary: z.string(),
   });
 
-export const chatThreadWorkflowGmailNewMessageTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGmailNewMessageAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("gmail-new-message"),
     eventConfig: gmailNewMessageEventConfigSchema,
@@ -616,8 +616,8 @@ export const chatThreadWorkflowGmailNewMessageTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGmailLabelAppliedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGmailLabelAppliedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("gmail-label-applied"),
     eventConfig: gmailLabelAppliedEventConfigSchema,
@@ -625,8 +625,8 @@ export const chatThreadWorkflowGmailLabelAppliedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGithubLabelAppliedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGithubLabelAppliedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("github-label-applied"),
     eventConfig: githubLabelAppliedEventConfigSchema,
@@ -634,8 +634,8 @@ export const chatThreadWorkflowGithubLabelAppliedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGoogleCalendarEventCreatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-created"),
     eventConfig: googleCalendarEventCreatedEventConfigSchema,
@@ -643,8 +643,8 @@ export const chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGoogleCalendarEventUpdatedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGoogleCalendarEventUpdatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-updated"),
     eventConfig: googleCalendarEventUpdatedEventConfigSchema,
@@ -652,8 +652,8 @@ export const chatThreadWorkflowGoogleCalendarEventUpdatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-cancelled"),
     eventConfig: googleCalendarEventCancelledEventConfigSchema,
@@ -661,8 +661,8 @@ export const chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowGoogleMeetTranscriptGeneratedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("google-meet-transcript-generated"),
     eventConfig: googleMeetTranscriptGeneratedEventConfigSchema,
@@ -670,8 +670,8 @@ export const chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowNotionChildPageCreatedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowNotionChildPageCreatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("notion-child-page-created"),
     eventConfig: notionChildPageCreatedEventConfigSchema,
@@ -679,8 +679,8 @@ export const chatThreadWorkflowNotionChildPageCreatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("notion-database-item-created"),
     eventConfig: notionDatabaseItemCreatedEventConfigSchema,
@@ -688,8 +688,8 @@ export const chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowNotionPageContentUpdatedTriggerSchema =
-  chatThreadWorkflowTriggerBaseSchema.extend({
+export const chatThreadWorkflowNotionPageContentUpdatedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
     eventType: z.literal("notion-page-content-updated"),
     eventConfig: notionPageContentUpdatedEventConfigSchema,
@@ -697,54 +697,54 @@ export const chatThreadWorkflowNotionPageContentUpdatedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowWebhookReceivedTriggerSchema =
-  zeroWorkflowWebhookReceivedTriggerSummarySchema.extend({
+export const chatThreadWorkflowWebhookReceivedAutomationSchema =
+  zeroWorkflowWebhookReceivedAutomationSummarySchema.extend({
     id: z.string().uuid(),
     chatThreadId: z.string().min(1),
     workflow: chatThreadWorkflowSchema,
   });
 
-export const chatThreadWorkflowTriggerSchema = z.union([
-  chatThreadWorkflowScheduleTriggerSchema,
-  chatThreadWorkflowGmailNewMessageTriggerSchema,
-  chatThreadWorkflowGmailLabelAppliedTriggerSchema,
-  chatThreadWorkflowGithubLabelAppliedTriggerSchema,
-  chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema,
-  chatThreadWorkflowGoogleCalendarEventUpdatedTriggerSchema,
-  chatThreadWorkflowGoogleCalendarEventCancelledTriggerSchema,
-  chatThreadWorkflowGoogleMeetTranscriptGeneratedTriggerSchema,
-  chatThreadWorkflowNotionChildPageCreatedTriggerSchema,
-  chatThreadWorkflowNotionDatabaseItemCreatedTriggerSchema,
-  chatThreadWorkflowNotionPageContentUpdatedTriggerSchema,
-  chatThreadWorkflowWebhookReceivedTriggerSchema,
+export const chatThreadWorkflowAutomationSchema = z.union([
+  chatThreadWorkflowScheduleAutomationSchema,
+  chatThreadWorkflowGmailNewMessageAutomationSchema,
+  chatThreadWorkflowGmailLabelAppliedAutomationSchema,
+  chatThreadWorkflowGithubLabelAppliedAutomationSchema,
+  chatThreadWorkflowGoogleCalendarEventCreatedAutomationSchema,
+  chatThreadWorkflowGoogleCalendarEventUpdatedAutomationSchema,
+  chatThreadWorkflowGoogleCalendarEventCancelledAutomationSchema,
+  chatThreadWorkflowGoogleMeetTranscriptGeneratedAutomationSchema,
+  chatThreadWorkflowNotionChildPageCreatedAutomationSchema,
+  chatThreadWorkflowNotionDatabaseItemCreatedAutomationSchema,
+  chatThreadWorkflowNotionPageContentUpdatedAutomationSchema,
+  chatThreadWorkflowWebhookReceivedAutomationSchema,
 ]);
-export type ChatThreadWorkflowTrigger = z.infer<
-  typeof chatThreadWorkflowTriggerSchema
+export type ChatThreadWorkflowAutomation = z.infer<
+  typeof chatThreadWorkflowAutomationSchema
 >;
 
-export const zeroWorkflowScheduleTriggerCreateRequestSchema = z.object({
+export const zeroWorkflowScheduleAutomationCreateRequestSchema = z.object({
   kind: z.literal("schedule").optional(),
   schedule: zeroWorkflowScheduleSchema,
   enabled: z.boolean().optional(),
 });
 
-export const zeroWorkflowGmailNewMessageTriggerCreateRequestSchema = z.object({
-  kind: z.literal("event"),
-  eventType: z.literal("gmail-new-message"),
-  eventConfig: gmailNewMessageEventConfigSchema,
-  enabled: z.boolean().optional(),
-});
+export const zeroWorkflowGmailNewMessageAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-new-message"),
+    eventConfig: gmailNewMessageEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
 
-export const zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema = z.object(
-  {
+export const zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema =
+  z.object({
     kind: z.literal("event"),
     eventType: z.literal("gmail-label-applied"),
     eventConfig: gmailLabelAppliedEventConfigSchema,
     enabled: z.boolean().optional(),
-  },
-);
+  });
 
-export const zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema =
+export const zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("github-label-applied"),
@@ -752,7 +752,7 @@ export const zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema =
+export const zeroWorkflowGoogleCalendarEventCreatedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-created"),
@@ -766,7 +766,7 @@ export const zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowGoogleCalendarEventUpdatedTriggerCreateRequestSchema =
+export const zeroWorkflowGoogleCalendarEventUpdatedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-updated"),
@@ -780,7 +780,7 @@ export const zeroWorkflowGoogleCalendarEventUpdatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema =
+export const zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-cancelled"),
@@ -794,7 +794,7 @@ export const zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema 
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema =
+export const zeroWorkflowGoogleMeetTranscriptGeneratedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("google-meet-transcript-generated"),
@@ -808,7 +808,7 @@ export const zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowNotionChildPageCreatedTriggerCreateRequestSchema =
+export const zeroWorkflowNotionChildPageCreatedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("notion-child-page-created"),
@@ -816,7 +816,7 @@ export const zeroWorkflowNotionChildPageCreatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema =
+export const zeroWorkflowNotionDatabaseItemCreatedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("notion-database-item-created"),
@@ -824,7 +824,7 @@ export const zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowNotionPageContentUpdatedTriggerCreateRequestSchema =
+export const zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("notion-page-content-updated"),
@@ -832,51 +832,74 @@ export const zeroWorkflowNotionPageContentUpdatedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
-  kind: z.literal("event"),
-  eventType: z.literal("webhook-received"),
-  eventConfig: webhookReceivedEventConfigSchema.optional(),
-  enabled: z.boolean().optional(),
-});
+export const zeroWorkflowWebhookReceivedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("webhook-received"),
+    eventConfig: webhookReceivedEventConfigSchema.optional(),
+    enabled: z.boolean().optional(),
+  });
 
-export const zeroWorkflowTriggerCreateRequestSchema = z.union([
-  zeroWorkflowScheduleTriggerCreateRequestSchema,
-  zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
-  zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema,
-  zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema,
-  zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema,
-  zeroWorkflowGoogleCalendarEventUpdatedTriggerCreateRequestSchema,
-  zeroWorkflowGoogleCalendarEventCancelledTriggerCreateRequestSchema,
-  zeroWorkflowGoogleMeetTranscriptGeneratedTriggerCreateRequestSchema,
-  zeroWorkflowNotionChildPageCreatedTriggerCreateRequestSchema,
-  zeroWorkflowNotionDatabaseItemCreatedTriggerCreateRequestSchema,
-  zeroWorkflowNotionPageContentUpdatedTriggerCreateRequestSchema,
-  zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
+export const zeroWorkflowAutomationCreateRequestSchema = z.union([
+  zeroWorkflowScheduleAutomationCreateRequestSchema,
+  zeroWorkflowGmailNewMessageAutomationCreateRequestSchema,
+  zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema,
+  zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema,
+  zeroWorkflowGoogleCalendarEventCreatedAutomationCreateRequestSchema,
+  zeroWorkflowGoogleCalendarEventUpdatedAutomationCreateRequestSchema,
+  zeroWorkflowGoogleCalendarEventCancelledAutomationCreateRequestSchema,
+  zeroWorkflowGoogleMeetTranscriptGeneratedAutomationCreateRequestSchema,
+  zeroWorkflowNotionChildPageCreatedAutomationCreateRequestSchema,
+  zeroWorkflowNotionDatabaseItemCreatedAutomationCreateRequestSchema,
+  zeroWorkflowNotionPageContentUpdatedAutomationCreateRequestSchema,
+  zeroWorkflowWebhookReceivedAutomationCreateRequestSchema,
 ]);
-export type ZeroWorkflowTriggerCreateRequest = z.infer<
-  typeof zeroWorkflowTriggerCreateRequestSchema
+export type ZeroWorkflowAutomationCreateRequest = z.infer<
+  typeof zeroWorkflowAutomationCreateRequestSchema
 >;
 
-export const zeroWorkflowScheduleTriggerUpdateRequestSchema = z.object({
+export const zeroWorkflowScheduleAutomationUpdateRequestSchema = z.object({
   schedule: zeroWorkflowScheduleSchema,
 });
 
-export const zeroWorkflowGmailEventTriggerUpdateRequestSchema = z.object({
+export const zeroWorkflowGmailEventAutomationUpdateRequestSchema = z.object({
   eventConfig: gmailWorkflowEventConfigSchema,
 });
 
-export const zeroWorkflowGithubEventTriggerUpdateRequestSchema = z.object({
+export const zeroWorkflowGithubEventAutomationUpdateRequestSchema = z.object({
   eventConfig: githubLabelAppliedEventConfigSchema,
 });
 
-export const zeroWorkflowTriggerUpdateRequestSchema = z.union([
-  zeroWorkflowScheduleTriggerUpdateRequestSchema,
-  zeroWorkflowGmailEventTriggerUpdateRequestSchema,
-  zeroWorkflowGithubEventTriggerUpdateRequestSchema,
+export const zeroWorkflowAutomationUpdateRequestSchema = z.union([
+  zeroWorkflowScheduleAutomationUpdateRequestSchema,
+  zeroWorkflowGmailEventAutomationUpdateRequestSchema,
+  zeroWorkflowGithubEventAutomationUpdateRequestSchema,
 ]);
-export type ZeroWorkflowTriggerUpdateRequest = z.infer<
-  typeof zeroWorkflowTriggerUpdateRequestSchema
+export type ZeroWorkflowAutomationUpdateRequest = z.infer<
+  typeof zeroWorkflowAutomationUpdateRequestSchema
 >;
+
+/**
+ * Temporary compile-time aliases for downstream package migration in #21408.
+ * They do not add legacy fields or routes and are removed once API and platform
+ * consumers use the canonical Automation identifiers.
+ */
+export const zeroWorkflowTriggerKindSchema = zeroWorkflowAutomationKindSchema;
+export type ZeroWorkflowTriggerKind = ZeroWorkflowAutomationKind;
+export const zeroWorkflowTriggerSummarySchema =
+  zeroWorkflowAutomationSummarySchema;
+export type ZeroWorkflowTriggerSummary = ZeroWorkflowAutomationSummary;
+export const chatThreadWorkflowTriggerSchema =
+  chatThreadWorkflowAutomationSchema;
+export type ChatThreadWorkflowTrigger = ChatThreadWorkflowAutomation;
+export const zeroWorkflowTriggerCreateRequestSchema =
+  zeroWorkflowAutomationCreateRequestSchema;
+export type ZeroWorkflowTriggerCreateRequest =
+  ZeroWorkflowAutomationCreateRequest;
+export const zeroWorkflowTriggerUpdateRequestSchema =
+  zeroWorkflowAutomationUpdateRequestSchema;
+export type ZeroWorkflowTriggerUpdateRequest =
+  ZeroWorkflowAutomationUpdateRequest;
 
 /**
  * Workflow summary. A workflow belongs to exactly one agent (`agentId`).
@@ -916,7 +939,7 @@ export const zeroWorkflowDetailResponseSchema =
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),
     fileContents: z.array(workflowFileEntrySchema).nullable(),
-    triggers: z.array(zeroWorkflowTriggerSummarySchema),
+    triggers: z.array(zeroWorkflowAutomationSummarySchema),
   });
 
 export const zeroWorkflowListResponseSchema = z.array(
@@ -925,7 +948,7 @@ export const zeroWorkflowListResponseSchema = z.array(
 
 export const zeroWorkflowAutomationEntrySchema = z.object({
   workflow: zeroWorkflowSummarySchema,
-  trigger: zeroWorkflowTriggerSummarySchema,
+  trigger: zeroWorkflowAutomationSummarySchema,
 });
 export const zeroWorkflowAutomationListResponseSchema = z.array(
   zeroWorkflowAutomationEntrySchema,
@@ -933,7 +956,7 @@ export const zeroWorkflowAutomationListResponseSchema = z.array(
 
 export const zeroWorkflowAutomationsListEntrySchema = z.object({
   workflow: zeroWorkflowSummarySchema,
-  automation: zeroWorkflowTriggerSummarySchema,
+  automation: zeroWorkflowAutomationSummarySchema,
 });
 export const zeroWorkflowAutomationsListResponseSchema = z.array(
   zeroWorkflowAutomationsListEntrySchema,
@@ -1198,7 +1221,7 @@ export const zeroWorkflowVisibilityContract = c.router({
   },
 });
 
-const triggerIdParams = z.object({ id: z.string().uuid() });
+const automationIdParams = z.object({ id: z.string().uuid() });
 const chatThreadIdParams = z.object({ threadId: z.string().min(1) });
 
 export const zeroWorkflowWebhookSecretResponseSchema = z.object({
@@ -1227,7 +1250,7 @@ export const zeroWorkflowTriggersContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadIdParams,
     responses: {
-      200: z.array(chatThreadWorkflowTriggerSchema),
+      200: z.array(chatThreadWorkflowAutomationSchema),
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -1240,7 +1263,7 @@ export const zeroWorkflowTriggersContract = c.router({
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
     responses: {
-      200: z.array(zeroWorkflowTriggerSummarySchema),
+      200: z.array(zeroWorkflowAutomationSummarySchema),
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -1252,9 +1275,9 @@ export const zeroWorkflowTriggersContract = c.router({
     path: "/api/zero/workflows/:workflowId/triggers",
     headers: authHeadersSchema,
     pathParams: workflowIdParams,
-    body: zeroWorkflowTriggerCreateRequestSchema,
+    body: zeroWorkflowAutomationCreateRequestSchema,
     responses: {
-      201: zeroWorkflowTriggerSummarySchema,
+      201: zeroWorkflowAutomationSummarySchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
@@ -1268,9 +1291,9 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "GET",
     path: "/api/zero/workflow-triggers/:id",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
+    pathParams: automationIdParams,
     responses: {
-      200: zeroWorkflowTriggerSummarySchema,
+      200: zeroWorkflowAutomationSummarySchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -1281,10 +1304,10 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "PATCH",
     path: "/api/zero/workflow-triggers/:id",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
-    body: zeroWorkflowTriggerUpdateRequestSchema,
+    pathParams: automationIdParams,
+    body: zeroWorkflowAutomationUpdateRequestSchema,
     responses: {
-      200: zeroWorkflowTriggerSummarySchema,
+      200: zeroWorkflowAutomationSummarySchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -1297,7 +1320,7 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "DELETE",
     path: "/api/zero/workflow-triggers/:id",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
+    pathParams: automationIdParams,
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -1311,10 +1334,10 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "POST",
     path: "/api/zero/workflow-triggers/:id/enable",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
+    pathParams: automationIdParams,
     body: c.noBody(),
     responses: {
-      200: zeroWorkflowTriggerSummarySchema,
+      200: zeroWorkflowAutomationSummarySchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
@@ -1328,10 +1351,10 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "POST",
     path: "/api/zero/workflow-triggers/:id/disable",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
+    pathParams: automationIdParams,
     body: c.noBody(),
     responses: {
-      200: zeroWorkflowTriggerSummarySchema,
+      200: zeroWorkflowAutomationSummarySchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -1342,7 +1365,7 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "POST",
     path: "/api/zero/workflow-triggers/:id/run",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
+    pathParams: automationIdParams,
     body: c.noBody(),
     responses: {
       201: zeroWorkflowRunResponseSchema,
@@ -1358,7 +1381,7 @@ export const zeroWorkflowTriggersContract = c.router({
     method: "POST",
     path: "/api/zero/workflow-triggers/:id/webhook-secret",
     headers: authHeadersSchema,
-    pathParams: triggerIdParams,
+    pathParams: automationIdParams,
     body: c.noBody(),
     responses: {
       200: zeroWorkflowWebhookSecretResponseSchema,

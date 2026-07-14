@@ -9,10 +9,10 @@ import {
   gmailNewMessageEventConfigSchema,
   zeroWorkflowConnectorReadinessResponseSchema,
   zeroWorkflowUpdateRequestSchema,
-  zeroWorkflowTriggerCreateRequestSchema,
+  zeroWorkflowAutomationCreateRequestSchema,
 } from "../zero-workflows";
 
-describe("Gmail new message workflow trigger contract", () => {
+describe("Gmail new message workflow automation contract", () => {
   it("accepts only explicit text match fields", () => {
     const parsed = gmailNewMessageEventConfigSchema.safeParse({
       provider: "gmail",
@@ -48,7 +48,7 @@ describe("Gmail new message workflow trigger contract", () => {
   });
 });
 
-describe("Gmail label applied workflow trigger contract", () => {
+describe("Gmail label applied workflow automation contract", () => {
   it("accepts a label name and optional resolved label id", () => {
     const parsed = gmailLabelAppliedEventConfigSchema.safeParse({
       provider: "gmail",
@@ -60,8 +60,8 @@ describe("Gmail label applied workflow trigger contract", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("accepts label applied trigger create requests", () => {
-    const parsed = zeroWorkflowTriggerCreateRequestSchema.safeParse({
+  it("accepts label applied automation create requests", () => {
+    const parsed = zeroWorkflowAutomationCreateRequestSchema.safeParse({
       kind: "event",
       eventType: "gmail-label-applied",
       eventConfig: {
@@ -75,7 +75,7 @@ describe("Gmail label applied workflow trigger contract", () => {
   });
 });
 
-describe("Google Calendar event-created workflow trigger contract", () => {
+describe("Google Calendar event-created workflow automation contract", () => {
   it("defaults to the primary calendar", () => {
     const parsed = googleCalendarEventCreatedEventConfigSchema.parse({
       provider: "google-calendar",
@@ -89,8 +89,8 @@ describe("Google Calendar event-created workflow trigger contract", () => {
     });
   });
 
-  it("accepts event-created trigger create requests without explicit config", () => {
-    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+  it("accepts event-created automation create requests without explicit config", () => {
+    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-calendar-event-created",
     });
@@ -107,7 +107,7 @@ describe("Google Calendar event-created workflow trigger contract", () => {
   });
 });
 
-describe("Google Calendar event-updated workflow trigger contract", () => {
+describe("Google Calendar event-updated workflow automation contract", () => {
   it("defaults to the primary calendar", () => {
     const parsed = googleCalendarEventUpdatedEventConfigSchema.parse({
       provider: "google-calendar",
@@ -121,8 +121,8 @@ describe("Google Calendar event-updated workflow trigger contract", () => {
     });
   });
 
-  it("accepts event-updated trigger create requests without explicit config", () => {
-    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+  it("accepts event-updated automation create requests without explicit config", () => {
+    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-calendar-event-updated",
     });
@@ -139,7 +139,7 @@ describe("Google Calendar event-updated workflow trigger contract", () => {
   });
 });
 
-describe("Google Calendar event-cancelled workflow trigger contract", () => {
+describe("Google Calendar event-cancelled workflow automation contract", () => {
   it("defaults to the primary calendar", () => {
     const parsed = googleCalendarEventCancelledEventConfigSchema.parse({
       provider: "google-calendar",
@@ -153,8 +153,8 @@ describe("Google Calendar event-cancelled workflow trigger contract", () => {
     });
   });
 
-  it("accepts event-cancelled trigger create requests without explicit config", () => {
-    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+  it("accepts event-cancelled automation create requests without explicit config", () => {
+    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-calendar-event-cancelled",
     });
@@ -171,7 +171,7 @@ describe("Google Calendar event-cancelled workflow trigger contract", () => {
   });
 });
 
-describe("Google Meet transcript-generated workflow trigger contract", () => {
+describe("Google Meet transcript-generated workflow automation contract", () => {
   it("defaults to organizer-user scope", () => {
     const parsed = googleMeetTranscriptGeneratedEventConfigSchema.parse({
       provider: "google-meet",
@@ -185,8 +185,8 @@ describe("Google Meet transcript-generated workflow trigger contract", () => {
     });
   });
 
-  it("accepts transcript-generated trigger create requests without explicit config", () => {
-    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+  it("accepts transcript-generated automation create requests without explicit config", () => {
+    const parsed = zeroWorkflowAutomationCreateRequestSchema.parse({
       kind: "event",
       eventType: "google-meet-transcript-generated",
     });
