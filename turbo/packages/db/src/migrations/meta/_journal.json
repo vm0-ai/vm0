@@ -4131,6 +4131,13 @@
       "when": 1784019049318,
       "tag": "0589_remove_workflow_webhook_triggers_feature_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 590,
+      "version": "7",
+      "when": 1784023094100,
+      "tag": "0590_rename_zero_workflow_triggers_to_automations",
+      "breakpoints": true
     }
   ]
 }
