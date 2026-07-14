@@ -19,6 +19,7 @@ const EXPECTED_TRANSIENT_EXIT_CODES: &[i32] = &[2];
 const PRODUCTION_POLICY: ReadinessPolicy = ReadinessPolicy {
     total_timeout: Duration::from_secs(30),
     retry_interval: Duration::from_secs(1),
+    operation_wait_timeout: OPERATION_WAIT_TIMEOUT,
     max_attempts: 30,
 };
 
@@ -26,6 +27,7 @@ const PRODUCTION_POLICY: ReadinessPolicy = ReadinessPolicy {
 struct ReadinessPolicy {
     total_timeout: Duration,
     retry_interval: Duration,
+    operation_wait_timeout: Duration,
     max_attempts: u16,
 }
 
@@ -64,10 +66,7 @@ impl GuestDnsReadinessFailure {
     fn retryable(self) -> bool {
         matches!(
             self,
-            Self::TimedOut
-                | Self::Transport(io::ErrorKind::TimedOut)
-                | Self::ExitNonZero(2)
-                | Self::UnexpectedAnswer
+            Self::TimedOut | Self::ExitNonZero(2) | Self::UnexpectedAnswer
         )
     }
 }
@@ -127,7 +126,7 @@ async fn wait_for_guest_dns_readiness_with_policy(
             stderr_limit_bytes: STDERR_LIMIT_BYTES,
             expected_exit_codes: EXPECTED_TRANSIENT_EXIT_CODES,
             stdin_bytes: None,
-            wait_timeout: remaining.min(OPERATION_WAIT_TIMEOUT),
+            wait_timeout: remaining.min(policy.operation_wait_timeout),
         };
         let failure = match timeout_at(deadline, guest.exec_operation_capture(request)).await {
             Ok(Ok(result)) => match validate_result(result) {
@@ -233,6 +232,7 @@ mod tests {
     const TEST_POLICY: ReadinessPolicy = ReadinessPolicy {
         total_timeout: Duration::from_secs(1),
         retry_interval: Duration::ZERO,
+        operation_wait_timeout: OPERATION_WAIT_TIMEOUT,
         max_attempts: 3,
     };
 
@@ -470,6 +470,30 @@ mod tests {
             error.last_failure,
             GuestDnsReadinessFailure::Transport(_)
         ));
+        assert_eq!(error.attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn guest_dns_readiness_does_not_retry_after_host_wait_timeout() {
+        let (host, mut guest) = setup_host_and_guest().await;
+        let task = tokio::spawn(async move {
+            wait_for_guest_dns_readiness_with_policy(
+                &host,
+                ReadinessPolicy {
+                    operation_wait_timeout: Duration::from_millis(10),
+                    ..TEST_POLICY
+                },
+            )
+            .await
+        });
+        let request = read_message(&mut guest).await;
+        assert_readiness_request(&request);
+
+        let error = task.await.unwrap().unwrap_err();
+        assert_eq!(
+            error.last_failure,
+            GuestDnsReadinessFailure::Transport(io::ErrorKind::TimedOut)
+        );
         assert_eq!(error.attempts, 1);
     }
 }
