@@ -52,10 +52,7 @@ function verifyGitHubWebhookSignature(args: {
     .digest("hex")}`;
 
   const result = safeSync(() => {
-    return timingSafeEqual(
-      Buffer.from(args.signature),
-      Buffer.from(expected),
-    );
+    return timingSafeEqual(Buffer.from(args.signature), Buffer.from(expected));
   });
   return "ok" in result ? result.ok : false;
 }
