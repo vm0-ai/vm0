@@ -62,6 +62,7 @@ import {
 } from "../services/zero-runs-create.service";
 import { BEFORE_DISPATCH_CANCELLED_ERROR } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
+import { drainQueuedUserMessagesForThread$ } from "../services/internal-chat-run-callback.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -3224,23 +3225,35 @@ const sendQueueFirstNormalMessage$ = command(
       return response;
     }
 
-    const dispatchable = await measureApiDispatchTiming(
+    const dispatch = await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
       "nested",
-      async () => {
+      async (): Promise<"self" | "wait" | "drain"> => {
         if (await activeRunExistsForThread(prepared.db, threadId)) {
-          return false;
+          return "wait";
         }
         const head = await loadNextUnclaimedQueuedUserMessage(
           prepared.db,
           threadId,
         );
-        return head?.id === queuedMessageId;
+        return head?.id === queuedMessageId ? "self" : "drain";
       },
     );
     signal.throwIfAborted();
-    if (!dispatchable) {
+    if (dispatch === "wait") {
+      return response;
+    }
+    if (dispatch === "drain") {
+      // The thread is idle but an older unclaimed message holds the queue
+      // head (e.g. left behind by a cancelled run). Dispatch the head so the
+      // thread keeps draining; this message stays queued behind it (#21392).
+      await set(
+        drainQueuedUserMessagesForThread$,
+        { chatThreadId: threadId },
+        signal,
+      );
+      signal.throwIfAborted();
       return response;
     }
 
