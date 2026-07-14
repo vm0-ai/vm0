@@ -469,14 +469,23 @@ impl DeferredUploadPhase {
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
-/// resources in the budget: this function spawns the executor, reports
-/// completion via the provider, and releases the budget when done.
+/// resources in the budget. The spawned task runs the executor, reports
+/// completion through the provider, and delegates the post-executor
+/// park-or-destroy decision to [`finalize_sandbox_for_completion`].
 ///
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// After a successful execution with a CLI agent session id available, the sandbox
-/// is parked in the idle pool instead of being destroyed.
+/// A sandbox is considered for idle parking only after a successful, uncancelled
+/// execution while parking is open and a validated supplied or discovered CLI
+/// agent session id is available. Park failure, cancellation before idle-pool
+/// transfer, or pool rejection falls back to destruction.
+///
+/// The completion state returned by finalization carries
+/// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths
+/// keep the active lease through provider completion and active-status removal,
+/// then release it. An accepted idle entry owns and retains the lease until reuse
+/// or destruction.
 pub(super) fn spawn_job(
     request: SpawnJobRequest,
     ctx: &SpawnContext,
