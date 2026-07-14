@@ -6835,7 +6835,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "Before requesting connector permission changes",
       "every reasonably known required permission",
       "zero whoami --permissions",
-      "run `zero doctor permission-change --help` separately",
+      "run a separate `zero doctor permission-change` command",
       "same assistant response, one link per line",
       "possible future tasks or operations outside the current plan",
       "zero doctor permission-change --help",
