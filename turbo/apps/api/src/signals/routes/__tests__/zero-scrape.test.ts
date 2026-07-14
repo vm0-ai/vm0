@@ -1071,7 +1071,7 @@ describe("zero scrape route", () => {
     const beforeCredits = await credits(actor);
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, () => {
-        return HttpResponse.text("x".repeat(5 * 1024 * 1024 + 1));
+        return HttpResponse.text("x".repeat(4 * 1024 * 1024 + 1));
       }),
     );
 

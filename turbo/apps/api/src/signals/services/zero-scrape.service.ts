@@ -28,7 +28,9 @@ const USAGE_KIND = "scrape";
 const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 const FIRECRAWL_PROVIDER_TIMEOUT_MS = 25_000;
 const FIRECRAWL_TRANSPORT_TIMEOUT_MS = 30_000;
-const MAX_FIRECRAWL_RESPONSE_BYTES = 5 * 1024 * 1024;
+// Keep enough headroom for the normalized response envelope under Vercel's
+// 4.5 MB Function payload limit.
+const MAX_FIRECRAWL_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_FIRECRAWL_ERROR_MESSAGE_CHARS = 4096;
 const MAX_MARKDOWN_CHARS = 1_000_000;
 const MAX_LINKS = 5000;
