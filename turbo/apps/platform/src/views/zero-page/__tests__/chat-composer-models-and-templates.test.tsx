@@ -42,6 +42,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroClaudeCodeDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import { zeroCodexDeviceAuthContract } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -2505,6 +2506,56 @@ describe("chat composer models", () => {
     ).resolves.toBeInTheDocument();
     expect(runCreateCount).toBe(0);
     expect(input.textContent ?? "").toContain("Keep this stale draft");
+  });
+
+  it("blocks repeated keyboard sends while model validation is loading", async () => {
+    const user = userEvent.setup({ delay: null });
+    const policyGate = context.mocks.deferred<void>();
+    const policy = buildModelPolicy({
+      id: "00000000-0000-4000-a000-000000000310",
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+    });
+    let runCreateCount = 0;
+
+    context.mocks.api(
+      zeroModelPoliciesMainContract.list,
+      async ({ respond, withSignal }) => {
+        await withSignal(policyGate.promise);
+        return respond(200, {
+          policies: [policy],
+          workspaceDefaultModel: policy.model,
+          workspaceDefaultPolicyId: policy.id,
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: policy.model,
+      onRunCreate: () => {
+        runCreateCount++;
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const input = await screen.findByPlaceholderText(PLACEHOLDER);
+    await fill(input, "Send this once");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeDisabled();
+    });
+    await user.keyboard("{Enter}");
+
+    policyGate.resolve();
+
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+    });
   });
 
   it("revalidates the current model before sending during provider refresh", async () => {

@@ -4040,8 +4040,8 @@ function useChatThreadComposerSendState({
   computerUseHostIdForSend: string | null | undefined;
   clearComputerUseHostOverride: () => void;
 }) {
-  const send = useSet(thread.sendMessage$);
-  const queueMessage = useSet(thread.queueMessage$);
+  const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
   const rootSignal = useGet(rootSignal$);
   const generationTemplate = useGet(thread.draft.generationTemplate$);
   const setGenerationTemplate = useSet(thread.draft.setGenerationTemplate$);
@@ -4075,16 +4075,13 @@ function useChatThreadComposerSendState({
     );
   };
 
-  const handleFeedbackSend = (text: string) => {
-    detach(
-      send(
-        text,
-        {
-          includeDraftAttachments: true,
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
+  const handleFeedbackSend = (text: string): Promise<boolean> => {
+    return send(
+      text,
+      {
+        includeDraftAttachments: true,
+      },
+      rootSignal,
     );
   };
 
@@ -4092,6 +4089,8 @@ function useChatThreadComposerSendState({
     handleSend,
     handleQueue,
     handleFeedbackSend,
+    submissionLoading:
+      sendLoadable.state === "loading" || queueLoadable.state === "loading",
     templatePicker: {
       value: generationTemplate,
       onChange: (value: GenerationTemplateRequest | undefined) => {
@@ -4155,7 +4154,7 @@ function useChatThreadComputerUse(
 // keeps its textarea.
 function useChatThreadComposerFeedback(
   thread: ChatThreadSignals,
-  sendFeedback: (prompt: string) => void,
+  sendFeedback: (prompt: string) => Promise<boolean>,
 ): ComposerFeedback | undefined {
   const items = useGet(feedbackItemsValue$);
   const feedbackThreadId = useGet(feedbackThreadIdValue$);
@@ -4184,8 +4183,14 @@ function useChatThreadComposerFeedback(
       if (prompt === null) {
         return;
       }
-      sendFeedback(prompt);
-      dismiss();
+      detach(
+        (async () => {
+          if (await sendFeedback(prompt)) {
+            dismiss();
+          }
+        })(),
+        Reason.DomCallback,
+      );
     },
     onDismiss: () => {
       dismiss();
@@ -4298,12 +4303,17 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   );
   const { modelPicker, modelPickerLoading, submitBlockerProps } =
     useChatComposerModel(thread, pageSignal);
-  const { handleSend, handleQueue, handleFeedbackSend, templatePicker } =
-    useChatThreadComposerSendState({
-      thread,
-      computerUseHostIdForSend,
-      clearComputerUseHostOverride,
-    });
+  const {
+    handleSend,
+    handleQueue,
+    handleFeedbackSend,
+    submissionLoading,
+    templatePicker,
+  } = useChatThreadComposerSendState({
+    thread,
+    computerUseHostIdForSend,
+    clearComputerUseHostOverride,
+  });
   const skeletonVisible = hasMessagesResolved === undefined;
   const composerSending = sendButtonStatus === "sending";
   const queueWhileSending = canQueueMessage({ sending: composerSending });
@@ -4323,6 +4333,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     onQueue: handleQueue,
     sending: composerSending,
     queueWhileSending,
+    submissionLoading,
     onCancel: composerSending
       ? () => {
           detach(cancelRun(pageSignal), Reason.DomCallback);

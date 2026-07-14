@@ -1028,6 +1028,21 @@ describe("chat lifecycle", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000719",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context);
     context.mocks.upload.success({
       id: "upload-visual-brief",
@@ -1076,6 +1091,21 @@ describe("chat lifecycle", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000720",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context, {
       sendGate: sendGate.promise,
       onThreadCreate: (body) => {

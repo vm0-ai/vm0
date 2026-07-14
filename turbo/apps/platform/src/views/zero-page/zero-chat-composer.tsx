@@ -267,6 +267,8 @@ export interface ZeroChatComposerProps {
   ) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
+  /** Blocks send and queue submission while an async composer command settles. */
+  submissionLoading?: boolean;
   /**
    * Cancel the active run. When provided, the Send button switches to a Stop
    * button while sending and the composer is empty; with content present the
@@ -861,13 +863,21 @@ function ComposerFeedbackRow({
   );
 }
 
-function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
+function ComposerFeedbackRows({
+  feedback,
+  submissionLoading,
+}: {
+  feedback: ComposerFeedback;
+  submissionLoading: boolean;
+}) {
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends, Shift+Enter inserts a newline — matching the main composer.
     // Escape clears the drafted feedback.
     if (matchShortcut("enter", event)) {
       event.preventDefault();
-      feedback.onSubmit();
+      if (!submissionLoading) {
+        feedback.onSubmit();
+      }
     } else if (matchShortcut("escape", event)) {
       event.preventDefault();
       feedback.onDismiss();
@@ -6898,12 +6908,14 @@ function ComposerSendButton({
   onCancel,
   activeFeedback,
   sendAction,
+  submissionLoading,
   onSend,
 }: {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
   activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
+  submissionLoading: boolean;
   onSend: () => void;
 }) {
   if (showStopButton && !activeFeedback) {
@@ -6925,7 +6937,7 @@ function ComposerSendButton({
         size="sm"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
         onClick={activeFeedback.onSubmit}
-        disabled={activeFeedback.sendCount === 0}
+        disabled={activeFeedback.sendCount === 0 || submissionLoading}
         aria-label="Send feedback"
       >
         <IconArrowUp size={18} stroke={2} />
@@ -6956,6 +6968,7 @@ function ComposerSendControl({
   onCancel,
   activeFeedback,
   actionsLoading,
+  submissionLoading,
   onSend,
 }: {
   draft: DraftSignals;
@@ -6968,6 +6981,7 @@ function ComposerSendControl({
   onCancel: (() => void) | undefined;
   activeFeedback: ComposerFeedback | null;
   actionsLoading: boolean;
+  submissionLoading: boolean;
   onSend: () => void;
 }) {
   const hasInput = useGet(draft.hasInput$);
@@ -6977,7 +6991,7 @@ function ComposerSendControl({
     uploadsReady,
   });
   const sendAction = resolveKeyboardSendAction({
-    canSend: canSend && !submitBlocked,
+    canSend: canSend && !submitBlocked && !submissionLoading,
     sending,
     queueWhileSending,
     hasQueueHandler,
@@ -6989,7 +7003,13 @@ function ComposerSendControl({
     activeFeedback,
     sendAction,
   });
-  return <ComposerSendButton {...state} onSend={onSend} />;
+  return (
+    <ComposerSendButton
+      {...state}
+      submissionLoading={submissionLoading}
+      onSend={onSend}
+    />
+  );
 }
 
 function resolveSendButtonStateForActionsLoading({
@@ -7113,6 +7133,7 @@ export function useZeroChatComposer({
   onQueue,
   sending,
   queueWhileSending = false,
+  submissionLoading = false,
   onCancel,
   displayName,
   className,
@@ -7391,6 +7412,8 @@ export function useZeroChatComposer({
     const input = readInput();
     const sendAction = resolveKeyboardSendAction({
       canSend:
+        !actionsLoading &&
+        !submissionLoading &&
         uploadsReady &&
         (input.trim().length > 0 || visibleAttachments.length > 0) &&
         !submitBlocker,
@@ -7413,7 +7436,7 @@ export function useZeroChatComposer({
   // otherwise to the normal send path.
   const handleButtonSend = () => {
     const input = readInput();
-    if (submitBlocker) {
+    if (actionsLoading || submissionLoading || submitBlocker) {
       return;
     }
     if (sending && queueWhileSending && onQueue) {
@@ -7549,7 +7572,10 @@ export function useZeroChatComposer({
                 />
               )}
               {activeFeedback ? (
-                <ComposerFeedbackRows feedback={activeFeedback} />
+                <ComposerFeedbackRows
+                  feedback={activeFeedback}
+                  submissionLoading={submissionLoading}
+                />
               ) : (
                 <>
                   <ComposerInputSlot
@@ -7611,6 +7637,7 @@ export function useZeroChatComposer({
                     onCancel={onCancel}
                     activeFeedback={activeFeedback}
                     actionsLoading={actionsLoading}
+                    submissionLoading={submissionLoading}
                     onSend={handleButtonSend}
                   />
                 </div>

@@ -566,39 +566,45 @@ function useAgentChatSendMessage({
   clearComputerUseHostId: () => void;
   setGenerationTemplate: (value: GenerationTemplateRequest | undefined) => void;
   resetModelSelection: () => void;
-}): (
-  message: string,
-  selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-) => void {
-  const sendNewThread = useSet(sendNewThread$);
+}): {
+  onSend: (
+    message: string,
+    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
+  ) => void;
+  submissionLoading: boolean;
+} {
+  const [sendLoadable, sendNewThread] = useLoadableSet(sendNewThread$);
   const rootSignal = useGet(rootSignal$);
 
-  return (message, selectedGenerationTemplate) => {
-    if (!currentChatAgentId) {
-      return;
-    }
+  return {
+    onSend: (message, selectedGenerationTemplate) => {
+      if (!currentChatAgentId) {
+        return;
+      }
 
-    detach(
-      (async () => {
-        const sent = await sendNewThread(
-          {
-            agentId: currentChatAgentId,
-            prompt: message,
-            generationTemplate: selectedGenerationTemplate,
-            ...(selectedComputerUseHostId
-              ? { computerUseHostId: selectedComputerUseHostId }
-              : {}),
-          },
-          rootSignal,
-        );
-        if (sent) {
-          setGenerationTemplate(undefined);
-          clearComputerUseHostId();
-          resetModelSelection();
-        }
-      })(),
-      Reason.DomCallback,
-    );
+      detach(
+        (async () => {
+          const sent = await sendNewThread(
+            {
+              agentId: currentChatAgentId,
+              prompt: message,
+              generationTemplate: selectedGenerationTemplate,
+              ...(selectedComputerUseHostId
+                ? { computerUseHostId: selectedComputerUseHostId }
+                : {}),
+            },
+            rootSignal,
+          );
+          if (sent) {
+            setGenerationTemplate(undefined);
+            clearComputerUseHostId();
+            resetModelSelection();
+          }
+        })(),
+        Reason.DomCallback,
+      );
+    },
+    submissionLoading: sendLoadable.state === "loading",
   };
 }
 
@@ -669,13 +675,14 @@ export function AgentChatPage() {
   const { modelPicker, modelPickerLoading, submitBlockerProps } =
     useAgentChatComposerModel(pageSignal);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
-  const handleSendMessage = useAgentChatSendMessage({
-    currentChatAgentId,
-    selectedComputerUseHostId,
-    clearComputerUseHostId,
-    setGenerationTemplate,
-    resetModelSelection,
-  });
+  const { onSend: handleSendMessage, submissionLoading } =
+    useAgentChatSendMessage({
+      currentChatAgentId,
+      selectedComputerUseHostId,
+      clearComputerUseHostId,
+      setGenerationTemplate,
+      resetModelSelection,
+    });
 
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
@@ -740,6 +747,7 @@ export function AgentChatPage() {
             draft={draft}
             onSend={handleSendMessage}
             onDraftChange={handleDraftChange}
+            submissionLoading={submissionLoading}
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
             modelPicker={modelPicker}
