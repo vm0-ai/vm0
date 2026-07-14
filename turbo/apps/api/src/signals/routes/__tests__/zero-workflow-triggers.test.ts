@@ -3059,11 +3059,11 @@ describe("zero workflow triggers", () => {
       }),
     );
     for (const actionType of [
-      "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
-      "api_dispatch_pre_create_zero_workflow_trigger_check_active_run",
-      "api_dispatch_pre_create_zero_workflow_trigger_resolve_model_context",
-      "api_dispatch_pre_create_zero_workflow_trigger_build_run_input",
-      "api_dispatch_pre_create_zero_workflow_trigger_create_run",
+      "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
+      "api_dispatch_pre_create_zero_workflow_automation_check_active_run",
+      "api_dispatch_pre_create_zero_workflow_automation_resolve_model_context",
+      "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
+      "api_dispatch_pre_create_zero_workflow_automation_create_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
@@ -3073,7 +3073,8 @@ describe("zero workflow triggers", () => {
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_workflow_trigger_create_run",
+          op_type:
+            "api_dispatch_pre_create_zero_workflow_automation_create_run",
           trigger_source: "workflow-schedule",
           zero_run_origin: "workflow_trigger",
           span_kind: "nested",

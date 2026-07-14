@@ -334,7 +334,7 @@ describe("POST /api/webhooks/github for workflow triggers", () => {
         }),
       );
       for (const actionType of [
-        "api_dispatch_pre_create_zero_workflow_trigger_entrypoint_gap",
+        "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
         "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
         "api_dispatch_pre_create_zero_workflow_event_load_source_state",
         "api_dispatch_pre_create_zero_workflow_event_load_triggers",
