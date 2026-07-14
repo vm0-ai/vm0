@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.597.4](https://github.com/vm0-ai/vm0/compare/app-v0.597.3...app-v0.597.4) (2026-07-14)
+
+
+### Bug Fixes
+
+* enforce org tier capability limits ([#21370](https://github.com/vm0-ai/vm0/issues/21370)) ([70c863e](https://github.com/vm0-ai/vm0/commit/70c863e1931a1412e588d88c8eb76ff33e981c92))
+* **platform:** align standalone viewport with software keyboard ([#21393](https://github.com/vm0-ai/vm0/issues/21393)) ([1d418eb](https://github.com/vm0-ai/vm0/commit/1d418ebe4dc24866d4622e7a005879580b5766b1))
+
+
+### Refactoring
+
+* consolidate routine settle error handling ([#21382](https://github.com/vm0-ai/vm0/issues/21382)) ([f104f67](https://github.com/vm0-ai/vm0/commit/f104f67a32d10121953a2e531b38db4d50ad6585))
+
 ## [0.597.3](https://github.com/vm0-ai/vm0/compare/app-v0.597.2...app-v0.597.3) (2026-07-14)
 
 
