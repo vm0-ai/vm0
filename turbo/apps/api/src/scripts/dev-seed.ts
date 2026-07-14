@@ -382,6 +382,15 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["__fallback__", usd(0.005), 1],
   ]),
 
+  // Firecrawl single-page scrape fixed vm0 product pricing. Requests disable
+  // document parsers so provider cost stays bounded to the exposed modes.
+  ...usageGroup("scrape", "firecrawl", [
+    ["standard.markdown", usd(0.004), 1],
+    ["standard.links", usd(0.004), 1],
+    ["enhanced.markdown", usd(0.02), 1],
+    ["enhanced.links", usd(0.02), 1],
+  ]),
+
   // Gemini 2.5 Flash Image — https://cloud.google.com/vertex-ai/generative-ai/pricing
   // $30/1M output tokens × 1290 tokens per 1024×1024 image = $0.0387/image.
   ...usageGroup("image", "gemini-2.5-flash-image", [

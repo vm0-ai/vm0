@@ -6,7 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/composes";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import {
+  isFeatureEnabled,
+  isUserOverridableFeatureSwitch,
+} from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -26,6 +29,7 @@ const PAT_TOKEN_PREFIX = "vm0_pat_";
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["relationship:read", FeatureSwitchKey.RelationshipMemory],
+  ["scrape:read", FeatureSwitchKey.ZeroScrape],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -100,6 +104,37 @@ function deriveJwtKey(): Buffer {
   const masterKey = Buffer.from(env("SECRETS_ENCRYPTION_KEY"), "hex");
   return Buffer.from(
     hkdfSync("sha256", masterKey, "", "jwt-sandbox-signing", 32),
+  );
+}
+
+function featureSwitchForCapability(
+  capabilitySwitches: readonly (readonly [ZeroCapability, FeatureSwitchKey])[],
+  capability: ZeroCapability,
+): FeatureSwitchKey | undefined {
+  return capabilitySwitches.find(([entryCapability]) => {
+    return entryCapability === capability;
+  })?.[1];
+}
+
+function isZeroCapabilityEnabled(
+  capability: ZeroCapability,
+  userId: string,
+  orgId: string,
+  overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+): boolean {
+  const featureSwitch = featureSwitchForCapability(
+    CONDITIONAL_CAPABILITIES,
+    capability,
+  );
+  if (featureSwitch === undefined) {
+    return true;
+  }
+
+  return isFeatureEnabled(
+    featureSwitch,
+    isUserOverridableFeatureSwitch(featureSwitch)
+      ? { userId, orgId, overrides }
+      : { userId, orgId },
   );
 }
 
@@ -284,14 +319,7 @@ export function generateZeroToken(
     ) {
       continue;
     }
-    const conditionalCapability = CONDITIONAL_CAPABILITIES.find((entry) => {
-      return entry[0] === capability;
-    });
-    const flag = conditionalCapability?.[1];
-    if (
-      flag === undefined ||
-      isFeatureEnabled(flag, { userId, orgId, overrides })
-    ) {
+    if (isZeroCapabilityEnabled(capability, userId, orgId, overrides)) {
       capabilities.push(capability);
     }
   }

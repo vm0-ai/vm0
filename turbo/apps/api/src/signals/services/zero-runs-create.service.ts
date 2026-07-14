@@ -125,6 +125,7 @@ interface ZeroRunPromptContext {
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
 }
 
 interface ZeroAgentConfig {
@@ -335,6 +336,7 @@ function buildZeroMemoryToolsPrompt(
 function buildAgentToolsPrompt(args: {
   readonly triggerSource: TriggerSource;
   readonly relationshipMemoryEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
 }): string {
   return [
     "# Agent Tools",
@@ -346,6 +348,11 @@ function buildAgentToolsPrompt(args: {
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
     "- Manage recurring workflow triggers: `zero workflow trigger --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
+    ...(args.zeroScrapeEnabled
+      ? [
+          "- Complex public webpage extraction: when browser access cannot reliably extract complete, usable content from a public URL, use `zero scrape --help`. Prefer standard mode; use enhanced mode only when standard is insufficient because enhanced scraping costs more.",
+        ]
+      : []),
     "- Slack messages: when the task explicitly asks to send or post to Slack, use `zero slack message send --help` for channels, DMs, and thread replies.",
     ...buildIntegrationToolsPrompt(args.triggerSource),
     "- Maps, geocoding, directions, and places: use `zero maps --help`.",
@@ -413,6 +420,7 @@ function buildAppendSystemPrompt(args: {
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
   readonly relationshipMemoryEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
@@ -421,6 +429,7 @@ function buildAppendSystemPrompt(args: {
     buildAgentToolsPrompt({
       triggerSource: args.triggerSource,
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+      zeroScrapeEnabled: args.zeroScrapeEnabled,
     }),
     buildCurrentUserPrompt(args.userInfo),
     args.memoryRuntimeAppendSystemPrompt,
@@ -653,7 +662,7 @@ async function loadUserInfo(
   };
 }
 
-async function loadRelationshipMemoryEnabled(
+async function loadZeroRunFeatureSwitchState(
   db: Db,
   args: {
     readonly userId: string;
@@ -662,6 +671,7 @@ async function loadRelationshipMemoryEnabled(
 ): Promise<{
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
 }> {
   const context = await loadUserFeatureSwitchContext(
     db,
@@ -680,6 +690,7 @@ async function loadRelationshipMemoryEnabled(
         FeatureSwitchKey.RelationshipMemoryRuntimeInjection,
         context,
       ),
+    zeroScrapeEnabled: isFeatureEnabled(FeatureSwitchKey.ZeroScrape, context),
   };
 }
 
@@ -690,11 +701,11 @@ async function loadZeroRunPromptContext(
     readonly orgId: string;
   },
 ): Promise<ZeroRunPromptContext> {
-  const [userInfo, relationshipMemoryState] = await Promise.all([
+  const [userInfo, featureSwitchState] = await Promise.all([
     loadUserInfo(db, args),
-    loadRelationshipMemoryEnabled(db, args),
+    loadZeroRunFeatureSwitchState(db, args),
   ]);
-  return { userInfo, ...relationshipMemoryState };
+  return { userInfo, ...featureSwitchState };
 }
 
 async function loadMemoryRuntimeAppendSystemPrompt(
@@ -784,6 +795,7 @@ function createRunBody(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
@@ -798,6 +810,7 @@ function createRunBody(args: {
     userInfo: args.userInfo,
     triggerSource,
     relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+    zeroScrapeEnabled: args.zeroScrapeEnabled,
     memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
   });
   return {
@@ -830,6 +843,7 @@ function createIntegrationRunBody(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly permissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerSource: TriggerSource;
@@ -847,6 +861,7 @@ function createIntegrationRunBody(args: {
         userInfo: args.userInfo,
         triggerSource: args.triggerSource,
         relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+        zeroScrapeEnabled: args.zeroScrapeEnabled,
         memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       }),
       args.appendSystemPrompt,
@@ -944,6 +959,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
@@ -963,6 +979,7 @@ function buildZeroCreateAgentRunArgs(args: {
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+      zeroScrapeEnabled: args.zeroScrapeEnabled,
       memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       permissionPolicies: args.runPermissionPolicies,
       triggerAgentId: args.triggerAgentId,
@@ -1018,6 +1035,7 @@ async function buildZeroFinalAppendSystemPrompt(args: {
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly triggerAgentId: string | undefined;
   readonly timing: ApiDispatchTimingCollector;
@@ -1047,6 +1065,7 @@ async function buildZeroFinalAppendSystemPrompt(args: {
     agent: args.agent,
     userInfo: { ...args.userInfo, ...command.userInfoExtras },
     relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+    zeroScrapeEnabled: args.zeroScrapeEnabled,
     memoryRuntimeAppendSystemPrompt,
     permissionPolicies: args.runPermissionPolicies,
     triggerAgentId: args.triggerAgentId,
@@ -1060,6 +1079,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly memoryRuntimeAppendSystemPrompt: string | undefined;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
@@ -1077,6 +1097,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
       relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+      zeroScrapeEnabled: args.zeroScrapeEnabled,
       memoryRuntimeAppendSystemPrompt: args.memoryRuntimeAppendSystemPrompt,
       permissionPolicies: args.runPermissionPolicies,
       triggerSource: command.triggerSource,
@@ -1110,6 +1131,7 @@ async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<string> {
@@ -1128,6 +1150,7 @@ async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
     agent: args.agent,
     userInfo: { ...args.userInfo, ...command.userInfoExtras },
     relationshipMemoryEnabled: args.relationshipMemoryEnabled,
+    zeroScrapeEnabled: args.zeroScrapeEnabled,
     memoryRuntimeAppendSystemPrompt,
     permissionPolicies: args.runPermissionPolicies,
     triggerSource: command.triggerSource,
@@ -1156,6 +1179,7 @@ interface ZeroRunAfterPreCreateBase {
   readonly userInfo: UserInfo;
   readonly relationshipMemoryEnabled: boolean;
   readonly relationshipMemoryRuntimeInjectionEnabled: boolean;
+  readonly zeroScrapeEnabled: boolean;
   readonly runPermissionPolicies: FirewallPolicies | null | undefined;
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
   readonly allowedConnectorTypes: readonly ConnectorType[];
@@ -1282,6 +1306,7 @@ export const createZeroIntegrationRun$ = command(
       userInfo,
       relationshipMemoryEnabled,
       relationshipMemoryRuntimeInjectionEnabled,
+      zeroScrapeEnabled,
     } = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_user_info",
@@ -1347,6 +1372,7 @@ export const createZeroIntegrationRun$ = command(
         userInfo,
         relationshipMemoryEnabled,
         relationshipMemoryRuntimeInjectionEnabled,
+        zeroScrapeEnabled,
         runPermissionPolicies,
         workflows,
         allowedConnectorTypes,
@@ -1401,6 +1427,7 @@ export const createZeroRun$ = command(
       userInfo,
       relationshipMemoryEnabled,
       relationshipMemoryRuntimeInjectionEnabled,
+      zeroScrapeEnabled,
     } = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_user_info",
@@ -1478,6 +1505,7 @@ export const createZeroRun$ = command(
         userInfo,
         relationshipMemoryEnabled,
         relationshipMemoryRuntimeInjectionEnabled,
+        zeroScrapeEnabled,
         runPermissionPolicies,
         triggerAgentId,
         workflows,

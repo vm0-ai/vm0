@@ -1394,6 +1394,22 @@ export {
   type RedeemResponse,
 } from "./zero-billing";
 export {
+  zeroScrapeContract,
+  zeroScrapeBillingCategorySchema,
+  zeroScrapeFormatSchema,
+  zeroScrapeLinksResponseSchema,
+  zeroScrapeMarkdownResponseSchema,
+  zeroScrapeModeSchema,
+  zeroScrapeRequestSchema,
+  zeroScrapeResponseSchema,
+  type ZeroScrapeBillingCategory,
+  type ZeroScrapeContract,
+  type ZeroScrapeFormat,
+  type ZeroScrapeMode,
+  type ZeroScrapeRequest,
+  type ZeroScrapeResponse,
+} from "./zero-scrape";
+export {
   zeroUsageMembersContract,
   type ZeroUsageMembersContract,
   // Inferred types

@@ -141,6 +141,18 @@ export async function bestEffort(
 }
 
 /**
+ * Start best-effort cleanup that must not keep tests or request cleanup waiting.
+ * Use only for advisory cleanup promises that can legitimately remain pending
+ * forever, such as Web Stream cancellation in fetch implementations.
+ */
+export function startUntrackedBestEffortCleanup(p: Promise<unknown>): void {
+  void bestEffort(p).then(
+    () => {},
+    () => {},
+  );
+}
+
+/**
  * Await `p` and return undefined on non-abort rejection. If supplied,
  * `onError` runs before resolving. Abort propagates. Replaces
  * `await foo().catch((e) => { L.error("...", e); })` and silent optional-value

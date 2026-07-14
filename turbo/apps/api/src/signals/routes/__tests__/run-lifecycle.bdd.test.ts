@@ -6740,6 +6740,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -6755,6 +6756,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await bdd.readMe(actor);
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ZeroScrape]: true,
+    });
     const agent = await bdd.createAgent(actor, {
       displayName: "Research Bot",
       description: "Finds release details",
@@ -6804,6 +6808,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "run `zero intro` first",
       "zero developer-support --help",
       "zero maps --help",
+      "zero scrape --help",
+      "Prefer standard mode",
+      "enhanced scraping costs more",
       "zero slack message send --help",
       "zero teams message send --help",
       "zero telegram bot list",
@@ -6864,6 +6871,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.disallowedTools).not.toContain("goal");
     expect(claim.disallowedTools).not.toContain("update_goal");
+    expect(claim.appendSystemPrompt ?? "").not.toContain("zero scrape --help");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
