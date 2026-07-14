@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.21](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.20...sandbox-v0.19.21) (2026-07-14)
+
+
+### Documentation
+
+* **sandbox:** document process supervision handles ([#21427](https://github.com/vm0-ai/vm0/issues/21427)) ([2e1f81f](https://github.com/vm0-ai/vm0/commit/2e1f81ffedebdcc6c08c92d291611f2b4e554300))
+
 ## [0.19.20](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.19...sandbox-v0.19.20) (2026-07-14)
 
 

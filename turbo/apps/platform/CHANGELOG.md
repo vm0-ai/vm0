@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.599.0](https://github.com/vm0-ai/vm0/compare/app-v0.598.0...app-v0.599.0) (2026-07-14)
+
+
+### Features
+
+* **agent:** request planned connector permissions together ([#21424](https://github.com/vm0-ai/vm0/issues/21424)) ([a39ef20](https://github.com/vm0-ai/vm0/commit/a39ef207062eece0b44742736d55822e0683718a))
+
+
+### Bug Fixes
+
+* move claimed chat messages out of the composer queue ([#21428](https://github.com/vm0-ai/vm0/issues/21428)) ([f716c1b](https://github.com/vm0-ai/vm0/commit/f716c1bc5f5d11c823ddbc47b23c4856b7915817))
+
 ## [0.598.0](https://github.com/vm0-ai/vm0/compare/app-v0.597.5...app-v0.598.0) (2026-07-14)
 
 
