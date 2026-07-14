@@ -287,24 +287,75 @@ describe("zero generate image command", () => {
       "cli",
       "image",
       "--style",
-      "image-style:notion-illustration",
+      "image-style:ink-storefront",
       "--prompt",
-      "Notion illustration of a product manager mapping a launch plan",
+      "A florist named Luna Floral",
       "--compile",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero generate image prompt compile image-style:notion-illustration",
+      "# Zero generate image prompt compile image-style:ink-storefront",
     );
     expect(stdout).toContain("image prompt-compilation packet");
     expect(stdout).toContain("## Selected Image Style");
-    expect(stdout).toContain("image-style:notion-illustration");
+    expect(stdout).toContain("image-style:ink-storefront");
+    expect(stdout).toContain("portrait 1024x1536");
     expect(stdout).toContain("## Style Source");
     expect(stdout).toContain("vm0-ai/vm0-skills");
-    expect(stdout).toContain("notion-illustration");
-    expect(stdout).toContain("## Prompt Compiler Task");
+    expect(stdout).toContain("ink-storefront");
+    expect(stdout).toContain(
+      "https://raw.githubusercontent.com/vm0-ai/vm0-skills/main/illustration-template/ink-storefront/SKILL.md",
+    );
+    expect(stdout).toContain(
+      "## Required Stage 1: Resolve Locked Style Source",
+    );
+    expect(stdout).toContain("registry summary above is context only");
+    expect(stdout).toContain("required model inputs");
+    expect(stdout).toContain("authoring-only examples");
+    expect(stdout).toContain("CLI fallback model: gpt-image-1");
+    expect(stdout).toContain("CLI fallback size: 1024x1024");
+    expect(stdout).toContain("Style-source values override CLI fallbacks");
+    expect(stdout).toContain(
+      "stop and report that limitation instead of generating",
+    );
     expect(stdout).toContain("--compiled-prompt");
+    expect(stdout).toContain('--size "<resolved size>"');
+  });
+
+  it("should distinguish caller-provided compile parameters from CLI fallbacks", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "image",
+      "--style",
+      "image-style:ink-storefront",
+      "--prompt",
+      "A florist named Luna Floral",
+      "--compile",
+      "--model",
+      "gpt-image-1.5",
+      "--size",
+      "1024x1536",
+      "--quality",
+      "high",
+      "--background",
+      "opaque",
+      "--format",
+      "jpeg",
+      "--image-url",
+      "https://example.com/brief-reference.png",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain("Caller-provided model: gpt-image-1.5");
+    expect(stdout).toContain("Caller-provided size: 1024x1536");
+    expect(stdout).toContain("Caller-provided quality: high");
+    expect(stdout).toContain("Caller-provided background: opaque");
+    expect(stdout).toContain("Caller-provided format: jpeg");
+    expect(stdout).toContain(
+      "Caller-provided source image URLs: https://example.com/brief-reference.png",
+    );
   });
 
   it("should fail with mode guidance when no image prompt mode is selected", async () => {

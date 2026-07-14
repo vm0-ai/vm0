@@ -99,6 +99,19 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
     );
+    expect(result.prompt).toContain("Style source: vm0-ai/vm0-skills@main:");
+    expect(result.prompt).toContain("read its SKILL.md before compiling");
+    expect(result.prompt).toContain(
+      "registry description is not a substitute for the source",
+    );
+    expect(result.prompt).toContain(
+      "instead of CLI fallback values unless the user explicitly requests an override",
+    );
+    expect(result.prompt).toContain("required model inputs");
+    expect(result.prompt).toContain("authoring-only examples");
+    expect(result.prompt).toContain(
+      "stop and report the limitation instead of generating",
+    );
     expect(result.prompt).toContain("--compiled-prompt");
   });
 

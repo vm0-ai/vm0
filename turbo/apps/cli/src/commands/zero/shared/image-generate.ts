@@ -119,6 +119,19 @@ function parseImagePromptStrength(
   return strength;
 }
 
+function formatCompilationParameter(
+  command: Command,
+  optionName: string,
+  label: string,
+  value: string,
+): string {
+  const provenance =
+    command.getOptionValueSource(optionName) === "default"
+      ? "CLI fallback"
+      : "Caller-provided";
+  return `${provenance} ${label}: ${value}`;
+}
+
 function resolvePromptInput(options: ImageOptions): string | undefined {
   return options.compiledPrompt ?? options.rawPrompt ?? options.prompt;
 }
@@ -333,17 +346,37 @@ ${formatRegistryListing(styles, "image styles")}`;
             prompt: resolvedPrompt,
             style,
             details: [
-              `Model preference if direct image generation is used: ${options.model}`,
-              `Requested size: ${options.size}`,
-              `Requested quality: ${options.quality}`,
-              `Requested background: ${options.background}`,
-              `Requested format: ${options.format}`,
-              `Source image URLs: ${
+              formatCompilationParameter(
+                command,
+                "model",
+                "model",
+                options.model,
+              ),
+              formatCompilationParameter(command, "size", "size", options.size),
+              formatCompilationParameter(
+                command,
+                "quality",
+                "quality",
+                options.quality,
+              ),
+              formatCompilationParameter(
+                command,
+                "background",
+                "background",
+                options.background,
+              ),
+              formatCompilationParameter(
+                command,
+                "format",
+                "format",
+                options.format,
+              ),
+              `Caller-provided source image URLs: ${
                 options.imageUrl.length > 0
                   ? options.imageUrl.join(", ")
                   : "none"
               }`,
-              `Mask image URL: ${options.maskImageUrl ?? "none"}`,
+              `Caller-provided mask image URL: ${options.maskImageUrl ?? "none"}`,
             ],
           });
 
