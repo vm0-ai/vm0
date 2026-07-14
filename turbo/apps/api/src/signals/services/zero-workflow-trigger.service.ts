@@ -66,7 +66,7 @@ import {
   prepareNotionDatabaseItemEventConfigForPersist,
   prepareNotionPageContentUpdatedEventConfigForPersist,
 } from "./notion-workflow-event.service";
-import { notionWorkflowTriggerCreationEnabledForOwner } from "./notion-workflow-trigger-feature-switch.service";
+import { notionWorkflowAutomationCreationEnabledForOwner } from "./notion-workflow-automation-feature-switch.service";
 import { lockWorkflowWebhookTriggerTierEligibleForOrg } from "./workflow-webhook-trigger-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -139,13 +139,13 @@ function workflowWebhookTeamRequiredResult(): {
   };
 }
 
-function notionWorkflowTriggersDisabledResult(): {
+function notionWorkflowAutomationsDisabledResult(): {
   readonly kind: "bad-request";
   readonly message: string;
 } {
   return {
     kind: "bad-request",
-    message: "Notion workflow triggers are not enabled",
+    message: "Notion workflow automations are not enabled",
   };
 }
 
@@ -1601,14 +1601,14 @@ const createEventTriggerForWorkflow$ = command(
 
     if (triggerCreateInputIsNotion(input)) {
       const featureEnabled = await get(
-        notionWorkflowTriggerCreationEnabledForOwner(
+        notionWorkflowAutomationCreationEnabledForOwner(
           input.orgId,
           input.member.userId,
         ),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
-        return notionWorkflowTriggersDisabledResult();
+        return notionWorkflowAutomationsDisabledResult();
       }
 
       return await createNotionEventTriggerForWorkflow({

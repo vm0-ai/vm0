@@ -5,13 +5,13 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
-export function notionWorkflowTriggerCreationEnabledForOwner(
+export function notionWorkflowAutomationCreationEnabledForOwner(
   orgId: string,
   userId: string,
 ) {
   return computed(async (get) => {
     const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.NotionWorkflowTriggers, {
+    return isFeatureEnabled(FeatureSwitchKey.NotionWorkflowAutomations, {
       orgId,
       userId,
       overrides,

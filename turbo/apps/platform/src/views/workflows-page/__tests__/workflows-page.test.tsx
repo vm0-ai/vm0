@@ -2427,7 +2427,7 @@ describe("workflow detail page", () => {
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+      [FeatureSwitchKey.NotionWorkflowAutomations]: true,
     });
 
     await waitFor(() => {

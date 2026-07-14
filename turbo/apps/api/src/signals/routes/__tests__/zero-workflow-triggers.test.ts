@@ -273,11 +273,11 @@ function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
 }
 
-async function enableNotionWorkflowTriggers(
+async function enableNotionWorkflowAutomations(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.NotionWorkflowTriggers]: true,
+    [FeatureSwitchKey.NotionWorkflowAutomations]: true,
   });
 }
 
@@ -1345,7 +1345,7 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Notion workflow triggers are not enabled",
+      "Notion workflow automations are not enabled",
     );
   });
 
@@ -1369,7 +1369,7 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Notion workflow triggers are not enabled",
+      "Notion workflow automations are not enabled",
     );
   });
 
@@ -1393,13 +1393,13 @@ describe("zero workflow triggers", () => {
     );
 
     expect(rejected.body.error.message).toBe(
-      "Notion workflow triggers are not enabled",
+      "Notion workflow automations are not enabled",
     );
   });
 
   it("requires a connected Notion account for Notion child page triggers", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
       triggersClient().create({
@@ -1425,7 +1425,7 @@ describe("zero workflow triggers", () => {
 
   it("requires a connected Notion account for Notion database item triggers", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
       triggersClient().create({
@@ -1451,7 +1451,7 @@ describe("zero workflow triggers", () => {
 
   it("requires a connected Notion account for Notion page content updated triggers", async () => {
     const { fixture, workflowId } = await setupFixture();
-    await enableNotionWorkflowTriggers(fixture);
+    await enableNotionWorkflowAutomations(fixture);
 
     const rejected = await accept(
       triggersClient().create({
@@ -1477,7 +1477,7 @@ describe("zero workflow triggers", () => {
 
   it("requires a standard notion.so page URL for Notion child page triggers", async () => {
     const scenario = await setupFixture();
-    await enableNotionWorkflowTriggers(scenario.fixture);
+    await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
 
     const rejected = await accept(
@@ -1504,7 +1504,7 @@ describe("zero workflow triggers", () => {
 
   it("requires a standard notion.so database URL for Notion database item triggers", async () => {
     const scenario = await setupFixture();
-    await enableNotionWorkflowTriggers(scenario.fixture);
+    await enableNotionWorkflowAutomations(scenario.fixture);
     await connectNotion(scenario);
 
     const rejected = await accept(
@@ -1532,7 +1532,7 @@ describe("zero workflow triggers", () => {
   it("creates Notion child page triggers by validating and storing the parent page", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowTriggers(scenario.fixture);
+    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
@@ -1577,7 +1577,7 @@ describe("zero workflow triggers", () => {
   it("creates Notion database item triggers by validating and storing the data source", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowTriggers(scenario.fixture);
+    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
@@ -1622,7 +1622,7 @@ describe("zero workflow triggers", () => {
   it("creates Notion page content updated triggers for a page scope", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowTriggers(scenario.fixture);
+    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionPageMock();
 
     const created = await accept(
@@ -1670,7 +1670,7 @@ describe("zero workflow triggers", () => {
   it("creates Notion page content updated triggers for a database scope", async () => {
     const scenario = await setupFixture();
     const connectorId = await connectNotion(scenario);
-    await enableNotionWorkflowTriggers(scenario.fixture);
+    await enableNotionWorkflowAutomations(scenario.fixture);
     configureNotionDatabaseMock();
 
     const created = await accept(
