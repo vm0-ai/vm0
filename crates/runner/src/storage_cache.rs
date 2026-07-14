@@ -627,11 +627,6 @@ async fn stage_joined_processed_group(
     Ok(())
 }
 
-/// Populate the runner-side cache for eligible archive sources in `plan`.
-///
-/// Resolves cache-eligible remote sources to `file://` URLs pointing at
-/// guest-local tarballs staged over vsock. Reuse, repair, empty, instruction,
-/// cleanup, and guest-work semantics remain owned by [`StoragePlan`].
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ForegroundCacheMode {
     HitOrPassthrough,
@@ -657,6 +652,25 @@ impl ForegroundCacheMode {
     }
 }
 
+/// Resolves eligible archive sources against the runner-side cache.
+///
+/// Warm hits are staged into the guest over vsock, and their sources in
+/// `plan` are rewritten to guest-local `file://` URLs before this function
+/// returns. Sources without a usable warm hit keep their original remote URLs
+/// for the current guest download. Eligible cold misses may be returned as
+/// deferred fill work for future runs; this function does not start those
+/// remote fill requests.
+///
+/// # Returns
+///
+/// Returns `Ok(Some(...))` when a [`DeferredBackgroundFill`] was selected. The
+/// caller must retain it through pre-spawn setup and call
+/// [`DeferredBackgroundFill::start`] only after the agent process has spawned;
+/// an earlier failure deliberately drops it without starting work. Returns
+/// `Ok(None)` when no deferred fill work was selected.
+///
+/// Reuse, repair, empty, instruction, cleanup, and guest-work semantics remain
+/// owned by [`StoragePlan`].
 pub async fn populate_cache(
     plan: &mut StoragePlan,
     sandbox: &dyn Sandbox,
