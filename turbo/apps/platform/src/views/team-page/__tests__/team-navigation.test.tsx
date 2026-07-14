@@ -21,7 +21,7 @@ import {
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   type ZeroWorkflowSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -505,7 +505,7 @@ function mockAgentWorkflowApis(): void {
     },
   );
   context.mocks.api(
-    zeroWorkflowTriggersContract.listWorkspace,
+    zeroWorkflowAutomationsContract.listWorkspace,
     ({ respond }) => {
       return respond(200, []);
     },

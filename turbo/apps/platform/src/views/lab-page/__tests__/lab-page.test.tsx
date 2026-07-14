@@ -1,7 +1,7 @@
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   FeatureSwitchKey,
-  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY,
+  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
 } from "@vm0/connectors/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -111,10 +111,10 @@ describe("lab page", () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
         switches: {
-          [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+          [LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY]: true,
         },
         effectiveSwitches: {
-          [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+          [LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY]: true,
         },
       });
     });
@@ -127,7 +127,7 @@ describe("lab page", () => {
       ).toHaveAttribute("aria-checked", "true");
     });
     expect(
-      screen.queryByText(LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY),
+      screen.queryByText(LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY),
     ).not.toBeInTheDocument();
   });
 
@@ -164,7 +164,7 @@ describe("lab page", () => {
     await waitFor(() => {
       expect(updateBody).toStrictEqual({
         [FeatureSwitchKey.NotionWorkflowAutomations]: true,
-        [LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY]: true,
+        [LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY]: true,
       });
     });
   });

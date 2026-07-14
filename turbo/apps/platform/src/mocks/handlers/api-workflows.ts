@@ -1,21 +1,21 @@
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
   type ChatThreadWorkflowAutomation,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
-  type ZeroWorkflowAutomationEntry,
+  type ZeroWorkflowAutomationsListEntry,
   type ZeroWorkflowAutomationCreateRequest,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { mockApi } from "../msw-contract.ts";
 import {
-  getMockWorkflowTriggers,
-  setMockWorkflowTriggers,
-} from "./workflow-triggers-store.ts";
+  getMockWorkflowAutomations,
+  setMockWorkflowAutomations,
+} from "./workflow-automations-store.ts";
 
 const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
 
@@ -46,49 +46,52 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
   };
 }
 
-function triggerSummaryBase(trigger: ChatThreadWorkflowAutomation) {
+function automationSummaryBase(automation: ChatThreadWorkflowAutomation) {
   return {
-    id: trigger.id,
-    ownerUserId: trigger.ownerUserId,
-    enabled: trigger.enabled,
-    chatThreadId: trigger.chatThreadId,
-    nextRunAt: trigger.nextRunAt,
-    lastRunAt: trigger.lastRunAt,
+    id: automation.id,
+    ownerUserId: automation.ownerUserId,
+    enabled: automation.enabled,
+    chatThreadId: automation.chatThreadId,
+    nextRunAt: automation.nextRunAt,
+    lastRunAt: automation.lastRunAt,
   };
 }
 
-function triggerSummary(
-  trigger: ChatThreadWorkflowAutomation,
+function automationSummary(
+  automation: ChatThreadWorkflowAutomation,
 ): ZeroWorkflowAutomationSummary {
-  if (trigger.kind === "event") {
+  if (automation.kind === "event") {
     return {
-      ...triggerSummaryBase(trigger),
+      ...automationSummaryBase(automation),
       kind: "event",
-      eventType: trigger.eventType,
-      eventConfig: trigger.eventConfig,
+      eventType: automation.eventType,
+      eventConfig: automation.eventConfig,
       schedule: null,
       scheduleSummary: null,
     } as ZeroWorkflowAutomationSummary;
   }
   return {
-    ...triggerSummaryBase(trigger),
+    ...automationSummaryBase(automation),
     kind: "schedule",
-    schedule: trigger.schedule,
-    scheduleSummary: trigger.scheduleSummary,
+    schedule: automation.schedule,
+    scheduleSummary: automation.scheduleSummary,
   };
 }
 
-function publicWorkflowTrigger(
-  trigger: ZeroWorkflowAutomationSummary,
+function publicWorkflowAutomation(
+  automation: ZeroWorkflowAutomationSummary,
 ): ZeroWorkflowAutomationSummary {
-  if (trigger.kind !== "event" || trigger.eventType !== "webhook-received") {
-    return trigger;
+  if (
+    automation.kind !== "event" ||
+    automation.eventType !== "webhook-received"
+  ) {
+    return automation;
   }
   const {
     webhookUrl: _webhookUrl,
     webhookSecret: _webhookSecret,
     ...rest
-  } = trigger;
+  } = automation;
   return rest;
 }
 
@@ -234,9 +237,9 @@ export const apiWorkflowsHandlers = [
       updatedByUserId: "test-user-123",
       createdAt: now,
       updatedAt: now,
-      triggers: source.triggers.map((trigger) => {
+      triggers: source.triggers.map((automation) => {
         return {
-          ...trigger,
+          ...automation,
           id: crypto.randomUUID(),
           ownerUserId: "test-user-123",
           lastRunAt: null,
@@ -274,7 +277,7 @@ export const apiWorkflowsHandlers = [
   }),
 
   ...visibilityHandlers(),
-  ...workflowTriggerHandlers(),
+  ...workflowAutomationHandlers(),
 ];
 
 function visibilityHandlers() {
@@ -318,67 +321,67 @@ function visibilityHandlers() {
   ];
 }
 
-function updateDetailTrigger(
-  triggerId: string,
+function updateDetailAutomation(
+  automationId: string,
   apply: (
-    trigger: ZeroWorkflowAutomationSummary,
+    automation: ZeroWorkflowAutomationSummary,
   ) => ZeroWorkflowAutomationSummary,
 ): ZeroWorkflowAutomationSummary | null {
   for (const workflow of mockWorkflows) {
-    const triggerIndex = workflow.triggers.findIndex((trigger) => {
-      return trigger.id === triggerId;
+    const automationIndex = workflow.triggers.findIndex((automation) => {
+      return automation.id === automationId;
     });
-    if (triggerIndex === -1) {
+    if (automationIndex === -1) {
       continue;
     }
-    const updated = apply(workflow.triggers[triggerIndex]!);
-    workflow.triggers = workflow.triggers.map((trigger) => {
-      return trigger.id === triggerId ? updated : trigger;
+    const updated = apply(workflow.triggers[automationIndex]!);
+    workflow.triggers = workflow.triggers.map((automation) => {
+      return automation.id === automationId ? updated : automation;
     });
     return updated;
   }
   return null;
 }
 
-function updateChatThreadTrigger(
-  triggerId: string,
+function updateChatThreadAutomation(
+  automationId: string,
   apply: (
-    trigger: ChatThreadWorkflowAutomation,
+    automation: ChatThreadWorkflowAutomation,
   ) => ChatThreadWorkflowAutomation,
 ): ZeroWorkflowAutomationSummary | null {
-  const triggers = getMockWorkflowTriggers();
-  const trigger = triggers.find((item) => {
-    return item.id === triggerId;
+  const automations = getMockWorkflowAutomations();
+  const automation = automations.find((item) => {
+    return item.id === automationId;
   });
-  if (!trigger) {
+  if (!automation) {
     return null;
   }
-  const updated = apply(trigger);
-  setMockWorkflowTriggers(
-    triggers.map((item) => {
-      return item.id === triggerId ? updated : item;
+  const updated = apply(automation);
+  setMockWorkflowAutomations(
+    automations.map((item) => {
+      return item.id === automationId ? updated : item;
     }),
   );
-  return triggerSummary(updated);
+  return automationSummary(updated);
 }
 
-function notFoundTrigger() {
+function notFoundAutomation() {
   return {
     error: {
-      message: "Workflow trigger not found",
+      message: "Workflow automation not found",
       code: "NOT_FOUND",
     },
   };
 }
 
-function mockWorkflowTriggerExists(triggerId: string): boolean {
+function mockWorkflowAutomationExists(automationId: string): boolean {
   return (
-    getMockWorkflowTriggers().some((trigger) => {
-      return trigger.id === triggerId;
+    getMockWorkflowAutomations().some((automation) => {
+      return automation.id === automationId;
     }) ||
     mockWorkflows.some((workflow) => {
-      return workflow.triggers.some((trigger) => {
-        return trigger.id === triggerId;
+      return workflow.triggers.some((automation) => {
+        return automation.id === automationId;
       });
     })
   );
@@ -399,39 +402,41 @@ function mockScheduleSummary(
   return `Every ${schedule.intervalSeconds}s`;
 }
 
-function workflowTriggerListHandlers() {
+function workflowAutomationListHandlers() {
   return [
-    mockApi(zeroWorkflowTriggersContract.listWorkspace, ({ respond }) => {
-      const entries: ZeroWorkflowAutomationEntry[] = mockWorkflows.flatMap(
+    mockApi(zeroWorkflowAutomationsContract.listWorkspace, ({ respond }) => {
+      const entries: ZeroWorkflowAutomationsListEntry[] = mockWorkflows.flatMap(
         (workflow) => {
-          return workflow.triggers.map((trigger) => {
+          return workflow.triggers.map((automation) => {
             return {
               workflow: summary(workflow),
-              trigger: publicWorkflowTrigger(trigger),
+              automation: publicWorkflowAutomation(automation),
             };
           });
         },
       );
-      return respond(200, entries);
+      // The ts-rest mock responder retains the legacy spread source's
+      // response type even though the canonical contract overrides status 200.
+      return respond(200, entries as never);
     }),
 
-    mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
+    mockApi(zeroWorkflowAutomationsContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
         return item.id === params.workflowId;
       });
       if (!workflow) {
         return respond(404, notFound(params.workflowId));
       }
-      return respond(200, workflow.triggers.map(publicWorkflowTrigger));
+      return respond(200, workflow.triggers.map(publicWorkflowAutomation));
     }),
 
     mockApi(
-      zeroWorkflowTriggersContract.listForChatThread,
+      zeroWorkflowAutomationsContract.listForChatThread,
       ({ params, respond }) => {
         return respond(
           200,
-          getMockWorkflowTriggers().filter((trigger) => {
-            return trigger.chatThreadId === params.threadId;
+          getMockWorkflowAutomations().filter((automation) => {
+            return automation.chatThreadId === params.threadId;
           }),
         );
       },
@@ -439,7 +444,7 @@ function workflowTriggerListHandlers() {
   ];
 }
 
-type WorkflowTriggerCreateBase = {
+type WorkflowAutomationCreateBase = {
   readonly id: string;
   readonly ownerUserId: string;
   readonly enabled: boolean;
@@ -448,8 +453,8 @@ type WorkflowTriggerCreateBase = {
   readonly lastRunAt: string | null;
 };
 
-function createNotionChildPageTriggerSummary(
-  base: WorkflowTriggerCreateBase,
+function createNotionChildPageAutomationSummary(
+  base: WorkflowAutomationCreateBase,
   parentPageUrl: string,
 ): ZeroWorkflowAutomationSummary {
   return {
@@ -472,8 +477,8 @@ function createNotionChildPageTriggerSummary(
   };
 }
 
-function createNotionDatabaseItemTriggerSummary(
-  base: WorkflowTriggerCreateBase,
+function createNotionDatabaseItemAutomationSummary(
+  base: WorkflowAutomationCreateBase,
   databaseUrl: string,
 ): ZeroWorkflowAutomationSummary {
   return {
@@ -496,8 +501,8 @@ function createNotionDatabaseItemTriggerSummary(
   };
 }
 
-function createNotionPageContentUpdatedTriggerSummary(
-  base: WorkflowTriggerCreateBase,
+function createNotionPageContentUpdatedAutomationSummary(
+  base: WorkflowAutomationCreateBase,
   args: { readonly pageUrl?: string; readonly databaseUrl?: string },
 ): ZeroWorkflowAutomationSummary {
   return {
@@ -533,8 +538,8 @@ function createNotionPageContentUpdatedTriggerSummary(
   };
 }
 
-function createWorkflowTriggerSummaryForRequest(
-  base: WorkflowTriggerCreateBase,
+function createWorkflowAutomationSummaryForRequest(
+  base: WorkflowAutomationCreateBase,
   body: ZeroWorkflowAutomationCreateRequest,
 ): ZeroWorkflowAutomationSummary {
   if ("schedule" in body) {
@@ -557,7 +562,8 @@ function createWorkflowTriggerSummaryForRequest(
       },
       schedule: null,
       scheduleSummary: null,
-      webhookUrl: "http://localhost:3000/api/webhooks/workflow-triggers/mock",
+      webhookUrl:
+        "http://localhost:3000/api/webhooks/workflow-automations/mock",
       secretLastFour: "mock",
       lastReceivedAt: null,
       webhookSecret: "mock-webhook-secret",
@@ -609,19 +615,19 @@ function createWorkflowTriggerSummaryForRequest(
     } as ZeroWorkflowAutomationSummary;
   }
   if (body.eventType === "notion-child-page-created") {
-    return createNotionChildPageTriggerSummary(
+    return createNotionChildPageAutomationSummary(
       base,
       body.eventConfig.parentPageUrl,
     );
   }
   if (body.eventType === "notion-database-item-created") {
-    return createNotionDatabaseItemTriggerSummary(
+    return createNotionDatabaseItemAutomationSummary(
       base,
       body.eventConfig.databaseUrl,
     );
   }
   if (body.eventType === "notion-page-content-updated") {
-    return createNotionPageContentUpdatedTriggerSummary(base, {
+    return createNotionPageContentUpdatedAutomationSummary(base, {
       pageUrl: body.eventConfig.pageUrl,
       databaseUrl: body.eventConfig.databaseUrl,
     });
@@ -630,10 +636,10 @@ function createWorkflowTriggerSummaryForRequest(
   return exhaustive;
 }
 
-function workflowTriggerCreateHandlers() {
+function workflowAutomationCreateHandlers() {
   return [
     mockApi(
-      zeroWorkflowTriggersContract.create,
+      zeroWorkflowAutomationsContract.create,
       ({ body, params, respond }) => {
         const workflow = mockWorkflows.find((item) => {
           return item.id === params.workflowId;
@@ -650,130 +656,140 @@ function workflowTriggerCreateHandlers() {
           nextRunAt: null,
           lastRunAt: null,
         };
-        const trigger = createWorkflowTriggerSummaryForRequest(base, body);
-        workflow.triggers = [...workflow.triggers, trigger];
-        return respond(201, trigger);
+        const automation = createWorkflowAutomationSummaryForRequest(
+          base,
+          body,
+        );
+        workflow.triggers = [...workflow.triggers, automation];
+        return respond(201, automation);
       },
     ),
   ];
 }
 
-function setMockWorkflowTriggerEnabled(triggerId: string, enabled: boolean) {
-  const triggers = getMockWorkflowTriggers();
-  const trigger = triggers.find((item) => {
-    return item.id === triggerId;
+function setMockWorkflowAutomationEnabled(
+  automationId: string,
+  enabled: boolean,
+) {
+  const automations = getMockWorkflowAutomations();
+  const automation = automations.find((item) => {
+    return item.id === automationId;
   });
-  if (!trigger) {
+  if (!automation) {
     return null;
   }
-  const updated = { ...trigger, enabled };
-  setMockWorkflowTriggers(
-    triggers.map((item) => {
-      return item.id === triggerId ? updated : item;
+  const updated = { ...automation, enabled };
+  setMockWorkflowAutomations(
+    automations.map((item) => {
+      return item.id === automationId ? updated : item;
     }),
   );
-  return triggerSummary(updated);
+  return automationSummary(updated);
 }
 
-function workflowTriggerEnabledHandlers() {
+function workflowAutomationEnabledHandlers() {
   return [
-    mockApi(zeroWorkflowTriggersContract.enable, ({ params, respond }) => {
-      const updated = setMockWorkflowTriggerEnabled(params.id, true);
-      return updated ? respond(200, updated) : respond(404, notFoundTrigger());
+    mockApi(zeroWorkflowAutomationsContract.enable, ({ params, respond }) => {
+      const updated = setMockWorkflowAutomationEnabled(params.id, true);
+      return updated
+        ? respond(200, updated)
+        : respond(404, notFoundAutomation());
     }),
-    mockApi(zeroWorkflowTriggersContract.disable, ({ params, respond }) => {
-      const updated = setMockWorkflowTriggerEnabled(params.id, false);
-      return updated ? respond(200, updated) : respond(404, notFoundTrigger());
+    mockApi(zeroWorkflowAutomationsContract.disable, ({ params, respond }) => {
+      const updated = setMockWorkflowAutomationEnabled(params.id, false);
+      return updated
+        ? respond(200, updated)
+        : respond(404, notFoundAutomation());
     }),
   ];
 }
 
-function workflowTriggerRunHandlers() {
+function workflowAutomationRunHandlers() {
   return [
     mockApi(
-      zeroWorkflowTriggersContract.revealWebhookSecret,
+      zeroWorkflowAutomationsContract.revealWebhookSecret,
       ({ params, respond }) => {
         for (const workflow of mockWorkflows) {
-          const detailTrigger = workflow.triggers.find((item) => {
+          const detailAutomation = workflow.triggers.find((item) => {
             return item.id === params.id;
           });
           if (
-            detailTrigger &&
-            detailTrigger.kind === "event" &&
-            detailTrigger.eventType === "webhook-received"
+            detailAutomation &&
+            detailAutomation.kind === "event" &&
+            detailAutomation.eventType === "webhook-received"
           ) {
             return respond(200, {
               webhookUrl:
-                detailTrigger.webhookUrl ??
-                "http://localhost:3000/api/webhooks/workflow-triggers/mock",
+                detailAutomation.webhookUrl ??
+                "http://localhost:3000/api/webhooks/workflow-automations/mock",
               webhookSecret:
-                detailTrigger.webhookSecret ?? "mock-webhook-secret",
+                detailAutomation.webhookSecret ?? "mock-webhook-secret",
             });
           }
         }
 
-        return respond(404, notFoundTrigger());
+        return respond(404, notFoundAutomation());
       },
     ),
-    mockApi(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
-      if (!mockWorkflowTriggerExists(params.id)) {
-        return respond(404, notFoundTrigger());
+    mockApi(zeroWorkflowAutomationsContract.run, ({ params, respond }) => {
+      if (!mockWorkflowAutomationExists(params.id)) {
+        return respond(404, notFoundAutomation());
       }
       return respond(201, {
-        runId: "mock-workflow-trigger-run",
+        runId: "mock-workflow-automation-run",
         chatThreadId: "00000000-0000-4000-a000-000000000301",
       });
     }),
   ];
 }
 
-function workflowTriggerUpdateHandlers() {
+function workflowAutomationUpdateHandlers() {
   return [
     mockApi(
-      zeroWorkflowTriggersContract.update,
+      zeroWorkflowAutomationsContract.update,
       ({ body, params, respond }) => {
-        const updatedChatTrigger = updateChatThreadTrigger(
+        const updatedChatAutomation = updateChatThreadAutomation(
           params.id,
-          (trigger) => {
-            if (trigger.kind !== "event" || !("eventConfig" in body)) {
-              return trigger;
+          (automation) => {
+            if (automation.kind !== "event" || !("eventConfig" in body)) {
+              return automation;
             }
             return {
-              ...trigger,
+              ...automation,
               eventConfig: body.eventConfig,
             } as ChatThreadWorkflowAutomation;
           },
         );
-        if (updatedChatTrigger) {
-          return respond(200, updatedChatTrigger);
+        if (updatedChatAutomation) {
+          return respond(200, updatedChatAutomation);
         }
 
-        const updatedDetailTrigger = updateDetailTrigger(
+        const updatedDetailAutomation = updateDetailAutomation(
           params.id,
-          (trigger) => {
-            if (trigger.kind !== "event" || !("eventConfig" in body)) {
-              return trigger;
+          (automation) => {
+            if (automation.kind !== "event" || !("eventConfig" in body)) {
+              return automation;
             }
             return {
-              ...trigger,
+              ...automation,
               eventConfig: body.eventConfig,
             } as ZeroWorkflowAutomationSummary;
           },
         );
-        return updatedDetailTrigger
-          ? respond(200, updatedDetailTrigger)
-          : respond(404, notFoundTrigger());
+        return updatedDetailAutomation
+          ? respond(200, updatedDetailAutomation)
+          : respond(404, notFoundAutomation());
       },
     ),
   ];
 }
 
-function workflowTriggerHandlers() {
+function workflowAutomationHandlers() {
   return [
-    ...workflowTriggerListHandlers(),
-    ...workflowTriggerCreateHandlers(),
-    ...workflowTriggerEnabledHandlers(),
-    ...workflowTriggerRunHandlers(),
-    ...workflowTriggerUpdateHandlers(),
+    ...workflowAutomationListHandlers(),
+    ...workflowAutomationCreateHandlers(),
+    ...workflowAutomationEnabledHandlers(),
+    ...workflowAutomationRunHandlers(),
+    ...workflowAutomationUpdateHandlers(),
   ];
 }

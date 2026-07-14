@@ -1,8 +1,8 @@
 import type { ChatThreadWorkflowAutomation } from "@vm0/api-contracts/contracts/zero-workflows";
 
-// Shared in-memory store backing workflow trigger mock handlers.
-let mockWorkflowTriggers: ChatThreadWorkflowAutomation[] = [];
-type MockWorkflowTriggerOverrides = Partial<
+// Shared in-memory store backing workflow automation mock handlers.
+let mockWorkflowAutomations: ChatThreadWorkflowAutomation[] = [];
+type MockWorkflowAutomationOverrides = Partial<
   Omit<ChatThreadWorkflowAutomation, "workflow">
 > & {
   readonly eventType?:
@@ -21,21 +21,21 @@ type MockWorkflowTriggerOverrides = Partial<
   readonly workflow?: Partial<ChatThreadWorkflowAutomation["workflow"]>;
 };
 
-export function getMockWorkflowTriggers(): ChatThreadWorkflowAutomation[] {
-  return mockWorkflowTriggers;
+export function getMockWorkflowAutomations(): ChatThreadWorkflowAutomation[] {
+  return mockWorkflowAutomations;
 }
 
-export function setMockWorkflowTriggers(
-  triggers: ChatThreadWorkflowAutomation[],
+export function setMockWorkflowAutomations(
+  automations: ChatThreadWorkflowAutomation[],
 ): void {
-  mockWorkflowTriggers = triggers;
+  mockWorkflowAutomations = automations;
 }
 
-export function resetMockWorkflowTriggers(): void {
-  mockWorkflowTriggers = [];
+export function resetMockWorkflowAutomations(): void {
+  mockWorkflowAutomations = [];
 }
 
-type MockWorkflowTriggerBase = {
+type MockWorkflowAutomationBase = {
   readonly id: string;
   readonly enabled: boolean;
   readonly chatThreadId: string;
@@ -45,9 +45,9 @@ type MockWorkflowTriggerBase = {
   readonly workflow: ChatThreadWorkflowAutomation["workflow"];
 };
 
-function createMockNotionChildPageTrigger(
-  base: MockWorkflowTriggerBase,
-  overrides: MockWorkflowTriggerOverrides,
+function createMockNotionChildPageAutomation(
+  base: MockWorkflowAutomationBase,
+  overrides: MockWorkflowAutomationOverrides,
   workflow: ChatThreadWorkflowAutomation["workflow"],
 ): ChatThreadWorkflowAutomation {
   return {
@@ -71,9 +71,9 @@ function createMockNotionChildPageTrigger(
   } as ChatThreadWorkflowAutomation;
 }
 
-function createMockNotionDatabaseItemTrigger(
-  base: MockWorkflowTriggerBase,
-  overrides: MockWorkflowTriggerOverrides,
+function createMockNotionDatabaseItemAutomation(
+  base: MockWorkflowAutomationBase,
+  overrides: MockWorkflowAutomationOverrides,
   workflow: ChatThreadWorkflowAutomation["workflow"],
 ): ChatThreadWorkflowAutomation {
   return {
@@ -97,9 +97,9 @@ function createMockNotionDatabaseItemTrigger(
   } as ChatThreadWorkflowAutomation;
 }
 
-function createMockGmailLabelTrigger(
-  base: MockWorkflowTriggerBase,
-  overrides: MockWorkflowTriggerOverrides,
+function createMockGmailLabelAutomation(
+  base: MockWorkflowAutomationBase,
+  overrides: MockWorkflowAutomationOverrides,
   workflow: ChatThreadWorkflowAutomation["workflow"],
 ): ChatThreadWorkflowAutomation {
   return {
@@ -118,9 +118,9 @@ function createMockGmailLabelTrigger(
   } as ChatThreadWorkflowAutomation;
 }
 
-function createMockGithubLabelTrigger(
-  base: MockWorkflowTriggerBase,
-  overrides: MockWorkflowTriggerOverrides,
+function createMockGithubLabelAutomation(
+  base: MockWorkflowAutomationBase,
+  overrides: MockWorkflowAutomationOverrides,
   workflow: ChatThreadWorkflowAutomation["workflow"],
 ): ChatThreadWorkflowAutomation {
   return {
@@ -143,9 +143,9 @@ function createMockGithubLabelTrigger(
   } as ChatThreadWorkflowAutomation;
 }
 
-function createMockGoogleCalendarTrigger(
-  base: MockWorkflowTriggerBase,
-  overrides: MockWorkflowTriggerOverrides,
+function createMockGoogleCalendarAutomation(
+  base: MockWorkflowAutomationBase,
+  overrides: MockWorkflowAutomationOverrides,
   workflow: ChatThreadWorkflowAutomation["workflow"],
 ): ChatThreadWorkflowAutomation {
   return {
@@ -169,9 +169,9 @@ function createMockGoogleCalendarTrigger(
   } as ChatThreadWorkflowAutomation;
 }
 
-/** A workflow-trigger store row with sensible defaults. */
-export function createMockWorkflowTrigger(
-  overrides?: MockWorkflowTriggerOverrides,
+/** A workflow-automation store row with sensible defaults. */
+export function createMockWorkflowAutomation(
+  overrides?: MockWorkflowAutomationOverrides,
 ): ChatThreadWorkflowAutomation {
   const workflow = {
     id: "a0000001-0000-4000-a000-000000000001",
@@ -192,19 +192,19 @@ export function createMockWorkflowTrigger(
   };
   if (overrides?.kind === "event") {
     if (overrides.eventType === "gmail-label-applied") {
-      return createMockGmailLabelTrigger(base, overrides, workflow);
+      return createMockGmailLabelAutomation(base, overrides, workflow);
     }
     if (overrides.eventType === "github-label-applied") {
-      return createMockGithubLabelTrigger(base, overrides, workflow);
+      return createMockGithubLabelAutomation(base, overrides, workflow);
     }
     if (overrides.eventType?.startsWith("google-calendar-event-")) {
-      return createMockGoogleCalendarTrigger(base, overrides, workflow);
+      return createMockGoogleCalendarAutomation(base, overrides, workflow);
     }
     if (overrides.eventType === "notion-child-page-created") {
-      return createMockNotionChildPageTrigger(base, overrides, workflow);
+      return createMockNotionChildPageAutomation(base, overrides, workflow);
     }
     if (overrides.eventType === "notion-database-item-created") {
-      return createMockNotionDatabaseItemTrigger(base, overrides, workflow);
+      return createMockNotionDatabaseItemAutomation(base, overrides, workflow);
     }
     return {
       ...base,

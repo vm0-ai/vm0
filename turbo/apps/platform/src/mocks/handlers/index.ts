@@ -89,7 +89,7 @@ import {
 } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
 import { apiAttributionHandlers } from "./api-attribution.ts";
-import { resetMockWorkflowTriggers } from "./workflow-triggers-store.ts";
+import { resetMockWorkflowAutomations } from "./workflow-automations-store.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
 import {
@@ -167,7 +167,7 @@ export function resetAllMockHandlers(): void {
   resetMockUsageMembers();
   resetMockUsageInsight();
   resetMockUsageRecord();
-  resetMockWorkflowTriggers();
+  resetMockWorkflowAutomations();
   resetMockTeam();
   resetMockUserConnectors();
   resetMockWorkflows();

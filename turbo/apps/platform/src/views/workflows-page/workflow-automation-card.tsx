@@ -2,24 +2,24 @@ import type { ReactNode } from "react";
 
 import { cn } from "@vm0/ui";
 
-export interface WorkflowTriggerCardRow {
+export interface WorkflowAutomationCardRow {
   readonly label: string;
   readonly value: ReactNode;
 }
 
-interface WorkflowTriggerCardProps {
-  readonly rows: readonly WorkflowTriggerCardRow[];
+interface WorkflowAutomationCardProps {
+  readonly rows: readonly WorkflowAutomationCardRow[];
   readonly actions?: ReactNode;
   readonly dimmed?: boolean;
   readonly className?: string;
 }
 
-export function WorkflowTriggerCard({
+export function WorkflowAutomationCard({
   rows,
   actions,
   dimmed,
   className,
-}: WorkflowTriggerCardProps) {
+}: WorkflowAutomationCardProps) {
   return (
     <article
       className={cn(
