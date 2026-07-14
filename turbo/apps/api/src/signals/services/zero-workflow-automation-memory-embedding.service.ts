@@ -96,16 +96,24 @@ export async function loadWorkflowAutomationMemoryEmbedding(
     model: embedded.model,
     text: args.query,
   });
+  const canonicalRow = {
+    workflowAutomationId: args.workflowAutomationId,
+    embeddingModel: embedded.model,
+    queryHash: embeddedQueryHash,
+    embedding: [...embedded.embedding],
+  } satisfies Omit<
+    typeof zeroWorkflowAutomationMemoryEmbeddings.$inferInsert,
+    "legacyWorkflowAutomationId"
+  >;
 
   const persisted = await settle(
     db
       .insert(zeroWorkflowAutomationMemoryEmbeddings)
-      .values({
-        workflowAutomationId: args.workflowAutomationId,
-        embeddingModel: embedded.model,
-        queryHash: embeddedQueryHash,
-        embedding: [...embedded.embedding],
-      })
+      // The expand migration's BEFORE INSERT trigger supplies the legacy
+      // primary key until the database contraction is released separately.
+      .values(
+        canonicalRow as typeof zeroWorkflowAutomationMemoryEmbeddings.$inferInsert,
+      )
       .onConflictDoUpdate({
         target: zeroWorkflowAutomationMemoryEmbeddings.workflowAutomationId,
         set: {
