@@ -1,5 +1,8 @@
 const KEYBOARD_SHRINK_RATIO = 0.15;
 const MIN_KEYBOARD_SHRINK_PX = 120;
+const KEYBOARD_VIEWPORT_HEIGHT_PROPERTY = "--zero-keyboard-viewport-height";
+const KEYBOARD_VIEWPORT_OFFSET_TOP_PROPERTY =
+  "--zero-keyboard-viewport-offset-top";
 
 const TEXT_ENTRY_SELECTOR =
   "textarea, select, [contenteditable]:not([contenteditable='false'])";
@@ -48,8 +51,7 @@ function viewportHasKeyboardOcclusion(
   baselineHeight: number,
   viewport: VisualViewport,
 ): boolean {
-  const visibleBottom = viewport.height + viewport.offsetTop;
-  const occludedHeight = baselineHeight - visibleBottom;
+  const occludedHeight = baselineHeight - viewport.height * viewport.scale;
   const threshold = Math.max(
     MIN_KEYBOARD_SHRINK_PX,
     baselineHeight * KEYBOARD_SHRINK_RATIO,
@@ -58,12 +60,24 @@ function viewportHasKeyboardOcclusion(
   return occludedHeight > threshold;
 }
 
-function setKeyboardOpen(open: boolean): void {
-  if (open) {
-    document.documentElement.dataset.keyboardOpen = "true";
-  } else {
-    delete document.documentElement.dataset.keyboardOpen;
-  }
+function setKeyboardOpen(viewport: VisualViewport): void {
+  const root = document.documentElement;
+  root.dataset.keyboardOpen = "true";
+  root.style.setProperty(
+    KEYBOARD_VIEWPORT_HEIGHT_PROPERTY,
+    `${viewport.height}px`,
+  );
+  root.style.setProperty(
+    KEYBOARD_VIEWPORT_OFFSET_TOP_PROPERTY,
+    `${viewport.offsetTop}px`,
+  );
+}
+
+function setKeyboardClosed(): void {
+  const root = document.documentElement;
+  delete root.dataset.keyboardOpen;
+  root.style.removeProperty(KEYBOARD_VIEWPORT_HEIGHT_PROPERTY);
+  root.style.removeProperty(KEYBOARD_VIEWPORT_OFFSET_TOP_PROPERTY);
 }
 
 export function setupVisualViewportKeyboardState(): () => void {
@@ -71,12 +85,14 @@ export function setupVisualViewportKeyboardState(): () => void {
 
   if (!viewport) {
     return () => {
-      setKeyboardOpen(false);
+      setKeyboardClosed();
     };
   }
 
   let baselineHeight = readLayoutViewportHeight(viewport);
   let keyboardOpen = false;
+  let resetBaselineAfterLayout = false;
+  let scheduledFrameId: number | null = null;
 
   const update = () => {
     const activeTextEntry = isTextEntryElement(document.activeElement);
@@ -84,7 +100,7 @@ export function setupVisualViewportKeyboardState(): () => void {
     if (!activeTextEntry) {
       keyboardOpen = false;
       baselineHeight = readLayoutViewportHeight(viewport);
-      setKeyboardOpen(false);
+      setKeyboardClosed();
       return;
     }
 
@@ -96,27 +112,50 @@ export function setupVisualViewportKeyboardState(): () => void {
     }
 
     keyboardOpen = viewportHasKeyboardOcclusion(baselineHeight, viewport);
-    setKeyboardOpen(keyboardOpen);
+    if (keyboardOpen) {
+      setKeyboardOpen(viewport);
+    } else {
+      setKeyboardClosed();
+    }
   };
 
-  const resetBaseline = () => {
-    baselineHeight = readLayoutViewportHeight(viewport);
-    update();
+  const scheduleUpdate = () => {
+    if (scheduledFrameId !== null) {
+      window.cancelAnimationFrame(scheduledFrameId);
+    }
+    scheduledFrameId = window.requestAnimationFrame(() => {
+      scheduledFrameId = window.requestAnimationFrame(() => {
+        scheduledFrameId = null;
+        if (resetBaselineAfterLayout) {
+          baselineHeight = readLayoutViewportHeight(viewport);
+          resetBaselineAfterLayout = false;
+        }
+        update();
+      });
+    });
   };
 
-  viewport.addEventListener("resize", update);
-  viewport.addEventListener("scroll", update);
-  window.addEventListener("orientationchange", resetBaseline);
+  const scheduleBaselineReset = () => {
+    resetBaselineAfterLayout = true;
+    scheduleUpdate();
+  };
+
+  viewport.addEventListener("resize", scheduleUpdate);
+  viewport.addEventListener("scroll", scheduleUpdate);
+  window.addEventListener("orientationchange", scheduleBaselineReset);
   document.addEventListener("focusin", update);
   document.addEventListener("focusout", update);
   update();
 
   return () => {
-    viewport.removeEventListener("resize", update);
-    viewport.removeEventListener("scroll", update);
-    window.removeEventListener("orientationchange", resetBaseline);
+    viewport.removeEventListener("resize", scheduleUpdate);
+    viewport.removeEventListener("scroll", scheduleUpdate);
+    window.removeEventListener("orientationchange", scheduleBaselineReset);
     document.removeEventListener("focusin", update);
     document.removeEventListener("focusout", update);
-    setKeyboardOpen(false);
+    if (scheduledFrameId !== null) {
+      window.cancelAnimationFrame(scheduledFrameId);
+    }
+    setKeyboardClosed();
   };
 }

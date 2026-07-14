@@ -60,6 +60,7 @@
   --sab: var(--sab-raw);
   --sal: env(safe-area-inset-left, 0px);
   --zero-viewport-height: 100dvh;
+  --zero-viewport-offset-top: 0px;
   --zero-desktop-titlebar-height: 48px;
 }
 
@@ -75,11 +76,10 @@
   --sab: 0px;
 }
 
-@supports (height: 100lvh) {
-  @media (display-mode: standalone) {
-    :root[data-keyboard-open="true"] {
-      --zero-viewport-height: 100dvh;
-    }
+@media (display-mode: standalone) {
+  :root[data-keyboard-open="true"] {
+    --zero-viewport-height: var(--zero-keyboard-viewport-height, 100dvh);
+    --zero-viewport-offset-top: var(--zero-keyboard-viewport-offset-top, 0px);
   }
 }
 
@@ -100,7 +100,7 @@ body {
 #root {
   box-sizing: border-box;
   position: fixed;
-  top: 0;
+  top: var(--zero-viewport-offset-top);
   right: 0;
   left: 0;
   /* Keep the root-owned safe-area padding opaque behind translucent iOS chrome. */
