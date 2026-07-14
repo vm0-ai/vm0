@@ -31,6 +31,7 @@ import {
 import {
   ARTIFACT_FULLSCREEN_PARAM,
   ARTIFACT_HTML_EDIT_PARAM,
+  ARTIFACT_IMAGE_EDIT_PARAM,
   ARTIFACT_INBOX_QUERY_PARAM,
   ARTIFACT_QUERY_PARAM,
   clearArtifactSidebarParams,
@@ -38,7 +39,15 @@ import {
   PRESENTATION_EDITOR_QUERY_PARAM,
 } from "./right-sidebar-search-params.ts";
 import { refreshPresentationHtmlPreviews$ } from "./presentation-html-cache-bust.ts";
-import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import {
+  publicAttachmentUrl,
+  readableAttachmentResourceUrl,
+} from "../../views/zero-page/zero-attachment-url.ts";
+import {
+  clearEditableImageCanvasTransientState$,
+  editableImageArtifactCanvasKey,
+  saveEditableImageCanvasSnapshot$,
+} from "./zero-editable-image-canvas.ts";
 
 // ---------------------------------------------------------------------------
 // Artifact sidebar — URL-routed page-level slot for previewing a single
@@ -442,6 +451,16 @@ export const closeArtifact$ = command(({ get, set }) => {
     !params.has(ARTIFACT_FULLSCREEN_PARAM)
   ) {
     return;
+  }
+  const imageEditUrl =
+    params.get(ARTIFACT_IMAGE_EDIT_PARAM) === "1"
+      ? params.get(ARTIFACT_QUERY_PARAM)
+      : null;
+  if (imageEditUrl) {
+    const canvasKey = editableImageArtifactCanvasKey(imageEditUrl);
+    const canvasSrc = publicAttachmentUrl(imageEditUrl);
+    set(saveEditableImageCanvasSnapshot$, canvasKey, canvasSrc);
+    set(clearEditableImageCanvasTransientState$, canvasKey);
   }
   clearArtifactSidebarParams(params);
   set(replaceSearchParams$, params);
