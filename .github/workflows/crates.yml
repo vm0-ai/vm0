@@ -66,7 +66,6 @@ jobs:
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       mitm-addon-test-inputs-changed: ${{ steps.detect.outputs.mitm-addon-test-inputs-changed }}
       mitm-addon-pricing-seed-changed: ${{ steps.detect.outputs.mitm-addon-pricing-seed-changed }}
-      firewall-hostname-contract-changed: ${{ steps.detect.outputs.firewall-hostname-contract-changed }}
       api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
       api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
@@ -125,15 +124,6 @@ jobs:
             echo "any-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          # The hostname compatibility job crosses the Turbo and exact runner
-          # boundary. Keep it separate so Turbo-only policy changes do not force
-          # all Rust jobs to run.
-          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx '(\.github/scripts/firewall-hostname-runtime-contract\.sh|\.github/workflows/crates\.yml|crates/runner/src/deps\.rs|crates/runner/mitm-addon/scripts/firewall_hostname_contract_probe\.py|crates/runner/mitm-addon/src/host_normalization\.py|turbo/pnpm-lock\.yaml|turbo/packages/connectors/package\.json|turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract\.json|turbo/packages/connectors/src/firewall-hostname-policy\.ts|turbo/packages/connectors/src/firewall-types\.ts|turbo/packages/connectors/src/scripts/firewall-hostname-contract\.ts)'; then
-            echo "firewall-hostname-contract-changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "firewall-hostname-contract-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # The api-contracts Rust bindings are generated from selected
@@ -419,44 +409,6 @@ jobs:
           cd crates/runner/mitm-addon
           pip install ".[test]"
           python -m pytest tests/ -v
-
-  firewall-hostname-runtime-contract:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [detect]
-    if: |
-      needs.detect.outputs.ci-changed == 'true' ||
-      needs.detect.outputs.firewall-hostname-contract-changed == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [22, 24]
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
-        with:
-          version: 10.33.4
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: pnpm
-          cache-dependency-path: turbo/pnpm-lock.yaml
-
-      - name: Install hostname contract dependencies
-        working-directory: turbo
-        run: pnpm install --frozen-lockfile --ignore-scripts --filter @vm0/connectors...
-
-      - name: Cache pinned mitmproxy artifact
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: ~/.cache/vm0/mitmproxy
-          key: mitmproxy-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/runner/src/deps.rs') }}
-
-      - name: Verify Node ${{ matrix.node-version }} output with pinned runner
-        shell: bash
-        run: .github/scripts/firewall-hostname-runtime-contract.sh
 
   nbd-cow-test:
     runs-on: ubuntu-latest
@@ -2324,7 +2276,6 @@ jobs:
       - coverage
       - api-contracts-rust-bindings
       - mitm-addon-test
-      - firewall-hostname-runtime-contract
       - runner-host-groups
       - runner-build
       - runner-image-architecture-manifest
@@ -2379,7 +2330,6 @@ jobs:
           check_result "coverage" "${{ needs.coverage.result }}" "true"
           check_result "api-contracts-rust-bindings" "${{ needs.api-contracts-rust-bindings.result }}" "true"
           check_result "mitm-addon-test" "${{ needs.mitm-addon-test.result }}" "true"
-          check_result "firewall-hostname-runtime-contract" "${{ needs.firewall-hostname-runtime-contract.result }}" "true"
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"

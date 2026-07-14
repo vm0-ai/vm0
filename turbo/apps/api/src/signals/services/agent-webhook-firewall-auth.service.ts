@@ -34,6 +34,7 @@ import {
   type RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  canonicalizeFirewallAuthBaseUrl,
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
   type BasicAuthTemplateArg,
@@ -71,7 +72,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
+import { safeSync, settle } from "../utils";
 import {
   decryptPersistentSecretsMap,
   decryptStoredSecretValue,
@@ -4042,6 +4043,19 @@ export async function resolveFirewallAuth(
     authQuery: body.authQuery,
     authAwsSigv4: body.authAwsSigv4,
   });
+  const resolvedBase = resolved.base;
+  const resolvedBaseResult =
+    resolvedBase === undefined
+      ? { ok: undefined }
+      : safeSync(() => {
+          return canonicalizeFirewallAuthBaseUrl(
+            resolvedBase,
+            "resolved firewall auth",
+          );
+        });
+  if ("error" in resolvedBaseResult) {
+    return badRequestMessage("Resolved firewall auth base URL is invalid");
+  }
   if (hasEmptyAwsSigv4Credential(resolved.awsSigv4)) {
     return connectorNotConfigured();
   }
@@ -4050,7 +4064,7 @@ export async function resolveFirewallAuth(
     status: 200,
     body: {
       headers: resolved.headers,
-      base: resolved.base,
+      base: resolvedBaseResult.ok,
       query: resolved.query,
       awsSigv4: resolved.awsSigv4,
       expiresAt: mergeExpiresAt(expiresAt, billableCacheExpiry.expiresAt),

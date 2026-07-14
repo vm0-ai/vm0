@@ -22,6 +22,7 @@ from firewall_matching.patterns import (
     _split_path_segments,
 )
 from host_normalization import (
+    normalize_firewall_config_hostname,
     normalize_hostname_separators,
     normalize_idna_hostname,
     translate_idna_dot_separators,
@@ -149,7 +150,7 @@ def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
                 malformed = True
                 continue
             try:
-                labels.append(normalize_idna_hostname(parsed.value))
+                labels.append(normalize_firewall_config_hostname(parsed.value))
             except (UnicodeError, ValueError):
                 labels.append(parsed.value.lower())
                 malformed = True
@@ -176,6 +177,7 @@ def _split_base_match_url(
     allow_host_params: bool = False,
     allow_unsafe_runtime_url_syntax: bool = False,
     allow_runtime_backslash_syntax: bool = False,
+    trusted_firewall_config: bool = False,
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
@@ -229,6 +231,7 @@ def _split_base_match_url(
         _extract_raw_hostname(parts.netloc),
         port,
         allow_host_params=allow_host_params,
+        trusted_firewall_config=trusted_firewall_config,
     )
     if authority_result is None:
         return None
@@ -250,6 +253,7 @@ def _normalize_authority_host(
     raw_host: _RawAuthorityHost,
     *,
     allow_host_params: bool = False,
+    trusted_firewall_config: bool = False,
 ) -> tuple[str, bool]:
     host = raw_host.hostname
     decoded_host, percent_malformed = _percent_decode_authority_host(host)
@@ -281,7 +285,12 @@ def _normalize_authority_host(
     try:
         if allow_host_params and _has_base_url_params(normalized):
             return _normalize_parameterized_authority_host(normalized)
-        return normalize_idna_hostname(normalized), False
+        normalize_hostname = (
+            normalize_firewall_config_hostname
+            if trusted_firewall_config
+            else normalize_idna_hostname
+        )
+        return normalize_hostname(normalized), False
     except (UnicodeError, ValueError):
         return normalized.lower(), True
 
@@ -292,12 +301,14 @@ def _normalize_authority(
     port: int | None,
     *,
     allow_host_params: bool = False,
+    trusted_firewall_config: bool = False,
 ) -> tuple[str, bool] | None:
     if host is None:
         return None
     normalized_host, host_malformed = _normalize_authority_host(
         host,
         allow_host_params=allow_host_params,
+        trusted_firewall_config=trusted_firewall_config,
     )
     if port is None:
         return normalized_host, host_malformed
@@ -414,6 +425,7 @@ def static_firewall_base_config_key(raw_base: str) -> str | None:
         strip_optional_terminal_slash(raw_base),
         allow_malformed_authority=True,
         allow_unsafe_runtime_url_syntax=True,
+        trusted_firewall_config=True,
     )
     if parts is None:
         return None
@@ -428,6 +440,7 @@ def static_firewall_base_authority_key(raw_base: str) -> str | None:
         strip_optional_terminal_slash(raw_base),
         allow_malformed_authority=True,
         allow_unsafe_runtime_url_syntax=True,
+        trusted_firewall_config=True,
     )
     return parts.authority.lower() if parts is not None else None
 
@@ -552,6 +565,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         allow_malformed_authority=True,
         allow_host_params=has_params,
         allow_unsafe_runtime_url_syntax=True,
+        trusted_firewall_config=True,
     )
     if parts is None:
         return None

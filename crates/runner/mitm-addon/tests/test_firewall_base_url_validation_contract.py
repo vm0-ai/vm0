@@ -18,16 +18,20 @@ _CONTRACT_PATH = (
 )
 
 
-def _load_cases() -> list[dict[str, object]]:
+def _load_syntax_cases() -> list[dict[str, object]]:
     raw_contract = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
     assert isinstance(raw_contract, dict)
     cases = raw_contract["baseUrlValidationCases"]
     assert isinstance(cases, list)
     assert cases
     assert all(isinstance(case, dict) for case in cases)
-    names = [_case_name(case) for case in cases]
+    # TypeScript owns hostname policy; this shared runner contract covers only
+    # transport syntax that remains meaningful after the ASCII handoff.
+    syntax_cases = [case for case in cases if case.get("category") != "hostname-policy"]
+    assert syntax_cases
+    names = [_case_name(case) for case in syntax_cases]
     assert len(names) == len(set(names))
-    return cases
+    return syntax_cases
 
 
 def _case_name(case: dict[str, object]) -> str:
@@ -36,11 +40,11 @@ def _case_name(case: dict[str, object]) -> str:
     return name
 
 
-_BASE_URL_VALIDATION_CASES = _load_cases()
+_BASE_URL_SYNTAX_CASES = _load_syntax_cases()
 
 
-@pytest.mark.parametrize("case", _BASE_URL_VALIDATION_CASES, ids=_case_name)
-def test_firewall_base_url_config_validity_matches_shared_contract(
+@pytest.mark.parametrize("case", _BASE_URL_SYNTAX_CASES, ids=_case_name)
+def test_firewall_base_url_config_syntax_matches_shared_contract(
     case: dict[str, object],
 ) -> None:
     base = case["base"]

@@ -207,3 +207,33 @@ def test_compiled_rejects_base_idna_compatibility_aliases(base, url):
     )
 
     assert result is None
+
+
+def test_compiled_treats_ascii_config_alabel_as_backend_owned_identity():
+    base = "https://xn--7xb.example"
+    fws = wrap_firewalls(
+        [
+            {
+                "base": base,
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [
+                    {"name": "read", "rules": ["GET /resource"]},
+                ],
+            }
+        ],
+        name="example",
+    )
+    policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+    compiled = compile_firewalls_or_fail(fws)
+
+    assert matching.firewall_base_config_is_valid(base)
+    assert (
+        matching.match_compiled_firewall_request(
+            f"{base}/resource",
+            "GET",
+            compiled,
+            policies,
+        )
+        is None
+    )

@@ -126,6 +126,7 @@ def test_malformed_auth_config_fails_closed_after_base_match(auth_config):
         {"base": "${{ secrets.WEBHOOK_BASE_URL }}/v1"},
         {"base": "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
         {"base": "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK_TOKEN }}"},
+        {"base": "https://xn--7xb.example/hook"},
         {"base": "${{ secrets.WEBHOOK_BASE_URL }}/${{ vars.WEBHOOK_PATH }}"},
         {"base": "${{ secrets.WEBHOOK_BASE_URL }}?token=static"},
     ],

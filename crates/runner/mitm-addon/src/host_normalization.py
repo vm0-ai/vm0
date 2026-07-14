@@ -416,6 +416,37 @@ def normalize_idna_label(label: str) -> str:
     return _normalize_label(label)
 
 
+def normalize_firewall_config_hostname(host: str) -> str:
+    """Normalize a hostname received in trusted firewall configuration.
+
+    The backend owns the firewall hostname policy and sends lowercase ASCII in
+    execution payloads. Treat those ASCII labels as opaque identities instead
+    of decoding A-labels with the runner's Unicode tables. Raw Unicode remains
+    supported through ``normalize_idna_hostname()`` while old backend versions
+    can overlap with a new runner during deployment.
+    """
+    normalized = normalize_hostname_separators(host)
+    if not normalized:
+        raise ValueError("empty hostname")
+    if not _is_ascii(normalized):
+        return normalize_idna_hostname(host)
+    if _is_ipv4_literal_like(normalized):
+        if _strip_optional_ascii_trailing_dot(host) != normalized or not _is_canonical_ipv4_address(
+            normalized
+        ):
+            raise UnicodeError("non-canonical IPv4 address")
+        return normalized
+
+    labels: list[str] = []
+    for label in normalized.split("."):
+        canonical_label = label.lower()
+        _validate_normalized_label_text(canonical_label)
+        if len(canonical_label) > _DNS_LABEL_MAX_LENGTH:
+            raise UnicodeError("IDNA label too long")
+        labels.append(canonical_label)
+    return ".".join(labels)
+
+
 def normalize_idna_hostname(host: str) -> str:
     """Normalize one hostname with vm0's shared IDNA policy.
 

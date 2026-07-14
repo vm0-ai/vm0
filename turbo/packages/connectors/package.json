@@ -104,7 +104,6 @@
     }
   },
   "scripts": {
-    "firewall-hostname-contract": "tsx src/scripts/firewall-hostname-contract.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
@@ -123,7 +122,6 @@
     "msw": "^2.13.2",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.23.0",
-    "tsx": "^4.21.0",
     "typescript": "6.0.3",
     "vitest": "^4.1.9"
   }
