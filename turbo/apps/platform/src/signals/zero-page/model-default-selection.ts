@@ -1,5 +1,12 @@
-import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { command } from "ccstate";
+import {
+  isCodexFastModeModel,
+  isLimitedFree1RestrictedRunModel,
+  type OrgModelPoliciesResponse,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
+import { orgModelPolicies$ } from "../external/org-model-policies.ts";
+import { billingStatusAsync$ } from "./billing.ts";
 
 interface UserModelDefaultSource {
   selectedModel: string | null;
@@ -34,8 +41,7 @@ export function isCodexFastModeAvailableForSelection(params: {
 }): boolean {
   if (
     !params.codexFastModeEnabled ||
-    !params.selectedModel ||
-    params.selectedModel !== "gpt-5.5"
+    !isCodexFastModeModel(params.selectedModel)
   ) {
     return false;
   }
@@ -77,3 +83,46 @@ export function resolveModelFirstUserDefaultSelection(params: {
     resolveModelFirstWorkspaceDefaultSelection(params.policies)
   );
 }
+
+type ExplicitModelSelectionResult =
+  | { kind: "compare-plans" }
+  | { kind: "select"; selection: ModelProviderSelection | null };
+
+export const resolveExplicitModelSelection$ = command(
+  async (
+    { get },
+    params: {
+      selection: ModelProviderSelection | null;
+      current: ModelProviderSelection | null;
+      codexFastModeEnabled: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<ExplicitModelSelectionResult> => {
+    const [policies, billing] = await Promise.all([
+      get(orgModelPolicies$),
+      get(billingStatusAsync$),
+    ]);
+    signal.throwIfAborted();
+    if (
+      billing.tier === "limited-free-1" &&
+      isLimitedFree1RestrictedRunModel(params.selection?.selectedModel ?? null)
+    ) {
+      return { kind: "compare-plans" };
+    }
+    if (
+      params.selection &&
+      params.current?.codexServiceTier === "fast" &&
+      isCodexFastModeAvailableForSelection({
+        policies,
+        selectedModel: params.selection.selectedModel,
+        codexFastModeEnabled: params.codexFastModeEnabled,
+      })
+    ) {
+      return {
+        kind: "select",
+        selection: { ...params.selection, codexServiceTier: "fast" },
+      };
+    }
+    return { kind: "select", selection: params.selection };
+  },
+);

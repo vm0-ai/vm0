@@ -124,9 +124,7 @@ function serviceUnavailable(message: string, code = "NOT_CONFIGURED") {
 
 function isAutomationTriggerSource(triggerSource: string | null): boolean {
   return (
-    triggerSource === "automation" ||
-    triggerSource === "workflow-schedule" ||
-    triggerSource === "workflow-event"
+    triggerSource === "workflow-schedule" || triggerSource === "workflow-event"
   );
 }
 

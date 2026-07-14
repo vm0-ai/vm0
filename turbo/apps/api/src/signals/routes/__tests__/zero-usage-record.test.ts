@@ -427,7 +427,6 @@ describe("GET /api/zero/usage/record", () => {
     await seedConnectorPricing(connectorProvider);
 
     const sources = [
-      ["automation", 1],
       ["workflow-schedule", 2],
       ["workflow-event", 3],
     ] as const;
@@ -456,12 +455,12 @@ describe("GET /api/zero/usage/record", () => {
     );
 
     expect(response.body.rows).toHaveLength(1);
-    expect(response.body.totalCredits).toBe(60);
+    expect(response.body.totalCredits).toBe(50);
     expect(response.body.rows[0]).toMatchObject({
       source: "automation",
       threadId: null,
       runId: null,
-      credits: 60,
+      credits: 50,
       tokens: 0,
     });
   });

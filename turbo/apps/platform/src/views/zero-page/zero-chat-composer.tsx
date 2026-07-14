@@ -149,7 +149,11 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  codexFastModeEnabled$,
+  composerUploadPopoverEnabled$,
+  featureSwitch$,
+} from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
   ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
@@ -263,6 +267,8 @@ export interface ZeroChatComposerProps {
   ) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
+  /** Blocks send and queue submission while an async composer command settles. */
+  submissionLoading?: boolean;
   /**
    * Cancel the active run. When provided, the Send button switches to a Stop
    * button while sending and the composer is empty; with content present the
@@ -857,13 +863,21 @@ function ComposerFeedbackRow({
   );
 }
 
-function ComposerFeedbackRows({ feedback }: { feedback: ComposerFeedback }) {
+function ComposerFeedbackRows({
+  feedback,
+  submissionLoading,
+}: {
+  feedback: ComposerFeedback;
+  submissionLoading: boolean;
+}) {
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends, Shift+Enter inserts a newline — matching the main composer.
     // Escape clears the drafted feedback.
     if (matchShortcut("enter", event)) {
       event.preventDefault();
-      feedback.onSubmit();
+      if (!submissionLoading) {
+        feedback.onSubmit();
+      }
     } else if (matchShortcut("escape", event)) {
       event.preventDefault();
       feedback.onDismiss();
@@ -6716,6 +6730,30 @@ function ComposerUploadMenu({
   );
 }
 
+function ComposerUploadControl({
+  readInput,
+  onDraftChange,
+  onInputChange,
+  onSelectFile,
+}: {
+  readonly readInput: () => string;
+  readonly onDraftChange?: () => void;
+  readonly onInputChange: (value: string) => void;
+  readonly onSelectFile: () => void;
+}) {
+  const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
+  return uploadPopoverEnabled ? (
+    <ComposerUploadMenu
+      readInput={readInput}
+      onDraftChange={onDraftChange}
+      onInputChange={onInputChange}
+      onSelectFile={onSelectFile}
+    />
+  ) : (
+    <ComposerAttachButton onSelectFile={onSelectFile} />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Signal resolution — resolves draft/file-input with singleton fallback
 // ---------------------------------------------------------------------------
@@ -6870,12 +6908,14 @@ function ComposerSendButton({
   onCancel,
   activeFeedback,
   sendAction,
+  submissionLoading,
   onSend,
 }: {
   showStopButton: boolean;
   onCancel: (() => void) | undefined;
   activeFeedback: ComposerFeedback | null;
   sendAction: KeyboardSendAction;
+  submissionLoading: boolean;
   onSend: () => void;
 }) {
   if (showStopButton && !activeFeedback) {
@@ -6897,7 +6937,7 @@ function ComposerSendButton({
         size="sm"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
         onClick={activeFeedback.onSubmit}
-        disabled={activeFeedback.sendCount === 0}
+        disabled={activeFeedback.sendCount === 0 || submissionLoading}
         aria-label="Send feedback"
       >
         <IconArrowUp size={18} stroke={2} />
@@ -6928,6 +6968,7 @@ function ComposerSendControl({
   onCancel,
   activeFeedback,
   actionsLoading,
+  submissionLoading,
   onSend,
 }: {
   draft: DraftSignals;
@@ -6940,6 +6981,7 @@ function ComposerSendControl({
   onCancel: (() => void) | undefined;
   activeFeedback: ComposerFeedback | null;
   actionsLoading: boolean;
+  submissionLoading: boolean;
   onSend: () => void;
 }) {
   const hasInput = useGet(draft.hasInput$);
@@ -6949,7 +6991,7 @@ function ComposerSendControl({
     uploadsReady,
   });
   const sendAction = resolveKeyboardSendAction({
-    canSend: canSend && !submitBlocked,
+    canSend: canSend && !submitBlocked && !submissionLoading,
     sending,
     queueWhileSending,
     hasQueueHandler,
@@ -6961,7 +7003,13 @@ function ComposerSendControl({
     activeFeedback,
     sendAction,
   });
-  return <ComposerSendButton {...state} onSend={onSend} />;
+  return (
+    <ComposerSendButton
+      {...state}
+      submissionLoading={submissionLoading}
+      onSend={onSend}
+    />
+  );
 }
 
 function resolveSendButtonStateForActionsLoading({
@@ -7029,19 +7077,16 @@ function ComposerModelPickerSlot({
   modelPicker,
   modelPickerLoading,
   submitBlocker,
-  codexFastModeEnabled,
-  modelPickerOpen,
   onModelPickerChange,
-  onModelPickerOpenChange,
 }: {
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
-  codexFastModeEnabled: boolean;
-  modelPickerOpen: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
-  onModelPickerOpenChange: (open: boolean) => void;
 }) {
+  const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const modelPickerOpen = useGet(modelPickerOpen$);
+  const setModelPickerOpen = useSet(setModelPickerOpen$);
   if (modelPickerLoading) {
     return null;
   }
@@ -7066,7 +7111,7 @@ function ComposerModelPickerSlot({
           mobileIconTrigger
           codexFastModeEnabled={codexFastModeEnabled}
           open={modelPickerOpen}
-          onOpenChange={onModelPickerOpenChange}
+          onOpenChange={setModelPickerOpen}
           disabled={modelPicker.disabled}
           resolveDefaultSelection={false}
         />
@@ -7079,16 +7124,6 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function resolveComposerFeatures(
-  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-) {
-  return {
-    codexFastModeEnabled: features?.[FeatureSwitchKey.CodexFastMode] ?? false,
-    uploadPopoverEnabled:
-      features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false,
-  };
-}
-
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
@@ -7098,6 +7133,7 @@ export function useZeroChatComposer({
   onQueue,
   sending,
   queueWhileSending = false,
+  submissionLoading = false,
   onCancel,
   displayName,
   className,
@@ -7123,12 +7159,7 @@ export function useZeroChatComposer({
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
-  const modelPickerOpen = useGet(modelPickerOpen$);
-  const setModelPickerOpen = useSet(setModelPickerOpen$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const features = useLastResolved(featureSwitch$);
-  const { codexFastModeEnabled, uploadPopoverEnabled } =
-    resolveComposerFeatures(features);
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -7381,6 +7412,8 @@ export function useZeroChatComposer({
     const input = readInput();
     const sendAction = resolveKeyboardSendAction({
       canSend:
+        !actionsLoading &&
+        !submissionLoading &&
         uploadsReady &&
         (input.trim().length > 0 || visibleAttachments.length > 0) &&
         !submitBlocker,
@@ -7403,7 +7436,7 @@ export function useZeroChatComposer({
   // otherwise to the normal send path.
   const handleButtonSend = () => {
     const input = readInput();
-    if (submitBlocker) {
+    if (actionsLoading || submissionLoading || submitBlocker) {
       return;
     }
     if (sending && queueWhileSending && onQueue) {
@@ -7539,7 +7572,10 @@ export function useZeroChatComposer({
                 />
               )}
               {activeFeedback ? (
-                <ComposerFeedbackRows feedback={activeFeedback} />
+                <ComposerFeedbackRows
+                  feedback={activeFeedback}
+                  submissionLoading={submissionLoading}
+                />
               ) : (
                 <>
                   <ComposerInputSlot
@@ -7555,16 +7591,12 @@ export function useZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  {uploadPopoverEnabled ? (
-                    <ComposerUploadMenu
-                      readInput={readInput}
-                      onDraftChange={onDraftChange}
-                      onInputChange={setInput}
-                      onSelectFile={handleFileSelect}
-                    />
-                  ) : (
-                    <ComposerAttachButton onSelectFile={handleFileSelect} />
-                  )}
+                  <ComposerUploadControl
+                    readInput={readInput}
+                    onDraftChange={onDraftChange}
+                    onInputChange={setInput}
+                    onSelectFile={handleFileSelect}
+                  />
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7585,10 +7617,7 @@ export function useZeroChatComposer({
                     modelPicker={modelPicker}
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
-                    codexFastModeEnabled={codexFastModeEnabled}
-                    modelPickerOpen={modelPickerOpen}
                     onModelPickerChange={handleModelPickerChange}
-                    onModelPickerOpenChange={setModelPickerOpen}
                   />
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
                   <MicButton
@@ -7608,6 +7637,7 @@ export function useZeroChatComposer({
                     onCancel={onCancel}
                     activeFeedback={activeFeedback}
                     actionsLoading={actionsLoading}
+                    submissionLoading={submissionLoading}
                     onSend={handleButtonSend}
                   />
                 </div>

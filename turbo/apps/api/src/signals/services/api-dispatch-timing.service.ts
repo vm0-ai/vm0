@@ -56,6 +56,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_zero_web_chat_resolve_client_message"
   | "api_dispatch_pre_create_zero_web_chat_validate_revocation"
   | "api_dispatch_pre_create_zero_web_chat_check_active_run"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue"
+  | "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable"
   | "api_dispatch_pre_create_zero_web_chat_create_normal_run"
   | "api_dispatch_pre_create_zero_web_chat_resolve_model_pin"
   | "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission"

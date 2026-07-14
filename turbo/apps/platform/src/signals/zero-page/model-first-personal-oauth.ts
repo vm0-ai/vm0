@@ -1,14 +1,16 @@
 import { command, computed, state } from "ccstate";
-import type {
-  ModelProviderResponse,
-  ModelProviderType,
-  OrgModelPoliciesResponse,
+import {
+  isLimitedFree1RestrictedRunModel,
+  type ModelProviderResponse,
+  type ModelProviderType,
+  type OrgModelPoliciesResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import {
   personalModelProviders$,
   reloadPersonalModelProviders$,
 } from "../external/personal-model-providers.ts";
+import { limitedFree1$ } from "./billing.ts";
 
 export type PersonalOauthProviderType =
   | "claude-code-oauth-token"
@@ -91,5 +93,41 @@ export const personalModelProvider$ = computed(
       }
     }
     return statuses;
+  },
+);
+
+export const selectedModelAvailable$ = command(
+  async (
+    { get },
+    selectedModel: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const [policies, limitedFree1] = await Promise.all([
+      get(orgModelPolicies$),
+      get(limitedFree1$),
+    ]);
+    signal.throwIfAborted();
+    const policy = policies.policies.find((candidate) => {
+      return candidate.model === selectedModel;
+    });
+    if (policy === undefined || policy.routeStatus !== "valid") {
+      return false;
+    }
+    if (
+      limitedFree1 &&
+      (policy.defaultProviderType !== "vm0" ||
+        isLimitedFree1RestrictedRunModel(selectedModel))
+    ) {
+      return false;
+    }
+    if (
+      policy.credentialScope !== "member" ||
+      !isPersonalOauthProviderType(policy.defaultProviderType)
+    ) {
+      return true;
+    }
+    const status = (await get(personalModelProvider$))[selectedModel];
+    signal.throwIfAborted();
+    return status?.status === "connected";
   },
 );

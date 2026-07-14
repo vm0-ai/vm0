@@ -1028,6 +1028,21 @@ describe("chat lifecycle", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000719",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context);
     context.mocks.upload.success({
       id: "upload-visual-brief",
@@ -1076,6 +1091,21 @@ describe("chat lifecycle", () => {
       selectedModel: "claude-sonnet-4-6",
       updatedAt: "2026-03-10T00:00:00Z",
     });
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000720",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context, {
       sendGate: sendGate.promise,
       onThreadCreate: (body) => {
@@ -1184,6 +1214,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Pending follow-up")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
     await user.click(linkByText("Other thread"));
@@ -5645,6 +5676,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
   it("sends a recommended follow-up from the latest assistant reply", async () => {
     const assistantReply = "I can turn this into a launch package.";
     const followupPrompt = "Create a presentation outline";
+    const sendGate = context.mocks.deferred<void>();
     const sentMessages: {
       prompt?: string;
       revokesMessageId?: string;
@@ -5653,6 +5685,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     mockChatLifecycle(context, {
       threadId: FOLLOWUP_THREAD_ID,
       threadTitle: "Launch package",
+      sendGate: sendGate.promise,
       chatMessages: [
         {
           id: "msg-followup-user",
@@ -5735,7 +5768,14 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       expect(screen.getByText(followupPrompt)).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages).toHaveLength(0);
+
+    sendGate.resolve();
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
     expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
     expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
   });

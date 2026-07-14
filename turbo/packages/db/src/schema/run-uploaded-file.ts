@@ -15,8 +15,6 @@ import type { RunUploadedFileMetadata } from "@vm0/db/jsonb-contracts/run-upload
 export const RUN_UPLOADED_FILE_SOURCES = [
   "workflow-schedule",
   "workflow-event",
-  "schedule",
-  "automation",
   "web",
   "slack",
   "teams",

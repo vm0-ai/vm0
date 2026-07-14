@@ -321,7 +321,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CodexFastMode]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 web chat runs.",
+      "Enable Codex fast mode for ChatGPT subscription GPT 5.5 and GPT 5.6 web chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -473,6 +473,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description:
       "Queue workflow trigger events per workflow and run them serially instead of firing concurrent runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatMessageQueue]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Queue-first user message dispatch: sends enqueue a chat_message_queue item and claim it in place instead of the legacy revoke-claim convention.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

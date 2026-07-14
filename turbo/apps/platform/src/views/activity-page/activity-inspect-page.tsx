@@ -45,7 +45,6 @@ const LOG_STATUSES = [
 ] as const satisfies readonly LogStatus[];
 
 const TRIGGER_SOURCES = [
-  "automation",
   "web",
   "slack",
   "email",

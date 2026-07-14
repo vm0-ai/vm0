@@ -4100,8 +4100,22 @@
     {
       "idx": 585,
       "version": "7",
-      "when": 1784001554285,
-      "tag": "0585_sudden_manta",
+      "when": 1784000627125,
+      "tag": "0585_migrate_legacy_automation_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 586,
+      "version": "7",
+      "when": 1784002338470,
+      "tag": "0586_backfill_queued_user_messages_into_chat_message_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 587,
+      "version": "7",
+      "when": 1784009465207,
+      "tag": "0587_zippy_captain_marvel",
       "breakpoints": true
     }
   ]

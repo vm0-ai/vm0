@@ -21,8 +21,10 @@ import {
   eq,
   inArray,
   isNotNull,
+  isNull,
   lte,
   ne,
+  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -63,6 +65,8 @@ import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.ser
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { recommendedFollowupsMessageIdForRun } from "./assistant-message-id";
 import {
+  deleteUserMessageQueueItem,
+  hasUserMessageQueueItem,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
@@ -1787,6 +1791,28 @@ async function claimQueuedUserMessageForDispatch(args: {
       return [];
     }
 
+    // Queue-first messages (identified by their chat_message_queue item) are
+    // claimed in place: bind the run id onto the existing row and consume the
+    // queue item. Legacy queued messages keep the shadow-row-plus-revoke
+    // convention so pre-switch rows claim exactly as before.
+    if (await hasUserMessageQueueItem(tx, args.queuedMessage.id)) {
+      const [updated] = await tx
+        .update(chatMessages)
+        .set({ runId: args.runId })
+        .where(
+          and(
+            eq(chatMessages.id, args.queuedMessage.id),
+            eq(chatMessages.chatThreadId, args.threadId),
+            isNull(chatMessages.runId),
+          ),
+        )
+        .returning({ id: chatMessages.id });
+      if (updated) {
+        await deleteUserMessageQueueItem(tx, args.queuedMessage.id);
+      }
+      return updated ? [updated] : [];
+    }
+
     const [message] = await tx
       .insert(chatMessages)
       .values({
@@ -1828,6 +1854,8 @@ async function appendAutoSentQueuedRunMarker(args: {
       return;
     }
 
+    // The claimed message is either the queue-first row itself (claimed in
+    // place) or a legacy shadow row revoking the queued original.
     const [message] = await tx
       .select({ createdAt: chatMessages.createdAt })
       .from(chatMessages)
@@ -1836,7 +1864,10 @@ async function appendAutoSentQueuedRunMarker(args: {
           eq(chatMessages.chatThreadId, args.threadId),
           eq(chatMessages.runId, args.runId),
           eq(chatMessages.role, "user"),
-          eq(chatMessages.revokesMessageId, args.queuedMessageId),
+          or(
+            eq(chatMessages.id, args.queuedMessageId),
+            eq(chatMessages.revokesMessageId, args.queuedMessageId),
+          ),
         ),
       )
       .limit(1);

@@ -36,6 +36,8 @@ export type ThinkingIndicatorMode =
   | "finished"
   | null;
 
+export type ComposerSendButtonStatus = "idle" | "sending";
+
 export interface MessageImageGroupProjection {
   readonly messages: readonly {
     readonly attachFiles?: PagedChatMessage["attachFiles"];
@@ -64,6 +66,9 @@ export interface ChatThreadSignals {
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
   selectedModel$: Computed<Promise<string | null>>;
+  codexFastModeActive$: Computed<Promise<boolean>>;
+  selectedModelOauthAvailable$: Computed<Promise<boolean>>;
+  configureSelectedModel$: Command<Promise<void>, [AbortSignal]>;
   setModelSelection$: Command<
     Promise<void>,
     [ModelProviderSelection | null, AbortSignal]
@@ -73,16 +78,12 @@ export interface ChatThreadSignals {
   setComputerUseHostId$: Command<Promise<void>, [string | null, AbortSignal]>;
   clearComputerUseHostIdOverride$: Command<void, []>;
   sendMessage$: Command<
-    Promise<void>,
-    [
-      string,
-      ModelProviderSelection | null,
-      SendMessageOptions | undefined,
-      AbortSignal,
-    ]
+    Promise<boolean>,
+    [string, SendMessageOptions | undefined, AbortSignal]
   >;
+  composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
-    Promise<void>,
+    Promise<boolean>,
     [string, string | null | undefined, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
@@ -132,7 +133,6 @@ export interface ChatThreadSignals {
   hasQueuedMessages$: Computed<Promise<boolean>>;
   queuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
   emptyQueuedMessageItems$: Computed<Promise<readonly QueuedChatMessageItem[]>>;
-  lastAssistantCancelled$: Computed<Promise<boolean>>;
   thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;
   thinkingMessageId$: Computed<Promise<string | null>>;
   thinkingText$: Computed<Promise<string | null>>;
@@ -140,7 +140,6 @@ export interface ChatThreadSignals {
     Promise<RecommendedFollowupSource | null>
   >;
   activeGoalObjective$: Computed<Promise<string | null>>;
-  allFinished$: Computed<Promise<boolean>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;

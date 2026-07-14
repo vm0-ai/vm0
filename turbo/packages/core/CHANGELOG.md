@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.429.0](https://github.com/vm0-ai/vm0/compare/core-v8.428.0...core-v8.429.0) (2026-07-14)
+
+
+### Features
+
+* queue-first user message dispatch on chat_message_queue behind a feature switch ([#21368](https://github.com/vm0-ai/vm0/issues/21368)) ([791774d](https://github.com/vm0-ai/vm0/commit/791774dad8dca817b273c55b580e6e1a783970b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.1
+    * @vm0/connectors bumped to 1.158.0
+
+## [8.428.0](https://github.com/vm0-ai/vm0/compare/core-v8.427.3...core-v8.428.0) (2026-07-14)
+
+
+### Features
+
+* **codex:** enable fast mode for gpt-5.6 models ([#21344](https://github.com/vm0-ai/vm0/issues/21344)) ([fb11b7e](https://github.com/vm0-ai/vm0/commit/fb11b7e0a09bcff1e6ee0c2c55f88b3cc3056542))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.0
+
 ## [8.427.3](https://github.com/vm0-ai/vm0/compare/core-v8.427.2...core-v8.427.3) (2026-07-14)
 
 

@@ -241,9 +241,4 @@ describe("POST /api/zero/agents", () => {
     );
     expect(response.body.displayName).toBe("After Delete");
   });
-
-  // The "agent created via POST /api/zero/agents is automatable" regression
-  // was removed with the automation -> workflow cutover (#19959): the frozen
-  // legacy automation API can no longer create or run automations. The
-  // agent-compose linkage is exercised by the workflow trigger tests.
 });

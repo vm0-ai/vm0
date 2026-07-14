@@ -2,17 +2,27 @@ import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
 import { createWorkflowComposerSignals } from "./tiptap-workflow-composer.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  codexFastModeEnabled$,
+  featureSwitch$,
+} from "../external/feature-switch.ts";
 import { connectorCatalogStatusByRef$ } from "../external/connectors.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { userModelPreference$ } from "../external/user-model-preference.ts";
 import {
   applyCodexFastModeDefault,
+  isCodexFastModeAvailableForSelection,
   resolveModelFirstUserDefaultSelection,
 } from "./model-default-selection.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { codexFastModeLocalDefault$ } from "./codex-fast-local-default.ts";
+import {
+  codexFastModeLocalDefault$,
+  setCodexFastModeLocalDefault$,
+} from "./codex-fast-local-default.ts";
+import { personalModelProvider$ } from "./model-first-personal-oauth.ts";
+import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "./settings/claude-code-device-auth.ts";
+import { setCodexDeviceAuthDialogStatePersonal$ } from "./settings/codex-device-auth.ts";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -70,7 +80,17 @@ export const chatPageModelSelection$ = computed(
   async (get): Promise<ModelProviderSelection | null> => {
     const user = get(internalChatPageUserOverride$);
     if (user.kind === "set") {
-      return user.value;
+      if (user.value?.codexServiceTier !== "fast") {
+        return user.value;
+      }
+      const policies = await get(orgModelPolicies$);
+      return isCodexFastModeAvailableForSelection({
+        policies,
+        selectedModel: user.value.selectedModel,
+        codexFastModeEnabled: get(codexFastModeEnabled$),
+      })
+        ? user.value
+        : { selectedModel: user.value.selectedModel };
     }
     const policies = await get(orgModelPolicies$);
     const userPreference = await get(userModelPreference$);
@@ -89,9 +109,66 @@ export const chatPageModelSelection$ = computed(
   },
 );
 
+export const chatPageSelectedModelOauthAvailable$ = computed(
+  async (get): Promise<boolean> => {
+    const selection = await get(chatPageModelSelection$);
+    if (selection === null) {
+      return true;
+    }
+    const status = (await get(personalModelProvider$))[selection.selectedModel];
+    return status === undefined || status.status === "connected";
+  },
+);
+
+export const configureChatPageSelectedModel$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const selection = await get(chatPageModelSelection$);
+    signal.throwIfAborted();
+    if (selection === null) {
+      return;
+    }
+    const status = (await get(personalModelProvider$))[selection.selectedModel];
+    signal.throwIfAborted();
+    if (status === undefined || status.status === "connected") {
+      return;
+    }
+    const mode = status.status === "needs_reconnect" ? "reconnect" : "connect";
+    if (status.providerType === "claude-code-oauth-token") {
+      set(setClaudeCodeDeviceAuthDialogStatePersonal$, { open: true, mode });
+      return;
+    }
+    set(setCodexDeviceAuthDialogStatePersonal$, { open: true, mode });
+  },
+);
+
 export const setChatPageModelSelection$ = command(
   ({ set }, value: ModelProviderSelection | null) => {
     set(internalChatPageUserOverride$, { kind: "set", value });
+  },
+);
+
+export const updateCodexFastModeDefaultForSelection$ = command(
+  async (
+    { get, set },
+    selection: ModelProviderSelection | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const policies = await get(orgModelPolicies$);
+    signal.throwIfAborted();
+    if (
+      !isCodexFastModeAvailableForSelection({
+        policies,
+        selectedModel: selection?.selectedModel,
+        codexFastModeEnabled: get(codexFastModeEnabled$),
+      })
+    ) {
+      return;
+    }
+    await set(
+      setCodexFastModeLocalDefault$,
+      selection?.codexServiceTier === "fast",
+      signal,
+    );
   },
 );
 

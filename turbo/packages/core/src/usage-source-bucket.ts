@@ -21,7 +21,8 @@ export function triggerSourceToBucket(
       return "slack";
     case "email":
       return "email";
-    case "automation":
+    case "workflow-schedule":
+    case "workflow-event":
       return "automation";
     default:
       // telegram, github, cli, agent, phone, agentphone, null

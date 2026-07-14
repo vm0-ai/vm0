@@ -276,6 +276,29 @@ export function isSupportedRunModel(
   return typeof model === "string" && SUPPORTED_RUN_MODEL_SET.has(model);
 }
 
+/** Models supported by the ChatGPT Codex Fast service tier. */
+export const CODEX_FAST_MODE_MODELS = [
+  "gpt-5.5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+] as const satisfies readonly SupportedRunModel[];
+
+const CODEX_FAST_MODE_MODEL_SET: ReadonlySet<string> = new Set(
+  CODEX_FAST_MODE_MODELS,
+);
+
+export function isCodexFastModeModel(
+  model: string | null | undefined,
+): boolean {
+  const bareModel = model?.startsWith("openai/")
+    ? model.slice("openai/".length)
+    : model;
+  return (
+    typeof bareModel === "string" && CODEX_FAST_MODE_MODEL_SET.has(bareModel)
+  );
+}
+
 export function getVm0ModelPriceTier(
   model: string,
 ): Vm0ModelPriceTier | undefined {

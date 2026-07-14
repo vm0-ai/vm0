@@ -214,6 +214,9 @@ fn record_session_history_identity_mismatch_reason(
     reason: RestoredSessionIdentityMismatchReason,
 ) {
     telemetry.record(reason.action_type(), Duration::ZERO, true, None);
+    if let Some(action_type) = reason.history_hash_size_relationship_action_type() {
+        telemetry.record(action_type, Duration::ZERO, true, None);
+    }
 }
 
 fn record_session_history_download_timings(

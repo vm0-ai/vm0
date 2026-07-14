@@ -15,7 +15,7 @@ import { threadGoals } from "./thread-goal";
 
 /**
  * Zero Runs table
- * Stores Zero-specific run metadata (trigger source, automation provenance) as first-class columns.
+ * Stores Zero-specific run metadata (trigger source, Workflow provenance) as first-class columns.
  * PK is the agent_runs.id — extends agent_runs with Zero-layer context.
  */
 export const zeroRuns = pgTable(

@@ -558,11 +558,6 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     ).toHaveLength(1);
   });
 
-  // The membership-deleted automation-suspension scenario was removed with
-  // the automation -> workflow cutover (#19959): the frozen legacy API can
-  // no longer create automations. Owner-suspension coverage now uses
-  // workflow trigger and seeded legacy-row fixtures.
-
   it("rejects GitHub requests with missing headers or invalid signatures", async () => {
     api.configureGithubWebhookSecret();
 
@@ -4153,8 +4148,6 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         githubUserId: newGithubUserId(),
       },
     });
-    // No automation is seeded into the teardown state: the legacy automation
-    // API is frozen after the workflow cutover (#19959).
     const botToken = await registerTelegramBot(actor, agent.agentId);
     await runs.applyUserPermissionGrant(actor, {
       agentId: agent.agentId,

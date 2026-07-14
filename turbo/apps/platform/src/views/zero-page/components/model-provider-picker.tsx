@@ -1,5 +1,11 @@
 import type { ReactNode, SyntheticEvent } from "react";
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+  useSet,
+} from "ccstate-react";
 import { IconBolt, IconCheck, IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -19,6 +25,7 @@ import {
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isCodexFastModeModel,
   isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
@@ -28,10 +35,14 @@ import {
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
-import { billingStatusAsync$ } from "../../../signals/zero-page/billing";
+import {
+  billingStatusAsync$,
+  limitedFree1$,
+} from "../../../signals/zero-page/billing";
 import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog";
 import { openBillingPlans$ } from "../../../signals/zero-page/settings/org-manage-tabs-state";
 import { pageSignal$ } from "../../../signals/page-signal";
+import { resolveExplicitModelSelection$ } from "../../../signals/zero-page/model-default-selection";
 import { detach, Reason } from "../../../signals/utils";
 import {
   getModelBrandIconType,
@@ -264,7 +275,7 @@ function codexFastModeAvailableForModel(
   policies: OrgModelPolicy[],
   selectedModel: string | null | undefined,
 ): boolean {
-  if (!selectedModel || selectedModel !== "gpt-5.5") {
+  if (!isCodexFastModeModel(selectedModel)) {
     return false;
   }
   const policy = policies.find((candidate) => {
@@ -735,6 +746,7 @@ function resolveModelFirstModelPickerState({
 
 function ModelFirstSelectPicker({
   state,
+  content,
   placeholder,
   triggerClassName,
   mobileIconTrigger,
@@ -745,6 +757,7 @@ function ModelFirstSelectPicker({
   onChange,
 }: {
   state: ModelFirstModelPickerState;
+  content?: ReactNode;
   placeholder: string;
   triggerClassName: string | undefined;
   mobileIconTrigger: boolean;
@@ -774,24 +787,25 @@ function ModelFirstSelectPicker({
           />
         </SelectValue>
       </SelectTrigger>
-      {open !== false && (
-        <ModelFirstModelPickerContent
-          selectValue={state.selectValue}
-          placeholder={placeholder}
-          policies={state.policies}
-          selectableValue={state.selectableValue}
-          limitedFree1={limitedFree1}
-          codexFastModeAvailable={state.codexFastModeAvailable}
-          selectedModel={state.selectedModel}
-          codexServiceTier={state.codexServiceTier}
-          onChange={onChange}
-        />
-      )}
+      {open !== false &&
+        (content ?? (
+          <ModelFirstModelPickerContent
+            selectValue={state.selectValue}
+            placeholder={placeholder}
+            policies={state.policies}
+            selectableValue={state.selectableValue}
+            limitedFree1={limitedFree1}
+            codexFastModeAvailable={state.codexFastModeAvailable}
+            selectedModel={state.selectedModel}
+            codexServiceTier={state.codexServiceTier}
+            onChange={onChange}
+          />
+        ))}
     </Select>
   );
 }
 
-function ModelFirstModelPicker({
+function SubscribedModelFirstModelPicker({
   value,
   onChange,
   placeholder,
@@ -811,14 +825,13 @@ function ModelFirstModelPicker({
   userPreference: { selectedModel: string | null } | null | undefined;
   resolveDefaultSelection: boolean;
 }) {
-  const policiesLoadable = useLoadable(orgModelPolicies$);
+  const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const billingLoadable = useLoadable(billingStatusAsync$);
-  const lastPolicies = useLastResolved(orgModelPolicies$);
   const openBillingPlans = useSet(openBillingPlans$);
   const openOrgManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const policyResponse =
-    policiesLoadable.state === "hasData" ? policiesLoadable.data : lastPolicies;
+    policiesLoadable.state === "hasData" ? policiesLoadable.data : undefined;
   const limitedFree1 =
     billingLoadable.state === "hasData" &&
     billingLoadable.data.tier === "limited-free-1";
@@ -885,6 +898,225 @@ function ModelFirstModelPicker({
   );
 }
 
+function resolveExplicitModelFirstModelPickerState({
+  value,
+  codexFastModeEnabled,
+  placeholder,
+}: {
+  value: ModelProviderSelection | null;
+  codexFastModeEnabled: boolean;
+  placeholder: string;
+}): ModelFirstModelPickerState {
+  const selectedModel = value?.selectedModel ?? null;
+  const codexServiceTier = codexFastModeEnabled
+    ? value?.codexServiceTier
+    : undefined;
+  return {
+    policies: [],
+    selectablePolicies: [],
+    selectableValue: value,
+    selectedModel,
+    codexFastModeAvailable: codexServiceTier === "fast",
+    codexServiceTier,
+    selectValue: selectedModel ?? INHERIT_SENTINEL,
+    triggerAriaLabel: selectedModel
+      ? getCanonicalModelDisplayName(selectedModel)
+      : placeholder,
+  };
+}
+
+function LoadingModelFirstModelPickerContent({
+  value,
+  placeholder,
+}: {
+  value: ModelProviderSelection | null;
+  placeholder: string;
+}) {
+  const selectValue = value?.selectedModel ?? INHERIT_SENTINEL;
+  return (
+    <SelectContent className="min-w-[260px]">
+      <SelectItem
+        value={selectValue}
+        className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+        disabled
+        aria-hidden="true"
+      >
+        {value?.selectedModel
+          ? getCanonicalModelDisplayName(value.selectedModel)
+          : placeholder}
+      </SelectItem>
+      <div className="px-2 py-2 text-sm text-muted-foreground">
+        Loading models...
+      </div>
+    </SelectContent>
+  );
+}
+
+function ErrorModelFirstModelPickerContent({
+  value,
+  placeholder,
+}: {
+  value: ModelProviderSelection | null;
+  placeholder: string;
+}) {
+  const selectValue = value?.selectedModel ?? INHERIT_SENTINEL;
+  return (
+    <SelectContent className="min-w-[260px]">
+      <SelectItem
+        value={selectValue}
+        className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+        disabled
+        aria-hidden="true"
+      >
+        {value?.selectedModel
+          ? getCanonicalModelDisplayName(value.selectedModel)
+          : placeholder}
+      </SelectItem>
+      <div className="px-2 py-2 text-sm text-muted-foreground">
+        Unable to load models.
+      </div>
+    </SelectContent>
+  );
+}
+
+function SubscribedExplicitModelFirstModelPickerContent({
+  value,
+  placeholder,
+  codexFastModeEnabled,
+  onChange,
+}: {
+  value: ModelProviderSelection | null;
+  placeholder: string;
+  codexFastModeEnabled: boolean;
+  onChange: (value: ModelProviderSelection | null) => void;
+}) {
+  const policiesLoadable = useLastLoadable(orgModelPolicies$);
+  const limitedFree1 = useLastResolved(limitedFree1$) ?? false;
+  if (policiesLoadable.state === "loading") {
+    return (
+      <LoadingModelFirstModelPickerContent
+        value={value}
+        placeholder={placeholder}
+      />
+    );
+  }
+  if (policiesLoadable.state === "hasError") {
+    return (
+      <ErrorModelFirstModelPickerContent
+        value={value}
+        placeholder={placeholder}
+      />
+    );
+  }
+  const state = resolveModelFirstModelPickerState({
+    value,
+    userPreference: null,
+    policyResponse: policiesLoadable.data,
+    limitedFree1: false,
+    resolveDefaultSelection: false,
+    codexFastModeEnabled,
+    placeholder,
+  });
+  return (
+    <ModelFirstModelPickerContent
+      selectValue={state.selectValue}
+      placeholder={placeholder}
+      policies={state.policies}
+      selectableValue={state.selectableValue}
+      limitedFree1={limitedFree1}
+      codexFastModeAvailable={!limitedFree1 && state.codexFastModeAvailable}
+      selectedModel={state.selectedModel}
+      codexServiceTier={state.codexServiceTier}
+      onChange={onChange}
+    />
+  );
+}
+
+function EnabledExplicitModelFirstModelPicker(
+  props: ModelProviderPickerProps & {
+    placeholder: string;
+    compactTrigger: boolean;
+    mobileIconTrigger: boolean;
+  },
+) {
+  const resolveSelection = useSet(resolveExplicitModelSelection$);
+  const openBillingPlans = useSet(openBillingPlans$);
+  const openOrgManage = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
+  const state = resolveExplicitModelFirstModelPickerState({
+    value: props.value,
+    codexFastModeEnabled: props.codexFastModeEnabled ?? false,
+    placeholder: props.placeholder,
+  });
+  const handleRawValueChange = (raw: string) => {
+    detach(
+      (async () => {
+        const result = await resolveSelection(
+          {
+            selection: modelFirstSelectionFromRaw(raw),
+            current: props.value,
+            codexFastModeEnabled: props.codexFastModeEnabled ?? false,
+          },
+          pageSignal,
+        );
+        if (result.kind === "compare-plans") {
+          openBillingPlans();
+          await openOrgManage(true, pageSignal);
+          return;
+        }
+        props.onChange(result.selection);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+  return (
+    <ModelFirstSelectPicker
+      state={state}
+      content={
+        props.open !== false ? (
+          <SubscribedExplicitModelFirstModelPickerContent
+            value={props.value}
+            placeholder={props.placeholder}
+            codexFastModeEnabled={props.codexFastModeEnabled ?? false}
+            onChange={props.onChange}
+          />
+        ) : undefined
+      }
+      placeholder={props.placeholder}
+      triggerClassName={props.triggerClassName}
+      mobileIconTrigger={props.mobileIconTrigger}
+      limitedFree1={false}
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      onValueChange={handleRawValueChange}
+      onChange={props.onChange}
+    />
+  );
+}
+
+function ModelFirstModelPicker(
+  props: ModelProviderPickerProps & {
+    placeholder: string;
+    compactTrigger: boolean;
+    mobileIconTrigger: boolean;
+  },
+) {
+  if (props.disabled) {
+    return (
+      <ModelFirstDisabledPickerLabel
+        value={props.value}
+        placeholder={props.placeholder}
+        compactTrigger={props.compactTrigger}
+        mobileIconTrigger={props.mobileIconTrigger}
+        triggerClassName={props.triggerClassName}
+        userPreference={null}
+        policies={[]}
+      />
+    );
+  }
+  return <EnabledExplicitModelFirstModelPicker {...props} />;
+}
+
 function ModelFirstModelPickerWithDefaultSelection(
   props: ModelProviderPickerProps & {
     placeholder: string;
@@ -894,7 +1126,7 @@ function ModelFirstModelPickerWithDefaultSelection(
 ) {
   const userPreference = useLastResolved(userModelPreference$);
   return (
-    <ModelFirstModelPicker
+    <SubscribedModelFirstModelPicker
       {...props}
       userPreference={userPreference}
       resolveDefaultSelection
@@ -930,11 +1162,5 @@ export function ModelProviderPicker({
   if (resolveDefaultSelection) {
     return <ModelFirstModelPickerWithDefaultSelection {...props} />;
   }
-  return (
-    <ModelFirstModelPicker
-      {...props}
-      userPreference={null}
-      resolveDefaultSelection={false}
-    />
-  );
+  return <ModelFirstModelPicker {...props} />;
 }

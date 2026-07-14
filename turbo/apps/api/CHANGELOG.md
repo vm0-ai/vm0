@@ -1,5 +1,52 @@
 # Changelog
 
+## [1.272.0](https://github.com/vm0-ai/vm0/compare/api-v1.271.1...api-v1.272.0) (2026-07-14)
+
+
+### Features
+
+* queue-first user message dispatch on chat_message_queue behind a feature switch ([#21368](https://github.com/vm0-ai/vm0/issues/21368)) ([791774d](https://github.com/vm0-ai/vm0/commit/791774dad8dca817b273c55b580e6e1a783970b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.1
+    * @vm0/connectors bumped to 1.158.0
+    * @vm0/core bumped to 8.429.0
+    * @vm0/db bumped to 1.114.0
+
+## [1.271.1](https://github.com/vm0-ai/vm0/compare/api-v1.271.0...api-v1.271.1) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.0
+    * @vm0/core bumped to 8.428.0
+    * @vm0/db bumped to 1.113.1
+
+## [1.271.0](https://github.com/vm0-ai/vm0/compare/api-v1.270.0...api-v1.271.0) (2026-07-14)
+
+
+### Features
+
+* add chat_message_queue table and migrate workflow events into it ([#21339](https://github.com/vm0-ai/vm0/issues/21339)) ([83862e6](https://github.com/vm0-ai/vm0/commit/83862e68345be825f2427b8aca5ac9c74ace18ed))
+
+
+### Bug Fixes
+
+* **chat:** refresh workflows created in threads ([#21346](https://github.com/vm0-ai/vm0/issues/21346)) ([f0fa94f](https://github.com/vm0-ai/vm0/commit/f0fa94f2ea913213e65c864944aae6dedd6576d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.113.0
+
 ## [1.270.0](https://github.com/vm0-ai/vm0/compare/api-v1.269.0...api-v1.270.0) (2026-07-14)
 
 
