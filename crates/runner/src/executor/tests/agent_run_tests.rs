@@ -52,7 +52,9 @@ use super::support::{
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
-use crate::restored_session_identity::RestoredSessionIdentityMismatchReason;
+use crate::restored_session_identity::{
+    RestoredSessionHistoryHashSizeRelationship, RestoredSessionIdentityMismatchReason,
+};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
 use crate::test_fixtures::OneShotSessionHistoryServer;
@@ -2436,92 +2438,147 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
 }
 
 #[tokio::test]
-async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-fallback-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                encoding: None,
-                raw_size: history.len() as u64,
-                encoded_size: history.len() as u64,
-                download_source: None,
+async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_history() {
+    const RELATIONSHIP_ACTIONS: [&str; 4] = [
+        "session_history_identity_mismatch_history_hash_requested_smaller",
+        "session_history_identity_mismatch_history_hash_requested_equal",
+        "session_history_identity_mismatch_history_hash_requested_larger",
+        "session_history_identity_mismatch_history_hash_size_unknown",
+    ];
+    let cases = [
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedSmaller,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_requested_smaller"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedEqual,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_requested_equal"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_requested_larger"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::SizeUnknown,
+            ),
+            "session_history_identity_mismatch_history_hash",
+            Some("session_history_identity_mismatch_history_hash_size_unknown"),
+        ),
+        (
+            RestoredSessionIdentityMismatchReason::SessionIdentity,
+            "session_history_identity_mismatch_session_identity",
+            None,
+        ),
+    ];
+
+    for (reason, aggregate_action, expected_relationship_action) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let sandbox = sandbox_mock::MockSandbox::new("test");
+        let history = br#"{"type":"init"}"#;
+        let server = MockServer::start_async().await;
+        let history_mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/history.blob");
+                then.status(200).body(history);
+            })
+            .await;
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            cli_agent_session_id: "sess-fallback-123".into(),
+            history: ResumeSessionHistory::Ref {
+                history_ref: ResumeSessionHistoryRef {
+                    kind: ResumeSessionHistoryRefKind::Blob,
+                    hash: hex::encode(Sha256::digest(history)),
+                    url: server.url("/history.blob?token=secret"),
+                    encoding: None,
+                    raw_size: history.len() as u64,
+                    encoded_size: history.len() as u64,
+                    download_source: None,
+                },
             },
-        },
-    });
-    sandbox.push_read_file_result(Ok(None));
-    let materializer = SessionHistoryMaterializer::start_cancellable(
-        &config.http,
-        &config.session_history_cpu,
-        ctx.resume_session.as_ref(),
-        effective_cli_framework(&ctx.cli_agent_type),
-        tokio_util::sync::CancellationToken::new(),
-        None,
-    );
-    let mut telemetry = test_telemetry(&config, &ctx);
+        });
+        sandbox.push_read_file_result(Ok(None));
+        let materializer = SessionHistoryMaterializer::start_cancellable(
+            &config.http,
+            &config.session_history_cpu,
+            ctx.resume_session.as_ref(),
+            effective_cli_framework(&ctx.cli_agent_type),
+            tokio_util::sync::CancellationToken::new(),
+            None,
+        );
+        let mut telemetry = test_telemetry(&config, &ctx);
 
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
-                materializer,
-                fallback: Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
-                    RestoredSessionIdentityMismatchReason::HistoryHash,
-                ))),
-            }),
-    )
-    .await
-    .unwrap();
+        let result = run_in_sandbox(
+            &sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::Reused,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                    materializer,
+                    fallback: Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        reason,
+                    ))),
+                }),
+        )
+        .await
+        .unwrap();
 
-    assert!(result.failure.is_none());
-    assert!(result.reusable_session_identity.is_none());
-    history_mock.assert_calls_async(1).await;
-    let writes = sandbox.write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.claude/projects/-home-user-workspace/sess-fallback-123.jsonl"
-    );
-    assert_eq!(writes[0].content, history);
-    let ops = telemetry.pending_ops_snapshot();
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_restore_fallback_identity_mismatch" && op.1),
-        "expected fallback telemetry, got: {ops:?}"
-    );
-    assert_successful_action(&ops, "session_history_identity_mismatch_history_hash");
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_download" && op.1),
-        "expected download telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter().any(|op| op.0 == "session_restore" && op.1),
-        "expected restore telemetry, got: {ops:?}"
-    );
-    assert_successful_action(&ops, "session_history_identity_finalize_missing_metadata");
+        assert!(result.failure.is_none());
+        assert!(result.reusable_session_identity.is_none());
+        history_mock.assert_calls_async(1).await;
+        let writes = sandbox.write_file_calls();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(
+            writes[0].path,
+            "/home/user/.claude/projects/-home-user-workspace/sess-fallback-123.jsonl"
+        );
+        assert_eq!(writes[0].content, history);
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter()
+                .any(|op| op.0 == "session_history_restore_fallback_identity_mismatch" && op.1),
+            "expected fallback telemetry, got: {ops:?}"
+        );
+        assert_successful_action(&ops, aggregate_action);
+        for action in RELATIONSHIP_ACTIONS {
+            let expected_count = usize::from(expected_relationship_action == Some(action));
+            assert_eq!(
+                ops.iter().filter(|op| op.0 == action).count(),
+                expected_count,
+                "unexpected relationship telemetry for {reason:?}: {ops:?}"
+            );
+            if expected_count == 1 {
+                assert_successful_action(&ops, action);
+            }
+        }
+        assert!(
+            ops.iter()
+                .any(|op| op.0 == "session_history_download" && op.1),
+            "expected download telemetry, got: {ops:?}"
+        );
+        assert!(
+            ops.iter().any(|op| op.0 == "session_restore" && op.1),
+            "expected restore telemetry, got: {ops:?}"
+        );
+        assert_successful_action(&ops, "session_history_identity_finalize_missing_metadata");
+    }
 }
 
 #[tokio::test]

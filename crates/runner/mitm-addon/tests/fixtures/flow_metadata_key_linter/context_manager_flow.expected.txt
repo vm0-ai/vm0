@@ -1,0 +1,13 @@
+context_manager_flow.py:8: use metadata_keys.VM_RUN_ID for flow.metadata access
+context_manager_flow.py:14: use metadata_keys.FIREWALL_NAME for flow.metadata access
+context_manager_flow.py:21: use metadata_keys.ORIGINAL_URL for flow.metadata access
+context_manager_flow.py:31: use metadata_keys.VM_PROXY_LOG_PATH for flow.metadata access
+context_manager_flow.py:40: use metadata_keys.CAPTURE_BODY for flow.metadata access
+context_manager_flow.py:98: use metadata_keys.FIREWALL_BASE for flow.metadata access
+context_manager_flow.py:118: use metadata_keys.AUTH_REFRESHED_CONNECTORS for flow.metadata access
+context_manager_flow.py:138: use metadata_keys.AUTH_RESOLVED_SECRETS for flow.metadata access
+context_manager_flow.py:149: use metadata_keys.CONNECTOR_DIAGNOSTIC_BASE for flow.metadata access
+context_manager_flow.py:159: use metadata_keys.FIREWALL_PERMISSION for flow.metadata access
+context_manager_flow.py:170: use metadata_keys.FIREWALL_RULE_MATCH for flow.metadata access
+context_manager_flow.py:184: use metadata_keys.FIREWALL_ACTION for flow.metadata access
+context_manager_flow.py:196: use metadata_keys.FIREWALL_BILLABLE for flow.metadata access

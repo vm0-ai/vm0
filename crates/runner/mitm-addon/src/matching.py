@@ -33,6 +33,7 @@ from firewall_matching.base_url import (
 from firewall_matching.patterns import (
     SegmentError,
     SegmentLiteral,
+    _compiled_path_segments_match,
     _match_compiled_path_segments,
     _split_path_segments,
 )
@@ -128,6 +129,7 @@ class _CompiledApiCore(NamedTuple):
     rule_index: _CompiledRuleIndex
     base_malformed: bool
     auth_malformed: bool
+    injects_ordinary_upstream_credentials: bool
     routing_identity: str | None
     # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
@@ -156,6 +158,10 @@ class _CompiledApi(NamedTuple):
     @property
     def auth_malformed(self) -> bool:
         return self.core.auth_malformed
+
+    @property
+    def injects_ordinary_upstream_credentials(self) -> bool:
+        return self.core.injects_ordinary_upstream_credentials
 
     @property
     def routing_identity(self) -> str | None:
@@ -208,14 +214,28 @@ class _CompiledApiIndex(NamedTuple):
     static_roots: Mapping[tuple[str, str], _CompiledApiTrieNode]
 
 
+class _CompiledOrdinaryCredentialAuthorityIndex(NamedTuple):
+    static_authorities: frozenset[str]
+    parameterized_bases: tuple[_CompiledBase, ...]
+
+
 @dataclass(frozen=True, init=False, slots=True, eq=False, repr=False)
 class CompiledFirewallSet:
     firewalls: tuple[_CompiledFirewall, ...]
     _api_index: _CompiledApiIndex = field(compare=False, repr=False)
+    _ordinary_credential_authority_index: _CompiledOrdinaryCredentialAuthorityIndex = field(
+        compare=False,
+        repr=False,
+    )
 
     def __init__(self, firewalls: tuple[_CompiledFirewall, ...]) -> None:
         object.__setattr__(self, "firewalls", firewalls)
         object.__setattr__(self, "_api_index", _compile_api_candidate_index(firewalls))
+        object.__setattr__(
+            self,
+            "_ordinary_credential_authority_index",
+            _compile_ordinary_credential_authority_index(firewalls),
+        )
 
     def __bool__(self) -> bool:
         return bool(self.firewalls)
@@ -230,10 +250,12 @@ class CompiledFirewallSet:
         url_parts = _split_https_authority_parts(host, port)
         if url_parts is None:
             return False
+        authority_index = self._ordinary_credential_authority_index
+        if url_parts.authority.lower() in authority_index.static_authorities:
+            return True
         return any(
-            _api_matches_ordinary_credential_authority(candidate.api, url_parts)
-            for candidate in self._api_index.all_candidates
-            if not candidate.firewall.name_malformed
+            _match_compiled_base_authority(url_parts, base)
+            for base in authority_index.parameterized_bases
         )
 
 
@@ -444,19 +466,35 @@ def _path_specificity(
     )
 
 
-def _api_matches_ordinary_credential_authority(
-    api_entry: _CompiledApi,
-    url_parts: _BaseUrlParts,
-) -> bool:
-    if (
-        api_entry.base_malformed
-        or api_entry.auth_malformed
-        or api_entry.base.parts.scheme.lower() != "https"
-    ):
-        return False
-    if not auth_config_injects_ordinary_upstream_credentials(api_entry.raw_api_entry.get("auth")):
-        return False
-    return _match_compiled_base_authority(url_parts, api_entry.base)
+def _compiled_base_authority_has_params(base: _CompiledBase) -> bool:
+    return base.has_params and any(
+        not isinstance(segment, SegmentLiteral) for segment in base.host_segments
+    )
+
+
+def _compile_ordinary_credential_authority_index(
+    firewalls: tuple[_CompiledFirewall, ...],
+) -> _CompiledOrdinaryCredentialAuthorityIndex:
+    static_authorities: set[str] = set()
+    parameterized_bases: list[_CompiledBase] = []
+    for firewall in firewalls:
+        if firewall.name_malformed:
+            continue
+        for api in firewall.apis:
+            if (
+                api.base_malformed
+                or not api.injects_ordinary_upstream_credentials
+                or api.base.parts.scheme.lower() != "https"
+            ):
+                continue
+            if _compiled_base_authority_has_params(api.base):
+                parameterized_bases.append(api.base)
+            else:
+                static_authorities.add(api.base.parts.authority.lower())
+    return _CompiledOrdinaryCredentialAuthorityIndex(
+        frozenset(static_authorities),
+        tuple(parameterized_bases),
+    )
 
 
 def _path_index_key(path: str) -> tuple[str, ...]:
@@ -796,6 +834,10 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         base = compiled_config_base.base
         base_malformed = compiled_config_base.malformed
         auth_malformed = not _auth_config_is_valid(api_entry)
+        injects_ordinary_upstream_credentials = (
+            not auth_malformed
+            and auth_config_injects_ordinary_upstream_credentials(api_entry.get("auth"))
+        )
         routing_identity = _api_routing_identity(api_entry)
 
         compiled_permissions: list[_CompiledPermission] = []
@@ -850,6 +892,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
                 _compile_rule_index(compiled_permissions_tuple),
                 base_malformed,
                 auth_malformed,
+                injects_ordinary_upstream_credentials,
                 routing_identity,
                 has_malformed_rules,
             )
@@ -1076,32 +1119,26 @@ class _MatchedApi(NamedTuple):
     block_match: _BlockMatch
 
 
-class _MatchedRule(NamedTuple):
-    api_match: _MatchedApi
-    entry: _CompiledRuleEntry
-    params: dict[str, str]
-
-
 class _FirewallMatchCollection:
-    """Winning base and rule records collected before policy evaluation."""
+    """Winning base matches and rule-route summary collected before policy evaluation."""
 
     __slots__ = (
         "api_matches",
         "best_base_specificity",
         "best_rule_specificity",
-        "rule_matches",
+        "winning_rule_api_orders",
     )
 
     api_matches: list[_MatchedApi]
     best_base_specificity: int | None
     best_rule_specificity: _PathSpecificity | None
-    rule_matches: list[_MatchedRule]
+    winning_rule_api_orders: set[int]
 
     def __init__(self) -> None:
         self.api_matches = []
         self.best_base_specificity = None
         self.best_rule_specificity = None
-        self.rule_matches = []
+        self.winning_rule_api_orders = set()
 
     def accept_api(self, match: _MatchedApi) -> bool:
         specificity = match.api.base.specificity
@@ -1109,7 +1146,7 @@ class _FirewallMatchCollection:
             self.best_base_specificity = specificity
             self.best_rule_specificity = None
             self.api_matches = []
-            self.rule_matches = []
+            self.winning_rule_api_orders = set()
         elif specificity < self.best_base_specificity:
             return False
 
@@ -1119,24 +1156,22 @@ class _FirewallMatchCollection:
     def can_rule_affect_collection(self, specificity: _PathSpecificity) -> bool:
         return self.best_rule_specificity is None or specificity >= self.best_rule_specificity
 
-    def record_rule(self, match: _MatchedRule) -> None:
-        specificity = match.entry.rule.specificity
+    def record_rule_route(self, api_order: int, specificity: _PathSpecificity) -> None:
         if self.best_rule_specificity is None or specificity > self.best_rule_specificity:
             self.best_rule_specificity = specificity
-            self.rule_matches = []
+            self.winning_rule_api_orders = set()
         elif specificity < self.best_rule_specificity:
             return
-        self.rule_matches.append(match)
+        self.winning_rule_api_orders.add(api_order)
 
 
 class _FirewallDecisionState:
-    """Mutable decision state for the single-pass compiled firewall matcher."""
+    """Mutable decision state for selected-owner policy reduction."""
 
     __slots__ = (
         "allowed_match",
         "base_match",
         "best_base_specificity",
-        "best_rule_specificity",
         "denied_match",
         "denied_permission_names",
         "malformed_config_match",
@@ -1146,7 +1181,6 @@ class _FirewallDecisionState:
     allowed_match: _AllowedRuleMatch | None
     base_match: _BaseMatch | None
     best_base_specificity: int | None
-    best_rule_specificity: _PathSpecificity | None
     denied_match: _BlockMatch | None
     # Dict keys act as an ordered set of first-seen denied permission names.
     denied_permission_names: dict[str, None]
@@ -1157,7 +1191,6 @@ class _FirewallDecisionState:
         self.allowed_match = None
         self.base_match = None
         self.best_base_specificity = None
-        self.best_rule_specificity = None
         self.denied_match = None
         self.denied_permission_names = {}
         self.malformed_config_match = None
@@ -1176,7 +1209,6 @@ class _FirewallDecisionState:
             or api_entry.base.specificity > self.best_base_specificity
         ):
             self.best_base_specificity = api_entry.base.specificity
-            self.best_rule_specificity = None
             self.allowed_match = None
             self.base_match = None
             self.denied_match = None
@@ -1203,17 +1235,6 @@ class _FirewallDecisionState:
     def record_malformed_policy(self, match: _BlockMatch) -> None:
         if self.malformed_policy_match is None:
             self.malformed_policy_match = match
-
-    def accept_rule_specificity(self, specificity: _PathSpecificity) -> bool:
-        if self.best_rule_specificity is None or specificity > self.best_rule_specificity:
-            self.best_rule_specificity = specificity
-            self.allowed_match = None
-            self.denied_match = None
-            self.denied_permission_names = {}
-        elif specificity < self.best_rule_specificity:
-            return False
-
-        return True
 
     def record_allowed_rule(self, match: _AllowedRuleMatch) -> None:
         if self.allowed_match is None:
@@ -1311,12 +1332,11 @@ def _resolve_firewall_decision(
     )
 
 
-def _collect_rule_entries(
+def _collect_rule_routes(
     *,
     collection: _FirewallMatchCollection,
     api_match: _MatchedApi,
     rel_path_segs: list[str],
-    base_params: dict[str, str],
     upper_method: str,
     rule_entries: tuple[_CompiledRuleEntry, ...],
 ) -> None:
@@ -1327,37 +1347,26 @@ def _collect_rule_entries(
         if not collection.can_rule_affect_collection(rule.specificity):
             continue
 
-        params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
-        if params is None:
+        if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
             continue
-        collection.record_rule(
-            _MatchedRule(
-                api_match,
-                entry,
-                {**base_params, **params},
-            )
-        )
+        collection.record_rule_route(api_match.order, rule.specificity)
 
 
-def _winning_owner_records(
+def _winning_api_matches(
     collection: _FirewallMatchCollection,
-) -> tuple[_MatchedRule | _MatchedApi, ...]:
-    if collection.rule_matches:
-        return tuple(collection.rule_matches)
-    return tuple(collection.api_matches)
+) -> tuple[_MatchedApi, ...]:
+    if collection.best_rule_specificity is None:
+        return tuple(collection.api_matches)
+    return tuple(
+        match
+        for match in collection.api_matches
+        if match.order in collection.winning_rule_api_orders
+    )
 
 
 def _winning_owner_names(collection: _FirewallMatchCollection) -> tuple[str, ...]:
-    records = _winning_owner_records(collection)
-    names = {
-        record.api_match.firewall.name if isinstance(record, _MatchedRule) else record.firewall.name
-        for record in records
-        if not (
-            record.api_match.firewall.name_malformed
-            if isinstance(record, _MatchedRule)
-            else record.firewall.name_malformed
-        )
-    }
+    matches = _winning_api_matches(collection)
+    names = {match.firewall.name for match in matches if not match.firewall.name_malformed}
     return tuple(sorted(names))
 
 
@@ -1397,16 +1406,9 @@ def _selected_source_api_matches(
     collection: _FirewallMatchCollection,
     selected_name: str,
 ) -> list[_MatchedApi]:
-    records = _winning_owner_records(collection)
-    result: list[_MatchedApi] = []
-    seen_orders: set[int] = set()
-    for record in records:
-        api_match = record.api_match if isinstance(record, _MatchedRule) else record
-        if api_match.firewall.name != selected_name or api_match.order in seen_orders:
-            continue
-        seen_orders.add(api_match.order)
-        result.append(api_match)
-    return result
+    return [
+        match for match in _winning_api_matches(collection) if match.firewall.name == selected_name
+    ]
 
 
 def _conflicting_selected_api_block(
@@ -1445,12 +1447,56 @@ def _conflicting_selected_api_block(
     )
 
 
+def _evaluate_selected_rule_entries(
+    *,
+    decision: _FirewallDecisionState,
+    api_match: _MatchedApi,
+    policy: _CompiledNetworkPolicy | None,
+    rel_path_segs: list[str],
+    upper_method: str,
+    winning_specificity: _PathSpecificity,
+    rule_entries: tuple[_CompiledRuleEntry, ...],
+) -> None:
+    for entry in rule_entries:
+        rule = entry.rule
+        if rule.method not in ("ANY", upper_method):
+            continue
+        if rule.specificity != winning_specificity:
+            continue
+
+        permission_blocked = policy is not None and entry.permission in policy.blocked_permissions
+        if permission_blocked:
+            if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
+                continue
+            decision.record_denied_rule(api_match.block_match, entry.permission)
+            continue
+
+        params = _match_compiled_path_segments(rel_path_segs, rule.path.segments)
+        if params is None:
+            continue
+        decision.record_allowed_rule(
+            _AllowedRuleMatch(
+                api_match.api.raw_api_entry,
+                api_match.firewall.name,
+                api_match.rel_path,
+                _CompiledRuleCandidate(
+                    entry.permission,
+                    rule.raw,
+                    rule.specificity,
+                    {**api_match.base_params, **params},
+                ),
+            )
+        )
+        return
+
+
 def _reduce_selected_owner(
     collection: _FirewallMatchCollection,
     *,
     selected_name: str | None,
     compiled_network_policies: CompiledNetworkPolicies,
     upper_method: str,
+    indexed_rules: bool,
 ) -> FirewallAllow | FirewallBlock | None:
     if selected_name is not None:
         conflicting_block = _conflicting_selected_api_block(collection, selected_name)
@@ -1498,32 +1544,39 @@ def _reduce_selected_owner(
             continue
         evaluable_api_orders.add(api_match.order)
 
-    for rule_match in collection.rule_matches:
-        api_match = rule_match.api_match
+    winning_specificity = collection.best_rule_specificity
+    if winning_specificity is None:
+        return _resolve_firewall_decision(
+            decision,
+            compiled_network_policies=compiled_network_policies,
+            upper_method=upper_method,
+        )
+
+    for api_match in collection.api_matches:
+        if decision.allowed_match is not None:
+            break
+        if api_match.order not in collection.winning_rule_api_orders:
+            continue
         if api_match.order not in evaluable_api_orders:
             continue
         fw_entry = api_match.firewall
         if selected_name is not None and fw_entry.name != selected_name:
             continue
         policy = compiled_network_policies.policies.get(fw_entry.name)
-        entry = rule_match.entry
-        if not decision.accept_rule_specificity(entry.rule.specificity):
-            continue
-        if policy is not None and entry.permission in policy.blocked_permissions:
-            decision.record_denied_rule(api_match.block_match, entry.permission)
-            continue
-        decision.record_allowed_rule(
-            _AllowedRuleMatch(
-                api_match.api.raw_api_entry,
-                fw_entry.name,
-                api_match.rel_path,
-                _CompiledRuleCandidate(
-                    entry.permission,
-                    entry.rule.raw,
-                    entry.rule.specificity,
-                    rule_match.params,
-                ),
-            )
+        rel_path_segs = _split_path_segments(api_match.rel_path)
+        rule_entries = (
+            _indexed_rule_candidates(api_match.api, upper_method, rel_path_segs)
+            if indexed_rules
+            else api_match.api.rule_index.all_rules
+        )
+        _evaluate_selected_rule_entries(
+            decision=decision,
+            api_match=api_match,
+            policy=policy,
+            rel_path_segs=rel_path_segs,
+            upper_method=upper_method,
+            winning_specificity=winning_specificity,
+            rule_entries=rule_entries,
         )
 
     return _resolve_firewall_decision(
@@ -1594,11 +1647,10 @@ def _match_compiled_firewall_request_with_api_candidates(
             if indexed_rules
             else api_entry.rule_index.all_rules
         )
-        _collect_rule_entries(
+        _collect_rule_routes(
             collection=collection,
             api_match=api_match,
             rel_path_segs=rel_path_segs,
-            base_params=base_params,
             upper_method=upper_method,
             rule_entries=rule_entries,
         )
@@ -1616,6 +1668,7 @@ def _match_compiled_firewall_request_with_api_candidates(
         selected_name=selected_name,
         compiled_network_policies=compiled_network_policies,
         upper_method=upper_method,
+        indexed_rules=indexed_rules,
     )
 
 
