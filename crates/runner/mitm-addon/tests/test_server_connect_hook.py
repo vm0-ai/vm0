@@ -601,7 +601,7 @@ async def test_server_connect_cancelled_waiter_does_not_cancel_shared_dns_lookup
         cancelled_task.cancel()
         release_lookup.set()
         with pytest.raises(asyncio.CancelledError):
-            await cancelled_task
+            _ = await cancelled_task
         _ = await completed_task
 
     assert calls == [("pr-test-api.vm6.ai", 443)]
