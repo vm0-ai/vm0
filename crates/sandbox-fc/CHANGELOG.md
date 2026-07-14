@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.115](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.114...sandbox-fc-v0.37.115) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** prevent dnsmasq stalls during namespace churn ([#21373](https://github.com/vm0-ai/vm0/issues/21373)) ([1fd0fea](https://github.com/vm0-ai/vm0/commit/1fd0fea74884c8a644edbf62aaffc6c8ea5da615))
+
 ## [0.37.114](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.113...sandbox-fc-v0.37.114) (2026-07-14)
 
 ## [0.37.113](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.112...sandbox-fc-v0.37.113) (2026-07-14)

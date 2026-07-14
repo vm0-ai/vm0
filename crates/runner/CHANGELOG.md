@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.144.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.16...runner-rs-v0.144.17) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** observe cancellation before process spawn ([#21490](https://github.com/vm0-ai/vm0/issues/21490)) ([8bbabed](https://github.com/vm0-ai/vm0/commit/8bbabed6a5d8631b0bf31b7b125c9c60a8c52ef3))
+* **runner:** prevent dnsmasq stalls during namespace churn ([#21373](https://github.com/vm0-ai/vm0/issues/21373)) ([1fd0fea](https://github.com/vm0-ai/vm0/commit/1fd0fea74884c8a644edbf62aaffc6c8ea5da615))
+
+
+### Refactoring
+
+* **mitm-addon:** extract runner flush lifecycle owner ([#21477](https://github.com/vm0-ai/vm0/issues/21477)) ([2c101ba](https://github.com/vm0-ai/vm0/commit/2c101ba3d08a9443bb401397b5b78aadd3f402c6))
+* **runner:** split gc command into focused modules ([#21492](https://github.com/vm0-ai/vm0/issues/21492)) ([4e3317a](https://github.com/vm0-ai/vm0/commit/4e3317a7dd18e6d3f92ee2e88381fa8136af1d3c))
+
 ## [0.144.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.15...runner-rs-v0.144.16) (2026-07-14)
 
 
