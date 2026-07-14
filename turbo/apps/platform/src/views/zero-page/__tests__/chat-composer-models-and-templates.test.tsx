@@ -3285,7 +3285,10 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("opens the template picker without focusing the tabs on small screens", async () => {
+  it("opens the template picker with responsive category navigation", async () => {
+    const user = userEvent.setup({ delay: null });
+    const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
+    const videoTemplate = VIDEO_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -3310,14 +3313,72 @@ describe("chat composer templates", () => {
     expect(tabByText("Video")).toBeInTheDocument();
     expect(screen.queryByText("Website")).not.toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
+    expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
+    expect(tabByText("Presentation")).toHaveClass("bg-card");
+    expect(tabByText("Presentation")).toHaveClass("text-foreground");
+    expect(tabByText("Illustration")).toHaveClass("text-muted-foreground");
+    const categorySelect = screen.getByRole("combobox", {
+      name: "Template category",
+    });
+    expect(categorySelect).toBeInTheDocument();
 
-    const tabScroller = document.querySelector(
-      "[data-template-picker-tabs-scroll]",
+    const categorySidebar = screen.getByRole("tablist", {
+      name: "Template categories",
+    });
+    expect(categorySidebar).toBeInstanceOf(HTMLElement);
+    expect(categorySidebar).toHaveAttribute("aria-orientation", "vertical");
+    expect(categorySidebar).toHaveClass("hidden");
+    expect(categorySidebar).toHaveClass("sm:flex");
+    expect(categorySidebar).toHaveClass("bg-gray-50");
+
+    await user.click(categorySelect);
+    await user.click(
+      await screen.findByRole("option", { name: "Illustration" }),
     );
-    expect(tabScroller).toBeInstanceOf(HTMLElement);
-    expect(tabScroller).toHaveClass("overflow-x-auto");
-    expect(tabScroller).toHaveClass("sm:overflow-visible");
-    expect(tabScroller).toHaveClass("[scrollbar-width:thin]");
+
+    await waitFor(() => {
+      expect(categorySelect).toHaveTextContent("Illustration");
+      expect(tabByText("Illustration")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByText(illustrationTemplate.title)).toBeInTheDocument();
+    });
+
+    tabByText("Illustration").focus();
+    fireEvent.keyDown(tabByText("Illustration"), { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(tabByText("Video")).toHaveFocus();
+      expect(tabByText("Video")).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getByLabelText(`Select video template ${videoTemplate.title}`),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(tabByText("Video"), { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(tabByText("Illustration")).toHaveFocus();
+      expect(tabByText("Illustration")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
+
+    fireEvent.keyDown(tabByText("Illustration"), { key: "End" });
+    await waitFor(() => {
+      expect(tabByText("Workflow")).toHaveFocus();
+      expect(tabByText("Workflow")).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByLabelText("Search connectors")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(tabByText("Workflow"), { key: "Home" });
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toHaveFocus();
+      expect(tabByText("Presentation")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    });
   });
 
   it("selects a presentation template from the picker", async () => {
