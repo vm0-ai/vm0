@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { webhookWorkflowTriggerContract } from "@vm0/api-contracts/contracts/webhooks";
+import { webhookWorkflowAutomationContract } from "@vm0/api-contracts/contracts/webhooks";
 import { command } from "ccstate";
 
 import { request$ } from "../context/hono";
@@ -26,9 +26,9 @@ function contentLengthExceedsLimit(contentLength: string | null): boolean {
   return Number.isFinite(parsed) && parsed > WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES;
 }
 
-const postWorkflowTriggerWebhook$ = command(
+export const postWorkflowAutomationWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
-    const params = get(pathParamsOf(webhookWorkflowTriggerContract.post));
+    const params = get(pathParamsOf(webhookWorkflowAutomationContract.post));
     const request = get(request$);
     if (contentLengthExceedsLimit(request.raw.headers.get("content-length"))) {
       return jsonError("Payload too large", 413);
@@ -88,9 +88,9 @@ const postWorkflowTriggerWebhook$ = command(
   },
 );
 
-export const webhooksWorkflowTriggersRoutes: readonly RouteEntry[] = [
+export const webhooksWorkflowAutomationsRoutes: readonly RouteEntry[] = [
   {
-    route: webhookWorkflowTriggerContract.post,
-    handler: postWorkflowTriggerWebhook$,
+    route: webhookWorkflowAutomationContract.post,
+    handler: postWorkflowAutomationWebhook$,
   },
 ];

@@ -1327,7 +1327,7 @@ describe("zero workflow triggers", () => {
       throw new Error("Expected a webhook trigger");
     }
     expect(created.body.webhookUrl).toContain(
-      "/api/webhooks/workflow-triggers/whk_",
+      "/api/webhooks/workflow-automations/whk_",
     );
     expect(created.body.webhookSecret).toBeTruthy();
     expect(created.body.secretLastFour).toBe(

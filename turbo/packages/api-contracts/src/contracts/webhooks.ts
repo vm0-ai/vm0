@@ -113,7 +113,7 @@ const notionWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
-const workflowTriggerWebhookResponseSchema = z.object({
+const workflowAutomationWebhookResponseSchema = z.object({
   success: z.literal(true),
   duplicate: z.boolean(),
   runId: z.string().uuid().optional(),
@@ -195,28 +195,44 @@ export const webhookNotionContract = c.router({
   },
 });
 
+const workflowAutomationWebhookPostRoute = {
+  method: "POST" as const,
+  pathParams: z.object({
+    token: z.string().min(1),
+  }),
+  body: c.type<string>(),
+  responses: {
+    200: workflowAutomationWebhookResponseSchema,
+    400: thirdPartyWebhookErrorSchema,
+    401: thirdPartyWebhookErrorSchema,
+    404: thirdPartyWebhookErrorSchema,
+    413: thirdPartyWebhookErrorSchema,
+    429: thirdPartyWebhookErrorSchema,
+    500: thirdPartyWebhookErrorSchema,
+  },
+};
+
 /**
- * Workflow trigger inbound webhook contract for
- * /api/webhooks/workflow-triggers/:token.
+ * Workflow automation inbound webhook contract for
+ * /api/webhooks/workflow-automations/:token.
+ */
+export const webhookWorkflowAutomationContract = c.router({
+  post: {
+    ...workflowAutomationWebhookPostRoute,
+    path: "/api/webhooks/workflow-automations/:token",
+    summary: "Handle inbound workflow automation webhooks",
+  },
+});
+
+/**
+ * Temporary legacy alias for workflow automation inbound webhooks. Remove
+ * after the sunset window in #21408; this is not a permanent shim.
  */
 export const webhookWorkflowTriggerContract = c.router({
   post: {
-    method: "POST",
+    ...workflowAutomationWebhookPostRoute,
     path: "/api/webhooks/workflow-triggers/:token",
-    pathParams: z.object({
-      token: z.string().min(1),
-    }),
-    body: c.type<string>(),
-    responses: {
-      200: workflowTriggerWebhookResponseSchema,
-      400: thirdPartyWebhookErrorSchema,
-      401: thirdPartyWebhookErrorSchema,
-      404: thirdPartyWebhookErrorSchema,
-      413: thirdPartyWebhookErrorSchema,
-      429: thirdPartyWebhookErrorSchema,
-      500: thirdPartyWebhookErrorSchema,
-    },
-    summary: "Handle inbound workflow trigger webhooks",
+    summary: "Handle legacy inbound workflow trigger webhooks",
   },
 });
 
@@ -886,6 +902,8 @@ export type WebhookGoogleCalendarContract =
 export type WebhookGoogleWorkspaceEventsContract =
   typeof webhookGoogleWorkspaceEventsContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookWorkflowAutomationContract =
+  typeof webhookWorkflowAutomationContract;
 export type WebhookWorkflowTriggerContract =
   typeof webhookWorkflowTriggerContract;
 export type WebhookBuiltInGenerationFalContract =
