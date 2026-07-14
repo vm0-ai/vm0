@@ -2,15 +2,12 @@ import {
   chatMessages,
   type ChatMessageGoalSnapshot,
 } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 
-import {
-  badRequestMessage,
-  insufficientCredits,
-  providerDeleted,
-} from "../../lib/error";
+import { badRequestMessage } from "../../lib/error";
 import type { Db } from "../external/db";
 import {
   publishThreadListChanged,
@@ -18,43 +15,17 @@ import {
 } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { nonEmptyGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import {
-  MODEL_FIRST_SELECTION_PROVIDER_ID,
-  type ModelFirstPin,
-  modelOnlyModelFirstPin,
-  modelProviderPinAvailable,
-  resolveDefaultModelFirstPin,
-  resolveModelSelectionPin,
-} from "./zero-model-selection.service";
+  resolvePersistedChatThreadModel,
+  type ResolvedPersistedChatThreadModel,
+} from "./zero-chat-thread-model.service";
 
-type RunChatThreadModelPin = ModelFirstPin;
-
-type RunChatThreadModelPinResult =
-  | RunChatThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-  | ReturnType<typeof insufficientCredits>;
-
-async function getStoredThreadModelPin(
+async function getFirstRunSelectedModel(
   db: Db,
   threadId: string,
-): Promise<RunChatThreadModelPin | null> {
-  const [thread] = await db
-    .select({ selectedModel: chatThreads.selectedModel })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  if (!thread?.selectedModel) {
-    return null;
-  }
-  return modelOnlyModelFirstPin(thread.selectedModel);
-}
-
-async function getFirstRunModelPin(
-  db: Db,
-  threadId: string,
-): Promise<RunChatThreadModelPin | null> {
+): Promise<string | null> {
   const [run] = await db
     .select({ selectedModel: zeroRuns.selectedModel })
     .from(chatMessages)
@@ -69,80 +40,42 @@ async function getFirstRunModelPin(
     )
     .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
     .limit(1);
-  if (!run?.selectedModel) {
-    return null;
-  }
-  return modelOnlyModelFirstPin(run.selectedModel);
-}
-
-async function existingModelFirstThreadPin(
-  db: Db,
-  threadId: string,
-): Promise<RunChatThreadModelPin | null> {
-  return (
-    (await getStoredThreadModelPin(db, threadId)) ??
-    (await getFirstRunModelPin(db, threadId))
-  );
-}
-
-async function resolveStoredModelFirstPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly pin: RunChatThreadModelPin;
-}): Promise<RunChatThreadModelPinResult> {
-  if (!params.pin.selectedModel) {
-    return params.pin;
-  }
-  if (params.pin.modelProviderId) {
-    const available = await modelProviderPinAvailable({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      modelProviderId: params.pin.modelProviderId,
-    });
-    if (!available) {
-      return providerDeleted();
-    }
-    return params.pin;
-  }
-  if (params.pin.modelProviderType || params.pin.modelProviderCredentialScope) {
-    return params.pin;
-  }
-  return resolveModelSelectionPin({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelSelection: {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: params.pin.selectedModel,
-    },
-  });
+  return run?.selectedModel ?? null;
 }
 
 /**
- * Resolve the model pin for a chat-mode run from its linked thread:
- * the thread's stored pin, else its first-run pin, else the org default.
+ * Resolve a chat-mode run from its linked thread against the workspace's
+ * current model policy. Legacy threads without a stored model may fall back to
+ * their first run before the normal workspace-default recovery applies.
  */
-export async function resolveRunChatThreadModelPin(params: {
+export async function resolveRunChatThreadModelContext(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly threadId: string;
-}): Promise<RunChatThreadModelPinResult> {
-  const existing = await existingModelFirstThreadPin(
-    params.db,
-    params.threadId,
-  );
-  if (existing) {
-    return resolveStoredModelFirstPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      pin: existing,
-    });
+}): Promise<
+  ResolvedPersistedChatThreadModel | ReturnType<typeof badRequestMessage>
+> {
+  const [fallbackSelectedModel, featureSwitchContext] = await Promise.all([
+    getFirstRunSelectedModel(params.db, params.threadId),
+    loadUserFeatureSwitchContext(params.db, params.orgId, params.userId),
+  ]);
+  const resolved = await resolvePersistedChatThreadModel({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    threadId: params.threadId,
+    fallbackSelectedModel,
+    persistRequestedCodexServiceTier: false,
+    codexFastModeEnabled: isFeatureEnabled(
+      FeatureSwitchKey.CodexFastMode,
+      featureSwitchContext,
+    ),
+  });
+  if (!resolved) {
+    return badRequestMessage("Chat thread not found");
   }
-  return resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
+  return resolved;
 }
 
 /**

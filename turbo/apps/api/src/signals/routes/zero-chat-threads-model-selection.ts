@@ -12,16 +12,21 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import { publishThreadListChanged } from "../external/realtime";
+import {
+  publishChatThreadDetailChanged,
+  publishThreadListChanged,
+} from "../external/realtime";
 import { nowDate } from "../external/time";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import {
+  isCodexFastServiceTierSupported,
   resolveModelFirstProviderAdmission,
   resolveModelSelectionPin,
   type ModelFirstPin,
 } from "../services/zero-model-selection.service";
+import { chatThreadModelPinColumns } from "../services/zero-chat-thread-model.service";
 import type { RouteEntry } from "../route-entry";
 
 const modelSelectionBody$ = bodyResultOf(
@@ -33,15 +38,6 @@ function modelFirstSelection(selectedModel: string) {
     modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
     selectedModel,
   };
-}
-
-function isCodexFastServiceTierModel(
-  model: string | null | undefined,
-): boolean {
-  const bareModel = model?.startsWith("openai/")
-    ? model.slice("openai/".length)
-    : model;
-  return bareModel === "gpt-5.5";
 }
 
 async function validateCodexServiceTierPatch(params: {
@@ -59,7 +55,11 @@ async function validateCodexServiceTierPatch(params: {
     params.orgId,
     params.userId,
   );
-  if (!isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext)) {
+  const codexFastModeEnabled = isFeatureEnabled(
+    FeatureSwitchKey.CodexFastMode,
+    featureSwitchContext,
+  );
+  if (!codexFastModeEnabled) {
     return badRequestMessage(
       "Codex fast mode is not enabled for this workspace",
     );
@@ -75,8 +75,11 @@ async function validateCodexServiceTierPatch(params: {
     return providerAdmission.error;
   }
   if (
-    providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastServiceTierModel(params.pin.selectedModel)
+    isCodexFastServiceTierSupported({
+      selectedModel: params.pin.selectedModel,
+      effectiveModelProvider: providerAdmission.effectiveModelProvider,
+      codexFastModeEnabled,
+    })
   ) {
     return undefined;
   }
@@ -133,10 +136,7 @@ const updateModelSelectionInner$ = command(
       const [thread] = await tx
         .update(chatThreads)
         .set({
-          modelProviderId: pin.modelProviderId,
-          modelProviderType: pin.modelProviderType,
-          modelProviderCredentialScope: pin.modelProviderCredentialScope,
-          selectedModel: pin.selectedModel,
+          ...chatThreadModelPinColumns(pin),
           codexServiceTier: body.data.codexServiceTier ?? null,
           updatedAt,
         })
@@ -171,7 +171,10 @@ const updateModelSelectionInner$ = command(
       return notFound("Chat thread not found");
     }
 
-    await publishThreadListChanged(auth.userId);
+    await Promise.all([
+      publishThreadListChanged(auth.userId),
+      publishChatThreadDetailChanged(auth.userId, params.id),
+    ]);
     signal.throwIfAborted();
 
     return { status: 204 as const, body: undefined };

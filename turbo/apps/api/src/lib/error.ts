@@ -42,14 +42,6 @@ export function payloadTooLarge(message: string) {
   return httpError(413, "PAYLOAD_TOO_LARGE", message);
 }
 
-export function providerDeleted() {
-  return httpError(
-    422,
-    "PROVIDER_DELETED",
-    "The selected model provider is no longer available",
-  );
-}
-
 export function insufficientCredits() {
   return httpError(
     402,

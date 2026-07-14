@@ -110,6 +110,38 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
   await publishUserSignal([userId], "threadListChanged");
 }
 
+export async function publishThreadListChangedSafely(
+  userId: string,
+): Promise<void> {
+  await tapError(publishThreadListChanged(userId), (error) => {
+    L.warn("Failed to publish thread list changed signal", { error });
+  });
+}
+
+/**
+ * Notify an open chat thread that detail-only state changed. The selected
+ * model remains event-sourced; fields such as Codex service tier are reloaded
+ * from the authoritative thread detail endpoint.
+ */
+export async function publishChatThreadDetailChanged(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await publishUserSignal([userId], `chatThreadDetailChanged:${threadId}`);
+}
+
+export async function publishChatThreadDetailChangedSafely(
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  await tapError(publishChatThreadDetailChanged(userId, threadId), (error) => {
+    L.warn("Failed to publish chat thread detail changed signal", {
+      threadId,
+      error,
+    });
+  });
+}
+
 /**
  * Notify a chat thread's UI that a new message row was appended. The thread's
  * message data source subscribes to this topic and refetches, so derived state

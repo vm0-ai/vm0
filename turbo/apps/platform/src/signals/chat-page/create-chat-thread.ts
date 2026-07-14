@@ -2471,6 +2471,12 @@ function createRunTracking({
       return false;
     });
 
+    const onThreadDetailChanged$ = command(({ set }) => {
+      L.debug("onThreadDetailChanged$ fired", { threadId });
+      set(reloadThread$);
+      return false;
+    });
+
     const onAutomationsChanged$ = command(({ set }) => {
       L.debug("onAutomationsChanged$ fired", { threadId });
       set(reloadHeaderAutomationMenu$);
@@ -2499,6 +2505,7 @@ function createRunTracking({
               onMessageCreated$,
               onMessageUpdated$,
               onRunChanged$,
+              onThreadDetailChanged$,
               onAutomationsChanged$,
               onArtifactsChanged$,
               onWorkflowQueueChanged$: workflowQueueHandler(threadId),

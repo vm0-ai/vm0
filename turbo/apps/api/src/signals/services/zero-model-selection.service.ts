@@ -26,6 +26,11 @@ export interface ModelFirstPin {
   readonly selectedModel: string | null;
 }
 
+interface PersistedModelFirstPinResolution {
+  readonly pin: ModelFirstPin;
+  readonly selectedModelChanged: boolean;
+}
+
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
   readonly selectedModel: string;
@@ -70,17 +75,6 @@ function parseModelProviderCredentialScope(
     return value;
   }
   throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
-export function modelOnlyModelFirstPin(
-  selectedModel: string | null,
-): ModelFirstPin {
-  return {
-    modelProviderId: null,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel,
-  };
 }
 
 export async function resolveDefaultModelFirstPin(
@@ -212,13 +206,71 @@ export async function resolveDefaultModelFirstPin(
   };
 }
 
-export async function modelProviderPinAvailable(params: {
+async function resolveWorkspaceDefaultModelFirstPin(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<ModelFirstPin> {
+  await ensureOrgModelPolicies(db, orgId, userId);
+  return resolveDefaultModelFirstPin(db, orgId, "__no_preference__");
+}
+
+export async function resolvePersistedModelFirstPin(params: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly modelProviderId: string;
-}): Promise<boolean> {
-  return (await loadAvailableModelProviderPin(params)) !== null;
+  readonly selectedModel: string | null;
+}): Promise<PersistedModelFirstPinResolution> {
+  const { db, orgId, userId, selectedModel } = params;
+  await ensureOrgModelPolicies(db, orgId, userId);
+  const limitedFree1 = await orgHasLimitedFree1Restrictions(db, orgId);
+
+  if (
+    selectedModel !== null &&
+    isSupportedRunModel(selectedModel) &&
+    modelAllowedForOrgTier({ limitedFree1, selectedModel })
+  ) {
+    const [policy] = await db
+      .select({
+        model: orgModelPolicies.model,
+        defaultProviderType: orgModelPolicies.defaultProviderType,
+        credentialScope: orgModelPolicies.credentialScope,
+        modelProviderId: orgModelPolicies.modelProviderId,
+      })
+      .from(orgModelPolicies)
+      .where(
+        and(
+          eq(orgModelPolicies.orgId, orgId),
+          eq(orgModelPolicies.model, selectedModel),
+        ),
+      )
+      .limit(1);
+    if (
+      policy &&
+      modelProviderAllowedForOrgTier({
+        limitedFree1,
+        modelProviderType: policy.defaultProviderType,
+      })
+    ) {
+      return {
+        pin: {
+          modelProviderId: policy.modelProviderId ?? null,
+          modelProviderType: policy.defaultProviderType,
+          modelProviderCredentialScope: parseModelProviderCredentialScope(
+            policy.credentialScope,
+          ),
+          selectedModel: policy.model,
+        },
+        selectedModelChanged: false,
+      };
+    }
+  }
+
+  const pin = await resolveWorkspaceDefaultModelFirstPin(db, orgId, userId);
+  return {
+    pin,
+    selectedModelChanged: pin.selectedModel !== selectedModel,
+  };
 }
 
 async function loadAvailableModelProviderPin(params: {
@@ -317,12 +369,7 @@ export async function resolveModelSelectionPin(params: {
     )
     .limit(1);
   if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelSelection.selectedModel,
-    };
+    return badRequestMessage("Invalid model selection");
   }
   if (
     !modelProviderAllowedForOrgTier({
@@ -340,6 +387,21 @@ export async function resolveModelSelectionPin(params: {
     ),
     selectedModel: policy.model,
   };
+}
+
+export function isCodexFastServiceTierSupported(params: {
+  readonly selectedModel: string | null | undefined;
+  readonly effectiveModelProvider: string | null | undefined;
+  readonly codexFastModeEnabled: boolean;
+}): boolean {
+  const bareModel = params.selectedModel?.startsWith("openai/")
+    ? params.selectedModel.slice("openai/".length)
+    : params.selectedModel;
+  return (
+    params.codexFastModeEnabled &&
+    params.effectiveModelProvider === "codex-oauth-token" &&
+    bareModel === "gpt-5.5"
+  );
 }
 
 async function resolveEffectiveModelProviderType(params: {

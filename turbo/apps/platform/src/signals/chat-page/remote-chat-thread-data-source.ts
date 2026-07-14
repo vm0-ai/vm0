@@ -395,6 +395,11 @@ function createSubscribeRealtime() {
             },
             {
               kind: "loop",
+              topic: `chatThreadDetailChanged:${threadId}`,
+              loopCommand$: handlers.onThreadDetailChanged$,
+            },
+            {
+              kind: "loop",
               topic: `chatThreadAutomationsChanged:${threadId}`,
               loopCommand$: handlers.onAutomationsChanged$,
             },

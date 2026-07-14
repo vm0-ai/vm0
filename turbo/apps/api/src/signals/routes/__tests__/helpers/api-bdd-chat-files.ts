@@ -480,7 +480,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly eventId?: string;
         readonly model?: string;
       },
-      statuses: readonly (201 | 401 | 402 | 404)[],
+      statuses: readonly (201 | 400 | 401 | 402 | 404)[],
     ) {
       return await accept(
         threadsClient().create({

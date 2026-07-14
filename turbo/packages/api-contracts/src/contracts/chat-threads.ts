@@ -558,6 +558,7 @@ export const chatThreadsContract = c.router({
         title: z.string().nullable(),
         createdAt: z.string(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
       404: apiErrorSchema,

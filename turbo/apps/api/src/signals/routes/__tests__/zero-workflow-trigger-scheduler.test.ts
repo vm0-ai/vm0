@@ -223,6 +223,38 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
 }
 
 describe("zero workflow trigger scheduler", () => {
+  it("recovers a trigger thread when its selected model leaves policy", async () => {
+    const scenario = await setup();
+    const { providerId } = await runsApi.ensureOrgModelProvider(scenario.actor);
+    await runsApi.updateOrgModelPolicies(scenario.actor, [
+      {
+        model: "claude-opus-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    const trigger = await createDueLoopTrigger(scenario, 60);
+
+    await runsApi.updateOrgModelPolicies(scenario.actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+    await executeDueWorkflowTriggers();
+
+    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(run.runId);
+    expect(claim.environment?.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
+    await disableTrigger(trigger.triggerId);
+  });
+
   it("uses agent connector authorization and permission grants for trigger runs", async () => {
     const scenario = await setup();
 

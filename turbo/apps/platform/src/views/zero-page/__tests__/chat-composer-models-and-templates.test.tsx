@@ -49,6 +49,7 @@ import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/ze
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { reloadUserModelPreference$ } from "../../../signals/external/user-model-preference.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -1635,6 +1636,78 @@ describe("chat composer models", () => {
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
+    });
+  });
+
+  it("reloads a reconciled thread tier before the next send", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000918",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    let sentBody:
+      | {
+          runOptions?: { codexServiceTier?: "fast" };
+        }
+      | undefined;
+
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000919",
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+      onRunCreate: (body) => {
+        sentBody = body;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: `/chats/${THREAD_ID}`,
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
+      ).toBeInTheDocument();
+    });
+
+    lifecycle.setCodexServiceTier(null);
+    act(() => {
+      triggerAblyEvent(`chatThreadDetailChanged:${THREAD_ID}`);
+    });
+    await user.click(screen.getByRole("combobox", { name: /GPT 5\.5/ }));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    await waitFor(() => {
+      expect(buttonContainingText("Standard", runSpeed)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+    await user.keyboard("{Escape}");
+    await sendMessageInUI(
+      user,
+      screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      "Continue after server reconciliation",
+    );
+
+    await waitFor(() => {
+      expect(sentBody?.runOptions).toBeUndefined();
     });
   });
 

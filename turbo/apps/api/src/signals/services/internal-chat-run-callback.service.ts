@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
@@ -11,7 +10,6 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -66,6 +64,7 @@ import {
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
 } from "./zero-chat-queued-message.service";
+import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   type ChatCompletionContextMessage,
@@ -318,6 +317,7 @@ interface PriorRun {
 interface LatestThreadSession {
   readonly sessionId: string;
   readonly selectedModel: string | null;
+  readonly modelProvider: string | null;
 }
 
 interface AgentForAutoSend {
@@ -398,6 +398,7 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly codexServiceTier: "fast" | undefined;
   readonly beforeDispatch?: (args: {
     readonly runId: string;
     readonly status: "queued" | "pending";
@@ -435,15 +436,6 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function parseModelProviderCredentialScope(
-  value: string | null,
-): ModelProviderCredentialScope | null {
-  if (value === null || value === "org" || value === "member") {
-    return value;
-  }
-  throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
 function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
@@ -462,6 +454,7 @@ function buildQueuedCreateZeroRunArgs(
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: input.queuedMessage.selectedModel ?? undefined,
+    codexServiceTier: input.codexServiceTier,
     callbacks: [
       {
         internalKind: "chat" as const,
@@ -1391,40 +1384,32 @@ async function getLatestRunsByThreadId(
 async function resolveQueuedMessageModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
-}): Promise<QueuedUserMessage> {
-  if (!params.queuedMessage.selectedModel) {
-    return params.queuedMessage;
+}): Promise<{
+  readonly queuedMessage: QueuedUserMessage;
+  readonly codexServiceTier: "fast" | undefined;
+} | null> {
+  const resolved = await resolveRunChatThreadModelContext({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    threadId: params.threadId,
+  });
+  if ("status" in resolved || resolved.providerAdmission.error) {
+    return null;
   }
-
-  const [policy] = await params.db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      and(
-        eq(orgModelPolicies.orgId, params.orgId),
-        eq(orgModelPolicies.model, params.queuedMessage.selectedModel),
-      ),
-    )
-    .limit(1);
-
-  if (!policy) {
-    return params.queuedMessage;
-  }
-
   return {
-    ...params.queuedMessage,
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
+    queuedMessage: {
+      ...params.queuedMessage,
+      modelProviderId: resolved.pin.modelProviderId,
+      modelProviderType:
+        resolved.providerAdmission.effectiveModelProvider ?? null,
+      modelProviderCredentialScope: resolved.pin.modelProviderCredentialScope,
+      selectedModel: resolved.pin.selectedModel,
+    },
+    codexServiceTier: resolved.runCodexServiceTier,
   };
 }
 
@@ -1474,6 +1459,7 @@ async function latestSessionForThreadFromDb(
     .select({
       result: agentRuns.result,
       selectedModel: zeroRuns.selectedModel,
+      modelProvider: zeroRuns.modelProvider,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(zeroRuns.id, agentRuns.id))
@@ -1494,6 +1480,7 @@ async function latestSessionForThreadFromDb(
       return {
         sessionId: row.result.agentSessionId,
         selectedModel: row.selectedModel,
+        modelProvider: row.modelProvider,
       };
     }
   }
@@ -1504,11 +1491,13 @@ function shouldStartNewSessionForQueuedMessage(params: {
   readonly latestSession: LatestThreadSession | null;
   readonly queuedMessage: QueuedUserMessage;
 }): boolean {
+  if (!params.latestSession) {
+    return false;
+  }
   return (
-    params.latestSession?.selectedModel !== undefined &&
-    params.latestSession.selectedModel !== null &&
-    params.queuedMessage.selectedModel !== null &&
-    params.latestSession.selectedModel !== params.queuedMessage.selectedModel
+    params.latestSession.selectedModel !== params.queuedMessage.selectedModel ||
+    (params.latestSession.modelProvider ?? null) !==
+      (params.queuedMessage.modelProviderType ?? null)
   );
 }
 
@@ -1646,8 +1635,8 @@ async function buildCreateQueuedChatRunInput(args: {
   readonly agent: AgentForAutoSend;
   readonly queuedMessage: QueuedUserMessage;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreateQueuedChatRunInput> {
-  const resolvedQueuedMessage = await measureChatCallbackPreCreateTiming(
+}): Promise<CreateQueuedChatRunInput | null> {
+  const resolvedModel = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_model_pin",
     "nested",
@@ -1655,10 +1644,17 @@ async function buildCreateQueuedChatRunInput(args: {
       return resolveQueuedMessageModelPin({
         db: args.db,
         orgId: args.agent.orgId,
+        userId: args.userId,
+        threadId: args.threadId,
         queuedMessage: args.queuedMessage,
       });
     },
   );
+  if (!resolvedModel) {
+    return null;
+  }
+  const { queuedMessage: resolvedQueuedMessage, codexServiceTier } =
+    resolvedModel;
 
   const [latestSession, loadedIncompleteContext] =
     await measureChatCallbackPreCreateTiming(
@@ -1727,6 +1723,7 @@ async function buildCreateQueuedChatRunInput(args: {
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,
+    codexServiceTier,
   };
 }
 
@@ -2015,6 +2012,13 @@ async function autoSendQueuedMessageOnRunComplete(args: {
       });
     },
   );
+  if (!runInput) {
+    log.warn("Auto-send deferred: thread model is unavailable", {
+      threadId,
+      agentId: args.agentId,
+    });
+    return;
+  }
   const activeRunExists = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",

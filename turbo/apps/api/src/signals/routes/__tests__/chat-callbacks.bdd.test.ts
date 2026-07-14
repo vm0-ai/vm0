@@ -1074,6 +1074,9 @@ describe("CHAT-02: completed chat callback", () => {
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
     );
+    expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
+      "claude-sonnet-4-6",
+    );
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
@@ -3309,7 +3312,7 @@ describe("CHAT-02: auto-send after failures", () => {
 });
 
 describe("CHAT-02: auto-send across a model switch", () => {
-  it("starts a fresh session with prior web context when the queued model differs, without regenerating an existing title", async () => {
+  it("recovers a queued message through the workspace default after its thread model is removed", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3361,16 +3364,20 @@ describe("CHAT-02: auto-send across a model switch", () => {
       prompt: "And stringify?",
     });
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await chat.updateThreadModelSelection(
-      actor,
-      first.threadId,
-      "claude-sonnet-4-6",
-    );
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,
-      prompt: "queued after model switch",
+      prompt: "queued before policy removal",
     });
+    await chatCallbacks.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-4-6",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "Use JSON.stringify(value)."),
     ]);
@@ -3384,7 +3391,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.content === "queued after model switch" &&
+            message.content === "queued before policy removal" &&
             message.runId !== undefined
           );
         });
@@ -3392,13 +3399,13 @@ describe("CHAT-02: auto-send across a model switch", () => {
     );
     const claimed = userMessages(messages.messages).find((message) => {
       return (
-        message.content === "queued after model switch" &&
+        message.content === "queued before policy removal" &&
         message.runId !== undefined
       );
     });
     if (!claimed?.runId) {
       throw new Error(
-        "Expected the queued message to be auto-claimed after the model switch",
+        "Expected the queued message to be auto-claimed after policy removal",
       );
     }
 
@@ -3413,8 +3420,8 @@ describe("CHAT-02: auto-send across a model switch", () => {
     expect(appended).toContain("Assistant: Use JSON.stringify(value).");
     expect(appended).toContain("...[truncated]");
     expect(appended).not.toContain("# Incomplete Rounds Context");
-    // Fresh session: the queued model pin differs from the completed run's
-    // model, so the auto-send run resumes no CLI session.
+    // The removed thread model heals to the workspace default before session
+    // compatibility is evaluated, so the old model's session is not resumed.
     expect(autoContext.body.sessionId).toBeNull();
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
@@ -3430,13 +3437,15 @@ describe("CHAT-02: auto-send across a model switch", () => {
     if (threadEvents.status !== 200) {
       throw new Error("Expected chat thread events to load");
     }
-    expect(threadEvents.body.events).toContainEqual(
-      expect.objectContaining({
-        kind: "model_selection_updated",
-        chatThreadId: first.threadId,
-        selectedModel: "claude-sonnet-4-6",
+    expect(
+      threadEvents.body.events.filter((event) => {
+        return (
+          event.kind === "model_selection_updated" &&
+          event.chatThreadId === first.threadId &&
+          event.selectedModel === "claude-sonnet-4-6"
+        );
       }),
-    );
+    ).toHaveLength(1);
 
     expect(titlePrompts).toHaveLength(1);
     const initialTitlePrompt = titlePrompts[0];

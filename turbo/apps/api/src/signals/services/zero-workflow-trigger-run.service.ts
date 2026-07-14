@@ -14,12 +14,9 @@ import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   postRunUserMessage,
-  resolveRunChatThreadModelPin,
+  resolveRunChatThreadModelContext,
 } from "./zero-chat-run-message.service";
-import {
-  resolveModelFirstProviderAdmission,
-  type ModelFirstPin,
-} from "./zero-model-selection.service";
+import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -202,42 +199,38 @@ async function resolveModelContext(args: {
   readonly chatThreadId: string;
   readonly signal: AbortSignal;
 }): Promise<ModelContext> {
-  const threadModelPin = await resolveRunChatThreadModelPin({
+  const threadModel = await resolveRunChatThreadModelContext({
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
     threadId: args.chatThreadId,
   });
   args.signal.throwIfAborted();
-  if ("status" in threadModelPin) {
+  if ("status" in threadModel) {
     return {
       ok: false,
       failure: {
         kind: "run_error",
-        response: { status: 400, body: threadModelPin.body },
+        response: { status: 400, body: threadModel.body },
       },
     };
   }
 
-  const providerAdmission = await resolveModelFirstProviderAdmission({
-    db: args.db,
-    orgId: args.orgId,
-    userId: args.userId,
-    modelPin: threadModelPin,
-    requestedModelProvider: undefined,
-  });
-  args.signal.throwIfAborted();
-  if (providerAdmission.error) {
+  if (threadModel.providerAdmission.error) {
     return {
       ok: false,
-      failure: { kind: "run_error", response: providerAdmission.error },
+      failure: {
+        kind: "run_error",
+        response: threadModel.providerAdmission.error,
+      },
     };
   }
 
   return {
     ok: true,
-    modelPin: threadModelPin,
-    effectiveModelProvider: providerAdmission.effectiveModelProvider,
+    modelPin: threadModel.pin,
+    effectiveModelProvider:
+      threadModel.providerAdmission.effectiveModelProvider,
   };
 }
 
