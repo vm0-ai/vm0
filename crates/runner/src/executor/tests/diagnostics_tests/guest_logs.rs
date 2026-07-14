@@ -1,6 +1,8 @@
 use std::os::unix::fs::symlink;
+use std::sync::Arc;
+use std::time::Duration;
 
-use sandbox_mock::MockSandbox;
+use sandbox_mock::{MockLifecycleGate, MockSandbox};
 
 use super::super::super::diagnostics::{
     AgentStdoutStreamDiagnostics, GuestLogCopyFailureKind, copy_guest_logs,
@@ -180,6 +182,57 @@ async fn copy_guest_logs_continues_after_copy_failure() {
     assert_eq!(calls[0].host_path, log_paths.system_log(ctx.run_id));
     assert_eq!(calls[1].host_path, log_paths.metrics_log(ctx.run_id));
     assert_eq!(calls[2].host_path, log_paths.sandbox_ops_log(ctx.run_id));
+}
+
+#[tokio::test]
+async fn copy_guest_logs_starts_independent_copies_concurrently() {
+    let dir = tempfile::tempdir().unwrap();
+    let log_paths = LogPaths::new(dir.path().to_path_buf());
+    let sandbox = Arc::new(MockSandbox::new("test"));
+    let gate = MockLifecycleGate::new();
+    sandbox.set_copy_file_lifecycle_gate(gate.clone());
+    sandbox.push_copy_file_result(Ok(b"guest log\n".to_vec()));
+    sandbox.push_copy_file_result(Ok(b"guest log\n".to_vec()));
+    sandbox.push_copy_file_result(Ok(b"guest log\n".to_vec()));
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let destinations = [
+        log_paths.system_log(run_id),
+        log_paths.metrics_log(run_id),
+        log_paths.sandbox_ops_log(run_id),
+    ];
+
+    let task = {
+        let sandbox = Arc::clone(&sandbox);
+        let task_log_paths = log_paths.clone();
+        tokio::spawn(async move {
+            copy_guest_logs(sandbox.as_ref(), &ctx, &task_log_paths, false).await;
+        })
+    };
+
+    gate.wait_entered(3, Duration::from_secs(5)).await.unwrap();
+    assert_eq!(sandbox.copy_file_calls().len(), 3);
+    assert!(destinations.iter().all(|path| !path.exists()));
+
+    gate.release_many(2);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if destinations.iter().filter(|path| path.exists()).count() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("two independent copies must finish while one remains delayed");
+    assert!(!task.is_finished(), "the final copy must remain gated");
+
+    gate.release_one();
+    tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("all guest log copies must finish after release")
+        .unwrap();
+    assert!(destinations.iter().all(|path| path.exists()));
 }
 
 #[tokio::test]
