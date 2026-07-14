@@ -8,7 +8,7 @@ import { advanceTimeAutomationAfterCompletion } from "./time-automation";
 import type {
   InternalRunCallbackDispatchResult,
   InternalRunCallbackEnvelope,
-  NormalizedInternalRunCallbackKind,
+  InternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
   automationCronCallbackPayloadSchema,
@@ -20,7 +20,7 @@ import {
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 type WorkflowAutomationInternalRunCallbackKind = Extract<
-  NormalizedInternalRunCallbackKind,
+  InternalRunCallbackKind,
   "workflow-automation:cron" | "workflow-automation:loop"
 >;
 

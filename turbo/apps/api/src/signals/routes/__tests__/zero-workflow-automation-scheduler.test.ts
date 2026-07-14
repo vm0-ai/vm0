@@ -17,10 +17,7 @@ import { mockGmailConnectorOAuth } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import {
-  readAgentRunCallbacks$,
-  seedAgentRunCallback$,
-} from "./helpers/agent-run-callback";
+import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -538,9 +535,6 @@ describe("zero workflow automation scheduler", () => {
         status: "pending",
       }),
     );
-    expect(emittedCallbacks).not.toContainEqual(
-      expect.objectContaining({ internalKind: "workflow-trigger:cron" }),
-    );
     await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
@@ -559,28 +553,6 @@ describe("zero workflow automation scheduler", () => {
     await executeDueWorkflowAutomations();
     const before = now();
     const run = await onlyWorkflowRunMessage(automation.threadId);
-    await completeRunThroughSandbox(scenario, run.runId, 0);
-
-    await expect
-      .poll(async () => {
-        return (await wf.readAutomation(automation.automationId)).nextRunAt;
-      })
-      .not.toBeNull();
-    const read = await wf.readAutomation(automation.automationId);
-    if (!read.nextRunAt) {
-      throw new Error("Expected the loop automation to be rescheduled");
-    }
-    expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
-    await disableAutomation(automation.automationId);
-  });
-
-  it("emits an automation callback while accepting an in-flight legacy callback", async () => {
-    const scenario = await setup();
-    const automation = await createDueLoopAutomation(scenario, 300);
-
-    await executeDueWorkflowAutomations();
-    await onlyWorkflowRunMessage(automation.threadId);
-
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
@@ -596,51 +568,18 @@ describe("zero workflow automation scheduler", () => {
         status: "pending",
       }),
     );
-    expect(emittedCallbacks).not.toContainEqual(
-      expect.objectContaining({ internalKind: "workflow-trigger:loop" }),
-    );
-    expect(
-      (await wf.readAutomation(automation.automationId)).nextRunAt,
-    ).toBeNull();
-
-    const legacyPrompt = "complete an in-flight legacy workflow callback";
-    const legacyRun = await runsApi.createRun(scenario.actor, {
-      agentId: scenario.agentId,
-      prompt: legacyPrompt,
-      modelProvider: "anthropic-api-key",
-    });
-    await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: legacyRun.runId,
-        internalKind: "workflow-trigger:loop",
-        payload: { triggerId: automation.automationId },
-      },
-      context.signal,
-    );
-
-    await completeRunThroughSandbox(scenario, legacyRun.runId, 0);
+    await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
       .poll(async () => {
         return (await wf.readAutomation(automation.automationId)).nextRunAt;
       })
       .not.toBeNull();
-    const legacyCallbacks = await store.set(
-      readAgentRunCallbacks$,
-      {
-        orgId: scenario.orgId,
-        userId: scenario.userId,
-        prompt: legacyPrompt,
-      },
-      context.signal,
-    );
-    expect(legacyCallbacks).toContainEqual(
-      expect.objectContaining({
-        internalKind: "workflow-trigger:loop",
-        status: "delivered",
-      }),
-    );
+    const read = await wf.readAutomation(automation.automationId);
+    if (!read.nextRunAt) {
+      throw new Error("Expected the loop automation to be rescheduled");
+    }
+    expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
     await disableAutomation(automation.automationId);
   });
 
