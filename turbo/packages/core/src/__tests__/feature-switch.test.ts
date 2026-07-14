@@ -123,7 +123,6 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
@@ -155,8 +154,6 @@ describe("getAllFeatureStates", () => {
       otherOrgStates[FeatureSwitchKey.NintendoSwitchParentalControlsConnector],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    // WorkflowWebhookTriggers is globally enabled, so it is on for every org
-    expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(

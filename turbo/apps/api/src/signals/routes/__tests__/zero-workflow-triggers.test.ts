@@ -273,14 +273,6 @@ function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
 }
 
-async function enableWebhookWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-  });
-}
-
 async function enableNotionWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
@@ -708,8 +700,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("lists thread-bound webhook triggers", async () => {
-    const { fixture, workflowId } = await setupFixture("team");
-    await enableWebhookWorkflowTriggers(fixture);
+    const { workflowId } = await setupFixture("team");
 
     const created = await accept(
       triggersClient().create({
@@ -934,34 +925,9 @@ describe("zero workflow triggers", () => {
     expect(created.body.nextRunAt).toBeTruthy();
   });
 
-  it("rejects webhook event triggers when webhook trigger creation is disabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
-    });
-    const rejected = await accept(
-      triggersClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "webhook-received",
-        },
-      }),
-      [400],
-    );
-
-    expect(rejected.body.error.message).toBe(
-      "Workflow webhook triggers are not enabled",
-    );
-  });
-
-  it("requires Team or Custom after the webhook feature switch is enabled", async () => {
-    const { fixture, actor, customerId, subscriptionId, workflowId } =
+  it("requires Team or Custom for webhook trigger creation", async () => {
+    const { actor, customerId, subscriptionId, workflowId } =
       await setupFixture();
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    });
 
     const proRejected = await accept(
       triggersClient().create({
@@ -996,8 +962,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("serializes webhook creation with an effective downgrade", async () => {
-    const { fixture, subscriptionId, workflowId } = await setupFixture("team");
-    await enableWebhookWorkflowTriggers(fixture);
+    const { subscriptionId, workflowId } = await setupFixture("team");
 
     const [created] = await Promise.all([
       accept(
@@ -1094,8 +1059,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates webhook event triggers with a signed endpoint secret shown once", async () => {
-    const { fixture, workflowId } = await setupFixture("team");
-    await enableWebhookWorkflowTriggers(fixture);
+    const { workflowId } = await setupFixture("team");
 
     const created = await accept(
       triggersClient().create({
@@ -1170,10 +1134,9 @@ describe("zero workflow triggers", () => {
     });
   });
 
-  it("rejects webhook re-enable for Pro and evaluates the feature switch first", async () => {
-    const { fixture, actor, customerId, workflowId, subscriptionId } =
+  it("rejects webhook re-enable for Pro", async () => {
+    const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
-    await enableWebhookWorkflowTriggers(fixture);
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -1209,26 +1172,10 @@ describe("zero workflow triggers", () => {
       [402],
     );
     expect(teamRequired.body.error.code).toBe("TEAM_REQUIRED");
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
-    });
-    const switchRequired = await accept(
-      triggersClient().enable({
-        headers: authHeaders(),
-        params: { id: created.body.id },
-        body: undefined,
-      }),
-      [400],
-    );
-    expect(switchRequired.body.error.message).toBe(
-      "Workflow webhook triggers are not enabled",
-    );
   });
 
   it("serializes webhook re-enable with an effective downgrade", async () => {
-    const { fixture, subscriptionId, workflowId } = await setupFixture("team");
-    await enableWebhookWorkflowTriggers(fixture);
+    const { subscriptionId, workflowId } = await setupFixture("team");
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -1277,9 +1224,8 @@ describe("zero workflow triggers", () => {
   });
 
   it("clears the plan-disabled reason without rotating webhook credentials", async () => {
-    const { fixture, actor, customerId, workflowId, subscriptionId } =
+    const { actor, customerId, workflowId, subscriptionId } =
       await setupFixture("team");
-    await enableWebhookWorkflowTriggers(fixture);
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),

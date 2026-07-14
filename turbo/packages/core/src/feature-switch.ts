@@ -250,12 +250,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable creation of inbound webhook workflow triggers. Existing webhook triggers remain visible and dispatch under the workflow automation gate.",
-    enabled: true,
-  },
   [FeatureSwitchKey.NotionWorkflowTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:

@@ -66,10 +66,7 @@ import {
   prepareNotionDatabaseItemEventConfigForPersist,
   prepareNotionPageContentUpdatedEventConfigForPersist,
 } from "./notion-workflow-event.service";
-import {
-  notionWorkflowTriggerCreationEnabledForOwner,
-  workflowWebhookTriggerCreationEnabledForOwner,
-} from "./workflow-webhook-trigger-feature-switch.service";
+import { notionWorkflowTriggerCreationEnabledForOwner } from "./notion-workflow-trigger-feature-switch.service";
 import { lockWorkflowWebhookTriggerTierEligibleForOrg } from "./workflow-webhook-trigger-entitlement.service";
 import {
   buildWorkflowWebhookSummaryFields,
@@ -131,16 +128,6 @@ export type TriggerResult =
   | { readonly kind: "conflict"; readonly message: string }
   | { readonly kind: "team-required"; readonly message: string }
   | { readonly kind: "bad-request"; readonly message: string };
-
-function workflowWebhookTriggersDisabledResult(): {
-  readonly kind: "bad-request";
-  readonly message: string;
-} {
-  return {
-    kind: "bad-request",
-    message: "Workflow webhook triggers are not enabled",
-  };
-}
 
 function workflowWebhookTeamRequiredResult(): {
   readonly kind: "team-required";
@@ -1581,17 +1568,6 @@ const createEventTriggerForWorkflow$ = command(
   ): Promise<TriggerResult> => {
     const { input } = args;
     if (input.eventType === "webhook-received") {
-      const featureEnabled = await get(
-        workflowWebhookTriggerCreationEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return workflowWebhookTriggersDisabledResult();
-      }
-
       return await createWebhookEventTriggerForWorkflow({
         context: args,
         input,
@@ -2335,7 +2311,7 @@ async function persistEnabledWorkflowTrigger(
 
 export const enableWorkflowTrigger$ = command(
   async (
-    { get, set },
+    { set },
     args: TriggerActionInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -2346,19 +2322,6 @@ export const enableWorkflowTrigger$ = command(
       return owned;
     }
     const { trigger } = owned;
-
-    if (trigger.kind === "event" && trigger.eventType === "webhook-received") {
-      const featureEnabled = await get(
-        workflowWebhookTriggerCreationEnabledForOwner(
-          args.orgId,
-          args.member.userId,
-        ),
-      );
-      signal.throwIfAborted();
-      if (!featureEnabled) {
-        return workflowWebhookTriggersDisabledResult();
-      }
-    }
 
     // The owning agent is derived from the workflow row (hard 1:N); it always
     // exists. Re-confirm the owner can still run it before re-enabling.

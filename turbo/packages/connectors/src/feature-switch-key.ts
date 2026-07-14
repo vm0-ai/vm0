@@ -44,7 +44,6 @@ export enum FeatureSwitchKey {
   ZeroScrape = "zeroScrape",
   Banking = "banking",
   Lab = "lab",
-  WorkflowWebhookTriggers = "workflowWebhookTriggers",
   NotionWorkflowTriggers = "notionWorkflowTriggers",
   AgentDetailWorkflowsTab = "agentDetailWorkflowsTab",
   TestOauthConnector = "testOauthConnector",

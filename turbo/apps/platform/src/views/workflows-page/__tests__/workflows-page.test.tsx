@@ -2470,9 +2470,7 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();
@@ -2527,7 +2525,7 @@ describe("workflow detail page", () => {
     mockWorkflowApis([salesResearch()]);
     detachedSetupWorkflowDetailPage(
       workflowDetailPath("automations"),
-      { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+      {},
       "pro",
     );
 
@@ -2558,7 +2556,7 @@ describe("workflow detail page", () => {
     mockWorkflowApis([salesResearch()]);
     detachedSetupWorkflowDetailPage(
       workflowDetailPath("automations"),
-      { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+      {},
       "pro",
     );
 
@@ -2602,7 +2600,7 @@ describe("workflow detail page", () => {
     });
     detachedSetupWorkflowDetailPage(
       workflowDetailPath("automations"),
-      { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
+      {},
       "pro",
     );
 
@@ -2623,9 +2621,7 @@ describe("workflow detail page", () => {
     };
     mockWorkflowApis([workflow]);
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Webhook URL hidden")).toBeInTheDocument();
@@ -2644,56 +2640,6 @@ describe("workflow detail page", () => {
     expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
       "webhook-secret",
     );
-  });
-
-  it("hides webhook creation when the webhook trigger switch is disabled", async () => {
-    mockWorkflowApis([salesResearch()]);
-
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
-    });
-
-    await waitFor(() => {
-      expect(buttonByText("Add automation")).toBeInTheDocument();
-    });
-    click(buttonByText("Add automation"));
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-    const dialog = screen.getByRole("dialog");
-    const openCategory = (category: string): void => {
-      const tab = queryAllByRoleFast("button", dialog).find((candidate) => {
-        return textFor(candidate) === category;
-      });
-      if (!tab) {
-        throw new Error(`${category} trigger category not found`);
-      }
-      click(tab);
-    };
-
-    // The Email category still lists Gmail triggers — the picker works.
-    openCategory("Email");
-    expect(
-      queryAllByRoleFast("button", dialog).some((candidate) => {
-        return textFor(candidate).startsWith("Gmail new message");
-      }),
-    ).toBeTruthy();
-
-    // The Integrations category offers GitHub but hides Webhook while the
-    // webhook trigger switch is off.
-    openCategory("Integrations");
-    const integrationCards = queryAllByRoleFast("button", dialog);
-    expect(
-      integrationCards.some((candidate) => {
-        return textFor(candidate).startsWith("GitHub label applied");
-      }),
-    ).toBeTruthy();
-    expect(
-      integrationCards.some((candidate) => {
-        return textFor(candidate).startsWith("Webhook");
-      }),
-    ).toBeFalsy();
   });
 
   it("creates a cron schedule trigger from the preferred time zone", async () => {
