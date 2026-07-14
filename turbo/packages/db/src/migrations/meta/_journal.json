@@ -4194,6 +4194,13 @@
       "when": 1784056277262,
       "tag": "0598_expand_workflow_automation_memory_id",
       "breakpoints": true
+    },
+    {
+      "idx": 599,
+      "version": "7",
+      "when": 1784067296293,
+      "tag": "0599_contract_workflow_automation_identifiers",
+      "breakpoints": true
     }
   ]
 }
