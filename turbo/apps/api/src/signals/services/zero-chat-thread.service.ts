@@ -221,58 +221,58 @@ const messageColumns = {
   workflowId: sql<string | null>`(
     SELECT "zero_workflows"."id"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowAgentId: sql<string | null>`(
     SELECT "zero_workflows"."agent_id"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowName: sql<string | null>`(
     SELECT "zero_workflows"."name"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowDisplayName: sql<string | null>`(
     SELECT "zero_workflows"."display_name"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowDescription: sql<string | null>`(
     SELECT "zero_workflows"."description"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     INNER JOIN "zero_workflows"
-      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+      ON "zero_workflows"."id" = "zero_workflow_automations"."workflow_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerId: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."id"
+    SELECT "zero_workflow_automations"."id"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
@@ -280,89 +280,89 @@ const messageColumns = {
     SELECT COALESCE(
       "zero_runs"."trigger_brief",
       CASE
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'gmail-label-applied'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'gmail-label-applied'
           THEN 'Gmail label applied'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'gmail-new-message'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'gmail-new-message'
           THEN 'Gmail new message'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-created'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-created'
           THEN 'Google Calendar event created'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-updated'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-updated'
           THEN 'Google Calendar event updated'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-cancelled'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'google-calendar-event-cancelled'
           THEN 'Google Calendar event cancelled'
-        WHEN "zero_workflow_triggers"."kind" = 'event'
-          AND "zero_workflow_triggers"."event_type" = 'webhook-received'
-          THEN 'Webhook trigger'
+        WHEN "zero_workflow_automations"."kind" = 'event'
+          AND "zero_workflow_automations"."event_type" = 'webhook-received'
+          THEN 'Webhook received'
         ELSE NULL
       END
     )
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerKind: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."kind"
+    SELECT "zero_workflow_automations"."kind"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerScheduleType: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."schedule_type"
+    SELECT "zero_workflow_automations"."schedule_type"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerCronExpression: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."cron_expression"
+    SELECT "zero_workflow_automations"."cron_expression"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerIntervalSeconds: sql<number | null>`(
-    SELECT "zero_workflow_triggers"."interval_seconds"
+    SELECT "zero_workflow_automations"."interval_seconds"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerAtTime: sql<Date | null>`(
-    SELECT "zero_workflow_triggers"."at_time"
+    SELECT "zero_workflow_automations"."at_time"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`.mapWith(zeroWorkflowTriggers.atTime),
   workflowTriggerTimezone: sql<string | null>`(
-    SELECT "zero_workflow_triggers"."timezone"
+    SELECT "zero_workflow_automations"."timezone"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
   workflowTriggerUserTimezone: sql<string | null>`(
     SELECT "org_members_metadata"."timezone"
     FROM "zero_runs"
-    INNER JOIN "zero_workflow_triggers"
-      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflow_automations"
+      ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     LEFT JOIN "org_members_metadata"
-      ON "org_members_metadata"."org_id" = "zero_workflow_triggers"."org_id"
-      AND "org_members_metadata"."user_id" = "zero_workflow_triggers"."owner_user_id"
+      ON "org_members_metadata"."org_id" = "zero_workflow_automations"."org_id"
+      AND "org_members_metadata"."user_id" = "zero_workflow_automations"."owner_user_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,

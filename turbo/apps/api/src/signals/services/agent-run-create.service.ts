@@ -4523,7 +4523,7 @@ async function insertZeroRunRecord(
   await tx.insert(zeroRuns).values({
     id: args.runId,
     triggerSource: args.body.triggerSource ?? "cli",
-    workflowTriggerId: metadata.workflowTriggerId ?? null,
+    workflowAutomationId: metadata.workflowTriggerId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,
