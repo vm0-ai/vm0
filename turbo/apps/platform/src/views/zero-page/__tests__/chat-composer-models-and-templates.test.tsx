@@ -1800,8 +1800,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000914",
-        model: "gpt-5.5",
-        modelLabel: "GPT 5.5",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
         isDefault: true,
         defaultProviderType: "codex-oauth-token",
         credentialScope: "member",
@@ -1810,7 +1810,7 @@ describe("chat composer models", () => {
     context.mocks.data.personalModelProviders([codexProvider]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-sol",
       codexServiceTier: "fast",
       onRunCreate: (body) => {
         sentBody = body;
@@ -1825,9 +1825,17 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: /GPT 5\.5/ }),
+        screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }),
       ).toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }));
+    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
+    expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.keyboard("{Escape}");
 
     await sendMessageInUI(
       user,
