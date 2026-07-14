@@ -37,6 +37,7 @@ use super::env::{
     write_user_env_file,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
+use super::session_history_buffer::SessionHistoryBufferClaim;
 use super::session_history_cpu::{SessionHistoryCpuJob, SessionHistoryPrefixOutcome};
 use super::session_history_download::{
     SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
@@ -256,6 +257,12 @@ fn record_session_history_download_timings(
     let metadata = timings.metadata();
     record_session_history_download_phase(
         telemetry,
+        "session_history_buffer_admission",
+        timings.buffer_admission(),
+        metadata,
+    );
+    record_session_history_download_phase(
+        telemetry,
         "session_history_download_request_status",
         timings.request_status(),
         metadata,
@@ -362,6 +369,7 @@ async fn materialize_session_history_sidecar(
     sidecar: &WorkspaceSessionHistorySidecar,
     config: &ExecutorConfig,
     cancel: &CancellationToken,
+    telemetry: &mut JobTelemetry,
 ) -> RunnerResult<MaterializedResumeSession> {
     let resume_session = context.resume_session.as_ref().ok_or_else(|| {
         RunnerError::Internal("resume session missing for sidecar restore".into())
@@ -369,6 +377,32 @@ async fn materialize_session_history_sidecar(
     let history_ref = resume_session.history_ref().ok_or_else(|| {
         RunnerError::Internal("resume session history ref missing for sidecar restore".into())
     })?;
+    let claim = match sidecar.representation {
+        WorkspaceSessionHistorySidecarRepresentation::Raw => {
+            SessionHistoryBufferClaim::sidecar_raw(history_ref.raw_size)?
+        }
+        WorkspaceSessionHistorySidecarRepresentation::CodexZstd => {
+            SessionHistoryBufferClaim::sidecar_preserved(
+                sidecar.encoded_size,
+                history_ref.raw_size,
+            )?
+        }
+    };
+    let admission = config
+        .session_history_materialization
+        .acquire_buffer(claim, cancel)
+        .await;
+    telemetry.record(
+        "session_history_buffer_admission",
+        admission.elapsed,
+        admission.result.is_ok(),
+        admission
+            .result
+            .as_ref()
+            .err()
+            .map(|_| SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR),
+    );
+    let buffer_reservation = admission.result?;
     let bytes = tokio::select! {
         biased;
         _ = cancel.cancelled() => {
@@ -393,9 +427,10 @@ async fn materialize_session_history_sidecar(
             history_ref.hash.clone(),
             super::cli_framework::EffectiveCliFramework::Codex,
         ),
-    };
+    }
+    .with_buffer_reservation(buffer_reservation);
     config
-        .session_history_cpu
+        .session_history_materialization
         .materialize(job, cancel)
         .await?
         .result
@@ -417,7 +452,7 @@ async fn materialize_inline_resume_session(
         == super::cli_framework::EffectiveCliFramework::Codex
     {
         let outcome = config
-            .session_history_cpu
+            .session_history_materialization
             .materialize(
                 SessionHistoryCpuJob::inline_codex(
                     resume_session.cli_agent_session_id.clone(),
@@ -440,12 +475,21 @@ async fn materialize_inline_resume_session(
 async fn read_session_history_sidecar_bytes(
     sidecar: &WorkspaceSessionHistorySidecar,
 ) -> RunnerResult<Vec<u8>> {
-    let file = tokio::fs::File::open(&sidecar.path).await?;
-    let mut bytes = Vec::with_capacity(sidecar.encoded_size.min(1024 * 1024) as usize);
-    file.take(sidecar.encoded_size.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .await?;
-    if bytes.len() as u64 != sidecar.encoded_size {
+    let mut file = tokio::fs::File::open(&sidecar.path).await?;
+    let capacity = usize::try_from(sidecar.encoded_size).map_err(|_| {
+        RunnerError::Internal("workspace session history sidecar exceeds platform capacity".into())
+    })?;
+    let mut bytes = vec![0; capacity];
+    if let Err(error) = file.read_exact(&mut bytes).await {
+        if error.kind() != std::io::ErrorKind::UnexpectedEof {
+            return Err(error.into());
+        }
+        return Err(RunnerError::Internal(
+            "workspace session history sidecar size mismatch".into(),
+        ));
+    }
+    let mut extra = [0u8; 1];
+    if file.read(&mut extra).await? != 0 {
         return Err(RunnerError::Internal(
             "workspace session history sidecar size mismatch".into(),
         ));
@@ -1121,7 +1165,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     record_session_history_identity_reason(telemetry, reason);
                     Some(SessionHistoryMaterializer::start_cancellable(
                         &config.http,
-                        &config.session_history_cpu,
+                        &config.session_history_materialization,
                         context.resume_session.as_ref(),
                         effective_cli_framework(&context.cli_agent_type),
                         cancel.clone(),
@@ -1134,7 +1178,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             record_session_history_restore_fallback(telemetry, fallback);
             Some(SessionHistoryMaterializer::start_cancellable(
                 &config.http,
-                &config.session_history_cpu,
+                &config.session_history_materialization,
                 context.resume_session.as_ref(),
                 effective_cli_framework(&context.cli_agent_type),
                 cancel.clone(),
@@ -1143,7 +1187,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
         SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
             &config.http,
-            &config.session_history_cpu,
+            &config.session_history_materialization,
             context.resume_session.as_ref(),
             effective_cli_framework(&context.cli_agent_type),
             cancel.clone(),
@@ -1164,7 +1208,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
     if let Some(sidecar) = local_session_history_sidecar {
         let restore_started = Instant::now();
-        match materialize_session_history_sidecar(context, &sidecar, config, &cancel).await {
+        match materialize_session_history_sidecar(context, &sidecar, config, &cancel, telemetry)
+            .await
+        {
             Ok(session) => match restore_session(sandbox, context, &session).await {
                 Ok(diagnostics) => {
                     telemetry.record(
@@ -1200,7 +1246,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     session_history_materializer =
                         Some(SessionHistoryMaterializer::start_cancellable(
                             &config.http,
-                            &config.session_history_cpu,
+                            &config.session_history_materialization,
                             context.resume_session.as_ref(),
                             effective_cli_framework(&context.cli_agent_type),
                             cancel.clone(),
@@ -1231,7 +1277,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 );
                 session_history_materializer = Some(SessionHistoryMaterializer::start_cancellable(
                     &config.http,
-                    &config.session_history_cpu,
+                    &config.session_history_materialization,
                     context.resume_session.as_ref(),
                     effective_cli_framework(&context.cli_agent_type),
                     cancel.clone(),

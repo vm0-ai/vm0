@@ -24,9 +24,9 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryCpuPool, SessionHistoryMaterializer,
-    SessionHistoryProbe, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
-    effective_cli_framework, validate_resume_session_id,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializationResources,
+    SessionHistoryMaterializer, SessionHistoryProbe, SessionHistoryRestoreFallback,
+    SessionHistoryRestorePlan, effective_cli_framework, validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{
@@ -244,7 +244,7 @@ pub(super) async fn handle_discovered_job(
     let session_history_restore_plan = if resume_session_valid {
         build_session_history_restore_plan(
             &ctx.spawn_ctx.exec_config.http,
-            &ctx.spawn_ctx.exec_config.session_history_cpu,
+            &ctx.spawn_ctx.exec_config.session_history_materialization,
             claimed.context(),
             &job_cancel,
             SessionHistoryRestoreReuse {
@@ -311,7 +311,7 @@ struct SessionHistoryRestoreReuse<'a> {
 
 fn build_session_history_restore_plan(
     http: &HttpClient,
-    cpu: &SessionHistoryCpuPool,
+    resources: &SessionHistoryMaterializationResources,
     context: &ExecutionContext,
     cancel: &RunCancellationHandle,
     reuse: SessionHistoryRestoreReuse<'_>,
@@ -380,7 +380,7 @@ fn build_session_history_restore_plan(
         Some(prefix_attribution) => {
             SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
                 http,
-                cpu,
+                resources,
                 Some(resume_session),
                 effective_cli_framework(&context.cli_agent_type),
                 cancel.token(),
@@ -390,7 +390,7 @@ fn build_session_history_restore_plan(
         }
         None => SessionHistoryMaterializer::start_cancellable(
             http,
-            cpu,
+            resources,
             Some(resume_session),
             effective_cli_framework(&context.cli_agent_type),
             cancel.token(),
@@ -1314,7 +1314,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1379,7 +1379,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1427,7 +1427,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1457,7 +1457,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1505,7 +1505,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1539,7 +1539,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1571,7 +1571,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1627,7 +1627,7 @@ mod tests {
 
             let plan = build_session_history_restore_plan(
                 &http,
-                &SessionHistoryCpuPool::with_capacity(1),
+                &SessionHistoryMaterializationResources::for_host_cpus(2),
                 &context,
                 &cancel,
                 SessionHistoryRestoreReuse {
@@ -1665,7 +1665,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1700,7 +1700,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1737,7 +1737,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {
@@ -1779,7 +1779,7 @@ mod tests {
 
         let plan = build_session_history_restore_plan(
             &http,
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             &context,
             &cancel,
             SessionHistoryRestoreReuse {

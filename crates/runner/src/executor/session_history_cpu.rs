@@ -15,6 +15,7 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use super::cli_framework::EffectiveCliFramework;
+use super::session_history_buffer::SessionHistoryBufferReservation;
 use super::session_restore::MaterializedResumeSession;
 use super::{RunnerError, RunnerResult};
 use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
@@ -46,6 +47,7 @@ struct SessionHistoryCpuTaskGuard {
 pub(super) struct SessionHistoryCpuJob {
     kind: SessionHistoryCpuJobKind,
     prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
+    buffer_reservation: Option<SessionHistoryBufferReservation>,
 }
 
 enum SessionHistoryCpuJobKind {
@@ -146,11 +148,6 @@ pub(super) struct SessionHistoryCpuPhaseTiming {
 }
 
 impl SessionHistoryCpuPool {
-    pub(crate) fn for_host_cpus(host_cpus: usize) -> Self {
-        let capacity = (host_cpus / 2).clamp(1, 4);
-        Self::with_capacity(capacity)
-    }
-
     pub(crate) fn with_capacity(capacity: usize) -> Self {
         Self {
             permits: Arc::new(Semaphore::new(capacity.max(1))),
@@ -291,6 +288,7 @@ impl SessionHistoryCpuJob {
                 framework,
             },
             prefix_attribution: None,
+            buffer_reservation: None,
         }
     }
 
@@ -310,6 +308,7 @@ impl SessionHistoryCpuJob {
                 framework,
             },
             prefix_attribution: None,
+            buffer_reservation: None,
         }
     }
 
@@ -329,6 +328,7 @@ impl SessionHistoryCpuJob {
                 framework,
             },
             prefix_attribution: None,
+            buffer_reservation: None,
         }
     }
 
@@ -339,6 +339,7 @@ impl SessionHistoryCpuJob {
                 history,
             },
             prefix_attribution: None,
+            buffer_reservation: None,
         }
     }
 
@@ -347,6 +348,14 @@ impl SessionHistoryCpuJob {
         prefix_attribution: RestoredSessionHistoryPrefixAttribution,
     ) -> Self {
         self.prefix_attribution = Some(prefix_attribution);
+        self
+    }
+
+    pub(super) fn with_buffer_reservation(
+        mut self,
+        buffer_reservation: SessionHistoryBufferReservation,
+    ) -> Self {
+        self.buffer_reservation = Some(buffer_reservation);
         self
     }
 }
@@ -401,8 +410,9 @@ fn materialize_blocking(
     let SessionHistoryCpuJob {
         kind,
         prefix_attribution,
+        buffer_reservation,
     } = job;
-    match kind {
+    let mut outcome = match kind {
         SessionHistoryCpuJobKind::Raw {
             cli_agent_session_id,
             bytes,
@@ -493,7 +503,15 @@ fn materialize_blocking(
                 result,
             }
         }
+    };
+    if let Some(buffer_reservation) = buffer_reservation {
+        outcome.result = outcome.result.and_then(|mut materialization| {
+            let lease = buffer_reservation.into_retained_lease()?;
+            materialization.session.attach_buffer_lease(lease);
+            Ok(materialization)
+        });
     }
+    outcome
 }
 
 fn materialize_raw(
@@ -816,7 +834,10 @@ fn read_compressed_history(
     encoding: &str,
     cancel: &CancellationToken,
 ) -> RunnerResult<Vec<u8>> {
-    let mut bytes = Vec::new();
+    let capacity = usize::try_from(max_raw_bytes).map_err(|_| {
+        RunnerError::Internal("session history raw size exceeds platform capacity".into())
+    })?;
+    let mut bytes = Vec::with_capacity(capacity);
     let mut buffer = [0u8; DECODER_BUFFER_BYTES];
     let mut decoded = 0u64;
     loop {

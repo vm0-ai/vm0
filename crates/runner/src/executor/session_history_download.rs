@@ -14,7 +14,9 @@
 //!
 //! Download diagnostics must not expose presigned URL query strings, and the
 //! downloaded bytes must satisfy the declared size, byte cap, and hash contract
-//! before they are restored into the sandbox.
+//! before they are restored into the sandbox. A runner-shared weighted budget
+//! reserves the complete body/CPU peak before each request and remains owned by
+//! successful output until guest restore no longer needs it.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -27,10 +29,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::cli_framework::EffectiveCliFramework;
+use super::session_history_buffer::{SessionHistoryBufferClaim, SessionHistoryBufferReservation};
 use super::session_history_cpu::{
-    SessionHistoryCpuJob, SessionHistoryCpuMaterialization, SessionHistoryCpuPool,
-    SessionHistoryCpuTimings, SessionHistoryPrefixOutcome,
+    SessionHistoryCpuJob, SessionHistoryCpuMaterialization, SessionHistoryCpuTimings,
+    SessionHistoryPrefixOutcome,
 };
+use super::session_history_materialization::SessionHistoryMaterializationResources;
 use super::session_restore::MaterializedResumeSession;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
@@ -131,9 +135,15 @@ struct SessionHistoryDownloadTaskResult {
     result: RunnerResult<SessionHistoryCpuMaterialization>,
 }
 
+struct DownloadedSessionHistoryBody {
+    bytes: Vec<u8>,
+    buffer_reservation: SessionHistoryBufferReservation,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct SessionHistoryDownloadTimings {
     metadata: Option<SessionHistoryTelemetryMetadata>,
+    buffer_admission: Option<SessionHistoryDownloadPhaseTiming>,
     request_status: Option<SessionHistoryDownloadPhaseTiming>,
     body_read: Option<SessionHistoryDownloadPhaseTiming>,
     validation: Option<SessionHistoryDownloadPhaseTiming>,
@@ -161,6 +171,10 @@ impl SessionHistoryDownloadTimings {
         self.request_status
     }
 
+    pub(super) fn buffer_admission(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
+        self.buffer_admission
+    }
+
     pub(super) fn body_read(&self) -> Option<SessionHistoryDownloadPhaseTiming> {
         self.body_read
     }
@@ -179,6 +193,10 @@ impl SessionHistoryDownloadTimings {
 
     fn record_request_status(&mut self, elapsed: Duration, success: bool) {
         self.request_status = Some(SessionHistoryDownloadPhaseTiming { elapsed, success });
+    }
+
+    fn record_buffer_admission(&mut self, elapsed: Duration, success: bool) {
+        merge_phase_timing(&mut self.buffer_admission, elapsed, success);
     }
 
     #[cfg(test)]
@@ -438,18 +456,18 @@ impl Drop for SessionHistoryProbeGuardInner {
 impl SessionHistoryMaterializer {
     pub(crate) fn start_cancellable(
         http: &HttpClient,
-        cpu: &SessionHistoryCpuPool,
+        resources: &SessionHistoryMaterializationResources,
         session: Option<&ResumeSession>,
         framework: EffectiveCliFramework,
         cancel: CancellationToken,
         probe: Option<&SessionHistoryProbe>,
     ) -> Self {
-        Self::start_cancellable_inner(http, cpu, session, framework, cancel, probe, None)
+        Self::start_cancellable_inner(http, resources, session, framework, cancel, probe, None)
     }
 
     pub(crate) fn start_cancellable_with_prefix_attribution(
         http: &HttpClient,
-        cpu: &SessionHistoryCpuPool,
+        resources: &SessionHistoryMaterializationResources,
         session: Option<&ResumeSession>,
         framework: EffectiveCliFramework,
         cancel: CancellationToken,
@@ -458,7 +476,7 @@ impl SessionHistoryMaterializer {
     ) -> Self {
         Self::start_cancellable_inner(
             http,
-            cpu,
+            resources,
             session,
             framework,
             cancel,
@@ -469,7 +487,7 @@ impl SessionHistoryMaterializer {
 
     fn start_cancellable_inner(
         http: &HttpClient,
-        cpu: &SessionHistoryCpuPool,
+        resources: &SessionHistoryMaterializationResources,
         session: Option<&ResumeSession>,
         framework: EffectiveCliFramework,
         cancel: CancellationToken,
@@ -493,7 +511,7 @@ impl SessionHistoryMaterializer {
         }
 
         let http = http.clone();
-        let cpu = cpu.clone();
+        let resources = resources.clone();
         let session = session.clone();
         let started_at = Instant::now();
         let task_cancel = cancel.child_token();
@@ -510,7 +528,7 @@ impl SessionHistoryMaterializer {
                 task: Some(tokio::spawn(async move {
                     let result = download_resume_session_history_timed(
                         http,
-                        cpu,
+                        resources,
                         session,
                         framework,
                         metadata,
@@ -566,12 +584,15 @@ impl SessionHistoryMaterializer {
                 let metadata = *metadata;
                 if cancel.is_cancelled() || task_cancel.is_cancelled() {
                     task_cancel.cancel();
-                    if let Some(task) = task.take() {
-                        let _ = task.await;
-                    }
+                    let result = match task.take() {
+                        Some(task) => task.await.map_or_else(
+                            |_| SessionHistoryDownloadTaskResult::cancelled(started_at, metadata),
+                            |result| result.into_cancelled(started_at),
+                        ),
+                        None => SessionHistoryDownloadTaskResult::cancelled(started_at, metadata),
+                    };
                     finish_session_history_probe(probe_registration);
-                    return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
-                        .into_materialization();
+                    return result.into_materialization();
                 }
                 let Some(mut task) = task.take() else {
                     finish_session_history_probe(probe_registration);
@@ -587,12 +608,16 @@ impl SessionHistoryMaterializer {
                     biased;
                     _ = cancel.cancelled() => {
                         task_cancel.cancel();
-                        let _ = task.await;
-                        SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
+                        task.await.map_or_else(
+                            |_| SessionHistoryDownloadTaskResult::cancelled(started_at, metadata),
+                            |result| result.into_cancelled(started_at),
+                        )
                     }
                     _ = task_cancel.cancelled() => {
-                        let _ = task.await;
-                        SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
+                        task.await.map_or_else(
+                            |_| SessionHistoryDownloadTaskResult::cancelled(started_at, metadata),
+                            |result| result.into_cancelled(started_at),
+                        )
                     }
                     joined = &mut task => {
                         joined.unwrap_or_else(|error| {
@@ -610,8 +635,7 @@ impl SessionHistoryMaterializer {
                 // Re-check after joining because the task itself can observe
                 // cancellation while still producing a successful result.
                 if cancel.is_cancelled() || task_cancel.is_cancelled() {
-                    return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata)
-                        .into_materialization();
+                    return result.into_cancelled(started_at).into_materialization();
                 }
                 result.into_materialization()
             }
@@ -645,6 +669,14 @@ impl SessionHistoryDownloadTaskResult {
             )),
         }
     }
+
+    fn into_cancelled(mut self, started_at: Instant) -> Self {
+        self.elapsed = started_at.elapsed();
+        self.result = Err(RunnerError::Internal(
+            "session history download cancelled".into(),
+        ));
+        self
+    }
 }
 
 impl Drop for SessionHistoryMaterializer {
@@ -673,7 +705,7 @@ fn finish_session_history_probe(registration: &Option<SessionHistoryProbeRegistr
 
 async fn download_resume_session_history_timed(
     http: HttpClient,
-    cpu: SessionHistoryCpuPool,
+    resources: SessionHistoryMaterializationResources,
     session: ResumeSession,
     framework: EffectiveCliFramework,
     metadata: SessionHistoryTelemetryMetadata,
@@ -687,7 +719,7 @@ async fn download_resume_session_history_timed(
     }
     let result = download_resume_session_history(
         http,
-        &cpu,
+        &resources,
         session,
         framework,
         prefix_attribution,
@@ -695,30 +727,31 @@ async fn download_resume_session_history_timed(
         &mut timings,
     )
     .await;
-    if cancel.is_cancelled() {
-        return SessionHistoryDownloadTaskResult::cancelled(started_at, metadata);
-    }
-    SessionHistoryDownloadTaskResult {
+    let result = SessionHistoryDownloadTaskResult {
         elapsed: started_at.elapsed(),
         timings,
         result,
+    };
+    if cancel.is_cancelled() {
+        return result.into_cancelled(started_at);
     }
+    result
 }
 
 async fn download_resume_session_history(
     http: HttpClient,
-    cpu: &SessionHistoryCpuPool,
+    resources: &SessionHistoryMaterializationResources,
     session: ResumeSession,
     framework: EffectiveCliFramework,
     prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
     cancel: &CancellationToken,
     timings: &mut SessionHistoryDownloadTimings,
 ) -> RunnerResult<SessionHistoryCpuMaterialization> {
-    // The history ref is treated as untrusted input. The request timeout and
-    // 128 MiB cap bound resource use; declared size, HTTP content-length, final
-    // byte count, and SHA-256 must all agree before the bytes become sandbox
-    // session history. URL diagnostics redact query strings because the ref URL
-    // can be presigned.
+    // The history ref is treated as untrusted input. The request timeout,
+    // per-object cap, and shared buffer admission bound resource use; declared
+    // size, HTTP content-length, final byte count, and SHA-256 must all agree
+    // before the bytes become sandbox session history. URL diagnostics redact
+    // query strings because the ref URL can be presigned.
     let history_ref = session
         .history_ref()
         .ok_or_else(|| RunnerError::Internal("resume session history ref is missing".into()))?
@@ -734,8 +767,14 @@ async fn download_resume_session_history(
     let job = match encoding {
         ResumeSessionHistoryEncoding::Identity => {
             validate_identity_ref(&history_ref, timings)?;
-            let bytes = download_body(
+            let claim = SessionHistoryBufferClaim::remote_decoded(
+                history_ref.encoded_size,
+                history_ref.raw_size,
+            )?;
+            let downloaded = download_body(
                 &http,
+                resources,
+                claim,
                 &history_ref.url,
                 Some(history_ref.encoded_size),
                 cancel,
@@ -744,16 +783,21 @@ async fn download_resume_session_history(
             .await?;
             SessionHistoryCpuJob::raw(
                 session.cli_agent_session_id,
-                bytes,
+                downloaded.bytes,
                 history_ref.raw_size,
                 history_ref.hash,
                 framework,
             )
+            .with_buffer_reservation(downloaded.buffer_reservation)
         }
         ResumeSessionHistoryEncoding::Gzip => {
             let raw_size = validate_compressed_ref("gzip", &history_ref, timings)?;
-            let encoded_bytes = download_body(
+            let claim =
+                SessionHistoryBufferClaim::remote_decoded(history_ref.encoded_size, raw_size)?;
+            let downloaded = download_body(
                 &http,
+                resources,
+                claim,
                 &history_ref.url,
                 Some(history_ref.encoded_size),
                 cancel,
@@ -762,16 +806,24 @@ async fn download_resume_session_history(
             .await?;
             SessionHistoryCpuJob::gzip(
                 session.cli_agent_session_id,
-                encoded_bytes,
+                downloaded.bytes,
                 raw_size,
                 history_ref.hash,
                 framework,
             )
+            .with_buffer_reservation(downloaded.buffer_reservation)
         }
         ResumeSessionHistoryEncoding::Zstd => {
             let raw_size = validate_compressed_ref("zstd", &history_ref, timings)?;
-            let encoded_bytes = download_body(
+            let claim = if framework == EffectiveCliFramework::Codex {
+                SessionHistoryBufferClaim::remote_preserved(history_ref.encoded_size, raw_size)?
+            } else {
+                SessionHistoryBufferClaim::remote_decoded(history_ref.encoded_size, raw_size)?
+            };
+            let downloaded = download_body(
                 &http,
+                resources,
+                claim,
                 &history_ref.url,
                 Some(history_ref.encoded_size),
                 cancel,
@@ -780,18 +832,19 @@ async fn download_resume_session_history(
             .await?;
             SessionHistoryCpuJob::zstd(
                 session.cli_agent_session_id,
-                encoded_bytes,
+                downloaded.bytes,
                 raw_size,
                 history_ref.hash,
                 framework,
             )
+            .with_buffer_reservation(downloaded.buffer_reservation)
         }
     };
     let job = match prefix_attribution {
         Some(prefix_attribution) => job.with_prefix_attribution(prefix_attribution),
         None => job,
     };
-    let outcome = cpu.materialize(job, cancel).await?;
+    let outcome = resources.materialize(job, cancel).await?;
     timings.merge_cpu(outcome.timings);
     outcome.result
 }
@@ -874,18 +927,29 @@ fn validate_compressed_ref(
 
 async fn download_body(
     http: &HttpClient,
+    resources: &SessionHistoryMaterializationResources,
+    claim: SessionHistoryBufferClaim,
     url: &str,
     expected_size: Option<u64>,
     cancel: &CancellationToken,
     timings: &mut SessionHistoryDownloadTimings,
-) -> RunnerResult<Vec<u8>> {
+) -> RunnerResult<DownloadedSessionHistoryBody> {
     let mut attempt = 1usize;
     loop {
         timings.reset_download_attempt();
+        let admission = resources.acquire_buffer(claim, cancel).await;
+        timings.record_buffer_admission(admission.elapsed, admission.result.is_ok());
+        let buffer_reservation = admission.result?;
         let result = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Err(session_history_download_cancelled_error()),
-            result = download_body_once(http, url, expected_size, timings) => result,
+            result = download_body_once(
+                http,
+                url,
+                expected_size,
+                buffer_reservation,
+                timings,
+            ) => result,
         };
         match result {
             Ok(body) => return Ok(body),
@@ -923,8 +987,9 @@ async fn download_body_once(
     http: &HttpClient,
     url: &str,
     expected_size: Option<u64>,
+    buffer_reservation: SessionHistoryBufferReservation,
     timings: &mut SessionHistoryDownloadTimings,
-) -> Result<Vec<u8>, SessionHistoryDownloadBodyError> {
+) -> Result<DownloadedSessionHistoryBody, SessionHistoryDownloadBodyError> {
     let request_started = Instant::now();
     let response = http
         .get(url)
@@ -1020,7 +1085,10 @@ async fn download_body_once(
     }
     timings.record_body_read(body_started.elapsed(), true);
 
-    Ok(body)
+    Ok(DownloadedSessionHistoryBody {
+        bytes: body,
+        buffer_reservation,
+    })
 }
 
 #[derive(Debug)]
@@ -1232,12 +1300,13 @@ fn redact_url_query(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::io::{self, Write};
+    use std::sync::Arc;
 
     use flate2::{Compression, write::GzEncoder};
     use sha2::{Digest, Sha256};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
-    use tokio::sync::oneshot;
+    use tokio::sync::{Notify, oneshot};
     use tokio::task::JoinHandle;
 
     use super::*;
@@ -1344,7 +1413,7 @@ mod tests {
     ) -> SessionHistoryMaterializer {
         SessionHistoryMaterializer::start_cancellable(
             &http_client(),
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             Some(session),
             framework,
             CancellationToken::new(),
@@ -1370,7 +1439,7 @@ mod tests {
     ) -> SessionHistoryMaterializer {
         SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
             &http_client(),
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             Some(session),
             framework,
             CancellationToken::new(),
@@ -1702,6 +1771,233 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn materialized_session_holds_buffer_capacity_until_drop() {
+        let body = b"history\n";
+        let hash = hex::encode(Sha256::digest(body));
+        let buffer_capacity = u32::try_from(body.len() * 2).unwrap();
+        let resources =
+            SessionHistoryMaterializationResources::with_test_capacities(1, buffer_capacity);
+
+        let first_server = serve_once("200 OK", body, Some(body.len() as u64)).await;
+        let first_resume_session = ref_session(
+            first_server.url(),
+            hash.clone(),
+            body.len() as u64,
+            body.len() as u64,
+        );
+        let first_materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&first_resume_session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        );
+        let first_session = match first_materializer.finish(&CancellationToken::new()).await {
+            SessionHistoryMaterialization::Downloaded {
+                session, timings, ..
+            } => {
+                assert_phase_success(timings.buffer_admission());
+                session
+            }
+            _ => panic!("expected first downloaded session"),
+        };
+        first_server.assert_served().await;
+
+        let small_body = b"tiny";
+        let small_server = serve_once("200 OK", small_body, Some(small_body.len() as u64)).await;
+        let small_resume_session = ref_session(
+            small_server.url(),
+            hex::encode(Sha256::digest(small_body)),
+            small_body.len() as u64,
+            small_body.len() as u64,
+        );
+        let small_materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&small_resume_session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        );
+        match small_materializer.finish(&CancellationToken::new()).await {
+            SessionHistoryMaterialization::Downloaded { session, .. } => {
+                assert_eq!(session.history_bytes(), small_body);
+            }
+            _ => panic!("expected small downloaded session"),
+        }
+        small_server.assert_served().await;
+
+        let (request_received_tx, mut request_received_rx) = oneshot::channel();
+        let release_response = Arc::new(Notify::new());
+        let second_server = OneShotSessionHistoryServer::respond_once_after_request(
+            body,
+            request_received_tx,
+            Arc::clone(&release_response),
+        )
+        .await;
+        let second_resume_session = ref_session(
+            second_server.url(),
+            hash,
+            body.len() as u64,
+            body.len() as u64,
+        );
+        let second_materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&second_resume_session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        );
+
+        resources.wait_for_buffer_submissions(3).await;
+        assert!(matches!(
+            request_received_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+
+        drop(first_session);
+        request_received_rx
+            .await
+            .expect("second request should start after the first session drops");
+        release_response.notify_one();
+
+        match second_materializer.finish(&CancellationToken::new()).await {
+            SessionHistoryMaterialization::Downloaded { session, .. } => {
+                assert_eq!(session.history_bytes(), body);
+            }
+            _ => panic!("expected second downloaded session"),
+        }
+        second_server.assert_served().await;
+    }
+
+    #[tokio::test]
+    async fn remote_body_waits_for_destination_and_chunk_capacity_before_request() {
+        let body = b"history\n";
+        let (request_received_tx, mut request_received_rx) = oneshot::channel();
+        let server = OneShotSessionHistoryServer::respond_once_after_request(
+            body,
+            request_received_tx,
+            Arc::new(Notify::new()),
+        )
+        .await;
+        let session = ref_session(
+            server.url(),
+            hex::encode(Sha256::digest(body)),
+            body.len() as u64,
+            body.len() as u64,
+        );
+        let resources = SessionHistoryMaterializationResources::with_test_capacities(
+            1,
+            u32::try_from(body.len()).unwrap(),
+        );
+
+        let result = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        )
+        .finish(&CancellationToken::new())
+        .await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(error.to_string().contains("buffer claim is too large"));
+                assert_phase_failure(timings.buffer_admission());
+                assert_no_phase(timings.request_status());
+                assert_no_phase(timings.body_read());
+            }
+            _ => panic!("expected buffer admission failure"),
+        }
+        assert!(matches!(
+            request_received_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn cancelling_buffer_waiter_does_not_request_or_block_later_download() {
+        let body = b"history\n";
+        let buffer_capacity = u32::try_from(body.len() * 2).unwrap();
+        let resources =
+            SessionHistoryMaterializationResources::with_test_capacities(1, buffer_capacity);
+        let blocker = resources
+            .acquire_buffer(
+                SessionHistoryBufferClaim::sidecar_raw(buffer_capacity as u64).unwrap(),
+                &CancellationToken::new(),
+            )
+            .await
+            .result
+            .unwrap();
+
+        let (request_received_tx, mut request_received_rx) = oneshot::channel();
+        let blocked_server = OneShotSessionHistoryServer::respond_once_after_request(
+            body,
+            request_received_tx,
+            Arc::new(Notify::new()),
+        )
+        .await;
+        let blocked_session = ref_session(
+            blocked_server.url(),
+            hex::encode(Sha256::digest(body)),
+            body.len() as u64,
+            body.len() as u64,
+        );
+        let cancel = CancellationToken::new();
+        let blocked_materializer = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&blocked_session),
+            EffectiveCliFramework::ClaudeCode,
+            cancel.clone(),
+            None,
+        );
+        resources.wait_for_buffer_submissions(2).await;
+        assert!(matches!(
+            request_received_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+
+        cancel.cancel();
+        let cancelled = blocked_materializer.finish(&CancellationToken::new()).await;
+        match cancelled {
+            SessionHistoryMaterialization::Failed { timings, .. } => {
+                assert_phase_failure(timings.buffer_admission());
+            }
+            _ => panic!("expected cancelled buffer admission"),
+        }
+        drop(blocked_server);
+        drop(blocker);
+
+        let next_server = serve_once("200 OK", body, Some(body.len() as u64)).await;
+        let next_session = ref_session(
+            next_server.url(),
+            hex::encode(Sha256::digest(body)),
+            body.len() as u64,
+            body.len() as u64,
+        );
+        let next_result = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&next_session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        )
+        .finish(&CancellationToken::new())
+        .await;
+        assert!(matches!(
+            next_result,
+            SessionHistoryMaterialization::Downloaded { .. }
+        ));
+        next_server.assert_served().await;
+    }
+
+    #[tokio::test]
     async fn materializer_attributes_verified_and_divergent_raw_prefixes() {
         let requested_history = b"prefix\nextension\n";
         let cases: [(&[u8], bool); 2] = [(b"prefix\n", true), (b"differ\n", false)];
@@ -1796,16 +2092,29 @@ mod tests {
         ])
         .await;
         let session = zstd_ref_session(server.url(), hash, body.len() as u64, encoded_size);
+        let claim_bytes = encoded_size + encoded_size.max(body.len() as u64);
+        let resources = SessionHistoryMaterializationResources::with_test_capacities(
+            1,
+            u32::try_from(claim_bytes).unwrap(),
+        );
 
-        let result = start_materializer(&session)
-            .finish(&CancellationToken::new())
-            .await;
+        let result = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        )
+        .finish(&CancellationToken::new())
+        .await;
 
         match result {
             SessionHistoryMaterialization::Downloaded {
                 session, timings, ..
             } => {
                 assert_eq!(session.history_bytes(), body);
+                assert_phase_success(timings.buffer_admission());
                 assert_phase_success(timings.request_status());
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
@@ -2828,10 +3137,11 @@ mod tests {
             1,
         );
         let probe = SessionHistoryProbe::with_limits_for_test(Duration::from_secs(60), 8);
+        let resources = SessionHistoryMaterializationResources::with_test_capacities(1, 2);
 
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
-            &SessionHistoryCpuPool::with_capacity(1),
+            &resources,
             Some(&session),
             EffectiveCliFramework::ClaudeCode,
             CancellationToken::new(),
@@ -2856,6 +3166,30 @@ mod tests {
             SessionHistoryCacheProbeMetadata::new(true, false)
         );
         repeated.finish();
+
+        let body = b"x";
+        let next_server = serve_once("200 OK", body, Some(body.len() as u64)).await;
+        let next_session = ref_session(
+            next_server.url(),
+            hex::encode(Sha256::digest(body)),
+            body.len() as u64,
+            body.len() as u64,
+        );
+        let next_result = SessionHistoryMaterializer::start_cancellable(
+            &http_client(),
+            &resources,
+            Some(&next_session),
+            EffectiveCliFramework::ClaudeCode,
+            CancellationToken::new(),
+            None,
+        )
+        .finish(&CancellationToken::new())
+        .await;
+        assert!(matches!(
+            next_result,
+            SessionHistoryMaterialization::Downloaded { .. }
+        ));
+        next_server.assert_served().await;
     }
 
     #[tokio::test]
@@ -2884,7 +3218,7 @@ mod tests {
 
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             Some(&session),
             EffectiveCliFramework::ClaudeCode,
             cancel.clone(),
@@ -2938,7 +3272,7 @@ mod tests {
 
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &http_client(),
-            &SessionHistoryCpuPool::with_capacity(1),
+            &SessionHistoryMaterializationResources::for_host_cpus(2),
             Some(&session),
             EffectiveCliFramework::ClaudeCode,
             cancel.clone(),

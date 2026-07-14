@@ -10,6 +10,7 @@ use tracing::{info, warn};
 
 use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
 use super::env::validate_resume_session_id;
+use super::session_history_buffer::SessionHistoryBufferLease;
 use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{RunnerError, RunnerResult};
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
@@ -59,6 +60,7 @@ pub(super) struct MaterializedResumeSession {
     cli_agent_session_id: String,
     history: MaterializedResumeHistory,
     codex_timestamp: Option<DateTime<Utc>>,
+    _buffer_lease: Option<SessionHistoryBufferLease>,
 }
 
 #[derive(Debug)]
@@ -78,6 +80,7 @@ impl MaterializedResumeSession {
             cli_agent_session_id,
             history: MaterializedResumeHistory::Bytes(history_bytes),
             codex_timestamp,
+            _buffer_lease: None,
         }
     }
 
@@ -90,6 +93,7 @@ impl MaterializedResumeSession {
             cli_agent_session_id,
             history: MaterializedResumeHistory::SharedText(session_history),
             codex_timestamp,
+            _buffer_lease: None,
         }
     }
 
@@ -102,7 +106,13 @@ impl MaterializedResumeSession {
             cli_agent_session_id,
             history: MaterializedResumeHistory::CodexZstd(history_bytes),
             codex_timestamp,
+            _buffer_lease: None,
         }
+    }
+
+    pub(super) fn attach_buffer_lease(&mut self, buffer_lease: SessionHistoryBufferLease) {
+        debug_assert!(self._buffer_lease.is_none());
+        self._buffer_lease = Some(buffer_lease);
     }
 
     pub(super) fn cli_agent_session_id(&self) -> &str {

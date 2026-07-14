@@ -37,18 +37,19 @@ use super::super::agent_run::{
     ProcessCancelTimeouts, RunControls, RunStart, build_agent_start_command, run_in_sandbox,
 };
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
+use super::super::session_history_buffer::SessionHistoryBufferClaim;
 use super::super::storage::guest_download_stdin_command;
 use super::super::telemetry::RunnerSpawnTiming;
 use super::super::{
     EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, RestoredSessionIdentity,
-    SessionHistoryMaterializer, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
-    effective_cli_framework,
+    SessionHistoryMaterializationResources, SessionHistoryMaterializer,
+    SessionHistoryRestoreFallback, SessionHistoryRestorePlan, effective_cli_framework,
 };
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, StartProcessGateSandbox, api_artifact,
     api_storage, create_overridden_sandbox, minimal_context, sandbox_exec_error,
-    sandbox_read_file_error, spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
-    test_executor_config, test_telemetry,
+    sandbox_read_file_error, sandbox_write_file_error, spawn_run_in_sandbox_test,
+    spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -1135,6 +1136,14 @@ async fn run_in_sandbox_records_gzip_session_history_download_encoding() {
     );
     assert_successful_action_with_session_history_metadata(
         &ops,
+        "session_history_buffer_admission",
+        "gzip",
+        "lt_64_kib",
+        "lt_64_kib",
+        "ge_1",
+    );
+    assert_successful_action_with_session_history_metadata(
+        &ops,
         "session_history_download_request_status",
         "gzip",
         "lt_64_kib",
@@ -1325,7 +1334,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
 
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
-        &config.session_history_cpu,
+        &config.session_history_materialization,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -1503,22 +1512,24 @@ async fn run_in_sandbox_restores_session_history_from_workspace_sidecar() {
     assert_eq!(writes[0].content, history);
     history_mock.assert_calls_async(0).await;
     let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action_once(&ops, "session_history_buffer_admission");
     assert_successful_action_once(&ops, "session_history_workspace_cache_restore");
     assert_successful_action_once(&ops, "session_restore");
     assert_no_action(&ops, "session_history_download");
 }
 
 #[tokio::test]
-async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
+async fn run_in_sandbox_admits_sidecar_before_read_and_releases_before_fallback() {
     let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
+    let mut config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let history = br#"{"type":"init"}"#;
     let corrupt_history = vec![b'x'; history.len()];
     let sidecar_path = dir.path().join("session-history.blob");
-    tokio::fs::write(&sidecar_path, corrupt_history)
-        .await
-        .unwrap();
+    tokio::fs::write(&sidecar_path, history).await.unwrap();
+    let buffer_capacity = u32::try_from(history.len() * 2).unwrap();
+    config.session_history_materialization =
+        SessionHistoryMaterializationResources::with_test_capacities(1, buffer_capacity);
     let server = MockServer::start_async().await;
     let history_mock = server
         .mock_async(|when, then| {
@@ -1542,8 +1553,17 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
         },
     });
 
+    let blocker_claim = SessionHistoryBufferClaim::sidecar_raw(buffer_capacity as u64).unwrap();
+    let blocker = config
+        .session_history_materialization
+        .acquire_buffer(blocker_claim, &tokio_util::sync::CancellationToken::new())
+        .await
+        .result
+        .unwrap();
+    let sidecar_path_for_mutation = sidecar_path.clone();
+
     let mut telemetry = test_telemetry(&config, &ctx);
-    let result = run_in_sandbox(
+    let run = run_in_sandbox(
         &sandbox,
         &ctx,
         &config,
@@ -1562,9 +1582,19 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
                 },
                 fallback: None,
             }),
-    )
-    .await
-    .unwrap();
+    );
+    let release = async {
+        config
+            .session_history_materialization
+            .wait_for_buffer_submissions(2)
+            .await;
+        tokio::fs::write(&sidecar_path_for_mutation, corrupt_history)
+            .await
+            .unwrap();
+        drop(blocker);
+    };
+    let (result, ()) = tokio::join!(run, release);
+    let result = result.unwrap();
 
     assert!(result.failure.is_none());
     let writes = sandbox.write_file_calls();
@@ -1582,6 +1612,101 @@ async fn run_in_sandbox_falls_back_when_workspace_sidecar_hash_mismatches() {
         "materialize_error",
     );
     assert_successful_action_once(&ops, "session_history_download");
+    assert_eq!(
+        ops.iter()
+            .filter(|(action, success, _)| {
+                action == "session_history_buffer_admission" && *success
+            })
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_releases_sidecar_buffer_after_restore_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    sandbox.push_write_file_result(Err(sandbox_write_file_error("sidecar restore failed")));
+    let history = br#"{"type":"init"}"#;
+    let sidecar_path = dir.path().join("session-history.blob");
+    tokio::fs::write(&sidecar_path, history).await.unwrap();
+    config.session_history_materialization =
+        SessionHistoryMaterializationResources::with_test_capacities(
+            1,
+            u32::try_from(history.len() * 2).unwrap(),
+        );
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-sidecar-restore-fallback-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                encoding: None,
+                raw_size: history.len() as u64,
+                encoded_size: history.len() as u64,
+                download_source: None,
+            },
+        },
+    });
+
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = tokio::time::timeout(
+        RUN_IN_SANDBOX_TEST_TIMEOUT,
+        run_in_sandbox(
+            &sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                .with_session_history_restore_plan(SessionHistoryRestorePlan::LocalSidecar {
+                    sidecar: WorkspaceSessionHistorySidecar {
+                        path: sidecar_path,
+                        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+                        encoded_size: history.len() as u64,
+                    },
+                    fallback: None,
+                }),
+        ),
+    )
+    .await
+    .expect("remote fallback should not remain blocked by the sidecar buffer")
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 2);
+    assert_eq!(writes[1].content, history);
+    history_mock.assert_calls_async(1).await;
+    let ops = telemetry.pending_ops_snapshot();
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_workspace_cache_restore",
+        "restore_error",
+    );
+    assert_successful_action_once(&ops, "session_history_download");
+    assert_eq!(
+        ops.iter()
+            .filter(|(action, success, _)| {
+                action == "session_history_buffer_admission" && *success
+            })
+            .count(),
+        2
+    );
 }
 
 #[tokio::test]
@@ -1789,7 +1914,7 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
 
     let materializer = SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
         &config.http,
-        &config.session_history_cpu,
+        &config.session_history_materialization,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -2525,7 +2650,7 @@ async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_histor
         sandbox.push_read_file_result(Ok(None));
         let materializer = SessionHistoryMaterializer::start_cancellable(
             &config.http,
-            &config.session_history_cpu,
+            &config.session_history_materialization,
             ctx.resume_session.as_ref(),
             effective_cli_framework(&ctx.cli_agent_type),
             tokio_util::sync::CancellationToken::new(),
@@ -2636,7 +2761,7 @@ async fn run_in_sandbox_records_requested_larger_prefix_outcomes_without_changin
         sandbox.push_read_file_result(Ok(None));
         let materializer = SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
             &config.http,
-            &config.session_history_cpu,
+            &config.session_history_materialization,
             ctx.resume_session.as_ref(),
             effective_cli_framework(&ctx.cli_agent_type),
             tokio_util::sync::CancellationToken::new(),
@@ -2753,7 +2878,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
     sandbox.push_read_file_result(Ok(None));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
-        &config.session_history_cpu,
+        &config.session_history_materialization,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
@@ -2846,7 +2971,7 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
     ))));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
-        &config.session_history_cpu,
+        &config.session_history_materialization,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
