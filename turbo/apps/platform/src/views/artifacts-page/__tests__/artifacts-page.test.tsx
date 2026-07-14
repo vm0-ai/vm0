@@ -795,6 +795,46 @@ describe("artifacts page", () => {
     ).toHaveAttribute("href", cdnImageUrl);
   });
 
+  it.each(["application/zip", "application/x-zip-compressed"])(
+    "downloads %s artifacts from the actions menu",
+    async (contentType) => {
+      setupTeam();
+      const scope = testAuthScope("download-zip");
+      const artifact = createArtifact({
+        filename: "launch-assets.zip",
+        contentType,
+        url: "https://artifacts.example.com/launch-assets.zip",
+        artifactKind: undefined,
+      });
+      const downloads = context.mocks.browser.blobDownload();
+      context.mocks.http.get(artifact.url, () => {
+        return new Response("zip contents", {
+          headers: { "Content-Type": contentType },
+        });
+      });
+      mockArtifacts([artifact]);
+
+      setupArtifactsPage({ scope });
+
+      await screen.findByText("launch-assets.zip");
+      click(buttonByLabel("More actions for launch-assets.zip"));
+      const downloadItem = screen
+        .getByText("Download")
+        .closest("[role=menuitem]");
+      expect(downloadItem).not.toBeNull();
+      expect(
+        downloadItem?.querySelector(".tabler-icon-download"),
+      ).not.toBeNull();
+      expect(screen.queryByText("Open a new tab")).not.toBeInTheDocument();
+
+      click(screen.getByText("Download"));
+      await waitFor(() => {
+        expect(downloads.downloads).toHaveLength(1);
+      });
+      expect(downloads.downloads[0]?.filename).toBe("launch-assets.zip");
+    },
+  );
+
   it("opens previewable artifacts in the lightbox without split view", async () => {
     setupTeam();
     const scope = testAuthScope("preview-lightbox");
