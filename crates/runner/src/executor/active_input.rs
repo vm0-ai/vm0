@@ -1,3 +1,31 @@
+//! Ordered active-input forwarding from the runner queue to guest process control.
+//!
+//! # Ordering and consumption
+//!
+//! Polling begins at the first sequence, and `ForwardState::next_sequence` always
+//! identifies the first unconsumed entry. Entries below it are stale; an entry above
+//! it exposes a gap, so later entries cannot pass it. A duplicate recent message ID,
+//! payload serialization failure, successful control delivery, or non-retryable
+//! control error consumes the current sequence. Retryable control errors leave that
+//! sequence pending and stop the pass so it can be retried.
+//!
+//! # Bounded deduplication
+//!
+//! Successfully delivered message IDs and IDs dropped after a non-retryable control
+//! error are remembered in a bounded set with FIFO eviction. A repeated ID still in
+//! that window consumes its new sequence without another control call. Because the
+//! window is bounded and a timed-out control call may have reached the guest, this is
+//! recent-ID deduplication, not a global at-most-once or exactly-once guarantee.
+//!
+//! # Polling and cancellation
+//!
+//! Progress and retry-pending outcomes use the fast poll interval. Idle and gap-only
+//! passes back off to the configured cap; a pass that progresses before reaching a
+//! gap still counts as progress. Stop and job cancellation take priority at the read
+//! and sleep selection boundaries, but are not selected during a forwarding pass.
+//! Each control call has a deadline, and explicit stop bounds task join time before
+//! aborting the task.
+
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 
@@ -16,14 +44,20 @@ const ACTIVE_INPUT_FORWARDER_JOIN_TIMEOUT: Duration = Duration::from_secs(1);
 const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 const FIRST_ACTIVE_INPUT_SEQUENCE: u64 = 1;
 
+/// Result of one ordered queue pass, used to choose the next poll interval.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ForwardOutcome {
+    /// No sequence was consumed and no gap or retryable control error stopped the pass.
     Idle,
+    /// At least one sequence was consumed, including before a later gap was found.
     Progress,
+    /// A retryable control error left the current sequence unconsumed.
     RetryPending,
+    /// The next sequence was absent before the pass made progress.
     SequenceGap,
 }
 
+/// Adaptive poll delay that backs off only after idle or gap-only passes.
 struct PollCadence {
     next_idle_interval: Duration,
 }
@@ -37,6 +71,7 @@ impl Default for PollCadence {
 }
 
 impl PollCadence {
+    /// Returns the next delay and updates the backoff state for `outcome`.
     fn next_interval_after(&mut self, outcome: ForwardOutcome) -> Duration {
         match outcome {
             ForwardOutcome::Progress | ForwardOutcome::RetryPending => {
@@ -57,6 +92,10 @@ impl PollCadence {
     }
 }
 
+/// Mutable ordering cursor and bounded recent-message deduplication state.
+///
+/// `next_sequence` identifies the first unconsumed entry. The set and queue contain
+/// the same unique message IDs, with the queue preserving their FIFO eviction order.
 struct ForwardState {
     seen_message_ids: HashSet<String>,
     seen_message_id_order: VecDeque<String>,
@@ -74,10 +113,14 @@ impl Default for ForwardState {
 }
 
 impl ForwardState {
+    /// Advances past a current sequence that the caller intentionally consumed.
+    ///
+    /// Gaps and retry-pending entries must never call this method.
     fn consume_sequence(&mut self) {
         self.next_sequence = self.next_sequence.saturating_add(1);
     }
 
+    /// Records an ID once in membership and FIFO order, evicting old IDs from both.
     fn remember_message_id(&mut self, message_id: String) {
         if !self.seen_message_ids.insert(message_id.clone()) {
             return;
