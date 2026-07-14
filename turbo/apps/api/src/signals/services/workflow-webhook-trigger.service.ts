@@ -475,6 +475,7 @@ async function insertWebhookDelivery(
     .insert(zeroWorkflowWebhookDeliveries)
     .values({
       triggerId: args.triggerId,
+      automationId: args.triggerId,
       deliveryKey: args.deliveryKey,
       bodySha256: args.bodySha256,
       status: "accepted",
