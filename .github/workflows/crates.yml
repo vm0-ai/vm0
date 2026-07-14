@@ -1348,7 +1348,7 @@ jobs:
           # arrive through a non-runner interface before a TCP handshake or
           # DNS response reaches the process. Exercise IPv4/IPv6 and UDP/TCP
           # through a temporary, deliberately non-matching veth.
-          exec {DNS_ISOLATION_LOCK_FD}>/tmp/vm0-runner-exec-dns-isolation.lock \
+          exec {DNS_ISOLATION_LOCK_FD}<>/tmp/vm0-runner-exec-dns-isolation.lock \
             || fail "failed to open DNS isolation lock"
           flock -w 30 "$DNS_ISOLATION_LOCK_FD" \
             || fail "timed out waiting for DNS isolation lock"
