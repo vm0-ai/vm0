@@ -437,6 +437,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._class_nested_scope_alias_scopes.pop()
         self._exception_alias_scopes.pop()
         if class_exception_state.may_raise:
+            outer_visible_names = (
+                (class_failure_aliases | class_exception_state.aliases)
+                - class_body_bound_names
+                - class_body_global_names
+                - type_param_names
+            )
+            class_failure_aliases.difference_update(outer_visible_names)
+            class_failure_aliases.update(class_exception_state.aliases & outer_visible_names)
             self._record_exception_aliases(class_failure_aliases)
         self._metadata_aliases.discard(node.name)
 

@@ -182,3 +182,27 @@ def finally_updates_empty_normal_path_before_raise(flow, manager):
             metadata = flow.metadata
         raise RuntimeError()
     return metadata["firewall_action"]
+
+
+def class_nonlocal_adds_alias_before_failure(flow, manager):
+    metadata = {}
+    with manager:
+
+        class Broken:
+            nonlocal metadata
+            metadata = flow.metadata
+            raise RuntimeError()
+
+    return metadata["firewall_billable"]
+
+
+def class_nonlocal_removes_alias_before_failure(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        class Broken:
+            nonlocal metadata
+            metadata = {}
+            raise RuntimeError()
+
+    return metadata["firewall_error"]
