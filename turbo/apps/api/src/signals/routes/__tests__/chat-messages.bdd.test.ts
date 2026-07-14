@@ -3594,6 +3594,10 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
       lastEventSequence: 0,
     });
     await callbackQueryStarted.promise;
+    // Completing the anchor also starts the org run-queue drain. Pin that
+    // known waiter first so the next two waiters identify the inline send and
+    // the terminal callback's chat-message drain respectively.
+    await expect.poll(admissionWaiterCount).toBe(1);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -3615,10 +3619,10 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
         });
       })
       .toBe(true);
-    await expect.poll(admissionWaiterCount).toBe(1);
+    await expect.poll(admissionWaiterCount).toBe(2);
 
     releaseCallbackQuery.resolve(undefined);
-    await expect.poll(admissionWaiterCount).toBe(2);
+    await expect.poll(admissionWaiterCount).toBe(3);
     releaseAdmissionLock.resolve(undefined);
 
     const sent = await send;

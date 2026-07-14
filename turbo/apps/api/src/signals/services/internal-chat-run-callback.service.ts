@@ -11,6 +11,7 @@ import {
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -112,6 +113,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_session_state"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prior_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_feature_switch_context"
+  | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_attachments"
@@ -412,6 +414,10 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly computerUseHostGrant: {
+    readonly hostId: string;
+    readonly displayName: string;
+  } | null;
   readonly beforeDispatch?: (args: {
     readonly runId: string;
     readonly status: "queued" | "pending";
@@ -472,6 +478,7 @@ function buildQueuedCreateZeroRunArgs(
     },
     apiStartTime,
     chatThreadId: input.threadId,
+    computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.queuedMessage.modelProviderId ?? undefined,
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
@@ -1246,17 +1253,30 @@ function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
   generationTemplatePrompt: string,
+  computerUseHostDisplayName: string | null,
 ): string {
   return [
     buildWebChatPrompt(),
     priorContext,
     incompleteContext,
     generationTemplatePrompt,
+    computerUseHostDisplayName
+      ? buildComputerUseSystemPrompt(computerUseHostDisplayName)
+      : "",
   ]
     .filter((part) => {
       return part.length > 0;
     })
     .join("\n\n");
+}
+
+function buildComputerUseSystemPrompt(displayName: string): string {
+  return [
+    "# Computer Use",
+    `Computer Use is enabled for this run on ${displayName}.`,
+    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
+  ].join("\n");
 }
 
 function formatAttachFileIds(
@@ -1536,6 +1556,38 @@ async function loadAgentForAutoSend(
   return agent ?? null;
 }
 
+async function loadComputerUseHostGrantForAutoSend(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<{
+  readonly hostId: string;
+  readonly displayName: string;
+} | null> {
+  const [host] = await args.db
+    .select({
+      hostId: computerUseHosts.id,
+      displayName: computerUseHosts.displayName,
+    })
+    .from(chatThreads)
+    .innerJoin(
+      computerUseHosts,
+      eq(chatThreads.computerUseHostId, computerUseHosts.id),
+    )
+    .where(
+      and(
+        eq(chatThreads.id, args.threadId),
+        eq(chatThreads.userId, args.userId),
+        eq(computerUseHosts.orgId, args.orgId),
+        eq(computerUseHosts.userId, args.userId),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+  return host ?? null;
+}
+
 async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
@@ -1712,6 +1764,19 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
+  const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_computer_use_host",
+    "nested",
+    () => {
+      return loadComputerUseHostGrantForAutoSend({
+        db: args.db,
+        threadId: args.threadId,
+        orgId: args.agent.orgId,
+        userId: args.userId,
+      });
+    },
+  );
   const prompt = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
@@ -1736,9 +1801,11 @@ async function buildCreateQueuedChatRunInput(args: {
       incompleteContext,
       priorContext,
       generationTemplatePrompt,
+      computerUseHostGrant?.displayName ?? null,
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,
+    computerUseHostGrant,
   };
 }
 
