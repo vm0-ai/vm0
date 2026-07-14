@@ -173,7 +173,8 @@ set -euo pipefail
 pgid_file="$1"
 started_file="$2"
 survived_file="$3"
-mode="${4:-fail}"
+release_file="$4"
+mode="${5:-fail}"
 
 printf '%s' "$$" > "$pgid_file"
 if [[ "$mode" == "fail" ]]; then
@@ -183,15 +184,13 @@ fi
 (
   trap '' HUP TERM INT
   printf started > "$started_file"
-  sleep 0.1
+  while [[ ! -f "$release_file" ]]; do
+    sleep 0.01
+  done
   printf survived > "$survived_file"
 ) &
 
-while [[ ! -f "$started_file" ]]; do
-  sleep 0.01
-done
-
-sleep 30
+wait
 "#,
         )
         .await
@@ -277,10 +276,15 @@ sleep 30
         let pgid = dir.path().join("pgid");
         let started = dir.path().join("started");
         let survived = dir.path().join("survived");
+        let release = dir.path().join("release");
         let script = write_process_group_test_script(dir.path()).await;
 
         let mut cmd = rootfs_script_command(&script);
-        cmd.arg(&pgid).arg(&started).arg(&survived).arg("fail");
+        cmd.arg(&pgid)
+            .arg(&started)
+            .arg(&survived)
+            .arg(&release)
+            .arg("fail");
 
         let status = run_rootfs_script(cmd, "process-group-test.sh")
             .await
@@ -296,16 +300,22 @@ sleep 30
         let pgid = dir.path().join("pgid");
         let started = dir.path().join("started");
         let survived = dir.path().join("survived");
+        let release = dir.path().join("release");
         let script = write_process_group_test_script(dir.path()).await;
 
         let mut cmd = rootfs_script_command(&script);
-        cmd.arg(&pgid).arg(&started).arg(&survived).arg("wait");
+        cmd.arg(&pgid)
+            .arg(&started)
+            .arg(&survived)
+            .arg(&release)
+            .arg("wait");
 
         let handle =
             tokio::spawn(async move { run_rootfs_script(cmd, "process-group-test.sh").await });
         wait_for_file(&started).await;
         handle.abort();
         let _ = handle.await;
+        tokio::fs::write(&release, b"release").await.unwrap();
 
         assert_process_group_stopped_without_survival_marker(&pgid, &survived).await;
     }
