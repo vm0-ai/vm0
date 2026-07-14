@@ -29,6 +29,7 @@ function unclaimedQueuedUserMessageCondition(
     eq(chatMessages.chatThreadId, threadId),
     eq(chatMessages.role, "user"),
     isNull(chatMessages.runId),
+    isNull(chatMessages.error),
     isNull(chatMessages.revokesMessageId),
     isNull(chatMessages.interruptsRunId),
     sql`NOT EXISTS (

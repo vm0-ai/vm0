@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -25,6 +26,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
+import { db } from "../../../lib/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -45,6 +47,8 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provider-state";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import {
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
@@ -3504,6 +3508,158 @@ describe("CHAT-02: queue-first sends (ChatMessageQueue switch)", () => {
       .toBe(true);
 
     await cancelChatRun(actor, runId);
+  }, 90_000);
+
+  it("serializes a terminal drain against an idle queue-first send", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor for queue-first sends");
+    }
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.ChatMessageQueue]: true },
+    );
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "terminal drain race anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+
+    // Hold the real org admission lock after the inline send has persisted its
+    // queue-first row. This lets both the inline path and terminal callback
+    // drain reach run insertion before either can claim the message.
+    const lockHolderStarted = createDeferredPromise<number>(context.signal);
+    const releaseAdmissionLock = createDeferredPromise<void>(context.signal);
+    const admissionLock = db().transaction(async (tx) => {
+      const result = await tx.execute<{ readonly pid: number }>(sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext(${actor.orgId}))
+      `);
+      const holderPid = result.rows[0]?.pid;
+      if (!holderPid) {
+        throw new Error("Expected the admission lock holder pid");
+      }
+      lockHolderStarted.resolve(holderPid);
+      await releaseAdmissionLock.promise;
+    });
+
+    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
+    onTestFinished(async () => {
+      if (!releaseCallbackQuery.settled()) {
+        releaseCallbackQuery.resolve(undefined);
+      }
+      if (!releaseAdmissionLock.settled()) {
+        releaseAdmissionLock.resolve(undefined);
+      }
+      await admissionLock;
+    });
+
+    const holderPid = await lockHolderStarted.promise;
+    const admissionWaiterCount = async (): Promise<number> => {
+      const result = await db().execute<{ readonly waiterCount: number }>(sql`
+        SELECT count(*)::int AS "waiterCount"
+        FROM pg_locks AS waiting
+        WHERE waiting.locktype = 'advisory'
+          AND NOT waiting.granted
+          AND (waiting.classid, waiting.objid, waiting.objsubid) IN (
+            SELECT held.classid, held.objid, held.objsubid
+            FROM pg_locks AS held
+            WHERE held.locktype = 'advisory'
+              AND held.pid = ${holderPid}
+              AND held.granted
+          )
+      `);
+      return result.rows[0]?.waiterCount ?? 0;
+    };
+
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (!apl.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!callbackQueryStarted.settled()) {
+        callbackQueryStarted.resolve(undefined);
+      }
+      return releaseCallbackQuery.promise.then(() => {
+        return [assistantEvent(0, "terminal callback race complete")];
+      });
+    });
+
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await callbackQueryStarted.promise;
+
+    const prompt = "terminal drain and inline send share one claim";
+    const messageId = randomUUID();
+    const send = chat.requestSendMessage(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientMessageId: messageId,
+      },
+      [201],
+    );
+    await expect
+      .poll(async () => {
+        const messages = await chat.listThreadMessages(actor, anchor.threadId);
+        return messages.messages.some((message) => {
+          return message.id === messageId;
+        });
+      })
+      .toBe(true);
+    await expect.poll(admissionWaiterCount).toBe(1);
+
+    releaseCallbackQuery.resolve(undefined);
+    await expect.poll(admissionWaiterCount).toBe(2);
+    releaseAdmissionLock.resolve(undefined);
+
+    const sent = await send;
+    await admissionLock;
+    await flushWaitUntilForTest();
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected one race winner to own the queued message");
+    }
+
+    const messages = await chat.listThreadMessages(actor, anchor.threadId);
+    const claimed = userMessages(messages.messages).filter((message) => {
+      return message.id === messageId && message.runId !== undefined;
+    });
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.runId).toBe(sent.body.runId);
+    expect(
+      messages.messages.some((message) => {
+        return message.revokesMessageId === messageId;
+      }),
+    ).toBeFalsy();
+
+    const runList = await api.listAgentRuns(actor, {
+      status: "queued,pending,running,completed,failed,timeout,cancelled",
+      limit: 100,
+    });
+    const candidates = runList.runs.filter((run) => {
+      return run.prompt === prompt;
+    });
+    expect(candidates).toHaveLength(2);
+    expect(
+      candidates.filter((run) => {
+        return ["queued", "pending", "running"].includes(run.status);
+      }),
+    ).toStrictEqual([expect.objectContaining({ id: sent.body.runId })]);
+    expect(
+      candidates.filter((run) => {
+        return run.id !== sent.body.runId;
+      }),
+    ).toStrictEqual([expect.objectContaining({ status: "cancelled" })]);
+
+    await cancelChatRun(actor, sent.body.runId);
   }, 90_000);
 
   it("claims queued messages in place on auto-send and recalls by deletion", async () => {
