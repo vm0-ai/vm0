@@ -106,6 +106,7 @@ interface WorkflowTriggerRunInput {
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly InternalRunCallbackInput[];
   readonly zeroRunMetadata: ReturnType<typeof workflowTriggerRunMetadata>;
+  readonly memoryEmbeddingWorkflowTriggerId?: string;
 }
 
 function generateCallbackSecret(): string {
@@ -369,6 +370,11 @@ async function buildTimedWorkflowTriggerRunInput(args: {
           args.trigger,
           args.command.triggerBrief,
         ),
+        ...(args.trigger.kind === "schedule" &&
+        (args.trigger.scheduleType === "cron" ||
+          args.trigger.scheduleType === "loop")
+          ? { memoryEmbeddingWorkflowTriggerId: args.trigger.id }
+          : {}),
       };
     },
   );
@@ -573,6 +579,8 @@ export const runWorkflowTriggerNow$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
+        memoryEmbeddingWorkflowTriggerId:
+          runInput.memoryEmbeddingWorkflowTriggerId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         timing,
       },

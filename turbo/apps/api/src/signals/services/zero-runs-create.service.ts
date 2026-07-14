@@ -48,6 +48,7 @@ import {
   zeroMemoryRuntimeRetrievalQuery,
 } from "./zero-memory-injection.service";
 import { loadGoalMemoryEmbedding } from "./zero-goal-memory-embedding.service";
+import { loadWorkflowTriggerMemoryEmbedding } from "./zero-workflow-trigger-memory-embedding.service";
 import {
   measureZeroMemoryTiming,
   type ZeroMemoryTimingObserver,
@@ -185,6 +186,7 @@ interface CreateZeroRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly codexServiceTier?: "fast";
   readonly zeroRunMetadata?: ZeroRunMetadata;
+  readonly memoryEmbeddingWorkflowTriggerId?: string;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
@@ -705,6 +707,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly retrievalQuery?: string;
     readonly timing?: ZeroMemoryTimingObserver;
     readonly goalId?: string;
+    readonly workflowTriggerId?: string;
   },
 ): Promise<string | undefined> {
   const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
@@ -716,6 +719,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
         return undefined;
       }
       const goalId = args.goalId;
+      const workflowTriggerId = args.workflowTriggerId;
       const result = await buildZeroMemoryRuntimeInjection(db, {
         orgId: args.orgId,
         userId: args.userId,
@@ -733,7 +737,16 @@ async function loadMemoryRuntimeAppendSystemPrompt(
                 });
               },
             }
-          : {}),
+          : workflowTriggerId
+            ? {
+                semanticEmbeddingLoader: async (query: string) => {
+                  return await loadWorkflowTriggerMemoryEmbedding(db, {
+                    workflowTriggerId,
+                    query,
+                  });
+                },
+              }
+            : {}),
       });
       return result.appendSystemPrompt || undefined;
     },
@@ -1022,6 +1035,11 @@ async function buildZeroFinalAppendSystemPrompt(args: {
       timing: zeroMemoryTimingObserver(args.timing),
       ...(command.zeroRunMetadata?.goalId
         ? { goalId: command.zeroRunMetadata.goalId }
+        : {}),
+      ...(command.memoryEmbeddingWorkflowTriggerId
+        ? {
+            workflowTriggerId: command.memoryEmbeddingWorkflowTriggerId,
+          }
         : {}),
     });
   return createRunBody({

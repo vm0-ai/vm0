@@ -4,12 +4,13 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -48,6 +49,10 @@ function detailClient() {
   return setupApp({ context })(zeroWorkflowsDetailContract);
 }
 
+function memoryClient() {
+  return setupApp({ context })(zeroMemoryContract);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -67,7 +72,57 @@ function sandboxOperationEventsForRun(
   });
 }
 
+function capturedRunContextSnapshot(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  const calls = context.mocks.axiom.ingest.mock.calls;
+  for (let index = calls.length - 1; index >= 0; index--) {
+    const call = calls[index];
+    if (!call || call[0] !== "run-context" || !Array.isArray(call[1])) {
+      continue;
+    }
+    const snapshot = call[1].find((entry): entry is Record<string, unknown> => {
+      return isRecord(entry) && entry.runId === runId;
+    });
+    if (snapshot) {
+      return [snapshot];
+    }
+  }
+  return [];
+}
+
 const WORKFLOW_NAME = "trigger-workflow";
+const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
+const SEMANTIC_EMBEDDING_TIMING_ACTION =
+  "api_dispatch_pre_create_zero_memory_profile_search_semantic_embedding";
+const TEST_MEMORY_EMBEDDING = Array.from({ length: 1536 }, (_, index) => {
+  return index === 0 ? 1 : 0;
+});
+const FORBIDDEN_MEMORY_CACHE_TIMING_KEYS = [
+  "org_id",
+  "orgId",
+  "user_id",
+  "userId",
+  "workflow_id",
+  "workflowId",
+  "workflow_trigger_id",
+  "workflowTriggerId",
+  "workflow_name",
+  "workflowName",
+  "model",
+  "embedding_model",
+  "embeddingModel",
+  "embedding",
+  "query",
+  "query_hash",
+  "queryHash",
+  "prompt",
+  "url",
+  "payload",
+  "environment",
+  "secret",
+  "secrets",
+] as const;
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_EMAIL = "workflow-user@example.com";
 const GOOGLE_CALENDAR_EMAIL = "calendar-user@example.com";
@@ -86,6 +141,11 @@ interface WorkflowsFixture {
   readonly userId: string;
 }
 
+interface ObservedEmbeddingRequest {
+  readonly model: string;
+  readonly input: string;
+}
+
 interface TriggerScenario {
   readonly fixture: WorkflowsFixture;
   readonly actor: ApiTestUser;
@@ -93,6 +153,120 @@ interface TriggerScenario {
   readonly workflowId: string;
   readonly customerId: string;
   readonly subscriptionId: string;
+}
+
+function configureWorkflowEmbeddingMock(args: {
+  readonly requests: ObservedEmbeddingRequest[];
+  readonly shouldFail?: (request: ObservedEmbeddingRequest) => boolean;
+}): void {
+  mockEnv("VITEST", "false");
+  mockEnv("OPENAI_API_KEY", "test-openai-key");
+  mockOptionalEnv("ZERO_MEMORY_EMBEDDING_PROVIDER", undefined);
+  server.use(
+    http.post(OPENAI_EMBEDDINGS_URL, async ({ request }) => {
+      const body: unknown = await request.json();
+      if (
+        !isRecord(body) ||
+        typeof body.model !== "string" ||
+        typeof body.input !== "string"
+      ) {
+        throw new Error("Expected an OpenAI embedding request");
+      }
+      const observed = { model: body.model, input: body.input };
+      args.requests.push(observed);
+      if (args.shouldFail?.(observed)) {
+        return HttpResponse.json(
+          { error: { message: "embedding unavailable" } },
+          { status: 503 },
+        );
+      }
+      return HttpResponse.json({
+        data: [{ embedding: TEST_MEMORY_EMBEDDING }],
+      });
+    }),
+  );
+}
+
+async function enableWorkflowRuntimeMemory(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.RelationshipMemory]: true,
+    [FeatureSwitchKey.RelationshipMemoryRuntimeInjection]: true,
+  });
+}
+
+async function runWorkflowTriggerAndReadContext(
+  actor: ApiTestUser,
+  triggerId: string,
+): Promise<{ readonly runId: string; readonly appendSystemPrompt: string }> {
+  const run = await accept(
+    triggersClient().run({
+      headers: authHeaders(),
+      params: { id: triggerId },
+    }),
+    [201],
+  );
+  context.mocks.axiom.query.mockResolvedValueOnce(
+    capturedRunContextSnapshot(run.body.runId),
+  );
+  const runContext = await runs.requestRunContext(actor, run.body.runId, [200]);
+  if (runContext.status !== 200) {
+    throw new Error("Expected workflow trigger run context");
+  }
+  return {
+    runId: run.body.runId,
+    appendSystemPrompt: runContext.body.appendSystemPrompt ?? "",
+  };
+}
+
+async function cancelWorkflowTriggerRun(
+  actor: ApiTestUser,
+  runId: string,
+): Promise<void> {
+  await runs.requestCancelRun(actor, runId, [200]);
+}
+
+function expectSemanticEmbeddingTiming(
+  runId: string,
+  args: {
+    readonly cacheResult?:
+      | "hit"
+      | "miss_absent"
+      | "miss_model_changed"
+      | "miss_query_changed"
+      | "miss_invalid"
+      | "miss_read_failed"
+      | "miss_write_failed";
+    readonly embeddingResult: "present" | "empty";
+  },
+): Record<string, unknown> {
+  const event = sandboxOperationEventsForRun(runId).find((candidate) => {
+    return candidate.op_type === SEMANTIC_EMBEDDING_TIMING_ACTION;
+  });
+  expect(event).toStrictEqual(
+    expect.objectContaining({
+      op_type: SEMANTIC_EMBEDDING_TIMING_ACTION,
+      memory_profile_semantic_embedding_result: args.embeddingResult,
+      ...(args.cacheResult
+        ? {
+            memory_profile_semantic_embedding_cache_result: args.cacheResult,
+          }
+        : {}),
+    }),
+  );
+  if (!event) {
+    throw new Error("Expected semantic embedding timing");
+  }
+  if (args.cacheResult === undefined) {
+    expect(event).not.toHaveProperty(
+      "memory_profile_semantic_embedding_cache_result",
+    );
+  }
+  for (const key of FORBIDDEN_MEMORY_CACHE_TIMING_KEYS) {
+    expect(event).not.toHaveProperty(key);
+  }
+  return event;
 }
 
 function futureIso(offsetMs: number): string {
@@ -2270,6 +2444,368 @@ describe("zero workflow triggers", () => {
     await expect(wf.readThreadSelectedModel(String(threadId))).resolves.toBe(
       "claude-sonnet-4-6",
     );
+  });
+
+  it("reuses recurring trigger query embeddings while keeping memory retrieval fresh", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { fixture, actor, workflowId } = await setupFixture();
+    await enableWorkflowRuntimeMemory(fixture);
+    const initialEmbeddingModel = "test-workflow-embedding";
+    const changedEmbeddingModel = "test-workflow-embedding-v2";
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", initialEmbeddingModel);
+    const embeddingRequests: ObservedEmbeddingRequest[] = [];
+    configureWorkflowEmbeddingMock({ requests: embeddingRequests });
+
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "Keep recurring workflow reports concise.",
+          kind: "preference",
+          confidence: 95,
+          entityDisplayName: "Workflow preferences",
+        },
+      }),
+      [200],
+    );
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [201],
+    );
+    const initialQuery = `/${WORKFLOW_NAME}`;
+
+    const first = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === initialEmbeddingModel &&
+          request.input === initialQuery
+        );
+      }),
+    ).toHaveLength(1);
+    expectSemanticEmbeddingTiming(first.runId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, first.runId);
+
+    const freshMemoryText =
+      "The recurring report must include the newly approved launch control.";
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: freshMemoryText,
+          kind: "key_fact",
+          confidence: 95,
+          entityDisplayName: "Launch reporting",
+        },
+      }),
+      [200],
+    );
+    const second = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(second.appendSystemPrompt).toContain(freshMemoryText);
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === initialEmbeddingModel &&
+          request.input === initialQuery
+        );
+      }),
+    ).toHaveLength(1);
+    expectSemanticEmbeddingTiming(second.runId, {
+      cacheResult: "hit",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, second.runId);
+
+    const renamedWorkflow = "renamed-trigger-workflow";
+    await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { name: renamedWorkflow },
+      }),
+      [200],
+    );
+    const renamedQuery = `/${renamedWorkflow}`;
+    const renamed = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === initialEmbeddingModel &&
+          request.input === renamedQuery
+        );
+      }),
+    ).toHaveLength(1);
+    expectSemanticEmbeddingTiming(renamed.runId, {
+      cacheResult: "miss_query_changed",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, renamed.runId);
+
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", changedEmbeddingModel);
+    const changedModel = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === changedEmbeddingModel &&
+          request.input === renamedQuery
+        );
+      }),
+    ).toHaveLength(1);
+    expectSemanticEmbeddingTiming(changedModel.runId, {
+      cacheResult: "miss_model_changed",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, changedModel.runId);
+
+    await accept(
+      triggersClient().disable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    await accept(
+      triggersClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    const reenabled = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === changedEmbeddingModel &&
+          request.input === renamedQuery
+        );
+      }),
+    ).toHaveLength(1);
+    expectSemanticEmbeddingTiming(reenabled.runId, {
+      cacheResult: "hit",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, reenabled.runId);
+
+    await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: futureIso(86_400_000),
+            timezone: "UTC",
+          },
+        },
+      }),
+      [200],
+    );
+    await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [200],
+    );
+    const afterCleanup = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === changedEmbeddingModel &&
+          request.input === renamedQuery
+        );
+      }),
+    ).toHaveLength(2);
+    expectSemanticEmbeddingTiming(afterCleanup.runId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, afterCleanup.runId);
+  });
+
+  it("keeps one-time and event trigger embeddings outside the recurring cache", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { fixture, actor, workflowId } = await setupFixture("team");
+    await enableWorkflowRuntimeMemory(fixture);
+    await enableWebhookWorkflowTriggers(fixture);
+    const embeddingModel = "test-workflow-embedding";
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", embeddingModel);
+    const embeddingRequests: ObservedEmbeddingRequest[] = [];
+    configureWorkflowEmbeddingMock({ requests: embeddingRequests });
+
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: "Use the direct provider path for ineligible trigger runs.",
+          kind: "preference",
+          confidence: 95,
+          entityDisplayName: "Trigger behavior",
+        },
+      }),
+      [200],
+    );
+    const onceTrigger = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: {
+            type: "once",
+            atTime: futureIso(86_400_000),
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    const query = `/${WORKFLOW_NAME}`;
+
+    const firstOnce = await runWorkflowTriggerAndReadContext(
+      actor,
+      onceTrigger.body.id,
+    );
+    expectSemanticEmbeddingTiming(firstOnce.runId, {
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, firstOnce.runId);
+    const secondOnce = await runWorkflowTriggerAndReadContext(
+      actor,
+      onceTrigger.body.id,
+    );
+    expectSemanticEmbeddingTiming(secondOnce.runId, {
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, secondOnce.runId);
+
+    const eventTrigger = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    const eventRun = await runWorkflowTriggerAndReadContext(
+      actor,
+      eventTrigger.body.id,
+    );
+    expectSemanticEmbeddingTiming(eventRun.runId, {
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, eventRun.runId);
+
+    expect(
+      embeddingRequests.filter((request) => {
+        return request.model === embeddingModel && request.input === query;
+      }),
+    ).toHaveLength(3);
+  });
+
+  it("retries a recurring trigger embedding after the provider fails open", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { fixture, actor, workflowId } = await setupFixture();
+    await enableWorkflowRuntimeMemory(fixture);
+    const embeddingModel = "test-workflow-embedding";
+    mockOptionalEnv("ZERO_MEMORY_EMBEDDING_MODEL", embeddingModel);
+    const query = `/${WORKFLOW_NAME}`;
+    let embeddingShouldFail = true;
+    const embeddingRequests: ObservedEmbeddingRequest[] = [];
+    configureWorkflowEmbeddingMock({
+      requests: embeddingRequests,
+      shouldFail(request) {
+        return embeddingShouldFail && request.input === query;
+      },
+    });
+
+    const staticMemoryText =
+      "The provider failure must preserve this static workflow preference.";
+    await accept(
+      memoryClient().createMemory({
+        headers: authHeaders(),
+        body: {
+          text: staticMemoryText,
+          kind: "preference",
+          confidence: 95,
+          entityDisplayName: "Workflow fallback",
+        },
+      }),
+      [200],
+    );
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [201],
+    );
+
+    const failed = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(failed.appendSystemPrompt).toContain(staticMemoryText);
+    expectSemanticEmbeddingTiming(failed.runId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "empty",
+    });
+    await cancelWorkflowTriggerRun(actor, failed.runId);
+
+    embeddingShouldFail = false;
+    const retried = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(retried.appendSystemPrompt).toContain(staticMemoryText);
+    expectSemanticEmbeddingTiming(retried.runId, {
+      cacheResult: "miss_absent",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, retried.runId);
+
+    const cached = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(cached.appendSystemPrompt).toContain(staticMemoryText);
+    expectSemanticEmbeddingTiming(cached.runId, {
+      cacheResult: "hit",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, cached.runId);
+
+    expect(
+      embeddingRequests.filter((request) => {
+        return request.model === embeddingModel && request.input === query;
+      }),
+    ).toHaveLength(2);
   });
 
   it("runs a one-time trigger immediately in its bound chat thread", async () => {
