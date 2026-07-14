@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.20](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.19...sandbox-v0.19.20) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** gate namespace pooling on dns readiness ([#21297](https://github.com/vm0-ai/vm0/issues/21297)) ([438da71](https://github.com/vm0-ai/vm0/commit/438da712d55f28ec1aa9134a792b3f43a8dc1a59))
+
 ## [0.19.19](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.18...sandbox-v0.19.19) (2026-07-12)
 
 

@@ -15,7 +15,6 @@ import { agentRuns } from "./agent-run";
 import type {
   ChatMessageAttachFileMetadataList,
   ChatMessageAttachFiles,
-  ChatMessageAutomationSnapshot,
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
@@ -26,7 +25,6 @@ export type {
   ChatMessageAttachFileMetadata,
   ChatMessageAttachFileMetadataList,
   ChatMessageAttachFiles,
-  ChatMessageAutomationSnapshot,
   ChatMessageGenerationTemplate,
   ChatMessageGoalEvent,
   ChatMessageGoalSnapshot,
@@ -102,13 +100,6 @@ export const chatMessages = pgTable(
     // Stable grouping key for repeated automation/workflow/goal-triggered
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
-    // Deprecated legacy schedule automation metadata. Migration 0553 clears
-    // existing values; new message writes no longer populate these fields.
-    automationId: uuid("automation_id"),
-    automationTitle: text("automation_title"),
-    automationSnapshot: jsonb(
-      "automation_snapshot",
-    ).$type<ChatMessageAutomationSnapshot>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
     thinking: text("thinking"),

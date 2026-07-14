@@ -249,9 +249,9 @@ const PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 = {
     "096678c9f5bc1760b9f2c25bf10949296ddaa98511a2ecae2bc59528bd7969ed":
       "0172780a5797b6162eeb081390042289b80bcdc4ecf237142d3c89b830160381",
   },
-} as const satisfies Record<string, Record<string, string>>;
+} as const satisfies Readonly<Record<string, Readonly<Record<string, string>>>>;
 
-function privateRegistryResourceArchive(
+export function resolvePrivateRegistryResourceArchive(
   id: string,
   expectedSha256: string | undefined,
   defaultSha256: string,
@@ -265,15 +265,18 @@ function privateRegistryResourceArchive(
   }
 
   const requestedVersionId = expectedSha256
-    ? PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256[
-        id as keyof typeof PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256
-      ]?.[expectedSha256]
+    ? (
+        PRESENTATION_RUNBOOK_ARCHIVE_VERSION_IDS_BY_SHA256 as Readonly<
+          Record<string, Readonly<Record<string, string>>>
+        >
+      )[id]?.[expectedSha256]
     : undefined;
 
   return {
     storageName: `registry-resource@${id}`,
     versionId: requestedVersionId ?? defaultVersionId,
-    sha256: requestedVersionId ? expectedSha256 : defaultSha256,
+    sha256:
+      requestedVersionId && expectedSha256 ? expectedSha256 : defaultSha256,
   };
 }
 
@@ -303,7 +306,7 @@ const downloadRegistryResourceInner$ = computed(async (get) => {
     return notFound(`Registry resource "${query.id}" has no archive source`);
   }
 
-  const privateArchive = privateRegistryResourceArchive(
+  const privateArchive = resolvePrivateRegistryResourceArchive(
     query.id,
     query.expectedSha256,
     archive.sha256,

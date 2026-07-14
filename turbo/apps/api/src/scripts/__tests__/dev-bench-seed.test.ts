@@ -101,18 +101,6 @@ describe("dev bench seed profile rows", () => {
         }),
       ).toBe(expected.usageMessages);
       expect(
-        countWhere(rows.messageRows, (row) => {
-          return row.automationId !== null && row.automationId !== undefined;
-        }),
-      ).toBe(0);
-      expect(
-        countWhere(rows.messageRows, (row) => {
-          return (
-            row.automationTitle !== null && row.automationTitle !== undefined
-          );
-        }),
-      ).toBe(0);
-      expect(
         countWhere(rows.zeroRunRows, (row) => {
           return row.triggerSource === "workflow-schedule";
         }),
