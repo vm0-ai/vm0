@@ -4180,6 +4180,13 @@
       "when": 1784036148108,
       "tag": "0596_expand_event_source_automation_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 597,
+      "version": "7",
+      "when": 1784040131414,
+      "tag": "0597_drop_workflow_trigger_compat_views",
+      "breakpoints": true
     }
   ]
 }
