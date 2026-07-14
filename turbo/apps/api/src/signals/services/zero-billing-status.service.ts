@@ -22,6 +22,7 @@ import { nowDate } from "../../lib/time";
 import { db$, type ReadonlyDb } from "../external/db";
 import {
   activeConcurrencySubscriptions,
+  cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
   type ActiveConcurrencySubscription,
 } from "./org-concurrency-entitlements.service";
@@ -549,6 +550,10 @@ function billingStatusResponse(args: {
     },
     0,
   );
+  const cappedBaseLimit = cappedBaseConcurrencyLimit(args.baseConcurrencyLimit);
+  const displayedBaseLimit = Number.isFinite(cappedBaseLimit)
+    ? cappedBaseLimit
+    : args.baseConcurrencyLimit;
 
   return {
     tier: org.tier,
@@ -573,7 +578,7 @@ function billingStatusResponse(args: {
     }),
     creditGrants: creditGrants(args.activeRecords),
     concurrencyLimit: totalConcurrencyLimit({
-      baseLimit: args.baseConcurrencyLimit,
+      baseLimit: displayedBaseLimit,
       paidSlots: paidConcurrencySlots,
     }),
     concurrencySubscriptions: args.concurrencySubscriptions.map(

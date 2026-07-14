@@ -4,11 +4,16 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { createStore } from "ccstate";
+import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  deleteOrgPlanEntitlementFixture,
+  upsertOrgPlanEntitlementFixture,
+} from "../../../test-fixtures/org-plan-entitlement";
 import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
@@ -23,6 +28,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -248,6 +254,35 @@ describe("GET /api/zero/billing/status", () => {
 
     expect(response.body.concurrencyLimit).toBe(2);
     expect(Number.isFinite(response.body.concurrencyLimit)).toBeTruthy();
+  });
+
+  it("caps the staff entitlement base concurrency limit in billing status", async () => {
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "3");
+    const userId = `user_${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+    });
+    await seedOrgMetadata({
+      orgId: STAFF_ORG_ID,
+      tier: "pro",
+      credits: 0,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "active",
+      baseConcurrencyLimit: 10,
+    });
+    mocks.clerk.session(userId, STAFF_ORG_ID);
+
+    const response = await accept(
+      setupApp({ context })(zeroBillingStatusContract).get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.tier).toBe("pro");
+    expect(response.body.concurrencyLimit).toBe(3);
   });
 
   it("includes active concurrency subscription slots", async () => {

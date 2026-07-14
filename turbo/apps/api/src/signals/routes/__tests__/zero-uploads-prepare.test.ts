@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 
@@ -8,6 +8,10 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  deleteOrgPlanEntitlementFixture,
+  upsertOrgPlanEntitlementFixture,
+} from "../../../test-fixtures/org-plan-entitlement";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
@@ -17,6 +21,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -164,6 +169,53 @@ describe("POST /api/zero/uploads/prepare", () => {
     mocks.clerk.session(actor.userId, actor.orgId);
 
     const client = setupApp({ context })(zeroUploadsContract);
+    const response = await accept(
+      client.prepare({
+        body: validBody(),
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
+  });
+
+  it("normalizes staff entitlement lifecycle statuses for suspension checks", async () => {
+    const userId = `user_${randomUUID()}`;
+    const client = setupApp({ context })(zeroUploadsContract);
+    mocks.clerk.session(userId, STAFF_ORG_ID);
+    onTestFinished(async () => {
+      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+    });
+
+    await seedOrgMetadata({
+      orgId: STAFF_ORG_ID,
+      tier: "pro-suspend",
+      credits: 0,
+    });
+    for (const status of ["trialing", "past_due"] as const) {
+      await upsertOrgPlanEntitlementFixture({
+        orgId: STAFF_ORG_ID,
+        status,
+      });
+      await accept(
+        client.prepare({
+          body: validBody(),
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+    }
+
+    await seedOrgMetadata({
+      orgId: STAFF_ORG_ID,
+      tier: "pro",
+      credits: 1000,
+    });
+    await upsertOrgPlanEntitlementFixture({
+      orgId: STAFF_ORG_ID,
+      status: "canceled",
+    });
     const response = await accept(
       client.prepare({
         body: validBody(),

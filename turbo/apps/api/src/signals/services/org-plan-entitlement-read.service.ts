@@ -11,7 +11,7 @@ import { ORG_PLAN_ENTITLEMENT_TIER_VALUES } from "./org-plan-entitlement-tier-va
 type ReadDb = Pick<Db, "select">;
 
 export interface OrgPlanCapabilities {
-  readonly status: string;
+  readonly status: "active" | "suspended";
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly autoRechargeAllowed: boolean;
@@ -39,6 +39,24 @@ const CAPABILITY_SELECTION = {
   audioDailyDurationSeconds: orgPlanEntitlements.audioDailyDurationSeconds,
 } as const;
 
+function runtimeStatusForEntitlement(
+  status: string,
+): OrgPlanCapabilities["status"] {
+  switch (status) {
+    case "active":
+    case "trialing":
+    case "past_due":
+    case "unpaid":
+    case "atom_grant":
+    case "manual_active": {
+      return "active";
+    }
+    default: {
+      return "suspended";
+    }
+  }
+}
+
 export function orgPlanEntitlementReadsEnabled(orgId: string): boolean {
   return isFeatureEnabled(FeatureSwitchKey.OrgPlanEntitlementReads, { orgId });
 }
@@ -60,7 +78,10 @@ export async function loadOrgPlanCapabilities(
     if (!capabilities) {
       throw new Error(`Missing org plan entitlement for ${orgId}`);
     }
-    return capabilities;
+    return {
+      ...capabilities,
+      status: runtimeStatusForEntitlement(capabilities.status),
+    };
   }
 
   const query = db
