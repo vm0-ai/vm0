@@ -202,7 +202,7 @@ assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
 assert_env_absent_value "$production_web_env_file" "ATOM_URL="
 assert_env_absent_value "$production_web_env_file" "VM0_MACHINE_SECRET_KEY="
-assert_env_absent_value "$production_web_env_file" "github-firecrawl-token"
+assert_env_value "$production_web_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
 assert_env_absent_value "$production_web_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$production_web_env_file" "github-artifact-preview-waf-secret"
 
