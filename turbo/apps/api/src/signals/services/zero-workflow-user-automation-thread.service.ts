@@ -1,5 +1,5 @@
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { workflowUserTriggerThreads } from "@vm0/db/schema/zero-workflow";
+import { workflowUserTriggerThreads as workflowUserAutomationThreads } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
@@ -9,7 +9,7 @@ import {
 } from "./zero-chat-thread-model.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 
-export async function loadWorkflowUserTriggerThreadId(
+export async function loadWorkflowUserAutomationThreadId(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
@@ -18,20 +18,20 @@ export async function loadWorkflowUserTriggerThreadId(
   },
 ): Promise<string | null> {
   const [thread] = await db
-    .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
-    .from(workflowUserTriggerThreads)
+    .select({ chatThreadId: workflowUserAutomationThreads.chatThreadId })
+    .from(workflowUserAutomationThreads)
     .where(
       and(
-        eq(workflowUserTriggerThreads.orgId, args.orgId),
-        eq(workflowUserTriggerThreads.userId, args.userId),
-        eq(workflowUserTriggerThreads.workflowId, args.workflowId),
+        eq(workflowUserAutomationThreads.orgId, args.orgId),
+        eq(workflowUserAutomationThreads.userId, args.userId),
+        eq(workflowUserAutomationThreads.workflowId, args.workflowId),
       ),
     )
     .limit(1);
   return thread?.chatThreadId ?? null;
 }
 
-async function createTriggerChatThread(
+async function createAutomationChatThread(
   db: Db,
   args: {
     readonly userId: string;
@@ -58,7 +58,7 @@ async function createTriggerChatThread(
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
   if (!thread) {
-    throw new Error("Failed to create workflow trigger chat thread");
+    throw new Error("Failed to create workflow automation chat thread");
   }
   await appendChatThreadEvent(db, {
     kind: "created",
@@ -73,7 +73,7 @@ async function createTriggerChatThread(
   return thread.id;
 }
 
-export async function ensureWorkflowUserTriggerThread(
+export async function ensureWorkflowUserAutomationThread(
   db: Db,
   args: {
     readonly orgId: string;
@@ -85,13 +85,13 @@ export async function ensureWorkflowUserTriggerThread(
   },
 ): Promise<string> {
   const [existing] = await db
-    .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
-    .from(workflowUserTriggerThreads)
+    .select({ chatThreadId: workflowUserAutomationThreads.chatThreadId })
+    .from(workflowUserAutomationThreads)
     .where(
       and(
-        eq(workflowUserTriggerThreads.orgId, args.orgId),
-        eq(workflowUserTriggerThreads.userId, args.userId),
-        eq(workflowUserTriggerThreads.workflowId, args.workflowId),
+        eq(workflowUserAutomationThreads.orgId, args.orgId),
+        eq(workflowUserAutomationThreads.userId, args.userId),
+        eq(workflowUserAutomationThreads.workflowId, args.workflowId),
       ),
     )
     .limit(1)
@@ -102,7 +102,7 @@ export async function ensureWorkflowUserTriggerThread(
 
   if (!existing) {
     const [inserted] = await db
-      .insert(workflowUserTriggerThreads)
+      .insert(workflowUserAutomationThreads)
       .values({
         orgId: args.orgId,
         userId: args.userId,
@@ -112,21 +112,21 @@ export async function ensureWorkflowUserTriggerThread(
       })
       .onConflictDoNothing({
         target: [
-          workflowUserTriggerThreads.orgId,
-          workflowUserTriggerThreads.userId,
-          workflowUserTriggerThreads.workflowId,
+          workflowUserAutomationThreads.orgId,
+          workflowUserAutomationThreads.userId,
+          workflowUserAutomationThreads.workflowId,
         ],
       })
-      .returning({ id: workflowUserTriggerThreads.id });
+      .returning({ id: workflowUserAutomationThreads.id });
     if (!inserted) {
       const [conflicting] = await db
-        .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
-        .from(workflowUserTriggerThreads)
+        .select({ chatThreadId: workflowUserAutomationThreads.chatThreadId })
+        .from(workflowUserAutomationThreads)
         .where(
           and(
-            eq(workflowUserTriggerThreads.orgId, args.orgId),
-            eq(workflowUserTriggerThreads.userId, args.userId),
-            eq(workflowUserTriggerThreads.workflowId, args.workflowId),
+            eq(workflowUserAutomationThreads.orgId, args.orgId),
+            eq(workflowUserAutomationThreads.userId, args.userId),
+            eq(workflowUserAutomationThreads.workflowId, args.workflowId),
           ),
         )
         .limit(1)
@@ -137,7 +137,7 @@ export async function ensureWorkflowUserTriggerThread(
     }
   }
 
-  const chatThreadId = await createTriggerChatThread(db, {
+  const chatThreadId = await createAutomationChatThread(db, {
     userId: args.userId,
     orgId: args.orgId,
     agentId: args.agentId,
@@ -146,18 +146,18 @@ export async function ensureWorkflowUserTriggerThread(
   });
 
   const [updated] = await db
-    .update(workflowUserTriggerThreads)
+    .update(workflowUserAutomationThreads)
     .set({ chatThreadId, updatedAt: args.currentTime })
     .where(
       and(
-        eq(workflowUserTriggerThreads.orgId, args.orgId),
-        eq(workflowUserTriggerThreads.userId, args.userId),
-        eq(workflowUserTriggerThreads.workflowId, args.workflowId),
+        eq(workflowUserAutomationThreads.orgId, args.orgId),
+        eq(workflowUserAutomationThreads.userId, args.userId),
+        eq(workflowUserAutomationThreads.workflowId, args.workflowId),
       ),
     )
-    .returning({ chatThreadId: workflowUserTriggerThreads.chatThreadId });
+    .returning({ chatThreadId: workflowUserAutomationThreads.chatThreadId });
   if (!updated?.chatThreadId) {
-    throw new Error("Failed to persist workflow trigger chat thread");
+    throw new Error("Failed to persist workflow automation chat thread");
   }
   return updated.chatThreadId;
 }

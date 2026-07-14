@@ -1,5 +1,5 @@
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowTriggers as zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
 import type { ReadonlyDb } from "../external/db";
@@ -8,13 +8,13 @@ import {
   type WorkflowAgentInfo,
 } from "./zero-workflow-data.service";
 
-type WorkflowTriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
+type WorkflowAutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
 function canReadAgent(agent: WorkflowAgentInfo, userId: string): boolean {
   return agent.visibility === "public" || agent.owner === userId;
 }
 
-async function loadWorkflowTriggerOwnerMember(
+async function loadWorkflowAutomationOwnerMember(
   db: ReadonlyDb,
   args: { readonly orgId: string; readonly userId: string },
 ) {
@@ -31,7 +31,7 @@ async function loadWorkflowTriggerOwnerMember(
   return member ? { userId: args.userId, role: member.role } : null;
 }
 
-async function workflowTriggerOwnerCanReadTarget(
+async function workflowAutomationOwnerCanReadTarget(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
@@ -41,7 +41,7 @@ async function workflowTriggerOwnerCanReadTarget(
     readonly signal: AbortSignal;
   },
 ): Promise<boolean> {
-  const member = await loadWorkflowTriggerOwnerMember(db, args);
+  const member = await loadWorkflowAutomationOwnerMember(db, args);
   args.signal.throwIfAborted();
   if (!member) {
     return false;
@@ -60,30 +60,30 @@ async function workflowTriggerOwnerCanReadTarget(
   return canReadAgent(visible.agent, args.userId);
 }
 
-export async function workflowTriggerCanFire(
+export async function workflowAutomationCanFire(
   db: ReadonlyDb,
   args: {
-    readonly trigger: WorkflowTriggerRow;
+    readonly automation: WorkflowAutomationRow;
     readonly agentId: string;
-    readonly allowClaimedOnceScheduleTrigger?: boolean;
+    readonly allowClaimedOnceScheduleAutomation?: boolean;
     readonly signal: AbortSignal;
   },
 ): Promise<boolean> {
   const claimedOnceSchedule =
-    args.allowClaimedOnceScheduleTrigger === true &&
-    args.trigger.kind === "schedule" &&
-    args.trigger.scheduleType === "once" &&
-    args.trigger.nextRunAt === null &&
-    args.trigger.lastRunAt !== null;
+    args.allowClaimedOnceScheduleAutomation === true &&
+    args.automation.kind === "schedule" &&
+    args.automation.scheduleType === "once" &&
+    args.automation.nextRunAt === null &&
+    args.automation.lastRunAt !== null;
 
-  if (!args.trigger.enabled && !claimedOnceSchedule) {
+  if (!args.automation.enabled && !claimedOnceSchedule) {
     return false;
   }
 
-  return await workflowTriggerOwnerCanReadTarget(db, {
-    orgId: args.trigger.orgId,
-    userId: args.trigger.ownerUserId,
-    workflowId: args.trigger.workflowId,
+  return await workflowAutomationOwnerCanReadTarget(db, {
+    orgId: args.automation.orgId,
+    userId: args.automation.ownerUserId,
+    workflowId: args.automation.workflowId,
     agentId: args.agentId,
     signal: args.signal,
   });

@@ -16,19 +16,19 @@ import {
   type WorkflowMember,
 } from "../services/zero-workflow-data.service";
 import {
-  createWorkflowTrigger$,
-  deleteWorkflowTrigger$,
-  disableWorkflowTrigger$,
-  enableWorkflowTrigger$,
-  getWorkflowTrigger,
-  listThreadBoundWorkflowTriggers,
-  listWorkspaceWorkflowTriggers,
-  loadWorkflowTriggers,
+  createWorkflowAutomation$,
+  deleteWorkflowAutomation$,
+  disableWorkflowAutomation$,
+  enableWorkflowAutomation$,
+  getWorkflowAutomation,
+  listThreadBoundWorkflowAutomations,
+  listWorkspaceWorkflowAutomations,
+  loadWorkflowAutomations,
   revealWorkflowWebhookSecret,
-  runOwnedWorkflowTriggerNow$,
-  updateWorkflowTrigger$,
-  type TriggerResult,
-} from "../services/zero-workflow-trigger.service";
+  runOwnedWorkflowAutomationNow$,
+  updateWorkflowAutomation$,
+  type AutomationResult,
+} from "../services/zero-workflow-automation.service";
 import type { RouteEntry, SignalRouteHandler } from "../route-entry";
 
 export const workflowAutomationReadAuth = {
@@ -57,9 +57,9 @@ function forbidden(message: string) {
   };
 }
 
-function triggerErrorResponse(
-  result: TriggerResult,
-  notFoundMessage = "Workflow trigger not found",
+function automationErrorResponse(
+  result: AutomationResult,
+  notFoundMessage = "Workflow automation not found",
 ) {
   switch (result.kind) {
     case "not-found": {
@@ -78,18 +78,22 @@ function triggerErrorResponse(
       return badRequestMessage(result.message);
     }
     default: {
-      throw new Error(`Unexpected trigger result: ${result.kind}`);
+      throw new Error(`Unexpected automation result: ${result.kind}`);
     }
   }
 }
 
-const createTriggerBody$ = bodyResultOf(zeroWorkflowAutomationsContract.create);
-const updateTriggerBody$ = bodyResultOf(zeroWorkflowAutomationsContract.update);
+const createAutomationBody$ = bodyResultOf(
+  zeroWorkflowAutomationsContract.create,
+);
+const updateAutomationBody$ = bodyResultOf(
+  zeroWorkflowAutomationsContract.update,
+);
 
 export const workspaceWorkflowAutomationEntries$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const db = get(db$);
-  return await listWorkspaceWorkflowTriggers(db, {
+  return await listWorkspaceWorkflowAutomations(db, {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
   });
@@ -105,21 +109,21 @@ const listWorkspaceAutomationsInner$ = computed(async (get) => {
   };
 });
 
-const listChatThreadTriggersInner$ = computed(async (get) => {
+const listChatThreadAutomationsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(
     pathParamsOf(zeroWorkflowAutomationsContract.listForChatThread),
   );
   const db = get(db$);
-  const triggers = await listThreadBoundWorkflowTriggers(db, {
+  const automations = await listThreadBoundWorkflowAutomations(db, {
     orgId: auth.orgId,
     userId: auth.userId,
     threadId: params.threadId,
   });
-  return { status: 200 as const, body: [...triggers] };
+  return { status: 200 as const, body: [...automations] };
 });
 
-const listTriggersInner$ = computed(async (get) => {
+const listAutomationsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroWorkflowAutomationsContract.list));
   const db = get(db$);
@@ -131,25 +135,25 @@ const listTriggersInner$ = computed(async (get) => {
   if (!visible) {
     return notFound(`Workflow not found: ${params.workflowId}`);
   }
-  const triggers = await loadWorkflowTriggers(db, {
+  const automations = await loadWorkflowAutomations(db, {
     orgId: auth.orgId,
     workflowId: visible.workflow.id,
     userId: auth.userId,
   });
-  return { status: 200 as const, body: [...triggers] };
+  return { status: 200 as const, body: [...automations] };
 });
 
-const createTriggerInner$ = command(
+const createAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.create));
-    const bodyResult = await get(createTriggerBody$);
+    const bodyResult = await get(createAutomationBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
 
-    const triggerInputBase = {
+    const automationInputBase = {
       orgId: auth.orgId,
       member: memberFromAuth(auth),
       workflowId: params.workflowId,
@@ -158,18 +162,18 @@ const createTriggerInner$ = command(
     const result =
       "schedule" in bodyResult.data
         ? await set(
-            createWorkflowTrigger$,
+            createWorkflowAutomation$,
             {
-              ...triggerInputBase,
+              ...automationInputBase,
               schedule: bodyResult.data.schedule,
             },
             signal,
           )
         : bodyResult.data.eventType === "webhook-received"
           ? await set(
-              createWorkflowTrigger$,
+              createWorkflowAutomation$,
               {
-                ...triggerInputBase,
+                ...automationInputBase,
                 eventType: bodyResult.data.eventType,
                 eventConfig: bodyResult.data.eventConfig,
               },
@@ -177,9 +181,9 @@ const createTriggerInner$ = command(
             )
           : bodyResult.data.eventType === "github-label-applied"
             ? await set(
-                createWorkflowTrigger$,
+                createWorkflowAutomation$,
                 {
-                  ...triggerInputBase,
+                  ...automationInputBase,
                   eventType: bodyResult.data.eventType,
                   eventConfig: bodyResult.data.eventConfig,
                 },
@@ -189,9 +193,9 @@ const createTriggerInner$ = command(
                 bodyResult.data.eventType === "google-calendar-event-updated" ||
                 bodyResult.data.eventType === "google-calendar-event-cancelled"
               ? await set(
-                  createWorkflowTrigger$,
+                  createWorkflowAutomation$,
                   {
-                    ...triggerInputBase,
+                    ...automationInputBase,
                     eventType: bodyResult.data.eventType,
                     eventConfig: bodyResult.data.eventConfig,
                   },
@@ -199,9 +203,9 @@ const createTriggerInner$ = command(
                 )
               : bodyResult.data.eventType === "google-meet-transcript-generated"
                 ? await set(
-                    createWorkflowTrigger$,
+                    createWorkflowAutomation$,
                     {
-                      ...triggerInputBase,
+                      ...automationInputBase,
                       eventType: bodyResult.data.eventType,
                       eventConfig: bodyResult.data.eventConfig,
                     },
@@ -212,18 +216,18 @@ const createTriggerInner$ = command(
                       "notion-database-item-created" ||
                     bodyResult.data.eventType === "notion-page-content-updated"
                   ? await set(
-                      createWorkflowTrigger$,
+                      createWorkflowAutomation$,
                       {
-                        ...triggerInputBase,
+                        ...automationInputBase,
                         eventType: bodyResult.data.eventType,
                         eventConfig: bodyResult.data.eventConfig,
                       },
                       signal,
                     )
                   : await set(
-                      createWorkflowTrigger$,
+                      createWorkflowAutomation$,
                       {
-                        ...triggerInputBase,
+                        ...automationInputBase,
                         eventType: bodyResult.data.eventType,
                         eventConfig: bodyResult.data.eventConfig,
                       },
@@ -233,26 +237,26 @@ const createTriggerInner$ = command(
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };
     }
-    return triggerErrorResponse(
+    return automationErrorResponse(
       result,
       `Workflow not found: ${params.workflowId}`,
     );
   },
 );
 
-const getTriggerInner$ = computed(async (get) => {
+const getAutomationInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroWorkflowAutomationsContract.get));
   const db = get(db$);
-  const trigger = await getWorkflowTrigger(db, {
+  const automation = await getWorkflowAutomation(db, {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
-    triggerId: params.id,
+    automationId: params.id,
   });
-  if (!trigger) {
-    return notFound("Workflow trigger not found");
+  if (!automation) {
+    return notFound("Workflow automation not found");
   }
-  return { status: 200 as const, body: trigger };
+  return { status: 200 as const, body: automation };
 });
 
 const revealWebhookSecretInner$ = computed(async (get) => {
@@ -264,37 +268,37 @@ const revealWebhookSecretInner$ = computed(async (get) => {
   const secret = await revealWorkflowWebhookSecret(db, {
     orgId: auth.orgId,
     member: memberFromAuth(auth),
-    triggerId: params.id,
+    automationId: params.id,
   });
   if (!secret) {
-    return notFound("Workflow webhook trigger not found");
+    return notFound("Workflow webhook automation not found");
   }
   return { status: 200 as const, body: secret };
 });
 
-const updateTriggerInner$ = command(
+const updateAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.update));
-    const bodyResult = await get(updateTriggerBody$);
+    const bodyResult = await get(updateAutomationBody$);
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
 
     const result = await set(
-      updateWorkflowTrigger$,
+      updateWorkflowAutomation$,
       "schedule" in bodyResult.data
         ? {
             orgId: auth.orgId,
             member: memberFromAuth(auth),
-            triggerId: params.id,
+            automationId: params.id,
             schedule: bodyResult.data.schedule,
           }
         : {
             orgId: auth.orgId,
             member: memberFromAuth(auth),
-            triggerId: params.id,
+            automationId: params.id,
             eventConfig: bodyResult.data.eventConfig,
           },
       signal,
@@ -303,20 +307,20 @@ const updateTriggerInner$ = command(
     if (result.kind === "ok") {
       return { status: 200 as const, body: result.summary };
     }
-    return triggerErrorResponse(result);
+    return automationErrorResponse(result);
   },
 );
 
-const deleteTriggerInner$ = command(
+const deleteAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.delete));
     const result = await set(
-      deleteWorkflowTrigger$,
+      deleteWorkflowAutomation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
-        triggerId: params.id,
+        automationId: params.id,
       },
       signal,
     );
@@ -324,20 +328,20 @@ const deleteTriggerInner$ = command(
     if (result.kind === "deleted") {
       return { status: 204 as const, body: undefined };
     }
-    return triggerErrorResponse(result);
+    return automationErrorResponse(result);
   },
 );
 
-const enableTriggerInner$ = command(
+const enableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.enable));
     const result = await set(
-      enableWorkflowTrigger$,
+      enableWorkflowAutomation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
-        triggerId: params.id,
+        automationId: params.id,
       },
       signal,
     );
@@ -345,20 +349,20 @@ const enableTriggerInner$ = command(
     if (result.kind === "ok") {
       return { status: 200 as const, body: result.summary };
     }
-    return triggerErrorResponse(result);
+    return automationErrorResponse(result);
   },
 );
 
-const disableTriggerInner$ = command(
+const disableAutomationInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroWorkflowAutomationsContract.disable));
     const result = await set(
-      disableWorkflowTrigger$,
+      disableWorkflowAutomation$,
       {
         orgId: auth.orgId,
         member: memberFromAuth(auth),
-        triggerId: params.id,
+        automationId: params.id,
       },
       signal,
     );
@@ -366,37 +370,39 @@ const disableTriggerInner$ = command(
     if (result.kind === "ok") {
       return { status: 200 as const, body: result.summary };
     }
-    return triggerErrorResponse(result);
+    return automationErrorResponse(result);
   },
 );
 
-const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroWorkflowAutomationsContract.run));
-  const result = await set(
-    runOwnedWorkflowTriggerNow$,
-    {
-      orgId: auth.orgId,
-      member: memberFromAuth(auth),
-      triggerId: params.id,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-  if (result.kind === "ok") {
-    return {
-      status: 201 as const,
-      body: {
-        runId: result.runId,
-        chatThreadId: result.chatThreadId,
+const runAutomationInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const params = get(pathParamsOf(zeroWorkflowAutomationsContract.run));
+    const result = await set(
+      runOwnedWorkflowAutomationNow$,
+      {
+        orgId: auth.orgId,
+        member: memberFromAuth(auth),
+        automationId: params.id,
       },
-    };
-  }
-  if (result.kind === "run_error") {
-    return result.response;
-  }
-  return triggerErrorResponse(result);
-});
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return {
+        status: 201 as const,
+        body: {
+          runId: result.runId,
+          chatThreadId: result.chatThreadId,
+        },
+      };
+    }
+    if (result.kind === "run_error") {
+      return result.response;
+    }
+    return automationErrorResponse(result);
+  },
+);
 
 export const workflowAutomationRouteHandlers: Readonly<
   Record<
@@ -410,16 +416,16 @@ export const workflowAutomationRouteHandlers: Readonly<
   ),
   listForChatThread: authRoute(
     workflowAutomationReadAuth,
-    listChatThreadTriggersInner$,
+    listChatThreadAutomationsInner$,
   ),
-  list: authRoute(workflowAutomationReadAuth, listTriggersInner$),
-  create: authRoute(workflowWriteAuth, createTriggerInner$),
-  get: authRoute(workflowAutomationReadAuth, getTriggerInner$),
-  update: authRoute(workflowWriteAuth, updateTriggerInner$),
-  delete: authRoute(workflowWriteAuth, deleteTriggerInner$),
-  enable: authRoute(workflowWriteAuth, enableTriggerInner$),
-  disable: authRoute(workflowWriteAuth, disableTriggerInner$),
-  run: authRoute(workflowWriteAuth, runTriggerInner$),
+  list: authRoute(workflowAutomationReadAuth, listAutomationsInner$),
+  create: authRoute(workflowWriteAuth, createAutomationInner$),
+  get: authRoute(workflowAutomationReadAuth, getAutomationInner$),
+  update: authRoute(workflowWriteAuth, updateAutomationInner$),
+  delete: authRoute(workflowWriteAuth, deleteAutomationInner$),
+  enable: authRoute(workflowWriteAuth, enableAutomationInner$),
+  disable: authRoute(workflowWriteAuth, disableAutomationInner$),
+  run: authRoute(workflowWriteAuth, runAutomationInner$),
   revealWebhookSecret: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
 };
 

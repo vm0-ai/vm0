@@ -1,4 +1,4 @@
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { HttpResponse, http } from "msw";
 import { expect } from "vitest";
 
@@ -27,8 +27,8 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -246,7 +246,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await connectGoogleCalendar(scenario);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -286,8 +286,8 @@ describe("POST /api/webhooks/google-calendar", () => {
       "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
       "api_dispatch_pre_create_zero_workflow_event_load_external_events",
-      "api_dispatch_pre_create_zero_workflow_event_load_triggers",
-      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_load_automations",
+      "api_dispatch_pre_create_zero_workflow_event_match_automations",
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       "api_dispatch_pre_create_zero_workflow_event_handoff_run",
@@ -300,7 +300,7 @@ describe("POST /api/webhooks/google-calendar", () => {
           op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
           workflow_event_source: "google_calendar",
           trigger_source: "workflow-event",
-          zero_run_origin: "workflow_trigger",
+          zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),
@@ -367,7 +367,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await connectGoogleCalendar(scenario);
 
     await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -457,7 +457,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await connectGoogleCalendar(scenario);
 
     await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -557,7 +557,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await connectGoogleCalendar(scenario);
 
     await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -568,7 +568,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
     await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {
@@ -593,8 +593,8 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    // Only the cancelled trigger dispatched a run; the minimal deleted
-    // payload never reaches the updated trigger.
+    // Only the cancelled automation dispatched a run; the minimal deleted
+    // payload never reaches the updated automation.
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
     expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
@@ -623,7 +623,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await connectGoogleCalendar(scenario);
 
     await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: {

@@ -1,0 +1,107 @@
+use crate::error::RunnerResult;
+use crate::paths::HomePaths;
+
+use super::filesystem::{next_entry_warn, read_dir_or_missing};
+use super::lock_file::{LockProbe, probe_lock, remove_unused_lock_after_probe};
+use super::report::GcReport;
+use super::workspaces::is_base_dir_lock_name;
+
+/// Remove unused lock files.
+///
+/// Most lock files that can be exclusively locked are safe to delete:
+/// `open_lock_file` will recreate them on next use, and the inode recheck in
+/// `lock.rs` prevents stale-fd races. Service locks are intentionally retained
+/// because this GC pass runs before version GC, which relies on those lock paths
+/// to coordinate with concurrent service install/uninstall commands. Stale
+/// version service locks are cleaned by a post-version-GC pass.
+pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
+    let locks_dir = home.locks_dir();
+    let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
+        return Ok(GcReport::default());
+    };
+
+    let mut removed = 0u64;
+
+    while let Some(entry) = next_entry_warn(&mut entries, "gc_orphaned_locks", &locks_dir).await {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.ends_with(".lock") {
+            continue;
+        }
+        // Version GC later in this same command uses service locks to avoid
+        // deleting a version that another process is installing or uninstalling.
+        // Workspace GC owns base-dir lock lifecycle because those locks carry
+        // the base_dir metadata needed to rediscover dead-runner workspaces.
+        if name.starts_with("service-") || is_base_dir_lock_name(name) {
+            continue;
+        }
+
+        let lock_path = entry.path();
+        match probe_lock(&lock_path) {
+            LockProbe::Free(lock) => {
+                if remove_unused_lock_after_probe(&lock_path, &lock, name, dry_run).await {
+                    removed += 1;
+                }
+            }
+            LockProbe::Held | LockProbe::Error(_) => {}
+        }
+    }
+
+    Ok(GcReport::cleanup(removed, 0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cmd::gc::test_support::test_home;
+
+    #[tokio::test]
+    async fn gc_orphaned_locks_preserves_service_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let service_lock = locks_dir.join("service-vm0-runner-v1.0.0.lock");
+        let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
+        std::fs::write(&service_lock, "").unwrap();
+        std::fs::write(&stale_lock, "").unwrap();
+
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.freed_bytes, 0);
+        assert!(
+            service_lock.exists(),
+            "service locks must survive orphaned lock cleanup"
+        );
+        assert!(
+            !stale_lock.exists(),
+            "ordinary free locks should still be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_locks_preserves_base_dir_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let base_dir_lock = locks_dir.join("base-dir-dead.lock");
+        let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
+        std::fs::write(&base_dir_lock, "/data/dead-runner").unwrap();
+        std::fs::write(&stale_lock, "").unwrap();
+
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.freed_bytes, 0);
+        assert!(
+            base_dir_lock.exists(),
+            "base-dir locks must remain available for workspace GC retry"
+        );
+        assert!(
+            !stale_lock.exists(),
+            "ordinary free locks should still be cleaned"
+        );
+    }
+}

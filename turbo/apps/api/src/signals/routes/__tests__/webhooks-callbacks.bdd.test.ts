@@ -491,7 +491,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       supportByok: false,
       restrictedVm0Models: true,
       videoGenerationAllowed: false,
-      workflowWebhookTriggerAllowed: false,
+      workflowWebhookAutomationAllowed: false,
       audioLifetimeLimit: 10,
       audioDailyRateLimit: 10,
       audioDailyDurationSeconds: 600,
@@ -1000,7 +1000,7 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
     expect(invalidReplyResponse.body).toStrictEqual({ received: true });
   });
 
-  it("skips email trigger callbacks while outbound email is not configured", async () => {
+  it("skips email automation callbacks while outbound email is not configured", async () => {
     api.disableResendApiKey();
 
     const response = await api.requestEmailTriggerCallback(
@@ -1860,7 +1860,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       supportByok: true,
       restrictedVm0Models: false,
       videoGenerationAllowed: true,
-      workflowWebhookTriggerAllowed: true,
+      workflowWebhookAutomationAllowed: true,
       audioLifetimeLimit: null,
       audioDailyRateLimit: 500,
       audioDailyDurationSeconds: 30_000,
@@ -2864,7 +2864,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       supportByok: true,
       restrictedVm0Models: false,
       videoGenerationAllowed: true,
-      workflowWebhookTriggerAllowed: true,
+      workflowWebhookAutomationAllowed: true,
       audioLifetimeLimit: null,
       audioDailyRateLimit: 500,
       audioDailyDurationSeconds: 30_000,
@@ -3037,7 +3037,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       supportByok: false,
       restrictedVm0Models: true,
       videoGenerationAllowed: false,
-      workflowWebhookTriggerAllowed: false,
+      workflowWebhookAutomationAllowed: false,
       audioLifetimeLimit: 10,
       audioDailyRateLimit: 10,
       audioDailyDurationSeconds: 600,

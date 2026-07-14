@@ -11,7 +11,7 @@ import {
   getVm0Vendor,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -73,8 +73,8 @@ function authHeaders(actor: ApiTestUser) {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -358,7 +358,7 @@ function expectResponseStatus(
   }
 }
 
-async function enableGmailWorkflowTriggers(
+async function enableGmailWorkflowAutomations(
   actor: ApiTestUser & { readonly orgId: string },
   options: { readonly workflowQueue?: boolean } = {},
 ): Promise<void> {
@@ -420,7 +420,7 @@ async function configureVm0ManagedModelKey(): Promise<void> {
   });
 }
 
-async function configureTriggerThreadModel(
+async function configureAutomationThreadModel(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<void> {
@@ -525,26 +525,26 @@ async function setupFixture(): Promise<GmailTestFixture> {
   };
 }
 
-async function readTrigger(
+async function readAutomation(
   actor: ApiTestUser,
-  triggerId: string,
+  automationId: string,
 ): Promise<ZeroWorkflowAutomationSummary> {
   const response = await accept(
-    triggersClient().get({
+    automationsClient().get({
       headers: authHeaders(actor),
-      params: { id: triggerId },
+      params: { id: automationId },
     }),
     [200],
   );
   return response.body;
 }
 
-async function runTriggerNow(
+async function runAutomationNow(
   actor: ApiTestUser,
-  triggerId: string,
+  automationId: string,
 ): Promise<{ readonly chatThreadId: string; readonly runId: string }> {
   const response = await createApp({ signal: context.signal }).request(
-    `/api/zero/workflow-triggers/${triggerId}/run`,
+    `/api/zero/workflow-automations/${automationId}/run`,
     {
       method: "POST",
       headers: authHeaders(actor),
@@ -554,7 +554,7 @@ async function runTriggerNow(
   if (response.status !== 201) {
     expectApiError(body);
     throw new Error(
-      `Expected trigger run to start, received ${response.status}: ${JSON.stringify(
+      `Expected automation run to start, received ${response.status}: ${JSON.stringify(
         body,
       )}`,
     );
@@ -562,16 +562,18 @@ async function runTriggerNow(
   return body as { readonly chatThreadId: string; readonly runId: string };
 }
 
-function requireTriggerChatThreadId(
-  trigger: ZeroWorkflowAutomationSummary,
+function requireAutomationChatThreadId(
+  automation: ZeroWorkflowAutomationSummary,
 ): string {
-  if (!trigger.chatThreadId) {
-    throw new Error(`Expected trigger ${trigger.id} to have a chat thread`);
+  if (!automation.chatThreadId) {
+    throw new Error(
+      `Expected automation ${automation.id} to have a chat thread`,
+    );
   }
-  return trigger.chatThreadId;
+  return automation.chatThreadId;
 }
 
-async function workflowTriggerBriefs(
+async function workflowAutomationBriefs(
   actor: ApiTestUser,
   chatThreadId: string,
 ): Promise<readonly (string | null | undefined)[]> {
@@ -642,12 +644,12 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowTriggers(actor);
+    await enableGmailWorkflowAutomations(actor);
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId },
         body: {
@@ -662,8 +664,8 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [201],
     );
-    const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureTriggerThreadModel(actor, chatThreadId);
+    const chatThreadId = requireAutomationChatThreadId(created.body);
+    await configureAutomationThreadModel(actor, chatThreadId);
 
     const body = gmailPushBody({
       emailAddress: gmailEmail,
@@ -679,18 +681,20 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    const expectedTriggerBrief = [
+    const expectedAutomationBrief = [
       "Gmail new message",
       "From: Customer Example <customer@example.com>",
       "Subject: Invoice needs a reply",
     ].join("\n");
 
-    await expect(workflowTriggerBriefs(actor, chatThreadId)).resolves.toContain(
-      expectedTriggerBrief,
+    await expect(
+      workflowAutomationBriefs(actor, chatThreadId),
+    ).resolves.toContain(expectedAutomationBrief);
+    await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
+      {
+        lastRunAt: expect.any(String),
+      },
     );
-    await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({
-      lastRunAt: expect.any(String),
-    });
     const [runId] = await workflowRunIds(actor, chatThreadId);
     if (!runId) {
       throw new Error("Expected a dispatched Gmail workflow run");
@@ -706,7 +710,7 @@ describe("POST /api/webhooks/gmail", () => {
     );
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
     expect(gmailEventContextFromPrompt(appendSystemPrompt)).toStrictEqual({
-      triggerId: created.body.id,
+      automationId: created.body.id,
       event: "new_message",
       emailAddress: gmailEmail,
       messageId: "msg-1",
@@ -735,8 +739,8 @@ describe("POST /api/webhooks/gmail", () => {
       "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
       "api_dispatch_pre_create_zero_workflow_event_load_external_events",
-      "api_dispatch_pre_create_zero_workflow_event_load_triggers",
-      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_load_automations",
+      "api_dispatch_pre_create_zero_workflow_event_match_automations",
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       "api_dispatch_pre_create_zero_workflow_event_handoff_run",
@@ -749,7 +753,7 @@ describe("POST /api/webhooks/gmail", () => {
           op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
           workflow_event_source: "gmail",
           trigger_source: "workflow-event",
-          zero_run_origin: "workflow_trigger",
+          zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),
@@ -774,13 +778,13 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 0,
       duplicates: 1,
     });
-    const triggerBriefsAfterDuplicate = await workflowTriggerBriefs(
+    const triggerBriefsAfterDuplicate = await workflowAutomationBriefs(
       actor,
       chatThreadId,
     );
     expect(
       triggerBriefsAfterDuplicate.filter((brief) => {
-        return brief === expectedTriggerBrief;
+        return brief === expectedAutomationBrief;
       }),
     ).toHaveLength(1);
   });
@@ -796,12 +800,12 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailLabelAppliedMocks("Label_support_new", gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowTriggers(actor);
+    await enableGmailWorkflowAutomations(actor);
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId },
         body: {
@@ -816,8 +820,8 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [201],
     );
-    const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureTriggerThreadModel(actor, chatThreadId);
+    const chatThreadId = requireAutomationChatThreadId(created.body);
+    await configureAutomationThreadModel(actor, chatThreadId);
 
     expect(created.body).toMatchObject({
       eventType: "gmail-label-applied",
@@ -842,35 +846,39 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    await expect(workflowTriggerBriefs(actor, chatThreadId)).resolves.toContain(
+    await expect(
+      workflowAutomationBriefs(actor, chatThreadId),
+    ).resolves.toContain(
       [
         "Gmail label applied: Support",
         "From: Support Team <support@example.com>",
         "Subject: Support request",
       ].join("\n"),
     );
-    await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({
-      eventConfig: {
-        labelName: "Support",
-        resolvedLabelId: "Label_support_new",
+    await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
+      {
+        eventConfig: {
+          labelName: "Support",
+          resolvedLabelId: "Label_support_new",
+        },
+        lastRunAt: expect.any(String),
       },
-      lastRunAt: expect.any(String),
-    });
+    );
   });
 
-  it("starts an event run when the trigger's previous run is still active", async () => {
+  it("starts an event run when the automation's previous run is still active", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();
     configureGmailWatchMock();
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowTriggers(actor);
+    await enableGmailWorkflowAutomations(actor);
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId },
         body: {
@@ -885,11 +893,11 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [201],
     );
-    const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureTriggerThreadModel(actor, chatThreadId);
-    const activeRun = await runTriggerNow(actor, created.body.id);
+    const chatThreadId = requireAutomationChatThreadId(created.body);
+    await configureAutomationThreadModel(actor, chatThreadId);
+    const activeRun = await runAutomationNow(actor, created.body.id);
     expect(activeRun.chatThreadId).toBe(chatThreadId);
-    const triggerBriefsBeforeWebhook = await workflowTriggerBriefs(
+    const triggerBriefsBeforeWebhook = await workflowAutomationBriefs(
       actor,
       chatThreadId,
     );
@@ -905,22 +913,24 @@ describe("POST /api/webhooks/gmail", () => {
     expectResponseStatus(response, 200);
     expect(response.body).toMatchObject({ dispatched: 1, duplicates: 0 });
 
-    const expectedTriggerBrief = [
+    const expectedAutomationBrief = [
       "Gmail new message",
       "From: Customer Example <customer@example.com>",
       "Subject: Invoice needs a reply",
     ].join("\n");
-    const triggerBriefsAfterWebhook = await workflowTriggerBriefs(
+    const triggerBriefsAfterWebhook = await workflowAutomationBriefs(
       actor,
       chatThreadId,
     );
-    expect(triggerBriefsAfterWebhook).toContain(expectedTriggerBrief);
+    expect(triggerBriefsAfterWebhook).toContain(expectedAutomationBrief);
     expect(triggerBriefsAfterWebhook).toHaveLength(
       triggerBriefsBeforeWebhook.length + 1,
     );
-    await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({
-      lastRunAt: expect.any(String),
-    });
+    await expect(readAutomation(actor, created.body.id)).resolves.toMatchObject(
+      {
+        lastRunAt: expect.any(String),
+      },
+    );
   });
 
   it("preserves metadata-only context through the workflow queue", async () => {
@@ -931,12 +941,12 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailMessageMocks(gmailEmail);
 
     const { actor, workflowId } = await setupFixture();
-    await enableGmailWorkflowTriggers(actor, { workflowQueue: true });
+    await enableGmailWorkflowAutomations(actor, { workflowQueue: true });
     await connectGmail(actor, gmailEmail);
     await configureWorkspaceModelProvider(actor);
 
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId },
         body: {
@@ -951,9 +961,9 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [201],
     );
-    const chatThreadId = requireTriggerChatThreadId(created.body);
-    await configureTriggerThreadModel(actor, chatThreadId);
-    const activeRun = await runTriggerNow(actor, created.body.id);
+    const chatThreadId = requireAutomationChatThreadId(created.body);
+    await configureAutomationThreadModel(actor, chatThreadId);
+    const activeRun = await runAutomationNow(actor, created.body.id);
 
     const response = await postGmailWebhook(
       gmailPushBody({
@@ -987,7 +997,7 @@ describe("POST /api/webhooks/gmail", () => {
     }
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
     expect(gmailEventContextFromPrompt(appendSystemPrompt)).toMatchObject({
-      triggerId: created.body.id,
+      automationId: created.body.id,
       event: "new_message",
       messageId: "msg-1",
       threadId: "gmail-thread-1",

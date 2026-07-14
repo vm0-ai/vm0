@@ -5,7 +5,7 @@ import {
 } from "@vm0/core/feature-switch";
 import {
   FeatureSwitchKey,
-  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY,
+  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
 } from "@vm0/core/feature-switch-key";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
@@ -32,9 +32,9 @@ function canonicalizeFeatureSwitchAliases(
   const canonical = { ...switches };
   const notionWorkflowAutomations =
     switches[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    switches[LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY];
+    switches[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
 
-  delete canonical[LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY];
+  delete canonical[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
   if (notionWorkflowAutomations !== undefined) {
     canonical[FeatureSwitchKey.NotionWorkflowAutomations] =
       notionWorkflowAutomations;

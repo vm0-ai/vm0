@@ -2,8 +2,8 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
+  workflowUserTriggerThreads as workflowUserAutomationThreads,
+  zeroWorkflowTriggers as zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { command, type Computed } from "ccstate";
@@ -14,20 +14,20 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { calculateNextRun } from "./time-trigger";
+import { calculateNextRun } from "./time-automation";
 import {
-  runWorkflowTriggerNow$,
-  type DueWorkflowTrigger,
+  runWorkflowAutomationNow$,
+  type DueWorkflowAutomation,
   type RunFailure,
-  type TriggerRow,
-} from "./zero-workflow-trigger-run.service";
+  type AutomationRow,
+} from "./zero-workflow-automation-run.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { workflowQueueEnabledForOwner } from "./chat-message-queue.service";
-import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
-import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
-import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
+import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
+import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
-const log = logger("api:zero-workflow-trigger-poller");
+const log = logger("api:zero-workflow-automation-poller");
 
 const MAX_CONSECUTIVE_FAILURES = 3;
 const DUE_BATCH_LIMIT = 200;
@@ -37,8 +37,8 @@ interface ExecuteResult {
   readonly skipped: number;
 }
 
-interface DueWorkflowTriggerRow {
-  readonly trigger: TriggerRow;
+interface DueWorkflowAutomationRow {
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly workflowDisplayName: string | null;
@@ -95,31 +95,31 @@ async function hasOrgMembership(
 }
 
 /**
- * Claim a due workflow trigger via an optimistic lock on `next_run_at`: clear
- * the next run, stamp `last_run_at`, and disable one-time triggers. Recurrence
+ * Claim a due workflow automation via an optimistic lock on `next_run_at`: clear
+ * the next run, stamp `last_run_at`, and disable one-time automations. Recurrence
  * advance happens in the completion callback. Returns the claimed row, or null
  * when another tick won the race.
  */
-async function claimTrigger(
+async function claimAutomation(
   db: Db,
-  trigger: TriggerRow,
+  automation: AutomationRow,
   currentTime: Date,
-): Promise<TriggerRow | null> {
-  if (!trigger.nextRunAt) {
+): Promise<AutomationRow | null> {
+  if (!automation.nextRunAt) {
     return null;
   }
   const [claimed] = await db
-    .update(zeroWorkflowTriggers)
+    .update(zeroWorkflowAutomations)
     .set({
       nextRunAt: null,
       lastRunAt: currentTime,
       updatedAt: currentTime,
-      ...(trigger.scheduleType === "once" ? { enabled: false } : {}),
+      ...(automation.scheduleType === "once" ? { enabled: false } : {}),
     })
     .where(
       and(
-        eq(zeroWorkflowTriggers.id, trigger.id),
-        eq(zeroWorkflowTriggers.nextRunAt, trigger.nextRunAt),
+        eq(zeroWorkflowAutomations.id, automation.id),
+        eq(zeroWorkflowAutomations.nextRunAt, automation.nextRunAt),
       ),
     )
     .returning();
@@ -127,94 +127,94 @@ async function claimTrigger(
 }
 
 function advanceAfterPreRunFailure(
-  trigger: TriggerRow,
+  automation: AutomationRow,
   failureTime: Date,
   shouldDisable: boolean,
 ): Date | null {
   if (shouldDisable) {
     return null;
   }
-  if (trigger.scheduleType === "cron" && trigger.cronExpression) {
+  if (automation.scheduleType === "cron" && automation.cronExpression) {
     return calculateNextRun(
-      trigger.cronExpression,
-      trigger.timezone,
+      automation.cronExpression,
+      automation.timezone,
       failureTime,
     );
   }
-  if (trigger.scheduleType === "loop" && trigger.intervalSeconds) {
-    return new Date(failureTime.getTime() + trigger.intervalSeconds * 1000);
+  if (automation.scheduleType === "loop" && automation.intervalSeconds) {
+    return new Date(failureTime.getTime() + automation.intervalSeconds * 1000);
   }
   return null;
 }
 
 async function recordPreRunFailure(
   db: Db,
-  trigger: TriggerRow,
+  automation: AutomationRow,
   error: unknown,
   signal: AbortSignal,
 ): Promise<void> {
   const isCreditError = isInsufficientCreditsFailure(error);
   const context = {
-    triggerId: trigger.id,
-    workflowId: trigger.workflowId,
-    orgId: trigger.orgId,
-    userId: trigger.ownerUserId,
+    automationId: automation.id,
+    workflowId: automation.workflowId,
+    orgId: automation.orgId,
+    userId: automation.ownerUserId,
     error: failureMessage(error),
   };
   if (isCreditError) {
-    log.warn("Workflow trigger skipped: insufficient credits", context);
+    log.warn("Workflow automation skipped: insufficient credits", context);
   } else {
-    log.error("Workflow trigger pre-run failed", context);
+    log.error("Workflow automation pre-run failed", context);
   }
 
   const failureTime = nowDate();
-  const newFailureCount = trigger.consecutiveFailures + 1;
+  const newFailureCount = automation.consecutiveFailures + 1;
   const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
   const nextRunAt = advanceAfterPreRunFailure(
-    trigger,
+    automation,
     failureTime,
     shouldDisable,
   );
-  const triggerIsStillEligible =
-    trigger.scheduleType === "once"
-      ? eq(zeroWorkflowTriggers.id, trigger.id)
+  const automationIsStillEligible =
+    automation.scheduleType === "once"
+      ? eq(zeroWorkflowAutomations.id, automation.id)
       : and(
-          eq(zeroWorkflowTriggers.id, trigger.id),
-          eq(zeroWorkflowTriggers.enabled, true),
+          eq(zeroWorkflowAutomations.id, automation.id),
+          eq(zeroWorkflowAutomations.enabled, true),
         );
 
   await db
-    .update(zeroWorkflowTriggers)
+    .update(zeroWorkflowAutomations)
     .set({
       consecutiveFailures: newFailureCount,
       ...(shouldDisable ? { enabled: false } : {}),
       nextRunAt,
       updatedAt: failureTime,
     })
-    .where(triggerIsStillEligible);
+    .where(automationIsStillEligible);
   signal.throwIfAborted();
 
   if (shouldDisable) {
-    log.warn("Workflow trigger auto-disabled after consecutive failures", {
+    log.warn("Workflow automation auto-disabled after consecutive failures", {
       ...context,
       consecutiveFailures: newFailureCount,
     });
   }
 }
 
-async function ensureDueWorkflowTriggerChatThread(
+async function ensureDueWorkflowAutomationChatThread(
   db: Db,
-  row: DueWorkflowTriggerRow,
+  row: DueWorkflowAutomationRow,
   currentTime: Date,
 ): Promise<string> {
   if (row.chatThreadId) {
     return row.chatThreadId;
   }
   return await db.transaction(async (tx) => {
-    return await ensureWorkflowUserTriggerThread(tx, {
-      orgId: row.trigger.orgId,
-      userId: row.trigger.ownerUserId,
-      workflowId: row.trigger.workflowId,
+    return await ensureWorkflowUserAutomationThread(tx, {
+      orgId: row.automation.orgId,
+      userId: row.automation.ownerUserId,
+      workflowId: row.automation.workflowId,
       agentId: row.agentId,
       workflowTitle: row.workflowDisplayName ?? row.workflowName,
       currentTime,
@@ -222,48 +222,51 @@ async function ensureDueWorkflowTriggerChatThread(
   });
 }
 
-async function dueWorkflowTriggerRows(
+async function dueWorkflowAutomationRows(
   db: Db,
   currentTime: Date,
   signal: AbortSignal,
-): Promise<DueWorkflowTriggerRow[]> {
+): Promise<DueWorkflowAutomationRow[]> {
   const rows = await db
     .select({
-      trigger: zeroWorkflowTriggers,
+      automation: zeroWorkflowAutomations,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
       workflowDisplayName: zeroWorkflows.displayName,
-      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      chatThreadId: workflowUserAutomationThreads.chatThreadId,
       userTimezone: orgMembersMetadata.timezone,
     })
-    .from(zeroWorkflowTriggers)
+    .from(zeroWorkflowAutomations)
     .innerJoin(
       zeroWorkflows,
-      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+      eq(zeroWorkflowAutomations.workflowId, zeroWorkflows.id),
     )
     .leftJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowAutomations.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
-          zeroWorkflowTriggers.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowAutomations.ownerUserId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
+          zeroWorkflowAutomations.workflowId,
         ),
       ),
     )
     .leftJoin(
       orgMembersMetadata,
       and(
-        eq(orgMembersMetadata.orgId, zeroWorkflowTriggers.orgId),
-        eq(orgMembersMetadata.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(orgMembersMetadata.orgId, zeroWorkflowAutomations.orgId),
+        eq(orgMembersMetadata.userId, zeroWorkflowAutomations.ownerUserId),
       ),
     )
     .where(
       and(
-        eq(zeroWorkflowTriggers.enabled, true),
-        eq(zeroWorkflowTriggers.kind, "schedule"),
-        lte(zeroWorkflowTriggers.nextRunAt, currentTime),
+        eq(zeroWorkflowAutomations.enabled, true),
+        eq(zeroWorkflowAutomations.kind, "schedule"),
+        lte(zeroWorkflowAutomations.nextRunAt, currentTime),
       ),
     )
     .limit(DUE_BATCH_LIMIT);
@@ -272,9 +275,9 @@ async function dueWorkflowTriggerRows(
 }
 
 /**
- * Time poller over `zero_workflow_triggers`, run from the
- * execute-workflow-triggers cron route. Mirrors the automation poller: scan
- * enabled triggers whose `next_run_at` is due, skip any whose previous run is
+ * Time poller over `zero_workflow_automations`, run from the
+ * execute-workflow-automations cron route. Mirrors the automation poller: scan
+ * enabled automations whose `next_run_at` is due, skip any whose previous run is
  * still active, optimistic-lock claim the due row, then fire a run that injects
  * the workflow skill (via the agent's attachment) and carries the recurrence
  * completion callback.
@@ -286,129 +289,134 @@ type ComputedGetter = <T>(computedValue: Computed<T>) => T;
  * behind the active run instead of being skipped, so the lastRunId check only
  * applies when the switch is off.
  */
-async function shouldSkipBusyTrigger(input: {
+async function shouldSkipBusyAutomation(input: {
   readonly get: ComputedGetter;
   readonly db: Db;
-  readonly trigger: TriggerRow;
+  readonly automation: AutomationRow;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
-  const { get, db, trigger, signal } = input;
+  const { get, db, automation, signal } = input;
   const overrides = await get(
-    userFeatureSwitchOverrides(trigger.orgId, trigger.ownerUserId),
+    userFeatureSwitchOverrides(automation.orgId, automation.ownerUserId),
   );
   signal.throwIfAborted();
   const queueEnabled = workflowQueueEnabledForOwner({
-    orgId: trigger.orgId,
-    userId: trigger.ownerUserId,
+    orgId: automation.orgId,
+    userId: automation.ownerUserId,
     overrides,
   });
-  if (queueEnabled || !trigger.lastRunId) {
+  if (queueEnabled || !automation.lastRunId) {
     return false;
   }
   const [lastRun] = await db
     .select({ status: agentRuns.status })
     .from(agentRuns)
-    .where(eq(agentRuns.id, trigger.lastRunId))
+    .where(eq(agentRuns.id, automation.lastRunId))
     .limit(1);
   signal.throwIfAborted();
   return lastRun !== undefined && isActivePreviousRunStatus(lastRun.status);
 }
 
-export const executeDueWorkflowTriggers$ = command(
+export const executeDueWorkflowAutomations$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<ExecuteResult> => {
     const db = set(writeDb$);
     const currentTime = nowDate();
 
-    const rows = await dueWorkflowTriggerRows(db, currentTime, signal);
+    const rows = await dueWorkflowAutomationRows(db, currentTime, signal);
     let executed = 0;
     let skipped = 0;
 
     for (const row of rows) {
       const ownerIsMember = await hasOrgMembership(db, {
-        orgId: row.trigger.orgId,
-        userId: row.trigger.ownerUserId,
+        orgId: row.automation.orgId,
+        userId: row.automation.ownerUserId,
       });
       signal.throwIfAborted();
       if (!ownerIsMember) {
         log.warn(
-          "Disabling workflow trigger: owner is no longer an org member",
+          "Disabling workflow automation: owner is no longer an org member",
           {
-            triggerId: row.trigger.id,
-            orgId: row.trigger.orgId,
-            userId: row.trigger.ownerUserId,
+            automationId: row.automation.id,
+            orgId: row.automation.orgId,
+            userId: row.automation.ownerUserId,
           },
         );
         await db
-          .update(zeroWorkflowTriggers)
+          .update(zeroWorkflowAutomations)
           .set({ enabled: false, nextRunAt: null, updatedAt: currentTime })
-          .where(eq(zeroWorkflowTriggers.id, row.trigger.id));
+          .where(eq(zeroWorkflowAutomations.id, row.automation.id));
         signal.throwIfAborted();
         skipped++;
         continue;
       }
 
-      const canFire = await workflowTriggerCanFire(db, {
-        trigger: row.trigger,
+      const canFire = await workflowAutomationCanFire(db, {
+        automation: row.automation,
         agentId: row.agentId,
         signal,
       });
       signal.throwIfAborted();
       if (!canFire) {
-        log.debug("Workflow trigger skipped: trigger is paused", {
-          triggerId: row.trigger.id,
-          workflowId: row.trigger.workflowId,
+        log.debug("Workflow automation skipped: automation is paused", {
+          automationId: row.automation.id,
+          workflowId: row.automation.workflowId,
           agentId: row.agentId,
-          orgId: row.trigger.orgId,
-          userId: row.trigger.ownerUserId,
+          orgId: row.automation.orgId,
+          userId: row.automation.ownerUserId,
         });
         skipped++;
         continue;
       }
 
       if (
-        await shouldSkipBusyTrigger({ get, db, trigger: row.trigger, signal })
+        await shouldSkipBusyAutomation({
+          get,
+          db,
+          automation: row.automation,
+          signal,
+        })
       ) {
         skipped++;
         continue;
       }
 
-      const claimed = await claimTrigger(db, row.trigger, currentTime);
+      const claimed = await claimAutomation(db, row.automation, currentTime);
       signal.throwIfAborted();
       if (!claimed) {
         skipped++;
         continue;
       }
 
-      const chatThreadId = await ensureDueWorkflowTriggerChatThread(
+      const chatThreadId = await ensureDueWorkflowAutomationChatThread(
         db,
         row,
         currentTime,
       );
       signal.throwIfAborted();
 
-      const due: DueWorkflowTrigger = {
-        trigger: claimed,
+      const due: DueWorkflowAutomation = {
+        automation: claimed,
         agentId: row.agentId,
         workflowName: row.workflowName,
         chatThreadId,
-        allowClaimedOnceScheduleTrigger:
+        allowClaimedOnceScheduleAutomation:
           claimed.scheduleType === "once" && !claimed.enabled,
       };
 
       const runResult = await settle(
         set(
-          runWorkflowTriggerNow$,
+          runWorkflowAutomationNow$,
           {
             due,
             apiStartTime: now(),
             triggerBrief:
-              buildWorkflowScheduleTriggerBrief({
+              buildWorkflowScheduleAutomationBrief({
                 createdAt: currentTime,
                 scheduleType: claimed.scheduleType,
                 cronExpression: claimed.cronExpression,
                 intervalSeconds: claimed.intervalSeconds,
                 atTime: claimed.atTime,
-                triggerTimezone: claimed.timezone,
+                automationTimezone: claimed.timezone,
                 userTimezone: row.userTimezone,
               }) ?? undefined,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -435,7 +443,7 @@ export const executeDueWorkflowTriggers$ = command(
       executed++;
     }
 
-    log.debug("execute-workflow-triggers tick complete", {
+    log.debug("execute-workflow-automations tick complete", {
       dueCount: rows.length,
       executed,
       skipped,

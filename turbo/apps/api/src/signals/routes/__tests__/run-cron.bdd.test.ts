@@ -413,7 +413,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 });
 
 // Workflow schedule lifecycle and execution coverage lives in
-// zero-workflow-triggers.test.ts and zero-workflow-trigger-scheduler.test.ts.
+// zero-workflow-automations.test.ts and zero-workflow-automation-scheduler.test.ts.
 // This file retains shared cron authorization and email outbox boundaries.
 
 describe("SCHED-02: cron routes", () => {

@@ -40,7 +40,7 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { userArtifactFavorites } from "@vm0/db/schema/user-artifact-favorite";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowTriggers as zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import {
   and,
   asc,
@@ -72,7 +72,7 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { goalObjectiveBriefFromJson } from "./zero-goal-objective-brief-normalization.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
-import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
+import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -114,15 +114,15 @@ type ChatMessageRow = {
   readonly workflowDescription: string | null;
   readonly workflowId: string | null;
   readonly workflowAgentId: string | null;
-  readonly workflowTriggerId: string | null;
-  readonly workflowTriggerBrief: string | null;
-  readonly workflowTriggerKind: string | null;
-  readonly workflowTriggerScheduleType: string | null;
-  readonly workflowTriggerCronExpression: string | null;
-  readonly workflowTriggerIntervalSeconds: number | null;
-  readonly workflowTriggerAtTime: Date | null;
-  readonly workflowTriggerTimezone: string | null;
-  readonly workflowTriggerUserTimezone: string | null;
+  readonly workflowAutomationId: string | null;
+  readonly workflowAutomationBrief: string | null;
+  readonly workflowAutomationKind: string | null;
+  readonly workflowAutomationScheduleType: string | null;
+  readonly workflowAutomationCronExpression: string | null;
+  readonly workflowAutomationIntervalSeconds: number | null;
+  readonly workflowAutomationAtTime: Date | null;
+  readonly workflowAutomationTimezone: string | null;
+  readonly workflowAutomationUserTimezone: string | null;
 };
 
 type ArtifactListSqlRow = Record<string, unknown> & {
@@ -268,7 +268,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerId: sql<string | null>`(
+  workflowAutomationId: sql<string | null>`(
     SELECT "zero_workflow_automations"."id"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -276,7 +276,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerBrief: sql<string | null>`(
+  workflowAutomationBrief: sql<string | null>`(
     SELECT COALESCE(
       "zero_runs"."trigger_brief",
       CASE
@@ -307,7 +307,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerKind: sql<string | null>`(
+  workflowAutomationKind: sql<string | null>`(
     SELECT "zero_workflow_automations"."kind"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -315,7 +315,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerScheduleType: sql<string | null>`(
+  workflowAutomationScheduleType: sql<string | null>`(
     SELECT "zero_workflow_automations"."schedule_type"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -323,7 +323,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerCronExpression: sql<string | null>`(
+  workflowAutomationCronExpression: sql<string | null>`(
     SELECT "zero_workflow_automations"."cron_expression"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -331,7 +331,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerIntervalSeconds: sql<number | null>`(
+  workflowAutomationIntervalSeconds: sql<number | null>`(
     SELECT "zero_workflow_automations"."interval_seconds"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -339,15 +339,15 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerAtTime: sql<Date | null>`(
+  workflowAutomationAtTime: sql<Date | null>`(
     SELECT "zero_workflow_automations"."at_time"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
       ON "zero_workflow_automations"."id" = "zero_runs"."workflow_automation_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
-  )`.mapWith(zeroWorkflowTriggers.atTime),
-  workflowTriggerTimezone: sql<string | null>`(
+  )`.mapWith(zeroWorkflowAutomations.atTime),
+  workflowAutomationTimezone: sql<string | null>`(
     SELECT "zero_workflow_automations"."timezone"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -355,7 +355,7 @@ const messageColumns = {
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
-  workflowTriggerUserTimezone: sql<string | null>`(
+  workflowAutomationUserTimezone: sql<string | null>`(
     SELECT "org_members_metadata"."timezone"
     FROM "zero_runs"
     INNER JOIN "zero_workflow_automations"
@@ -538,18 +538,18 @@ function normalizeUsagePayload(
   };
 }
 
-function workflowScheduleTriggerBrief(row: ChatMessageRow): string | null {
-  if (row.workflowTriggerKind !== "schedule") {
+function workflowScheduleAutomationBrief(row: ChatMessageRow): string | null {
+  if (row.workflowAutomationKind !== "schedule") {
     return null;
   }
-  return buildWorkflowScheduleTriggerBrief({
+  return buildWorkflowScheduleAutomationBrief({
     createdAt: row.createdAt,
-    scheduleType: row.workflowTriggerScheduleType,
-    cronExpression: row.workflowTriggerCronExpression,
-    intervalSeconds: row.workflowTriggerIntervalSeconds,
-    atTime: row.workflowTriggerAtTime,
-    triggerTimezone: row.workflowTriggerTimezone,
-    userTimezone: row.workflowTriggerUserTimezone,
+    scheduleType: row.workflowAutomationScheduleType,
+    cronExpression: row.workflowAutomationCronExpression,
+    intervalSeconds: row.workflowAutomationIntervalSeconds,
+    atTime: row.workflowAutomationAtTime,
+    automationTimezone: row.workflowAutomationTimezone,
+    userTimezone: row.workflowAutomationUserTimezone,
   });
 }
 
@@ -565,8 +565,9 @@ function workflowSnapshotFromRow(
     name: row.workflowName,
     displayName: row.workflowDisplayName,
     description: row.workflowDescription,
-    triggerId: row.workflowTriggerId ?? undefined,
-    triggerBrief: row.workflowTriggerBrief ?? workflowScheduleTriggerBrief(row),
+    triggerId: row.workflowAutomationId ?? undefined,
+    triggerBrief:
+      row.workflowAutomationBrief ?? workflowScheduleAutomationBrief(row),
   };
 }
 

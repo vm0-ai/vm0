@@ -8,7 +8,7 @@ interface OrgTierLimits {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
   readonly videoGenerationAllowed: boolean;
-  readonly workflowWebhookTriggerAllowed: boolean;
+  readonly workflowWebhookAutomationAllowed: boolean;
   readonly audioLifetimeLimit: number | null;
   readonly audioDailyRateLimit: number;
   readonly audioDailyDurationSeconds: number;
@@ -28,7 +28,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     supportByok: true,
     restrictedVm0Models: false,
     videoGenerationAllowed: true,
-    workflowWebhookTriggerAllowed: false,
+    workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: 10,
     audioDailyRateLimit: 10,
     audioDailyDurationSeconds: 10 * 60,
@@ -41,7 +41,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     supportByok: false,
     restrictedVm0Models: true,
     videoGenerationAllowed: false,
-    workflowWebhookTriggerAllowed: false,
+    workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: 10,
     audioDailyRateLimit: 10,
     audioDailyDurationSeconds: 10 * 60,
@@ -54,7 +54,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     supportByok: false,
     restrictedVm0Models: true,
     videoGenerationAllowed: false,
-    workflowWebhookTriggerAllowed: false,
+    workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: 0,
     audioDailyRateLimit: 0,
     audioDailyDurationSeconds: 0,
@@ -67,7 +67,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     supportByok: true,
     restrictedVm0Models: false,
     videoGenerationAllowed: true,
-    workflowWebhookTriggerAllowed: false,
+    workflowWebhookAutomationAllowed: false,
     audioLifetimeLimit: null,
     audioDailyRateLimit: 300,
     audioDailyDurationSeconds: 200 * 60,
@@ -80,7 +80,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     supportByok: true,
     restrictedVm0Models: false,
     videoGenerationAllowed: true,
-    workflowWebhookTriggerAllowed: true,
+    workflowWebhookAutomationAllowed: true,
     audioLifetimeLimit: null,
     audioDailyRateLimit: 500,
     audioDailyDurationSeconds: 500 * 60,
@@ -93,7 +93,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     supportByok: true,
     restrictedVm0Models: false,
     videoGenerationAllowed: true,
-    workflowWebhookTriggerAllowed: true,
+    workflowWebhookAutomationAllowed: true,
     audioLifetimeLimit: null,
     audioDailyRateLimit: 500,
     audioDailyDurationSeconds: 500 * 60,

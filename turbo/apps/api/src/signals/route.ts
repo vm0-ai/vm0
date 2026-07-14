@@ -24,7 +24,7 @@ import { cronCompactChatThreadSnapshotsRoutes } from "./routes/cron-compact-chat
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronDrainRelationshipMemoryRoutes } from "./routes/cron-drain-relationship-memory";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
-import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
+import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
@@ -144,7 +144,7 @@ import { zeroSecretsRoutes } from "./routes/zero-secrets";
 import { zeroScrapeRoutes } from "./routes/zero-scrape";
 import { zeroWorkflowsRoutes } from "./routes/zero-workflows";
 import { zeroWorkflowAutomationsRoutes } from "./routes/zero-workflow-automations";
-import { legacyWorkflowTriggerAliasRoutes } from "./routes/legacy-workflow-trigger-aliases";
+import { legacyWorkflowTriggerAliasRoutes as legacyWorkflowAutomationAliasRoutes } from "./routes/legacy-workflow-trigger-aliases";
 import { zeroWorkflowQueueRoutes } from "./routes/zero-workflow-queue";
 import { integrationsGithubRoutes } from "./routes/integrations-github";
 import { zeroIntegrationsAgentPhoneRoutes } from "./routes/zero-integrations-agentphone";
@@ -252,7 +252,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCleanupSandboxesRoutes,
   ...cronDrainRelationshipMemoryRoutes,
   ...cronDrainEmailOutboxRoutes,
-  ...cronExecuteWorkflowTriggersRoutes,
+  ...cronExecuteWorkflowAutomationsRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
@@ -351,7 +351,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
-  ...legacyWorkflowTriggerAliasRoutes,
+  ...legacyWorkflowAutomationAliasRoutes,
   ...zeroWorkflowQueueRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackBrowserConnectRoutes,

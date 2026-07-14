@@ -6,8 +6,8 @@ import { chatMessageQueue } from "@vm0/db/schema/chat-message-queue";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
-  workflowUserTriggerThreads,
-  zeroWorkflowTriggers,
+  workflowUserTriggerThreads as workflowUserAutomationThreads,
+  zeroWorkflowTriggers as zeroWorkflowAutomations,
 } from "@vm0/db/schema/zero-workflow";
 import { zeroWorkflowQueueEvents } from "@vm0/db/schema/zero-workflow-queue";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -44,8 +44,8 @@ const workflowQueueEventParamsWireSchema = z.object({
 });
 
 /**
- * The caller-supplied remainder of `RunWorkflowTriggerNowArgs` persisted with
- * a queued event. Fields the trigger-run command derives from the trigger row
+ * The caller-supplied remainder of `RunWorkflowAutomationNowArgs` persisted with
+ * a queued event. Fields the automation-run command derives from the automation row
  * itself (default prompt, default callbacks) stay undefined and are rebuilt
  * at dequeue time.
  */
@@ -132,13 +132,13 @@ async function loadWorkflowThreadMapping(
 ): Promise<WorkflowThreadMapping | null> {
   const [row] = await db
     .select({
-      orgId: workflowUserTriggerThreads.orgId,
-      userId: workflowUserTriggerThreads.userId,
-      workflowId: workflowUserTriggerThreads.workflowId,
-      queuePausedAt: workflowUserTriggerThreads.queuePausedAt,
+      orgId: workflowUserAutomationThreads.orgId,
+      userId: workflowUserAutomationThreads.userId,
+      workflowId: workflowUserAutomationThreads.workflowId,
+      queuePausedAt: workflowUserAutomationThreads.queuePausedAt,
     })
-    .from(workflowUserTriggerThreads)
-    .where(eq(workflowUserTriggerThreads.chatThreadId, chatThreadId))
+    .from(workflowUserAutomationThreads)
+    .where(eq(workflowUserAutomationThreads.chatThreadId, chatThreadId))
     .limit(1);
   return row ?? null;
 }
@@ -213,7 +213,7 @@ async function pendingWorkflowEventExists(
   return legacy !== undefined;
 }
 
-async function pendingTickExistsForTrigger(
+async function pendingTickExistsForAutomation(
   db: Db,
   triggerId: string,
 ): Promise<boolean> {
@@ -236,33 +236,33 @@ async function pendingTickExistsForTrigger(
 type WorkflowQueueAdmission = "proceed" | "enqueued";
 
 /**
- * Decide whether a fired trigger event may create its run now or must wait in
+ * Decide whether a fired automation event may create its run now or must wait in
  * the chat message queue. Serialized per chat thread via an advisory lock.
- * Schedule ticks coalesce per trigger: at most one pending tick.
+ * Schedule ticks coalesce per automation: at most one pending tick.
  */
-export async function admitWorkflowTriggerEvent(
+export async function admitWorkflowAutomationEvent(
   db: Db,
   args: {
-    readonly trigger: typeof zeroWorkflowTriggers.$inferSelect;
+    readonly automation: typeof zeroWorkflowAutomations.$inferSelect;
     readonly chatThreadId: string;
     readonly triggerSource: TriggerSource;
     readonly triggerBrief: string | undefined;
     readonly params: WorkflowQueueEventParams;
   },
 ): Promise<WorkflowQueueAdmission> {
-  const { trigger } = args;
+  const { automation } = args;
   const encryptedParams = await encryptWorkflowQueueEventParams(args.params, {
-    userId: trigger.ownerUserId,
-    orgId: trigger.orgId,
+    userId: automation.ownerUserId,
+    orgId: automation.orgId,
   });
 
   return await db.transaction(async (tx) => {
     await tx.execute(chatMessageQueueLock(args.chatThreadId));
     await tx.execute(
       legacyWorkflowQueueLock({
-        orgId: trigger.orgId,
-        userId: trigger.ownerUserId,
-        workflowId: trigger.workflowId,
+        orgId: automation.orgId,
+        userId: automation.ownerUserId,
+        workflowId: automation.workflowId,
       }),
     );
 
@@ -280,18 +280,18 @@ export async function admitWorkflowTriggerEvent(
     }
 
     if (
-      trigger.kind === "schedule" &&
-      (await pendingTickExistsForTrigger(tx, trigger.id))
+      automation.kind === "schedule" &&
+      (await pendingTickExistsForAutomation(tx, automation.id))
     ) {
       return "enqueued";
     }
 
     await tx.insert(chatMessageQueue).values({
-      orgId: trigger.orgId,
-      userId: trigger.ownerUserId,
+      orgId: automation.orgId,
+      userId: automation.ownerUserId,
       chatThreadId: args.chatThreadId,
       itemType: "workflow_event",
-      triggerId: trigger.id,
+      triggerId: automation.id,
       triggerSource: args.triggerSource,
       triggerBrief: args.triggerBrief ?? null,
       encryptedParams,
@@ -396,7 +396,7 @@ export async function claimNextWorkflowQueueEvent(
     }
     if (!item.triggerId || !item.triggerSource || !item.encryptedParams) {
       throw new Error(
-        `Workflow event queue item ${item.id} is missing its trigger payload`,
+        `Workflow event queue item ${item.id} is missing its automation payload`,
       );
     }
 
@@ -447,7 +447,7 @@ async function setPauseState(
     .where(eq(chatThreads.id, target.chatThreadId));
   if (target.mapping) {
     await db
-      .update(workflowUserTriggerThreads)
+      .update(workflowUserAutomationThreads)
       .set({
         queuePausedAt: pause?.pausedAt ?? null,
         pauseReason: pause?.pauseReason ?? null,
@@ -455,9 +455,12 @@ async function setPauseState(
       })
       .where(
         and(
-          eq(workflowUserTriggerThreads.orgId, target.mapping.orgId),
-          eq(workflowUserTriggerThreads.userId, target.mapping.userId),
-          eq(workflowUserTriggerThreads.workflowId, target.mapping.workflowId),
+          eq(workflowUserAutomationThreads.orgId, target.mapping.orgId),
+          eq(workflowUserAutomationThreads.userId, target.mapping.userId),
+          eq(
+            workflowUserAutomationThreads.workflowId,
+            target.mapping.workflowId,
+          ),
         ),
       );
   }
@@ -545,17 +548,20 @@ export async function pendingWorkflowQueueThreadIds(
     .selectDistinct({ chatThreadId: zeroWorkflowQueueEvents.chatThreadId })
     .from(zeroWorkflowQueueEvents)
     .innerJoin(
-      workflowUserTriggerThreads,
+      workflowUserAutomationThreads,
       and(
-        eq(workflowUserTriggerThreads.orgId, zeroWorkflowQueueEvents.orgId),
-        eq(workflowUserTriggerThreads.userId, zeroWorkflowQueueEvents.userId),
+        eq(workflowUserAutomationThreads.orgId, zeroWorkflowQueueEvents.orgId),
         eq(
-          workflowUserTriggerThreads.workflowId,
+          workflowUserAutomationThreads.userId,
+          zeroWorkflowQueueEvents.userId,
+        ),
+        eq(
+          workflowUserAutomationThreads.workflowId,
           zeroWorkflowQueueEvents.workflowId,
         ),
       ),
     )
-    .where(isNull(workflowUserTriggerThreads.queuePausedAt))
+    .where(isNull(workflowUserAutomationThreads.queuePausedAt))
     .limit(limit);
   for (const row of legacyRows) {
     threadIds.add(row.chatThreadId);
@@ -588,24 +594,24 @@ export async function loadWorkflowQueueThread(
 ): Promise<WorkflowQueueThreadRow | null> {
   const [row] = await db
     .select({
-      orgId: workflowUserTriggerThreads.orgId,
-      userId: workflowUserTriggerThreads.userId,
-      workflowId: workflowUserTriggerThreads.workflowId,
-      legacyPausedAt: workflowUserTriggerThreads.queuePausedAt,
-      legacyPauseReason: workflowUserTriggerThreads.pauseReason,
+      orgId: workflowUserAutomationThreads.orgId,
+      userId: workflowUserAutomationThreads.userId,
+      workflowId: workflowUserAutomationThreads.workflowId,
+      legacyPausedAt: workflowUserAutomationThreads.queuePausedAt,
+      legacyPauseReason: workflowUserAutomationThreads.pauseReason,
       queuePausedAt: chatThreads.queuePausedAt,
       pauseReason: chatThreads.pauseReason,
     })
-    .from(workflowUserTriggerThreads)
+    .from(workflowUserAutomationThreads)
     .innerJoin(
       chatThreads,
-      eq(chatThreads.id, workflowUserTriggerThreads.chatThreadId),
+      eq(chatThreads.id, workflowUserAutomationThreads.chatThreadId),
     )
     .where(
       and(
-        eq(workflowUserTriggerThreads.chatThreadId, args.threadId),
-        eq(workflowUserTriggerThreads.orgId, args.orgId),
-        eq(workflowUserTriggerThreads.userId, args.userId),
+        eq(workflowUserAutomationThreads.chatThreadId, args.threadId),
+        eq(workflowUserAutomationThreads.orgId, args.orgId),
+        eq(workflowUserAutomationThreads.userId, args.userId),
       ),
     )
     .limit(1);

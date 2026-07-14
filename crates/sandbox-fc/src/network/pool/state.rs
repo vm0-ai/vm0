@@ -25,9 +25,10 @@ use super::super::readiness::{
 use super::host::ConntrackFlushOutcome;
 use super::host::{
     NamespaceDeleteOutcome, NetnsLifecycleOps, acquire_pool_lock, create_single_namespace,
-    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
+    delete_pool_firewall_rules_by_comment, enable_host_ip_forwarding, get_default_interface,
+    reconcile_orphan_namespaces, setup_dns_input_filter,
 };
-use super::naming::{MAX_NAMESPACES, format_hex_index};
+use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
     CheckedNetnsPoolConfig, NetnsInfo, NetnsLease, NetnsPoolConfig, NetnsReleaseOutcome,
 };
@@ -157,6 +158,7 @@ struct CleanupPlan {
     namespaces: Vec<NetnsInfo>,
     ops: NetnsLifecycleOps,
     wait_for_pending: Option<watch::Receiver<u64>>,
+    dns_input_filter_comment: Option<String>,
     done: bool,
 }
 
@@ -190,6 +192,11 @@ struct NetnsPoolState {
     dns_readiness_state: DnsReadinessState,
     dns_readiness_probe: DnsReadinessProbe,
     dns_readiness_timeout: Duration,
+    /// Comment shared by the pool-wide IPv4/IPv6 DNS INPUT rules.
+    ///
+    /// Cleanup keeps this ownership marker until the bounded firewall delete
+    /// completes so cancellation cannot silently orphan the rules.
+    dns_input_filter_comment: Option<String>,
     creation_failure: Option<NetworkError>,
     default_iface: String,
     ops: NetnsLifecycleOps,
@@ -248,6 +255,7 @@ impl NetnsPoolState {
             dns_readiness_state: DnsReadinessState::NotRequired,
             dns_readiness_probe: production_dns_readiness_probe(),
             dns_readiness_timeout: DNS_READINESS_OPERATION_TIMEOUT,
+            dns_input_filter_comment: None,
             creation_failure: None,
             default_iface: "test0".into(),
             ops: NetnsLifecycleOps::trusted_for_test(),
@@ -286,6 +294,10 @@ impl NetnsPoolState {
         reconcile_orphan_namespaces(&lock_paths, index, &lock).await;
 
         let default_iface = get_default_interface().await?;
+        let dns_input_filter_comment = match config.dns_port {
+            Some(dns_port) => Some(setup_dns_input_filter(index, dns_port).await?),
+            None => None,
+        };
         let (completion_tx, completion_rx, completion_generation, completion_wake_tx) =
             Self::completion_state();
 
@@ -318,6 +330,7 @@ impl NetnsPoolState {
             },
             dns_readiness_probe: production_dns_readiness_probe(),
             dns_readiness_timeout: DNS_READINESS_OPERATION_TIMEOUT,
+            dns_input_filter_comment,
             creation_failure: None,
             default_iface,
             ops: NetnsLifecycleOps::default(),
@@ -361,7 +374,7 @@ impl NetnsPoolState {
 
     fn host_device_pattern(&self) -> String {
         let pool_idx = format_hex_index(self.pool_index);
-        format!("vm0-ve-{pool_idx}-*")
+        make_host_device_dnsmasq_pattern(&pool_idx)
     }
 
     fn creation_notifier(&self) -> CreationNotifier {
@@ -924,11 +937,25 @@ impl NetnsPoolState {
                 .chain(self.proxy_queue.iter())
                 .cloned(),
         );
+        let dns_input_filter_comment = if namespaces.is_empty() && wait_for_pending.is_none() {
+            self.dns_input_filter_comment.clone()
+        } else {
+            None
+        };
         CleanupPlan {
-            done: namespaces.is_empty() && wait_for_pending.is_none(),
+            done: namespaces.is_empty()
+                && wait_for_pending.is_none()
+                && dns_input_filter_comment.is_none(),
             namespaces,
             ops: self.ops.clone(),
             wait_for_pending,
+            dns_input_filter_comment,
+        }
+    }
+
+    fn commit_dns_input_filter_cleanup(&mut self, comment: &str) {
+        if self.dns_input_filter_comment.as_deref() == Some(comment) {
+            self.dns_input_filter_comment = None;
         }
     }
 
@@ -954,12 +981,18 @@ impl Drop for NetnsPoolState {
     fn drop(&mut self) {
         let queued = self.plain_queue.len() + self.proxy_queue.len();
         let pending = self.pending_plain.len() + self.pending_proxy.len();
-        if self.active || queued != 0 || pending != 0 || !self.in_flight.is_empty() {
+        if self.active
+            || queued != 0
+            || pending != 0
+            || !self.in_flight.is_empty()
+            || self.dns_input_filter_comment.is_some()
+        {
             warn!(
                 active = self.active,
                 queued,
                 pending,
                 in_flight = self.in_flight.len(),
+                dns_input_filter = self.dns_input_filter_comment.is_some(),
                 "NetnsPool dropped without calling cleanup()"
             );
         }
@@ -1086,6 +1119,18 @@ impl NetnsPoolInner {
             {
                 let mut state = self.state.lock().await;
                 state.remove_queued_namespaces(&names);
+            }
+
+            if let Some(comment) = plan.dns_input_filter_comment {
+                let outcome = delete_pool_firewall_rules_by_comment(&comment).await;
+                if matches!(outcome, NamespaceDeleteOutcome::Abandoned) {
+                    warn!(
+                        comment,
+                        "DNS input filter cleanup did not complete cleanly; startup orphan reconciliation will retry"
+                    );
+                }
+                let mut state = self.state.lock().await;
+                state.commit_dns_input_filter_cleanup(&comment);
             }
 
             if let Some(mut waiter) = plan.wait_for_pending

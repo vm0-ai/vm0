@@ -83,7 +83,7 @@ mod sandbox_finalization;
 mod signals;
 
 use active_sessions::new_active_cli_agent_sessions;
-use factory_lifecycle::{shutdown_factories, start_factories};
+use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeldSessionStateSnapshot,
     collect_heartbeat_state, refresh_workspace_cache_held_session_snapshot, send_heartbeat,
@@ -207,12 +207,12 @@ async fn publish_live_runner_instance_or_shutdown_startup_resources(
         Err(e) => {
             resources.memory_prefetch.cancel();
             resources.provider.shutdown().await;
+            resources.dns_handle.stop().await;
             resources.runtime.shutdown().await;
             if let Err(kill_error) = resources.mitm.kill_now().await {
                 warn!(error = %kill_error, "failed to kill proxy after live runner instance publish failed");
             }
             resources.kmsg_handle.stop().await;
-            resources.dns_handle.stop().await;
             resources.memory_prefetch.drain().await;
             resources.status.set_mode(RunnerMode::Stopped).await;
             Err(e)
@@ -226,6 +226,7 @@ async fn shutdown_startup_resources_after_startup_failure(
 ) {
     resources.memory_prefetch.cancel();
     resources.provider.shutdown().await;
+    resources.dns_handle.stop().await;
     if let Some(runtime) = resources.runtime {
         runtime.shutdown().await;
     }
@@ -233,7 +234,6 @@ async fn shutdown_startup_resources_after_startup_failure(
         warn!(error = %e, context, "failed to kill proxy after startup failed");
     }
     resources.kmsg_handle.stop().await;
-    resources.dns_handle.stop().await;
     resources.memory_prefetch.drain().await;
     resources.status.set_mode(RunnerMode::Stopped).await;
 }
@@ -1243,7 +1243,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             shutdown_startup_resources_after_startup_failure(
                 StartupFailureResources {
                     provider: provider_state.provider.as_ref(),
-                    runtime: None,
+                    runtime: Some(runtime.as_mut()),
                     mitm: &mut mitm,
                     kmsg_handle,
                     dns_handle,
@@ -1765,9 +1765,18 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     info!("shutting down factories");
-    let phase = teardown.phase_start("shutdown_factories");
-    shutdown_factories(&mut factories, runtime.as_mut(), Some(&teardown)).await;
-    teardown.phase_complete("shutdown_factories", phase);
+    let phase = teardown.phase_start("shutdown_factory_instances");
+    shutdown_factory_instances(&mut factories, Some(&teardown)).await;
+    teardown.phase_complete("shutdown_factory_instances", phase);
+
+    // Keep the pool-scoped INPUT filters installed until dnsmasq is gone.
+    // Runtime shutdown owns those filters, so it must follow DNS shutdown to
+    // avoid exposing the wildcard listener between the two cleanup phases.
+    let phase = teardown.phase_start("dns_stop");
+    dns_handle.stop().await;
+    teardown.phase_complete("dns_stop", phase);
+
+    shutdown_runtime(runtime.as_mut(), Some(&teardown)).await;
 
     // Wait for buffered and pending usage reports before stopping the proxy.
     // The runner writes a shutdown request marker, then the addon replies with
@@ -1825,10 +1834,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let phase = teardown.phase_start("kmsg_stop");
     kmsg_handle.stop().await;
     teardown.phase_complete("kmsg_stop", phase);
-    let phase = teardown.phase_start("dns_stop");
-    dns_handle.stop().await;
-    teardown.phase_complete("dns_stop", phase);
-
     let phase = teardown.phase_start("memory_prefetch_drain");
     memory_prefetch.drain().await;
     teardown.phase_complete("memory_prefetch_drain", phase);

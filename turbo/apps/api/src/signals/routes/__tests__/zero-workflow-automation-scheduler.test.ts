@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
   zeroAgentsMainContract,
@@ -32,7 +32,7 @@ const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";
-const CRON_EXECUTE_WORKFLOW_TRIGGERS_ROUTE =
+const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-triggers";
 const CRON_SECRET = "test-cron-secret";
 
@@ -49,8 +49,8 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -92,19 +92,19 @@ async function setup(
   };
 }
 
-interface CreatedTrigger {
-  readonly triggerId: string;
+interface CreatedAutomation {
+  readonly automationId: string;
   readonly threadId: string;
   readonly nextRunAt: string | null;
 }
 
-/** Loop triggers are due immediately on creation. */
-async function createDueLoopTrigger(
+/** Loop automations are due immediately on creation. */
+async function createDueLoopAutomation(
   scenario: Scenario,
   intervalSeconds: number,
-): Promise<CreatedTrigger> {
+): Promise<CreatedAutomation> {
   const created = await accept(
-    triggersClient().create({
+    automationsClient().create({
       headers: authHeaders(),
       params: { workflowId: scenario.workflowId },
       body: { schedule: { type: "loop", intervalSeconds } },
@@ -112,31 +112,31 @@ async function createDueLoopTrigger(
     [201],
   );
   if (!created.body.chatThreadId) {
-    throw new Error("Expected the trigger to bind a chat thread");
+    throw new Error("Expected the automation to bind a chat thread");
   }
   return {
-    triggerId: created.body.id,
+    automationId: created.body.id,
     threadId: created.body.chatThreadId,
     nextRunAt: created.body.nextRunAt,
   };
 }
 
-async function disableTrigger(triggerId: string): Promise<void> {
+async function disableAutomation(automationId: string): Promise<void> {
   await accept(
-    triggersClient().disable({
+    automationsClient().disable({
       headers: authHeaders(),
-      params: { id: triggerId },
+      params: { id: automationId },
     }),
     [200],
   );
 }
 
-async function executeDueWorkflowTriggers(): Promise<void> {
+async function executeDueWorkflowAutomations(): Promise<void> {
   const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_TRIGGERS_ROUTE,
+    CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
     { headers: { authorization: `Bearer ${CRON_SECRET}` } },
   );
-  await expectOk(response, "execute workflow triggers cron");
+  await expectOk(response, "execute workflow automations cron");
   const body = await readJson<{ readonly success: boolean }>(response);
   expect(body.success).toBeTruthy();
 }
@@ -148,8 +148,8 @@ interface WorkflowRunMessage {
 }
 
 /**
- * Workflow-trigger fires post a `/workflow-name` user message with the run id
- * into the bound thread; this is the public read for "runs of this trigger".
+ * Workflow-automation fires post a `/workflow-name` user message with the run id
+ * into the bound thread; this is the public read for "runs of this automation".
  */
 async function workflowRunMessages(
   threadId: string,
@@ -200,9 +200,9 @@ async function completeRunThroughSandbox(
     {
       runId,
       cliAgentType: "claude-code",
-      cliAgentSessionId: `workflow-trigger-cli-${runId}`,
+      cliAgentSessionId: `workflow-automation-cli-${runId}`,
       cliAgentSessionHistoryHash: createHash("sha256")
-        .update(`workflow trigger history ${runId}`)
+        .update(`workflow automation history ${runId}`)
         .digest("hex"),
     },
     sandboxHeaders,
@@ -226,13 +226,13 @@ async function deleteWorkflowViaApi(scenario: Scenario): Promise<void> {
   await expectOk(response, "delete workflow");
 }
 
-describe("zero workflow trigger scheduler", () => {
-  it("uses agent connector authorization and permission grants for trigger runs", async () => {
+describe("zero workflow automation scheduler", () => {
+  it("uses agent connector authorization and permission grants for automation runs", async () => {
     const scenario = await setup();
 
     // A real Gmail connection plus the public agent-connector and permission
     // grant routes, so the gmail firewall is built into the manifest.
-    mockGmailConnectorOAuth({ email: "trigger-user@example.com" });
+    mockGmailConnectorOAuth({ email: "automation-user@example.com" });
     await wf.connectConnector(scenario.actor, "gmail");
     await accept(
       setupApp({ context })(zeroUserConnectorsContract).update({
@@ -250,38 +250,38 @@ describe("zero workflow trigger scheduler", () => {
     });
     mocks.clerk.session(scenario.userId, scenario.orgId);
 
-    const trigger = await createDueLoopTrigger(scenario, 60);
+    const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
-    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     expect(claim.networkPolicies?.gmail?.allow ?? []).toContain(
       "messages.write",
     );
-    await disableTrigger(trigger.triggerId);
+    await disableAutomation(automation.automationId);
   });
 
   it("does not expose workflow permission deep-link ids to the run environment", async () => {
     const scenario = await setup();
-    const trigger = await createDueLoopTrigger(scenario, 60);
+    const automation = await createDueLoopAutomation(scenario, 60);
 
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
-    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    const run = await onlyWorkflowRunMessage(automation.threadId);
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     const environment = claim.environment ?? {};
     expect(environment.ZERO_WORKFLOW_TRIGGER_ID).toBeUndefined();
     expect(environment.ZERO_WORKFLOW_ID).toBeUndefined();
-    await disableTrigger(trigger.triggerId);
+    await disableAutomation(automation.automationId);
   });
 
-  it("fires a due cron trigger: creates a run, posts to the thread, sets last run state", async () => {
+  it("fires a due cron automation: creates a run, posts to the thread, sets last run state", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -296,11 +296,13 @@ describe("zero workflow trigger scheduler", () => {
     );
     const threadId = created.body.chatThreadId;
     if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound cron trigger with a next run");
+      throw new Error(
+        "Expected a thread-bound cron automation with a next run",
+      );
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
     const run = await onlyWorkflowRunMessage(threadId);
     expect(run.triggerSource).toBe("workflow-schedule");
@@ -313,15 +315,15 @@ describe("zero workflow trigger scheduler", () => {
       ),
     );
 
-    const trigger = await wf.readTrigger(created.body.id);
-    expect(trigger.nextRunAt).toBeNull();
-    expect(typeof trigger.lastRunAt).toBe("string");
+    const automation = await wf.readAutomation(created.body.id);
+    expect(automation.nextRunAt).toBeNull();
+    expect(typeof automation.lastRunAt).toBe("string");
   });
 
-  it("disables a one-time trigger when it fires", async () => {
+  it("disables a one-time automation when it fires", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -336,15 +338,15 @@ describe("zero workflow trigger scheduler", () => {
     );
     const threadId = created.body.chatThreadId;
     if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound one-time trigger");
+      throw new Error("Expected a thread-bound one-time automation");
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
-    const trigger = await wf.readTrigger(created.body.id);
-    expect(trigger.enabled).toBeFalsy();
-    expect(trigger.nextRunAt).toBeNull();
+    const automation = await wf.readAutomation(created.body.id);
+    expect(automation.enabled).toBeFalsy();
+    expect(automation.nextRunAt).toBeNull();
 
     const run = await onlyWorkflowRunMessage(threadId);
     expect(run.triggerBrief).toMatch(
@@ -355,62 +357,62 @@ describe("zero workflow trigger scheduler", () => {
     );
   });
 
-  it("fires a due loop trigger with a persisted friendly trigger brief", async () => {
+  it("fires a due loop automation with a persisted friendly automation brief", async () => {
     const scenario = await setup({ timezone: "Asia/Shanghai" });
-    const trigger = await createDueLoopTrigger(scenario, 3600);
+    const automation = await createDueLoopAutomation(scenario, 3600);
 
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
-    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    const run = await onlyWorkflowRunMessage(automation.threadId);
     expect(run.triggerBrief).toMatch(
       new RegExp(
         `^${friendlyTriggeredAtPattern("Asia/Shanghai")}\\nEvery 1 hour$`,
         "u",
       ),
     );
-    await disableTrigger(trigger.triggerId);
+    await disableAutomation(automation.automationId);
   });
 
-  it("skips a trigger whose previous run is still active", async () => {
+  it("skips an automation whose previous run is still active", async () => {
     const scenario = await setup();
-    const trigger = await createDueLoopTrigger(scenario, 60);
+    const automation = await createDueLoopAutomation(scenario, 60);
 
     // First tick fires a run that stays active (never claimed or completed).
-    await executeDueWorkflowTriggers();
-    await onlyWorkflowRunMessage(trigger.threadId);
+    await executeDueWorkflowAutomations();
+    await onlyWorkflowRunMessage(automation.threadId);
 
     // Re-arm the schedule through the public update route, then move time
     // past the recomputed next run.
     const updated = await accept(
-      triggersClient().update({
+      automationsClient().update({
         headers: authHeaders(),
-        params: { id: trigger.triggerId },
+        params: { id: automation.automationId },
         body: { schedule: { type: "loop", intervalSeconds: 60 } },
       }),
       [200],
     );
     if (!updated.body.nextRunAt) {
-      throw new Error("Expected the loop trigger to be rescheduled");
+      throw new Error("Expected the loop automation to be rescheduled");
     }
     mockNow(Date.parse(updated.body.nextRunAt) + 1000);
 
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
-    // The due trigger was skipped: no second run message and the schedule is
+    // The due automation was skipped: no second run message and the schedule is
     // left untouched for the next tick.
-    const messages = await workflowRunMessages(trigger.threadId);
+    const messages = await workflowRunMessages(automation.threadId);
     expect(messages).toHaveLength(1);
-    const read = await wf.readTrigger(trigger.triggerId);
+    const read = await wf.readAutomation(automation.automationId);
     expect(read.enabled).toBeTruthy();
     expect(read.nextRunAt).toBe(updated.body.nextRunAt);
 
-    await disableTrigger(trigger.triggerId);
+    await disableAutomation(automation.automationId);
   });
 
-  it("skips a due trigger when the owner can no longer read the agent", async () => {
+  it("skips a due automation when the owner can no longer read the agent", async () => {
     const scenario = await setup();
 
-    // A second org member owns the trigger on the public workflow. The member
+    // A second org member owns the automation on the public workflow. The member
     // becomes visible to the scheduler through a CLI-token request, which
     // caches the org membership the poller checks.
     const member = wf.user({
@@ -434,7 +436,7 @@ describe("zero workflow trigger scheduler", () => {
 
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: { schedule: { type: "loop", intervalSeconds: 300 } },
@@ -443,7 +445,7 @@ describe("zero workflow trigger scheduler", () => {
     );
     const threadId = created.body.chatThreadId;
     if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound loop trigger");
+      throw new Error("Expected a thread-bound loop automation");
     }
 
     // The agent owner flips the agent private, hiding it from the member.
@@ -457,7 +459,7 @@ describe("zero workflow trigger scheduler", () => {
       [200],
     );
 
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
 
     // Restore visibility so the member's product reads work again; the skip
     // already happened during the tick above.
@@ -470,23 +472,23 @@ describe("zero workflow trigger scheduler", () => {
       [200],
     );
 
-    // The member's due trigger was skipped without being disabled or fired.
+    // The member's due automation was skipped without being disabled or fired.
     mocks.clerk.session(member.userId, scenario.orgId, "org:member");
-    const read = await wf.readTrigger(created.body.id);
+    const read = await wf.readAutomation(created.body.id);
     expect(read.enabled).toBeTruthy();
     expect(read.nextRunAt).toBe(created.body.nextRunAt);
     expect(read.lastRunAt).toBeNull();
     const messages = await workflowRunMessages(threadId);
     expect(messages).toHaveLength(0);
 
-    await disableTrigger(created.body.id);
+    await disableAutomation(created.body.id);
     mocks.clerk.session(scenario.userId, scenario.orgId);
   });
 
-  it("advances a cron trigger on the completion callback", async () => {
+  it("advances a cron automation on the completion callback", async () => {
     const scenario = await setup();
     const created = await accept(
-      triggersClient().create({
+      automationsClient().create({
         headers: authHeaders(),
         params: { workflowId: scenario.workflowId },
         body: {
@@ -501,11 +503,11 @@ describe("zero workflow trigger scheduler", () => {
     );
     const threadId = created.body.chatThreadId;
     if (!threadId || !created.body.nextRunAt) {
-      throw new Error("Expected a thread-bound cron trigger");
+      throw new Error("Expected a thread-bound cron automation");
     }
 
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
     const run = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
@@ -529,41 +531,41 @@ describe("zero workflow trigger scheduler", () => {
 
     await expect
       .poll(async () => {
-        return (await wf.readTrigger(created.body.id)).nextRunAt;
+        return (await wf.readAutomation(created.body.id)).nextRunAt;
       })
       .not.toBeNull();
-    const trigger = await wf.readTrigger(created.body.id);
-    expect(trigger.enabled).toBeTruthy();
+    const automation = await wf.readAutomation(created.body.id);
+    expect(automation.enabled).toBeTruthy();
   });
 
-  it("reschedules a loop trigger by its interval on completion", async () => {
+  it("reschedules a loop automation by its interval on completion", async () => {
     const scenario = await setup();
-    const trigger = await createDueLoopTrigger(scenario, 300);
+    const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowTriggers();
+    await executeDueWorkflowAutomations();
     const before = now();
-    const run = await onlyWorkflowRunMessage(trigger.threadId);
+    const run = await onlyWorkflowRunMessage(automation.threadId);
     await completeRunThroughSandbox(scenario, run.runId, 0);
 
     await expect
       .poll(async () => {
-        return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
+        return (await wf.readAutomation(automation.automationId)).nextRunAt;
       })
       .not.toBeNull();
-    const read = await wf.readTrigger(trigger.triggerId);
+    const read = await wf.readAutomation(automation.automationId);
     if (!read.nextRunAt) {
-      throw new Error("Expected the loop trigger to be rescheduled");
+      throw new Error("Expected the loop automation to be rescheduled");
     }
     expect(Date.parse(read.nextRunAt)).toBeGreaterThanOrEqual(before + 290_000);
-    await disableTrigger(trigger.triggerId);
+    await disableAutomation(automation.automationId);
   });
 
   it("emits an automation callback while accepting an in-flight legacy callback", async () => {
     const scenario = await setup();
-    const trigger = await createDueLoopTrigger(scenario, 300);
+    const automation = await createDueLoopAutomation(scenario, 300);
 
-    await executeDueWorkflowTriggers();
-    await onlyWorkflowRunMessage(trigger.threadId);
+    await executeDueWorkflowAutomations();
+    await onlyWorkflowRunMessage(automation.threadId);
 
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
@@ -583,7 +585,9 @@ describe("zero workflow trigger scheduler", () => {
     expect(emittedCallbacks).not.toContainEqual(
       expect.objectContaining({ internalKind: "workflow-trigger:loop" }),
     );
-    expect((await wf.readTrigger(trigger.triggerId)).nextRunAt).toBeNull();
+    expect(
+      (await wf.readAutomation(automation.automationId)).nextRunAt,
+    ).toBeNull();
 
     const legacyPrompt = "complete an in-flight legacy workflow callback";
     const legacyRun = await runsApi.createRun(scenario.actor, {
@@ -596,7 +600,7 @@ describe("zero workflow trigger scheduler", () => {
       {
         runId: legacyRun.runId,
         internalKind: "workflow-trigger:loop",
-        payload: { triggerId: trigger.triggerId },
+        payload: { triggerId: automation.automationId },
       },
       context.signal,
     );
@@ -605,7 +609,7 @@ describe("zero workflow trigger scheduler", () => {
 
     await expect
       .poll(async () => {
-        return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
+        return (await wf.readAutomation(automation.automationId)).nextRunAt;
       })
       .not.toBeNull();
     const legacyCallbacks = await store.set(
@@ -623,23 +627,23 @@ describe("zero workflow trigger scheduler", () => {
         status: "delivered",
       }),
     );
-    await disableTrigger(trigger.triggerId);
+    await disableAutomation(automation.automationId);
   });
 
-  it("auto-disables a trigger after three consecutive failures", async () => {
+  it("auto-disables an automation after three consecutive failures", async () => {
     const scenario = await setup();
-    const trigger = await createDueLoopTrigger(scenario, 300);
+    const automation = await createDueLoopAutomation(scenario, 300);
     const base = now();
     const seenRunIds = new Set<string>();
 
     // Three fire + failed-completion cycles through the public cron, runner,
-    // and sandbox completion surfaces auto-disable the trigger.
+    // and sandbox completion surfaces auto-disable the automation.
     for (let failure = 1; failure <= 3; failure += 1) {
       if (failure > 1) {
         mockNow(base + (failure - 1) * 320_000);
       }
-      await executeDueWorkflowTriggers();
-      const messages = await workflowRunMessages(trigger.threadId);
+      await executeDueWorkflowAutomations();
+      const messages = await workflowRunMessages(automation.threadId);
       const nextRun = messages.find((message) => {
         return !seenRunIds.has(message.runId);
       });
@@ -651,7 +655,7 @@ describe("zero workflow trigger scheduler", () => {
       if (failure < 3) {
         await expect
           .poll(async () => {
-            return (await wf.readTrigger(trigger.triggerId)).nextRunAt;
+            return (await wf.readAutomation(automation.automationId)).nextRunAt;
           })
           .not.toBeNull();
       }
@@ -659,25 +663,25 @@ describe("zero workflow trigger scheduler", () => {
 
     await expect
       .poll(async () => {
-        return (await wf.readTrigger(trigger.triggerId)).enabled;
+        return (await wf.readAutomation(automation.automationId)).enabled;
       })
       .toBeFalsy();
-    const read = await wf.readTrigger(trigger.triggerId);
+    const read = await wf.readAutomation(automation.automationId);
     expect(read.nextRunAt).toBeNull();
   });
 
-  it("cascade-deletes a workflow's triggers when the workflow is removed", async () => {
+  it("cascade-deletes a workflow's automations when the workflow is removed", async () => {
     const scenario = await setup();
-    const trigger = await createDueLoopTrigger(scenario, 300);
+    const automation = await createDueLoopAutomation(scenario, 300);
 
     // Under the hard 1:N model a workflow belongs to exactly one agent; removing
-    // the workflow cascade-deletes its triggers (FK onDelete: cascade).
+    // the workflow cascade-deletes its automations (FK onDelete: cascade).
     await deleteWorkflowViaApi(scenario);
 
     await accept(
-      triggersClient().get({
+      automationsClient().get({
         headers: authHeaders(),
-        params: { id: trigger.triggerId },
+        params: { id: automation.automationId },
       }),
       [404],
     );

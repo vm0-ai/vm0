@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
+import { zeroWorkflowTriggers as zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { command, type Computed } from "ccstate";
 import { eq } from "drizzle-orm";
 
@@ -27,23 +27,23 @@ import {
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
-  admitWorkflowTriggerEvent,
+  admitWorkflowAutomationEvent,
   workflowQueueEnabledForOwner,
 } from "./chat-message-queue.service";
-import { workflowTriggerCanFire } from "./zero-workflow-trigger-access.service";
+import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 
-export type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
+export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
-export interface DueWorkflowTrigger {
-  readonly trigger: TriggerRow;
-  // The owning agent is derived from the workflow row (hard 1:N); triggers no
+export interface DueWorkflowAutomation {
+  readonly automation: AutomationRow;
+  // The owning agent is derived from the workflow row (hard 1:N); automations no
   // longer carry an agentId column, so callers resolve it and pass it here.
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
-  // One-time schedule triggers are disabled as part of the optimistic claim.
+  // One-time schedule automations are disabled as part of the optimistic claim.
   // That claimed row can still proceed through the run-start readability gate.
-  readonly allowClaimedOnceScheduleTrigger?: boolean;
+  readonly allowClaimedOnceScheduleAutomation?: boolean;
 }
 
 type RunErrorResponse = {
@@ -53,7 +53,7 @@ type RunErrorResponse = {
   };
 };
 
-export type RunWorkflowTriggerResult =
+export type RunWorkflowAutomationResult =
   | { readonly kind: "ok"; readonly runId: string }
   // The event was accepted into the workflow queue instead of starting a run.
   | { readonly kind: "enqueued" }
@@ -61,7 +61,7 @@ export type RunWorkflowTriggerResult =
   | { readonly kind: "run_error"; readonly response: RunErrorResponse };
 
 export type RunFailure = Exclude<
-  RunWorkflowTriggerResult,
+  RunWorkflowAutomationResult,
   { kind: "ok" } | { kind: "enqueued" }
 >;
 type ActivePreviousRunPolicy = "block" | "allow";
@@ -80,8 +80,8 @@ type ModelContext =
     }
   | { readonly ok: false; readonly failure: RunFailure };
 
-export interface RunWorkflowTriggerNowArgs {
-  readonly due: DueWorkflowTrigger;
+export interface RunWorkflowAutomationNowArgs {
+  readonly due: DueWorkflowAutomation;
   readonly apiStartTime: number;
   readonly sessionId?: string;
   // Overrides the default `/<workflowName>` slash-command prompt.
@@ -101,12 +101,12 @@ export interface RunWorkflowTriggerNowArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
-interface WorkflowTriggerRunInput {
+interface WorkflowAutomationRunInput {
   readonly prompt: string;
   readonly appendSystemPrompt: string;
   readonly callbacks: readonly InternalRunCallbackInput[];
-  readonly zeroRunMetadata: ReturnType<typeof workflowTriggerRunMetadata>;
-  readonly memoryEmbeddingWorkflowTriggerId?: string;
+  readonly zeroRunMetadata: ReturnType<typeof workflowAutomationRunMetadata>;
+  readonly memoryEmbeddingWorkflowAutomationId?: string;
 }
 
 function generateCallbackSecret(): string {
@@ -117,17 +117,16 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
-function workflowTriggerRunMetadata(
-  trigger: TriggerRow,
+function workflowAutomationRunMetadata(
+  automation: AutomationRow,
   triggerBrief: string | undefined,
 ) {
   return {
-    workflowTriggerId: trigger.id,
+    workflowAutomationId: automation.id,
     triggerBrief,
-    // The trigger id is the run group id: all runs fired by the same trigger
-    // share a group for chat folding, and `zero_runs.workflow_trigger_id`
-    // already carries the same value as a row-level reference.
-    runGroupId: trigger.id,
+    // The automation id is the run group id: all runs fired by the same automation
+    // share a group for chat folding and carry the same row-level association.
+    runGroupId: automation.id,
   };
 }
 
@@ -137,27 +136,27 @@ function workflowTriggerRunMetadata(
  * render). Cron and once both use the cron callback; once carries no
  * cronExpression so it does not recur.
  */
-function buildWorkflowTriggerCallbacks(
-  trigger: TriggerRow,
+function buildWorkflowAutomationCallbacks(
+  automation: AutomationRow,
   agentId: string,
   chatThreadId: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
-  if (trigger.scheduleType === "loop") {
+  if (automation.scheduleType === "loop") {
     callbacks.push({
       internalKind: "workflow-automation:loop",
       secret: generateCallbackSecret(),
-      payload: { triggerId: trigger.id },
+      payload: { triggerId: automation.id },
     });
   } else {
     callbacks.push({
       internalKind: "workflow-automation:cron",
       secret: generateCallbackSecret(),
       payload: {
-        triggerId: trigger.id,
-        timezone: trigger.timezone,
-        ...(trigger.cronExpression
-          ? { cronExpression: trigger.cronExpression }
+        triggerId: automation.id,
+        timezone: automation.timezone,
+        ...(automation.cronExpression
+          ? { cronExpression: automation.cronExpression }
           : {}),
       },
     });
@@ -173,14 +172,14 @@ function buildWorkflowTriggerCallbacks(
 function buildAppendSystemPrompt(workflowName: string): string {
   return [
     "# Current context",
-    `You are running on a schedule trigger for the "${workflowName}" workflow.`,
+    `You are running on a schedule for the "${workflowName}" workflow.`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
     "Connector permissions use the same agent-run permission settings as chat runs. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny <connector-ref> --method <METHOD> --url <DENIED_URL>` to identify the permission, then tell the user which permission this automation needs. Use the `url` field from the firewall denial response when present; omit query strings or fragments when they may contain secrets because permission matching does not need them.",
   ].join("\n");
 }
 
-export function buildChatOnlyWorkflowTriggerCallbacks(
+export function buildChatOnlyWorkflowAutomationCallbacks(
   chatThreadId: string,
   agentId: string,
 ): InternalRunCallbackInput[] {
@@ -242,8 +241,8 @@ async function resolveModelContext(args: {
   };
 }
 
-function workflowTriggerTiming(
-  args: RunWorkflowTriggerNowArgs,
+function workflowAutomationTiming(
+  args: RunWorkflowAutomationNowArgs,
 ): ApiDispatchTimingCollector {
   const timing = args.timing ?? new ApiDispatchTimingCollector();
   if (!args.timing) {
@@ -258,7 +257,7 @@ function workflowTriggerTiming(
 
 async function checkActivePreviousWorkflowRun(args: {
   readonly db: Db;
-  readonly trigger: TriggerRow;
+  readonly automation: AutomationRow;
   readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
@@ -268,11 +267,14 @@ async function checkActivePreviousWorkflowRun(args: {
     "api_dispatch_pre_create_zero_workflow_automation_check_active_run",
     "nested",
     async (): Promise<RunFailure | undefined> => {
-      if (args.activePreviousRunPolicy !== "allow" && args.trigger.lastRunId) {
+      if (
+        args.activePreviousRunPolicy !== "allow" &&
+        args.automation.lastRunId
+      ) {
         const [lastRun] = await args.db
           .select({ status: agentRuns.status })
           .from(agentRuns)
-          .where(eq(agentRuns.id, args.trigger.lastRunId))
+          .where(eq(agentRuns.id, args.automation.lastRunId))
           .limit(1);
         args.signal.throwIfAborted();
         if (lastRun && isActivePreviousRunStatus(lastRun.status)) {
@@ -287,11 +289,11 @@ async function checkActivePreviousWorkflowRun(args: {
   );
 }
 
-async function checkWorkflowTriggerTargetReadable(args: {
+async function checkWorkflowAutomationTargetReadable(args: {
   readonly db: Db;
-  readonly trigger: TriggerRow;
+  readonly automation: AutomationRow;
   readonly agentId: string;
-  readonly allowClaimedOnceScheduleTrigger: boolean;
+  readonly allowClaimedOnceScheduleAutomation: boolean;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<RunFailure | undefined> {
@@ -300,17 +302,18 @@ async function checkWorkflowTriggerTargetReadable(args: {
     "api_dispatch_pre_create_zero_workflow_automation_check_target_access",
     "nested",
     async (): Promise<RunFailure | undefined> => {
-      const canFire = await workflowTriggerCanFire(args.db, {
-        trigger: args.trigger,
+      const canFire = await workflowAutomationCanFire(args.db, {
+        automation: args.automation,
         agentId: args.agentId,
-        allowClaimedOnceScheduleTrigger: args.allowClaimedOnceScheduleTrigger,
+        allowClaimedOnceScheduleAutomation:
+          args.allowClaimedOnceScheduleAutomation,
         signal: args.signal,
       });
       args.signal.throwIfAborted();
       if (!canFire) {
         return {
           kind: "conflict",
-          message: "Workflow trigger is paused or no longer readable",
+          message: "Workflow automation is paused or no longer readable",
         };
       }
       return undefined;
@@ -320,7 +323,7 @@ async function checkWorkflowTriggerTargetReadable(args: {
 
 async function resolveTimedWorkflowModelContext(args: {
   readonly db: Db;
-  readonly trigger: TriggerRow;
+  readonly automation: AutomationRow;
   readonly chatThreadId: string;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
@@ -332,8 +335,8 @@ async function resolveTimedWorkflowModelContext(args: {
     async () => {
       return await resolveModelContext({
         db: args.db,
-        orgId: args.trigger.orgId,
-        userId: args.trigger.ownerUserId,
+        orgId: args.automation.orgId,
+        userId: args.automation.ownerUserId,
         chatThreadId: args.chatThreadId,
         signal: args.signal,
       });
@@ -341,14 +344,14 @@ async function resolveTimedWorkflowModelContext(args: {
   );
 }
 
-async function buildTimedWorkflowTriggerRunInput(args: {
-  readonly command: RunWorkflowTriggerNowArgs;
-  readonly trigger: TriggerRow;
+async function buildTimedWorkflowAutomationRunInput(args: {
+  readonly command: RunWorkflowAutomationNowArgs;
+  readonly automation: AutomationRow;
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<WorkflowTriggerRunInput> {
+}): Promise<WorkflowAutomationRunInput> {
   return await measureApiDispatchTiming(
     args.timing,
     "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
@@ -361,19 +364,19 @@ async function buildTimedWorkflowTriggerRunInput(args: {
           buildAppendSystemPrompt(args.workflowName),
         callbacks:
           args.command.callbacks ??
-          buildWorkflowTriggerCallbacks(
-            args.trigger,
+          buildWorkflowAutomationCallbacks(
+            args.automation,
             args.agentId,
             args.chatThreadId,
           ),
-        zeroRunMetadata: workflowTriggerRunMetadata(
-          args.trigger,
+        zeroRunMetadata: workflowAutomationRunMetadata(
+          args.automation,
           args.command.triggerBrief,
         ),
-        ...(args.trigger.kind === "schedule" &&
-        (args.trigger.scheduleType === "cron" ||
-          args.trigger.scheduleType === "loop")
-          ? { memoryEmbeddingWorkflowTriggerId: args.trigger.id }
+        ...(args.automation.kind === "schedule" &&
+        (args.automation.scheduleType === "cron" ||
+          args.automation.scheduleType === "loop")
+          ? { memoryEmbeddingWorkflowAutomationId: args.automation.id }
           : {}),
       };
     },
@@ -387,32 +390,32 @@ async function buildTimedWorkflowTriggerRunInput(args: {
  */
 type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
-async function enqueueWorkflowTriggerEventIfBusy(input: {
+async function enqueueWorkflowAutomationEventIfBusy(input: {
   readonly get: ComputedGetter;
   readonly db: Db;
-  readonly args: RunWorkflowTriggerNowArgs;
+  readonly args: RunWorkflowAutomationNowArgs;
   readonly signal: AbortSignal;
 }): Promise<boolean> {
   const { get, db, args, signal } = input;
-  const { trigger, chatThreadId } = args.due;
+  const { automation, chatThreadId } = args.due;
   if (args.bypassWorkflowQueue === true) {
     return false;
   }
   const overrides = await get(
-    userFeatureSwitchOverrides(trigger.orgId, trigger.ownerUserId),
+    userFeatureSwitchOverrides(automation.orgId, automation.ownerUserId),
   );
   signal.throwIfAborted();
   if (
     !workflowQueueEnabledForOwner({
-      orgId: trigger.orgId,
-      userId: trigger.ownerUserId,
+      orgId: automation.orgId,
+      userId: automation.ownerUserId,
       overrides,
     })
   ) {
     return false;
   }
-  const admission = await admitWorkflowTriggerEvent(db, {
-    trigger,
+  const admission = await admitWorkflowAutomationEvent(db, {
+    automation,
     chatThreadId,
     triggerSource: args.triggerSource ?? "workflow-schedule",
     triggerBrief: args.triggerBrief,
@@ -428,7 +431,7 @@ async function enqueueWorkflowTriggerEventIfBusy(input: {
   signal.throwIfAborted();
   if (admission === "enqueued") {
     await publishChatThreadWorkflowQueueChangedSafely(
-      trigger.ownerUserId,
+      automation.ownerUserId,
       chatThreadId,
     );
     signal.throwIfAborted();
@@ -437,9 +440,9 @@ async function enqueueWorkflowTriggerEventIfBusy(input: {
   return false;
 }
 
-async function recordWorkflowTriggerRunStart(input: {
+async function recordWorkflowAutomationRunStart(input: {
   readonly db: Db;
-  readonly args: RunWorkflowTriggerNowArgs;
+  readonly args: RunWorkflowAutomationNowArgs;
   readonly runId: string;
   readonly runStatus: string;
   readonly prompt: string;
@@ -448,15 +451,15 @@ async function recordWorkflowTriggerRunStart(input: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const { db, args, runId, signal } = input;
-  const { trigger, chatThreadId } = args.due;
+  const { automation, chatThreadId } = args.due;
   await postRunUserMessage({
     db,
     threadId: chatThreadId,
-    userId: trigger.ownerUserId,
+    userId: automation.ownerUserId,
     runId,
     prompt: input.prompt,
     appendQueueMarker: input.runStatus === "queued",
-    runGroupId: trigger.id,
+    runGroupId: automation.id,
   });
   signal.throwIfAborted();
 
@@ -472,27 +475,27 @@ async function recordWorkflowTriggerRunStart(input: {
   signal.throwIfAborted();
 
   await db
-    .update(zeroWorkflowTriggers)
+    .update(zeroWorkflowAutomations)
     .set({
       ...(args.recordLastRunId === false ? {} : { lastRunId: runId }),
       ...(args.recordLastRunAt ? { lastRunAt: nowDate() } : {}),
       updatedAt: nowDate(),
     })
-    .where(eq(zeroWorkflowTriggers.id, trigger.id));
+    .where(eq(zeroWorkflowAutomations.id, automation.id));
   signal.throwIfAborted();
 }
 
-export const runWorkflowTriggerNow$ = command(
+export const runWorkflowAutomationNow$ = command(
   async (
     { get, set },
-    args: RunWorkflowTriggerNowArgs,
+    args: RunWorkflowAutomationNowArgs,
     signal: AbortSignal,
-  ): Promise<RunWorkflowTriggerResult> => {
+  ): Promise<RunWorkflowAutomationResult> => {
     const db = set(writeDb$);
-    const { trigger, agentId, workflowName, chatThreadId } = args.due;
-    const timing = workflowTriggerTiming(args);
+    const { automation, agentId, workflowName, chatThreadId } = args.due;
+    const timing = workflowAutomationTiming(args);
 
-    const enqueued = await enqueueWorkflowTriggerEventIfBusy({
+    const enqueued = await enqueueWorkflowAutomationEventIfBusy({
       get,
       db,
       args,
@@ -504,7 +507,7 @@ export const runWorkflowTriggerNow$ = command(
 
     const activePreviousRunFailure = await checkActivePreviousWorkflowRun({
       db,
-      trigger,
+      automation,
       activePreviousRunPolicy: args.activePreviousRunPolicy,
       timing,
       signal,
@@ -513,12 +516,12 @@ export const runWorkflowTriggerNow$ = command(
       return activePreviousRunFailure;
     }
 
-    const targetAccessFailure = await checkWorkflowTriggerTargetReadable({
+    const targetAccessFailure = await checkWorkflowAutomationTargetReadable({
       db,
-      trigger,
+      automation,
       agentId,
-      allowClaimedOnceScheduleTrigger:
-        args.due.allowClaimedOnceScheduleTrigger === true,
+      allowClaimedOnceScheduleAutomation:
+        args.due.allowClaimedOnceScheduleAutomation === true,
       timing,
       signal,
     });
@@ -528,7 +531,7 @@ export const runWorkflowTriggerNow$ = command(
 
     const modelContext = await resolveTimedWorkflowModelContext({
       db,
-      trigger,
+      automation,
       chatThreadId,
       timing,
       signal,
@@ -538,9 +541,9 @@ export const runWorkflowTriggerNow$ = command(
     }
     const { modelPin, effectiveModelProvider } = modelContext;
 
-    const runInput = await buildTimedWorkflowTriggerRunInput({
+    const runInput = await buildTimedWorkflowAutomationRunInput({
       command: args,
-      trigger,
+      automation,
       agentId,
       workflowName,
       chatThreadId,
@@ -556,9 +559,9 @@ export const runWorkflowTriggerNow$ = command(
       createZeroRun$,
       {
         auth: {
-          orgId: trigger.orgId,
+          orgId: automation.orgId,
           orgRole: "member",
-          userId: trigger.ownerUserId,
+          userId: automation.ownerUserId,
           tokenType: "session",
         },
         body: {
@@ -579,8 +582,8 @@ export const runWorkflowTriggerNow$ = command(
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         zeroRunMetadata: runInput.zeroRunMetadata,
-        memoryEmbeddingWorkflowTriggerId:
-          runInput.memoryEmbeddingWorkflowTriggerId,
+        memoryEmbeddingWorkflowAutomationId:
+          runInput.memoryEmbeddingWorkflowAutomationId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         timing,
       },
@@ -592,7 +595,7 @@ export const runWorkflowTriggerNow$ = command(
       return { kind: "run_error", response: result };
     }
 
-    await recordWorkflowTriggerRunStart({
+    await recordWorkflowAutomationRunStart({
       db,
       args,
       runId: result.body.runId,

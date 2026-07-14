@@ -35,6 +35,14 @@ pub(super) fn make_host_device(pool_idx: &str, ns_idx: &str) -> String {
     format!("{HOST_PREFIX}{pool_idx}-{ns_idx}")
 }
 
+pub(super) fn make_host_device_dnsmasq_pattern(pool_idx: &str) -> String {
+    format!("{HOST_PREFIX}{pool_idx}-*")
+}
+
+pub(super) fn make_host_device_iptables_pattern(pool_idx: &str) -> String {
+    format!("{HOST_PREFIX}{pool_idx}-+")
+}
+
 /// Generate a unique /30 IP pair for a veth link.
 ///
 /// Each namespace gets a /30 subnet from the `10.200.0.0/16` range:
