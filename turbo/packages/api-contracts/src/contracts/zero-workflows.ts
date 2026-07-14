@@ -1210,7 +1210,7 @@ export type ZeroWorkflowWebhookSecretResponse = z.infer<
   typeof zeroWorkflowWebhookSecretResponseSchema
 >;
 
-export const zeroWorkflowTriggersContract = c.router({
+export const legacyZeroWorkflowAutomationsContract = c.router({
   listWorkspace: {
     method: "GET",
     path: "/api/zero/workflow-triggers",
@@ -1220,7 +1220,7 @@ export const zeroWorkflowTriggersContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List the caller's workflow triggers across visible workflows",
+    summary: "List the caller's automations through the legacy path",
   },
   listForChatThread: {
     method: "GET",
@@ -1233,7 +1233,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "List workflow triggers bound to a chat thread",
+    summary: "List chat-thread automations through the legacy path",
   },
   list: {
     method: "GET",
@@ -1276,7 +1276,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a workflow trigger",
+    summary: "Get an automation through the legacy path",
   },
   update: {
     method: "PATCH",
@@ -1292,7 +1292,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Update a workflow trigger",
+    summary: "Update an automation through the legacy path",
   },
   delete: {
     method: "DELETE",
@@ -1306,7 +1306,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Delete a workflow trigger",
+    summary: "Delete an automation through the legacy path",
   },
   enable: {
     method: "POST",
@@ -1323,7 +1323,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Enable a workflow trigger",
+    summary: "Enable an automation through the legacy path",
   },
   disable: {
     method: "POST",
@@ -1337,7 +1337,7 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Disable a workflow trigger",
+    summary: "Disable an automation through the legacy path",
   },
   run: {
     method: "POST",
@@ -1353,7 +1353,7 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Run a workflow trigger immediately in its bound chat thread",
+    summary: "Run an automation immediately through the legacy path",
   },
   revealWebhookSecret: {
     method: "POST",
@@ -1367,67 +1367,67 @@ export const zeroWorkflowTriggersContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Reveal the webhook URL and signing secret for a workflow trigger",
+    summary: "Reveal automation webhook credentials through the legacy path",
   },
 });
 
 export const zeroWorkflowAutomationsContract = c.router({
   listWorkspace: {
-    ...zeroWorkflowTriggersContract.listWorkspace,
+    ...legacyZeroWorkflowAutomationsContract.listWorkspace,
     path: "/api/zero/workflow-automations",
     responses: {
-      ...zeroWorkflowTriggersContract.listWorkspace.responses,
+      ...legacyZeroWorkflowAutomationsContract.listWorkspace.responses,
       200: zeroWorkflowAutomationsListResponseSchema,
     },
     summary: "List the caller's automations across visible workflows",
   },
   listForChatThread: {
-    ...zeroWorkflowTriggersContract.listForChatThread,
+    ...legacyZeroWorkflowAutomationsContract.listForChatThread,
     path: "/api/zero/chat-threads/:threadId/workflow-automations",
     summary: "List workflow automations bound to a chat thread",
   },
   list: {
-    ...zeroWorkflowTriggersContract.list,
+    ...legacyZeroWorkflowAutomationsContract.list,
     path: "/api/zero/workflows/:workflowId/automations",
     summary: "List the caller's own automations for a workflow",
   },
   create: {
-    ...zeroWorkflowTriggersContract.create,
+    ...legacyZeroWorkflowAutomationsContract.create,
     path: "/api/zero/workflows/:workflowId/automations",
     summary: "Create an automation on a workflow",
   },
   get: {
-    ...zeroWorkflowTriggersContract.get,
+    ...legacyZeroWorkflowAutomationsContract.get,
     path: "/api/zero/workflow-automations/:id",
     summary: "Get a workflow automation",
   },
   update: {
-    ...zeroWorkflowTriggersContract.update,
+    ...legacyZeroWorkflowAutomationsContract.update,
     path: "/api/zero/workflow-automations/:id",
     summary: "Update a workflow automation",
   },
   delete: {
-    ...zeroWorkflowTriggersContract.delete,
+    ...legacyZeroWorkflowAutomationsContract.delete,
     path: "/api/zero/workflow-automations/:id",
     summary: "Delete a workflow automation",
   },
   enable: {
-    ...zeroWorkflowTriggersContract.enable,
+    ...legacyZeroWorkflowAutomationsContract.enable,
     path: "/api/zero/workflow-automations/:id/enable",
     summary: "Enable a workflow automation",
   },
   disable: {
-    ...zeroWorkflowTriggersContract.disable,
+    ...legacyZeroWorkflowAutomationsContract.disable,
     path: "/api/zero/workflow-automations/:id/disable",
     summary: "Disable a workflow automation",
   },
   run: {
-    ...zeroWorkflowTriggersContract.run,
+    ...legacyZeroWorkflowAutomationsContract.run,
     path: "/api/zero/workflow-automations/:id/run",
     summary: "Run a workflow automation immediately in its bound chat thread",
   },
   revealWebhookSecret: {
-    ...zeroWorkflowTriggersContract.revealWebhookSecret,
+    ...legacyZeroWorkflowAutomationsContract.revealWebhookSecret,
     path: "/api/zero/workflow-automations/:id/webhook-secret",
     summary:
       "Reveal the webhook URL and signing secret for a workflow automation",
@@ -1466,6 +1466,7 @@ export type ZeroWorkflowsCollectionContract =
 export type ZeroWorkflowsDetailContract = typeof zeroWorkflowsDetailContract;
 export type ZeroWorkflowVisibilityContract =
   typeof zeroWorkflowVisibilityContract;
-export type ZeroWorkflowTriggersContract = typeof zeroWorkflowTriggersContract;
+export type LegacyZeroWorkflowAutomationsContract =
+  typeof legacyZeroWorkflowAutomationsContract;
 export type ZeroWorkflowAutomationsContract =
   typeof zeroWorkflowAutomationsContract;

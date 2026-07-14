@@ -228,11 +228,11 @@ export const webhookWorkflowAutomationContract = c.router({
  * Temporary legacy alias for workflow automation inbound webhooks. Remove
  * after the sunset window in #21408; this is not a permanent shim.
  */
-export const webhookWorkflowTriggerContract = c.router({
+export const legacyWebhookWorkflowAutomationContract = c.router({
   post: {
     ...workflowAutomationWebhookPostRoute,
     path: "/api/webhooks/workflow-triggers/:token",
-    summary: "Handle legacy inbound workflow trigger webhooks",
+    summary: "Handle inbound automation webhooks through the legacy path",
   },
 });
 
@@ -904,8 +904,8 @@ export type WebhookGoogleWorkspaceEventsContract =
 export type WebhookStripeContract = typeof webhookStripeContract;
 export type WebhookWorkflowAutomationContract =
   typeof webhookWorkflowAutomationContract;
-export type WebhookWorkflowTriggerContract =
-  typeof webhookWorkflowTriggerContract;
+export type LegacyWebhookWorkflowAutomationContract =
+  typeof legacyWebhookWorkflowAutomationContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =

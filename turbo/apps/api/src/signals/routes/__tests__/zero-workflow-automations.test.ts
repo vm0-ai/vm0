@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowAutomationsContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract as legacyWorkflowAutomationsContract,
+  legacyZeroWorkflowAutomationsContract as legacyWorkflowAutomationsContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";

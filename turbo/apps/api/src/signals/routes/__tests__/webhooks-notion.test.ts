@@ -25,7 +25,7 @@ const mocks = createZeroRouteMocks(context);
 const wf = createWorkflowsBddApi(context);
 const runsApi = createRunsApi(context);
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_PATH =
-  "/api/cron/execute-workflow-triggers";
+  "/api/cron/execute-workflow-automations";
 
 const WORKFLOW_NAME = "notion-webhook-workflow";
 const CRON_SECRET = "test-cron-secret";

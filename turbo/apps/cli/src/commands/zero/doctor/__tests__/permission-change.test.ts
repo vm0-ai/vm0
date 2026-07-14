@@ -93,11 +93,10 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).not.toContain("admin approval");
   });
 
-  it("uses the agent permission page inside a workflow-triggered run", async () => {
+  it("uses the agent permission page inside an automated run", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
-    vi.stubEnv("ZERO_WORKFLOW_TRIGGER_ID", "trig-456");
 
     await permissionChangeCommand.parseAsync([
       "node",
@@ -111,7 +110,6 @@ describe("zero doctor permission-change command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
     expect(logCalls).not.toContain("/workflows/wf-789/permissions?");
-    expect(logCalls).not.toContain("triggerId=trig-456");
     expect(logCalls).toContain("ref=slack");
     expect(logCalls).toContain(
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
@@ -119,7 +117,6 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).toContain("action=allow");
     expect(logCalls).toContain("expiresIn=1h");
     expect(logCalls).toContain("Requested duration: 1h");
-    expect(logCalls).not.toContain("/triggers/trig-456/permissions?");
   });
 
   it("outputs an allow grant link with an explicit duration", async () => {

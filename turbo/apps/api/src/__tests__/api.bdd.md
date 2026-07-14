@@ -311,7 +311,7 @@ Then route responses report work done.
 Then follow-up public or internal GET/status endpoints expose visible side effects.
 Then missing or invalid cron auth is rejected.
 
-Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insights`, `cron-drain-email-outbox`, `cron-execute-workflow-triggers`, `cron-process-usage-events`, `cron-reconcile-billing-entitlements`, `cron-summarize-memory`, `cron-sync-skills`, `cron-telegram-cleanup`.
+Coverage: `cron-cleanup-sandboxes`, `cron-aggregate-usage`, `cron-aggregate-insights`, `cron-drain-email-outbox`, `cron-execute-workflow-automations`, `cron-process-usage-events`, `cron-reconcile-billing-entitlements`, `cron-summarize-memory`, `cron-sync-skills`, `cron-telegram-cleanup`.
 
 ### HOOK-01: Signed internal callbacks
 
@@ -526,8 +526,8 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `zero-integrations-agentphone-link.test.ts`, `zero-integrations-agentphone-routes.test.ts` | INT-03 AgentPhone chains AP-A..AP-M1 in `agentphone.bdd.test.ts` | same |
 | `audio-transcriptions-v1.test.ts` | FILE-02 MEDIA-A/MEDIA-B in `billing-usage-media.bdd.test.ts` | same |
 
-| `zero-slack-{events,commands,interactive}.test.ts` (re-deleted after the #17031 agent-switch-filter delta was re-covered), `desktop-auth.test.ts` (re-deleted after the handoff-status delta), `cron-execute-schedules.test.ts`, `connectors-type-callback.test.ts` (re-deleted; deltas statement-neutral or covered) | INT-01 visibility chains in `integrations.bdd.test.ts`; AUTH-02 handoff chains in `auth-device.bdd.test.ts`; existing SCHED-02 and CB chains, now routed through `cron-execute-workflow-triggers` | same |
-| `cron-execute-schedules.test.ts`, `zero-schedules-run.test.ts`, `zero-logs-list.test.ts` | Workflow schedule dispatch chains in `zero-workflow-automation-scheduler.test.ts`; current log filtering in `run-reads.bdd.test.ts`; current cron route is `cron-execute-workflow-triggers` | same |
+| `zero-slack-{events,commands,interactive}.test.ts` (re-deleted after the #17031 agent-switch-filter delta was re-covered), `desktop-auth.test.ts` (re-deleted after the handoff-status delta), `cron-execute-schedules.test.ts`, `connectors-type-callback.test.ts` (re-deleted; deltas statement-neutral or covered) | INT-01 visibility chains in `integrations.bdd.test.ts`; AUTH-02 handoff chains in `auth-device.bdd.test.ts`; existing SCHED-02 and CB chains, now routed through `cron-execute-workflow-automations` | same |
+| `cron-execute-schedules.test.ts`, `zero-schedules-run.test.ts`, `zero-logs-list.test.ts` | Workflow schedule dispatch chains in `zero-workflow-automation-scheduler.test.ts`; current log filtering in `run-reads.bdd.test.ts`; current cron route is `cron-execute-workflow-automations` | same |
 | `zero-chat-threads.test.ts` (re-deleted after the #17323 soft-state removal), `zero-chat-messages.test.ts`/`zero-slack-events.test.ts` (re-deleted after the #17338 vm0-key test-only delta) | CHAT-01/02/03 detail and message chains in `chat-threads.bdd.test.ts`, `chat-files.bdd.test.ts`, and `chat-messages.bdd.test.ts`; vm0-managed-key behavior asserted through runner claim/firewall-auth production read surfaces in `run-lifecycle.bdd.test.ts`/`integrations.bdd.test.ts` | same |
 | `zero-computer-use.test.ts` | FILE-03 chains T1-T7 in `computer-use.bdd.test.ts` | same |
 | `zero-host.test.ts`, `zero-maps.test.ts` | FILE-01 HOST-A..E and BILL-02 MAPS-A plus the HOST-B/MAPS-B run-scoped zero-token chain in `host-maps.bdd.test.ts` | same |

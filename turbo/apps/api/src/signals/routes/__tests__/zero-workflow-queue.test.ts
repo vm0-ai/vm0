@@ -26,7 +26,7 @@ const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
-  "/api/cron/execute-workflow-triggers";
+  "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
 
 function authHeaders() {

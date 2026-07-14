@@ -144,7 +144,7 @@ export const workflowUserAutomationThreads = pgTable(
 );
 
 /**
- * Schedule sub-type for a workflow trigger.
+ * Schedule sub-type for a workflow automation.
  *
  * - `cron`: recurring at wall-clock times defined by a cron expression.
  * - `loop`: re-scheduled `interval_seconds` after each completion (no overlap).
