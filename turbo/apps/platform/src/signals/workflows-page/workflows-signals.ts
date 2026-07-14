@@ -43,6 +43,10 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 import { onRejection } from "../utils.ts";
+import {
+  reloadWorkflowData$,
+  workflowReloadVersion$,
+} from "./workflow-reload.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -186,7 +190,6 @@ export const currentWorkflowId$ = computed((get): string | null => {
   return typeof workflowId === "string" ? workflowId : null;
 });
 
-const internalWorkflowReload$ = state(0);
 const internalWorkflowDetailActiveTab$ =
   state<WorkflowDetailTab>("automations");
 
@@ -626,9 +629,7 @@ export const setSelectedWorkflowFilePath$ = command(
 
 /** Bump to refetch every workflow list and detail. */
 export const reloadWorkflows$ = command(({ set }) => {
-  set(internalWorkflowReload$, (prev) => {
-    return prev + 1;
-  });
+  set(reloadWorkflowData$);
   set(internalWorkflowConnectorReadiness$, null);
 });
 
@@ -649,7 +650,7 @@ function createAgentWorkflowsFactory(): (
       return existing;
     }
     const atom$ = computed(async (get) => {
-      get(internalWorkflowReload$);
+      get(workflowReloadVersion$);
       const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
       const result = await accept(client.list({ query: { agentId } }), [200]);
       return result.body;
@@ -678,7 +679,7 @@ export const composerWorkflows$ = computed(
 
 export const allVisibleWorkflows$ = computed(
   async (get): Promise<readonly ZeroWorkflowSummary[]> => {
-    get(internalWorkflowReload$);
+    get(workflowReloadVersion$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(client.list({ query: {} }), [200]);
     return [...result.body].sort((a, b) => {
@@ -694,7 +695,7 @@ export const allVisibleWorkflows$ = computed(
 
 export const allWorkflowTriggerEntries$ = computed(
   async (get): Promise<readonly WorkflowAutomationEntry[]> => {
-    get(internalWorkflowReload$);
+    get(workflowReloadVersion$);
     const triggerClient = get(zeroClient$)(zeroWorkflowTriggersContract);
     const triggerResult = await accept(triggerClient.listWorkspace(), [200]);
     return [...triggerResult.body].sort((a, b) => {
@@ -732,7 +733,7 @@ function createWorkflowDetailFactory(): (
       return existing;
     }
     const atom$ = computed(async (get) => {
-      get(internalWorkflowReload$);
+      get(workflowReloadVersion$);
       const client = get(zeroClient$)(zeroWorkflowsDetailContract);
       const result = await accept(
         client.get({ params: { workflowId } }),
