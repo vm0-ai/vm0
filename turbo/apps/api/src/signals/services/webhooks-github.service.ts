@@ -42,7 +42,7 @@ import {
   githubIssuesCallbackPayloadSchema,
   type GitHubIssuesCallbackPayload,
 } from "./github-issues-callback-payload";
-import { dispatchGithubLabelWorkflowTriggers$ } from "./github-workflow-event.service";
+import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -144,7 +144,7 @@ type GitHubIssueCommentEvent = z.infer<typeof gitHubIssueCommentEventSchema>;
 type GitHubPullRequestEvent = z.infer<typeof gitHubPullRequestEventSchema>;
 type GitHubInstallationEvent = z.infer<typeof gitHubInstallationEventSchema>;
 type GitHubInstallationRecord = typeof githubInstallations.$inferSelect;
-type GitHubTriggerKind = "issue" | "pull_request";
+type GitHubAutomationKind = "issue" | "pull_request";
 
 function logMemorySourceError(
   provider: "github",
@@ -173,11 +173,11 @@ interface DispatchParams {
   readonly ghInstallationId: string;
   readonly repo: string;
   readonly issue: GitHubIssue;
-  readonly subjectKind: GitHubTriggerKind;
+  readonly subjectKind: GitHubAutomationKind;
   readonly vm0UserId: string;
   readonly composeId: string;
   readonly prompt: string;
-  readonly triggerDescription?: string;
+  readonly automationDescription?: string;
   readonly sessionContinuityEnabled: boolean;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
@@ -207,14 +207,14 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function githubSubjectLabel(subjectKind: GitHubTriggerKind): string {
+function githubSubjectLabel(subjectKind: GitHubAutomationKind): string {
   return subjectKind === "pull_request" ? "Pull Request" : "Issue";
 }
 
 function githubSubjectUrl(args: {
   readonly repo: string;
   readonly issueNumber: number;
-  readonly subjectKind: GitHubTriggerKind;
+  readonly subjectKind: GitHubAutomationKind;
 }): string {
   const pathSegment = args.subjectKind === "pull_request" ? "pull" : "issues";
   return `https://github.com/${args.repo}/${pathSegment}/${args.issueNumber}`;
@@ -262,7 +262,9 @@ function stripGithubBotMention(body: string): string {
     .trim();
 }
 
-function githubIssueCommentSubjectKind(issue: GitHubIssue): GitHubTriggerKind {
+function githubIssueCommentSubjectKind(
+  issue: GitHubIssue,
+): GitHubAutomationKind {
   return issue.pull_request === undefined ? "issue" : "pull_request";
 }
 
@@ -283,7 +285,7 @@ function buildGitHubPrompt(args: {
   readonly issueContext: string;
   readonly repo: string;
   readonly issueNumber: number;
-  readonly subjectKind: GitHubTriggerKind;
+  readonly subjectKind: GitHubAutomationKind;
 }): string {
   return [buildIntegrationPrompt(), args.issueContext]
     .filter((part): part is string => {
@@ -298,7 +300,7 @@ function buildPromptParts(
     readonly issueContext: string;
     readonly repo: string;
     readonly issueNumber: number;
-    readonly subjectKind: GitHubTriggerKind;
+    readonly subjectKind: GitHubAutomationKind;
   },
 ): {
   readonly prompt: string;
@@ -594,9 +596,9 @@ function formatGitHubCommentContextMessage(args: {
 
 function formatIssueContext(args: {
   readonly issue: GitHubIssue;
-  readonly subjectKind: GitHubTriggerKind;
+  readonly subjectKind: GitHubAutomationKind;
   readonly repo: string;
-  readonly triggerDescription: string | undefined;
+  readonly automationDescription: string | undefined;
   readonly comments: readonly GithubIssueComment[];
   readonly currentCommentId: string | undefined;
 }): string {
@@ -631,7 +633,7 @@ function formatIssueContext(args: {
       issueNumber: args.issue.number,
       subjectKind: args.subjectKind,
     })}`,
-    `Matched trigger: ${args.triggerDescription ?? "GitHub event"}`,
+    `Matched automation: ${args.automationDescription ?? "GitHub event"}`,
     "",
     "The messages below are from the GitHub issue conversation. Messages closer to RELATIVE_INDEX 0 are more recent.",
     "",
@@ -995,7 +997,7 @@ async function buildIssueContextForRun(args: {
     issue: args.params.issue,
     subjectKind: args.params.subjectKind,
     repo: args.params.repo,
-    triggerDescription: args.params.triggerDescription,
+    automationDescription: args.params.automationDescription,
     comments,
     currentCommentId: args.params.commentId,
   });
@@ -1182,7 +1184,7 @@ export const handleGithubIssuesEvent$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     await set(
-      dispatchGithubLabelWorkflowTriggers$,
+      dispatchGithubLabelWorkflowAutomations$,
       {
         deliveryId: args.deliveryId,
         payload: {
@@ -1233,7 +1235,7 @@ export const handleGithubPullRequestEvent$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     await set(
-      dispatchGithubLabelWorkflowTriggers$,
+      dispatchGithubLabelWorkflowAutomations$,
       {
         deliveryId: args.deliveryId,
         payload: {
@@ -1390,7 +1392,7 @@ export const handleGithubIssueCommentEvent$ = command(
         vm0UserId: link.vm0UserId,
         composeId: installation.defaultComposeId,
         prompt,
-        triggerDescription: `${githubAppBotUsername() ?? "GitHub App"} mention`,
+        automationDescription: `${githubAppBotUsername() ?? "GitHub App"} mention`,
         sessionContinuityEnabled: true,
         commentId: String(payload.comment.id),
         comment: payload.comment,

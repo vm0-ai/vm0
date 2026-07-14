@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
-  zeroWorkflowTriggersContract,
+  zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
@@ -126,8 +126,8 @@ function visibilityClient() {
   return setupApp({ context })(zeroWorkflowVisibilityContract);
 }
 
-function triggersClient() {
-  return setupApp({ context })(zeroWorkflowTriggersContract);
+function automationsClient() {
+  return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
 async function createAgent(
@@ -995,7 +995,7 @@ describe("zero workflows", () => {
     );
   });
 
-  it("copies workflows and caller-owned triggers through the API", async () => {
+  it("copies workflows and caller-owned automations through the API", async () => {
     const actor = user();
     if (!actor.orgId) {
       throw new Error("Expected workflow copy actor to belong to an org");
@@ -1014,8 +1014,8 @@ describe("zero workflows", () => {
       name: `copy-source-${randomUUID().slice(0, 8)}`,
       instruction: "# copy source",
     });
-    const trigger = await accept(
-      triggersClient().create({
+    const automation = await accept(
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId: workflow.body.id },
         body: {
@@ -1025,8 +1025,8 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    const webhookTrigger = await accept(
-      triggersClient().create({
+    const webhookAutomation = await accept(
+      automationsClient().create({
         headers: authHeaders(actor),
         params: { workflowId: workflow.body.id },
         body: {
@@ -1036,7 +1036,7 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    expect(webhookTrigger.body).toMatchObject({
+    expect(webhookAutomation.body).toMatchObject({
       kind: "event",
       eventType: "webhook-received",
     });
@@ -1055,25 +1055,25 @@ describe("zero workflows", () => {
     });
     expect(copied.body.id).not.toBe(workflow.body.id);
 
-    const copiedTriggers = await accept(
-      triggersClient().list({
+    const copiedAutomations = await accept(
+      automationsClient().list({
         headers: authHeaders(actor),
         params: { workflowId: copied.body.id },
       }),
       [200],
     );
-    expect(copiedTriggers.body).toContainEqual(
+    expect(copiedAutomations.body).toContainEqual(
       expect.objectContaining({
         kind: "schedule",
         ownerUserId: actor.userId,
-        enabled: trigger.body.enabled,
+        enabled: automation.body.enabled,
       }),
     );
     expect(
-      copiedTriggers.body.some((copiedTrigger) => {
+      copiedAutomations.body.some((copiedAutomation) => {
         return (
-          copiedTrigger.kind === "event" &&
-          copiedTrigger.eventType === "webhook-received"
+          copiedAutomation.kind === "event" &&
+          copiedAutomation.eventType === "webhook-received"
         );
       }),
     ).toBeTruthy();

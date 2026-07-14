@@ -21,7 +21,7 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function triggersClient() {
+function legacyAutomationsClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
 }
 
@@ -117,7 +117,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const runnerGroup = runsApi.configureRunnerGroup();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -186,7 +186,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     for (const actionType of [
       "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
       "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-      "api_dispatch_pre_create_zero_workflow_event_match_triggers",
+      "api_dispatch_pre_create_zero_workflow_event_match_automations",
       "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       "api_dispatch_pre_create_zero_workflow_event_handoff_run",
@@ -199,7 +199,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
           op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
           workflow_event_source: "webhook",
           trigger_source: "workflow-event",
-          zero_run_origin: "workflow_trigger",
+          zero_run_origin: "workflow_automation",
           span_kind: "nested",
         }),
       ]),
@@ -233,7 +233,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -303,7 +303,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
   it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {
     const { fixture, workflowId, subscriptionId } = await setupFixture();
     const enabled = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -319,7 +319,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       throw new Error("Expected a webhook trigger with credentials");
     }
     const manuallyDisabled = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -327,7 +327,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       [201],
     );
     await accept(
-      triggersClient().disable({
+      legacyAutomationsClient().disable({
         headers: authHeaders(),
         params: { id: manuallyDisabled.body.id },
         body: undefined,
@@ -345,12 +345,12 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       [200],
     );
 
-    const enabledAfter = await wf.readTrigger(enabled.body.id);
+    const enabledAfter = await wf.readAutomation(enabled.body.id);
     expect(enabledAfter).toMatchObject({
       enabled: false,
       disabledReason: "paid_plan_required",
     });
-    const manualAfter = await wf.readTrigger(manuallyDisabled.body.id);
+    const manualAfter = await wf.readAutomation(manuallyDisabled.body.id);
     expect(manualAfter.enabled).toBeFalsy();
     if (
       manualAfter.kind !== "event" ||
@@ -374,7 +374,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
   it("keeps webhooks enabled through a scheduled cancellation period", async () => {
     const { fixture, workflowId, subscriptionId } = await setupFixture();
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -406,7 +406,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       [200],
     );
 
-    const after = await wf.readTrigger(created.body.id);
+    const after = await wf.readAutomation(created.body.id);
     expect(after.enabled).toBeTruthy();
     if (after.kind !== "event" || after.eventType !== "webhook-received") {
       throw new Error("Expected a webhook trigger");
@@ -418,7 +418,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     const { workflowId } = await setupFixture();
 
     const created = await accept(
-      triggersClient().create({
+      legacyAutomationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
         body: { kind: "event", eventType: "webhook-received" },
@@ -472,7 +472,7 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       firstRunId,
     );
 
-    const trigger = await wf.readTrigger(created.body.id);
-    expect(typeof trigger.lastRunAt).toBe("string");
+    const automation = await wf.readAutomation(created.body.id);
+    expect(typeof automation.lastRunAt).toBe("string");
   });
 });

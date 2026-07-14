@@ -48,7 +48,7 @@ import {
   zeroMemoryRuntimeRetrievalQuery,
 } from "./zero-memory-injection.service";
 import { loadGoalMemoryEmbedding } from "./zero-goal-memory-embedding.service";
-import { loadWorkflowTriggerMemoryEmbedding } from "./zero-workflow-trigger-memory-embedding.service";
+import { loadWorkflowAutomationMemoryEmbedding } from "./zero-workflow-automation-memory-embedding.service";
 import {
   measureZeroMemoryTiming,
   type ZeroMemoryTimingObserver,
@@ -59,7 +59,7 @@ import {
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type ZeroRunOrigin =
   | "zero_run"
-  | "workflow_trigger"
+  | "workflow_automation"
   | "goal_continuation"
   | "zero_integration";
 export type ZeroPreCreateSource =
@@ -153,7 +153,7 @@ type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
-  readonly workflowTriggerId?: string;
+  readonly workflowAutomationId?: string;
   readonly triggerBrief?: string;
   readonly runGroupId?: string;
   readonly goalId?: string;
@@ -187,7 +187,7 @@ interface CreateZeroRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly codexServiceTier?: "fast";
   readonly zeroRunMetadata?: ZeroRunMetadata;
-  readonly memoryEmbeddingWorkflowTriggerId?: string;
+  readonly memoryEmbeddingWorkflowAutomationId?: string;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
@@ -346,7 +346,7 @@ function buildAgentToolsPrompt(args: {
     "- Search agent run logs, web chat messages, or external services via connectors: `zero search --help`.",
     ...buildZeroMemoryToolsPrompt(args.relationshipMemoryEnabled),
     '- Workflow and automation requests use the `workflow-setup` skill first, then follow its guidance. This covers creating, editing, inspecting, running, scheduling, enabling, disabling, copying, or deleting a workflow or automation, and any recurring or event-driven request (for example "every morning", "when a new email arrives", "whenever X happens", "monitor", "remind me", "keep this in sync") even when the user does not say the word "workflow".',
-    "- Manage recurring workflow triggers: `zero workflow trigger --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
+    "- Manage recurring workflow automations: `zero workflow automation --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
     ...(args.zeroScrapeEnabled
       ? [
@@ -588,8 +588,8 @@ function zeroMemoryTimingObserver(
 function zeroRunOrigin(args: {
   readonly command: CreateZeroRunCommandArgs;
 }): ZeroRunOrigin {
-  if (args.command.zeroRunMetadata?.workflowTriggerId) {
-    return "workflow_trigger";
+  if (args.command.zeroRunMetadata?.workflowAutomationId) {
+    return "workflow_automation";
   }
   if (args.command.zeroRunMetadata?.goalId) {
     return "goal_continuation";
@@ -600,7 +600,7 @@ function zeroRunOrigin(args: {
 /**
  * Resolves the firewall policies for a run.
  *
- * Runs resolve from the caller's agent permission grants. Workflow-triggered
+ * Runs resolve from the caller's agent permission grants. Automation-initiated
  * runs pass through the same agent-run permission path as chat runs.
  */
 async function resolveZeroRunPermissionPolicies(
@@ -721,7 +721,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
     readonly retrievalQuery?: string;
     readonly timing?: ZeroMemoryTimingObserver;
     readonly goalId?: string;
-    readonly workflowTriggerId?: string;
+    readonly workflowAutomationId?: string;
   },
 ): Promise<string | undefined> {
   const searchQuery = zeroMemoryRuntimeRetrievalQuery(args);
@@ -733,7 +733,7 @@ async function loadMemoryRuntimeAppendSystemPrompt(
         return undefined;
       }
       const goalId = args.goalId;
-      const workflowTriggerId = args.workflowTriggerId;
+      const workflowAutomationId = args.workflowAutomationId;
       const result = await buildZeroMemoryRuntimeInjection(db, {
         orgId: args.orgId,
         userId: args.userId,
@@ -751,11 +751,11 @@ async function loadMemoryRuntimeAppendSystemPrompt(
                 });
               },
             }
-          : workflowTriggerId
+          : workflowAutomationId
             ? {
                 semanticEmbeddingLoader: async (query: string) => {
-                  return await loadWorkflowTriggerMemoryEmbedding(db, {
-                    workflowTriggerId,
+                  return await loadWorkflowAutomationMemoryEmbedding(db, {
+                    workflowAutomationId,
                     query,
                   });
                 },
@@ -874,7 +874,7 @@ function createIntegrationRunBody(args: {
   };
 }
 
-function callbacksForTriggerAgent(triggerAgentId: string | undefined) {
+function callbacksForAutomationAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
         {
@@ -945,7 +945,7 @@ async function loadZeroRunConnectorScopes(
   return scope;
 }
 
-async function resolveZeroRunTriggerPreCreateContext(
+async function resolveZeroRunAutomationPreCreateContext(
   db: Db,
   args: CreateZeroRunCommandArgs,
   signal: AbortSignal,
@@ -1001,7 +1001,7 @@ function buildZeroCreateAgentRunArgs(args: {
       codexServiceTier: command.codexServiceTier,
     }),
     callbacks: [
-      ...(callbacksForTriggerAgent(args.triggerAgentId) ?? []),
+      ...(callbacksForAutomationAgent(args.triggerAgentId) ?? []),
       ...(command.callbacks ?? []),
     ],
     includeZeroTokenSecret: true,
@@ -1057,9 +1057,9 @@ async function buildZeroFinalAppendSystemPrompt(args: {
       ...(command.zeroRunMetadata?.goalId
         ? { goalId: command.zeroRunMetadata.goalId }
         : {}),
-      ...(command.memoryEmbeddingWorkflowTriggerId
+      ...(command.memoryEmbeddingWorkflowAutomationId
         ? {
-            workflowTriggerId: command.memoryEmbeddingWorkflowTriggerId,
+            workflowAutomationId: command.memoryEmbeddingWorkflowAutomationId,
           }
         : {}),
     });
@@ -1442,15 +1442,15 @@ export const createZeroRun$ = command(
       },
     );
     signal.throwIfAborted();
-    const triggerContext = await measureZeroPreCreate(
+    const automationContext = await measureZeroPreCreate(
       timing,
-      "api_dispatch_pre_create_zero_resolve_trigger_context",
+      "api_dispatch_pre_create_zero_resolve_automation_context",
       async () => {
-        return await resolveZeroRunTriggerPreCreateContext(db, args, signal);
+        return await resolveZeroRunAutomationPreCreateContext(db, args, signal);
       },
     );
     signal.throwIfAborted();
-    const { triggerAgentId } = triggerContext;
+    const { triggerAgentId } = automationContext;
     const connectorScopes = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_connector_scopes",

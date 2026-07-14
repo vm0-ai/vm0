@@ -10,7 +10,7 @@ import type { RouteEntry } from "../route-entry";
 import {
   dispatchWorkflowWebhook$,
   WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES,
-} from "../services/workflow-webhook-trigger.service";
+} from "../services/workflow-webhook-automation.service";
 
 type WebhookErrorStatus = 400 | 401 | 404 | 413 | 429 | 500;
 

@@ -44,9 +44,9 @@ import {
   type NormalizedInternalRunCallbackKind,
 } from "./internal-run-callback";
 import {
-  handleWorkflowTriggerInternalCallback,
-  handleWorkflowTriggerInternalCallback$,
-} from "./zero-workflow-trigger-run-callback.service";
+  handleWorkflowAutomationInternalCallback,
+  handleWorkflowAutomationInternalCallback$,
+} from "./zero-workflow-automation-run-callback.service";
 import { continueGoalIfIdle$ } from "./zero-goal-continuation.service";
 
 const L = logger("AgentRunCallback");
@@ -149,10 +149,10 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
-      case "workflow-trigger:cron":
-      case "workflow-trigger:loop": {
+      case "workflow-automation:cron":
+      case "workflow-automation:loop": {
         return await set(
-          handleWorkflowTriggerInternalCallback$,
+          handleWorkflowAutomationInternalCallback$,
           { kind: input.kind, callback: input.envelope },
           signal,
         );
@@ -493,9 +493,9 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
-    case "workflow-trigger:cron":
-    case "workflow-trigger:loop": {
-      return await handleWorkflowTriggerInternalCallback(input.db, {
+    case "workflow-automation:cron":
+    case "workflow-automation:loop": {
+      return await handleWorkflowAutomationInternalCallback(input.db, {
         kind,
         callback: callbackEnvelope(input),
       });

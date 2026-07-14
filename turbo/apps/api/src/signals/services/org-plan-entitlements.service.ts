@@ -104,7 +104,7 @@ export async function upsertOrgPlanEntitlement(
     supportByok: limits.supportByok,
     restrictedVm0Models: limits.restrictedVm0Models,
     videoGenerationAllowed: limits.videoGenerationAllowed,
-    workflowWebhookTriggerAllowed: limits.workflowWebhookTriggerAllowed,
+    workflowWebhookTriggerAllowed: limits.workflowWebhookAutomationAllowed,
     audioLifetimeLimit: limits.audioLifetimeLimit,
     audioDailyRateLimit: limits.audioDailyRateLimit,
     audioDailyDurationSeconds: limits.audioDailyDurationSeconds,
