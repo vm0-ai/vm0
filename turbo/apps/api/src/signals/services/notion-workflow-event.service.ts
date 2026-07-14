@@ -1494,7 +1494,7 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
       })
       .where(
         and(
-          eq(notionWorkflowPendingEvents.triggerId, trigger.id),
+          eq(notionWorkflowPendingEvents.automationId, trigger.id),
           eq(notionWorkflowPendingEvents.pageId, args.pageId),
           eq(notionWorkflowPendingEvents.eventFamily, "page_content_updated"),
           eq(notionWorkflowPendingEvents.status, "pending"),
