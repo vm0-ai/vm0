@@ -476,6 +476,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatMessageQueue]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Queue-first user message dispatch: sends enqueue a chat_message_queue item and claim it in place instead of the legacy revoke-claim convention.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {
     maintainer: "lancy@vm0.ai",
     description:

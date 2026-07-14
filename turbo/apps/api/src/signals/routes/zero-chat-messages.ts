@@ -89,6 +89,14 @@ import {
 } from "../services/zero-chat-message-shared.service";
 import { loadWebChatIncompleteContext } from "../services/zero-chat-incomplete-context.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
+import {
+  claimUserMessageInPlace,
+  deleteUserMessageQueueItem,
+  discardUnclaimedUserMessage,
+  enqueueUserMessageQueueItem,
+  hasUserMessageQueueItem,
+  loadNextUnclaimedQueuedUserMessage,
+} from "../services/zero-chat-queued-message.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
@@ -200,6 +208,7 @@ interface PreparedNormalSend {
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
   readonly codexFastModeEnabled: boolean;
+  readonly chatMessageQueueEnabled: boolean;
 }
 
 function shouldTouchThreadSortFromNormalSend(
@@ -216,6 +225,7 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
+  readonly chatMessageQueueEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -270,6 +280,8 @@ type ClientMessageIdResolution =
       readonly kind: "queued";
       readonly createdAt: Date;
       readonly inserted: boolean;
+      /** Set only when this call inserted the message (queue-first sends). */
+      readonly messageId?: string;
     }
   | {
       readonly kind: "associated";
@@ -1102,6 +1114,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.WebsiteTemplates,
       context,
     ),
+    chatMessageQueueEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ChatMessageQueue,
+      context,
+    ),
   };
 }
 
@@ -1549,6 +1565,8 @@ function appendUnassociatedUserMessage(params: {
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly generationTemplate: IncomingGenerationTemplate;
+  /** Queue-first sends also write a chat_message_queue pointer row. */
+  readonly queueFirstOrgId: string | undefined;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1577,8 +1595,16 @@ function appendUnassociatedUserMessage(params: {
         generationTemplate: params.generationTemplate,
       })
       .onConflictDoNothing({ target: chatMessages.id })
-      .returning({ createdAt: chatMessages.createdAt });
+      .returning({ id: chatMessages.id, createdAt: chatMessages.createdAt });
     if (inserted) {
+      if (params.queueFirstOrgId) {
+        await enqueueUserMessageQueueItem(tx, {
+          orgId: params.queueFirstOrgId,
+          userId: params.userId,
+          chatThreadId: params.threadId,
+          chatMessageId: inserted.id,
+        });
+      }
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
           tx,
@@ -1587,7 +1613,12 @@ function appendUnassociatedUserMessage(params: {
           params.chatThreadSortEventId,
         );
       }
-      return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
+      return {
+        kind: "queued",
+        createdAt: inserted.createdAt,
+        inserted: true,
+        messageId: inserted.id,
+      };
     }
     if (!explicitId) {
       throw new Error("Failed to insert unassociated user message");
@@ -1695,6 +1726,31 @@ function appendRecallUserMessage(params: {
   readonly clientMessageId: string | undefined;
 }): Promise<AppendMessageResult> {
   return params.db.transaction(async (tx) => {
+    // Queue-first messages (identified by their queue item) are recalled by
+    // deletion: consume the queue item and remove the unclaimed message row.
+    // No revoke control row is written.
+    if (await hasUserMessageQueueItem(tx, params.revokesMessageId)) {
+      const [deleted] = await tx
+        .delete(chatMessages)
+        .where(
+          and(
+            eq(chatMessages.id, params.revokesMessageId),
+            eq(chatMessages.chatThreadId, params.threadId),
+            eq(chatMessages.role, "user"),
+            isNull(chatMessages.runId),
+          ),
+        )
+        .returning({ createdAt: chatMessages.createdAt });
+      if (!deleted) {
+        return {
+          ok: false,
+          message: "Only queued user messages can be recalled",
+        };
+      }
+      await deleteUserMessageQueueItem(tx, params.revokesMessageId);
+      return { ok: true, createdAt: nowDate() };
+    }
+
     const [existingRevoker] = await tx
       .select({
         role: chatMessages.role,
@@ -1738,6 +1794,21 @@ function appendRecallUserMessage(params: {
       )
       .limit(1);
     if (!target) {
+      const [exists] = await tx
+        .select({ id: chatMessages.id })
+        .from(chatMessages)
+        .where(
+          and(
+            eq(chatMessages.id, params.revokesMessageId),
+            eq(chatMessages.chatThreadId, params.threadId),
+          ),
+        )
+        .limit(1);
+      if (!exists) {
+        // Queue-first recalls delete the message row, so a repeated recall
+        // finds nothing — treat it as an already-completed recall.
+        return { ok: true, createdAt: nowDate() };
+      }
       return {
         ok: false,
         message: "Only queued user messages can be recalled",
@@ -2327,6 +2398,7 @@ const prepareNormalSend$ = command(
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
       codexFastModeEnabled: featureSwitches.codexFastModeEnabled,
+      chatMessageQueueEnabled: featureSwitches.chatMessageQueueEnabled,
     };
   },
 );
@@ -2336,10 +2408,14 @@ async function queueUnassociatedNormalMessage(params: {
   readonly body: NormalSendBody;
   readonly userId: string;
   readonly touchThreadSort: boolean;
-}): Promise<
-  | CreatedChatMessageResponse
-  | ReturnType<typeof duplicateClientMessageIdResponse>
-> {
+  readonly queueFirstOrgId: string | undefined;
+}): Promise<{
+  readonly response:
+    | CreatedChatMessageResponse
+    | ReturnType<typeof duplicateClientMessageIdResponse>;
+  /** Set when this call inserted a queue-first message. */
+  readonly queuedMessageId: string | undefined;
+}> {
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -2350,6 +2426,7 @@ async function queueUnassociatedNormalMessage(params: {
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
     generationTemplate: params.body.generationTemplate,
+    queueFirstOrgId: params.queueFirstOrgId,
   });
   if (message.kind === "queued" && message.inserted) {
     await publishChatMessageCreated(
@@ -2362,10 +2439,17 @@ async function queueUnassociatedNormalMessage(params: {
     message,
     params.prepared.thread.threadId,
   );
+  const queuedMessageId =
+    message.kind === "queued" && message.inserted
+      ? message.messageId
+      : undefined;
   if (!response) {
-    return duplicateClientMessageIdResponse();
+    return {
+      response: duplicateClientMessageIdResponse(),
+      queuedMessageId,
+    };
   }
-  return response;
+  return { response, queuedMessageId };
 }
 
 function scheduleChatTitleGeneration(params: {
@@ -2459,6 +2543,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
   readonly touchThreadSort: boolean;
+  readonly queueFirstMessageId: string | undefined;
 }): void {
   scheduleChatTitleGeneration({
     db: params.db,
@@ -2467,6 +2552,24 @@ function scheduleCreatedChatRunSideEffects(params: {
     userId: params.userId,
     orgId: params.orgId,
   });
+  const appendInitialThinking =
+    params.initialThinkingEnabled &&
+    params.runStatus !== "queued" &&
+    params.body.hasTextContent !== false &&
+    params.body.prompt.trim().length > 0;
+  if (params.queueFirstMessageId) {
+    scheduleQueueFirstMessageClaim({
+      db: params.db,
+      body: params.body,
+      threadId: params.thread.threadId,
+      userId: params.userId,
+      runId: params.runId,
+      messageId: params.queueFirstMessageId,
+      appendQueueMarker: params.runStatus === "queued",
+      appendInitialThinking,
+    });
+    return;
+  }
   scheduleAssociatedUserMessage({
     db: params.db,
     body: params.body,
@@ -2474,13 +2577,65 @@ function scheduleCreatedChatRunSideEffects(params: {
     userId: params.userId,
     runId: params.runId,
     appendQueueMarker: params.runStatus === "queued",
-    appendInitialThinking:
-      params.initialThinkingEnabled &&
-      params.runStatus !== "queued" &&
-      params.body.hasTextContent !== false &&
-      params.body.prompt.trim().length > 0,
+    appendInitialThinking,
     touchThreadSort: params.touchThreadSort,
   });
+}
+
+/**
+ * Queue-first counterpart of `scheduleAssociatedUserMessage`: the message row
+ * already exists, so claim it in place (bind run id, consume the queue item)
+ * instead of inserting an associated copy.
+ */
+function scheduleQueueFirstMessageClaim(params: {
+  readonly db: Db;
+  readonly body: NormalSendBody;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+  readonly messageId: string;
+  readonly appendQueueMarker: boolean;
+  readonly appendInitialThinking: boolean;
+}): void {
+  waitUntil(
+    (async () => {
+      const claimed = await claimUserMessageInPlace(params.db, {
+        threadId: params.threadId,
+        messageId: params.messageId,
+        runId: params.runId,
+      });
+      if (claimed) {
+        if (params.appendQueueMarker) {
+          await params.db.transaction(async (tx) => {
+            await appendQueuedRunAssistantMarker(tx, {
+              chatThreadId: params.threadId,
+              runId: params.runId,
+              createdAfter: claimed.createdAt,
+            });
+          });
+        }
+        await publishUserSignal(
+          [params.userId],
+          `chatThreadMessageCreated:${params.threadId}`,
+        );
+      }
+      await publishUserSignal(
+        [params.userId],
+        `chatThreadRunCreated:${params.threadId}`,
+      );
+      if (claimed && params.appendInitialThinking) {
+        await bestEffort(
+          generateAndPersistInitialThinkingMessage({
+            db: params.db,
+            threadId: params.threadId,
+            userId: params.userId,
+            runId: params.runId,
+            currentPrompt: params.body.prompt,
+          }),
+        );
+      }
+    })(),
+  );
 }
 
 async function buildInsufficientCreditsAssistantMessage(params: {
@@ -2515,6 +2670,7 @@ async function appendInsufficientCreditsMessages(params: {
   readonly userId: string;
   readonly orgId: string;
   readonly touchThreadSort: boolean;
+  readonly queueFirstMessageId?: string;
 }): Promise<CreatedChatMessageResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
@@ -2522,6 +2678,42 @@ async function appendInsufficientCreditsMessages(params: {
   });
   const userCreatedAt = nowDate();
   const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
+  if (params.queueFirstMessageId) {
+    // The queue-first send already persisted the user message. Mark it with
+    // the credits error (so it never auto-dispatches) and consume its queue
+    // item instead of inserting a copy.
+    const messageId = params.queueFirstMessageId;
+    const createdAt = await params.prepared.db.transaction(async (tx) => {
+      await deleteUserMessageQueueItem(tx, messageId);
+      const [marked] = await tx
+        .update(chatMessages)
+        .set({ error: INSUFFICIENT_CREDITS_MARKER, sequenceNumber: 0 })
+        .where(and(eq(chatMessages.id, messageId), isNull(chatMessages.runId)))
+        .returning({ createdAt: chatMessages.createdAt });
+      await tx.insert(chatMessages).values({
+        chatThreadId: params.prepared.thread.threadId,
+        role: "assistant",
+        content: assistantContent,
+        error: INSUFFICIENT_CREDITS_MARKER,
+        sequenceNumber: 1,
+        createdAt: assistantCreatedAt,
+        runId: null,
+      });
+      return marked?.createdAt ?? userCreatedAt;
+    });
+    await publishChatMessageCreated(
+      params.userId,
+      params.prepared.thread.threadId,
+    );
+    return {
+      status: 201,
+      body: {
+        runId: null,
+        threadId: params.prepared.thread.threadId,
+        createdAt: createdAt.toISOString(),
+      },
+    };
+  }
   const result = await params.prepared.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
@@ -2766,6 +2958,8 @@ const createNormalChatRun$ = command(
     params: {
       readonly args: NormalSendArgs;
       readonly prepared: PreparedNormalSend;
+      /** Queue-first sends claim this pre-inserted message in place. */
+      readonly queueFirstMessageId?: string;
     },
     signal: AbortSignal,
   ) => {
@@ -2794,6 +2988,7 @@ const createNormalChatRun$ = command(
           args.zeroPreCreateSource,
           prepared.thread.isNewThread,
         ),
+        queueFirstMessageId: params.queueFirstMessageId,
       });
     }
 
@@ -2852,6 +3047,7 @@ const createNormalChatRun$ = command(
         args.zeroPreCreateSource,
         prepared.thread.isNewThread,
       ),
+      queueFirstMessageId: params.queueFirstMessageId,
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
@@ -2938,6 +3134,20 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
+    // Queue-first dispatch (ChatMessageQueue switch): the message is always
+    // persisted with a chat_message_queue pointer row first; an inline drain
+    // then claims it in place when the thread is idle and the message is the
+    // queue head. The legacy check-then-act path stays behind the switch.
+    const queueFirst =
+      !args.body.revokesMessageId && prepared.chatMessageQueueEnabled;
+    if (queueFirst) {
+      return await set(
+        sendQueueFirstNormalMessage$,
+        { args, prepared },
+        signal,
+      );
+    }
+
     const hasActiveRun = await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_pre_create_zero_web_chat_check_active_run",
@@ -2954,7 +3164,7 @@ export const sendNormalMessage$ = command(
       if (args.body.revokesMessageId) {
         return badRequestMessage("Recommended follow-up cannot be queued");
       }
-      const response = await queueUnassociatedNormalMessage({
+      const { response } = await queueUnassociatedNormalMessage({
         prepared,
         body: args.body,
         userId: args.userId,
@@ -2962,6 +3172,7 @@ export const sendNormalMessage$ = command(
           args.zeroPreCreateSource,
           prepared.thread.isNewThread,
         ),
+        queueFirstOrgId: undefined,
       });
       signal.throwIfAborted();
       return response;
@@ -2969,6 +3180,88 @@ export const sendNormalMessage$ = command(
     signal.throwIfAborted();
 
     return await set(createNormalChatRun$, { args, prepared }, signal);
+  },
+);
+
+/**
+ * Queue-first send: persist the message and its queue item, then inline-drain
+ * — create the run and claim the message in place when the thread is idle and
+ * this message is the oldest unclaimed one. Response shapes match the legacy
+ * path: `runId` when dispatched, `{runId: null}` when left queued.
+ */
+const sendQueueFirstNormalMessage$ = command(
+  async (
+    { set },
+    params: {
+      readonly args: NormalSendArgs;
+      readonly prepared: PreparedNormalSend;
+    },
+    signal: AbortSignal,
+  ) => {
+    const { args, prepared } = params;
+    const threadId = prepared.thread.threadId;
+    const { response, queuedMessageId } = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
+      "nested",
+      async () => {
+        return await queueUnassociatedNormalMessage({
+          prepared,
+          body: args.body,
+          userId: args.userId,
+          touchThreadSort: shouldTouchThreadSortFromNormalSend(
+            args.zeroPreCreateSource,
+            prepared.thread.isNewThread,
+          ),
+          queueFirstOrgId: args.orgId,
+        });
+      },
+    );
+    signal.throwIfAborted();
+    if (!queuedMessageId) {
+      // Duplicate clientMessageId or an already-existing resolution — the
+      // enqueue inserted nothing, so there is nothing to dispatch.
+      return response;
+    }
+
+    const dispatchable = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_queue_first_check_dispatchable",
+      "nested",
+      async () => {
+        if (await activeRunExistsForThread(prepared.db, threadId)) {
+          return false;
+        }
+        const head = await loadNextUnclaimedQueuedUserMessage(
+          prepared.db,
+          threadId,
+        );
+        return head?.id === queuedMessageId;
+      },
+    );
+    signal.throwIfAborted();
+    if (!dispatchable) {
+      return response;
+    }
+
+    const result = await set(
+      createNormalChatRun$,
+      { args, prepared, queueFirstMessageId: queuedMessageId },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.status === 201 && "runId" in result.body && result.body.runId) {
+      return result;
+    }
+    // Run creation did not dispatch (validation error or insufficient
+    // credits, which persists its own marked copy of the message). Discard
+    // the queued message so history matches the legacy direct-send failure.
+    await discardUnclaimedUserMessage(prepared.db, {
+      threadId,
+      messageId: queuedMessageId,
+    });
+    signal.throwIfAborted();
+    return result;
   },
 );
 
