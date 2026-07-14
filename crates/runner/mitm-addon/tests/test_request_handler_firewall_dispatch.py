@@ -8,6 +8,7 @@ import pytest
 from mitmproxy import connection
 
 import auth
+import connector_intent
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import upstream_destination_binding
@@ -76,6 +77,51 @@ async def test_connector_intent_selects_auth_template_in_both_firewall_orders(
     assert "X-VM0-Connector-Intent" not in flow.request.headers
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "primary"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "items-read"
+
+
+@pytest.mark.parametrize(
+    "captured_value",
+    [
+        pytest.param(None, id="missing-value"),
+        pytest.param(1, id="non-string-value"),
+    ],
+)
+async def test_invalid_captured_connector_intent_fails_ambiguous_route_before_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, captured_value
+):
+    reg_path = _write_registry(tmp_path, vm_info=_shared_route_vm(tmp_path))
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="shared.example.com",
+        path="/items/123",
+        request_headers=headers(
+            ("Host", "shared.example.com"),
+            ("X-VM0-Connector-Intent", "primary"),
+        ),
+    )
+    connector_intent.capture_and_strip(flow)
+    if captured_value is None:
+        flow.metadata.pop(connector_intent._VALUE_METADATA_KEY)
+    else:
+        flow.metadata[connector_intent._VALUE_METADATA_KEY] = captured_value
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_awaited()
+    assert flow.response is not None
+    assert flow.response.status_code == 409
+    body = json.loads(flow.response.content)
+    assert body["error"] == "ambiguous_connector_route"
+    assert body["reason"] == "connector_intent_required"
+    assert "Authorization" not in flow.request.headers
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    assert metadata_keys.FIREWALL_NAME not in flow.metadata
+    assert metadata_keys.FIREWALL_PERMISSION not in flow.metadata
 
 
 @pytest.mark.parametrize(
