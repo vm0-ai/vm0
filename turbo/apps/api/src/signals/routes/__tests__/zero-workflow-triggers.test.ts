@@ -2626,7 +2626,13 @@ describe("zero workflow triggers", () => {
       triggersClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
-        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 * * * *",
+            timezone: "UTC",
+          },
+        },
       }),
       [200],
     );
@@ -2647,6 +2653,24 @@ describe("zero workflow triggers", () => {
       embeddingResult: "present",
     });
     await cancelWorkflowTriggerRun(actor, afterCleanup.runId);
+
+    const cronHit = await runWorkflowTriggerAndReadContext(
+      actor,
+      created.body.id,
+    );
+    expect(
+      embeddingRequests.filter((request) => {
+        return (
+          request.model === changedEmbeddingModel &&
+          request.input === renamedQuery
+        );
+      }),
+    ).toHaveLength(2);
+    expectSemanticEmbeddingTiming(cronHit.runId, {
+      cacheResult: "hit",
+      embeddingResult: "present",
+    });
+    await cancelWorkflowTriggerRun(actor, cronHit.runId);
   });
 
   it("keeps one-time and event trigger embeddings outside the recurring cache", async () => {
