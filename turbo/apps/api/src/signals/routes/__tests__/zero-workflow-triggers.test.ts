@@ -591,7 +591,10 @@ describe("zero workflow triggers", () => {
   }
 
   it("keeps automation routes in parity with legacy trigger aliases", async () => {
-    const { workflowId } = await setupFixture();
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const scenario = await setupFixture("team");
+    await enableWebhookWorkflowTriggers(scenario.fixture);
+    const { actor, workflowId } = scenario;
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
@@ -674,7 +677,7 @@ describe("zero workflow triggers", () => {
     expect(legacyWorkspaceList.body[0]).not.toHaveProperty("automation");
 
     const updated = await accept(
-      triggersClient().update({
+      automationsClient().update({
         headers: authHeaders(),
         params: { id: created.body.id },
         body: { schedule: { type: "loop", intervalSeconds: 120 } },
@@ -706,6 +709,95 @@ describe("zero workflow triggers", () => {
     );
     expect(readDisabled.body).toStrictEqual(disabled.body);
 
+    const enabled = await accept(
+      automationsClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    const readEnabled = await accept(
+      triggersClient().get({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+    expect(readEnabled.body).toStrictEqual(enabled.body);
+
+    const automationRun = await accept(
+      automationsClient().run({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+    await cancelWorkflowTriggerRun(actor, automationRun.body.runId);
+    const legacyRun = await accept(
+      triggersClient().run({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+    expect({ ...automationRun.body, runId: "<dynamic>" }).toStrictEqual({
+      ...legacyRun.body,
+      runId: "<dynamic>",
+    });
+    await cancelWorkflowTriggerRun(actor, legacyRun.body.runId);
+
+    const webhook = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    const [automationSecret, legacySecret] = await Promise.all([
+      accept(
+        automationsClient().revealWebhookSecret({
+          headers: authHeaders(),
+          params: { id: webhook.body.id },
+          body: undefined,
+        }),
+        [200],
+      ),
+      accept(
+        triggersClient().revealWebhookSecret({
+          headers: authHeaders(),
+          params: { id: webhook.body.id },
+          body: undefined,
+        }),
+        [200],
+      ),
+    ]);
+    expect(automationSecret.body).toStrictEqual(legacySecret.body);
+
+    const hidden = await createAgentWithWorkflow(scenario, {
+      userId: `user_${randomUUID()}`,
+      agentDisplayName: "Hidden Automation Agent",
+      workflowName: "hidden-automation-workflow",
+      visibility: "private",
+    });
+    const [automationHidden, legacyHidden] = await Promise.all([
+      accept(
+        automationsClient().list({
+          headers: authHeaders(),
+          params: { workflowId: hidden.workflowId },
+        }),
+        [404],
+      ),
+      accept(
+        triggersClient().list({
+          headers: authHeaders(),
+          params: { workflowId: hidden.workflowId },
+        }),
+        [404],
+      ),
+    ]);
+    expect(automationHidden.body).toStrictEqual(legacyHidden.body);
+
     await accept(
       automationsClient().delete({
         headers: authHeaders(),
@@ -719,6 +811,13 @@ describe("zero workflow triggers", () => {
         params: { id: created.body.id },
       }),
       [404],
+    );
+    await accept(
+      triggersClient().delete({
+        headers: authHeaders(),
+        params: { id: webhook.body.id },
+      }),
+      [204],
     );
   });
 

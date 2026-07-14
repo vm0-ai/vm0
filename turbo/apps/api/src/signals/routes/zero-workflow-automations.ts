@@ -29,7 +29,7 @@ import {
   updateWorkflowTrigger$,
   type TriggerResult,
 } from "../services/zero-workflow-trigger.service";
-import type { RouteEntry } from "../route-entry";
+import type { RouteEntry, SignalRouteHandler } from "../route-entry";
 
 export const workflowAutomationReadAuth = {
   requireOrganization: true,
@@ -398,7 +398,12 @@ const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return triggerErrorResponse(result);
 });
 
-export const workflowAutomationRouteHandlers = {
+export const workflowAutomationRouteHandlers: Readonly<
+  Record<
+    keyof typeof zeroWorkflowAutomationsContract,
+    SignalRouteHandler<unknown>
+  >
+> = {
   listWorkspace: authRoute(
     workflowAutomationReadAuth,
     listWorkspaceAutomationsInner$,
@@ -416,7 +421,7 @@ export const workflowAutomationRouteHandlers = {
   disable: authRoute(workflowWriteAuth, disableTriggerInner$),
   run: authRoute(workflowWriteAuth, runTriggerInner$),
   revealWebhookSecret: authRoute(workflowWriteAuth, revealWebhookSecretInner$),
-} as const;
+};
 
 export const zeroWorkflowAutomationsRoutes: readonly RouteEntry[] = [
   {
