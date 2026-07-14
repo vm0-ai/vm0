@@ -14,14 +14,9 @@ This addon runs on the runner HOST (not inside VMs) and:
 import asyncio
 import base64
 import binascii
-import json
-import os
 import signal
 import tempfile
-import threading
-import time
 from collections.abc import Awaitable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NoReturn
@@ -32,14 +27,15 @@ from mitmproxy.addonmanager import Loader
 # --- Sub-module imports ---
 #
 # auth_base_forwarder/body_capture/connector_diagnostics/connector_intent/matching/registry/
-# response_encoding_negotiation/response_streaming/terminal_usage/upstream_admission/
-# usage are imported by module (not selective `from X import ...`) so that:
+# response_encoding_negotiation/response_streaming/runner_flush_lifecycle/terminal_usage/
+# upstream_admission/usage are imported by module (not selective `from X import ...`) so that:
 #   1. Cross-module calls read as ``auth_base_forwarder.X(...)`` /
 #      ``body_capture.X(...)`` / ``connector_diagnostics.X(...)`` /
 #      ``connector_intent.X(...)`` /
 #      ``matching.X(...)`` / ``registry.X(...)`` / ``response_streaming.X(...)`` /
-#      ``terminal_usage.X(...)`` / ``upstream_admission.X(...)`` / ``usage.X(...)``,
-#      making the module boundary visible at call sites.
+#      ``runner_flush_lifecycle.X(...)`` / ``terminal_usage.X(...)`` /
+#      ``upstream_admission.X(...)`` / ``usage.X(...)``, making the module boundary
+#      visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import auth_base_forwarder
@@ -59,6 +55,7 @@ import request_classification
 import request_streaming
 import response_encoding_negotiation
 import response_streaming
+import runner_flush_lifecycle
 import tcp_logging
 import terminal_usage
 import upstream_admission
@@ -87,7 +84,6 @@ from logging_utils import (
     NETWORK_LOG_MAX_SAFE_SIZE_DIGITS,
     add_firewall_metadata,
     elapsed_ms,
-    flush_log_path,
     log_network_entry,
     log_proxy_entry,
     shutdown_log_writer,
@@ -112,7 +108,6 @@ _AUTH_BASE_BODYLESS_METHODS = frozenset(("GET", "HEAD"))
 _HTTP_RESPONSE_BODYLESS_METHODS = frozenset(("CONNECT", "HEAD"))
 _WEBSOCKET_KEY_BYTES = 16
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
-_UsageFlushPhase = Literal["running", "draining", "closed"]
 
 
 @dataclass(frozen=True)
@@ -122,31 +117,6 @@ class _AuthBaseBodyCheck:
     reason: str = ""
 
 
-# Runner-triggered flush protocols:
-# - Rust writes `usage-flush-request` with the active usageStateId and a fresh
-#   flushRequestId, then sends SIGUSR1 to this addon process.
-# - This addon flushes buffered usage and writes `usage-pending` with the
-#   matching flushRequestId so the runner can observe a fresh snapshot.
-# - Rust performs a bounded wait for the acknowledged snapshot to have zero
-#   flows, buffered events, and reports before stopping the proxy.
-# - Rust may also write `jsonl-flush-request` for a concrete network log path.
-#   This addon drains accepted JSONL writes for that path and acknowledges with
-#   `jsonl-flush-state` before the runner uploads the file.
-#
-# Keep this in sync with usage/counters.py and the Rust wait path in
-# crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
-_RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
-_usage_flush_requested = threading.Event()
-_usage_flush_signal_lock = threading.Lock()
-# Running workers own requests under the lock. During shutdown, done() changes
-# the phase before waiting for that lock and becomes the sole draining owner.
-_usage_flush_phase: _UsageFlushPhase = "running"
-_jsonl_flush_state_write_lock = threading.Lock()
-_last_jsonl_flush_request_id: str | None = None
-_JSONL_FLUSH_REQUEST_FILE = "jsonl-flush-request"
-_JSONL_FLUSH_STATE_FILE = "jsonl-flush-state"
-RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
-
 # ============================================================================
 # Addon Configuration
 # ============================================================================
@@ -154,7 +124,10 @@ RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS = 4.0
 
 def load(loader: Loader) -> None:
     """Register custom options for the addon."""
-    signal.signal(_RUNNER_USAGE_FLUSH_SIGNAL, _handle_runner_usage_flush_signal)
+    signal.signal(
+        runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
+        runner_flush_lifecycle.handle_runner_usage_flush_signal,
+    )
     loader.add_option(
         name="vm0_api_url",
         typespec=str,
@@ -220,194 +193,6 @@ def configure(updated: set[str]) -> None:
             str(Path(__file__).resolve().parent / "usage-pending"),
             usage_state_id=ctx.options.vm0_usage_state_id or None,
         )
-
-
-def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
-    """Schedule runner-requested flush work from the SIGUSR1 handler.
-
-    Keep this handler minimal: it may interrupt mitmproxy's event loop, so it
-    only records that work is needed and lets the background worker perform
-    file I/O, usage flushing, and JSONL flushing.
-    """
-    del signum
-    if _usage_flush_phase == "closed":
-        return
-    _usage_flush_requested.set()
-    _start_usage_flush_worker()
-
-
-def wait_for_runner_usage_flush_worker_to_stop_for_tests(timeout: float = 1.0) -> None:
-    deadline = time.monotonic() + timeout
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise AssertionError("runner usage flush worker did not stop")
-
-        acquired = _usage_flush_signal_lock.acquire(timeout=remaining)
-        if not acquired:
-            raise AssertionError("runner usage flush worker did not stop")
-        try:
-            if not _usage_flush_requested.is_set():
-                return
-        finally:
-            _usage_flush_signal_lock.release()
-        _start_usage_flush_worker()
-
-
-def reset_runner_usage_flush_state_for_tests(timeout: float = 1.0) -> None:
-    global _last_jsonl_flush_request_id, _usage_flush_phase
-
-    acquired = _usage_flush_signal_lock.acquire(timeout=timeout)
-    if not acquired:
-        raise AssertionError("runner usage flush worker did not stop")
-    try:
-        _usage_flush_phase = "running"
-        _usage_flush_requested.clear()
-        _last_jsonl_flush_request_id = None
-    finally:
-        _usage_flush_signal_lock.release()
-
-
-def _start_usage_flush_worker() -> None:
-    """Start one flush worker, coalescing repeated signals while active."""
-    if _usage_flush_phase != "running":
-        return
-    if not _usage_flush_signal_lock.acquire(blocking=False):
-        return
-    if _usage_flush_phase != "running":
-        _usage_flush_signal_lock.release()
-        return
-
-    thread = threading.Thread(
-        target=_run_usage_flush_worker,
-        name="runner-flush-request",
-        daemon=True,
-    )
-    started = False
-    try:
-        thread.start()
-        started = True
-    finally:
-        if not started:
-            _usage_flush_signal_lock.release()
-
-
-def _run_usage_flush_worker() -> None:
-    """Drain coalesced runner flush requests under the worker lock.
-
-    The event can be set again while a flush is running. Loop until no request
-    is pending. After releasing the lock, restart for a running-phase signal;
-    draining-phase requests belong to ``done()``.
-    """
-    try:
-        _drain_runner_usage_flush_requests()
-    finally:
-        _usage_flush_signal_lock.release()
-        if _usage_flush_requested.is_set():
-            _start_usage_flush_worker()
-
-
-def _drain_runner_usage_flush_requests() -> None:
-    """Drain coalesced runner requests while the caller owns the signal lock."""
-    while _usage_flush_requested.is_set():
-        _usage_flush_requested.clear()
-        _flush_usage_for_runner_request()
-        _flush_jsonl_for_runner_request()
-
-
-def _flush_usage_for_runner_request() -> None:
-    """Flush buffered usage and acknowledge the runner's current request.
-
-    The pending snapshot is written in ``finally`` so the runner can observe
-    fresh counters and the current flushRequestId even if usage flushing fails.
-    """
-    flush_request_id = usage.read_usage_flush_request_id()
-    try:
-        usage.flush_usage_events(trigger="runner")
-    except Exception as exc:
-        ctx.log.warn(f"Failed to flush usage events after runner request ({type(exc).__name__})")
-    finally:
-        usage.write_pending_snapshot(flush_request_id=flush_request_id)
-
-
-def _flush_jsonl_for_runner_request() -> None:
-    global _last_jsonl_flush_request_id
-
-    request = _read_jsonl_flush_request()
-    if request is None:
-        return
-
-    log_path, flush_request_id = request
-    pending = 0
-    timed_out = False
-    try:
-        if not flush_log_path(log_path, timeout=RUNNER_JSONL_FLUSH_TIMEOUT_SECONDS):
-            pending = 1
-            timed_out = True
-            ctx.log.warn("JSONL flush did not complete before timeout")
-    except Exception as exc:
-        pending = 1
-        ctx.log.warn(f"Failed to flush JSONL logs after runner request ({type(exc).__name__})")
-    finally:
-        state_written = _write_jsonl_flush_state(log_path, flush_request_id, pending=pending)
-        if state_written and (pending == 0 or timed_out):
-            _last_jsonl_flush_request_id = flush_request_id
-
-
-def _read_jsonl_flush_request() -> tuple[str, str] | None:
-    marker_path = Path(__file__).resolve().parent / _JSONL_FLUSH_REQUEST_FILE
-    try:
-        marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-
-    if not isinstance(marker, dict):
-        return None
-    if marker.get("usageStateId") != usage.current_usage_state_id():
-        return None
-    flush_request_id = marker.get("flushRequestId")
-    if (
-        not isinstance(flush_request_id, str)
-        or not flush_request_id
-        or not _is_safe_jsonl_flush_request_id(flush_request_id)
-        or flush_request_id == _last_jsonl_flush_request_id
-    ):
-        return None
-    log_path = marker.get("path")
-    if not isinstance(log_path, str) or not log_path:
-        return None
-    return log_path, flush_request_id
-
-
-def _is_safe_jsonl_flush_request_id(flush_request_id: str) -> bool:
-    return all(
-        ("a" <= char <= "z") or ("A" <= char <= "Z") or ("0" <= char <= "9") or char in "-_"
-        for char in flush_request_id
-    )
-
-
-def _write_jsonl_flush_state(log_path: str, flush_request_id: str, *, pending: int = 0) -> bool:
-    state_path = Path(__file__).resolve().parent / _JSONL_FLUSH_STATE_FILE
-    state = {
-        "pid": os.getpid(),
-        "usageStateId": usage.current_usage_state_id(),
-        "updatedAtMs": int(time.time() * 1000),
-        "flushRequestId": flush_request_id,
-        "path": log_path,
-        "pending": pending,
-    }
-    tmp_path = state_path.with_name(f"{state_path.name}.{flush_request_id}.tmp")
-    with _jsonl_flush_state_write_lock:
-        try:
-            with tmp_path.open("w") as f:
-                json.dump(state, f, separators=(",", ":"))
-            tmp_path.replace(state_path)
-            return True
-        except OSError as exc:
-            with suppress(OSError):
-                tmp_path.unlink()
-            ctx.log.warn(f"Failed to write JSONL flush state: {type(exc).__name__}: {exc}")
-            return False
 
 
 def get_api_url() -> str:
@@ -1589,31 +1374,15 @@ def _handle_error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports and forwarding workers before mitmproxy exits.
 
-    Runner-triggered flush workers and shutdown flush share
-    ``_usage_flush_signal_lock``. Waiting here keeps shutdown from closing the
-    executor while a SIGUSR1 worker is still converting buffered usage into
-    webhook reports. Shutdown then owns signals received before the request
-    cutoff and acknowledges them before ``shutdown(wait=True)`` drains submitted
-    webhook futures. Auth.base forwarding does not need to finish running work
-    during shutdown, so its worker shutdown stops new forwards and best-effort
-    closes active upstream sockets without waiting for slow upstream responses.
+    The runner flush lifecycle waits for any active SIGUSR1 worker, drains
+    accepted requests, and closes admission before this hook shuts down the
+    usage executor and JSONL writer. Auth.base forwarding does not need to
+    finish running work during shutdown, so its worker shutdown stops new
+    forwards and best-effort closes active upstream sockets without waiting for
+    slow upstream responses.
     """
-    global _usage_flush_phase
-
-    _usage_flush_phase = "draining"
     try:
-        # Wait for any in-flight runner-triggered flush before closing the
-        # executor used by webhook report delivery. Once the lock is ours,
-        # shutdown also owns requests recorded while the final drain runs.
-        with _usage_flush_signal_lock:
-            try:
-                usage.flush_usage_events(trigger="shutdown")
-                _drain_runner_usage_flush_requests()
-            finally:
-                # Close request admission while still owning the lock, then
-                # consume any event recorded immediately before this cutoff.
-                _usage_flush_phase = "closed"
-                _drain_runner_usage_flush_requests()
+        runner_flush_lifecycle.drain_and_close()
     finally:
         try:
             usage.webhook.usage_executor.shutdown(wait=True)

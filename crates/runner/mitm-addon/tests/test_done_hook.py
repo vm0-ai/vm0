@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import mitm_addon
+import runner_flush_lifecycle
 import usage
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
 
@@ -78,7 +79,7 @@ class TestDoneHook:
         mock_executor.shutdown.side_effect = shutdown
 
         with (
-            patch.object(mitm_addon, "_usage_flush_signal_lock", lock),
+            patch.object(runner_flush_lifecycle, "_usage_flush_signal_lock", lock),
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
@@ -88,7 +89,7 @@ class TestDoneHook:
             ),
             patch.object(mitm_addon, "shutdown_log_writer", lambda: calls.append("jsonl:shutdown")),
         ):
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             assert runner_flush_started.wait(timeout=1)
 
             done_thread = ThreadUnderTest(target=mitm_addon.done)
@@ -124,7 +125,7 @@ class TestDoneHook:
         def flush_usage_events(*, trigger: str) -> int:
             assert trigger == "shutdown"
             calls.append("flush:shutdown")
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             return 0
 
         def flush_usage_for_runner_request() -> None:
@@ -132,7 +133,7 @@ class TestDoneHook:
             runner_flush_count += 1
             calls.append("flush:runner")
             if runner_flush_count == 1:
-                mitm_addon._handle_runner_usage_flush_signal(0, None)
+                runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
 
         mock_executor = MagicMock()
         mock_executor.shutdown.side_effect = lambda *, wait: calls.append(f"shutdown:{wait}")
@@ -140,12 +141,12 @@ class TestDoneHook:
         with (
             patch.object(usage, "flush_usage_events", side_effect=flush_usage_events),
             patch.object(
-                mitm_addon,
+                runner_flush_lifecycle,
                 "_flush_usage_for_runner_request",
                 side_effect=flush_usage_for_runner_request,
             ),
             patch.object(
-                mitm_addon,
+                runner_flush_lifecycle,
                 "_flush_jsonl_for_runner_request",
                 side_effect=lambda: calls.append("flush:jsonl"),
             ),
@@ -169,7 +170,7 @@ class TestDoneHook:
             "auth-base:shutdown:False",
             "jsonl:shutdown",
         ]
-        assert not mitm_addon._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
 
     def test_signal_after_done_does_not_start_worker(self):
         mock_executor = MagicMock()
@@ -182,18 +183,18 @@ class TestDoneHook:
         ):
             mitm_addon.done()
 
-        with patch.object(mitm_addon, "_start_usage_flush_worker") as start_worker:
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+        with patch.object(runner_flush_lifecycle, "_start_usage_flush_worker") as start_worker:
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
 
         start_worker.assert_not_called()
-        assert not mitm_addon._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
 
     def test_done_shuts_down_executor_when_flush_fails(self):
         mock_executor = MagicMock()
 
         def fail_shutdown_flush(*, trigger: str) -> int:
             assert trigger == "shutdown"
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
             raise RuntimeError("flush failed")
 
         with (
@@ -202,8 +203,14 @@ class TestDoneHook:
                 "flush_usage_events",
                 side_effect=fail_shutdown_flush,
             ) as flush_usage_events,
-            patch.object(mitm_addon, "_flush_usage_for_runner_request") as flush_runner_usage,
-            patch.object(mitm_addon, "_flush_jsonl_for_runner_request") as flush_runner_jsonl,
+            patch.object(
+                runner_flush_lifecycle,
+                "_flush_usage_for_runner_request",
+            ) as flush_runner_usage,
+            patch.object(
+                runner_flush_lifecycle,
+                "_flush_jsonl_for_runner_request",
+            ) as flush_runner_jsonl,
             patch.object(usage.webhook, "usage_executor", mock_executor),
             patch.object(
                 mitm_addon.auth_base_forwarder,
@@ -220,8 +227,8 @@ class TestDoneHook:
         mock_executor.shutdown.assert_called_once_with(wait=True)
         shutdown_forward_request_workers.assert_called_once_with(wait=False)
         shutdown_log_writer.assert_called_once_with()
-        assert not mitm_addon._usage_flush_requested.is_set()
+        assert not runner_flush_lifecycle._usage_flush_requested.is_set()
 
-        with patch.object(mitm_addon, "_start_usage_flush_worker") as start_worker:
-            mitm_addon._handle_runner_usage_flush_signal(0, None)
+        with patch.object(runner_flush_lifecycle, "_start_usage_flush_worker") as start_worker:
+            runner_flush_lifecycle.handle_runner_usage_flush_signal(0, None)
         start_worker.assert_not_called()
