@@ -270,7 +270,6 @@ class TestAuthBaseForwarderSecurity:
             ("https://b\u00fccher.example/path", "xn--bcher-kva.example"),
             ("https://b%C3%BCcher.example/path", "xn--bcher-kva.example"),
             ("https://fa\u00df.example/path", "xn--fa-hia.example"),
-            ("https://xn--7xb.example/path", "xn--7xb.example"),
         ],
     )
     async def test_normalizes_idna_host_before_forwarding(self, url: str, expected_host: str):

@@ -100,12 +100,3 @@ def test_malformed_policy_is_rejected_by_every_validation_stage(
         )
 
     assert error.value.reason == "invalid_host_policy"
-
-
-def test_backend_owned_ascii_alabel_is_valid_public_destination_base() -> None:
-    builtin_host_policy.validate_credentialed_builtin_base(
-        firewall_name="contract-test",
-        base="https://xn--7xb.example",
-        auth_config=_AUTH_CONFIG,
-        host_policy={"kind": "publicDestination"},
-    )

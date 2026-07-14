@@ -334,7 +334,6 @@ def _static_auth_base_is_valid(auth_base: str) -> bool:
             validation_url,
             allow_query_fragment=True,
             allow_malformed_authority=False,
-            trusted_firewall_config=True,
         )
         is not None
     )

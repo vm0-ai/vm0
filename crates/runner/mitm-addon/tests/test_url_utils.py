@@ -72,14 +72,6 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://xn--bcher-kva.example/hook/sub"
 
-    def test_base_keeps_backend_owned_ascii_alabel_for_forwarding(self):
-        url = url_utils.build_rewrite_url(
-            "https://xn--7xb.example/hook",
-            "/sub",
-            "",
-        )
-        assert url == "https://xn--7xb.example/hook/sub"
-
     def test_base_explicit_default_port_preserved_for_forwarding(self):
         url = url_utils.build_rewrite_url(
             "https://example.com:443/hook",

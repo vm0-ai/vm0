@@ -27,7 +27,7 @@ from authority_utils import (
     percent_decode_host,
     raw_authority_host,
 )
-from host_normalization import normalize_firewall_config_hostname, normalize_idna_hostname
+from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_path
 from url_syntax import (
     has_raw_whitespace,
@@ -107,7 +107,7 @@ def _has_invalid_hostname_chars(host: str) -> bool:
     return has_ascii_space_or_control(host) or any(char in _FORBIDDEN_HOST_CHARS for char in host)
 
 
-def _normalize_hostname(host: str, *, trusted_firewall_config: bool = False) -> str:
+def _normalize_hostname(host: str) -> str:
     if ":" in host:
         if "%" in host:
             raise ValueError("IPv6 scope identifiers are not allowed")
@@ -120,8 +120,6 @@ def _normalize_hostname(host: str, *, trusted_firewall_config: bool = False) -> 
         raise ValueError("colon host must be IPv6")
     if _has_invalid_hostname_chars(host):
         raise ValueError("invalid hostname")
-    if trusted_firewall_config:
-        return normalize_firewall_config_hostname(host)
     return normalize_idna_hostname(host)
 
 
@@ -429,7 +427,7 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         raise ValueError("Invalid auth.base URL: missing host")
     decoded_host = _percent_decode_host(host)
     try:
-        normalized_host = _normalize_hostname(decoded_host, trusted_firewall_config=True)
+        normalized_host = _normalize_hostname(decoded_host)
     except (UnicodeError, ValueError) as exc:
         raise ValueError("Invalid auth.base URL: invalid host") from exc
     try:

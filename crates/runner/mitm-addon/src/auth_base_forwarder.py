@@ -30,7 +30,7 @@ from authority_utils import (
     percent_decode_host,
     raw_authority_host,
 )
-from host_normalization import normalize_firewall_config_hostname
+from host_normalization import normalize_idna_hostname
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
 HOP_BY_HOP: frozenset[str] = frozenset(
@@ -504,7 +504,7 @@ def _normalized_forward_request_host(parsed: urllib.parse.SplitResult) -> str:
         return parsed_ip.compressed.lower()
 
     try:
-        return normalize_firewall_config_hostname(decoded.value)
+        return normalize_idna_hostname(decoded.value)
     except (UnicodeError, ValueError) as exc:
         raise ValueError("Invalid upstream URL: invalid host") from exc
 

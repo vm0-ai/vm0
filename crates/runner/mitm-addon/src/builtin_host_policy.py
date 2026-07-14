@@ -18,7 +18,7 @@ from firewall_auth_config import (
     auth_config_injects_ordinary_upstream_credentials,
 )
 from host_normalization import (
-    normalize_firewall_config_hostname,
+    normalize_idna_hostname,
     translate_idna_dot_separators,
 )
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
@@ -199,7 +199,7 @@ def _provider_owned_base_hostname(
     if decoded_host.bracketed:
         return f"[{ipaddress.ip_address(decoded_host.hostname).compressed.lower()}]"
     try:
-        return normalize_firewall_config_hostname(decoded_host.hostname)
+        return normalize_idna_hostname(decoded_host.hostname)
     except (UnicodeError, ValueError) as e:
         raise _invalid_resolved_base_url(firewall_name) from e
 
@@ -213,7 +213,7 @@ def _public_destination_base_hostname(
     if decoded_host.bracketed:
         return f"[{decoded_host.hostname}]"
     try:
-        normalize_firewall_config_hostname(decoded_host.hostname)
+        normalize_idna_hostname(decoded_host.hostname)
     except (UnicodeError, ValueError) as e:
         raise _invalid_resolved_base_url(firewall_name) from e
     return decoded_host.hostname
@@ -420,10 +420,7 @@ def _validate_public_destination_host_policy(
     parsed: urllib.parse.SplitResult,
 ) -> None:
     hostname = _public_destination_base_hostname(firewall_name=firewall_name, parsed=parsed)
-    public_ip_literal = public_destination.public_ip_literal_is_public(
-        hostname,
-        trusted_firewall_config=True,
-    )
+    public_ip_literal = public_destination.public_ip_literal_is_public(hostname)
     if public_ip_literal is False:
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow '

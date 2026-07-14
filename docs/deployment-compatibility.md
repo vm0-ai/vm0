@@ -177,17 +177,15 @@ firewalls and hostname-bearing built-in variables into existing runner payload
 fields. Raw custom connector definitions and encrypted variable values remain
 unchanged in storage.
 
-The runner treats ASCII firewall configuration hostnames as backend-issued
-identities and does not reinterpret their A-labels with its own Unicode tables.
-It still validates URL structure, ports, IP literals, and label lengths. During
-rolling deployments, a new runner also accepts raw Unicode configuration from
-an old backend through the previous runner-side normalization path.
-
 Secret- and variable-backed `auth.base` values are canonicalized by the backend
 after template resolution and before the resolved target is returned to the
-runner. Untrusted request authorities remain outside this trust boundary and
-continue to use the runner's strict hostname normalization before matching or
-credential injection.
+runner.
+
+Runner validation remains unchanged and fail closed. It defensively validates
+configuration received from old and new backends, resolved credential-bearing
+targets, and untrusted request authorities. The fixed backend policy must emit
+only canonical ASCII identities accepted unchanged by draining old runners; a
+policy upgrade requires deliberate compatibility analysis before deployment.
 
 For persisted state changes:
 

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 from host_normalization import (
-    normalize_firewall_config_hostname,
     normalize_idna_hostname,
     translate_idna_dot_separators,
 )
@@ -62,11 +61,7 @@ class RuntimeDestinationCheck:
     reason: DestinationDenialReason | None = None
 
 
-def public_ip_literal_is_public(
-    hostname: str,
-    *,
-    trusted_firewall_config: bool = False,
-) -> bool | None:
+def public_ip_literal_is_public(hostname: str) -> bool | None:
     """Return public-IP status for IP-like/malformed input, or None for ordinary hostnames."""
     ip_text = hostname.strip()
     if not ip_text or ip_text != hostname:
@@ -88,10 +83,7 @@ def public_ip_literal_is_public(
         if _looks_like_legacy_ipv4_literal(ip_text):
             return False
         try:
-            if trusted_firewall_config:
-                normalize_firewall_config_hostname(ip_text)
-            else:
-                normalize_idna_hostname(ip_text)
+            normalize_idna_hostname(ip_text)
         except (UnicodeError, ValueError):
             return False
         return None
