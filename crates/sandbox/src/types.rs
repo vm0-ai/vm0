@@ -367,6 +367,11 @@ pub struct GuestProcessWaiter {
 }
 
 impl GuestProcessWaiter {
+    /// Construct a one-shot waiter from provider-owned exit-observation logic.
+    ///
+    /// `wait` must own the backend state needed to observe the terminal
+    /// [`ProcessExit`]. The closure receives the host-side timeout when
+    /// [`Self::wait`] consumes this waiter.
     pub fn new<F>(wait: F) -> Self
     where
         F: FnOnce(Duration) -> GuestProcessWaitFuture + Send + 'static,
@@ -376,6 +381,16 @@ impl GuestProcessWaiter {
         }
     }
 
+    /// Consume this waiter and start the provider's exit-observation operation.
+    ///
+    /// `timeout` bounds how long the provider should wait for the terminal
+    /// [`ProcessExit`]. Consuming `self` ensures that the provider operation can
+    /// be started at most once.
+    ///
+    /// Sandbox callers should normally pass the containing
+    /// [`GuestProcessHandle`] to
+    /// [`Sandbox::wait_process`](crate::Sandbox::wait_process) instead of
+    /// invoking the waiter directly.
     pub fn wait(self, timeout: Duration) -> GuestProcessWaitFuture {
         (self.wait)(timeout)
     }
@@ -394,6 +409,12 @@ pub struct GuestProcessCancelHandle {
 }
 
 impl GuestProcessCancelHandle {
+    /// Construct a one-shot handle from provider-owned cancellation logic.
+    ///
+    /// `cancel` must own the backend state needed to send a best-effort
+    /// cancellation request. The closure receives the host-side timeout when
+    /// [`Self::cancel`] consumes this handle; its completion does not observe
+    /// the terminal [`ProcessExit`].
     pub fn new<F>(cancel: F) -> Self
     where
         F: FnOnce(Duration) -> GuestProcessCancelFuture + Send + 'static,
@@ -403,6 +424,16 @@ impl GuestProcessCancelHandle {
         }
     }
 
+    /// Consume this handle and run the provider's cancellation operation.
+    ///
+    /// `timeout` bounds how long the provider should spend sending the
+    /// best-effort cancellation request. Consuming `self` ensures that the
+    /// provider operation can run at most once.
+    ///
+    /// A successful result only confirms that the cancellation request was
+    /// sent; it does not report process termination. Observe the terminal
+    /// result separately by passing the containing [`GuestProcessHandle`] to
+    /// [`Sandbox::wait_process`](crate::Sandbox::wait_process).
     pub async fn cancel(self, timeout: Duration) -> std::io::Result<()> {
         (self.cancel)(timeout).await
     }
