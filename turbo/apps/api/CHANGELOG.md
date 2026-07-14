@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.275.5](https://github.com/vm0-ai/vm0/compare/api-v1.275.4...api-v1.275.5) (2026-07-14)
+
+
+### Refactoring
+
+* **db:** contract workflow automation identifiers ([#21509](https://github.com/vm0-ai/vm0/issues/21509)) ([1acfd38](https://github.com/vm0-ai/vm0/commit/1acfd3863a11dd2b88fb681254e73ab320b31678))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.6
+
 ## [1.275.4](https://github.com/vm0-ai/vm0/compare/api-v1.275.3...api-v1.275.4) (2026-07-14)
 
 
