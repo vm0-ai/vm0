@@ -3746,7 +3746,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
-  it("defaults limited-free runs to Terra, allows Luna, and rejects Sol", async () => {
+  it("defaults limited-free runs to Luna, allows Terra, and rejects Sol", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);

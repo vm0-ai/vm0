@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.427.1](https://github.com/vm0-ai/vm0/compare/core-v8.427.0...core-v8.427.1) (2026-07-14)
+
+
+### Refactoring
+
+* roll out artifact favorites and retire the switch ([#21293](https://github.com/vm0-ai/vm0/issues/21293)) ([20accfa](https://github.com/vm0-ai/vm0/commit/20accfa64190f6c04596dda2e9879de3e5d7b339))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.189.0
+    * @vm0/connectors bumped to 1.157.1
+
 ## [8.427.0](https://github.com/vm0-ai/vm0/compare/core-v8.426.1...core-v8.427.0) (2026-07-13)
 
 

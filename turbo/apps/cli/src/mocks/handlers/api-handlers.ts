@@ -30,24 +30,6 @@ function isConnectorAuthMethodId(
   return connectorAuthMethodIdSchema.safeParse(value).success;
 }
 
-function defaultAvailableConnectors() {
-  return CONNECTOR_TYPE_KEYS.map((type) => {
-    const authMethods = getAvailableConnectorAuthMethodIds(type, {});
-    return { type, authMethods };
-  })
-    .filter((item) => {
-      return item.authMethods.length > 0;
-    })
-    .map(({ type, authMethods }) => {
-      return {
-        id: type,
-        label: CONNECTOR_TYPES[type].label,
-        description: CONNECTOR_TYPES[type].helpText,
-        authMethods,
-      };
-    });
-}
-
 function defaultPermissionSummary() {
   return {
     hasPermissions: false,
@@ -342,26 +324,6 @@ export const apiHandlers = [
       );
     },
   ),
-
-  // GET /api/zero/connectors/search - searchZeroConnectors
-  http.get("http://localhost:3000/api/zero/connectors/search", () => {
-    return HttpResponse.json(
-      { connectors: defaultAvailableConnectors() },
-      { status: 200 },
-    );
-  }),
-  http.get("https://app.vm0.ai/api/zero/connectors/search", () => {
-    return HttpResponse.json(
-      { connectors: defaultAvailableConnectors() },
-      { status: 200 },
-    );
-  }),
-  http.get("https://www.vm0.ai/api/zero/connectors/search", () => {
-    return HttpResponse.json(
-      { connectors: defaultAvailableConnectors() },
-      { status: 200 },
-    );
-  }),
 
   // GET /api/zero/org - getZeroOrg
   http.get("http://localhost:3000/api/zero/org", () => {

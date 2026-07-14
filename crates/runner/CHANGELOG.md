@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.5...runner-rs-v0.144.6) (2026-07-14)
+
+
+### Bug Fixes
+
+* **runner:** drop stale sidecar identity after failed reuse ([#21300](https://github.com/vm0-ai/vm0/issues/21300)) ([4222c87](https://github.com/vm0-ai/vm0/commit/4222c87e65bf12337173acb5eac48b1e3b4b3aef))
+
 ## [0.144.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.4...runner-rs-v0.144.5) (2026-07-13)
 
 

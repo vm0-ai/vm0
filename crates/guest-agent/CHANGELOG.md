@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.7...guest-agent-v0.51.0) (2026-07-14)
+
+
+### Features
+
+* default new organizations to luna with ultra reasoning ([#21323](https://github.com/vm0-ai/vm0/issues/21323)) ([d42f4c3](https://github.com/vm0-ai/vm0/commit/d42f4c30743bcb6aa087fd2c077b348b519175ca))
+
 ## [0.50.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.50.6...guest-agent-v0.50.7) (2026-07-13)
 
 

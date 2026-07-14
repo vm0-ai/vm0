@@ -4072,8 +4072,15 @@
     {
       "idx": 581,
       "version": "7",
-      "when": 1783942292735,
-      "tag": "0581_easy_cloak",
+      "when": 1783984905355,
+      "tag": "0581_material_meltdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 582,
+      "version": "7",
+      "when": 1783993985007,
+      "tag": "0582_graceful_jack_power",
       "breakpoints": true
     }
   ]
