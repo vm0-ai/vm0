@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.597.3](https://github.com/vm0-ai/vm0/compare/app-v0.597.2...app-v0.597.3) (2026-07-14)
+
+
+### Bug Fixes
+
+* **platform:** validate composer model state without extra renders ([#21319](https://github.com/vm0-ai/vm0/issues/21319)) ([53c469b](https://github.com/vm0-ai/vm0/commit/53c469bcad6ada0e9bf95554ee069948f1e0e03c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.1
+    * @vm0/connectors bumped to 1.158.0
+    * @vm0/core bumped to 8.429.0
+
 ## [0.597.2](https://github.com/vm0-ai/vm0/compare/app-v0.597.1...app-v0.597.2) (2026-07-14)
 
 

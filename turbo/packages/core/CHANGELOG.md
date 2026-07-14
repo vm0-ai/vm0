@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.429.0](https://github.com/vm0-ai/vm0/compare/core-v8.428.0...core-v8.429.0) (2026-07-14)
+
+
+### Features
+
+* queue-first user message dispatch on chat_message_queue behind a feature switch ([#21368](https://github.com/vm0-ai/vm0/issues/21368)) ([791774d](https://github.com/vm0-ai/vm0/commit/791774dad8dca817b273c55b580e6e1a783970b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.192.1
+    * @vm0/connectors bumped to 1.158.0
+
 ## [8.428.0](https://github.com/vm0-ai/vm0/compare/core-v8.427.3...core-v8.428.0) (2026-07-14)
 
 
