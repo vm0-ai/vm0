@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 export function autoRechargeConfig(
   orgId: string,
@@ -87,15 +88,10 @@ export const updateAutoRechargeConfig$ = command(
     const writeDb = set(writeDb$);
 
     if (enabled) {
-      const [row] = await writeDb
-        .select({ tier: orgMetadata.tier })
-        .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, orgId))
-        .limit(1);
+      const capabilities = await loadOrgPlanCapabilities(writeDb, orgId);
       signal.throwIfAborted();
 
-      const orgTier = row?.tier ?? "pro-suspend";
-      if (orgTier !== "pro" && orgTier !== "team" && orgTier !== "custom") {
+      if (capabilities?.autoRechargeAllowed !== true) {
         return {
           ok: false,
           error:

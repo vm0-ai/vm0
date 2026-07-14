@@ -1,10 +1,7 @@
 import { command } from "ccstate";
-import { eq } from "drizzle-orm";
-
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-
 import { insufficientCredits } from "../../lib/error";
 import { db$ } from "../external/db";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 export const rejectSuspendedOrg$ = command(
   async (
@@ -13,13 +10,9 @@ export const rejectSuspendedOrg$ = command(
     signal: AbortSignal,
   ): Promise<ReturnType<typeof insufficientCredits> | null> => {
     const db = get(db$);
-    const [row] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
+    const capabilities = await loadOrgPlanCapabilities(db, orgId);
     signal.throwIfAborted();
 
-    return row?.tier === "pro-suspend" ? insufficientCredits() : null;
+    return capabilities?.status === "suspended" ? insufficientCredits() : null;
   },
 );

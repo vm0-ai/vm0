@@ -103,7 +103,6 @@ import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
@@ -180,8 +179,9 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import {
-  checkLimitedFreeRunModelAdmission,
+  checkOrgModelRunAdmission,
   checkOrgCreditsForRunAdmission,
 } from "./zero-run-admission.service";
 import { activateUsageAllowanceWindowsForRun } from "./usage-allowance.service";
@@ -209,20 +209,12 @@ type ArtifactMissingRootPolicy = NonNullable<
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
 
-const TIER_LIMITS = Object.freeze({
-  free: 1,
-  "limited-free-1": 1,
-  pro: 2,
-  team: 10,
-  custom: 10,
-});
-
 function getEffectiveConcurrencyLimit(
-  tier: keyof typeof TIER_LIMITS,
+  baseLimit: number,
   paidSlots: number,
 ): number {
   const limit = totalConcurrencyLimit({
-    baseLimit: cappedBaseConcurrencyLimit(TIER_LIMITS[tier]),
+    baseLimit: cappedBaseConcurrencyLimit(baseLimit),
     paidSlots,
   });
   return Number.isFinite(limit) ? limit : 0;
@@ -246,7 +238,6 @@ const COUNT_BUCKET_DIMENSIONS = [
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
-type RunAdmissionDb = Pick<Db, "select">;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
@@ -3905,31 +3896,18 @@ function parseAdditionalVolumesSnapshot(
   return parsed.length > 0 ? parsed : undefined;
 }
 
-async function orgTier(
-  db: RunAdmissionDb,
-  orgId: string,
-): Promise<keyof typeof TIER_LIMITS> {
-  const [row] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  if (row?.tier === "pro" || row?.tier === "team" || row?.tier === "custom") {
-    return row.tier;
-  }
-  return "free";
-}
-
 async function checkRunConcurrencyLimit(
   tx: DbTransaction,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const [tier, paidSlots] = await Promise.all([
-    orgTier(tx, orgId),
+  const [capabilities, paidSlots] = await Promise.all([
+    loadOrgPlanCapabilities(tx, orgId),
     activePaidConcurrencySlots(tx, orgId),
   ]);
-  const limit = getEffectiveConcurrencyLimit(tier, paidSlots);
+  const limit = getEffectiveConcurrencyLimit(
+    capabilities?.baseConcurrencyLimit ?? 0,
+    paidSlots,
+  );
   if (limit === 0) {
     return null;
   }
@@ -3968,20 +3946,15 @@ async function checkVm0Credits(
   );
 }
 
-async function checkOrgRunTier(
+async function checkOrgRunPlanStatus(
   db: Db,
   args: { readonly orgId: string },
 ): Promise<CreateRunErrorResult | null> {
-  const [row] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, args.orgId))
-    .limit(1);
-
-  if (!row) {
+  const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
+  if (!capabilities) {
     return insufficientCredits();
   }
-  return row.tier === "pro-suspend" ? insufficientCredits() : null;
+  return capabilities.status === "active" ? null : insufficientCredits();
 }
 
 async function lookupComposeByVersion(
@@ -7345,7 +7318,7 @@ export const prepareAgentRun$ = command(
       "api_dispatch_check_org_tier",
       "top_level",
       async () => {
-        return await checkOrgRunTier(db, { orgId: args.orgId });
+        return await checkOrgRunPlanStatus(db, { orgId: args.orgId });
       },
     );
     signal.throwIfAborted();
@@ -7383,7 +7356,7 @@ export const completeAgentRun$ = command(
     );
     signal.throwIfAborted();
 
-    const modelTierGate = await checkLimitedFreeRunModelAdmission({
+    const modelTierGate = await checkOrgModelRunAdmission({
       db,
       orgId: args.orgId,
       modelProviderType: context.modelProvider?.type ?? args.modelProviderType,

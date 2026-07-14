@@ -1,7 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { orgTierSchema, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AudioInputQuotaResponse } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray } from "drizzle-orm";
 
@@ -9,26 +7,23 @@ import { db$ } from "../external/db";
 import { nowDate } from "../external/time";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
-  AUDIO_INPUT_FREE_QUOTA,
-  DAILY_DURATION_LIMITS,
-  DAILY_RATE_LIMITS,
   sttDailyDurationKey,
   sttDailyRateKey,
 } from "./voice-io-limits";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 function blockedQuota(count: number, limit: number): AudioInputQuotaResponse {
   return { allowed: false, count, limit };
 }
 
-function lifetimeQuotaForTier(
-  tier: OrgTier,
+function lifetimeQuota(
+  limit: number | null,
   count: number,
 ): AudioInputQuotaResponse {
-  if (tier === "pro" || tier === "team" || tier === "custom") {
+  if (limit === null) {
     return { allowed: true, count: 0, limit: null };
   }
 
-  const limit = tier === "pro-suspend" ? 0 : AUDIO_INPUT_FREE_QUOTA;
   return {
     allowed: count < limit,
     count,
@@ -42,15 +37,11 @@ export function audioInputLifetimeQuota(
 ): Computed<Promise<AudioInputQuotaResponse>> {
   return computed(async (get): Promise<AudioInputQuotaResponse> => {
     const db = get(db$);
-    const [orgRow] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    const tier: OrgTier = orgTierSchema.parse(orgRow?.tier ?? "pro-suspend");
+    const capabilities = await loadOrgPlanCapabilities(db, orgId);
+    const lifetimeLimit = capabilities ? capabilities.audioLifetimeLimit : 0;
 
-    if (tier === "pro" || tier === "team" || tier === "custom") {
-      return lifetimeQuotaForTier(tier, 0);
+    if (lifetimeLimit === null) {
+      return lifetimeQuota(lifetimeLimit, 0);
     }
 
     const [row] = await db
@@ -65,7 +56,7 @@ export function audioInputLifetimeQuota(
       )
       .limit(1);
 
-    return lifetimeQuotaForTier(tier, row?.count ?? 0);
+    return lifetimeQuota(lifetimeLimit, row?.count ?? 0);
   });
 }
 
@@ -79,12 +70,10 @@ export function audioInputQuota(
     const rateKey = sttDailyRateKey(today);
     const durationKey = sttDailyDurationKey(today);
 
-    const [orgRow] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    const tier: OrgTier = orgTierSchema.parse(orgRow?.tier ?? "pro-suspend");
+    const capabilities = await loadOrgPlanCapabilities(db, orgId);
+    const lifetimeLimit = capabilities ? capabilities.audioLifetimeLimit : 0;
+    const rateLimit = capabilities?.audioDailyRateLimit ?? 0;
+    const durationLimit = capabilities?.audioDailyDurationSeconds ?? 0;
 
     const behaviorRows = await db
       .select({
@@ -110,18 +99,16 @@ export function audioInputQuota(
     );
 
     const rateCount = counts.get(rateKey) ?? 0;
-    const rateLimit = DAILY_RATE_LIMITS[tier];
     if (rateCount >= rateLimit) {
       return blockedQuota(rateCount, rateLimit);
     }
 
     const durationCount = counts.get(durationKey) ?? 0;
-    const durationLimit = DAILY_DURATION_LIMITS[tier];
     if (durationCount >= durationLimit) {
       return blockedQuota(durationCount, durationLimit);
     }
 
     const count = counts.get(AUDIO_INPUT_BEHAVIOR_KEY) ?? 0;
-    return lifetimeQuotaForTier(tier, count);
+    return lifetimeQuota(lifetimeLimit, count);
   });
 }

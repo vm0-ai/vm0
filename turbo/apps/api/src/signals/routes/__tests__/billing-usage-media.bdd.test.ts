@@ -882,15 +882,15 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
       "Unsupported audio format. Send raw 16 kHz mono signed 16-bit PCM as application/octet-stream.",
     );
 
-    const rateLimitedAudio = await api.requestAudioTranscriptionV1WithBearer(
+    const blockedAudio = await api.requestAudioTranscriptionV1WithBearer(
       apiKey.token,
       new Blob([new Uint8Array([0, 0])], {
         type: "application/octet-stream",
       }),
-      [429],
+      [402],
     );
-    expectApiError(rateLimitedAudio.body);
-    expect(rateLimitedAudio.body.error.code).toBe("DAILY_RATE_LIMIT_EXCEEDED");
+    expectApiError(blockedAudio.body);
+    expect(blockedAudio.body.error.code).toBe("AUDIO_INPUT_QUOTA_EXCEEDED");
 
     const speech = await api.requestVoiceSpeech(
       admin,

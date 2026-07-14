@@ -1,8 +1,6 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { command, computed, type Computed } from "ccstate";
-import { orgTierSchema, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
@@ -19,12 +17,11 @@ import { settle, tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
-  DAILY_DURATION_LIMITS,
-  DAILY_RATE_LIMITS,
   sttDailyDurationKey,
   sttDailyRateKey,
 } from "./voice-io-limits";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 const L = logger("ZeroVoiceIoPost");
 
@@ -112,7 +109,7 @@ interface VoiceInputSttTranscript {
 type VoiceInputSttProviderResult = VoiceInputSttTranscript | ErrorResponse;
 
 interface SttDailyPolicy {
-  readonly orgTier: OrgTier;
+  readonly recordLifetimeUsage: boolean;
   readonly rateKey: string;
   readonly durationKey: string;
   readonly durationSeconds: number;
@@ -860,14 +857,11 @@ export const sttDailyPolicy$ = command(
     const currentDate = nowDate();
     const rateKey = sttDailyRateKey(currentDate);
     const durationKey = sttDailyDurationKey(currentDate);
-    const [orgRow] = await db
-      .select({ tier: orgMetadata.tier })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
+    const capabilities = await loadOrgPlanCapabilities(db, orgId);
     signal.throwIfAborted();
-
-    const orgTier = orgTierSchema.parse(orgRow?.tier ?? "pro-suspend");
+    const lifetimeLimit = capabilities ? capabilities.audioLifetimeLimit : 0;
+    const rateLimit = capabilities?.audioDailyRateLimit ?? 0;
+    const durationLimit = capabilities?.audioDailyDurationSeconds ?? 0;
     const behaviorRows = await db
       .select({
         key: userBehaviorCount.behaviorKey,
@@ -889,7 +883,6 @@ export const sttDailyPolicy$ = command(
       }),
     );
     const rateCount = counts.get(rateKey) ?? 0;
-    const rateLimit = DAILY_RATE_LIMITS[orgTier];
     if (rateCount >= rateLimit) {
       return quotaError(
         429,
@@ -901,7 +894,6 @@ export const sttDailyPolicy$ = command(
     }
 
     const dailyDurationSeconds = counts.get(durationKey) ?? 0;
-    const durationLimit = DAILY_DURATION_LIMITS[orgTier];
     if (dailyDurationSeconds + durationSeconds > durationLimit) {
       return quotaError(
         429,
@@ -912,7 +904,12 @@ export const sttDailyPolicy$ = command(
       );
     }
 
-    return { orgTier, rateKey, durationKey, durationSeconds };
+    return {
+      recordLifetimeUsage: lifetimeLimit !== null,
+      rateKey,
+      durationKey,
+      durationSeconds,
+    };
   },
 );
 
@@ -965,7 +962,7 @@ export const recordSttUsage$ = command(
             lastAt: sql`now()`,
           },
         }),
-      params.orgTier === "free" || params.orgTier === "limited-free-1"
+      params.recordLifetimeUsage
         ? writeDb
             .insert(userBehaviorCount)
             .values({

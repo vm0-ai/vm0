@@ -1,8 +1,9 @@
 /**
  * Test fixture for the current org plan entitlement snapshot.
  *
- * The snapshot has no public read API, so webhook integration tests use this
- * narrow boundary to verify the persisted side effect.
+ * The snapshot has no public API for constructing deliberately divergent
+ * capabilities, so integration tests use this narrow boundary to verify those
+ * reads and persisted webhook side effects.
  */
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { createStore } from "ccstate";
@@ -32,6 +33,35 @@ interface OrgPlanEntitlementFixtureState {
   readonly currentPeriodEnd: string | null;
   readonly cancelAt: string | null;
   readonly expiresAt: string | null;
+}
+
+export async function upsertOrgPlanEntitlementFixture(values: {
+  readonly orgId: string;
+  readonly status?: string;
+  readonly baseConcurrencyLimit?: number;
+}): Promise<void> {
+  const row = {
+    orgId: values.orgId,
+    planKey: "test-fixture",
+    planRank: 0,
+    source: "test_fixture",
+    status: values.status ?? "active",
+    baseConcurrencyLimit: values.baseConcurrencyLimit ?? 0,
+  };
+  await createStore()
+    .set(writeDb$)
+    .insert(orgPlanEntitlements)
+    .values(row)
+    .onConflictDoUpdate({
+      target: orgPlanEntitlements.orgId,
+      set: {
+        planKey: row.planKey,
+        planRank: row.planRank,
+        source: row.source,
+        status: row.status,
+        baseConcurrencyLimit: row.baseConcurrencyLimit,
+      },
+    });
 }
 
 export async function readOrgPlanEntitlementFixture(

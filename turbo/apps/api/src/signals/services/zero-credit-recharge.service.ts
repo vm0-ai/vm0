@@ -1,6 +1,7 @@
 import type StripeSDK from "stripe";
 import { command } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
@@ -9,6 +10,10 @@ import { nowDate } from "../external/time";
 import { tapError } from "../utils";
 import { logger } from "../../lib/log";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  loadOrgPlanCapabilities,
+  orgPlanEntitlementReadsEnabled,
+} from "./org-plan-entitlement-read.service";
 
 const L = logger("CreditRecharge");
 
@@ -96,6 +101,20 @@ async function resolvePaymentMethod(
 export const triggerAutoRecharge$ = command(
   async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
+    const capabilities = await loadOrgPlanCapabilities(writeDb, orgId);
+    signal.throwIfAborted();
+    if (capabilities?.autoRechargeAllowed !== true) {
+      return;
+    }
+
+    const planEligibility = orgPlanEntitlementReadsEnabled(orgId)
+      ? sql`EXISTS (
+          SELECT 1
+          FROM ${orgPlanEntitlements}
+          WHERE ${orgPlanEntitlements.orgId} = ${orgId}
+            AND ${orgPlanEntitlements.autoRechargeAllowed} = true
+        )`
+      : sql`${orgMetadata.tier} IN ('pro', 'team', 'custom')`;
 
     const clearPendingFlag = async (): Promise<void> => {
       await writeDb
@@ -110,7 +129,7 @@ export const triggerAutoRecharge$ = command(
       .where(
         sql`${orgMetadata.orgId} = ${orgId}
             AND ${orgMetadata.autoRechargeEnabled} = true
-            AND ${orgMetadata.tier} IN ('pro', 'team', 'custom')
+            AND ${planEligibility}
             AND ${orgMetadata.stripeCustomerId} IS NOT NULL
             AND ${orgMetadata.autoRechargeThreshold} IS NOT NULL
             AND ${orgMetadata.autoRechargeAmount} IS NOT NULL
