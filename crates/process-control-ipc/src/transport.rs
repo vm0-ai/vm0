@@ -239,6 +239,29 @@ fn poll_fd(fd: libc::c_int, events: libc::c_short, deadline: Instant) -> io::Res
 mod tests {
     use super::*;
 
+    fn bind_test_listener(case: &str) -> (String, UnixListener) {
+        let name = format!("vm0-test-{case}-{}", std::process::id());
+        let listener = bind_abstract_listener(&name).unwrap();
+        (name, listener)
+    }
+
+    fn accept_error_with_watchdog(case: &str, timeout: Duration) -> io::ErrorKind {
+        let (_name, listener) = bind_test_listener(case);
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let result = accept_with_timeout(&listener, timeout)
+                .map(|_| ())
+                .map_err(|error| error.kind());
+            result_tx.send(result).unwrap();
+        });
+
+        let result = result_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("accept should complete within the test watchdog");
+        worker.join().expect("accept worker should not panic");
+        result.expect_err("accept should not succeed without a client")
+    }
+
     #[test]
     fn endpoint_name_includes_seq_and_nonce() {
         let nonce = *b"0123456789abcdef";
@@ -286,12 +309,7 @@ mod tests {
 
     #[test]
     fn abstract_socket_connects() {
-        let name = format!(
-            "vm0-test-{}-{}",
-            std::process::id(),
-            Instant::now().elapsed().as_nanos()
-        );
-        let listener = bind_abstract_listener(&name).unwrap();
+        let (name, listener) = bind_test_listener("connects");
         let client = std::thread::spawn({
             let name = name.clone();
             move || connect_abstract(&name).unwrap()
@@ -299,5 +317,29 @@ mod tests {
         let server = accept_with_timeout(&listener, Duration::from_secs(1)).unwrap();
         let _client = client.join().unwrap();
         drop(server);
+    }
+
+    #[test]
+    fn abstract_socket_accept_times_out_without_client() {
+        assert_eq!(
+            accept_error_with_watchdog("timeout", Duration::from_millis(10)),
+            io::ErrorKind::TimedOut
+        );
+    }
+
+    #[test]
+    fn abstract_socket_accept_zero_timeout() {
+        assert_eq!(
+            accept_error_with_watchdog("zero-timeout", Duration::ZERO),
+            io::ErrorKind::TimedOut
+        );
+    }
+
+    #[test]
+    fn abstract_socket_accept_rejects_deadline_overflow() {
+        assert_eq!(
+            accept_error_with_watchdog("timeout-overflow", Duration::MAX),
+            io::ErrorKind::InvalidInput
+        );
     }
 }
