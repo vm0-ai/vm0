@@ -21,6 +21,10 @@ use crate::paths::HomePaths;
 pub(super) type SharedFactory = Arc<Box<dyn SandboxFactory>>;
 
 /// Build one sandbox factory per configured profile.
+///
+/// On failure, already-created factories are stopped, but shared runtime
+/// resources remain owned by the caller so dependent services can stop before
+/// the runtime removes their network isolation.
 pub(super) async fn start_factories(
     profiles: &BTreeMap<String, ProfileConfig>,
     firecracker: &config::FirecrackerConfig,
@@ -42,7 +46,7 @@ pub(super) async fn start_factories(
         let factory = match factory_result {
             Ok(factory) => factory,
             Err(e) => {
-                shutdown_factories(&mut factories, runtime, None).await;
+                shutdown_factory_instances(&mut factories, None).await;
                 return Err(e.into());
             }
         };
@@ -55,10 +59,9 @@ pub(super) async fn start_factories(
     Ok(factories)
 }
 
-/// Shut down all factories, then release shared runtime resources.
-pub(super) async fn shutdown_factories(
+/// Shut down all factory-owned sandboxes while retaining shared runtime resources.
+pub(super) async fn shutdown_factory_instances(
     factories: &mut BTreeMap<String, (SharedFactory, bool)>,
-    runtime: &mut dyn SandboxRuntime,
     teardown: Option<&TeardownTimer>,
 ) {
     for (name, (factory, _)) in std::mem::take(factories) {
@@ -88,6 +91,13 @@ pub(super) async fn shutdown_factories(
             Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
         }
     }
+}
+
+/// Release runtime-owned shared resources after their dependent services stop.
+pub(super) async fn shutdown_runtime(
+    runtime: &mut dyn SandboxRuntime,
+    teardown: Option<&TeardownTimer>,
+) {
     // Clean up runtime-owned shared resources (netns and NBD device pools).
     let phase = teardown.map(|timer| timer.phase_start("runtime_shutdown"));
     runtime.shutdown().await;
@@ -210,11 +220,11 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 2);
         assert_eq!(runtime.factory_shutdowns.load(Ordering::SeqCst), 1);
-        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
+        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
-    async fn start_factories_shuts_down_runtime_after_first_factory_create_error() {
+    async fn start_factories_retains_runtime_after_first_factory_create_error() {
         let temp = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(temp.path().join("home"));
         let base_dir = temp.path().join("base");
@@ -232,11 +242,11 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(runtime.create_calls.load(Ordering::SeqCst), 1);
         assert_eq!(runtime.factory_shutdowns.load(Ordering::SeqCst), 0);
-        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 1);
+        assert_eq!(runtime.runtime_shutdowns.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
-    async fn shutdown_factories_skips_factories_that_are_still_referenced() {
+    async fn split_shutdown_skips_referenced_factories_and_releases_runtime() {
         let mut runtime = RecordingRuntime::new(usize::MAX);
         let factory_shutdowns = Arc::clone(&runtime.factory_shutdowns);
         let retained_factory: SharedFactory = Arc::new(Box::new(RecordingFactory {
@@ -245,7 +255,8 @@ mod tests {
         let mut factories = BTreeMap::new();
         factories.insert("vm0/first".into(), (Arc::clone(&retained_factory), false));
 
-        shutdown_factories(&mut factories, &mut runtime, None).await;
+        shutdown_factory_instances(&mut factories, None).await;
+        shutdown_runtime(&mut runtime, None).await;
 
         assert!(factories.is_empty());
         assert_eq!(factory_shutdowns.load(Ordering::SeqCst), 0);

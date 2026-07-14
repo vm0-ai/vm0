@@ -113,11 +113,24 @@ async fn try_start(
     interface_pattern: &str,
     network_log_manager: NetworkLogManager,
 ) -> std::io::Result<DnsProxy> {
-    let mut child = tokio::process::Command::new("dnsmasq")
+    let mut command = tokio::process::Command::new("dnsmasq");
+    command
         .args(dnsmasq_args(port, interface_pattern))
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+
+    // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)`, which is
+    // async-signal-safe. This prevents a wildcard dnsmasq listener from
+    // surviving a SIGKILL or crash of its parent runner and outliving the
+    // pool-scoped firewall rules that protect it.
+    unsafe {
+        command.pre_exec(|| {
+            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
+                .map_err(std::io::Error::from)
+        });
+    }
+
+    let mut child = command.spawn()?;
 
     // Give dnsmasq a moment to bind, then verify it's still running.
     // Catches port-already-in-use, missing binary (spawn itself errors),
@@ -199,9 +212,10 @@ fn dnsmasq_args(port: u16, interface_pattern: &str) -> Vec<String> {
         "--no-resolv".into(),
         "--port".into(),
         port.to_string(),
-        // VM host-side veth devices are created after dnsmasq starts.
+        // Keep dnsmasq's default wildcard sockets so VM host-side veth churn
+        // cannot rebuild a per-address listener set in its query event loop.
+        // --interface still validates the arrival interface for every request.
         format!("--interface={interface_pattern}"),
-        "--bind-dynamic".into(),
         format!("--address=/{DNS_READINESS_HOSTNAME}/{DNS_READINESS_IPV4}"),
         format!("--local=/{DNS_READINESS_HOSTNAME}/"),
         "--server".into(),
@@ -218,11 +232,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dnsmasq_args_restrict_listener_to_vm_interface_pattern() {
+    fn dnsmasq_args_use_wildcard_sockets_with_vm_interface_access_control() {
         let args = dnsmasq_args(5353, "vm0-ve-0a-*");
 
         assert!(args.contains(&"--interface=vm0-ve-0a-*".to_string()));
-        assert!(args.contains(&"--bind-dynamic".to_string()));
+        assert!(!args.contains(&"--bind-dynamic".to_string()));
+        assert!(!args.contains(&"--bind-interfaces".to_string()));
     }
 
     #[test]
@@ -237,7 +252,6 @@ mod tests {
                 "--port",
                 "5353",
                 "--interface=vm0-ve-0a-*",
-                "--bind-dynamic",
                 "--address=/vm0-readiness.invalid/192.0.2.1",
                 "--local=/vm0-readiness.invalid/",
                 "--server",
