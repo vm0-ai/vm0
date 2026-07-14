@@ -1166,11 +1166,11 @@ describe("artifacts page", () => {
 
     await screen.findByText("launch-plan.html");
     expect(buttonByLabel("Add launch-plan.html to favorites")).toHaveClass(
-      "hover:bg-gray-50",
+      "hover:bg-muted",
       "active:bg-gray-100",
     );
     expect(buttonByLabel("More actions for launch-plan.html")).toHaveClass(
-      "hover:bg-gray-50",
+      "hover:bg-muted",
       "active:bg-gray-100",
       "data-[state=open]:bg-gray-100",
     );
