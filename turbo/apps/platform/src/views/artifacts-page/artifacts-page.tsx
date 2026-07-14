@@ -789,7 +789,7 @@ function ArtifactCard({
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <h2 className="truncate text-sm font-semibold text-foreground">
+                <h2 className="min-w-0 cursor-default truncate text-sm font-semibold leading-5 text-foreground">
                   {item.filename}
                 </h2>
               </TooltipTrigger>
