@@ -88,12 +88,6 @@ export interface ChatMessageAttachFileMetadata {
 
 export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
 
-export interface ChatMessageAutomationSnapshot {
-  readonly id: string;
-  readonly title: string;
-  readonly description: string | null;
-}
-
 export type ChatMessageGoalEvent =
   | {
       readonly type: "state";
