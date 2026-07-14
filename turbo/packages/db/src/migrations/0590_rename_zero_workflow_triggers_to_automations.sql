@@ -19,8 +19,9 @@ ALTER TABLE "zero_runs" RENAME CONSTRAINT "zero_runs_workflow_trigger_id_zero_wo
 -- #21267 still owns this legacy table's lifecycle; only its FK metadata follows
 -- the target table rename so generated-schema consistency remains exact.
 ALTER TABLE "zero_workflow_queue_events" RENAME CONSTRAINT "zero_workflow_queue_events_trigger_id_zero_workflow_triggers_id_fk" TO "zero_workflow_queue_events_trigger_id_zero_workflow_automations_id_fk";--> statement-breakpoint
-ALTER TABLE "zero_workflow_github_processed_events" RENAME CONSTRAINT "zero_workflow_github_processed_events_trigger_id_zero_workflow_triggers_id_fk" TO "zero_workflow_github_processed_events_trigger_id_zero_workflow_automations_id_fk";--> statement-breakpoint
-ALTER TABLE "zero_workflow_trigger_memory_embeddings" RENAME CONSTRAINT "zero_workflow_trigger_memory_embeddings_workflow_trigger_id_zero_workflow_triggers_id_fk" TO "zero_workflow_trigger_memory_embeddings_workflow_trigger_id_zero_workflow_automations_id_fk";--> statement-breakpoint
+-- The GitHub processed-event and memory-embedding FK identifiers are already
+-- truncated before the referenced-table suffix by PostgreSQL's 63-byte limit,
+-- so their physical names do not change when the target table is renamed.
 ALTER TABLE "zero_workflow_webhook_deliveries" RENAME CONSTRAINT "zero_workflow_webhook_deliveries_trigger_id_zero_workflow_triggers_id_fk" TO "zero_workflow_webhook_deliveries_trigger_id_zero_workflow_automations_id_fk";--> statement-breakpoint
 ALTER TABLE "zero_workflow_webhook_triggers" RENAME CONSTRAINT "zero_workflow_webhook_triggers_trigger_id_zero_workflow_triggers_id_fk" TO "zero_workflow_webhook_triggers_trigger_id_zero_workflow_automations_id_fk";--> statement-breakpoint
 
