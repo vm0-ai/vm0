@@ -359,6 +359,10 @@ describe("zero scrape route", () => {
       "http://[::]/admin",
       "http://[::ffff:192.168.1.1]/admin",
       "http://[64:ff9b::c0a8:101]/admin",
+      "http://[100:0:0:1::1]/admin",
+      "http://[3fff::1]/admin",
+      "http://[5f00::1]/admin",
+      "http://[4000::1]/admin",
     ]) {
       const response = await accept(
         client()(zeroScrapeContract).scrape({
@@ -974,6 +978,42 @@ describe("zero scrape route", () => {
     expectApiError(response.body);
     expect(response.body.error.code).toBe("FIRECRAWL_ERROR");
     expect(response.body.error.message).toBe("Firecrawl rejected this scrape");
+    expect(afterCredits).toBe(beforeCredits);
+  });
+
+  it("bounds provider error messages without recording usage", async () => {
+    const actor = await scrapeEnabledActor();
+    allowExampleDotCom();
+    configureProvider();
+    await seedScrapePricing();
+    await fundActor(actor);
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(FIRECRAWL_SCRAPE_URL, () => {
+        return HttpResponse.json({
+          success: false,
+          error: "x".repeat(5000),
+        });
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: authenticate(actor),
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [502],
+    );
+    const afterCredits = await credits(actor);
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("FIRECRAWL_ERROR");
+    expect(response.body.error.message).toHaveLength(4096);
+    expect(response.body.error.message.endsWith("...")).toBeTruthy();
     expect(afterCredits).toBe(beforeCredits);
   });
 

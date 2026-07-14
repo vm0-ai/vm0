@@ -29,6 +29,7 @@ const FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape";
 const FIRECRAWL_PROVIDER_TIMEOUT_MS = 25_000;
 const FIRECRAWL_TRANSPORT_TIMEOUT_MS = 30_000;
 const MAX_FIRECRAWL_RESPONSE_BYTES = 5 * 1024 * 1024;
+const MAX_FIRECRAWL_ERROR_MESSAGE_CHARS = 4096;
 const MAX_MARKDOWN_CHARS = 1_000_000;
 const MAX_LINKS = 5000;
 
@@ -181,6 +182,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function boundedFirecrawlErrorMessage(message: string): string {
+  return message.length <= MAX_FIRECRAWL_ERROR_MESSAGE_CHARS
+    ? message
+    : `${message.slice(0, MAX_FIRECRAWL_ERROR_MESSAGE_CHARS - 3)}...`;
+}
+
 function runIdForUsage(auth: AuthContext): string | undefined {
   return auth.tokenType === "zero" || auth.tokenType === "sandbox"
     ? auth.runId
@@ -221,18 +228,18 @@ function targetPolicyMessage(error: ScrapeTargetPolicyError): string {
 function firecrawlErrorMessage(body: unknown): string {
   if (isRecord(body)) {
     if (typeof body.error === "string") {
-      return body.error;
+      return boundedFirecrawlErrorMessage(body.error);
     }
     if (typeof body.message === "string") {
-      return body.message;
+      return boundedFirecrawlErrorMessage(body.message);
     }
     const error = body.error;
     if (isRecord(error) && typeof error.message === "string") {
-      return error.message;
+      return boundedFirecrawlErrorMessage(error.message);
     }
   }
   if (typeof body === "string" && body.trim()) {
-    return body;
+    return boundedFirecrawlErrorMessage(body);
   }
   return "Firecrawl scrape request failed";
 }

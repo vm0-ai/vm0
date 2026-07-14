@@ -31,20 +31,21 @@ const BLOCKED_IPV4_RANGES: Readonly<BlockList> = (() => {
   return ranges;
 })();
 
-const BLOCKED_IPV6_RANGES: Readonly<BlockList> = (() => {
+// IANA currently allocates globally routable IPv6 unicast from 2000::/3.
+// Treat everything outside that range as non-public, then exclude the
+// special-purpose ranges that sit inside it.
+const PUBLIC_IPV6_RANGES: Readonly<BlockList> = (() => {
   const ranges = new BlockList();
-  ranges.addAddress("::1", "ipv6");
-  ranges.addAddress("::", "ipv6");
-  ranges.addSubnet("::ffff:0:0", 96, "ipv6");
-  ranges.addSubnet("64:ff9b::", 96, "ipv6");
-  ranges.addSubnet("64:ff9b:1::", 48, "ipv6");
-  ranges.addSubnet("100::", 64, "ipv6");
+  ranges.addSubnet("2000::", 3, "ipv6");
+  return ranges;
+})();
+
+const BLOCKED_PUBLIC_IPV6_RANGES: Readonly<BlockList> = (() => {
+  const ranges = new BlockList();
   ranges.addSubnet("2001::", 23, "ipv6");
   ranges.addSubnet("2001:db8::", 32, "ipv6");
   ranges.addSubnet("2002::", 16, "ipv6");
-  ranges.addSubnet("fc00::", 7, "ipv6");
-  ranges.addSubnet("fe80::", 10, "ipv6");
-  ranges.addSubnet("ff00::", 8, "ipv6");
+  ranges.addSubnet("3fff::", 20, "ipv6");
   return ranges;
 })();
 
@@ -52,7 +53,10 @@ function fetchAddressIsBlocked({ address, family }: ResolvedFetchAddress) {
   if (family === 4) {
     return BLOCKED_IPV4_RANGES.check(address, "ipv4");
   }
-  return BLOCKED_IPV6_RANGES.check(address, "ipv6");
+  return (
+    !PUBLIC_IPV6_RANGES.check(address, "ipv6") ||
+    BLOCKED_PUBLIC_IPV6_RANGES.check(address, "ipv6")
+  );
 }
 
 export async function resolveFetchHostAddresses(
