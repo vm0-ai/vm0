@@ -42,7 +42,6 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { ReplaceComposerDraftDialog } from "./replace-composer-draft-dialog.tsx";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "./workflow-chat-prompts.ts";
@@ -57,8 +56,11 @@ import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
   chatPageWorkflowComposer$,
   chatPageModelSelection$,
+  chatPageSelectedModelOauthAvailable$,
+  configureChatPageSelectedModel$,
   setChatPageInput$,
   setChatPageModelSelection$,
+  updateCodexFastModeDefaultForSelection$,
   resetChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
@@ -84,20 +86,11 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { sendNewThread$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
-import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import {
   typewriterDisplayed$,
   typewriterRef$,
 } from "../../signals/view-component-state.ts";
-import { personalModelProvider$ } from "../../signals/zero-page/model-first-personal-oauth.ts";
 import { updateUserModelPreference$ } from "../../signals/external/user-model-preference.ts";
-import { orgModelPolicies$ } from "../../signals/external/org-model-policies.ts";
-import { setCodexFastModeLocalDefault$ } from "../../signals/zero-page/codex-fast-local-default.ts";
-import { isCodexFastModeAvailableForSelection } from "../../signals/zero-page/model-default-selection.ts";
-import {
-  resolveChatComposerSubmitBlocker,
-  usePersonalOauthConfigurationAction,
-} from "./model-first-oauth-submit-blocker.ts";
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 import { queueCurrentAgentDraftSync$ } from "../../signals/zero-page/agent-draft.ts";
@@ -470,13 +463,12 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
       : null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const updateUserModelPreference = useSet(updateUserModelPreference$);
-  const setCodexFastModeLocalDefault = useSet(setCodexFastModeLocalDefault$);
-  const personalModelProvider = useLastResolved(personalModelProvider$);
-  const policiesLoadable = useLoadable(orgModelPolicies$);
-  const policies =
-    policiesLoadable.state === "hasData" ? policiesLoadable.data : undefined;
-  const featureSwitches = useGet(featureSwitch$);
-  const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
+  const updateCodexFastModeDefault = useSet(
+    updateCodexFastModeDefaultForSelection$,
+  );
+  const selectedModelOauthAvailable =
+    useLastResolved(chatPageSelectedModelOauthAvailable$) ?? true;
+  const configureSelectedModel = useSet(configureChatPageSelectedModel$);
 
   const handleModelSelectionChange = (
     selection: typeof modelSelection,
@@ -489,39 +481,30 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
         Reason.DomCallback,
       );
     }
-    if (
-      isCodexFastModeAvailableForSelection({
-        policies,
-        selectedModel,
-        codexFastModeEnabled:
-          featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
-      })
-    ) {
-      detach(
-        setCodexFastModeLocalDefault(
-          selection?.codexServiceTier === "fast",
-          pageSignal,
-        ),
-        Reason.DomCallback,
-      );
-    }
+    detach(
+      updateCodexFastModeDefault(selection, pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   const modelPicker = {
     value: modelSelection,
     onChange: handleModelSelectionChange,
   };
-  const submitBlockerProps = modelSelection
-    ? resolveChatComposerSubmitBlocker({
-        personalModelProvider,
-        selectedModel: modelSelection.selectedModel,
-        onAction: openPersonalOauthConfiguration,
-      })
-    : undefined;
+  const submitBlockerProps =
+    modelSelection && !selectedModelOauthAvailable
+      ? {
+          message:
+            "The selected model is not available. Configure it before sending.",
+          actionLabel: "Model Configure",
+          onAction: () => {
+            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
+          },
+        }
+      : undefined;
   const modelPickerLoading = modelSelectionLoadable.state === "loading";
 
   return {
-    modelSelection,
     modelPicker,
     modelPickerLoading,
     submitBlockerProps,
@@ -573,16 +556,16 @@ function useAgentChatDraftSync(pageSignal: AbortSignal) {
 
 function useAgentChatSendMessage({
   currentChatAgentId,
-  modelSelection,
   selectedComputerUseHostId,
   clearComputerUseHostId,
   setGenerationTemplate,
+  resetModelSelection,
 }: {
   currentChatAgentId: string | null | undefined;
-  modelSelection: ModelProviderSelection | null;
   selectedComputerUseHostId: string | null | undefined;
   clearComputerUseHostId: () => void;
   setGenerationTemplate: (value: GenerationTemplateRequest | undefined) => void;
+  resetModelSelection: () => void;
 }): (
   message: string,
   selectedGenerationTemplate: GenerationTemplateRequest | undefined,
@@ -595,14 +578,12 @@ function useAgentChatSendMessage({
       return;
     }
 
-    setGenerationTemplate(undefined);
     detach(
       (async () => {
-        await sendNewThread(
+        const sent = await sendNewThread(
           {
             agentId: currentChatAgentId,
             prompt: message,
-            modelSelection,
             generationTemplate: selectedGenerationTemplate,
             ...(selectedComputerUseHostId
               ? { computerUseHostId: selectedComputerUseHostId }
@@ -610,7 +591,11 @@ function useAgentChatSendMessage({
           },
           rootSignal,
         );
-        clearComputerUseHostId();
+        if (sent) {
+          setGenerationTemplate(undefined);
+          clearComputerUseHostId();
+          resetModelSelection();
+        }
       })(),
       Reason.DomCallback,
     );
@@ -681,19 +666,15 @@ export function AgentChatPage() {
   const subscribeComputerUseHostsChangedRef = useSet(
     subscribeComputerUseHostsChangedRef$,
   );
-  const {
-    modelSelection,
-    modelPicker,
-    modelPickerLoading,
-    submitBlockerProps,
-  } = useAgentChatComposerModel(pageSignal);
+  const { modelPicker, modelPickerLoading, submitBlockerProps } =
+    useAgentChatComposerModel(pageSignal);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
   const handleSendMessage = useAgentChatSendMessage({
     currentChatAgentId,
-    modelSelection,
     selectedComputerUseHostId,
     clearComputerUseHostId,
     setGenerationTemplate,
+    resetModelSelection,
   });
 
   const userFirstName = useLastResolved(user$)?.firstName ?? null;
@@ -708,7 +689,6 @@ export function AgentChatPage() {
     setInput,
     queueDraftSync: queueAgentDraftSync,
   });
-  const startTiming = useSet(startChatNavigationTiming$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline =
     currentChatAgentDisplayName !== undefined
@@ -728,16 +708,6 @@ export function AgentChatPage() {
 
   const handleDraftChange = () => {
     queueAgentDraftSync();
-  };
-
-  const handleSend = (
-    text: string,
-    selectedGenerationTemplate: GenerationTemplateRequest | undefined,
-  ) => {
-    startTiming();
-    setInput("");
-    handleSendMessage(text, selectedGenerationTemplate);
-    resetModelSelection();
   };
 
   return (
@@ -768,7 +738,7 @@ export function AgentChatPage() {
             className="w-full"
             composer={composer}
             draft={draft}
-            onSend={handleSend}
+            onSend={handleSendMessage}
             onDraftChange={handleDraftChange}
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus

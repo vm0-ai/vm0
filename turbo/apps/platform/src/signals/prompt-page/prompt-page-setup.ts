@@ -11,22 +11,18 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { orgModelPolicies$ } from "../external/org-model-policies.ts";
-import { userModelPreference$ } from "../external/user-model-preference.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { rootSignal$ } from "../root-signal.ts";
-import {
-  detachedNavigateTo$,
-  searchParams$,
-  updateSearchParams$,
-} from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
 import {
   onboardGuard$,
   redirectToConfiguredOnboarding$,
 } from "../zero-page/onboard-guard.ts";
-import { talkDraft$ } from "../zero-page/chat-draft.ts";
-import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
+import {
+  resetChatPageModelSelection$,
+  setChatPageModelSelection$,
+} from "../zero-page/zero-chat-page.ts";
 
 function templateIdFromSearchParam(
   template: string | null,
@@ -233,39 +229,32 @@ export const setupPromptPage$ = command(
       return;
     }
 
-    const policies = await get(orgModelPolicies$);
-    signal.throwIfAborted();
-    const userPreference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    const modelSelection = isSupportedRunModel(requestedModel)
-      ? {
-          selectedModel: requestedModel,
-        }
-      : resolveModelFirstUserDefaultSelection({
-          userPreference,
-          policies,
-        });
-
-    set(get(talkDraft$).clear$);
+    if (isSupportedRunModel(requestedModel)) {
+      set(setChatPageModelSelection$, { selectedModel: requestedModel });
+    } else {
+      set(resetChatPageModelSelection$);
+    }
 
     const cleaned = new URLSearchParams(params);
     cleaned.delete("prompt");
     cleaned.delete("model");
     cleaned.delete("template");
     cleaned.delete("connector");
-    set(updateSearchParams$, cleaned);
-
     const rootSignal = get(rootSignal$);
-    await set(
-      sendNewThread$,
-      {
-        agentId,
-        prompt,
-        modelSelection,
-        generationTemplate,
-        computerUseHostId: null,
-      },
-      rootSignal,
-    );
+    try {
+      await set(
+        sendNewThread$,
+        {
+          agentId,
+          prompt,
+          generationTemplate,
+          computerUseHostId: null,
+          routeSearchParams: cleaned,
+        },
+        rootSignal,
+      );
+    } finally {
+      set(resetChatPageModelSelection$);
+    }
   },
 );

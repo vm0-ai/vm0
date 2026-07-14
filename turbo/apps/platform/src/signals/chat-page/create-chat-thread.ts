@@ -8,6 +8,7 @@ import {
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { IN_VITEST } from "../../env.ts";
 import {
   onRef,
@@ -58,7 +59,11 @@ import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
 import { chatMessageOrderSequence } from "../chat-message-order.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  codexFastModeEnabled$,
+  featureSwitch$,
+} from "../external/feature-switch.ts";
+import { orgModelPolicies$ } from "../external/org-model-policies.ts";
 import { generationTemplateForFeatureSwitches } from "./generation-template-feature-switch.ts";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import {
@@ -93,10 +98,13 @@ import {
 import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 import { subscribeComputerUseHostsChanged$ } from "../zero-page/computer-use-hosts.ts";
 import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
+import { isCodexFastModeAvailableForSelection } from "../zero-page/model-default-selection.ts";
 import {
   personalModelProvider$,
-  personalModelProviderWarning,
+  selectedModelAvailable$,
 } from "../zero-page/model-first-personal-oauth.ts";
+import { setClaudeCodeDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/claude-code-device-auth.ts";
+import { setCodexDeviceAuthDialogStatePersonal$ } from "../zero-page/settings/codex-device-auth.ts";
 
 import type {
   ChatThreadSignals,
@@ -542,6 +550,7 @@ function createThreadSettledInServer(
 function createModelSelection(
   threadId: string,
   threadMeta$: Computed<Promise<ThreadMeta | null>>,
+  remoteThreadDetail$: Computed<Promise<ChatThread | null>>,
   dataSource: ChatThreadRemote,
 ) {
   const selectedModel$ = computed(async (get): Promise<string | null> => {
@@ -565,28 +574,111 @@ function createModelSelection(
     },
   );
 
-  const modelConfigurationWarning$ =
-    createModelConfigurationWarning(selectedModel$);
+  const codexFastModeActive$ = computed(async (get): Promise<boolean> => {
+    if (!get(codexFastModeEnabled$)) {
+      return false;
+    }
+    const selectedModel = await get(selectedModel$);
+    if (selectedModel !== "gpt-5.5") {
+      return false;
+    }
+    const policies = await get(orgModelPolicies$);
+    if (
+      !isCodexFastModeAvailableForSelection({
+        policies,
+        selectedModel,
+        codexFastModeEnabled: true,
+      })
+    ) {
+      return false;
+    }
+    return (await get(remoteThreadDetail$))?.codexServiceTier === "fast";
+  });
+
+  const selectedModelOauthAvailable$ = computed(
+    async (get): Promise<boolean> => {
+      const selectedModel = await get(selectedModel$);
+      if (selectedModel === null) {
+        return true;
+      }
+      const status = (await get(personalModelProvider$))[selectedModel];
+      return status === undefined || status.status === "connected";
+    },
+  );
+
+  const configureSelectedModel$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const selectedModel = await get(selectedModel$);
+      signal.throwIfAborted();
+      if (selectedModel === null) {
+        return;
+      }
+      const status = (await get(personalModelProvider$))[selectedModel];
+      signal.throwIfAborted();
+      if (status === undefined || status.status === "connected") {
+        return;
+      }
+      const mode =
+        status.status === "needs_reconnect" ? "reconnect" : "connect";
+      if (status.providerType === "claude-code-oauth-token") {
+        set(setClaudeCodeDeviceAuthDialogStatePersonal$, {
+          open: true,
+          mode,
+        });
+        return;
+      }
+      set(setCodexDeviceAuthDialogStatePersonal$, { open: true, mode });
+    },
+  );
 
   return {
     selectedModel$,
-    modelConfigurationWarning$,
+    codexFastModeActive$,
+    selectedModelOauthAvailable$,
+    configureSelectedModel$,
     setModelSelection$,
   };
 }
 
-function createModelConfigurationWarning(
-  selectedModel$: Computed<Promise<string | null>>,
-) {
-  return computed(async (get) => {
-    const selectedModel = await get(selectedModel$);
-    if (selectedModel === null) {
-      return null;
-    }
-    return personalModelProviderWarning(
-      (await get(personalModelProvider$))[selectedModel],
-    );
-  });
+type ModelSelectionForSendResult =
+  | { readonly available: false }
+  | {
+      readonly available: true;
+      readonly selection: ModelProviderSelection | null;
+    };
+
+function createModelSelectionForSend({
+  selectedModel$,
+  codexFastModeActive$,
+}: {
+  selectedModel$: Computed<Promise<string | null>>;
+  codexFastModeActive$: Computed<Promise<boolean>>;
+}) {
+  return command(
+    async (
+      { get, set },
+      signal: AbortSignal,
+    ): Promise<ModelSelectionForSendResult> => {
+      const selectedModel = await get(selectedModel$);
+      signal.throwIfAborted();
+      if (!selectedModel) {
+        return { available: true, selection: null };
+      }
+      if (!(await set(selectedModelAvailable$, selectedModel, signal))) {
+        toast.error("The selected model is not available");
+        return { available: false };
+      }
+      const codexFastModeActive =
+        selectedModel === "gpt-5.5" && (await get(codexFastModeActive$));
+      signal.throwIfAborted();
+      return {
+        available: true,
+        selection: codexFastModeActive
+          ? { selectedModel, codexServiceTier: "fast" }
+          : { selectedModel },
+      };
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2706,11 +2798,22 @@ interface SendMessageDeps {
   threadId: string;
   pendingSendCount$: State<number>;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
+  modelSelectionForSend$: Command<
+    Promise<ModelSelectionForSendResult>,
+    [AbortSignal]
+  >;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   scrollToBottom$: Command<void, []>;
   syncRemoteMessages$: Command<Promise<void>, [AbortSignal]>;
+}
+
+interface ValidatedSendMessageRequest {
+  readonly prompt: string;
+  readonly options: SendMessageOptions | undefined;
+  readonly agentId: string;
+  readonly modelSelection: ModelProviderSelection | null;
 }
 
 const postSendMessage$ = command(
@@ -2761,60 +2864,43 @@ const postSendMessage$ = command(
   },
 );
 
-function createSendMessage(deps: SendMessageDeps) {
+function createPerformSendMessage(deps: SendMessageDeps) {
   const {
     threadId,
-    pendingSendCount$,
-    threadMeta$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
     scrollToBottom$,
     syncRemoteMessages$,
   } = deps;
-  const optimisticCreateUnsettled$ =
-    optimisticChatThreadCreateUnsettled(threadId);
-  const performSendMessage$ = command(
+  return command(
     async (
       { get, set },
-      prompt: string,
-      modelSelection: ModelProviderSelection | null,
-      options: SendMessageOptions | undefined,
+      request: ValidatedSendMessageRequest,
       signal: AbortSignal,
-    ) => {
-      L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
-      if (get(optimisticCreateUnsettled$)) {
-        return;
-      }
-      const meta = await get(threadMeta$);
-      signal.throwIfAborted();
-      const agentId = meta?.agentId;
-      if (!agentId) {
-        L.debug("sendMessage$ no agentId, abort", { threadId });
-        return;
-      }
+    ): Promise<boolean> => {
       const generationTemplate = generationTemplateForFeatureSwitches(
         get(draft.generationTemplate$),
         get(featureSwitch$),
       );
       const result =
-        options?.includeDraftAttachments === false
-          ? prepareTextOnlyUserMessage(prompt)
+        request.options?.includeDraftAttachments === false
+          ? prepareTextOnlyUserMessage(request.prompt)
           : await set(
               prepareUserMessageFromDraft$,
               draft,
-              prompt,
+              request.prompt,
               {
                 excludeVisualAttachments:
                   shouldExcludeVisualAttachmentsForModel(
-                    modelSelection?.selectedModel,
+                    request.modelSelection?.selectedModel,
                   ),
               },
               signal,
             );
       if (!result) {
         L.debug("sendMessage$ prepare returned null, abort", { threadId });
-        return;
+        return false;
       }
       signal.throwIfAborted();
       set(cancelDraftSync$);
@@ -2824,13 +2910,13 @@ function createSendMessage(deps: SendMessageDeps) {
       const createdAt = nowDate().toISOString();
       set(appendOptimisticSendMessage$, {
         threadId,
-        agentId,
+        agentId: request.agentId,
         clientMessageId,
         chatThreadSortEventId,
         createdAt,
         result,
         generationTemplate,
-        options,
+        options: request.options,
       });
       animationFrame(
         () => {
@@ -2841,14 +2927,14 @@ function createSendMessage(deps: SendMessageDeps) {
       const runId = await set(
         postSendMessage$,
         {
-          agentId,
+          agentId: request.agentId,
           threadId,
           clientMessageId,
           chatThreadSortEventId,
           result,
-          modelSelection,
+          modelSelection: request.modelSelection,
           generationTemplate,
-          options,
+          options: request.options,
           flushDraftClear$,
         },
         signal,
@@ -2863,21 +2949,53 @@ function createSendMessage(deps: SendMessageDeps) {
         signal.throwIfAborted();
         set(scrollToBottom$);
       }
+      return true;
     },
   );
+}
+
+function createSendMessage(deps: SendMessageDeps) {
+  const { threadId, pendingSendCount$, threadMeta$, modelSelectionForSend$ } =
+    deps;
+  const performSendMessage$ = createPerformSendMessage(deps);
+  const optimisticCreateUnsettled$ =
+    optimisticChatThreadCreateUnsettled(threadId);
   return command(
     async (
-      { set },
+      { get, set },
       prompt: string,
-      modelSelection: ModelProviderSelection | null,
       options: SendMessageOptions | undefined,
       signal: AbortSignal,
-    ) => {
+    ): Promise<boolean> => {
+      L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
+      if (get(optimisticCreateUnsettled$)) {
+        return false;
+      }
+      const meta = await get(threadMeta$);
+      signal.throwIfAborted();
+      if (!meta) {
+        L.debug("sendMessage$ no agentId, abort", { threadId });
+        return false;
+      }
+      const modelSelectionResult = await set(modelSelectionForSend$, signal);
+      signal.throwIfAborted();
+      if (!modelSelectionResult.available) {
+        return false;
+      }
       set(pendingSendCount$, (count) => {
         return count + 1;
       });
-      await withCleanup(
-        set(performSendMessage$, prompt, modelSelection, options, signal),
+      return await withCleanup(
+        set(
+          performSendMessage$,
+          {
+            prompt,
+            options,
+            agentId: meta.agentId,
+            modelSelection: modelSelectionResult.selection,
+          },
+          signal,
+        ),
         () => {
           set(pendingSendCount$, (count) => {
             return count - 1;
@@ -2891,7 +3009,10 @@ function createSendMessage(deps: SendMessageDeps) {
 interface QueueMessageDeps {
   threadId: string;
   threadMeta$: Computed<Promise<ThreadMeta | null>>;
-  selectedModel$: Computed<Promise<string | null>>;
+  modelSelectionForSend$: Command<
+    Promise<ModelSelectionForSendResult>,
+    [AbortSignal]
+  >;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
@@ -2907,7 +3028,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
   const {
     threadId,
     threadMeta$,
-    selectedModel$,
+    modelSelectionForSend$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
@@ -2924,40 +3045,45 @@ function createQueueMessage(deps: QueueMessageDeps) {
       prompt: string,
       computerUseHostId: string | null | undefined,
       signal: AbortSignal,
-    ) => {
+    ): Promise<boolean> => {
       L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
       if (get(optimisticCreateUnsettled$)) {
         L.debug("queueMessage$ optimistic thread create unsettled, abort", {
           threadId,
         });
-        return;
+        return false;
       }
       const meta = await get(threadMeta$);
       signal.throwIfAborted();
       if (!meta) {
         L.debug("queueMessage$ no thread metadata, abort", { threadId });
-        return;
+        return false;
       }
       const generationTemplate = generationTemplateForFeatureSwitches(
         get(draft.generationTemplate$),
         get(featureSwitch$),
       );
 
-      const selectedModel = await get(selectedModel$);
+      const modelSelectionResult = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
+      if (!modelSelectionResult.available) {
+        return false;
+      }
+      const modelSelection = modelSelectionResult.selection;
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
         prompt,
         {
-          excludeVisualAttachments:
-            shouldExcludeVisualAttachmentsForModel(selectedModel),
+          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+            modelSelection?.selectedModel,
+          ),
         },
         signal,
       );
       if (!result) {
         L.debug("queueMessage$ prepare returned null, abort", { threadId });
-        return;
+        return false;
       }
       signal.throwIfAborted();
 
@@ -2998,7 +3124,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       const realAgentInPreviewEnabled =
         features[FeatureSwitchKey.RealAgentInPreview] ?? false;
       const runOptions = runOptionsFromModelProviderSelection(
-        selectedModel ? { selectedModel } : null,
+        modelSelection,
         codexFastModeEnabled,
       );
       const [, persistedMessage] = await Promise.all([
@@ -3026,6 +3152,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       signal.throwIfAborted();
 
       L.debug("queueMessage$ done", { threadId });
+      return true;
     },
   );
 }
@@ -3639,8 +3766,10 @@ export function createChatThreadSignals(
   const modelSelection = createModelSelection(
     threadId,
     threadMeta$,
+    remoteThreadDetail$,
     dataSource,
   );
+  const modelSelectionForSend$ = createModelSelectionForSend(modelSelection);
   const computerUseHostSelection = createComputerUseHostSelection(
     threadId,
     remoteThreadDetail$,
@@ -3685,7 +3814,7 @@ export function createChatThreadSignals(
     threadId,
     pendingSendCount$: composerSendButton.pendingSendCount$,
     threadMeta$,
-    selectedModel$: modelSelection.selectedModel$,
+    modelSelectionForSend$,
     rawMessages$: messages.rawMessages$,
     draft,
     cancelDraftSync$,

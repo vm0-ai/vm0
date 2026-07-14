@@ -35,7 +35,10 @@ import {
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
-import { billingStatusAsync$ } from "../../../signals/zero-page/billing";
+import {
+  billingStatusAsync$,
+  limitedFree1$,
+} from "../../../signals/zero-page/billing";
 import { setOrgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog";
 import { openBillingPlans$ } from "../../../signals/zero-page/settings/org-manage-tabs-state";
 import { pageSignal$ } from "../../../signals/page-signal";
@@ -897,19 +900,24 @@ function SubscribedModelFirstModelPicker({
 
 function resolveExplicitModelFirstModelPickerState({
   value,
+  codexFastModeEnabled,
   placeholder,
 }: {
   value: ModelProviderSelection | null;
+  codexFastModeEnabled: boolean;
   placeholder: string;
 }): ModelFirstModelPickerState {
   const selectedModel = value?.selectedModel ?? null;
+  const codexServiceTier = codexFastModeEnabled
+    ? value?.codexServiceTier
+    : undefined;
   return {
     policies: [],
     selectablePolicies: [],
     selectableValue: value,
     selectedModel,
-    codexFastModeAvailable: value?.codexServiceTier === "fast",
-    codexServiceTier: value?.codexServiceTier,
+    codexFastModeAvailable: codexServiceTier === "fast",
+    codexServiceTier,
     selectValue: selectedModel ?? INHERIT_SENTINEL,
     triggerAriaLabel: selectedModel
       ? getCanonicalModelDisplayName(selectedModel)
@@ -944,6 +952,33 @@ function LoadingModelFirstModelPickerContent({
   );
 }
 
+function ErrorModelFirstModelPickerContent({
+  value,
+  placeholder,
+}: {
+  value: ModelProviderSelection | null;
+  placeholder: string;
+}) {
+  const selectValue = value?.selectedModel ?? INHERIT_SENTINEL;
+  return (
+    <SelectContent className="min-w-[260px]">
+      <SelectItem
+        value={selectValue}
+        className={MEASURABLE_HIDDEN_SELECT_ITEM_CLASS}
+        disabled
+        aria-hidden="true"
+      >
+        {value?.selectedModel
+          ? getCanonicalModelDisplayName(value.selectedModel)
+          : placeholder}
+      </SelectItem>
+      <div className="px-2 py-2 text-sm text-muted-foreground">
+        Unable to load models.
+      </div>
+    </SelectContent>
+  );
+}
+
 function SubscribedExplicitModelFirstModelPickerContent({
   value,
   placeholder,
@@ -956,11 +991,8 @@ function SubscribedExplicitModelFirstModelPickerContent({
   onChange: (value: ModelProviderSelection | null) => void;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
-  if (
-    policiesLoadable.state !== "hasData" ||
-    billingLoadable.state !== "hasData"
-  ) {
+  const limitedFree1 = useLastResolved(limitedFree1$) ?? false;
+  if (policiesLoadable.state === "loading") {
     return (
       <LoadingModelFirstModelPickerContent
         value={value}
@@ -968,7 +1000,14 @@ function SubscribedExplicitModelFirstModelPickerContent({
       />
     );
   }
-  const limitedFree1 = billingLoadable.data.tier === "limited-free-1";
+  if (policiesLoadable.state === "hasError") {
+    return (
+      <ErrorModelFirstModelPickerContent
+        value={value}
+        placeholder={placeholder}
+      />
+    );
+  }
   const state = resolveModelFirstModelPickerState({
     value,
     userPreference: null,
@@ -1004,7 +1043,11 @@ function EnabledExplicitModelFirstModelPicker(
   const openBillingPlans = useSet(openBillingPlans$);
   const openOrgManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
-  const state = resolveExplicitModelFirstModelPickerState(props);
+  const state = resolveExplicitModelFirstModelPickerState({
+    value: props.value,
+    codexFastModeEnabled: props.codexFastModeEnabled ?? false,
+    placeholder: props.placeholder,
+  });
   const handleRawValueChange = (raw: string) => {
     detach(
       (async () => {

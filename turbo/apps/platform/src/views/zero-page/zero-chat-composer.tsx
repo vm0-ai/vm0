@@ -149,7 +149,11 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  codexFastModeEnabled$,
+  composerUploadPopoverEnabled$,
+  featureSwitch$,
+} from "../../signals/external/feature-switch.ts";
 import {
   zeroDesktopDownloadSupportStatus$,
   ZERO_DESKTOP_INTEL_DOWNLOAD_URL,
@@ -6716,6 +6720,30 @@ function ComposerUploadMenu({
   );
 }
 
+function ComposerUploadControl({
+  readInput,
+  onDraftChange,
+  onInputChange,
+  onSelectFile,
+}: {
+  readonly readInput: () => string;
+  readonly onDraftChange?: () => void;
+  readonly onInputChange: (value: string) => void;
+  readonly onSelectFile: () => void;
+}) {
+  const uploadPopoverEnabled = useGet(composerUploadPopoverEnabled$);
+  return uploadPopoverEnabled ? (
+    <ComposerUploadMenu
+      readInput={readInput}
+      onDraftChange={onDraftChange}
+      onInputChange={onInputChange}
+      onSelectFile={onSelectFile}
+    />
+  ) : (
+    <ComposerAttachButton onSelectFile={onSelectFile} />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Signal resolution — resolves draft/file-input with singleton fallback
 // ---------------------------------------------------------------------------
@@ -7029,15 +7057,14 @@ function ComposerModelPickerSlot({
   modelPicker,
   modelPickerLoading,
   submitBlocker,
-  codexFastModeEnabled,
   onModelPickerChange,
 }: {
   modelPicker: ComposerModelPicker | undefined;
   modelPickerLoading: boolean;
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
-  codexFastModeEnabled: boolean;
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
 }) {
+  const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
   if (modelPickerLoading) {
@@ -7077,16 +7104,6 @@ function ComposerModelPickerSlot({
 // Main composer
 // ---------------------------------------------------------------------------
 
-function resolveComposerFeatures(
-  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
-) {
-  return {
-    codexFastModeEnabled: features?.[FeatureSwitchKey.CodexFastMode] ?? false,
-    uploadPopoverEnabled:
-      features?.[FeatureSwitchKey.ComposerUploadPopover] ?? false,
-  };
-}
-
 // The thread route invokes this hook from its ccstate-connected composer so
 // dynamic bindings do not cross another React component boundary. The agent
 // landing page uses the component wrapper below for its separate signal scope.
@@ -7122,9 +7139,6 @@ export function useZeroChatComposer({
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
-  const features = useLastResolved(featureSwitch$);
-  const { codexFastModeEnabled, uploadPopoverEnabled } =
-    resolveComposerFeatures(features);
 
   const resolved = useResolvedComposerSignals(
     draft,
@@ -7551,16 +7565,12 @@ export function useZeroChatComposer({
               )}
               <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-1">
                 <div className="flex items-center gap-1 text-muted-foreground sm:gap-1.5">
-                  {uploadPopoverEnabled ? (
-                    <ComposerUploadMenu
-                      readInput={readInput}
-                      onDraftChange={onDraftChange}
-                      onInputChange={setInput}
-                      onSelectFile={handleFileSelect}
-                    />
-                  ) : (
-                    <ComposerAttachButton onSelectFile={handleFileSelect} />
-                  )}
+                  <ComposerUploadControl
+                    readInput={readInput}
+                    onDraftChange={onDraftChange}
+                    onInputChange={setInput}
+                    onSelectFile={handleFileSelect}
+                  />
                   <ComposerTemplatePickerSlot picker={templatePicker} />
                   <ComposerWorkflowPromptSlot
                     onCreateWorkflowPrompt={onCreateWorkflowPrompt}
@@ -7581,7 +7591,6 @@ export function useZeroChatComposer({
                     modelPicker={modelPicker}
                     modelPickerLoading={modelPickerLoading}
                     submitBlocker={submitBlocker}
-                    codexFastModeEnabled={codexFastModeEnabled}
                     onModelPickerChange={handleModelPickerChange}
                   />
                   <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />

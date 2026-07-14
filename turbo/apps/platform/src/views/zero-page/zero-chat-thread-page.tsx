@@ -298,10 +298,6 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import {
-  resolveSelectedModelChatComposerSubmitBlocker,
-  usePersonalOauthConfigurationAction,
-} from "./model-first-oauth-submit-blocker.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import {
@@ -3769,7 +3765,6 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const sendMessage = useSet(thread.sendMessage$);
-  const selectedModel = useLastResolved(thread.selectedModel$) ?? null;
   const rootSignal = useGet(rootSignal$);
   const handleRecommendedFollowupsRef = (element: HTMLDivElement | null) => {
     reportRecommendedFollowupsShown(element, source);
@@ -3788,7 +3783,6 @@ function RecommendedFollowupList({
     detach(
       sendMessage(
         followup.prompt,
-        selectedModel ? { selectedModel } : null,
         {
           includeDraftAttachments: false,
         },
@@ -3985,21 +3979,24 @@ function useChatComposerModel(
   // useLastResolved so the picker keeps the previous value while realtime
   // callbacks refetch the thread detail for non-selection fields.
   const selectedModelResolved = useLastResolved(thread.selectedModel$);
-  const threadDetail = useLastResolved(thread.remoteThreadDetail$);
+  const codexFastModeActive =
+    useLastResolved(thread.codexFastModeActive$) ?? false;
   const baseModelSelection = selectedModelResolved
     ? { selectedModel: selectedModelResolved }
     : null;
   const modelSelection =
-    baseModelSelection && threadDetail?.codexServiceTier
+    baseModelSelection &&
+    baseModelSelection.selectedModel === "gpt-5.5" &&
+    codexFastModeActive
       ? {
           ...baseModelSelection,
-          codexServiceTier: threadDetail.codexServiceTier,
+          codexServiceTier: "fast" as const,
         }
       : baseModelSelection;
   const setModelSelection = useSet(thread.setModelSelection$);
-  const modelConfigurationWarning =
-    useLastResolved(thread.modelConfigurationWarning$) ?? null;
-  const openPersonalOauthConfiguration = usePersonalOauthConfigurationAction();
+  const selectedModelOauthAvailable =
+    useLastResolved(thread.selectedModelOauthAvailable$) ?? true;
+  const configureSelectedModel = useSet(thread.configureSelectedModel$);
 
   const handleModelSelectionChange = (
     selection: ModelProviderSelection | null,
@@ -4015,29 +4012,31 @@ function useChatComposerModel(
       })
     : undefined;
   const modelPickerLoading = selectedModelResolved === undefined;
-  const submitBlockerProps = modelSelection
-    ? resolveSelectedModelChatComposerSubmitBlocker({
-        warning: modelConfigurationWarning,
-        onAction: openPersonalOauthConfiguration,
-      })
-    : undefined;
+  const submitBlockerProps =
+    modelSelection && !selectedModelOauthAvailable
+      ? {
+          message:
+            "The selected model is not available. Configure it before sending.",
+          actionLabel: "Model Configure",
+          onAction: () => {
+            detach(configureSelectedModel(pageSignal), Reason.DomCallback);
+          },
+        }
+      : undefined;
 
   return {
     modelPicker,
     modelPickerLoading,
     submitBlockerProps,
-    modelSelection,
   };
 }
 
 function useChatThreadComposerSendState({
   thread,
-  modelSelection,
   computerUseHostIdForSend,
   clearComputerUseHostOverride,
 }: {
   thread: ChatThreadSignals;
-  modelSelection: ModelProviderSelection | null;
   computerUseHostIdForSend: string | null | undefined;
   clearComputerUseHostOverride: () => void;
 }) {
@@ -4054,15 +4053,10 @@ function useChatThreadComposerSendState({
           computerUseHostIdForSend === undefined
             ? {}
             : { computerUseHostId: computerUseHostIdForSend };
-        await send(
-          text,
-          modelSelection,
-          {
-            ...computerUsePatch,
-          },
-          rootSignal,
-        );
-        clearComputerUseHostOverride();
+        const sent = await send(text, { ...computerUsePatch }, rootSignal);
+        if (sent) {
+          clearComputerUseHostOverride();
+        }
       })(),
       Reason.DomCallback,
     );
@@ -4072,8 +4066,10 @@ function useChatThreadComposerSendState({
     detach(
       (async () => {
         const computerUseHostId = computerUseHostIdForSend;
-        await queueMessage(text, computerUseHostId, rootSignal);
-        clearComputerUseHostOverride();
+        const queued = await queueMessage(text, computerUseHostId, rootSignal);
+        if (queued) {
+          clearComputerUseHostOverride();
+        }
       })(),
       Reason.DomCallback,
     );
@@ -4083,7 +4079,6 @@ function useChatThreadComposerSendState({
     detach(
       send(
         text,
-        modelSelection,
         {
           includeDraftAttachments: true,
         },
@@ -4301,16 +4296,11 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
     thread,
     pageSignal,
   );
-  const {
-    modelPicker,
-    modelPickerLoading,
-    submitBlockerProps,
-    modelSelection,
-  } = useChatComposerModel(thread, pageSignal);
+  const { modelPicker, modelPickerLoading, submitBlockerProps } =
+    useChatComposerModel(thread, pageSignal);
   const { handleSend, handleQueue, handleFeedbackSend, templatePicker } =
     useChatThreadComposerSendState({
       thread,
-      modelSelection,
       computerUseHostIdForSend,
       clearComputerUseHostOverride,
     });
