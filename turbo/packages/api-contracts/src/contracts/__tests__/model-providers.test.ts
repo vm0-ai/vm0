@@ -23,6 +23,7 @@ import {
   getVm0ModelPriceTier,
   getVm0ModelPriceTierLabel,
   isModelSupportedByProvider,
+  isCodexFastModeModel,
   isSupportedRunModel,
   normalizeRunModelId,
   getAuthMethodsForType,
@@ -33,6 +34,7 @@ import {
   supportedRunModelSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
+  CODEX_FAST_MODE_MODELS,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -48,6 +50,21 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
 
 describe("model-first canonical catalog", () => {
+  it("recognizes ChatGPT Codex fast mode models", () => {
+    expect(CODEX_FAST_MODE_MODELS).toEqual([
+      "gpt-5.5",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+    ]);
+    expect(isCodexFastModeModel("gpt-5.5")).toBe(true);
+    expect(isCodexFastModeModel("openai/gpt-5.6-sol")).toBe(true);
+    expect(isCodexFastModeModel("gpt-5.6-terra")).toBe(true);
+    expect(isCodexFastModeModel("gpt-5.6-luna")).toBe(true);
+    expect(isCodexFastModeModel("gpt-5.4")).toBe(false);
+    expect(isCodexFastModeModel(null)).toBe(false);
+  });
+
   it("exposes canonical model provider env placeholders", () => {
     expect(Object.keys(MODEL_PROVIDER_ENV_PLACEHOLDERS).sort()).toEqual([
       "ANTHROPIC_API_KEY",

@@ -28,6 +28,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
+import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
 import {
   conflict,
   connectorReadinessTimeout,
@@ -291,6 +292,17 @@ async function loadMatchingWorkflowCreationThreadId(
   return thread?.id ?? null;
 }
 
+async function publishCreatedWorkflow(
+  userId: string,
+  chatThreadId: string | null,
+  signal: AbortSignal,
+): Promise<void> {
+  if (chatThreadId) {
+    await publishChatThreadWorkflowsChangedSafely(userId, chatThreadId);
+    signal.throwIfAborted();
+  }
+}
+
 const createWorkflowBody$ = bodyResultOf(
   zeroWorkflowsCollectionContract.create,
 );
@@ -383,26 +395,30 @@ const createWorkflowInner$ = command(
         })
         .returning({ id: zeroWorkflows.id });
 
-      if (workflow && body.chatThreadId) {
-        const chatThreadId = await loadMatchingWorkflowCreationThreadId(tx, {
-          userId: auth.userId,
-          agentId: agent.id,
-          chatThreadId: body.chatThreadId,
-        });
-
-        if (chatThreadId) {
-          await tx.insert(workflowUserTriggerThreads).values({
-            orgId: auth.orgId,
-            userId: auth.userId,
-            workflowId: workflow.id,
-            chatThreadId,
-            createdAt: currentTime,
-            updatedAt: currentTime,
-          });
-        }
+      if (!workflow) {
+        return null;
       }
 
-      return workflow;
+      const chatThreadId = body.chatThreadId
+        ? await loadMatchingWorkflowCreationThreadId(tx, {
+            userId: auth.userId,
+            agentId: agent.id,
+            chatThreadId: body.chatThreadId,
+          })
+        : null;
+
+      if (chatThreadId) {
+        await tx.insert(workflowUserTriggerThreads).values({
+          orgId: auth.orgId,
+          userId: auth.userId,
+          workflowId: workflow.id,
+          chatThreadId,
+          createdAt: currentTime,
+          updatedAt: currentTime,
+        });
+      }
+
+      return { workflow, chatThreadId };
     });
     signal.throwIfAborted();
     if (!inserted) {
@@ -418,7 +434,7 @@ const createWorkflowInner$ = command(
       uploadVolumeServerSide$,
       {
         orgId: auth.orgId,
-        storageName: getCustomSkillStorageName(inserted.id),
+        storageName: getCustomSkillStorageName(inserted.workflow.id),
         files: [
           { path: "SKILL.md", content: skillMd },
           ...(body.files ?? []).map((file) => {
@@ -433,11 +449,11 @@ const createWorkflowInner$ = command(
     const visible = await loadVisibleWorkflowById(writeDb, {
       orgId: auth.orgId,
       member,
-      workflowId: inserted.id,
+      workflowId: inserted.workflow.id,
     });
     signal.throwIfAborted();
     if (!visible) {
-      throw new Error(`Created workflow not found: ${inserted.id}`);
+      throw new Error(`Created workflow not found: ${inserted.workflow.id}`);
     }
 
     const summary = workflowSummary({
@@ -445,6 +461,7 @@ const createWorkflowInner$ = command(
       agent: visible.agent,
       member,
     });
+    await publishCreatedWorkflow(auth.userId, inserted.chatThreadId, signal);
     return { status: 201 as const, body: summary };
   },
 );

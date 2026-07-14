@@ -4100,8 +4100,15 @@
     {
       "idx": 585,
       "version": "7",
-      "when": 1784001626602,
-      "tag": "0585_backfill_queued_user_messages_into_chat_message_queue",
+      "when": 1784000627125,
+      "tag": "0585_migrate_legacy_automation_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 586,
+      "version": "7",
+      "when": 1784002338470,
+      "tag": "0586_backfill_queued_user_messages_into_chat_message_queue",
       "breakpoints": true
     }
   ]

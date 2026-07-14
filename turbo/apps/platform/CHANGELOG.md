@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.597.1](https://github.com/vm0-ai/vm0/compare/app-v0.597.0...app-v0.597.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **chat:** refresh workflows created in threads ([#21346](https://github.com/vm0-ai/vm0/issues/21346)) ([f0fa94f](https://github.com/vm0-ai/vm0/commit/f0fa94f2ea913213e65c864944aae6dedd6576d6))
+
 ## [0.597.0](https://github.com/vm0-ai/vm0/compare/app-v0.596.2...app-v0.597.0) (2026-07-14)
 
 

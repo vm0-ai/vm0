@@ -640,6 +640,7 @@ describe("zero workflows", () => {
       title: "Source chat",
     });
 
+    context.mocks.ably.publish.mockClear();
     const sourceWorkflow = await createWorkflow(actor, {
       agentId: sourceAgent.agentId,
       chatThreadId: sourceThread.id,
@@ -653,11 +654,16 @@ describe("zero workflows", () => {
       }),
       [200],
     );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadWorkflowsChanged:${sourceThread.id}`,
+      null,
+    );
     expect(preparedSource.body.chatThreadId).toBe(sourceThread.id);
     expect(preparedSource.body.prompt).toBe(
       `help me refine the workflow /${sourceWorkflow.body.name}`,
     );
 
+    context.mocks.ably.publish.mockClear();
     const targetWorkflow = await createWorkflow(actor, {
       agentId: targetAgent.agentId,
       chatThreadId: sourceThread.id,
@@ -672,6 +678,40 @@ describe("zero workflows", () => {
       [200],
     );
     expect(preparedTarget.body.chatThreadId).not.toBe(sourceThread.id);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadWorkflowsChanged:${sourceThread.id}`,
+      null,
+    );
+  });
+
+  it("creates a workflow when its chat thread notification fails", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Realtime Failure Agent",
+      visibility: "private",
+    });
+    const thread = await chat.createThread(actor, {
+      agentId: agent.agentId,
+      title: "Realtime failure chat",
+    });
+
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("Ably unavailable"),
+    );
+
+    const created = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      chatThreadId: thread.id,
+      name: `realtime-failure-workflow-${randomUUID().slice(0, 8)}`,
+      instruction: "# realtime failure workflow",
+    });
+
+    expect(created.body.agentId).toBe(agent.agentId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadWorkflowsChanged:${thread.id}`,
+      null,
+    );
   });
 
   it("protects public workflow slugs while allowing private overrides", async () => {

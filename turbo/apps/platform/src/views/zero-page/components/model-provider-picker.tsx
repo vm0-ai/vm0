@@ -19,6 +19,7 @@ import {
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  isCodexFastModeModel,
   isLimitedFree1RestrictedRunModel,
   isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
@@ -264,7 +265,7 @@ function codexFastModeAvailableForModel(
   policies: OrgModelPolicy[],
   selectedModel: string | null | undefined,
 ): boolean {
-  if (!selectedModel || selectedModel !== "gpt-5.5") {
+  if (!isCodexFastModeModel(selectedModel)) {
     return false;
   }
   const policy = policies.find((candidate) => {

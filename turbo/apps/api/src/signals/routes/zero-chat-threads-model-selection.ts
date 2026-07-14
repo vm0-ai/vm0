@@ -4,6 +4,7 @@ import {
   chatThreadModelSelectionContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { isCodexFastModeModel } from "@vm0/api-contracts/contracts/model-providers";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -33,15 +34,6 @@ function modelFirstSelection(selectedModel: string) {
     modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
     selectedModel,
   };
-}
-
-function isCodexFastServiceTierModel(
-  model: string | null | undefined,
-): boolean {
-  const bareModel = model?.startsWith("openai/")
-    ? model.slice("openai/".length)
-    : model;
-  return bareModel === "gpt-5.5";
 }
 
 async function validateCodexServiceTierPatch(params: {
@@ -76,12 +68,12 @@ async function validateCodexServiceTierPatch(params: {
   }
   if (
     providerAdmission.effectiveModelProvider === "codex-oauth-token" &&
-    isCodexFastServiceTierModel(params.pin.selectedModel)
+    isCodexFastModeModel(params.pin.selectedModel)
   ) {
     return undefined;
   }
   return badRequestMessage(
-    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 runs",
+    "Codex fast mode is only available for ChatGPT (Codex) GPT 5.5 and GPT 5.6 runs",
   );
 }
 
