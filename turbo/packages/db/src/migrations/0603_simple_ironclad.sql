@@ -1,0 +1,1 @@
+ALTER TABLE "usage_event" ADD COLUMN "billing_sku" varchar(100);

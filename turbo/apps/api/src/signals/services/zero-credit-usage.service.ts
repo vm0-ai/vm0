@@ -161,12 +161,13 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
+    const pricingProvider = record.billingSku ?? record.provider;
     const exactPricing = pricingByKey.get(
-      `${record.kind}|${record.provider}|${record.category}`,
+      `${record.kind}|${pricingProvider}|${record.category}`,
     );
     const pricing =
       exactPricing ??
-      pricingByKey.get(`${record.kind}|${record.provider}|__fallback__`);
+      pricingByKey.get(`${record.kind}|${pricingProvider}|__fallback__`);
 
     if (!pricing) {
       L.error("Missing usage_pricing — charged zero", {
@@ -177,6 +178,7 @@ function priceUsageEvents(
         userId: record.userId,
         kind: record.kind,
         provider: record.provider,
+        billingSku: record.billingSku,
         category: record.category,
         quantity: record.quantity,
       });
@@ -197,6 +199,7 @@ function priceUsageEvents(
         userId: record.userId,
         kind: record.kind,
         provider: record.provider,
+        billingSku: record.billingSku,
         category: record.category,
         quantity: record.quantity,
         fallbackUnitPrice: pricing.unitPrice,

@@ -8468,6 +8468,66 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 });
 
 describe("BILL-02: usage reads for an entitled organization with runs", () => {
+  it("prices signed model usage with its opaque billing SKU", async () => {
+    const api = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const billingSku = `auto-standard-${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "model",
+        provider: billingSku,
+        categories: ["tokens.output"],
+      });
+    });
+    await seedUsagePricingRows([
+      {
+        kind: "model",
+        provider: billingSku,
+        category: "tokens.output",
+        unitPrice: 7,
+        unitSize: 100,
+      },
+    ]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "generate routed model usage",
+      modelProvider: "vm0",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    await webhooks.requestAgentUsageEvent(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "model",
+            provider: "vm0-auto",
+            billingSku,
+            category: "tokens.output",
+            quantity: 100,
+          },
+        ],
+      },
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      [200],
+    );
+    await billing.processUsageEvents();
+
+    const usageRuns = await billing.readUsageRuns(actor, [200]);
+    if (usageRuns.status !== 200) {
+      throw new Error("Expected usage runs read to succeed");
+    }
+    expect(
+      usageRuns.body.runs.find((entry) => {
+        return entry.runId === run.runId;
+      }),
+    ).toMatchObject({ creditsCharged: 7 });
+  });
+
   it("exposes usage runs, members, and processed usage events through public reads", async () => {
     const api = createRunsApi(context);
     const billing = createBillingMediaApi(context);
