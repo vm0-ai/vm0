@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
-  canonicalizeFirewallAuthBaseUrl,
   canonicalizeFirewallBaseUrlVarsForExecution,
   expandHostWildcardsInBaseUrl,
   firewallBaseUrlTemplateNeedsHostPolicy,
@@ -1659,7 +1658,7 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
-  it("canonicalizes static and resolved Unicode hosts for execution", () => {
+  it("preserves static definitions and canonicalizes resolved runtime hosts", () => {
     const staticResult = resolveFirewallBaseUrlVars(
       [
         {
@@ -1669,7 +1668,7 @@ describe("resolveFirewallBaseUrlVars", () => {
       ],
       undefined,
     );
-    expect(staticResult[0]!.apis[0]!.base).toBe("https://xn--n3h.example/v1");
+    expect(staticResult[0]!.apis[0]!.base).toBe("https://☃.example/v1");
 
     const resolvedResult = resolveFirewallBaseUrlVars([zendeskFirewall], {
       ZENDESK_SUBDOMAIN: "münich",
@@ -1722,18 +1721,6 @@ describe("resolveFirewallBaseUrlVars", () => {
         });
       }).toThrow("hostname policy vm0-uts46-16.0-v1");
     }
-  });
-
-  it("canonicalizes static auth.base hosts and keeps dynamic destinations", () => {
-    expect(
-      canonicalizeFirewallAuthBaseUrl(
-        "https://☃.example/hook/${{ secrets.TOKEN }}",
-        "webhook",
-      ),
-    ).toBe("https://xn--n3h.example/hook/${{ secrets.TOKEN }}");
-    expect(
-      canonicalizeFirewallAuthBaseUrl("${{ secrets.WEBHOOK_URL }}", "webhook"),
-    ).toBe("${{ secrets.WEBHOOK_URL }}");
   });
 
   it("resolves template base URL with provided vars", () => {

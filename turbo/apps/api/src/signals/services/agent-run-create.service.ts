@@ -52,7 +52,6 @@ import {
 import {
   canonicalizeFirewallBaseUrlVarsForExecution,
   extractSecretNamesFromApis,
-  resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
@@ -3590,16 +3589,8 @@ function builtinFirewallEntryForMetadata(
 
 function inlineFirewallEntry(
   firewall: ExpandedFirewallConfig,
-  vars?: Record<string, string>,
 ): ExecutionFirewallEntry {
-  const [canonicalFirewall] = resolveFirewallBaseUrlVars(
-    [runtimeFirewall(firewall)],
-    vars,
-  );
-  if (!canonicalFirewall) {
-    throw new Error(`Missing inline firewall: ${firewall.name}`);
-  }
-  return { kind: "inline", firewall: canonicalFirewall };
+  return { kind: "inline", firewall: runtimeFirewall(firewall) };
 }
 
 function applyConnectorPolicies(
@@ -3663,7 +3654,7 @@ function modelProviderPermissionManifest(
   return {
     firewalls: [
       modelProvider.inlineFirewall
-        ? inlineFirewallEntry(firewall, vars)
+        ? inlineFirewallEntry(firewall)
         : builtinFirewallEntry(firewall, vars),
     ],
     environmentSecretPlaceholders: firewallSecretPlaceholdersFromFirewalls([
@@ -3790,13 +3781,9 @@ async function buildPermissionManifest(args: {
     "api_dispatch_prepare_context_apply_custom_permission_policies",
     "nested",
     () => {
-      const resolvedCustomConnectorFirewalls = resolveFirewallBaseUrlVars(
-        (args.customConnectorFirewalls ?? []).map(runtimeFirewall),
-        args.vars,
-      );
       return Promise.resolve(
         applyConnectorPolicies(
-          resolvedCustomConnectorFirewalls,
+          args.customConnectorFirewalls ?? [],
           args.permissionPolicies,
           inlineFirewallEntry,
           (_firewall, permissionNames) => {

@@ -1800,23 +1800,9 @@ export function resolveFirewallBaseUrlTemplate({
   credentialed = false,
   hostPolicy,
 }: ResolveFirewallBaseUrlTemplateOptions): string {
-  try {
-    if (!hasBaseUrlVars(base)) {
-      const canonicalBase = canonicalizeFirewallBaseUrl(base, serviceName);
-      validateCredentialedBaseUrlTransportValue(
-        canonicalBase,
-        serviceName,
-        credentialed,
-      );
-      validateBaseUrlHostPolicy({
-        base,
-        diagnosticBase: base,
-        serviceName,
-        hostPolicy,
-      });
-      return canonicalBase;
-    }
+  if (!hasBaseUrlVars(base)) return base;
 
+  try {
     let resolved = "";
     let lastIndex = 0;
     for (const match of base.matchAll(BASE_URL_VARS_PATTERN_G)) {
@@ -2023,8 +2009,8 @@ export function canonicalizeFirewallBaseUrlVarsForExecution(
 
 /**
  * Resolve `${{ vars.X }}` templates in firewall base URLs.
- * Returns a new array with all base URL templates replaced by actual values.
- * Throws if a referenced variable is not provided.
+ * Static definitions are trusted catalog input and returned unchanged. Dynamic
+ * values are validated and hostname-bearing values use canonical ASCII.
  */
 export function resolveFirewallBaseUrlVars(
   firewalls: Firewalls,
@@ -2034,6 +2020,7 @@ export function resolveFirewallBaseUrlVars(
     return {
       ...fw,
       apis: fw.apis.map((api) => {
+        if (!hasBaseUrlVars(api.base)) return api;
         const resolved = resolveFirewallBaseUrlTemplate({
           serviceName: fw.name,
           base: api.base,
@@ -2041,18 +2028,7 @@ export function resolveFirewallBaseUrlVars(
           credentialed: firewallAuthInjectsCredentials(api.auth),
           hostPolicy: api.hostPolicy,
         });
-        const authBase = api.auth.base;
-        return {
-          ...api,
-          base: resolved,
-          auth:
-            authBase === undefined
-              ? api.auth
-              : {
-                  ...api.auth,
-                  base: canonicalizeFirewallAuthBaseUrl(authBase, fw.name),
-                },
-        };
+        return { ...api, base: resolved };
       }),
     };
   });
@@ -3386,10 +3362,10 @@ function validateDynamicAuthBaseSuffix(
   }
 }
 
-function validateAndCanonicalizeAuthBaseUrl(
+export function validateAuthBaseUrl(
   authBase: string,
   serviceName: string,
-): string {
+): void {
   if (authBase.includes("\\")) {
     throw new Error(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain backslash`,
@@ -3405,7 +3381,7 @@ function validateAndCanonicalizeAuthBaseUrl(
     serviceName,
   );
   const validationUrl = target.url;
-  if (validationUrl === null) return authBase;
+  if (validationUrl === null) return;
   if (validationUrl.includes(AUTH_TEMPLATE_START)) {
     throw new Error(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": contains unsupported template reference`,
@@ -3493,41 +3469,14 @@ function validateAndCanonicalizeAuthBaseUrl(
 
   const rawAuthAuthority = rawAuthorityFromBaseUrl(authBase);
   if (
-    rawAuthAuthority === null ||
-    rawAuthAuthority.includes(AUTH_TEMPLATE_START)
+    rawAuthAuthority !== null &&
+    rawAuthAuthority.includes(AUTH_TEMPLATE_START) &&
+    (!isAscii(rawAuthAuthority) || rawAuthAuthority.includes("%"))
   ) {
-    if (
-      rawAuthAuthority !== null &&
-      (!isAscii(rawAuthAuthority) || rawAuthAuthority.includes("%"))
-    ) {
-      throw new Error(
-        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": dynamic authority must use ASCII static text`,
-      );
-    }
-    return authBase;
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": dynamic authority must use ASCII static text`,
+    );
   }
-  return baseWithAuthority(
-    authBase,
-    canonicalizeAuthorityForExecution(
-      rawAuthAuthority,
-      validationUrl,
-      serviceName,
-    ),
-  );
-}
-
-export function validateAuthBaseUrl(
-  authBase: string,
-  serviceName: string,
-): void {
-  validateAndCanonicalizeAuthBaseUrl(authBase, serviceName);
-}
-
-export function canonicalizeFirewallAuthBaseUrl(
-  authBase: string,
-  serviceName: string,
-): string {
-  return validateAndCanonicalizeAuthBaseUrl(authBase, serviceName);
 }
 
 /**

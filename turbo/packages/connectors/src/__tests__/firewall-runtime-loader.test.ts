@@ -11,9 +11,55 @@ import {
   loadAllRunnerRuntimeFirewalls,
   loadRunnerRuntimeFirewall,
 } from "../firewall-metadata/runner-runtime";
+import {
+  canonicalizeFirewallBaseUrl,
+  validateAuthBaseUrl,
+} from "../firewall-types";
+
+const FIREWALL_TEMPLATE_REFERENCE_PATTERN = /\$\{\{[^}]*\}\}/gu;
+const FIREWALL_HOST_PARAMETER_PATTERN = /\{[^}]*\}/gu;
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function rawUrlAuthority(value: string): string | null {
+  const schemeEnd = value.indexOf("://");
+  if (schemeEnd === -1) return null;
+  const authorityStart = schemeEnd + 3;
+  const remainder = value.slice(authorityStart);
+  const authorityEnd = remainder.search(/[/?#]/u);
+  return authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
+}
+
+function materializeAuthorityTemplates(authority: string): string {
+  let materialized = "";
+  let lastIndex = 0;
+  for (const match of authority.matchAll(FIREWALL_TEMPLATE_REFERENCE_PATTERN)) {
+    const matchIndex = match.index;
+    materialized += authority.slice(lastIndex, matchIndex);
+    materialized += authority.slice(0, matchIndex).endsWith(":")
+      ? "443"
+      : "vm0";
+    lastIndex = matchIndex + match[0].length;
+  }
+  materialized += authority.slice(lastIndex);
+  return materialized.replace(FIREWALL_HOST_PARAMETER_PATTERN, "vm0");
+}
+
+function expectCanonicalStaticAuthority(
+  value: string,
+  serviceName: string,
+  context: string,
+): void {
+  const authority = rawUrlAuthority(value);
+  if (authority === null) return;
+
+  const materializedBase = `https://${materializeAuthorityTemplates(authority)}`;
+  expect(
+    canonicalizeFirewallBaseUrl(materializedBase, serviceName),
+    `${context} static authority must already be canonical`,
+  ).toBe(materializedBase);
 }
 
 function parseSource(source: string): ts.SourceFile {
@@ -469,6 +515,33 @@ describe("firewall runtime surface", () => {
       },
       permissions: [],
     });
+  });
+
+  it("keeps generated firewall hostname literals canonical", async () => {
+    const firewalls = await loadAllRunnerRuntimeFirewalls();
+
+    for (const firewall of Object.values(firewalls)) {
+      for (const api of firewall.apis) {
+        expectCanonicalStaticAuthority(
+          api.base,
+          firewall.name,
+          `${firewall.name} api.base`,
+        );
+        expect(
+          canonicalizeFirewallBaseUrl(api.base, firewall.name),
+          `${firewall.name} api.base must already be canonical`,
+        ).toBe(api.base);
+
+        const authBase = api.auth.base;
+        if (authBase === undefined) continue;
+        validateAuthBaseUrl(authBase, firewall.name);
+        expectCanonicalStaticAuthority(
+          authBase,
+          firewall.name,
+          `${firewall.name} auth.base`,
+        );
+      }
+    }
   });
 
   it("does not statically import the eager registry or connector runtime modules", () => {

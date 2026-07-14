@@ -171,9 +171,12 @@ For runner/backend API changes:
 
 ### Firewall hostname policy
 
-The backend is the single owner of firewall configuration hostname policy. It
-converts DNS hostnames to canonical lowercase ASCII before putting execution
-firewalls and hostname-bearing built-in variables into existing runner payload
+The backend is the single owner of firewall configuration hostname policy.
+Generated firewall definitions must already contain canonical lowercase ASCII
+hostname literals; catalog tests enforce that invariant, and dispatch forwards
+those static definitions without rewriting them. The backend converts rendered
+custom connector hostnames and hostname-bearing built-in variable values to the
+same canonical identity before putting them into existing runner payload
 fields. Raw custom connector definitions and encrypted variable values remain
 unchanged in storage.
 
