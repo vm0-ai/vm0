@@ -396,10 +396,9 @@ def _server_connect_binding_kinds(
     hostname: str,
     port: int,
     compiled_firewalls: matching.CompiledFirewallSet | None,
-    api_url: str,
+    is_api_host: bool,
 ) -> frozenset[upstream_destination_binding.BindingKind]:
     kinds: set[upstream_destination_binding.BindingKind] = set()
-    is_api_host = api_hostname_matches(api_url, hostname)
     if is_api_host:
         kinds.add("api_allow")
     if (
@@ -446,12 +445,24 @@ def _bind_privileged_upstream_destination(
     if address is None:
         return
     _original_host, port = address
+    is_api_host = api_hostname_matches(api_url, hostname)
+    reusable_kind: upstream_destination_binding.BindingKind = (
+        "api_allow" if is_api_host else "connector_auth"
+    )
+    if upstream_destination_binding.reuse_server_binding_kind_if_matching(
+        server,
+        client=client,
+        host=hostname,
+        port=port,
+        kind=reusable_kind,
+    ):
+        return
 
     kinds = _server_connect_binding_kinds(
         hostname=hostname,
         port=port,
         compiled_firewalls=registry_state.compiled_firewalls.get(client_ip),
-        api_url=api_url,
+        is_api_host=is_api_host,
     )
     if not kinds:
         return
