@@ -9,14 +9,49 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, RawFd};
 
 static SANDBOX_OPS_APPEND_LOCK: Mutex<()> = Mutex::new(());
-static SANDBOX_OPS_LOG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
+static SANDBOX_OPS_LOG_OVERRIDE: Mutex<Option<Arc<SandboxOpsSink>>> = Mutex::new(None);
+
+/// Configured sandbox-operation destination and its lazily opened append file.
+///
+/// The cached handle is dropped with the sink. Installing a path, including the
+/// same path again, creates a new sink so callers can force a reopen after an
+/// external pathname replacement.
+struct SandboxOpsSink {
+    path: PathBuf,
+    file: Mutex<Option<File>>,
+}
+
+impl SandboxOpsSink {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            file: Mutex::new(None),
+        }
+    }
+
+    fn append_record(&self, record: &[u8]) -> io::Result<()> {
+        let mut file_state = self.file.lock().unwrap_or_else(|e| e.into_inner());
+        let file = match file_state.as_mut() {
+            Some(file) => file,
+            None => file_state.insert(guest_contracts::runtime_paths::open_private_append(
+                &self.path,
+            )?),
+        };
+
+        let result = append_sandbox_op_record(file, record);
+        if result.is_err() {
+            *file_state = None;
+        }
+        result
+    }
+}
 
 /// Set the process-global sandbox operations log path.
 ///
@@ -24,13 +59,18 @@ static SANDBOX_OPS_LOG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// `record_sandbox_op` calls that have not yet captured a destination. Records
 /// already in progress may still append to the path they captured.
 ///
+/// The file is opened lazily by the first record and retained by the configured
+/// sink. Installing any path, including the currently selected path, creates a
+/// new sink and forces future records to reopen it. A previous handle is dropped
+/// after records that already captured its sink finish.
+///
 /// This is not a scoped override. Tests and other callers that replace or clear
 /// the path must coordinate exclusive ownership of the shared state.
 pub fn set_sandbox_ops_log_file(path: impl AsRef<Path>) {
     let mut state = SANDBOX_OPS_LOG_OVERRIDE
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    *state = Some(path.as_ref().to_path_buf());
+    *state = Some(Arc::new(SandboxOpsSink::new(path.as_ref().to_path_buf())));
 }
 
 /// Clear the process-global sandbox operations log path.
@@ -38,6 +78,9 @@ pub fn set_sandbox_ops_log_file(path: impl AsRef<Path>) {
 /// This disables recording for calls that have not yet captured a destination.
 /// It does not restore a path installed by an earlier setter, and records
 /// already in progress may still append to the path they captured.
+///
+/// Clearing releases the retained file after records that already captured its
+/// sink finish.
 ///
 /// Tests and other callers that replace or clear the path must coordinate
 /// exclusive ownership of the shared state.
@@ -48,7 +91,7 @@ pub fn clear_sandbox_ops_log_file() {
     *state = None;
 }
 
-fn configured_sandbox_ops_log() -> Option<PathBuf> {
+fn configured_sandbox_ops_log() -> Option<Arc<SandboxOpsSink>> {
     SANDBOX_OPS_LOG_OVERRIDE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -126,6 +169,10 @@ struct SandboxOpEntry {
 /// caller. Guest operations should not treat a successful return from this
 /// function as proof that a telemetry entry was written.
 ///
+/// A configured sink opens its append file lazily and reuses it across records.
+/// An append-path failure drops the retained handle so a later record retries
+/// the secure open.
+///
 /// Each JSONL entry contains `ts`, `action_type`, `duration_ms`, `success`, and
 /// an optional `error` field. The format is compatible with the TypeScript
 /// version for consistency.
@@ -135,7 +182,7 @@ pub fn record_sandbox_op(
     success: bool,
     error: Option<&str>,
 ) {
-    let Some(path) = configured_sandbox_ops_log() else {
+    let Some(sink) = configured_sandbox_ops_log() else {
         return;
     };
 
@@ -152,19 +199,18 @@ pub fn record_sandbox_op(
     };
     record.push(b'\n');
 
-    let _ = append_sandbox_op_record(&path, &record);
+    let _ = sink.append_record(&record);
 }
 
 fn duration_ms(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-fn append_sandbox_op_record(path: impl AsRef<Path>, record: &[u8]) -> io::Result<()> {
-    let mut file = guest_contracts::runtime_paths::open_private_append(path)?;
+fn append_sandbox_op_record(file: &mut File, record: &[u8]) -> io::Result<()> {
     let _append_guard = SANDBOX_OPS_APPEND_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let _file_lock = FileLockGuard::lock(&file)?;
+    let _file_lock = FileLockGuard::lock(file)?;
 
     file.write_all(record)
 }
@@ -302,6 +348,82 @@ mod tests {
         let second_entry: serde_json::Value = serde_json::from_str(second_lines[0]).unwrap();
         assert_eq!(second_entry["action_type"], "second_path");
         assert_eq!(second_entry["duration_ms"], 24);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn record_sandbox_op_reuses_file_until_path_is_reinstalled() {
+        let _guard = lock_test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("sandbox-ops.jsonl");
+        let moved_path = dir.path().join("moved-sandbox-ops.jsonl");
+        let _override_guard = SandboxOpsOverrideGuard::set(&log_path);
+
+        assert!(!log_path.exists());
+        record_sandbox_op("before_move", Duration::from_millis(1), true, None);
+        std::fs::rename(&log_path, &moved_path).unwrap();
+        record_sandbox_op("retained_file", Duration::from_millis(2), true, None);
+
+        assert!(!log_path.exists());
+        let moved_content = std::fs::read_to_string(&moved_path).unwrap();
+        let moved_entries: Vec<serde_json::Value> = moved_content
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(moved_entries.len(), 2);
+        assert_eq!(moved_entries[0]["action_type"], "before_move");
+        assert_eq!(moved_entries[1]["action_type"], "retained_file");
+
+        set_sandbox_ops_log_file(&log_path);
+        record_sandbox_op("reopened_path", Duration::from_millis(3), true, None);
+
+        let reopened_content = std::fs::read_to_string(&log_path).unwrap();
+        let reopened_entries: Vec<serde_json::Value> = reopened_content
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(reopened_entries.len(), 1);
+        assert_eq!(reopened_entries[0]["action_type"], "reopened_path");
+    }
+
+    #[test]
+    fn record_sandbox_op_retries_open_after_failure() {
+        let _guard = lock_test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let blocked_parent = dir.path().join("runtime");
+        let log_path = blocked_parent.join("logs").join("sandbox-ops.jsonl");
+        std::fs::write(&blocked_parent, "not a directory").unwrap();
+        let _override_guard = SandboxOpsOverrideGuard::set(&log_path);
+
+        record_sandbox_op("open_failed", Duration::from_millis(1), false, None);
+        std::fs::remove_file(&blocked_parent).unwrap();
+        record_sandbox_op("open_retried", Duration::from_millis(2), true, None);
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        let entries: Vec<serde_json::Value> = content
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["action_type"], "open_retried");
+    }
+
+    #[test]
+    fn cached_handle_write_failure_reopens_on_next_record() {
+        let _guard = lock_test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("sandbox-ops.jsonl");
+        std::fs::write(&log_path, "").unwrap();
+        let read_only_file = File::open(&log_path).unwrap();
+        let sink = SandboxOpsSink {
+            path: log_path.clone(),
+            file: Mutex::new(Some(read_only_file)),
+        };
+
+        assert!(sink.append_record(b"failed\n").is_err());
+        sink.append_record(b"recovered\n").unwrap();
+
+        assert_eq!(std::fs::read_to_string(log_path).unwrap(), "recovered\n");
     }
 
     #[test]
