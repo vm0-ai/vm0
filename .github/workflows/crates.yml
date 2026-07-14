@@ -1064,6 +1064,25 @@ jobs:
           [ -z "$SANDBOX_ID" ] && fail "control socket not found after 60s"
           echo "Found sandbox: $SANDBOX_ID"
 
+          # The provider must prove the attached guest DNS path before it
+          # publishes the Running state or exposes runner exec.
+          SANDBOX_LOGS=$(sudo journalctl --no-pager --lines 500 \
+            "_SYSTEMD_INVOCATION_ID=$INVOCATION_ID" 2>&1) \
+            || fail "failed to read sandbox startup logs"
+          GUEST_DNS_READY_LINE=$(printf '%s\n' "$SANDBOX_LOGS" \
+            | grep -n -F "guest DNS readiness probe succeeded" \
+            | grep -F "id=$SANDBOX_ID" | head -1 | cut -d: -f1)
+          SANDBOX_STARTED_LINE=$(printf '%s\n' "$SANDBOX_LOGS" \
+            | grep -n -F "sandbox started" \
+            | grep -F "id=$SANDBOX_ID" | head -1 | cut -d: -f1)
+          [ -n "$GUEST_DNS_READY_LINE" ] \
+            || fail "guest DNS readiness was not logged for sandbox $SANDBOX_ID"
+          [ -n "$SANDBOX_STARTED_LINE" ] \
+            || fail "sandbox start was not logged for sandbox $SANDBOX_ID"
+          [ "$GUEST_DNS_READY_LINE" -lt "$SANDBOX_STARTED_LINE" ] \
+            || fail "sandbox started before guest DNS readiness"
+          echo "PASS: guest DNS readiness precedes sandbox start"
+
           # Test 1: privilege boundary
           echo "--- Test: privilege boundary ---"
           OUTPUT=$(sudo "$BIN_DIR/runner" exec --sandbox "$SANDBOX_ID" -- id -u) || \

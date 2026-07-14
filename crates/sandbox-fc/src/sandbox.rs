@@ -37,6 +37,7 @@ use crate::exec_operation_result::{
     validate_exec_capture_timeout,
 };
 use crate::factory::InvariantConfig;
+use crate::guest_dns_readiness::wait_for_guest_dns_readiness;
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 use crate::leaked_resources::LeakedResources;
 use crate::network::{NetnsInfo, NetnsLease};
@@ -1484,6 +1485,16 @@ impl Sandbox for FirecrackerSandbox {
             });
         }
 
+        let requires_guest_dns_readiness = self.factory_config.dns_port.is_some();
+        if requires_guest_dns_readiness {
+            let Some(lease) = self.network.lease_mut().as_mut() else {
+                return Err(SandboxError::Start {
+                    message: "network lease missing before guest DNS readiness".into(),
+                });
+            };
+            lease.mark_non_reusable();
+        }
+
         let runtime_cancel = CancellationToken::new();
 
         // Start the vsock listener BEFORE launching Firecracker.
@@ -1536,7 +1547,50 @@ impl Sandbox for FirecrackerSandbox {
             }
         };
 
-        *self.guest.lock().await = Some(Arc::new(vsock_guest));
+        let vsock_guest = Arc::new(vsock_guest);
+        *self.guest.lock().await = Some(Arc::clone(&vsock_guest));
+
+        if requires_guest_dns_readiness {
+            match wait_for_guest_dns_readiness(&vsock_guest).await {
+                Ok(report) => {
+                    let Some(lease) = self.network.lease_mut().as_mut() else {
+                        self.guest.lock().await.take();
+                        self.runtime.kill_process().await;
+                        return Err(SandboxError::Start {
+                            message: "network lease missing after guest DNS readiness".into(),
+                        });
+                    };
+                    lease.mark_reusable();
+                    info!(
+                        id = %self.id,
+                        namespace = %self.network.name(),
+                        stage = "guest_dns_readiness",
+                        attempts = report.attempts,
+                        elapsed_ms = duration_ms(report.elapsed),
+                        "guest DNS readiness probe succeeded"
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        id = %self.id,
+                        namespace = %self.network.name(),
+                        stage = "guest_dns_readiness",
+                        outcome = %error.last_failure,
+                        attempts = error.attempts,
+                        elapsed_ms = duration_ms(error.elapsed),
+                        "guest DNS readiness probe failed"
+                    );
+                    self.guest.lock().await.take();
+                    self.runtime.kill_process().await;
+                    return Err(SandboxError::Start {
+                        message: format!(
+                            "guest DNS readiness for namespace {}: {error}",
+                            self.network.name()
+                        ),
+                    });
+                }
+            }
+        }
 
         let control_sock_path = self.sock_paths.control_sock();
         let Some(termination_handle) = self
