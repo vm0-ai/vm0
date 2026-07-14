@@ -21,7 +21,7 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 
 type WorkflowTriggerInternalRunCallbackKind = Extract<
   InternalRunCallbackKind,
-  "workflow-trigger:cron" | "workflow-trigger:loop"
+  "workflow-automation:cron" | "workflow-automation:loop"
 >;
 
 type WorkflowTriggerPayload =
@@ -38,11 +38,11 @@ function parseWorkflowTriggerPayload(
   payload: unknown,
 ): WorkflowTriggerPayload | null {
   switch (kind) {
-    case "workflow-trigger:cron": {
+    case "workflow-automation:cron": {
       const result = triggerCronCallbackPayloadSchema.safeParse(payload);
       return result.success ? { kind: "cron", data: result.data } : null;
     }
-    case "workflow-trigger:loop": {
+    case "workflow-automation:loop": {
       const result = triggerLoopCallbackPayloadSchema.safeParse(payload);
       return result.success ? { kind: "loop", data: result.data } : null;
     }

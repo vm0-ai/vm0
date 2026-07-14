@@ -6,8 +6,8 @@ export const internalRunCallbackKinds = [
   "slack:org",
   "teams:org",
   "telegram",
-  "workflow-trigger:cron",
-  "workflow-trigger:loop",
+  "workflow-automation:cron",
+  "workflow-automation:loop",
 ] as const;
 
 export type InternalRunCallbackKind = (typeof internalRunCallbackKinds)[number];
@@ -42,8 +42,8 @@ function isInternalRunCallbackKind(
     case "slack:org":
     case "teams:org":
     case "telegram":
-    case "workflow-trigger:cron":
-    case "workflow-trigger:loop": {
+    case "workflow-automation:cron":
+    case "workflow-automation:loop": {
       return true;
     }
     default: {
@@ -58,5 +58,18 @@ export function internalRunCallbackKindForRecord(
   if (isInternalRunCallbackKind(callback.internalKind)) {
     return callback.internalKind;
   }
-  return null;
+
+  // Compatibility for callback rows written before the workflow automation
+  // rename. Remove these aliases after the one-release-cycle drain in #21408.
+  switch (callback.internalKind) {
+    case "workflow-trigger:cron": {
+      return "workflow-automation:cron";
+    }
+    case "workflow-trigger:loop": {
+      return "workflow-automation:loop";
+    }
+    default: {
+      return null;
+    }
+  }
 }

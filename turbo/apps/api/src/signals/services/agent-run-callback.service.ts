@@ -149,8 +149,8 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
-      case "workflow-trigger:cron":
-      case "workflow-trigger:loop": {
+      case "workflow-automation:cron":
+      case "workflow-automation:loop": {
         return await set(
           handleWorkflowTriggerInternalCallback$,
           { kind: input.kind, callback: input.envelope },
@@ -493,8 +493,8 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
-    case "workflow-trigger:cron":
-    case "workflow-trigger:loop": {
+    case "workflow-automation:cron":
+    case "workflow-automation:loop": {
       return await handleWorkflowTriggerInternalCallback(input.db, {
         kind,
         callback: callbackEnvelope(input),
