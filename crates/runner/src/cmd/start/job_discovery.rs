@@ -1047,7 +1047,9 @@ mod tests {
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::provider::CompletionAuth;
     use crate::resource_budget::ResourceBudget;
-    use crate::restored_session_identity::RestoredSessionFramework;
+    use crate::restored_session_identity::{
+        RestoredSessionFramework, RestoredSessionHistoryHashSizeRelationship,
+    };
     use crate::status::IdleVm;
     use crate::test_fixtures::execution_context_for_test;
     use crate::types::{ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef};
@@ -1110,6 +1112,24 @@ mod tests {
             },
         });
         context
+    }
+
+    fn final_metadata_identity(history_hash: String, size: u64) -> RestoredSessionIdentity {
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            size,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        )
+        .unwrap();
+        RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity")
     }
 
     async fn reusable_sandbox_with_identity(
@@ -1557,7 +1577,68 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_plan_falls_back_when_reused_identity_mismatches() {
+    async fn restore_plan_classifies_history_hash_size_relationships() {
+        let http = test_http_client();
+        let requested_hash = "a".repeat(64);
+        let restored_hash = "b".repeat(64);
+        let cases = [
+            (
+                11,
+                RestoredSessionHistoryHashSizeRelationship::RequestedSmaller,
+            ),
+            (
+                12,
+                RestoredSessionHistoryHashSizeRelationship::RequestedEqual,
+            ),
+            (
+                13,
+                RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+            ),
+            (0, RestoredSessionHistoryHashSizeRelationship::SizeUnknown),
+            (
+                api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES + 1,
+                RestoredSessionHistoryHashSizeRelationship::SizeUnknown,
+            ),
+        ];
+
+        for (requested_size, expected_relationship) in cases {
+            let context = context_with_history_ref_and_size(&requested_hash, requested_size);
+            let restored_identity = final_metadata_identity(restored_hash.clone(), 12);
+            let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+            let cancel = RunCancellationHandle::new();
+            let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+            let plan = build_session_history_restore_plan(
+                &http,
+                &SessionHistoryCpuPool::with_capacity(1),
+                &context,
+                &cancel,
+                SessionHistoryRestoreReuse {
+                    entry: Some(&reusable_sandbox),
+                    result: SandboxReuseResult::Reused,
+                },
+                &mut timing,
+                None,
+            );
+
+            match plan {
+                SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                    assert_eq!(
+                        fallback,
+                        Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                            RestoredSessionIdentityMismatchReason::HistoryHash(
+                                expected_relationship
+                            )
+                        )))
+                    );
+                }
+                _ => panic!("history hash mismatch should keep the prestarted restore plan"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_classifies_unverified_history_hash_size_as_unknown() {
         let http = test_http_client();
         let context = context_with_history_ref("history-hash-a");
         let restored_identity = RestoredSessionIdentity::claude_code_for_test("history-hash-b");
@@ -1583,11 +1664,13 @@ mod tests {
                 assert_eq!(
                     fallback,
                     Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
-                        RestoredSessionIdentityMismatchReason::HistoryHash
+                        RestoredSessionIdentityMismatchReason::HistoryHash(
+                            RestoredSessionHistoryHashSizeRelationship::SizeUnknown
+                        )
                     )))
                 );
             }
-            _ => panic!("mismatched reused identity should fall back to restore"),
+            _ => panic!("unverified history hash mismatch should fall back to restore"),
         }
     }
 
