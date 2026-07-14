@@ -557,8 +557,12 @@ async fn request_on_shared(
     payload: &[u8],
     timeout: Duration,
 ) -> io::Result<RawMessage> {
+    if timeout.is_zero() {
+        return Err(request_timeout_error());
+    }
+    let deadline = deadline_after(timeout, "request timeout overflowed")?;
     let seq = shared.next_seq();
-    request_raw_on_shared(shared, msg_type, seq, payload, timeout).await
+    request_raw_on_shared(shared, msg_type, seq, payload, deadline).await
 }
 
 async fn write_request_frame(
@@ -641,7 +645,7 @@ async fn write_registered_request_and_wait(
     shared: &Arc<Shared>,
     seq: u32,
     data: &[u8],
-    timeout: Duration,
+    deadline: Instant,
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
@@ -651,16 +655,18 @@ async fn write_registered_request_and_wait(
     // or cancellation before reader_loop dispatches a response. The write
     // helper separately poisons the connection if cancellation interrupts an
     // in-progress frame write.
-    write_request_frame(shared, data, before_write).await?;
+    time::timeout_at(deadline, write_request_frame(shared, data, before_write))
+        .await
+        .map_err(|_| request_timeout_error())??;
 
-    await_pending_response(rx, timeout).await
+    await_pending_response(rx, deadline).await
 }
 
 async fn write_registered_request_and_wait_with_frame_builder(
     shared: &Arc<Shared>,
     seq: u32,
     build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
-    timeout: Duration,
+    response_timeout: Duration,
     before_write: impl FnOnce() -> io::Result<()>,
     rx: oneshot::Receiver<RawMessage>,
 ) -> io::Result<RawMessage> {
@@ -668,12 +674,13 @@ async fn write_registered_request_and_wait_with_frame_builder(
 
     write_request_frame_with_builder(shared, seq, build_frame, before_write).await?;
 
-    await_pending_response(rx, timeout).await
+    let response_deadline = deadline_after(response_timeout, "request timeout overflowed")?;
+    await_pending_response(rx, response_deadline).await
 }
 
 async fn await_pending_response(
     rx: oneshot::Receiver<RawMessage>,
-    timeout: Duration,
+    deadline: Instant,
 ) -> io::Result<RawMessage> {
     // `rx` returns `Ok(msg)` when the reader dispatches a response and
     // `Err(RecvError)` when `close()` drops the `Connected` variant. The
@@ -686,10 +693,14 @@ async fn await_pending_response(
                 "connection closed",
             ))
         }
-        _ = tokio::time::sleep(timeout) => {
-            Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
+        _ = time::sleep_until(deadline) => {
+            Err(request_timeout_error())
         }
     }
+}
+
+fn request_timeout_error() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, "request timeout")
 }
 
 /// Send a request with a pre-allocated sequence number.
@@ -698,7 +709,7 @@ async fn request_raw_on_shared(
     msg_type: u8,
     seq: u32,
     payload: &[u8],
-    timeout: Duration,
+    deadline: Instant,
 ) -> io::Result<RawMessage> {
     let data = encode_request_frame(msg_type, seq, payload)?;
     let rx = register_pending_response(shared, seq, |tx| {
@@ -709,7 +720,7 @@ async fn request_raw_on_shared(
         })
     })?;
 
-    write_registered_request_and_wait(shared, seq, &data, timeout, || Ok(()), rx).await
+    write_registered_request_and_wait(shared, seq, &data, deadline, || Ok(()), rx).await
 }
 
 async fn normal_request_on_shared_with_write_observer_frame_builder(
@@ -1075,6 +1086,8 @@ impl VsockHost {
     /// This does not fence host-side normal operations. Callers that need a
     /// no-new-normal-operation boundary must hold a
     /// [`NormalOperationFence`] before sending this lifecycle request.
+    /// The timeout covers waiting for the shared writer, writing the request,
+    /// and waiting for the response.
     pub async fn quiesce_operations(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_QUIESCE_OPERATIONS,
@@ -1086,6 +1099,9 @@ impl VsockHost {
     }
 
     /// Resume guest operations after a failed or aborted quiesce attempt.
+    ///
+    /// The timeout covers waiting for the shared writer, writing the request,
+    /// and waiting for the response.
     pub async fn resume_operations(&self, timeout: Duration) -> io::Result<()> {
         self.lifecycle_request(
             MSG_RESUME_OPERATIONS,
@@ -1162,7 +1178,10 @@ impl VsockHost {
 
     /// Request graceful shutdown from guest.
     ///
-    /// Returns `true` if guest acknowledged, `false` on timeout.
+    /// The timeout covers waiting for the shared writer, writing the request,
+    /// and waiting for the acknowledgement. Returns `true` if the guest
+    /// acknowledges, and `false` on timeout, request failure, or an unexpected
+    /// response.
     pub async fn shutdown(&self, timeout: Duration) -> bool {
         let result = self.request(MSG_SHUTDOWN, &[], timeout).await;
         matches!(result, Ok(ref m) if m.msg_type == MSG_SHUTDOWN_ACK)

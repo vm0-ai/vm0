@@ -10,8 +10,8 @@ use vsock_proto::{
 use super::support::{
     MockGuest, await_mock_guest, captured_output_bytes, drop_idle_request_write_guard,
     drop_started_request_write_guard, exec_capture_default, fence_normal_operations,
-    host_from_stream, is_connected, make_pair, normal_operation_readiness, poison_connection,
-    setup_host_and_mock_guest,
+    host_from_stream, is_connected, make_pair, normal_operation_readiness, pending_request_count,
+    poison_connection, setup_host_and_mock_guest,
 };
 use crate::{
     NormalOperationFenceRejection, VsockHost, operation_tracker::NormalOperationReadiness,
@@ -351,56 +351,89 @@ async fn quiesce_operations_rejects_non_empty_ack_payload() {
 
 #[tokio::test]
 async fn quiesce_operations_times_out_and_late_ack_is_ignored() {
-    let (host_stream, guest) = make_pair();
-    let (quiesce_seen_tx, quiesce_seen_rx) = tokio::sync::oneshot::channel();
-    let (send_late_ack, receive_late_ack) = tokio::sync::oneshot::channel();
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let quiesce_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_millis(100)).await })
+    };
 
-    let mut guest_task = tokio::spawn(async move {
-        let mut guest = MockGuest::new(guest);
-        guest.complete_handshake().await;
-
-        let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
-        quiesce_seen_tx.send(()).unwrap();
-
-        receive_late_ack.await.unwrap();
-        guest
-            .send_empty_response(MSG_OPERATIONS_QUIESCED, quiesce.seq)
-            .await;
-
-        let resume = guest.expect_message(MSG_RESUME_OPERATIONS).await;
-        guest
-            .send_empty_response(MSG_OPERATIONS_RESUMED, resume.seq)
-            .await;
-    });
-
-    let host = host_from_stream(host_stream).await.unwrap();
-    let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
-    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-
-    tokio::select! {
-        result = tokio::time::timeout(Duration::from_secs(2), quiesce_seen_rx) => {
-            match result {
-                Ok(Ok(())) => {}
-                Ok(Err(_)) => {
-                    match (&mut guest_task).await {
-                        Ok(()) => panic!("mock guest finished before quiesce request"),
-                        Err(err) => panic!("mock guest task panicked before quiesce request: {err}"),
-                    }
-                }
-                Err(_) => panic!("guest should receive quiesce request before late ack"),
-            }
-        }
-        result = &mut guest_task => {
-            result.expect("mock guest task panicked before quiesce request");
-            panic!("mock guest finished before quiesce request");
-        }
-    }
-    assert!(is_connected(&host));
-    send_late_ack.send(()).unwrap();
-    host.resume_operations(Duration::from_secs(2))
+    let quiesce = guest.expect_message(MSG_QUIESCE_OPERATIONS).await;
+    let err = tokio::time::timeout(Duration::from_secs(2), quiesce_task)
         .await
-        .unwrap();
-    await_mock_guest(guest_task).await;
+        .expect("quiesce should respect its response timeout")
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert!(is_connected(&host));
+    assert_eq!(pending_request_count(&host), 0);
+
+    guest
+        .send_empty_response(MSG_OPERATIONS_QUIESCED, quiesce.seq)
+        .await;
+    let resume_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.resume_operations(Duration::from_secs(2)).await })
+    };
+    let resume = guest.expect_message(MSG_RESUME_OPERATIONS).await;
+    guest
+        .send_empty_response(MSG_OPERATIONS_RESUMED, resume.seq)
+        .await;
+    resume_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn lifecycle_request_zero_timeout_does_not_send_frame() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+
+    let err = host.quiesce_operations(Duration::ZERO).await.unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(pending_request_count(&host), 0);
+    assert!(is_connected(&host));
+    match guest.stream_mut().try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("zero-timeout lifecycle request must not send a frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after zero-timeout request: {err}"),
+    }
+}
+
+#[tokio::test]
+async fn lifecycle_request_times_out_while_waiting_for_writer() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let host = Arc::new(host);
+    let writer_guard = host.shared.writer.lock().await;
+    let quiesce_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.quiesce_operations(Duration::from_millis(50)).await })
+    };
+
+    let err = tokio::time::timeout(Duration::from_secs(2), quiesce_task)
+        .await
+        .expect("quiesce should time out while waiting for the writer")
+        .unwrap()
+        .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+    assert_eq!(pending_request_count(&host), 0);
+    assert!(is_connected(&host));
+
+    drop(writer_guard);
+    match guest.stream_mut().try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("timed-out lifecycle request must not send later; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after writer timeout: {err}"),
+    }
+
+    let resume_task = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move { host.resume_operations(Duration::from_secs(2)).await })
+    };
+    let resume = guest.expect_message(MSG_RESUME_OPERATIONS).await;
+    guest
+        .send_empty_response(MSG_OPERATIONS_RESUMED, resume.seq)
+        .await;
+    resume_task.await.unwrap().unwrap();
 }
 
 #[tokio::test]
