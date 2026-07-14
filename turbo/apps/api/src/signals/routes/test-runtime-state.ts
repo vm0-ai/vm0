@@ -11,6 +11,7 @@ import {
 } from "@aws-sdk/client-kms";
 import { command } from "ccstate";
 import { testRuntimeStateContract } from "@vm0/api-contracts/contracts/test-runtime-state";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
@@ -308,6 +309,17 @@ const postRuntimeStateAction$ = command(
           body.mode,
           signal,
         );
+        return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "replace-custom-connector-prefixes": {
+        await db
+          .update(orgCustomConnectors)
+          .set({
+            prefixes: body.prefixes,
+            prefixTemplates: body.prefixes,
+          })
+          .where(eq(orgCustomConnectors.id, body.connector_id));
+        signal.throwIfAborted();
         return { status: 200 as const, body: { ok: true as const } };
       }
       case "hold-org-admission-lock": {

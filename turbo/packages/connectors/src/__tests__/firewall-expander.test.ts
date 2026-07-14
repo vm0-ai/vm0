@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
+  canonicalizeFirewallBaseUrlVarsForExecution,
   expandHostWildcardsInBaseUrl,
   firewallBaseUrlTemplateNeedsHostPolicy,
   validateBaseUrl,
@@ -1071,6 +1072,17 @@ describe("validateBaseUrl", () => {
     }).toThrow("normalize to forbidden host syntax");
   });
 
+  it("should reject ASCII host characters forbidden by the runner", () => {
+    for (const char of ["<", ">", "[", "]", "^", "|"]) {
+      expect(() => {
+        return validateBaseUrl(`https://a${char}b.example`, "fw");
+      }).toThrow("host contains a forbidden ASCII character");
+    }
+    expect(() => {
+      return validateBaseUrl("https://a%3Cb.example", "fw");
+    }).toThrow("host contains a forbidden ASCII character");
+  });
+
   it("should reject host labels that start with a combining mark", () => {
     expect(() => {
       return validateBaseUrl("https://\u0898b.example", "fw");
@@ -1112,13 +1124,7 @@ describe("validateBaseUrl", () => {
       return validateBaseUrl("https://\u0870.example", "fw");
     }).not.toThrow();
     expect(() => {
-      return validateBaseUrl("https://a\u0870.example", "fw");
-    }).not.toThrow();
-    expect(() => {
       return validateBaseUrl("https://\u08701.example", "fw");
-    }).not.toThrow();
-    expect(() => {
-      return validateBaseUrl("https://1\u0870.example", "fw");
     }).not.toThrow();
     expect(() => {
       return validateBaseUrl("https://\u0870!\u0870.example", "fw");
@@ -1126,12 +1132,19 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://\u0870!1.example", "fw");
     }).not.toThrow();
-    expect(() => {
-      return validateBaseUrl("https://a1\u0870.example", "fw");
-    }).not.toThrow();
-    expect(() => {
-      return validateBaseUrl("https://1\u0870\u0301.example", "fw");
-    }).not.toThrow();
+  });
+
+  it("should reject mixed bidirectional labels outside the fixed policy", () => {
+    for (const base of [
+      "https://a\u0870.example",
+      "https://1\u0870.example",
+      "https://a1\u0870.example",
+      "https://1\u0870\u0301.example",
+    ]) {
+      expect(() => {
+        return validateBaseUrl(base, "fw");
+      }).toThrow("hostname policy vm0-uts46-16.0-v1");
+    }
   });
 
   it("should accept host labels that Python IDNA normalization keeps valid", () => {
@@ -1173,7 +1186,7 @@ describe("validateBaseUrl", () => {
     }).toThrow("not a valid URL authority");
     expect(() => {
       return validateBaseUrl("https://{sub}.api%20example.com", "fw");
-    }).toThrow("not a valid URL authority");
+    }).toThrow("percent-encoded control characters or whitespace");
     expect(() => {
       return validateBaseUrl("https://{sub}.exa%mple.com", "fw");
     }).toThrow("host has invalid percent encoding");
@@ -1579,6 +1592,16 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  const embeddedHostFirewall = {
+    name: "embedded-host",
+    apis: [
+      {
+        base: "https://api-${{ vars.HOST_TENANT }}.example.test/v1",
+        auth: {},
+      },
+    ],
+  };
+
   const pathFragmentFirewall = {
     name: "path-fragment",
     apis: [
@@ -1635,6 +1658,71 @@ describe("resolveFirewallBaseUrlVars", () => {
     ],
   };
 
+  it("preserves static definitions and canonicalizes resolved runtime hosts", () => {
+    const staticResult = resolveFirewallBaseUrlVars(
+      [
+        {
+          name: "unicode-static",
+          apis: [{ base: "https://☃.example/v1", auth: {} }],
+        },
+      ],
+      undefined,
+    );
+    expect(staticResult[0]!.apis[0]!.base).toBe("https://☃.example/v1");
+
+    const resolvedResult = resolveFirewallBaseUrlVars([zendeskFirewall], {
+      ZENDESK_SUBDOMAIN: "münich",
+    });
+    expect(resolvedResult[0]!.apis[0]!.base).toBe(
+      "https://xn--mnich-kva.zendesk.com",
+    );
+  });
+
+  it("canonicalizes only hostname-bearing built-in variable values", () => {
+    const result = canonicalizeFirewallBaseUrlVarsForExecution(
+      [
+        zendeskFirewall,
+        strapiFirewall,
+        embeddedHostFirewall,
+        tenantPathFirewall,
+      ],
+      {
+        ZENDESK_SUBDOMAIN: "münich",
+        STRAPI_BASE_URL: "https://☃.example/v1",
+        HOST_TENANT: "%55S-East",
+        TENANT: "café",
+      },
+    );
+    expect(result).toEqual({
+      ZENDESK_SUBDOMAIN: "xn--mnich-kva",
+      STRAPI_BASE_URL: "https://xn--n3h.example/v1",
+      HOST_TENANT: "us-east",
+      TENANT: "café",
+    });
+  });
+
+  it("rejects encoded Unicode inside a built-in host label variable", () => {
+    expect(() => {
+      return canonicalizeFirewallBaseUrlVarsForExecution(
+        [embeddedHostFirewall],
+        { HOST_TENANT: "%C3%BC" },
+      );
+    }).toThrow("cannot use a non-ASCII value inside a host label");
+  });
+
+  it("rejects runtime-dependent raw and A-label variable values", () => {
+    for (const STRAPI_BASE_URL of [
+      "https://\u088f.example",
+      "https://xn--7xb.example",
+    ]) {
+      expect(() => {
+        return resolveFirewallBaseUrlVars([strapiFirewall], {
+          STRAPI_BASE_URL,
+        });
+      }).toThrow("hostname policy vm0-uts46-16.0-v1");
+    }
+  });
+
   it("resolves template base URL with provided vars", () => {
     const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
       ZENDESK_SUBDOMAIN: "mycompany",
@@ -1682,18 +1770,18 @@ describe("resolveFirewallBaseUrlVars", () => {
     expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net");
   });
 
-  it("accepts provider-owned whole authority template values with trailing dots", () => {
+  it("canonicalizes provider-owned whole authority values with trailing dots", () => {
     const result = resolveFirewallBaseUrlVars([jiraFirewall], {
       JIRA_DOMAIN: "acme.atlassian.net.",
     });
-    expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net.");
+    expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net");
   });
 
-  it("accepts provider-owned whole authority template values with IDNA dot equivalents", () => {
+  it("canonicalizes provider-owned whole authority IDNA dot equivalents", () => {
     const result = resolveFirewallBaseUrlVars([jiraFirewall], {
       JIRA_DOMAIN: "acme。atlassian。net",
     });
-    expect(result[0]!.apis[0]!.base).toBe("https://acme。atlassian。net");
+    expect(result[0]!.apis[0]!.base).toBe("https://acme.atlassian.net");
   });
 
   it("rejects provider-owned whole authority template values outside allowed hosts", () => {
