@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -10,7 +9,6 @@ import type { ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -82,14 +80,6 @@ async function setupFixture(): Promise<{
   };
 }
 
-async function enableWebhookWorkflowTriggers(
-  fixture: WorkflowsFixture,
-): Promise<void> {
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-  });
-}
-
 async function postWorkflowWebhook(args: {
   readonly token: string;
   readonly rawBody: string;
@@ -121,8 +111,7 @@ async function postWorkflowWebhook(args: {
 
 describe("POST /api/webhooks/workflow-triggers/:token", () => {
   it("dispatches signed webhook deliveries and de-duplicates retries", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableWebhookWorkflowTriggers(fixture);
+    const { workflowId } = await setupFixture();
     const runsApi = createRunsApi(context);
     const runnerGroup = runsApi.configureRunnerGroup();
 
@@ -237,8 +226,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
   });
 
   it("rejects invalid signatures", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableWebhookWorkflowTriggers(fixture);
+    const { workflowId } = await setupFixture();
 
     const created = await accept(
       triggersClient().create({
@@ -277,52 +265,8 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     expect(response.status).toBe(401);
   });
 
-  it("continues dispatching existing webhook triggers when webhook creation is disabled", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableWebhookWorkflowTriggers(fixture);
-
-    const created = await accept(
-      triggersClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { kind: "event", eventType: "webhook-received" },
-      }),
-      [201],
-    );
-    if (
-      created.body.kind !== "event" ||
-      created.body.eventType !== "webhook-received" ||
-      !created.body.webhookUrl ||
-      !created.body.webhookSecret
-    ) {
-      throw new Error("Expected a webhook trigger with a one-time secret");
-    }
-
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
-    });
-
-    const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
-    if (!token) {
-      throw new Error("Expected webhook URL token");
-    }
-    const response = await postWorkflowWebhook({
-      token,
-      rawBody: JSON.stringify({ event: "existing-trigger" }),
-      secret: created.body.webhookSecret,
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      success: true,
-      duplicate: false,
-      runId: expect.any(String),
-    });
-  });
-
   it("auto-disables only enabled webhooks after an effective Stripe downgrade", async () => {
     const { fixture, workflowId, subscriptionId } = await setupFixture();
-    await enableWebhookWorkflowTriggers(fixture);
     const enabled = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -394,7 +338,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
 
   it("keeps webhooks enabled through a scheduled cancellation period", async () => {
     const { fixture, workflowId, subscriptionId } = await setupFixture();
-    await enableWebhookWorkflowTriggers(fixture);
     const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
@@ -437,8 +380,7 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
   });
 
   it("starts an event run when the trigger's previous run is still active", async () => {
-    const { fixture, workflowId } = await setupFixture();
-    await enableWebhookWorkflowTriggers(fixture);
+    const { workflowId } = await setupFixture();
 
     const created = await accept(
       triggersClient().create({

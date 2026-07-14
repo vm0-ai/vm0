@@ -68,12 +68,13 @@ async function setup(
     name: WORKFLOW_NAME,
   });
   const fixture = { orgId: actor.orgId, userId: actor.userId };
-  await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    ...(options.workflowQueue === false
+  await updateFeatureSwitchesForUser(
+    context,
+    fixture,
+    options.workflowQueue === false
       ? {}
-      : { [FeatureSwitchKey.WorkflowQueue]: true }),
-  });
+      : { [FeatureSwitchKey.WorkflowQueue]: true },
+  );
   mocks.clerk.session(actor.userId, actor.orgId);
   context.mocks.s3.send.mockResolvedValue({});
   return {

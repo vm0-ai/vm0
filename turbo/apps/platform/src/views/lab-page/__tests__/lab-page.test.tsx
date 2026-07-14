@@ -140,7 +140,7 @@ describe("lab page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(FeatureSwitchKey.WorkflowWebhookTriggers),
+        screen.getByText(FeatureSwitchKey.NotionWorkflowTriggers),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(FeatureSwitchKey.AhrefsConnector),

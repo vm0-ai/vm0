@@ -9,7 +9,6 @@ import {
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import type { ConnectorType } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -24,7 +23,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -1003,11 +1001,6 @@ describe("zero workflows", () => {
       throw new Error("Expected workflow copy actor to belong to an org");
     }
     await api.grantProEntitlement(actor, { tier: "team" });
-    const featureSwitchActor = {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      orgRole: actor.orgRole,
-    };
     const sourceAgent = await createAgent(actor, {
       displayName: "Copy Source Agent",
       visibility: "private",
@@ -1032,9 +1025,6 @@ describe("zero workflows", () => {
       }),
       [201],
     );
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-    });
     const webhookTrigger = await accept(
       triggersClient().create({
         headers: authHeaders(actor),
@@ -1050,10 +1040,6 @@ describe("zero workflows", () => {
       kind: "event",
       eventType: "webhook-received",
     });
-    await updateFeatureSwitchesForUser(context, featureSwitchActor, {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: false,
-    });
-
     const copied = await accept(
       detailClient().copy({
         headers: authHeaders(actor),
@@ -1090,7 +1076,7 @@ describe("zero workflows", () => {
           copiedTrigger.eventType === "webhook-received"
         );
       }),
-    ).toBeFalsy();
+    ).toBeTruthy();
   });
 
   it("reads and updates workflow content, audit metadata, and deletion through API responses", async () => {
