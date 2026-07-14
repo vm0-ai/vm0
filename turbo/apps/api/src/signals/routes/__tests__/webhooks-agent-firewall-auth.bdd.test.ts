@@ -193,53 +193,6 @@ describe("FW-2: template resolution without connector refresh", () => {
     expect(resolved.body.resolvedSecrets).toContain("SCRAPENINJA_TOKEN");
   });
 
-  it("canonicalizes a secret-backed auth base hostname before returning it", async () => {
-    const fw = createFirewallApi(context);
-    const { headers } = await firewallRun();
-
-    const resolved = await fw.requestFirewallAuth(
-      headers,
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({
-          AUTH_HOST: "\u2603.example",
-        }),
-        authHeaders: {},
-        authBase: `https://${secretTemplate("AUTH_HOST")}/hook`,
-      },
-      [200],
-    );
-    if (resolved.status !== 200) {
-      throw new Error("Expected firewall auth resolution to succeed");
-    }
-
-    expect(resolved.body.base).toBe("https://xn--n3h.example/hook");
-  });
-
-  it("rejects a secret-backed auth base outside the fixed hostname policy", async () => {
-    const fw = createFirewallApi(context);
-    const { headers } = await firewallRun();
-
-    const rejected = await fw.requestFirewallAuth(
-      headers,
-      {
-        encryptedSecrets: fw.encryptedSecretsBody({
-          AUTH_HOST: "\u088f.example",
-        }),
-        authHeaders: {},
-        authBase: `https://${secretTemplate("AUTH_HOST")}/hook`,
-      },
-      [400],
-    );
-    if (rejected.status !== 400) {
-      throw new Error("Expected firewall auth resolution to fail");
-    }
-
-    expectApiError(rejected.body);
-    expect(rejected.body.error.message).toBe(
-      "Resolved firewall auth base URL is invalid",
-    );
-  });
-
   it("reports unresolvable template references as connector-not-configured", async () => {
     const fw = createFirewallApi(context);
     const { headers } = await firewallRun();

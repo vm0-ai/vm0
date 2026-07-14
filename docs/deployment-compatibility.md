@@ -177,15 +177,16 @@ firewalls and hostname-bearing built-in variables into existing runner payload
 fields. Raw custom connector definitions and encrypted variable values remain
 unchanged in storage.
 
-Secret- and variable-backed `auth.base` values are canonicalized by the backend
-after template resolution and before the resolved target is returned to the
-runner.
-
 Runner validation remains unchanged and fail closed. It defensively validates
 configuration received from old and new backends, resolved credential-bearing
 targets, and untrusted request authorities. The fixed backend policy must emit
 only canonical ASCII identities accepted unchanged by draining old runners; a
 policy upgrade requires deliberate compatibility analysis before deployment.
+
+A fully dynamic secret-backed `auth.base` remains runner-validated because the
+existing auth request has no policy/capability marker that can distinguish old
+and new runs. Changing that path requires an explicit backward-compatible
+protocol design rather than silently tightening old in-flight runs.
 
 For persisted state changes:
 
