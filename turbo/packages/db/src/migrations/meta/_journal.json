@@ -4096,6 +4096,13 @@
       "when": 1783998553112,
       "tag": "0584_move_workflow_queue_events_to_chat_message_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 585,
+      "version": "7",
+      "when": 1784000627125,
+      "tag": "0585_migrate_legacy_automation_sources",
+      "breakpoints": true
     }
   ]
 }
