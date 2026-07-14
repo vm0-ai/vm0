@@ -8,7 +8,7 @@ type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
 type GmailTextField = "from" | "subject" | "body" | "to" | "cc";
 
-export interface GmailTriggerOptions {
+export interface GmailAutomationOptions {
   readonly config?: string;
   readonly label?: string;
   readonly fromContains?: string;
@@ -117,7 +117,7 @@ function parseTextMatcher(
         break;
       default:
         throw new Error(
-          `Unsupported Gmail trigger text matcher "${key}" for ${formatFieldName(field)}`,
+          `Unsupported Gmail automation text matcher "${key}" for ${formatFieldName(field)}`,
         );
     }
   }
@@ -149,7 +149,7 @@ function parseMatch(value: unknown): GmailMatchRules | undefined {
     const field = textFieldFromKey(key);
     if (field === null) {
       throw new Error(
-        `Unsupported Gmail trigger match field "${key}". Supported fields: from, subject, body, to, cc`,
+        `Unsupported Gmail automation match field "${key}". Supported fields: from, subject, body, to, cc`,
       );
     }
     match[field] = parseTextMatcher(field, value[key]);
@@ -165,18 +165,18 @@ function readConfigMatch(path: string): GmailMatchRules | undefined {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Failed to read Gmail trigger config "${path}": ${message}`,
+      `Failed to read Gmail automation config "${path}": ${message}`,
     );
   }
 
   if (!isRecord(parsed)) {
-    throw new Error("Gmail trigger config must be a JSON object");
+    throw new Error("Gmail automation config must be a JSON object");
   }
 
   for (const key of Object.keys(parsed)) {
     if (key !== "match") {
       throw new Error(
-        `Unsupported Gmail trigger config field "${key}". Use a top-level match object`,
+        `Unsupported Gmail automation config field "${key}". Use a top-level match object`,
       );
     }
   }
@@ -184,7 +184,9 @@ function readConfigMatch(path: string): GmailMatchRules | undefined {
   return parseMatch(parsed.match);
 }
 
-function textFlagSpecs(options: GmailTriggerOptions): readonly TextFlagSpec[] {
+function textFlagSpecs(
+  options: GmailAutomationOptions,
+): readonly TextFlagSpec[] {
   return [
     {
       field: "from",
@@ -214,7 +216,9 @@ function textFlagSpecs(options: GmailTriggerOptions): readonly TextFlagSpec[] {
   ];
 }
 
-export function hasGmailTriggerOptions(options: GmailTriggerOptions): boolean {
+export function hasGmailAutomationOptions(
+  options: GmailAutomationOptions,
+): boolean {
   return (
     options.config !== undefined ||
     textFlagSpecs(options).some((spec) => {
@@ -223,12 +227,12 @@ export function hasGmailTriggerOptions(options: GmailTriggerOptions): boolean {
   );
 }
 
-export function hasGmailLabelOption(options: GmailTriggerOptions): boolean {
+export function hasGmailLabelOption(options: GmailAutomationOptions): boolean {
   return options.label !== undefined;
 }
 
 function buildMatchFromFlags(
-  options: GmailTriggerOptions,
+  options: GmailAutomationOptions,
 ): GmailMatchRules | undefined {
   const match: GmailMatchRules = {};
   for (const spec of textFlagSpecs(options)) {
@@ -260,7 +264,7 @@ function buildMatchFromFlags(
 }
 
 export function buildGmailNewMessageEventConfig(
-  options: GmailTriggerOptions,
+  options: GmailAutomationOptions,
 ): GmailNewMessageEventConfig {
   if (
     options.config !== undefined &&
@@ -282,12 +286,12 @@ export function buildGmailNewMessageEventConfig(
 }
 
 export function buildGmailLabelAppliedEventConfig(
-  options: GmailTriggerOptions,
+  options: GmailAutomationOptions,
 ): GmailLabelAppliedEventConfig {
   const labelName = options.label?.trim();
   if (!labelName) {
     throw new Error(
-      'gmail-label-applied triggers require --label "Label name"',
+      'gmail-label-applied automations require --label "Label name"',
     );
   }
   return { provider: "gmail", event: "label_applied", labelName };

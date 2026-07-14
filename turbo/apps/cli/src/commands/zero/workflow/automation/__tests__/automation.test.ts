@@ -1,5 +1,5 @@
 /**
- * Tests for `zero workflow trigger` commands
+ * Tests for `zero workflow automation` commands
  * (add / update / list / show / rm / enable / disable).
  *
  * Tests command-level behavior via parseAsync() following CLI testing
@@ -15,12 +15,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
-import { triggerCommand } from "../index";
+import { automationCommand } from "../index";
 import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const WORKFLOW_ID = "22222222-2222-4222-8222-222222222222";
-const TRIGGER_ID = "33333333-3333-4333-8333-333333333333";
+const AUTOMATION_ID = "33333333-3333-4333-8333-333333333333";
 const THREAD_ID = "44444444-4444-4444-8444-444444444444";
 
 const workflowSummary = {
@@ -37,8 +37,8 @@ const workflowSummary = {
   canPublish: true,
 };
 
-const triggerBase = {
-  id: TRIGGER_ID,
+const automationBase = {
+  id: AUTOMATION_ID,
   kind: "schedule",
   ownerUserId: "user-123",
   enabled: true,
@@ -47,8 +47,8 @@ const triggerBase = {
   lastRunAt: null,
 };
 
-const cronTrigger = {
-  ...triggerBase,
+const cronAutomation = {
+  ...automationBase,
   schedule: {
     type: "cron",
     cronExpression: "0 9 * * *",
@@ -57,8 +57,8 @@ const cronTrigger = {
   scheduleSummary: "0 9 * * * (UTC)",
 };
 
-const onceTrigger = {
-  ...triggerBase,
+const onceAutomation = {
+  ...automationBase,
   schedule: {
     type: "once",
     atTime: "2026-06-22T07:55:00.000Z",
@@ -67,8 +67,8 @@ const onceTrigger = {
   scheduleSummary: "Once at 2026-06-22T07:55:00.000Z",
 };
 
-const loopTrigger = {
-  ...triggerBase,
+const loopAutomation = {
+  ...automationBase,
   schedule: {
     type: "loop",
     intervalSeconds: 900,
@@ -76,8 +76,8 @@ const loopTrigger = {
   scheduleSummary: "Every 900s",
 };
 
-const gmailTrigger = {
-  ...triggerBase,
+const gmailAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "gmail-new-message",
   eventConfig: {
@@ -93,8 +93,8 @@ const gmailTrigger = {
   nextRunAt: null,
 };
 
-const gmailLabelTrigger = {
-  ...triggerBase,
+const gmailLabelAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "gmail-label-applied",
   eventConfig: {
@@ -108,8 +108,8 @@ const gmailLabelTrigger = {
   nextRunAt: null,
 };
 
-const githubLabelTrigger = {
-  ...triggerBase,
+const githubLabelAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "github-label-applied",
   eventConfig: {
@@ -126,8 +126,8 @@ const githubLabelTrigger = {
   nextRunAt: null,
 };
 
-const googleCalendarTrigger = {
-  ...triggerBase,
+const googleCalendarAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "google-calendar-event-created",
   eventConfig: {
@@ -140,8 +140,8 @@ const googleCalendarTrigger = {
   nextRunAt: null,
 };
 
-const notionTrigger = {
-  ...triggerBase,
+const notionAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "notion-child-page-created",
   eventConfig: {
@@ -161,8 +161,8 @@ const notionTrigger = {
   nextRunAt: null,
 };
 
-const notionDatabaseTrigger = {
-  ...triggerBase,
+const notionDatabaseAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "notion-database-item-created",
   eventConfig: {
@@ -182,8 +182,8 @@ const notionDatabaseTrigger = {
   nextRunAt: null,
 };
 
-const notionContentUpdatedTrigger = {
-  ...triggerBase,
+const notionContentUpdatedAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "notion-page-content-updated",
   eventConfig: {
@@ -206,8 +206,8 @@ const notionContentUpdatedTrigger = {
   nextRunAt: null,
 };
 
-const webhookTrigger = {
-  ...triggerBase,
+const webhookAutomation = {
+  ...automationBase,
   kind: "event",
   eventType: "webhook-received",
   eventConfig: {
@@ -218,13 +218,14 @@ const webhookTrigger = {
   schedule: null,
   scheduleSummary: null,
   nextRunAt: null,
-  webhookUrl: "http://localhost:3000/api/webhooks/workflow-triggers/whk_test",
+  webhookUrl:
+    "http://localhost:3000/api/webhooks/workflow-automations/whk_test",
   secretLastFour: "abcd",
   lastReceivedAt: null,
   webhookSecret: "webhook-secret-abcd",
 };
 
-describe("zero workflow trigger commands", () => {
+describe("zero workflow automation commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -251,19 +252,19 @@ describe("zero workflow trigger commands", () => {
   });
 
   function writeGmailConfig(config: object): string {
-    const dir = mkdtempSync(join(tmpdir(), "vm0-gmail-trigger-"));
+    const dir = mkdtempSync(join(tmpdir(), "vm0-gmail-automation-"));
     tempDirs.push(dir);
-    const path = join(dir, "gmail-trigger.json");
+    const path = join(dir, "gmail-automation.json");
     writeFileSync(path, JSON.stringify(config), "utf-8");
     return path;
   }
 
-  function captureCreateTrigger(response: object) {
+  function captureCreateAutomation(response: object) {
     const captured: { workflowId?: string; body?: Record<string, unknown> } =
       {};
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/workflows/:workflowId/triggers",
+        "http://localhost:3000/api/zero/workflows/:workflowId/automations",
         async ({ request, params }) => {
           captured.workflowId = params.workflowId as string;
           captured.body = (await request.json()) as Record<string, unknown>;
@@ -290,10 +291,10 @@ describe("zero workflow trigger commands", () => {
   }
 
   describe("add", () => {
-    it("should add a cron trigger to a workflow id", async () => {
-      const captured = captureCreateTrigger(cronTrigger);
+    it("should add a cron automation to a workflow id", async () => {
+      const captured = captureCreateAutomation(cronAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -315,17 +316,19 @@ describe("zero workflow trigger commands", () => {
       });
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(`Trigger added to workflow "${WORKFLOW_ID}"`);
-      expect(logCalls).toContain(TRIGGER_ID);
+      expect(logCalls).toContain(
+        `Automation added to workflow "${WORKFLOW_ID}"`,
+      );
+      expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
     });
 
     it("should resolve a workflow name under ZERO_AGENT_ID", async () => {
       vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
       const workflows = mockWorkflowList();
-      const captured = captureCreateTrigger(loopTrigger);
+      const captured = captureCreateAutomation(loopAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -343,9 +346,9 @@ describe("zero workflow trigger commands", () => {
     });
 
     it("should convert a timezone-local one-time fire to UTC", async () => {
-      const captured = captureCreateTrigger(onceTrigger);
+      const captured = captureCreateAutomation(onceAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -366,13 +369,13 @@ describe("zero workflow trigger commands", () => {
       });
     });
 
-    it("should add a Gmail new message trigger without match rules", async () => {
-      const captured = captureCreateTrigger({
-        ...gmailTrigger,
+    it("should add a Gmail new message automation without match rules", async () => {
+      const captured = captureCreateAutomation({
+        ...gmailAutomation,
         eventConfig: { provider: "gmail", event: "new_message" },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -391,10 +394,10 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("all inbound messages");
     });
 
-    it("should add a Gmail new message trigger with text match flags", async () => {
-      const captured = captureCreateTrigger(gmailTrigger);
+    it("should add a Gmail new message automation with text match flags", async () => {
+      const captured = captureCreateAutomation(gmailAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -423,16 +426,16 @@ describe("zero workflow trigger commands", () => {
       });
     });
 
-    it("should add a Gmail new message trigger from a config file", async () => {
+    it("should add a Gmail new message automation from a config file", async () => {
       const configPath = writeGmailConfig({
         match: {
           from: { containsAny: ["@acme.com", "@example.com"] },
           subject: { doesNotContainAny: ["newsletter", "promo"] },
         },
       });
-      const captured = captureCreateTrigger(gmailTrigger);
+      const captured = captureCreateAutomation(gmailAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -456,10 +459,10 @@ describe("zero workflow trigger commands", () => {
       });
     });
 
-    it("should add a Gmail label applied trigger by label name", async () => {
-      const captured = captureCreateTrigger(gmailLabelTrigger);
+    it("should add a Gmail label applied automation by label name", async () => {
+      const captured = captureCreateAutomation(gmailLabelAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -483,9 +486,9 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("Support");
     });
 
-    it("should add a GitHub label applied trigger", async () => {
-      const captured = captureCreateTrigger({
-        ...githubLabelTrigger,
+    it("should add a GitHub label applied automation", async () => {
+      const captured = captureCreateAutomation({
+        ...githubLabelAutomation,
         eventConfig: {
           provider: "github",
           event: "label_applied",
@@ -497,7 +500,7 @@ describe("zero workflow trigger commands", () => {
         },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -532,9 +535,9 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("anyone");
     });
 
-    it("should add a Google Calendar event-created trigger", async () => {
-      const captured = captureCreateTrigger({
-        ...googleCalendarTrigger,
+    it("should add a Google Calendar event-created automation", async () => {
+      const captured = captureCreateAutomation({
+        ...googleCalendarAutomation,
         eventConfig: {
           provider: "google-calendar",
           event: "event_created",
@@ -542,7 +545,7 @@ describe("zero workflow trigger commands", () => {
         },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -567,9 +570,9 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
-    it("should add a Google Calendar event-updated trigger", async () => {
-      const captured = captureCreateTrigger({
-        ...googleCalendarTrigger,
+    it("should add a Google Calendar event-updated automation", async () => {
+      const captured = captureCreateAutomation({
+        ...googleCalendarAutomation,
         eventType: "google-calendar-event-updated",
         eventConfig: {
           provider: "google-calendar",
@@ -578,7 +581,7 @@ describe("zero workflow trigger commands", () => {
         },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -603,9 +606,9 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
-    it("should add a Google Calendar event-cancelled trigger", async () => {
-      const captured = captureCreateTrigger({
-        ...googleCalendarTrigger,
+    it("should add a Google Calendar event-cancelled automation", async () => {
+      const captured = captureCreateAutomation({
+        ...googleCalendarAutomation,
         eventType: "google-calendar-event-cancelled",
         eventConfig: {
           provider: "google-calendar",
@@ -614,7 +617,7 @@ describe("zero workflow trigger commands", () => {
         },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -639,10 +642,10 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
-    it("should add a Notion child page trigger", async () => {
-      const captured = captureCreateTrigger(notionTrigger);
+    it("should add a Notion child page automation", async () => {
+      const captured = captureCreateAutomation(notionAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -666,13 +669,13 @@ describe("zero workflow trigger commands", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("New Notion child page");
       expect(logCalls).toContain("Product notes");
-      expect(logCalls).toContain(notionTrigger.eventConfig.parentPage.url);
+      expect(logCalls).toContain(notionAutomation.eventConfig.parentPage.url);
     });
 
-    it("should add a Notion database item trigger", async () => {
-      const captured = captureCreateTrigger(notionDatabaseTrigger);
+    it("should add a Notion database item automation", async () => {
+      const captured = captureCreateAutomation(notionDatabaseAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -697,14 +700,14 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("New Notion database item");
       expect(logCalls).toContain("Bug Bash");
       expect(logCalls).toContain(
-        notionDatabaseTrigger.eventConfig.dataSource.url,
+        notionDatabaseAutomation.eventConfig.dataSource.url,
       );
     });
 
-    it("should add a Notion page content updated trigger for a page", async () => {
-      const captured = captureCreateTrigger(notionContentUpdatedTrigger);
+    it("should add a Notion page content updated automation for a page", async () => {
+      const captured = captureCreateAutomation(notionContentUpdatedAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -729,23 +732,23 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("Notion page content updated");
       expect(logCalls).toContain("Release plan");
       expect(logCalls).toContain(
-        notionContentUpdatedTrigger.eventConfig.scope.page.url,
+        notionContentUpdatedAutomation.eventConfig.scope.page.url,
       );
     });
 
-    it("should add a Notion page content updated trigger for a database", async () => {
-      const captured = captureCreateTrigger({
-        ...notionContentUpdatedTrigger,
+    it("should add a Notion page content updated automation for a database", async () => {
+      const captured = captureCreateAutomation({
+        ...notionContentUpdatedAutomation,
         eventConfig: {
-          ...notionContentUpdatedTrigger.eventConfig,
+          ...notionContentUpdatedAutomation.eventConfig,
           scope: {
             type: "data_source",
-            dataSource: notionDatabaseTrigger.eventConfig.dataSource,
+            dataSource: notionDatabaseAutomation.eventConfig.dataSource,
           },
         },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -770,14 +773,14 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("Notion page content updated");
       expect(logCalls).toContain("Bug Bash");
       expect(logCalls).toContain(
-        notionDatabaseTrigger.eventConfig.dataSource.url,
+        notionDatabaseAutomation.eventConfig.dataSource.url,
       );
     });
 
-    it("should add a webhook trigger", async () => {
-      const captured = captureCreateTrigger(webhookTrigger);
+    it("should add a webhook automation", async () => {
+      const captured = captureCreateAutomation(webhookAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
@@ -797,8 +800,8 @@ describe("zero workflow trigger commands", () => {
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Webhook");
-      expect(logCalls).toContain(webhookTrigger.webhookUrl);
-      expect(logCalls).toContain(webhookTrigger.webhookSecret);
+      expect(logCalls).toContain(webhookAutomation.webhookUrl);
+      expect(logCalls).toContain(webhookAutomation.webhookSecret);
       expect(logCalls).toContain("X-VM0-Signature");
     });
 
@@ -821,7 +824,7 @@ describe("zero workflow trigger commands", () => {
         const configPath = writeGmailConfig(config);
 
         await expect(async () => {
-          await triggerCommand.parseAsync([
+          await automationCommand.parseAsync([
             "node",
             "cli",
             "add",
@@ -834,33 +837,33 @@ describe("zero workflow trigger commands", () => {
 
         expect(mockConsoleError).toHaveBeenCalledWith(
           expect.stringContaining(
-            `Unsupported Gmail trigger match field "${field}"`,
+            `Unsupported Gmail automation match field "${field}"`,
           ),
         );
         expect(mockExit).toHaveBeenCalledWith(1);
       },
     );
 
-    it("should reject an unknown trigger kind", async () => {
+    it("should reject an unknown automation kind", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
           WORKFLOW_ID,
-          "not-a-trigger",
+          "not-an-automation",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining('Unknown trigger kind: "not-a-trigger"'),
+        expect.stringContaining('Unknown automation kind: "not-an-automation"'),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject a Notion child page trigger without a parent page URL", async () => {
+    it("should reject a Notion child page automation without a parent page URL", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -871,15 +874,15 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "notion-child-page-created triggers require --parent-page-url",
+          "notion-child-page-created automations require --parent-page-url",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject a Notion database item trigger without a database URL", async () => {
+    it("should reject a Notion database item automation without a database URL", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -890,15 +893,15 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "notion-database-item-created triggers require --database-url",
+          "notion-database-item-created automations require --database-url",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject a Notion page content updated trigger without a scope URL", async () => {
+    it("should reject a Notion page content updated automation without a scope URL", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -909,15 +912,15 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "notion-page-content-updated triggers require exactly one of --page-url",
+          "notion-page-content-updated automations require exactly one of --page-url",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject a Notion page content updated trigger with both page and database URLs", async () => {
+    it("should reject a Notion page content updated automation with both page and database URLs", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -932,15 +935,15 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "notion-page-content-updated triggers require exactly one of --page-url",
+          "notion-page-content-updated automations require exactly one of --page-url",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject Gmail match flags on schedule triggers", async () => {
+    it("should reject Gmail match flags on schedule automations", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -955,15 +958,15 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Event trigger flags only apply to event triggers",
+          "Event automation flags only apply to event automations",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject label flags on schedule triggers", async () => {
+    it("should reject label flags on schedule automations", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -978,7 +981,7 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Event trigger flags only apply to event triggers",
+          "Event automation flags only apply to event automations",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -986,7 +989,7 @@ describe("zero workflow trigger commands", () => {
 
     it("should reject empty Gmail text match flags", async () => {
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "add",
@@ -1005,30 +1008,30 @@ describe("zero workflow trigger commands", () => {
   });
 
   describe("update", () => {
-    function mockExistingTrigger(existing: object) {
+    function mockExistingAutomation(existing: object) {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          "http://localhost:3000/api/zero/workflow-automations/:id",
           ({ params }) => {
-            expect(params.id).toBe(TRIGGER_ID);
+            expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(existing);
           },
         ),
       );
     }
 
-    function captureUpdateTrigger(response: object, existing = response) {
+    function captureUpdateAutomation(response: object, existing = response) {
       const captured: { id?: string; body?: Record<string, unknown> } = {};
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          "http://localhost:3000/api/zero/workflow-automations/:id",
           ({ params }) => {
-            expect(params.id).toBe(TRIGGER_ID);
+            expect(params.id).toBe(AUTOMATION_ID);
             return HttpResponse.json(existing);
           },
         ),
         http.patch(
-          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          "http://localhost:3000/api/zero/workflow-automations/:id",
           async ({ request, params }) => {
             captured.id = params.id as string;
             captured.body = (await request.json()) as Record<string, unknown>;
@@ -1040,20 +1043,20 @@ describe("zero workflow trigger commands", () => {
     }
 
     it("should switch to a cron schedule", async () => {
-      const captured = captureUpdateTrigger(cronTrigger);
+      const captured = captureUpdateAutomation(cronAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
-        TRIGGER_ID,
+        AUTOMATION_ID,
         "--expr",
         "0 9 * * *",
         "--timezone",
         "UTC",
       ]);
 
-      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.id).toBe(AUTOMATION_ID);
       expect(captured.body).toEqual({
         schedule: {
           type: "cron",
@@ -1062,13 +1065,13 @@ describe("zero workflow trigger commands", () => {
         },
       });
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        `Trigger ${TRIGGER_ID} updated`,
+        `Automation ${AUTOMATION_ID} updated`,
       );
     });
 
-    it("should update a Gmail new message trigger with text match flags", async () => {
+    it("should update a Gmail new message automation with text match flags", async () => {
       const updated = {
-        ...gmailTrigger,
+        ...gmailAutomation,
         eventConfig: {
           provider: "gmail",
           event: "new_message",
@@ -1078,20 +1081,20 @@ describe("zero workflow trigger commands", () => {
           },
         },
       };
-      const captured = captureUpdateTrigger(updated);
+      const captured = captureUpdateAutomation(updated);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
-        TRIGGER_ID,
+        AUTOMATION_ID,
         "--from-contains",
         "@example.com",
         "--subject-not-contains",
         "marketing",
       ]);
 
-      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.id).toBe(AUTOMATION_ID);
       expect(captured.body).toEqual({
         eventConfig: {
           provider: "gmail",
@@ -1103,13 +1106,13 @@ describe("zero workflow trigger commands", () => {
         },
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(`Trigger ${TRIGGER_ID} updated`);
+      expect(logCalls).toContain(`Automation ${AUTOMATION_ID} updated`);
       expect(logCalls).toContain('subject does not contain "marketing"');
     });
 
-    it("should update a Gmail label applied trigger by label name", async () => {
+    it("should update a Gmail label applied automation by label name", async () => {
       const updated = {
-        ...gmailLabelTrigger,
+        ...gmailLabelAutomation,
         eventConfig: {
           provider: "gmail",
           event: "label_applied",
@@ -1117,18 +1120,18 @@ describe("zero workflow trigger commands", () => {
           resolvedLabelId: "Label_escalated",
         },
       };
-      const captured = captureUpdateTrigger(updated);
+      const captured = captureUpdateAutomation(updated);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
-        TRIGGER_ID,
+        AUTOMATION_ID,
         "--label",
         "Escalated",
       ]);
 
-      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.id).toBe(AUTOMATION_ID);
       expect(captured.body).toEqual({
         eventConfig: {
           provider: "gmail",
@@ -1141,9 +1144,9 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("Escalated");
     });
 
-    it("should update a GitHub label applied trigger", async () => {
+    it("should update a GitHub label applied automation", async () => {
       const updated = {
-        ...githubLabelTrigger,
+        ...githubLabelAutomation,
         eventConfig: {
           provider: "github",
           event: "label_applied",
@@ -1154,20 +1157,20 @@ describe("zero workflow trigger commands", () => {
           },
         },
       };
-      const captured = captureUpdateTrigger(updated, githubLabelTrigger);
+      const captured = captureUpdateAutomation(updated, githubLabelAutomation);
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
-        TRIGGER_ID,
+        AUTOMATION_ID,
         "--subject",
         "issues",
         "--actor",
         "anyone",
       ]);
 
-      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.id).toBe(AUTOMATION_ID);
       expect(captured.body).toEqual({
         eventConfig: {
           provider: "github",
@@ -1185,14 +1188,14 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("anyone");
     });
 
-    it("should update a Gmail new message trigger from a config file", async () => {
+    it("should update a Gmail new message automation from a config file", async () => {
       const configPath = writeGmailConfig({
         match: {
           body: { containsAny: ["invoice", "receipt"] },
         },
       });
-      const captured = captureUpdateTrigger({
-        ...gmailTrigger,
+      const captured = captureUpdateAutomation({
+        ...gmailAutomation,
         eventConfig: {
           provider: "gmail",
           event: "new_message",
@@ -1202,11 +1205,11 @@ describe("zero workflow trigger commands", () => {
         },
       });
 
-      await triggerCommand.parseAsync([
+      await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
-        TRIGGER_ID,
+        AUTOMATION_ID,
         "--config",
         configPath,
       ]);
@@ -1223,14 +1226,14 @@ describe("zero workflow trigger commands", () => {
     });
 
     it("should reject mixing schedule and Gmail match options", async () => {
-      mockExistingTrigger(cronTrigger);
+      mockExistingAutomation(cronAutomation);
 
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "update",
-          TRIGGER_ID,
+          AUTOMATION_ID,
           "--expr",
           "0 9 * * *",
           "--from-contains",
@@ -1240,21 +1243,21 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Use either schedule flags or event trigger options",
+          "Use either schedule flags or event automation options",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should reject more than one timing flag", async () => {
-      mockExistingTrigger(cronTrigger);
+      mockExistingAutomation(cronAutomation);
 
       await expect(async () => {
-        await triggerCommand.parseAsync([
+        await automationCommand.parseAsync([
           "node",
           "cli",
           "update",
-          TRIGGER_ID,
+          AUTOMATION_ID,
           "--expr",
           "0 9 * * *",
           "--every",
@@ -1270,29 +1273,29 @@ describe("zero workflow trigger commands", () => {
   });
 
   describe("list", () => {
-    it("should display workflow triggers", async () => {
+    it("should display workflow automations", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflows/:workflowId/triggers",
+          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
           ({ params }) => {
             expect(params.workflowId).toBe(WORKFLOW_ID);
             return HttpResponse.json([
-              cronTrigger,
-              loopTrigger,
-              gmailTrigger,
-              githubLabelTrigger,
-              notionTrigger,
-              notionDatabaseTrigger,
-              notionContentUpdatedTrigger,
+              cronAutomation,
+              loopAutomation,
+              gmailAutomation,
+              githubLabelAutomation,
+              notionAutomation,
+              notionDatabaseAutomation,
+              notionContentUpdatedAutomation,
             ]);
           },
         ),
       );
 
-      await triggerCommand.parseAsync(["node", "cli", "list", WORKFLOW_ID]);
+      await automationCommand.parseAsync(["node", "cli", "list", WORKFLOW_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(TRIGGER_ID);
+      expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("0 9 * * *");
       expect(logCalls).toContain("every 15m");
       expect(logCalls).toContain("Gmail new message");
@@ -1310,37 +1313,42 @@ describe("zero workflow trigger commands", () => {
     it("should display an empty state with an add hint", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflows/:workflowId/triggers",
+          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
           () => {
             return HttpResponse.json([]);
           },
         ),
       );
 
-      await triggerCommand.parseAsync(["node", "cli", "list", WORKFLOW_ID]);
+      await automationCommand.parseAsync(["node", "cli", "list", WORKFLOW_ID]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("No triggers");
-      expect(logCalls).toContain("zero workflow trigger add");
+      expect(logCalls).toContain("No automations");
+      expect(logCalls).toContain("zero workflow automation add");
     });
   });
 
   describe("show", () => {
-    it("should display trigger details", async () => {
+    it("should display automation details", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          "http://localhost:3000/api/zero/workflow-automations/:id",
           ({ params }) => {
-            expect(params.id).toBe(TRIGGER_ID);
-            return HttpResponse.json(gmailTrigger);
+            expect(params.id).toBe(AUTOMATION_ID);
+            return HttpResponse.json(gmailAutomation);
           },
         ),
       );
 
-      await triggerCommand.parseAsync(["node", "cli", "show", TRIGGER_ID]);
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "show",
+        AUTOMATION_ID,
+      ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(TRIGGER_ID);
+      expect(logCalls).toContain(AUTOMATION_ID);
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('subject contains "invoice"');
       expect(logCalls).toContain(THREAD_ID);
@@ -1348,11 +1356,11 @@ describe("zero workflow trigger commands", () => {
   });
 
   describe("rm", () => {
-    it("should remove a workflow trigger", async () => {
+    it("should remove a workflow automation", async () => {
       let removedId: string | undefined;
       server.use(
         http.delete(
-          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          "http://localhost:3000/api/zero/workflow-automations/:id",
           ({ params }) => {
             removedId = params.id as string;
             return new HttpResponse(null, { status: 204 });
@@ -1360,47 +1368,57 @@ describe("zero workflow trigger commands", () => {
         ),
       );
 
-      await triggerCommand.parseAsync(["node", "cli", "rm", TRIGGER_ID]);
+      await automationCommand.parseAsync(["node", "cli", "rm", AUTOMATION_ID]);
 
-      expect(removedId).toBe(TRIGGER_ID);
+      expect(removedId).toBe(AUTOMATION_ID);
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        `Trigger ${TRIGGER_ID} removed`,
+        `Automation ${AUTOMATION_ID} removed`,
       );
     });
   });
 
   describe("enable / disable", () => {
-    it("should enable a workflow trigger", async () => {
+    it("should enable a workflow automation", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflow-triggers/:id/enable",
+          "http://localhost:3000/api/zero/workflow-automations/:id/enable",
           () => {
-            return HttpResponse.json(cronTrigger);
+            return HttpResponse.json(cronAutomation);
           },
         ),
       );
 
-      await triggerCommand.parseAsync(["node", "cli", "enable", TRIGGER_ID]);
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "enable",
+        AUTOMATION_ID,
+      ]);
 
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        `Trigger ${TRIGGER_ID} enabled`,
+        `Automation ${AUTOMATION_ID} enabled`,
       );
     });
 
-    it("should disable a workflow trigger", async () => {
+    it("should disable a workflow automation", async () => {
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflow-triggers/:id/disable",
+          "http://localhost:3000/api/zero/workflow-automations/:id/disable",
           () => {
-            return HttpResponse.json({ ...cronTrigger, enabled: false });
+            return HttpResponse.json({ ...cronAutomation, enabled: false });
           },
         ),
       );
 
-      await triggerCommand.parseAsync(["node", "cli", "disable", TRIGGER_ID]);
+      await automationCommand.parseAsync([
+        "node",
+        "cli",
+        "disable",
+        AUTOMATION_ID,
+      ]);
 
       expect(mockConsoleLog.mock.calls.flat().join("\n")).toContain(
-        `Trigger ${TRIGGER_ID} disabled`,
+        `Automation ${AUTOMATION_ID} disabled`,
       );
     });
   });
