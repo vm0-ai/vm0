@@ -19,6 +19,8 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import { createDeferredPromise } from "../../utils";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { now } from "../../external/time";
 import type { RouteEntry } from "../../route-entry";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroOnboardingSetupRoutes } from "../zero-onboarding-setup";
@@ -218,6 +220,42 @@ describe("zero scrape route", () => {
     expectApiError(response.body);
     expect(response.body.error.message).toBe("Zero Scrape is not enabled");
     expect(firecrawlRequests).toBe(0);
+  });
+
+  it("rejects zero tokens without scrape:read capability", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Zero Scrape test actor must belong to an organization");
+    }
+    await setupOnboarding(actor);
+    const seconds = Math.floor(now() / 1000);
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: "run_zero_scrape_missing_capability",
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 60,
+    });
+
+    const response = await accept(
+      client()(zeroScrapeContract).scrape({
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          url: "https://example.com/page",
+          format: "markdown",
+          mode: "standard",
+        },
+      }),
+      [403],
+    );
+
+    expectApiError(response.body);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toBe(
+      "Missing required capability: scrape:read",
+    );
   });
 
   it("rejects scrape requests when the provider is not configured", async () => {
