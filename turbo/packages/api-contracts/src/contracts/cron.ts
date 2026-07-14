@@ -357,14 +357,6 @@ export const cronExecuteWorkflowAutomationsContract = c.router({
   },
 });
 
-export const legacyCronWorkflowAutomationsContract = c.router({
-  execute: {
-    ...cronExecuteWorkflowAutomationsContract.execute,
-    path: "/api/cron/execute-workflow-triggers",
-    summary: "Execute due workflow automations through the legacy path",
-  },
-});
-
 export const cronAggregateInsightsContract = c.router({
   aggregate: {
     method: "GET",

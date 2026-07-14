@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.599.2",
+  "version": "0.599.4",
   "private": true,
   "type": "module",
   "scripts": {

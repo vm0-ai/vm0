@@ -256,7 +256,7 @@ export const zeroWorkflowAutomations = pgTable(
 export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
   "zero_workflow_automation_memory_embeddings",
   {
-    workflowAutomationId: uuid("workflow_trigger_id")
+    workflowAutomationId: uuid("workflow_automation_id")
       .primaryKey()
       .references(
         () => {

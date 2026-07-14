@@ -96,7 +96,6 @@ export async function loadWorkflowAutomationMemoryEmbedding(
     model: embedded.model,
     text: args.query,
   });
-
   const persisted = await settle(
     db
       .insert(zeroWorkflowAutomationMemoryEmbeddings)

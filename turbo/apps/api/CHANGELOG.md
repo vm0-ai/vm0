@@ -1,5 +1,63 @@
 # Changelog
 
+## [1.275.5](https://github.com/vm0-ai/vm0/compare/api-v1.275.4...api-v1.275.5) (2026-07-14)
+
+
+### Refactoring
+
+* **db:** contract workflow automation identifiers ([#21509](https://github.com/vm0-ai/vm0/issues/21509)) ([1acfd38](https://github.com/vm0-ai/vm0/commit/1acfd3863a11dd2b88fb681254e73ab320b31678))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.115.6
+
+## [1.275.4](https://github.com/vm0-ai/vm0/compare/api-v1.275.3...api-v1.275.4) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** stop writing the legacy automation identifier ([#21507](https://github.com/vm0-ai/vm0/issues/21507)) ([24ed4ac](https://github.com/vm0-ai/vm0/commit/24ed4ac5deb3bff63901a7ae896cbd094081a9cd))
+
+## [1.275.3](https://github.com/vm0-ai/vm0/compare/api-v1.275.2...api-v1.275.3) (2026-07-14)
+
+
+### Refactoring
+
+* retire the workflow-trigger cron endpoint ([#21505](https://github.com/vm0-ai/vm0/issues/21505)) ([56d6da0](https://github.com/vm0-ai/vm0/commit/56d6da0f7cbaeaa8c60c8177af080323c41664c6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+    * @vm0/core bumped to 8.431.4
+    * @vm0/db bumped to 1.115.5
+
+## [1.275.2](https://github.com/vm0-ai/vm0/compare/api-v1.275.1...api-v1.275.2) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** canonicalize workflow automation identifiers ([#21493](https://github.com/vm0-ai/vm0/issues/21493)) ([c733907](https://github.com/vm0-ai/vm0/commit/c733907ba7302672e4c13e6ec750dd06419f360e))
+* **api:** retire legacy workflow callback kinds ([#21501](https://github.com/vm0-ai/vm0/issues/21501)) ([84ec5cd](https://github.com/vm0-ai/vm0/commit/84ec5cd698f87512b297755f8ef46855cfb3689a))
+* **contracts:** canonicalize workflow automation schemas ([#21488](https://github.com/vm0-ai/vm0/issues/21488)) ([24acf1b](https://github.com/vm0-ai/vm0/commit/24acf1b2028a7d8b43555796d3b881f1c27e6d74))
+* **db:** canonicalize workflow automation schema identifiers ([#21497](https://github.com/vm0-ai/vm0/issues/21497)) ([0f2e228](https://github.com/vm0-ai/vm0/commit/0f2e22894bcb6fa784bb32baaeade418ab60d5da))
+* **db:** expand workflow automation memory identifiers ([#21503](https://github.com/vm0-ai/vm0/issues/21503)) ([7aee897](https://github.com/vm0-ai/vm0/commit/7aee8976f913814ac94efb09358e25ea36df0fe9))
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.1
+    * @vm0/core bumped to 8.431.3
+    * @vm0/db bumped to 1.115.4
+
 ## [1.275.1](https://github.com/vm0-ai/vm0/compare/api-v1.275.0...api-v1.275.1) (2026-07-14)
 
 

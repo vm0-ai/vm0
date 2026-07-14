@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.599.4](https://github.com/vm0-ai/vm0/compare/app-v0.599.3...app-v0.599.4) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+    * @vm0/core bumped to 8.431.4
+
+## [0.599.3](https://github.com/vm0-ai/vm0/compare/app-v0.599.2...app-v0.599.3) (2026-07-14)
+
+
+### Refactoring
+
+* **contracts:** canonicalize workflow automation schemas ([#21488](https://github.com/vm0-ai/vm0/issues/21488)) ([24acf1b](https://github.com/vm0-ai/vm0/commit/24acf1b2028a7d8b43555796d3b881f1c27e6d74))
+* **platform:** canonicalize workflow automation identifiers ([#21496](https://github.com/vm0-ai/vm0/issues/21496)) ([ee495e3](https://github.com/vm0-ai/vm0/commit/ee495e38e0940b760f2da0c06ecf0000a8837bfd))
+* **platform:** stop using legacy notion switch key ([#21502](https://github.com/vm0-ai/vm0/issues/21502)) ([773e340](https://github.com/vm0-ai/vm0/commit/773e340d67b7161982246cd7445119dd7b3816d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.1
+    * @vm0/core bumped to 8.431.3
+
 ## [0.599.2](https://github.com/vm0-ai/vm0/compare/app-v0.599.1...app-v0.599.2) (2026-07-14)
 
 

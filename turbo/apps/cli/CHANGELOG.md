@@ -1,5 +1,30 @@
 # Changelog
 
+## [9.240.4](https://github.com/vm0-ai/vm0/compare/cli-v9.240.3...cli-v9.240.4) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.194.2
+    * @vm0/core bumped to 8.431.4
+
+## [9.240.3](https://github.com/vm0-ai/vm0/compare/cli-v9.240.2...cli-v9.240.3) (2026-07-14)
+
+
+### Refactoring
+
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.194.1
+    * @vm0/core bumped to 8.431.3
+
 ## [9.240.2](https://github.com/vm0-ai/vm0/compare/cli-v9.240.1...cli-v9.240.2) (2026-07-14)
 
 

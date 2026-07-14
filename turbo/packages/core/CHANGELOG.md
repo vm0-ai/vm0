@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.431.4](https://github.com/vm0-ai/vm0/compare/core-v8.431.3...core-v8.431.4) (2026-07-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.2
+
+## [8.431.3](https://github.com/vm0-ai/vm0/compare/core-v8.431.2...core-v8.431.3) (2026-07-14)
+
+
+### Refactoring
+
+* **contracts:** canonicalize workflow automation schemas ([#21488](https://github.com/vm0-ai/vm0/issues/21488)) ([24acf1b](https://github.com/vm0-ai/vm0/commit/24acf1b2028a7d8b43555796d3b881f1c27e6d74))
+* guard workflow automation terminology ([#21500](https://github.com/vm0-ai/vm0/issues/21500)) ([bc290f8](https://github.com/vm0-ai/vm0/commit/bc290f83b5ad4b54630a969c5e282645f523c05a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.194.1
+
 ## [8.431.2](https://github.com/vm0-ai/vm0/compare/core-v8.431.1...core-v8.431.2) (2026-07-14)
 
 

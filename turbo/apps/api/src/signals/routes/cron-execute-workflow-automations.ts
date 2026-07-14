@@ -8,7 +8,7 @@ import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 // The cron tick polls the zero_workflow_automations table; runs carry generic
 // trigger provenance and inject the workflow skill via the agent's attachment.
-export const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
+const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();
