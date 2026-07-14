@@ -2,6 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -228,6 +230,156 @@ describe("chat inline feedback", () => {
       "Mention the dates before the risk summary.",
     );
 
+    expect(
+      screen.queryByPlaceholderText("What should change about this?"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps inline feedback editable when the current model is unavailable", async () => {
+    const user = userEvent.setup({ delay: null });
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    let runCreateCount = 0;
+
+    context.mocks.data.orgModelPolicies([]);
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      selectedModel: "claude-sonnet-4-6",
+      chatMessages: [
+        {
+          id: "msg-feedback-unavailable-model-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-unavailable-model",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-unavailable-model-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-unavailable-model",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: () => {
+        runCreateCount++;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+
+    const feedbackComment = await screen.findByPlaceholderText(
+      "What should change about this?",
+    );
+    await fill(feedbackComment, "Mention the dates before the risk summary.");
+    await user.click(screen.getByLabelText("Send feedback"));
+
+    await expect(
+      screen.findByText("The selected model is not available"),
+    ).resolves.toBeInTheDocument();
+    expect(runCreateCount).toBe(0);
+
+    const preservedFeedbackComment = screen.getByPlaceholderText(
+      "What should change about this?",
+    );
+    expect(preservedFeedbackComment).toBeEnabled();
+    expect(preservedFeedbackComment).toHaveValue(
+      "Mention the dates before the risk summary.",
+    );
+    await fill(
+      preservedFeedbackComment,
+      "Mention exact dates before the risk summary.",
+    );
+    expect(preservedFeedbackComment).toHaveValue(
+      "Mention exact dates before the risk summary.",
+    );
+  });
+
+  it("submits inline feedback once while model validation is loading", async () => {
+    const user = userEvent.setup({ delay: null });
+    const policyGate = context.mocks.deferred<void>();
+    const assistantReply = "The rollout dates are unclear in this summary.";
+    const policy: OrgModelPolicy = {
+      id: "00000000-0000-4000-a000-000000000704",
+      model: "claude-sonnet-4-6",
+      modelLabel: "Claude Sonnet 4.6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      routeStatus: "valid",
+      routeStatusReason: null,
+      createdAt: "2026-07-14T00:00:00.000Z",
+      updatedAt: "2026-07-14T00:00:00.000Z",
+    };
+    let runCreateCount = 0;
+
+    context.mocks.api(
+      zeroModelPoliciesMainContract.list,
+      async ({ respond, withSignal }) => {
+        await withSignal(policyGate.promise);
+        return respond(200, {
+          policies: [policy],
+          workspaceDefaultModel: policy.model,
+          workspaceDefaultPolicyId: policy.id,
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Feedback review",
+      selectedModel: policy.model,
+      chatMessages: [
+        {
+          id: "msg-feedback-loading-user",
+          role: "user",
+          content: "Review this launch summary",
+          runId: "run-feedback-loading",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-feedback-loading-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-feedback-loading",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onRunCreate: () => {
+        runCreateCount++;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    await user.click(await screen.findByText("Provide feedback"));
+
+    const feedbackComment = await screen.findByPlaceholderText(
+      "What should change about this?",
+    );
+    await fill(feedbackComment, "Mention the dates before the risk summary.");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send feedback")).toBeDisabled();
+    });
+    await user.keyboard("{Enter}");
+
+    policyGate.resolve();
+
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+    });
     expect(
       screen.queryByPlaceholderText("What should change about this?"),
     ).not.toBeInTheDocument();
@@ -469,6 +621,21 @@ describe("chat inline feedback", () => {
     const assistantReply = "The launch summary needs more source context.";
     const sentBodies: RunCreateCapture[] = [];
 
+    context.mocks.data.orgModelPolicies([
+      {
+        id: "00000000-0000-4000-a000-000000000703",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+        routeStatus: "valid",
+        routeStatusReason: null,
+        createdAt: "2026-07-14T00:00:00.000Z",
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ]);
     mockChatLifecycle(context, {
       threadId: FEEDBACK_THREAD_ID,
       threadTitle: "Feedback review",

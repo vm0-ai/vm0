@@ -66,6 +66,14 @@ export const featureSwitch$ = computed((get): FeatureSwitchStates => {
   return JSON.parse(raw) as FeatureSwitchStates;
 });
 
+export const codexFastModeEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CodexFastMode] ?? false;
+});
+
+export const composerUploadPopoverEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
+});
+
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const identity = await get(authenticatedIdentity$);

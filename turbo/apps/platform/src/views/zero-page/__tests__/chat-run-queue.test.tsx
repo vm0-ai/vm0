@@ -1,7 +1,15 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatRunOptionsRequest,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ModelProviderResponse,
+  OrgModelPolicy,
+} from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -35,6 +43,44 @@ interface QueuedMessageCapture {
   attachments?: PersistedAttachment[];
   clientMessageId: string;
   modelSelection?: ModelSelectionRequest | null;
+  runOptions?: ChatRunOptionsRequest;
+}
+
+function buildModelPolicy(
+  overrides: Partial<OrgModelPolicy> & Pick<OrgModelPolicy, "model">,
+): OrgModelPolicy {
+  return {
+    id: crypto.randomUUID(),
+    modelLabel: overrides.model,
+    isDefault: true,
+    defaultProviderType: "vm0",
+    credentialScope: "org",
+    modelProviderId: null,
+    routeStatus: "valid",
+    routeStatusReason: null,
+    createdAt: "2026-07-14T00:00:00.000Z",
+    updatedAt: "2026-07-14T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildProvider(
+  overrides: Partial<ModelProviderResponse> &
+    Pick<ModelProviderResponse, "id" | "type">,
+): ModelProviderResponse {
+  return {
+    framework: "codex",
+    secretName: null,
+    authMethod: "auth_json",
+    secretNames: ["CODEX_AUTH_JSON"],
+    isDefault: false,
+    selectedModel: null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    createdAt: "2026-07-14T00:00:00.000Z",
+    updatedAt: "2026-07-14T00:00:00.000Z",
+    ...overrides,
+  };
 }
 
 async function startActiveRun(
@@ -52,9 +98,20 @@ async function startActiveRun(
   return activeRunComposer();
 }
 
-function mockActiveRunThread(threadId: string): void {
+function mockActiveRunThread(
+  threadId: string,
+  options?: {
+    readonly selectedModel?: string;
+    readonly codexServiceTier?: "fast";
+    readonly onQueuedMessageAppend?: (body: QueuedMessageCapture) => void;
+  },
+): void {
   mockChatLifecycle(context, {
     threadId,
+    ...(options?.selectedModel ? { selectedModel: options.selectedModel } : {}),
+    ...(options?.codexServiceTier
+      ? { codexServiceTier: options.codexServiceTier }
+      : {}),
     chatMessages: [
       {
         id: `${threadId}-active-user`,
@@ -72,6 +129,9 @@ function mockActiveRunThread(threadId: string): void {
       },
     ],
     activeRunIds: ["run-active"],
+    ...(options?.onQueuedMessageAppend
+      ? { onQueuedMessageAppend: options.onQueuedMessageAppend }
+      : {}),
   });
 }
 
@@ -170,6 +230,12 @@ describe("chat run queue", () => {
   it("omits model selection when queueing a follow-up on an existing thread", async () => {
     const user = userEvent.setup({ delay: null });
     const queuedBodies: QueuedMessageCapture[] = [];
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+      }),
+    ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       selectedModel: "claude-sonnet-4-6",
@@ -207,6 +273,78 @@ describe("chat run queue", () => {
       expect(queuedBodies).toHaveLength(1);
     });
     expect(queuedBodies[0]?.modelSelection).toBeUndefined();
+  });
+
+  it("keeps the draft when the hydrated model is unavailable for queueing", async () => {
+    const user = userEvent.setup({ delay: null });
+    const queuedBodies: QueuedMessageCapture[] = [];
+    context.mocks.data.orgModelPolicies([]);
+    mockActiveRunThread(THREAD_ID, {
+      selectedModel: "gpt-5.5",
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const composer = await activeRunComposer();
+    await fill(composer, "Keep this queued draft");
+    await user.keyboard("{Enter}");
+
+    await expect(
+      screen.findByText("The selected model is not available"),
+    ).resolves.toBeInTheDocument();
+    expect(queuedBodies).toHaveLength(0);
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    expect(composer).toHaveTextContent("Keep this queued draft");
+  });
+
+  it("preserves Codex fast mode when queueing a follow-up", async () => {
+    const user = userEvent.setup({ delay: null });
+    const queuedBodies: QueuedMessageCapture[] = [];
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        model: "gpt-5.5",
+        modelLabel: "GPT 5.5",
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000931",
+        type: "codex-oauth-token",
+      }),
+    ]);
+    mockActiveRunThread(THREAD_ID, {
+      selectedModel: "gpt-5.5",
+      codexServiceTier: "fast",
+      onQueuedMessageAppend: (body) => {
+        queuedBodies.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.CodexFastMode]: true },
+      path: CHAT_PATH,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    await sendQueuedMessage(user, "Queued fast follow-up");
+
+    await waitFor(() => {
+      expect(queuedBodies).toHaveLength(1);
+    });
+    expect(queuedBodies[0]?.runOptions).toStrictEqual({
+      codexServiceTier: "fast",
+    });
   });
 
   it("queues an attachment-only follow-up during an active run", async () => {

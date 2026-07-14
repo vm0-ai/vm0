@@ -12,6 +12,7 @@ import {
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { accept } from "../../lib/accept.ts";
+import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
@@ -33,6 +34,7 @@ import {
 } from "./optimistic-chat-messages.ts";
 import {
   applyCodexFastModeDefault,
+  isCodexFastModeAvailableForSelection,
   resolveModelFirstUserDefaultSelection,
 } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -44,6 +46,9 @@ import { logger } from "../log.ts";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
+import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
+import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 export type NewChatThreadPane = "main" | "sidebar";
 
@@ -58,9 +63,9 @@ export const newChatThreadDisabled$ = computed(() => {
 interface SendNewThreadMessageRequest {
   agentId: string;
   prompt: string;
-  modelSelection: ModelProviderSelection | null;
   generationTemplate: GenerationTemplateRequest | undefined;
   computerUseHostId?: string | null;
+  routeSearchParams?: URLSearchParams;
 }
 
 interface SendNewThreadMessageResult {
@@ -155,7 +160,14 @@ function resolveNewThreadModelSelection(
   },
 ): ModelProviderSelection | null {
   if (modelSelection) {
-    return modelSelection;
+    return modelSelection.codexServiceTier === "fast" &&
+      !isCodexFastModeAvailableForSelection({
+        policies: args.policies,
+        selectedModel: modelSelection.selectedModel,
+        codexFastModeEnabled: args.codexFastModeEnabled,
+      })
+      ? { selectedModel: modelSelection.selectedModel }
+      : modelSelection;
   }
   return applyCodexFastModeDefault({
     selection: resolveModelFirstUserDefaultSelection({
@@ -168,18 +180,55 @@ function resolveNewThreadModelSelection(
   });
 }
 
-const routeMainChatThread$ = command(({ get, set }, threadId: string) => {
-  const next = new URLSearchParams(get(searchParams$));
-  if (next.get(SIDEBAR_PARAM) === threadId) {
-    next.delete(SIDEBAR_PARAM);
-  }
-  clearArtifactSidebarParams(next);
-  clearChatAutomationSidebarParams(next);
-  set(detachedNavigateTo$, "/chats/:threadId", {
-    pathParams: { threadId },
-    searchParams: next,
-  });
-});
+const resolveCurrentNewThreadModelSelection$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const [modelSelection, policies, userPreference, codexFastModeDefault] =
+      await Promise.all([
+        get(chatPageModelSelection$),
+        get(orgModelPolicies$),
+        get(userModelPreference$),
+        get(codexFastModeLocalDefault$),
+      ]);
+    signal.throwIfAborted();
+    const featureSwitches = get(featureSwitch$);
+    const resolved = resolveNewThreadModelSelection(modelSelection, {
+      policies,
+      userPreference,
+      codexFastModeDefault,
+      codexFastModeEnabled:
+        featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
+    });
+    if (
+      resolved &&
+      (await set(selectedModelAvailable$, resolved.selectedModel, signal))
+    ) {
+      return resolved;
+    }
+    toast.error("The selected model is not available");
+    return null;
+  },
+);
+
+const routeMainChatThread$ = command(
+  (
+    { get, set },
+    args: {
+      readonly threadId: string;
+      readonly searchParams?: URLSearchParams;
+    },
+  ) => {
+    const next = new URLSearchParams(args.searchParams ?? get(searchParams$));
+    if (next.get(SIDEBAR_PARAM) === args.threadId) {
+      next.delete(SIDEBAR_PARAM);
+    }
+    clearArtifactSidebarParams(next);
+    clearChatAutomationSidebarParams(next);
+    set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: args.threadId },
+      searchParams: next,
+    });
+  },
+);
 
 const routeSidebarChatThread$ = command(
   async (
@@ -200,16 +249,21 @@ const routeChatThread$ = command(
     {
       pane,
       threadId,
+      searchParams,
     }: {
       readonly pane: NewChatThreadPane;
       readonly threadId: string;
+      readonly searchParams?: URLSearchParams;
     },
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
 
     if (pane === "main") {
-      set(routeMainChatThread$, threadId);
+      set(routeMainChatThread$, {
+        threadId,
+        ...(searchParams ? { searchParams } : {}),
+      });
     } else {
       await set(routeSidebarChatThread$, threadId, signal);
     }
@@ -376,32 +430,19 @@ const sendNewThreadMessage$ = command(
     readonly threadId: string;
     readonly sendResult: Promise<SendNewThreadMessageResult>;
   } | null> => {
-    const { agentId, prompt, modelSelection } = request;
+    const { agentId, prompt } = request;
     const generationTemplate = generationTemplateForFeatureSwitches(
       request.generationTemplate,
       get(featureSwitch$),
     );
     const { computerUseHostId } = request;
     const draft = get(talkDraft$);
-    const policies = await get(orgModelPolicies$);
-    signal.throwIfAborted();
-    const userPreference = await get(userModelPreference$);
-    signal.throwIfAborted();
-    const codexFastModeDefault = await get(codexFastModeLocalDefault$);
-    signal.throwIfAborted();
-    const featureSwitches = get(featureSwitch$);
-    const resolvedModelSelection = resolveNewThreadModelSelection(
-      modelSelection,
-      {
-        policies,
-        userPreference,
-        codexFastModeDefault,
-        codexFastModeEnabled:
-          featureSwitches[FeatureSwitchKey.CodexFastMode] ?? false,
-      },
+    const resolvedModelSelection = await set(
+      resolveCurrentNewThreadModelSelection$,
+      signal,
     );
     if (!resolvedModelSelection) {
-      throw new Error("A model selection is required");
+      return null;
     }
     const prepared = await set(
       prepareUserMessageFromDraft$,
@@ -495,17 +536,26 @@ export const sendNewThread$ = command(
     { set },
     request: SendNewThreadMessageRequest,
     signal: AbortSignal,
-  ) => {
+  ): Promise<boolean> => {
     const result = await set(sendNewThreadMessage$, request, signal);
     if (!result) {
-      return;
+      return false;
     }
 
+    set(startChatNavigationTiming$);
     await set(
       routeChatThread$,
-      { pane: "main", threadId: result.threadId },
+      {
+        pane: "main",
+        threadId: result.threadId,
+        ...(request.routeSearchParams
+          ? { searchParams: request.routeSearchParams }
+          : {}),
+      },
       signal,
     );
     await result.sendResult;
+    signal.throwIfAborted();
+    return true;
   },
 );
