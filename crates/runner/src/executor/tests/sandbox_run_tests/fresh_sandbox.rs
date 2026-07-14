@@ -451,15 +451,15 @@ async fn execute_inner_create_failure_returns_error() {
 }
 
 #[tokio::test]
-async fn execute_inner_start_failure_destroy_panic_returns_start_error() {
+async fn execute_new_sandbox_does_not_replace_when_failed_sandbox_destroy_panics() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-    overrides.push_start_result(Err(SandboxError::Start {
-        message: "boot failed".into(),
+    overrides.push_start_result(Err(SandboxError::StartRequiresFreshSandbox {
+        message: "guest DNS readiness failed".into(),
     }));
     let factory = DestroyPanicFactory {
-        inner: MockSandboxFactory::with_overrides(overrides),
+        inner: MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
     };
 
     let ctx = minimal_context();
@@ -481,7 +481,15 @@ async fn execute_inner_start_failure_destroy_panic_returns_start_error() {
 
     assert!(result.is_err(), "start failure must return an error");
     let err = result.err().unwrap();
-    assert!(err.to_string().contains("boot failed"), "got: {err}");
+    assert!(
+        err.to_string().contains("guest DNS readiness failed"),
+        "got: {err}"
+    );
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_no_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_after_start_readiness",
+    );
     assert_proxy_registry_empty(dir.path()).await;
     assert!(
         !config

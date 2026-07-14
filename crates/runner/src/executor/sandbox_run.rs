@@ -790,7 +790,7 @@ async fn create_started_sandbox(
                 &e.to_string(),
             );
             telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-            destroy_sandbox_panic_safe(factory, sandbox).await;
+            let _ = destroy_sandbox_panic_safe(factory, sandbox).await;
             return Err(SandboxPrepareError::fatal(e));
         }
     };
@@ -816,8 +816,13 @@ async fn create_started_sandbox(
         network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
-        destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(SandboxPrepareError::from_start(e));
+        let destroy_succeeded = destroy_sandbox_panic_safe(factory, sandbox).await;
+        let error = if destroy_succeeded {
+            SandboxPrepareError::from_start(e)
+        } else {
+            SandboxPrepareError::fatal(e.into())
+        };
+        return Err(error);
     }
     telemetry.record(
         RUNNER_FRESH_SANDBOX_START,
@@ -847,8 +852,13 @@ async fn create_started_sandbox(
         network_log_session
             .close_for_upload(context.run_id, &config.network_log_drain)
             .await;
-        destroy_sandbox_panic_safe(factory, sandbox).await;
-        return Err(SandboxPrepareError::retry_without_workspace_image(e));
+        let destroy_succeeded = destroy_sandbox_panic_safe(factory, sandbox).await;
+        let error = if destroy_succeeded {
+            SandboxPrepareError::retry_without_workspace_image(e)
+        } else {
+            SandboxPrepareError::fatal(e)
+        };
+        return Err(error);
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
     if let Some(notifier) = sandbox_prepared {
@@ -886,14 +896,16 @@ pub(super) async fn invalidate_workspace_cache_hit(
 pub(super) async fn destroy_sandbox_panic_safe(
     factory: &dyn SandboxFactory,
     sandbox: Box<dyn Sandbox>,
-) {
+) -> bool {
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()
         .await
         .is_err()
     {
-        warn!("sandbox destroy panicked after start failure");
+        warn!("sandbox destroy panicked after preparation failure");
+        return false;
     }
+    true
 }
 
 /// Run a job inside a reused (kept-alive) sandbox.
