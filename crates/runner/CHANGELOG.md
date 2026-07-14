@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.144.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.13...runner-rs-v0.144.14) (2026-07-14)
+
+
+### Documentation
+
+* **mitm-addon:** document connected endpoint contract ([#21433](https://github.com/vm0-ai/vm0/issues/21433)) ([94fa7ca](https://github.com/vm0-ai/vm0/commit/94fa7ca9ec207abd9af7d77704be583b5b896912))
+
 ## [0.144.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.12...runner-rs-v0.144.13) (2026-07-14)
 
 
