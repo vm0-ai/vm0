@@ -3320,7 +3320,7 @@ export interface PresentationRunbookPackage {
 // these in sync with the private R2 version ids served by the API download route.
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
-    "9c7524540e98a3605b71a35c918d1a186d9599f34f9e67aa8c86c457dc6b4582",
+    "78292a9a5c454e36a5255f22d147ac56f53c69538a4ac0897160239c2ca941e3",
   bloom: "7f05f31603d2ad3055b23147cc2b41e047c5969b6640502489b34bd33a837d62",
   "blueprint-academy":
     "d6f16dff7c2f7830b71a3d6ed3fd228f1de7a29fa7795e2a31afb9fc841a0f72",
