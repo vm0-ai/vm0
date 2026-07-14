@@ -60,14 +60,8 @@ const SNAPSHOT_CREATE_COMMAND_GROUPS: &[&[&str]] = &[
     SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
 ];
 
-const NETWORK_COMMANDS: &[&str] = &[
-    "ip",
-    "iptables",
-    "iptables-save",
-    "ip6tables",
-    "ip6tables-save",
-    "sysctl",
-];
+const NETWORK_COMMANDS: &[&str] = &["ip", "iptables", "iptables-save", "sysctl"];
+const DNS_INPUT_FILTER_COMMANDS: &[&str] = &["ip6tables", "ip6tables-save"];
 const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount"];
 const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
 const COW_POOL_SNAPSHOT_RESTORE_COMMANDS: &[&str] = &["cp"];
@@ -93,9 +87,12 @@ pub(crate) async fn check_prerequisites(
 }
 
 /// Verify host network tools before creating network namespaces.
-pub(crate) fn check_network_prerequisites() -> Result<(), SandboxError> {
+pub(crate) fn check_network_prerequisites(
+    require_dns_input_filter: bool,
+) -> Result<(), SandboxError> {
     let mut errors = Vec::new();
-    check_required_commands(NETWORK_COMMANDS, &mut errors);
+    let commands = network_commands(require_dns_input_filter);
+    check_required_commands(&commands, &mut errors);
     prerequisite_result(errors)
 }
 
@@ -283,6 +280,14 @@ fn required_commands(mode: PrerequisiteMode<'_>) -> Vec<&'static str> {
     required_commands_for_groups(mode.command_groups())
 }
 
+fn network_commands(require_dns_input_filter: bool) -> Vec<&'static str> {
+    if require_dns_input_filter {
+        required_commands_for_groups(&[NETWORK_COMMANDS, DNS_INPUT_FILTER_COMMANDS])
+    } else {
+        required_commands_for_groups(&[NETWORK_COMMANDS])
+    }
+}
+
 fn required_commands_for_groups<'a>(command_groups: &[&'a [&'a str]]) -> Vec<&'a str> {
     let mut commands = Vec::new();
     for group in command_groups {
@@ -465,15 +470,7 @@ mod tests {
         let mode = PrerequisiteMode::FactoryFresh;
         assert_eq!(
             required_commands(mode),
-            vec![
-                "ip",
-                "iptables",
-                "iptables-save",
-                "ip6tables",
-                "ip6tables-save",
-                "sysctl",
-                "mkfs.ext4",
-            ]
+            vec!["ip", "iptables", "iptables-save", "sysctl", "mkfs.ext4"]
         );
     }
 
@@ -490,8 +487,6 @@ mod tests {
                 "ip",
                 "iptables",
                 "iptables-save",
-                "ip6tables",
-                "ip6tables-save",
                 "sysctl",
                 "cp",
                 "mkfs.ext4",
@@ -514,8 +509,6 @@ mod tests {
                 "ip",
                 "iptables",
                 "iptables-save",
-                "ip6tables",
-                "ip6tables-save",
                 "sysctl",
                 "mkfs.ext4",
                 "unshare",
@@ -560,16 +553,20 @@ mod tests {
     }
 
     #[test]
-    fn network_prerequisites_use_network_command_set() {
+    fn network_prerequisites_only_require_ipv6_tools_for_dns_filter() {
         assert_eq!(
-            required_commands_for_groups(&[NETWORK_COMMANDS]),
+            network_commands(false),
+            vec!["ip", "iptables", "iptables-save", "sysctl"]
+        );
+        assert_eq!(
+            network_commands(true),
             vec![
                 "ip",
                 "iptables",
                 "iptables-save",
+                "sysctl",
                 "ip6tables",
                 "ip6tables-save",
-                "sysctl",
             ]
         );
     }
