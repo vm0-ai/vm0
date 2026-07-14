@@ -6,6 +6,7 @@ import threading
 import uuid
 from unittest.mock import patch
 
+import matching
 import mitm_addon
 import upstream_admission
 import upstream_destination_binding
@@ -129,6 +130,85 @@ async def test_server_connect_preserves_clienthello_original_address(
     assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_server_connect_reuses_clienthello_binding_without_rechecking_authority(
+    tmp_path,
+    mitm_ctx,
+    make_tls_data,
+    monkeypatch,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    tls_data = make_tls_data(
+        client_ip="10.200.0.5",
+        client_sni="",
+        sni="api.github.com",
+    )
+    data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
+    authority_check_count = 0
+    original_authority_check = matching.CompiledFirewallSet.matches_ordinary_credential_authority
+
+    def counting_authority_check(compiled_firewalls, host, port):
+        nonlocal authority_check_count
+        authority_check_count += 1
+        return original_authority_check(compiled_firewalls, host, port)
+
+    monkeypatch.setattr(
+        matching.CompiledFirewallSet,
+        "matches_ordinary_credential_authority",
+        counting_authority_check,
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.tls_clienthello(tls_data)
+        await mitm_addon.server_connect(data)
+
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert authority_check_count == 1
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_server_connect_wrong_kind_binding_still_checks_current_authority(
+    tmp_path,
+    mitm_ctx,
+    make_tls_data,
+    monkeypatch,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    tls_data = make_tls_data(
+        client_ip="10.200.0.5",
+        client_sni="",
+        sni="api.github.com",
+    )
+    data = _ServerConnectData(client=tls_data.context.client, server=tls_data.context.server)
+    authority_check_count = 0
+    original_authority_check = matching.CompiledFirewallSet.matches_ordinary_credential_authority
+
+    def counting_authority_check(compiled_firewalls, host, port):
+        nonlocal authority_check_count
+        authority_check_count += 1
+        return original_authority_check(compiled_firewalls, host, port)
+
+    monkeypatch.setattr(
+        matching.CompiledFirewallSet,
+        "matches_ordinary_credential_authority",
+        counting_authority_check,
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.github.com"):
+        mitm_addon.tls_clienthello(tls_data)
+
+    api_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert api_binding.kinds == frozenset(("api_allow",))
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.server_connect(data)
+
+    connector_binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert authority_check_count == 1
+    assert connector_binding.kinds == frozenset(("api_allow", "connector_auth"))
 
 
 async def test_server_connect_does_not_overwrite_clienthello_binding_after_address_changes(

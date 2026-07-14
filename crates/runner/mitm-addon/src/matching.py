@@ -128,6 +128,7 @@ class _CompiledApiCore(NamedTuple):
     rule_index: _CompiledRuleIndex
     base_malformed: bool
     auth_malformed: bool
+    injects_ordinary_upstream_credentials: bool
     routing_identity: str | None
     # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
@@ -156,6 +157,10 @@ class _CompiledApi(NamedTuple):
     @property
     def auth_malformed(self) -> bool:
         return self.core.auth_malformed
+
+    @property
+    def injects_ordinary_upstream_credentials(self) -> bool:
+        return self.core.injects_ordinary_upstream_credentials
 
     @property
     def routing_identity(self) -> str | None:
@@ -208,14 +213,28 @@ class _CompiledApiIndex(NamedTuple):
     static_roots: Mapping[tuple[str, str], _CompiledApiTrieNode]
 
 
+class _CompiledOrdinaryCredentialAuthorityIndex(NamedTuple):
+    static_authorities: frozenset[str]
+    parameterized_bases: tuple[_CompiledBase, ...]
+
+
 @dataclass(frozen=True, init=False, slots=True, eq=False, repr=False)
 class CompiledFirewallSet:
     firewalls: tuple[_CompiledFirewall, ...]
     _api_index: _CompiledApiIndex = field(compare=False, repr=False)
+    _ordinary_credential_authority_index: _CompiledOrdinaryCredentialAuthorityIndex = field(
+        compare=False,
+        repr=False,
+    )
 
     def __init__(self, firewalls: tuple[_CompiledFirewall, ...]) -> None:
         object.__setattr__(self, "firewalls", firewalls)
         object.__setattr__(self, "_api_index", _compile_api_candidate_index(firewalls))
+        object.__setattr__(
+            self,
+            "_ordinary_credential_authority_index",
+            _compile_ordinary_credential_authority_index(firewalls),
+        )
 
     def __bool__(self) -> bool:
         return bool(self.firewalls)
@@ -230,10 +249,12 @@ class CompiledFirewallSet:
         url_parts = _split_https_authority_parts(host, port)
         if url_parts is None:
             return False
+        authority_index = self._ordinary_credential_authority_index
+        if url_parts.authority.lower() in authority_index.static_authorities:
+            return True
         return any(
-            _api_matches_ordinary_credential_authority(candidate.api, url_parts)
-            for candidate in self._api_index.all_candidates
-            if not candidate.firewall.name_malformed
+            _match_compiled_base_authority(url_parts, base)
+            for base in authority_index.parameterized_bases
         )
 
 
@@ -444,19 +465,35 @@ def _path_specificity(
     )
 
 
-def _api_matches_ordinary_credential_authority(
-    api_entry: _CompiledApi,
-    url_parts: _BaseUrlParts,
-) -> bool:
-    if (
-        api_entry.base_malformed
-        or api_entry.auth_malformed
-        or api_entry.base.parts.scheme.lower() != "https"
-    ):
-        return False
-    if not auth_config_injects_ordinary_upstream_credentials(api_entry.raw_api_entry.get("auth")):
-        return False
-    return _match_compiled_base_authority(url_parts, api_entry.base)
+def _compiled_base_authority_has_params(base: _CompiledBase) -> bool:
+    return base.has_params and any(
+        not isinstance(segment, SegmentLiteral) for segment in base.host_segments
+    )
+
+
+def _compile_ordinary_credential_authority_index(
+    firewalls: tuple[_CompiledFirewall, ...],
+) -> _CompiledOrdinaryCredentialAuthorityIndex:
+    static_authorities: set[str] = set()
+    parameterized_bases: list[_CompiledBase] = []
+    for firewall in firewalls:
+        if firewall.name_malformed:
+            continue
+        for api in firewall.apis:
+            if (
+                api.base_malformed
+                or not api.injects_ordinary_upstream_credentials
+                or api.base.parts.scheme.lower() != "https"
+            ):
+                continue
+            if _compiled_base_authority_has_params(api.base):
+                parameterized_bases.append(api.base)
+            else:
+                static_authorities.add(api.base.parts.authority.lower())
+    return _CompiledOrdinaryCredentialAuthorityIndex(
+        frozenset(static_authorities),
+        tuple(parameterized_bases),
+    )
 
 
 def _path_index_key(path: str) -> tuple[str, ...]:
@@ -796,6 +833,10 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
         base = compiled_config_base.base
         base_malformed = compiled_config_base.malformed
         auth_malformed = not _auth_config_is_valid(api_entry)
+        injects_ordinary_upstream_credentials = (
+            not auth_malformed
+            and auth_config_injects_ordinary_upstream_credentials(api_entry.get("auth"))
+        )
         routing_identity = _api_routing_identity(api_entry)
 
         compiled_permissions: list[_CompiledPermission] = []
@@ -850,6 +891,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
                 _compile_rule_index(compiled_permissions_tuple),
                 base_malformed,
                 auth_malformed,
+                injects_ordinary_upstream_credentials,
                 routing_identity,
                 has_malformed_rules,
             )
