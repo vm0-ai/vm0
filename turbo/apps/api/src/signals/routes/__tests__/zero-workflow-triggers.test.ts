@@ -593,7 +593,6 @@ describe("zero workflow triggers", () => {
   it("keeps automation routes in parity with legacy trigger aliases", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const scenario = await setupFixture("team");
-    await enableWebhookWorkflowTriggers(scenario.fixture);
     const { actor, workflowId } = scenario;
     const created = await accept(
       automationsClient().create({
