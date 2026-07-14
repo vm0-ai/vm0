@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.238.6](https://github.com/vm0-ai/vm0/compare/cli-v9.238.5...cli-v9.238.6) (2026-07-14)
+
+
+### Refactoring
+
+* **cli:** use server permission-deny diagnostics ([#21302](https://github.com/vm0-ai/vm0/issues/21302)) ([3aff081](https://github.com/vm0-ai/vm0/commit/3aff0819589c8892cb760b3a6c8db314aabd692f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.189.0
+    * @vm0/connectors bumped to 1.157.1
+    * @vm0/core bumped to 8.427.1
+
 ## [9.238.5](https://github.com/vm0-ai/vm0/compare/cli-v9.238.4...cli-v9.238.5) (2026-07-13)
 
 
