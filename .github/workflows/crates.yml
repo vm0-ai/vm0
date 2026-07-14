@@ -130,7 +130,7 @@ jobs:
           # The hostname compatibility job crosses the Turbo and exact runner
           # boundary. Keep it separate so Turbo-only policy changes do not force
           # all Rust jobs to run.
-          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx '(\.github/scripts/firewall-hostname-runtime-contract\.sh|\.github/workflows/crates\.yml|crates/runner/src/deps\.rs|crates/runner/mitm-addon/scripts/firewall_hostname_contract_probe\.py|crates/runner/mitm-addon/src/host_normalization\.py|turbo/package\.json|turbo/pnpm-lock\.yaml|turbo/packages/connectors/package\.json|turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract\.json|turbo/packages/connectors/src/firewall-hostname-policy\.ts|turbo/packages/connectors/src/firewall-types\.ts|turbo/packages/connectors/src/scripts/firewall-hostname-contract\.ts)'; then
+          if git diff --name-only "$BASE_REF" HEAD | grep -Eqx '(\.github/scripts/firewall-hostname-runtime-contract\.sh|\.github/workflows/crates\.yml|crates/runner/src/deps\.rs|crates/runner/mitm-addon/scripts/firewall_hostname_contract_probe\.py|crates/runner/mitm-addon/src/host_normalization\.py|turbo/pnpm-lock\.yaml|turbo/packages/connectors/package\.json|turbo/packages/connectors/src/__tests__/firewall-base-url-validation-contract\.json|turbo/packages/connectors/src/firewall-hostname-policy\.ts|turbo/packages/connectors/src/firewall-types\.ts|turbo/packages/connectors/src/scripts/firewall-hostname-contract\.ts)'; then
             echo "firewall-hostname-contract-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "firewall-hostname-contract-changed=false" >> "$GITHUB_OUTPUT"

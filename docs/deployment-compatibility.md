@@ -178,13 +178,16 @@ connector definitions and encrypted variable values remain unchanged in
 storage; newly produced execution firewalls and hostname-bearing built-in
 variables carry the canonical value in the existing payload shape.
 
-Treat the Unicode mapping data, supported Node majors, and pinned mitmproxy
-artifact as one compatibility contract. To upgrade any part of it:
+Treat the Unicode mapping data, API runtime majors that can overlap during a
+deployment, and pinned mitmproxy artifact as one compatibility contract. To
+upgrade any part of it:
 
 1. Update the exact hostname-policy dependency and policy revision
    deliberately; do not allow mapping data to move through a range update.
-2. Add the intended Node major to `turbo/package.json` and the CI matrix before
-   it can serve API traffic.
+2. Add a candidate API runtime major to the compatibility CI matrix before it
+   can serve traffic. Select the deployed API runtime independently at its
+   deployment boundary; do not use the repository tooling `engines` range as a
+   proxy for production runtime selection.
 3. Review the generated corpus count and digest. A changed digest requires an
    explicit policy decision, not a mechanical snapshot update.
 4. Run the corpus through the exact checksum-verified mitmdump artifact from
