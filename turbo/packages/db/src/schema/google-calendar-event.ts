@@ -114,6 +114,14 @@ export const googleCalendarProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    automationId: uuid("automation_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
     channelId: uuid("channel_id").notNull(),
     resourceState: varchar("resource_state", { length: 64 }).notNull(),
     calendarEventId: varchar("calendar_event_id", { length: 1024 }).notNull(),
@@ -127,6 +135,12 @@ export const googleCalendarProcessedEvents = pgTable(
       uniqueIndex("idx_google_calendar_processed_events_event").on(
         table.watchStateId,
         table.triggerId,
+        table.calendarEventId,
+        table.eventChangeKey,
+      ),
+      uniqueIndex("idx_google_calendar_processed_events_automation_event").on(
+        table.watchStateId,
+        table.automationId,
         table.calendarEventId,
         table.eventChangeKey,
       ),
