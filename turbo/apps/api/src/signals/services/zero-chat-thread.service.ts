@@ -91,7 +91,7 @@ function chatMessageOrderSequenceSql() {
 function matchedMessageCreatedAtSql(messageId: string) {
   return sql<Date>`(
     SELECT ${matchedChatMessage.createdAt}
-    FROM ${matchedChatMessage}
+    FROM ${chatMessages} AS matched_chat_message
     WHERE ${matchedChatMessage.id} = ${messageId}
   )`;
 }
