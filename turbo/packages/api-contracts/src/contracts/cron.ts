@@ -100,7 +100,7 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
-const cronExecuteWorkflowTriggersResponseSchema = z.object({
+const cronExecuteWorkflowAutomationsResponseSchema = z.object({
   success: z.literal(true),
   executed: z.number(),
   skipped: z.number(),
@@ -344,16 +344,24 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
-export const cronExecuteWorkflowTriggersContract = c.router({
+export const cronExecuteWorkflowAutomationsContract = c.router({
   execute: {
     method: "GET",
-    path: "/api/cron/execute-workflow-triggers",
+    path: "/api/cron/execute-workflow-automations",
     headers: authHeadersSchema,
     responses: {
-      200: cronExecuteWorkflowTriggersResponseSchema,
+      200: cronExecuteWorkflowAutomationsResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Execute due workflow schedule triggers",
+    summary: "Execute due workflow automations",
+  },
+});
+
+export const legacyCronWorkflowAutomationsContract = c.router({
+  execute: {
+    ...cronExecuteWorkflowAutomationsContract.execute,
+    path: "/api/cron/execute-workflow-triggers",
+    summary: "Execute due workflow automations through the legacy path",
   },
 });
 
@@ -472,7 +480,7 @@ export {
   cronArtifactPreviewResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
-  cronExecuteWorkflowTriggersResponseSchema,
+  cronExecuteWorkflowAutomationsResponseSchema,
   cronRenewGmailWatchesResponseSchema,
   cronRenewGoogleCalendarWatchesResponseSchema,
   cronRenewGoogleWorkspaceEventSubscriptionsResponseSchema,

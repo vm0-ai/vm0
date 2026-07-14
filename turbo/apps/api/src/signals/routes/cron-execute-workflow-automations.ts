@@ -1,4 +1,4 @@
-import { cronExecuteWorkflowTriggersContract as cronExecuteWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/cron";
+import { cronExecuteWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
@@ -8,7 +8,7 @@ import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 // The cron tick polls the zero_workflow_automations table; runs carry generic
 // trigger provenance and inject the workflow skill via the agent's attachment.
-const executeWorkflowAutomationsRoute$ = command(
+export const executeWorkflowAutomationsRoute$: RouteEntry["handler"] = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!get(hasValidCronSecret$)) {
       return cronUnauthorized();

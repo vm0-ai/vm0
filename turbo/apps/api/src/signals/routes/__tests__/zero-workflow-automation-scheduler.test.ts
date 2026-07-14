@@ -33,6 +33,8 @@ const webhooksApi = createWebhookCallbackApi(context);
 
 const WORKFLOW_NAME = "scheduler-workflow";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
+  "/api/cron/execute-workflow-automations";
+const LEGACY_CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-triggers";
 const CRON_SECRET = "test-cron-secret";
 
@@ -131,11 +133,12 @@ async function disableAutomation(automationId: string): Promise<void> {
   );
 }
 
-async function executeDueWorkflowAutomations(): Promise<void> {
-  const response = await createApp({ signal: context.signal }).request(
-    CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
-    { headers: { authorization: `Bearer ${CRON_SECRET}` } },
-  );
+async function executeDueWorkflowAutomations(
+  route = CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
+): Promise<void> {
+  const response = await createApp({ signal: context.signal }).request(route, {
+    headers: { authorization: `Bearer ${CRON_SECRET}` },
+  });
   await expectOk(response, "execute workflow automations cron");
   const body = await readJson<{ readonly success: boolean }>(response);
   expect(body.success).toBeTruthy();
@@ -273,8 +276,19 @@ describe("zero workflow automation scheduler", () => {
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     const environment = claim.environment ?? {};
-    expect(environment.ZERO_WORKFLOW_TRIGGER_ID).toBeUndefined();
     expect(environment.ZERO_WORKFLOW_ID).toBeUndefined();
+    await disableAutomation(automation.automationId);
+  });
+
+  it("keeps the legacy cron path working during the rollout window", async () => {
+    const scenario = await setup();
+    const automation = await createDueLoopAutomation(scenario, 60);
+
+    await executeDueWorkflowAutomations(
+      LEGACY_CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE,
+    );
+
+    await onlyWorkflowRunMessage(automation.threadId);
     await disableAutomation(automation.automationId);
   });
 

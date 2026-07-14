@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { zeroWorkflowCommand } from "../index";
 
-describe("zero workflow trigger hard cut", () => {
+describe("legacy automation command hard cut", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
