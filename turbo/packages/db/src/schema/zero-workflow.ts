@@ -180,7 +180,7 @@ export type ZeroWorkflowWebhookDisabledReason = "paid_plan_required";
  * `next_run_at = NULL` and fire from their event-specific junction.
  */
 export const zeroWorkflowTriggers = pgTable(
-  "zero_workflow_triggers",
+  "zero_workflow_automations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
@@ -220,15 +220,15 @@ export const zeroWorkflowTriggers = pgTable(
   },
   (table) => {
     return [
-      index("idx_zero_workflow_triggers_workflow").on(table.workflowId),
-      index("idx_zero_workflow_triggers_org").on(table.orgId),
+      index("idx_zero_workflow_automations_workflow").on(table.workflowId),
+      index("idx_zero_workflow_automations_org").on(table.orgId),
       // Partial index for the time poller: enabled triggers with a due next run.
-      index("idx_zero_workflow_triggers_next_run")
+      index("idx_zero_workflow_automations_next_run")
         .on(table.nextRunAt)
         .where(sql`enabled = true`),
       // Each trigger kind carries exactly its own config.
       check(
-        "zero_workflow_triggers_schedule_config_check",
+        "zero_workflow_automations_schedule_config_check",
         sql`(
             kind = 'schedule'
             AND event_type IS NULL
