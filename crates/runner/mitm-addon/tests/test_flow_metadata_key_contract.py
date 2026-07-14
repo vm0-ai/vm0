@@ -159,6 +159,17 @@ def test_registered_flow_metadata_guard_tracks_context_manager_exception_paths(t
     )
 
 
+def test_registered_flow_metadata_guard_tracks_with_item_binding_order(tmp_path):
+    source_path = tmp_path / "with_item_bindings.py"
+    _write_python_source(source_path, "with_item_bindings.base.py.txt")
+
+    violations = flow_metadata_key_linter.metadata_key_violations(source_path)
+
+    assert _normalized_violations(source_path, violations) == _expected_lines(
+        "with_item_bindings.expected.txt"
+    )
+
+
 def test_registered_flow_metadata_guard_respects_python_source_encoding(tmp_path):
     source_path = tmp_path / "latin1.py"
     source_path.write_bytes(b'# coding: latin-1\nflow.metadata["vm_run_id"] = "caf\xe9"\n')
