@@ -69,6 +69,14 @@ export const gmailProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    automationId: uuid("automation_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
     pubsubMessageId: varchar("pubsub_message_id", { length: 255 }),
     historyId: varchar("history_id", { length: 64 }).notNull(),
     messageId: varchar("message_id", { length: 128 }).notNull(),
@@ -80,6 +88,12 @@ export const gmailProcessedEvents = pgTable(
       uniqueIndex("idx_gmail_processed_events_event").on(
         table.watchStateId,
         table.triggerId,
+        table.historyId,
+        table.messageId,
+      ),
+      uniqueIndex("idx_gmail_processed_events_automation_event").on(
+        table.watchStateId,
+        table.automationId,
         table.historyId,
         table.messageId,
       ),

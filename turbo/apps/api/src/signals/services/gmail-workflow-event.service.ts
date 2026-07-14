@@ -1317,6 +1317,7 @@ async function insertGmailProcessedEvent(args: {
     .values({
       watchStateId: args.state.id,
       triggerId: args.trigger.trigger.id,
+      automationId: args.trigger.trigger.id,
       pubsubMessageId: args.decoded.messageId,
       historyId: args.event.historyId,
       messageId: args.event.messageId,

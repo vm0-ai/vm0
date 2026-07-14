@@ -90,6 +90,14 @@ export const googleWorkspaceProcessedEvents = pgTable(
         },
         { onDelete: "cascade" },
       ),
+    automationId: uuid("automation_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
     pubsubMessageId: varchar("pubsub_message_id", { length: 255 }),
     cloudEventId: varchar("cloud_event_id", { length: 255 }).notNull(),
     cloudEventType: varchar("cloud_event_type", { length: 255 }).notNull(),
@@ -104,11 +112,17 @@ export const googleWorkspaceProcessedEvents = pgTable(
         table.triggerId,
         table.cloudEventId,
       ),
+      uniqueIndex(
+        "idx_google_workspace_processed_events_automation_cloudevent",
+      ).on(table.subscriptionStateId, table.automationId, table.cloudEventId),
       uniqueIndex("idx_google_workspace_processed_events_transcript").on(
         table.subscriptionStateId,
         table.triggerId,
         table.transcriptName,
       ),
+      uniqueIndex(
+        "idx_google_workspace_processed_events_automation_transcript",
+      ).on(table.subscriptionStateId, table.automationId, table.transcriptName),
       index("idx_google_workspace_processed_events_pubsub_message").on(
         table.pubsubMessageId,
       ),

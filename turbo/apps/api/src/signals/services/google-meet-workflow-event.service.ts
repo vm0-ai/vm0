@@ -1379,6 +1379,7 @@ async function insertWorkspaceProcessedEvent(args: {
     .values({
       subscriptionStateId: args.state.id,
       triggerId: args.trigger.trigger.id,
+      automationId: args.trigger.trigger.id,
       pubsubMessageId: args.decoded.messageId,
       cloudEventId: args.event.cloudEventId,
       cloudEventType: args.event.cloudEventType,

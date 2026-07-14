@@ -1307,6 +1307,7 @@ async function enqueueNotionChildPageEvents(args: {
       .insert(notionWorkflowPendingEvents)
       .values({
         triggerId: trigger.id,
+        automationId: trigger.id,
         pageId: args.pageId,
         scopeType: "page",
         scopeId: args.parentPageId,
@@ -1353,6 +1354,7 @@ async function enqueueNotionDatabaseItemEvents(args: {
       .insert(notionWorkflowPendingEvents)
       .values({
         triggerId: trigger.id,
+        automationId: trigger.id,
         pageId: args.pageId,
         scopeType: "data_source",
         scopeId: args.dataSourceId,
@@ -1510,6 +1512,7 @@ async function enqueueOrRefreshNotionPageContentUpdatedEvents(args: {
       .insert(notionWorkflowPendingEvents)
       .values({
         triggerId: trigger.id,
+        automationId: trigger.id,
         pageId: args.pageId,
         scopeType: pageContentUpdatedScopeType(config.data.scope),
         scopeId: pageContentUpdatedScopeId(config.data.scope),
