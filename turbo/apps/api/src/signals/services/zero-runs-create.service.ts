@@ -199,6 +199,7 @@ interface CreateZeroIntegrationRunCommandArgs {
   readonly agentId: string;
   readonly sessionId?: string;
   readonly prompt: string;
+  readonly additionalVolumes?: ZeroRunCreateBody["additionalVolumes"];
   readonly appendSystemPrompt?: string;
   readonly triggerSource: TriggerSource;
   readonly callbacks?: readonly RunCallback[];
@@ -826,6 +827,7 @@ function createRunBody(args: {
 
 function createIntegrationRunBody(args: {
   readonly prompt: string;
+  readonly additionalVolumes?: ZeroRunCreateBody["additionalVolumes"];
   readonly sessionId: string | undefined;
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
@@ -837,6 +839,7 @@ function createIntegrationRunBody(args: {
 }) {
   return {
     prompt: args.prompt,
+    additionalVolumes: args.additionalVolumes,
     agentComposeId: args.agent.id,
     sessionId: args.sessionId,
     permissionPolicies: args.permissionPolicies ?? undefined,
@@ -1073,6 +1076,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     orgId: command.orgId,
     body: createIntegrationRunBody({
       prompt: command.prompt,
+      additionalVolumes: command.additionalVolumes,
       sessionId: command.sessionId,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },
@@ -1124,6 +1128,7 @@ async function buildZeroIntegrationFinalAppendSystemPrompt(args: {
     });
   return createIntegrationRunBody({
     prompt: command.prompt,
+    additionalVolumes: command.additionalVolumes,
     sessionId: command.sessionId,
     agent: args.agent,
     userInfo: { ...args.userInfo, ...command.userInfoExtras },

@@ -350,6 +350,7 @@ install_packages() {
   apt-get update
   apt-get install -y \
     procps wget git ripgrep jq file iproute2 sudo ffmpeg \
+    libreoffice-impress poppler-utils \
     libnss3 p11-kit-modules unzip \
     nodejs \
     python3 python3-pip \

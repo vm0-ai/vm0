@@ -99,12 +99,12 @@ import {
 } from "../services/zero-chat-queued-message.service";
 import { appendChatThreadEvent } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
+import { resolveGenerationTemplate } from "../services/presentation-template-runtime.service";
 import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { RouteEntry } from "../route-entry";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
-import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -204,6 +204,13 @@ interface PreparedNormalSend {
   readonly thread: ResolvedThread;
   readonly priorContext: string;
   readonly generationTemplatePrompt: string;
+  readonly generationTemplateVolumes:
+    | {
+        readonly name: string;
+        readonly version: string;
+        readonly mountPath: string;
+      }[]
+    | undefined;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
@@ -226,6 +233,7 @@ interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly websiteTemplatesEnabled: boolean;
   readonly chatMessageQueueEnabled: boolean;
+  readonly presentationCustomTemplatesEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -1118,6 +1126,10 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.ChatMessageQueue,
       context,
     ),
+    presentationCustomTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.PresentationCustomTemplates,
+      context,
+    ),
   };
 }
 
@@ -1131,6 +1143,13 @@ function validateGenerationTemplateFeatureSwitches(params: {
   ) {
     return badRequestMessage("Website templates are not enabled");
   }
+  if (
+    params.body.generationTemplate?.type === "presentation" &&
+    params.body.generationTemplate.selection.kind === "custom" &&
+    !params.featureSwitches.presentationCustomTemplatesEnabled
+  ) {
+    return badRequestMessage("Custom presentation templates are not enabled");
+  }
   return undefined;
 }
 
@@ -1139,6 +1158,12 @@ function validateGenerationTemplatePrompt(
 ): NormalSendFailure | undefined {
   const generationTemplate = body.generationTemplate;
   if (!generationTemplate) {
+    return undefined;
+  }
+  if (
+    generationTemplate.type === "presentation" &&
+    generationTemplate.selection.kind === "custom"
+  ) {
     return undefined;
   }
   const validation = buildGenerationTemplatePrompt(generationTemplate);
@@ -2370,9 +2395,15 @@ const prepareNormalSend$ = command(
 
     const priorContext = await prepareTimedRecentChatContext(args, db, thread);
     signal.throwIfAborted();
-    const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
-      explicit: args.body.generationTemplate,
+    const resolvedGenerationTemplate = await resolveGenerationTemplate(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      selection: args.body.generationTemplate,
     });
+    signal.throwIfAborted();
+    if (resolvedGenerationTemplate.status === "invalid") {
+      return badRequestMessage(resolvedGenerationTemplate.message);
+    }
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);
     signal.throwIfAborted();
@@ -2393,7 +2424,9 @@ const prepareNormalSend$ = command(
       agent,
       thread,
       priorContext,
-      generationTemplatePrompt,
+      generationTemplatePrompt: resolvedGenerationTemplate.value.prompt,
+      generationTemplateVolumes:
+        resolvedGenerationTemplate.value.additionalVolumes,
       computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
@@ -2913,6 +2946,7 @@ function buildCreateZeroRunArgs(params: {
     body: {
       prompt: fullPrompt,
       agentId: args.body.agentId,
+      additionalVolumes: prepared.generationTemplateVolumes,
       ...(prepared.thread.sessionId
         ? { sessionId: prepared.thread.sessionId }
         : {}),

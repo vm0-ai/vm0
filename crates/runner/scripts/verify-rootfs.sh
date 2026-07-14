@@ -305,6 +305,11 @@ check_required_executable "/usr/bin/sleep" "sleep"
 # Media workflows rely on ffmpeg being available in fresh agent runtimes.
 check_required_executable "/usr/bin/ffmpeg" "ffmpeg"
 
+# PowerPoint template compilation renders slides deterministically inside the
+# sandbox before the reusable presentation runbook is published.
+check_required_executable "/usr/bin/libreoffice" "libreoffice"
+check_required_executable "/usr/bin/pdftoppm" "pdftoppm"
+
 # Check CLIs
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
   echo "  gh CLI: found"

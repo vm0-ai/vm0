@@ -524,6 +524,27 @@ exit 1
     }
 
     #[test]
+    fn template_installs_and_verifies_presentation_renderers() {
+        assert!(
+            template_build_installs_apt_package("libreoffice-impress"),
+            "build-template.sh should install LibreOffice into sandbox templates"
+        );
+        assert!(
+            template_build_installs_apt_package("poppler-utils"),
+            "build-template.sh should install Poppler into sandbox templates"
+        );
+        assert!(
+            VERIFY_SCRIPT
+                .contains(r#"check_required_executable "/usr/bin/libreoffice" "libreoffice""#),
+            "verify-rootfs.sh should verify LibreOffice is present in sandbox images"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(r#"check_required_executable "/usr/bin/pdftoppm" "pdftoppm""#),
+            "verify-rootfs.sh should verify pdftoppm is present in sandbox images"
+        );
+    }
+
+    #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
         assert!(
             VERIFY_SCRIPT.contains("resolve_rootfs_path()"),

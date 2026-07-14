@@ -174,6 +174,31 @@ describe("chat thread generation template contract", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts a pinned custom presentation template revision", () => {
+    const parsed = generationTemplateRequestSchema.safeParse({
+      type: "presentation",
+      selection: {
+        kind: "custom",
+        templateId: "c374864d-d6b7-49f7-b1b6-b26d2ae3dc4e",
+        templateRevisionId: "938593f1-c895-48d6-9666-57421185194e",
+      },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a custom presentation template without a pinned revision", () => {
+    const parsed = generationTemplateRequestSchema.safeParse({
+      type: "presentation",
+      selection: {
+        kind: "custom",
+        templateId: "c374864d-d6b7-49f7-b1b6-b26d2ae3dc4e",
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects presentation selections with design-system ids", () => {
     const parsed = generationTemplateRequestSchema.safeParse({
       type: "presentation",

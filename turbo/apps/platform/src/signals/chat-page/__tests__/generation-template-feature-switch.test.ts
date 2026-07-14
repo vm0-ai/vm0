@@ -38,4 +38,34 @@ describe("generationTemplateForFeatureSwitches", () => {
       }),
     ).toBe(template);
   });
+
+  it("drops custom presentation templates when their switch is off", () => {
+    const template: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: {
+        kind: "custom",
+        templateId: "c374864d-d6b7-49f7-b1b6-b26d2ae3dc4e",
+        templateRevisionId: "938593f1-c895-48d6-9666-57421185194e",
+      },
+    };
+
+    expect(generationTemplateForFeatureSwitches(template, {})).toBeUndefined();
+  });
+
+  it("keeps custom presentation templates when their switch is on", () => {
+    const template: GenerationTemplateRequest = {
+      type: "presentation",
+      selection: {
+        kind: "custom",
+        templateId: "c374864d-d6b7-49f7-b1b6-b26d2ae3dc4e",
+        templateRevisionId: "938593f1-c895-48d6-9666-57421185194e",
+      },
+    };
+
+    expect(
+      generationTemplateForFeatureSwitches(template, {
+        [FeatureSwitchKey.PresentationCustomTemplates]: true,
+      }),
+    ).toBe(template);
+  });
 });

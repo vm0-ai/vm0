@@ -15,5 +15,12 @@ export function generationTemplateForFeatureSwitches(
   ) {
     return undefined;
   }
+  if (
+    value?.type === "presentation" &&
+    value.selection.kind === "custom" &&
+    !(features?.[FeatureSwitchKey.PresentationCustomTemplates] ?? false)
+  ) {
+    return undefined;
+  }
   return value;
 }

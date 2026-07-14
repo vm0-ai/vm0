@@ -244,15 +244,31 @@ const summaryEntrySchema = z.union([
   textSummaryEntrySchema,
 ]);
 
+const builtInPresentationTemplateSelectionSchema = z
+  .object({
+    kind: z.literal("builtin").optional(),
+    templateId: z.string().min(1),
+    colorSystemId: z.string().min(1).optional(),
+    previewUrl: z.string().url().optional(),
+  })
+  .strict();
+
+const customPresentationTemplateSelectionSchema = z
+  .object({
+    kind: z.literal("custom"),
+    templateId: z.string().uuid(),
+    templateRevisionId: z.string().uuid(),
+    colorSystemId: z.never().optional(),
+    previewUrl: z.never().optional(),
+  })
+  .strict();
+
 const presentationGenerationTemplateRequestSchema = z.object({
   type: z.literal("presentation"),
-  selection: z
-    .object({
-      templateId: z.string().min(1),
-      colorSystemId: z.string().min(1).optional(),
-      previewUrl: z.string().url().optional(),
-    })
-    .strict(),
+  selection: z.union([
+    builtInPresentationTemplateSelectionSchema,
+    customPresentationTemplateSelectionSchema,
+  ]),
 });
 
 const videoGenerationTemplateRequestSchema = z.object({

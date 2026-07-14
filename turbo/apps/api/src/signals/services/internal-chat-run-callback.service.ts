@@ -81,7 +81,7 @@ import {
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { onRejection, settle, tapError, throwIfAbort } from "../utils";
-import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { resolveGenerationTemplate } from "./presentation-template-runtime.service";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -400,6 +400,13 @@ interface CreateQueuedChatRunInput {
   readonly prompt: string;
   readonly sessionId: string | null;
   readonly appendSystemPrompt: string;
+  readonly additionalVolumes:
+    | {
+        readonly name: string;
+        readonly version: string;
+        readonly mountPath: string;
+      }[]
+    | undefined;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
   readonly beforeDispatch?: (args: {
@@ -484,6 +491,7 @@ function buildQueuedCreateZeroRunArgs(
     body: {
       prompt: input.prompt,
       agentId: input.agentId,
+      additionalVolumes: input.additionalVolumes,
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.queuedMessage.modelProviderType
         ? { modelProvider: input.queuedMessage.modelProviderType }
@@ -1694,16 +1702,21 @@ async function buildCreateQueuedChatRunInput(args: {
       });
     },
   );
-  const generationTemplatePrompt = await measureChatCallbackPreCreateTiming(
+  const resolvedGenerationTemplate = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_resolve_generation_template",
     "nested",
     () => {
-      return resolveThreadGenerationTemplatePrompt({
-        explicit: resolvedQueuedMessage.generationTemplate,
+      return resolveGenerationTemplate(args.db, {
+        orgId: args.agent.orgId,
+        userId: args.userId,
+        selection: resolvedQueuedMessage.generationTemplate,
       });
     },
   );
+  if (resolvedGenerationTemplate.status === "invalid") {
+    throw new Error(resolvedGenerationTemplate.message);
+  }
   const prompt = await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_build_prompt",
@@ -1727,10 +1740,11 @@ async function buildCreateQueuedChatRunInput(args: {
     appendSystemPrompt: buildAppendSystemPrompt(
       incompleteContext,
       priorContext,
-      generationTemplatePrompt,
+      resolvedGenerationTemplate.value.prompt,
     ),
     threadId: args.threadId,
     queuedMessage: resolvedQueuedMessage,
+    additionalVolumes: resolvedGenerationTemplate.value.additionalVolumes,
   };
 }
 

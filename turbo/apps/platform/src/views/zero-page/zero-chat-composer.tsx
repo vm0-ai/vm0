@@ -101,6 +101,8 @@ import type {
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
+import { CustomPresentationTemplates } from "./custom-presentation-templates.tsx";
+import { presentationTemplateCatalog$ } from "../../signals/zero-page/presentation-templates.ts";
 import { TiptapWorkflowComposer } from "./tiptap-workflow-composer.tsx";
 import { computerUseIllustrationImg } from "./platform-assets.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
@@ -926,6 +928,7 @@ function isSelectedPresentationTemplate(
 ): boolean {
   return (
     value?.type === "presentation" &&
+    value.selection.kind !== "custom" &&
     value.selection.templateId === item.templateId
   );
 }
@@ -958,6 +961,9 @@ function selectedTemplateTitle(
   if (value?.type === "website") {
     return selectedWebsiteTemplateItem(value)?.title;
   }
+  if (value?.type === "presentation" && value.selection.kind === "custom") {
+    return "Custom presentation template";
+  }
   return (
     selectedPresentationTemplateItem(value)?.title ??
     selectedIllustrationTemplateItem(value)?.title
@@ -968,6 +974,9 @@ function selectedPresentationTemplateItem(
   value: GenerationTemplateRequest | undefined,
 ): PresentationTemplateItem | undefined {
   if (value?.type !== "presentation") {
+    return undefined;
+  }
+  if (value.selection.kind === "custom") {
     return undefined;
   }
   return PRESENTATION_TEMPLATE_PICKER_ITEMS.find((item) => {
@@ -4779,6 +4788,8 @@ function TemplatePickerDialog({
   const features = useLastResolved(featureSwitch$);
   const showWorkflowTemplateCatalog =
     features?.[FeatureSwitchKey.WorkflowTemplateCatalog] ?? false;
+  const showCustomPresentationTemplates =
+    features?.[FeatureSwitchKey.PresentationCustomTemplates] ?? false;
   const workflowCategoryFilter = useGet(templatePickerWorkflowCategory$);
   const setWorkflowCategoryFilter = useSet(setTemplatePickerWorkflowCategory$);
   const workflowCatalog = resolveWorkflowCatalog({
@@ -4835,6 +4846,13 @@ function TemplatePickerDialog({
     colorSystemId?: string,
   ) => {
     onChange(toPresentationGenerationTemplate(item, colorSystemId));
+    closeTemplatePicker();
+  };
+
+  const handleSelectCustomPresentation = (
+    selection: GenerationTemplateRequest,
+  ) => {
+    onChange(selection);
     closeTemplatePicker();
   };
 
@@ -5070,6 +5088,8 @@ function TemplatePickerDialog({
               onPresentationScroll={setPresentationGridScrollTop}
               onRestorePresentationScroll={restorePresentationGridScrollNode}
               onSelectPresentation={handleSelectPresentation}
+              showCustomPresentationTemplates={showCustomPresentationTemplates}
+              onSelectCustomPresentation={handleSelectCustomPresentation}
               onPreviewPresentation={handlePreview}
               onSelectWebsite={handleSelectWebsite}
               onPreviewWebsite={handlePreviewWebsite}
@@ -5102,6 +5122,8 @@ function TemplatePickerCategoryContent({
   onPresentationScroll,
   onRestorePresentationScroll,
   onSelectPresentation,
+  showCustomPresentationTemplates,
+  onSelectCustomPresentation,
   onPreviewPresentation,
   onSelectWebsite,
   onPreviewWebsite,
@@ -5129,6 +5151,8 @@ function TemplatePickerCategoryContent({
     item: PresentationTemplateItem,
     colorSystemId?: string,
   ) => void;
+  showCustomPresentationTemplates: boolean;
+  onSelectCustomPresentation: (value: GenerationTemplateRequest) => void;
   onPreviewPresentation: (
     item: PresentationTemplateItem,
     slideIndex?: number,
@@ -5151,6 +5175,17 @@ function TemplatePickerCategoryContent({
           onPresentationScroll(event.currentTarget.scrollTop);
         }}
       >
+        {showCustomPresentationTemplates && (
+          <CustomPresentationTemplates
+            value={value}
+            onSelect={onSelectCustomPresentation}
+          />
+        )}
+        {showCustomPresentationTemplates && (
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold">Built-in templates</h3>
+          </div>
+        )}
         {filteredPptItems.length > 0 ? (
           <PptTemplateGrid
             items={filteredPptItems}
@@ -5426,6 +5461,61 @@ function SelectedPresentationTemplateChipPreview({
   );
 }
 
+function SelectedCustomPresentationTemplateChip({
+  label,
+  previewUrl,
+  onOpen,
+  onRemove,
+}: {
+  label: string;
+  previewUrl: string | null;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 pt-3">
+      <div className="flex">
+        <div className="inline-flex h-8 max-w-full items-center gap-1 rounded-lg border border-border/80 bg-background/90 pl-1 pr-1 text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          <button
+            type="button"
+            aria-label={`Open template ${label}`}
+            className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpen}
+          >
+            <span className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <IconPresentation size={14} className="text-muted-foreground" />
+              )}
+            </span>
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+              Presentation
+            </span>
+            <span className="h-3.5 w-px shrink-0 bg-border/70" />
+            <span className="min-w-0 truncate text-xs font-medium">
+              {label}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove template ${label}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRemove}
+          >
+            <IconX size={14} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 h-px bg-border/50" />
+    </div>
+  );
+}
+
 function SelectedVideoTemplateChip({
   item,
   onOpen,
@@ -5631,6 +5721,44 @@ function SelectedWebsiteTemplateChip({
   );
 }
 
+function SelectedPresentationChipSlot({
+  picker,
+  onOpen,
+  onRemove,
+}: {
+  readonly picker: ComposerTemplatePicker;
+  readonly onOpen: () => void;
+  readonly onRemove: () => void;
+}) {
+  const templates = useLastResolved(presentationTemplateCatalog$) ?? [];
+  if (picker.value?.type !== "presentation") {
+    return null;
+  }
+  const selection = picker.value.selection;
+  if (selection.kind === "custom") {
+    const item = templates.find((candidate) => {
+      return candidate.template.id === selection.templateId;
+    });
+    return (
+      <SelectedCustomPresentationTemplateChip
+        label={item?.template.name ?? "Custom template"}
+        previewUrl={item?.previewUrl ?? null}
+        onOpen={onOpen}
+        onRemove={onRemove}
+      />
+    );
+  }
+  const item = selectedPresentationTemplateItem(picker.value);
+  return item ? (
+    <SelectedTemplateChip
+      colorSystemId={selection.colorSystemId}
+      item={item}
+      onOpen={onOpen}
+      onRemove={onRemove}
+    />
+  ) : null;
+}
+
 function SelectedTemplateChipSlot({
   picker,
   onDraftChange,
@@ -5645,7 +5773,6 @@ function SelectedTemplateChipSlot({
   const cardThemeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const features = useLastResolved(featureSwitch$);
   const hasWebsiteTab = features?.[FeatureSwitchKey.WebsiteTemplates] ?? false;
-  const presentationItem = selectedPresentationTemplateItem(picker?.value);
   const illustrationItem = selectedIllustrationTemplateItem(picker?.value);
   const videoItem = selectedVideoTemplateItem(picker?.value);
   const workflowItem = selectedWorkflowTemplateItem(picker?.value);
@@ -5674,22 +5801,18 @@ function SelectedTemplateChipSlot({
     setCategory(category);
     setOpen(true);
   };
-  if (presentationItem) {
+  const removeTemplate = () => {
+    picker.onChange(undefined);
+    onDraftChange?.();
+  };
+  if (picker.value?.type === "presentation") {
     return (
-      <SelectedTemplateChip
-        colorSystemId={
-          picker.value?.type === "presentation"
-            ? picker.value.selection.colorSystemId
-            : undefined
-        }
-        item={presentationItem}
+      <SelectedPresentationChipSlot
+        picker={picker}
         onOpen={() => {
           return openPicker("slides");
         }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
+        onRemove={removeTemplate}
       />
     );
   }
@@ -5700,10 +5823,7 @@ function SelectedTemplateChipSlot({
         onOpen={() => {
           return openPicker("video");
         }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
+        onRemove={removeTemplate}
       />
     );
   }
@@ -5714,10 +5834,7 @@ function SelectedTemplateChipSlot({
         onOpen={() => {
           return openPicker("illustration");
         }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
+        onRemove={removeTemplate}
       />
     );
   }
@@ -5728,10 +5845,7 @@ function SelectedTemplateChipSlot({
         onOpen={() => {
           return openPicker("workflow");
         }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
+        onRemove={removeTemplate}
       />
     );
   }
@@ -5742,10 +5856,7 @@ function SelectedTemplateChipSlot({
         onOpen={() => {
           return openPicker("website");
         }}
-        onRemove={() => {
-          picker.onChange(undefined);
-          onDraftChange?.();
-        }}
+        onRemove={removeTemplate}
       />
     );
   }

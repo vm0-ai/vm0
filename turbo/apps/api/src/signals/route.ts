@@ -48,6 +48,7 @@ import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { presentationImagesRoutes } from "./routes/presentation-images";
+import { presentationTemplatesRoutes } from "./routes/presentation-templates";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
@@ -400,6 +401,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
   ...presentationImagesRoutes,
+  ...presentationTemplatesRoutes,
   ...runnersRoutes,
   ...E2E_ROUTES,
 ];

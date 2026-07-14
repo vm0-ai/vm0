@@ -56,3 +56,15 @@ export function getCustomSkillStorageName(skillName: string): string {
  * and mounted into the sandbox at a framework-specific path.
  */
 export const MEMORY_ARTIFACT_NAME = "memory";
+
+export function getPresentationTemplateSourceStorageName(
+  templateId: string,
+): string {
+  return `presentation-template-source@${templateId}`;
+}
+
+export function getPresentationTemplatePackageStorageName(
+  templateId: string,
+): string {
+  return `presentation-template-package@${templateId}`;
+}

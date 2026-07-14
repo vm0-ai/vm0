@@ -7,6 +7,11 @@ interface ExtractedTarFile {
   readonly content: string;
 }
 
+interface ExtractedTarBuffer {
+  readonly path: string;
+  readonly content: Buffer;
+}
+
 function normalizeTarPath(path: string): string {
   return path.replace(/^\.\//, "");
 }
@@ -27,6 +32,15 @@ function readTarPath(header: Buffer): string {
 
 function isRegularFile(typeFlag: string): boolean {
   return typeFlag === "" || typeFlag === "0";
+}
+
+function readTarEntrySize(header: Buffer): number {
+  const sizeString = header.subarray(124, 136).toString("utf8").trim();
+  const size = Number.parseInt(sizeString, 8) || 0;
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new Error("Tar archive contains an invalid entry size");
+  }
+  return size;
 }
 
 export function extractFilesFromTarGz(
@@ -55,8 +69,7 @@ export function extractFilesFromTarGz(
     }
 
     const name = readTarPath(header);
-    const sizeStr = header.subarray(124, 136).toString("utf8").trim();
-    const size = Number.parseInt(sizeStr, 8) || 0;
+    const size = readTarEntrySize(header);
     const typeFlag = readTarString(header, 156, 157);
 
     offset += BLOCK_SIZE;
@@ -71,6 +84,55 @@ export function extractFilesFromTarGz(
       });
     }
 
+    offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
+  }
+  return files;
+}
+
+export function extractBuffersFromTarGz(
+  gzBuffer: Buffer,
+  targetPaths?: readonly string[],
+  maxOutputBytes?: number,
+): readonly ExtractedTarBuffer[] {
+  const tarBuffer =
+    maxOutputBytes === undefined
+      ? gunzipSync(gzBuffer)
+      : gunzipSync(gzBuffer, { maxOutputLength: maxOutputBytes });
+  const normalizedTargets = targetPaths
+    ? new Set(
+        targetPaths.map((path) => {
+          return normalizeTarPath(path);
+        }),
+      )
+    : null;
+  const files: ExtractedTarBuffer[] = [];
+  let offset = 0;
+  while (offset + BLOCK_SIZE <= tarBuffer.length) {
+    const header = tarBuffer.subarray(offset, offset + BLOCK_SIZE);
+    if (
+      header.every((byte) => {
+        return byte === 0;
+      })
+    ) {
+      break;
+    }
+
+    const path = readTarPath(header);
+    const size = readTarEntrySize(header);
+    const typeFlag = readTarString(header, 156, 157);
+    offset += BLOCK_SIZE;
+    if (offset + size > tarBuffer.length) {
+      throw new Error("Tar archive entry exceeds the archive boundary");
+    }
+    if (
+      isRegularFile(typeFlag) &&
+      (!normalizedTargets || normalizedTargets.has(path))
+    ) {
+      files.push({
+        path,
+        content: Buffer.from(tarBuffer.subarray(offset, offset + size)),
+      });
+    }
     offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
   }
   return files;

@@ -22,7 +22,7 @@ import {
 
 interface VolumeFileInput {
   readonly path: string;
-  readonly content: string;
+  readonly content: string | Buffer;
 }
 
 interface UploadVolumeInput {
@@ -62,7 +62,10 @@ function materializeFiles(
   files: readonly VolumeFileInput[],
 ): readonly MaterializedVolumeFile[] {
   return files.map((file) => {
-    const content = Buffer.from(file.content, "utf8");
+    const content =
+      typeof file.content === "string"
+        ? Buffer.from(file.content, "utf8")
+        : file.content;
     return {
       path: file.path,
       content,
