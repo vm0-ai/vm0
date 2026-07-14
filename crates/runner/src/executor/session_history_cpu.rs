@@ -1,5 +1,6 @@
 //! Bounded CPU execution for resume-session history materialization.
 
+use std::fmt;
 use std::io::{self, BufRead, BufReader, Read};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -16,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use super::cli_framework::EffectiveCliFramework;
 use super::session_restore::MaterializedResumeSession;
 use super::{RunnerError, RunnerResult};
+use crate::restored_session_identity::RestoredSessionHistoryPrefixAttribution;
 
 const CPU_CHUNK_BYTES: usize = 64 * 1024;
 const DECODER_BUFFER_BYTES: usize = 8 * 1024;
@@ -41,7 +43,12 @@ struct SessionHistoryCpuTaskGuard {
     armed: bool,
 }
 
-pub(super) enum SessionHistoryCpuJob {
+pub(super) struct SessionHistoryCpuJob {
+    kind: SessionHistoryCpuJobKind,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
+}
+
+enum SessionHistoryCpuJobKind {
     Raw {
         cli_agent_session_id: String,
         bytes: Vec<u8>,
@@ -76,12 +83,53 @@ struct CompressedSessionHistoryJob {
     expected_hash: String,
     framework: EffectiveCliFramework,
     encoding: CompressedEncoding,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
 }
 
-#[derive(Debug)]
+struct RawSessionHistoryJob {
+    cli_agent_session_id: String,
+    bytes: Vec<u8>,
+    expected_raw_size: u64,
+    expected_hash: String,
+    framework: EffectiveCliFramework,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
+}
+
 pub(super) struct SessionHistoryCpuOutcome {
     pub(super) timings: SessionHistoryCpuTimings,
-    pub(super) result: RunnerResult<MaterializedResumeSession>,
+    pub(super) result: RunnerResult<SessionHistoryCpuMaterialization>,
+}
+
+pub(super) struct SessionHistoryCpuMaterialization {
+    pub(super) session: MaterializedResumeSession,
+    pub(super) prefix_outcome: Option<SessionHistoryPrefixOutcome>,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) enum SessionHistoryPrefixOutcome {
+    Verified { raw_extension_size: u64 },
+    Divergent,
+}
+
+impl fmt::Debug for SessionHistoryCpuOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionHistoryCpuOutcome")
+            .field("timings", &self.timings)
+            .field(
+                "result",
+                &self.result.as_ref().map(|_| "[redacted-materialization]"),
+            )
+            .finish()
+    }
+}
+
+impl fmt::Debug for SessionHistoryCpuMaterialization {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionHistoryCpuMaterialization")
+            .field("session", &"[redacted]")
+            .field("prefix_outcome", &self.prefix_outcome.map(|_| "[redacted]"))
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -234,12 +282,15 @@ impl SessionHistoryCpuJob {
         expected_hash: String,
         framework: EffectiveCliFramework,
     ) -> Self {
-        Self::Raw {
-            cli_agent_session_id,
-            bytes,
-            expected_raw_size,
-            expected_hash,
-            framework,
+        Self {
+            kind: SessionHistoryCpuJobKind::Raw {
+                cli_agent_session_id,
+                bytes,
+                expected_raw_size,
+                expected_hash,
+                framework,
+            },
+            prefix_attribution: None,
         }
     }
 
@@ -250,12 +301,15 @@ impl SessionHistoryCpuJob {
         expected_hash: String,
         framework: EffectiveCliFramework,
     ) -> Self {
-        Self::Gzip {
-            cli_agent_session_id,
-            encoded_bytes,
-            expected_raw_size,
-            expected_hash,
-            framework,
+        Self {
+            kind: SessionHistoryCpuJobKind::Gzip {
+                cli_agent_session_id,
+                encoded_bytes,
+                expected_raw_size,
+                expected_hash,
+                framework,
+            },
+            prefix_attribution: None,
         }
     }
 
@@ -266,20 +320,34 @@ impl SessionHistoryCpuJob {
         expected_hash: String,
         framework: EffectiveCliFramework,
     ) -> Self {
-        Self::Zstd {
-            cli_agent_session_id,
-            encoded_bytes,
-            expected_raw_size,
-            expected_hash,
-            framework,
+        Self {
+            kind: SessionHistoryCpuJobKind::Zstd {
+                cli_agent_session_id,
+                encoded_bytes,
+                expected_raw_size,
+                expected_hash,
+                framework,
+            },
+            prefix_attribution: None,
         }
     }
 
     pub(super) fn inline_codex(cli_agent_session_id: String, history: Arc<String>) -> Self {
-        Self::InlineCodex {
-            cli_agent_session_id,
-            history,
+        Self {
+            kind: SessionHistoryCpuJobKind::InlineCodex {
+                cli_agent_session_id,
+                history,
+            },
+            prefix_attribution: None,
         }
+    }
+
+    pub(super) fn with_prefix_attribution(
+        mut self,
+        prefix_attribution: RestoredSessionHistoryPrefixAttribution,
+    ) -> Self {
+        self.prefix_attribution = Some(prefix_attribution);
+        self
     }
 }
 
@@ -330,23 +398,30 @@ fn materialize_blocking(
             result: Err(error),
         };
     }
-    match job {
-        SessionHistoryCpuJob::Raw {
+    let SessionHistoryCpuJob {
+        kind,
+        prefix_attribution,
+    } = job;
+    match kind {
+        SessionHistoryCpuJobKind::Raw {
             cli_agent_session_id,
             bytes,
             expected_raw_size,
             expected_hash,
             framework,
         } => materialize_raw(
-            cli_agent_session_id,
-            bytes,
-            expected_raw_size,
-            &expected_hash,
-            framework,
+            RawSessionHistoryJob {
+                cli_agent_session_id,
+                bytes,
+                expected_raw_size,
+                expected_hash,
+                framework,
+                prefix_attribution,
+            },
             cancel,
             hooks,
         ),
-        SessionHistoryCpuJob::Gzip {
+        SessionHistoryCpuJobKind::Gzip {
             cli_agent_session_id,
             encoded_bytes,
             expected_raw_size,
@@ -360,11 +435,12 @@ fn materialize_blocking(
                 expected_hash,
                 framework,
                 encoding: CompressedEncoding::Gzip,
+                prefix_attribution,
             },
             cancel,
             hooks,
         ),
-        SessionHistoryCpuJob::Zstd {
+        SessionHistoryCpuJobKind::Zstd {
             cli_agent_session_id,
             encoded_bytes,
             expected_raw_size,
@@ -375,10 +451,11 @@ fn materialize_blocking(
             encoded_bytes,
             expected_raw_size,
             &expected_hash,
+            prefix_attribution,
             cancel,
             hooks,
         ),
-        SessionHistoryCpuJob::Zstd {
+        SessionHistoryCpuJobKind::Zstd {
             cli_agent_session_id,
             encoded_bytes,
             expected_raw_size,
@@ -392,16 +469,24 @@ fn materialize_blocking(
                 expected_hash,
                 framework,
                 encoding: CompressedEncoding::Zstd,
+                prefix_attribution,
             },
             cancel,
             hooks,
         ),
-        SessionHistoryCpuJob::InlineCodex {
+        SessionHistoryCpuJobKind::InlineCodex {
             cli_agent_session_id,
             history,
         } => {
             let result = scan_valid_utf8_history(&history, cancel, hooks).map(|timestamp| {
-                MaterializedResumeSession::new_shared(cli_agent_session_id, history, timestamp)
+                SessionHistoryCpuMaterialization {
+                    session: MaterializedResumeSession::new_shared(
+                        cli_agent_session_id,
+                        history,
+                        timestamp,
+                    ),
+                    prefix_outcome: None,
+                }
             });
             SessionHistoryCpuOutcome {
                 timings: SessionHistoryCpuTimings::default(),
@@ -412,28 +497,37 @@ fn materialize_blocking(
 }
 
 fn materialize_raw(
-    cli_agent_session_id: String,
-    bytes: Vec<u8>,
-    expected_raw_size: u64,
-    expected_hash: &str,
-    framework: EffectiveCliFramework,
+    job: RawSessionHistoryJob,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
 ) -> SessionHistoryCpuOutcome {
+    let RawSessionHistoryJob {
+        cli_agent_session_id,
+        bytes,
+        expected_raw_size,
+        expected_hash,
+        framework,
+        prefix_attribution,
+    } = job;
     let mut timings = SessionHistoryCpuTimings::default();
     let result = (|| {
         validate_raw_size(&bytes, expected_raw_size, &mut timings)?;
-        verify_hash(&bytes, expected_hash, &mut timings, cancel)?;
+        let prefix_outcome = verify_hash(
+            &bytes,
+            &expected_hash,
+            prefix_attribution,
+            &mut timings,
+            cancel,
+        )?;
         let timestamp = if framework == EffectiveCliFramework::Codex {
             scan_raw_codex_history(&bytes, cancel, hooks)?
         } else {
             None
         };
-        Ok(MaterializedResumeSession::new(
-            cli_agent_session_id,
-            bytes,
-            timestamp,
-        ))
+        Ok(SessionHistoryCpuMaterialization {
+            session: MaterializedResumeSession::new(cli_agent_session_id, bytes, timestamp),
+            prefix_outcome,
+        })
     })();
     SessionHistoryCpuOutcome { timings, result }
 }
@@ -465,6 +559,7 @@ fn materialize_compressed(
         expected_hash,
         framework,
         encoding,
+        prefix_attribution,
     } = job;
     let mut timings = SessionHistoryCpuTimings::default();
     let result = (|| {
@@ -474,17 +569,22 @@ fn materialize_compressed(
         timings.record_decompression(decompression_started.elapsed(), result.is_ok());
         let bytes = result?;
         validate_decompressed_size(&bytes, expected_raw_size, &mut timings)?;
-        verify_hash(&bytes, &expected_hash, &mut timings, cancel)?;
+        let prefix_outcome = verify_hash(
+            &bytes,
+            &expected_hash,
+            prefix_attribution,
+            &mut timings,
+            cancel,
+        )?;
         let timestamp = if framework == EffectiveCliFramework::Codex {
             scan_raw_codex_history(&bytes, cancel, hooks)?
         } else {
             None
         };
-        Ok(MaterializedResumeSession::new(
-            cli_agent_session_id,
-            bytes,
-            timestamp,
-        ))
+        Ok(SessionHistoryCpuMaterialization {
+            session: MaterializedResumeSession::new(cli_agent_session_id, bytes, timestamp),
+            prefix_outcome,
+        })
     })();
     SessionHistoryCpuOutcome { timings, result }
 }
@@ -494,25 +594,30 @@ fn materialize_codex_zstd(
     encoded_bytes: Vec<u8>,
     expected_raw_size: u64,
     expected_hash: &str,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
 ) -> SessionHistoryCpuOutcome {
     let mut timings = SessionHistoryCpuTimings::default();
     let result = (|| {
         validate_compressed_raw_size(expected_raw_size, "zstd", &mut timings)?;
-        let timestamp = verify_codex_zstd(
+        let (timestamp, prefix_outcome) = verify_codex_zstd(
             &encoded_bytes,
             expected_raw_size,
             expected_hash,
+            prefix_attribution,
             &mut timings,
             cancel,
             hooks,
         )?;
-        Ok(MaterializedResumeSession::new_codex_zstd(
-            cli_agent_session_id,
-            encoded_bytes,
-            timestamp,
-        ))
+        Ok(SessionHistoryCpuMaterialization {
+            session: MaterializedResumeSession::new_codex_zstd(
+                cli_agent_session_id,
+                encoded_bytes,
+                timestamp,
+            ),
+            prefix_outcome,
+        })
     })();
     SessionHistoryCpuOutcome { timings, result }
 }
@@ -588,31 +693,99 @@ fn validate_compressed_raw_size(
 fn verify_hash(
     bytes: &[u8],
     expected_hash: &str,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
     timings: &mut SessionHistoryCpuTimings,
     cancel: &CancellationToken,
-) -> RunnerResult<()> {
+) -> RunnerResult<Option<SessionHistoryPrefixOutcome>> {
     let started = Instant::now();
     let result = (|| {
-        let mut hasher = Sha256::new();
-        update_hash(&mut hasher, bytes, cancel)?;
-        let actual_hash = hex::encode(hasher.finalize());
-        if actual_hash != expected_hash {
-            return Err(RunnerError::Internal(
-                "session history hash mismatch".into(),
-            ));
-        }
-        Ok(())
+        let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
+        observer.update(bytes, cancel)?;
+        observer.finish(expected_hash)
     })();
     timings.record_hash_verification(started.elapsed(), result.is_ok());
     result
 }
 
-fn update_hash(hasher: &mut Sha256, bytes: &[u8], cancel: &CancellationToken) -> RunnerResult<()> {
-    for chunk in bytes.chunks(CPU_CHUNK_BYTES) {
-        check_cancelled(cancel)?;
-        hasher.update(chunk);
+struct SessionHistoryHashObserver {
+    full_hasher: Sha256,
+    observed_bytes: u64,
+    prefix_hasher: Option<SessionHistoryPrefixHasher>,
+}
+
+struct SessionHistoryPrefixHasher {
+    hasher: Sha256,
+    remaining_bytes: u64,
+    expected_hash: String,
+    history_size_bytes: u64,
+}
+
+impl SessionHistoryHashObserver {
+    fn new(prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>) -> Self {
+        Self {
+            full_hasher: Sha256::new(),
+            observed_bytes: 0,
+            prefix_hasher: prefix_attribution.map(SessionHistoryPrefixHasher::new),
+        }
     }
-    check_cancelled(cancel)
+
+    fn update(&mut self, bytes: &[u8], cancel: &CancellationToken) -> RunnerResult<()> {
+        for chunk in bytes.chunks(CPU_CHUNK_BYTES) {
+            check_cancelled(cancel)?;
+            self.full_hasher.update(chunk);
+            self.observed_bytes += chunk.len() as u64;
+            if let Some(prefix_hasher) = &mut self.prefix_hasher {
+                prefix_hasher.update(chunk);
+            }
+        }
+        check_cancelled(cancel)
+    }
+
+    fn finish(self, expected_hash: &str) -> RunnerResult<Option<SessionHistoryPrefixOutcome>> {
+        let actual_hash = hex::encode(self.full_hasher.finalize());
+        if actual_hash != expected_hash {
+            return Err(RunnerError::Internal(
+                "session history hash mismatch".into(),
+            ));
+        }
+        Ok(self
+            .prefix_hasher
+            .map(|prefix_hasher| prefix_hasher.finish(self.observed_bytes)))
+    }
+}
+
+impl SessionHistoryPrefixHasher {
+    fn new(attribution: RestoredSessionHistoryPrefixAttribution) -> Self {
+        let (expected_hash, history_size_bytes) = attribution.into_parts();
+        Self {
+            hasher: Sha256::new(),
+            remaining_bytes: history_size_bytes,
+            expected_hash,
+            history_size_bytes,
+        }
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        if self.remaining_bytes == 0 {
+            return;
+        }
+        let prefix_bytes = self.remaining_bytes.min(bytes.len() as u64) as usize;
+        let prefix = bytes.get(..prefix_bytes).unwrap_or(bytes);
+        self.hasher.update(prefix);
+        self.remaining_bytes -= prefix_bytes as u64;
+    }
+
+    fn finish(self, observed_bytes: u64) -> SessionHistoryPrefixOutcome {
+        debug_assert_eq!(self.remaining_bytes, 0);
+        if hex::encode(self.hasher.finalize()) == self.expected_hash {
+            debug_assert!(observed_bytes > self.history_size_bytes);
+            SessionHistoryPrefixOutcome::Verified {
+                raw_extension_size: observed_bytes - self.history_size_bytes,
+            }
+        } else {
+            SessionHistoryPrefixOutcome::Divergent
+        }
+    }
 }
 
 fn decompress_history(
@@ -677,10 +850,14 @@ fn verify_codex_zstd(
     encoded_bytes: &[u8],
     expected_raw_size: u64,
     expected_hash: &str,
+    prefix_attribution: Option<RestoredSessionHistoryPrefixAttribution>,
     timings: &mut SessionHistoryCpuTimings,
     cancel: &CancellationToken,
     hooks: &SessionHistoryCpuHooks,
-) -> RunnerResult<Option<chrono::DateTime<chrono::Utc>>> {
+) -> RunnerResult<(
+    Option<chrono::DateTime<chrono::Utc>>,
+    Option<SessionHistoryPrefixOutcome>,
+)> {
     let decompression_started = Instant::now();
     let input = CancellationReader::new(encoded_bytes, cancel.clone(), hooks.clone());
     let decoder = match zstd::stream::read::Decoder::new(input) {
@@ -695,7 +872,7 @@ fn verify_codex_zstd(
     let decoded = decoder.take(expected_raw_size.saturating_add(1));
     let output = CancellationReader::new(decoded, cancel.clone(), hooks.clone());
     let mut reader = BufReader::with_capacity(DECODER_BUFFER_BYTES, output);
-    let mut hasher = Sha256::new();
+    let mut observer = SessionHistoryHashObserver::new(prefix_attribution);
     let mut decoded_bytes = 0u64;
     let mut timestamp = None;
     let mut line = Vec::new();
@@ -726,7 +903,7 @@ fn verify_codex_zstd(
                 "session history is too large after decompression: {decoded_bytes} bytes exceeds {expected_raw_size} bytes"
             )));
         }
-        update_hash(&mut hasher, &line, cancel)?;
+        observer.update(&line, cancel)?;
         if timestamp.is_none() {
             timestamp = parse_codex_timestamp_line(strip_jsonl_line_ending(&line), cancel, hooks)?;
         }
@@ -746,17 +923,10 @@ fn verify_codex_zstd(
 
     let hash_started = Instant::now();
     check_cancelled(cancel)?;
-    let actual_hash = hex::encode(hasher.finalize());
-    let hash_result = if actual_hash == expected_hash {
-        Ok(())
-    } else {
-        Err(RunnerError::Internal(
-            "session history hash mismatch".into(),
-        ))
-    };
+    let hash_result = observer.finish(expected_hash);
     timings.record_hash_verification(hash_started.elapsed(), hash_result.is_ok());
-    hash_result?;
-    Ok(timestamp)
+    let prefix_outcome = hash_result?;
+    Ok((timestamp, prefix_outcome))
 }
 
 fn scan_raw_codex_history(
@@ -1303,9 +1473,10 @@ mod tests {
             )
             .await
             .unwrap();
-        let session = outcome.result.unwrap();
+        let materialization = outcome.result.unwrap();
         assert_eq!(
-            session
+            materialization
+                .session
                 .codex_timestamp()
                 .map(|timestamp| timestamp.to_rfc3339())
                 .as_deref(),
@@ -1326,7 +1497,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(outcome.result.unwrap().codex_timestamp().is_none());
+        assert!(outcome.result.unwrap().session.codex_timestamp().is_none());
     }
 
     #[tokio::test]

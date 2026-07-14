@@ -126,6 +126,12 @@ pub(crate) struct RestoredSessionIdentityFields<'a> {
     pub(crate) history_size_bytes: u64,
 }
 
+#[derive(Clone)]
+pub(crate) struct RestoredSessionHistoryPrefixAttribution {
+    history_hash: String,
+    history_size_bytes: u64,
+}
+
 impl RestoredSessionIdentity {
     pub(crate) fn new(
         framework: RestoredSessionFramework,
@@ -242,6 +248,28 @@ impl RestoredSessionIdentity {
         self.final_metadata_verification().is_some()
     }
 
+    pub(crate) fn mismatch_reason_and_prefix_attribution(
+        &self,
+        requested: &Self,
+    ) -> (
+        Option<RestoredSessionIdentityMismatchReason>,
+        Option<RestoredSessionHistoryPrefixAttribution>,
+    ) {
+        let reason = self.mismatch_reason_for_request(requested);
+        let prefix_attribution = match reason {
+            Some(RestoredSessionIdentityMismatchReason::HistoryHash(
+                RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+            )) => self.final_metadata_verification().map(|verification| {
+                RestoredSessionHistoryPrefixAttribution {
+                    history_hash: verification.history_hash.to_owned(),
+                    history_size_bytes: verification.history_size_bytes,
+                }
+            }),
+            _ => None,
+        };
+        (reason, prefix_attribution)
+    }
+
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
         self == requested
             && self.has_final_metadata_verification()
@@ -301,6 +329,20 @@ impl RestoredSessionIdentity {
             Ordering::Equal => RestoredSessionHistoryHashSizeRelationship::RequestedEqual,
             Ordering::Greater => RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
         }
+    }
+}
+
+impl RestoredSessionHistoryPrefixAttribution {
+    #[cfg(test)]
+    pub(crate) fn for_test(history_hash: String, history_size_bytes: u64) -> Self {
+        Self {
+            history_hash,
+            history_size_bytes,
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (String, u64) {
+        (self.history_hash, self.history_size_bytes)
     }
 }
 

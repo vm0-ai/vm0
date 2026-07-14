@@ -325,6 +325,7 @@ fn build_session_history_restore_plan(
         return SessionHistoryRestorePlan::Default;
     }
 
+    let mut prefix_attribution = None;
     let fallback = match reuse.result {
         SandboxReuseResult::Reused => {
             let requested_identity = RestoredSessionIdentity::from_context(context);
@@ -348,8 +349,11 @@ fn build_session_history_restore_plan(
                         }
                     }
                     Some(restored_identity) => {
+                        let (mismatch_reason, attribution) = restored_identity
+                            .mismatch_reason_and_prefix_attribution(&requested_identity);
+                        prefix_attribution = attribution;
                         Some(SessionHistoryRestoreFallback::IdentityMismatch(
-                            restored_identity.mismatch_reason_for_request(&requested_identity),
+                            mismatch_reason,
                         ))
                     }
                     None => Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
@@ -372,14 +376,27 @@ fn build_session_history_restore_plan(
     }
 
     let started_at = Instant::now();
-    let materializer = SessionHistoryMaterializer::start_cancellable(
-        http,
-        cpu,
-        Some(resume_session),
-        effective_cli_framework(&context.cli_agent_type),
-        cancel.token(),
-        probe,
-    );
+    let materializer = match prefix_attribution {
+        Some(prefix_attribution) => {
+            SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
+                http,
+                cpu,
+                Some(resume_session),
+                effective_cli_framework(&context.cli_agent_type),
+                cancel.token(),
+                probe,
+                prefix_attribution,
+            )
+        }
+        None => SessionHistoryMaterializer::start_cancellable(
+            http,
+            cpu,
+            Some(resume_session),
+            effective_cli_framework(&context.cli_agent_type),
+            cancel.token(),
+            probe,
+        ),
+    };
     pre_spawn_timing.record_phase_elapsed(
         RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
         started_at,

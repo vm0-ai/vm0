@@ -53,7 +53,8 @@ use super::support::{
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
 use crate::restored_session_identity::{
-    RestoredSessionHistoryHashSizeRelationship, RestoredSessionIdentityMismatchReason,
+    RestoredSessionHistoryHashSizeRelationship, RestoredSessionHistoryPrefixAttribution,
+    RestoredSessionIdentityMismatchReason,
 };
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
@@ -77,6 +78,13 @@ fn gzip_bytes(raw: &[u8]) -> Vec<u8> {
 
 fn zstd_bytes(raw: &[u8]) -> Vec<u8> {
     zstd::encode_all(raw, 0).unwrap()
+}
+
+fn history_prefix_attribution(history: &[u8]) -> RestoredSessionHistoryPrefixAttribution {
+    RestoredSessionHistoryPrefixAttribution::for_test(
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+    )
 }
 
 async fn serve_history_once(body: &[u8]) -> OneShotSessionHistoryServer {
@@ -1779,13 +1787,14 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
         },
     });
 
-    let materializer = SessionHistoryMaterializer::start_cancellable(
+    let materializer = SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
         &config.http,
         &config.session_history_cpu,
         ctx.resume_session.as_ref(),
         effective_cli_framework(&ctx.cli_agent_type),
         tokio_util::sync::CancellationToken::new(),
         None,
+        history_prefix_attribution(&history[..4]),
     );
     tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
         while !materializer.is_download_finished() {
@@ -1835,6 +1844,11 @@ async fn run_in_sandbox_records_completed_prestarted_materializer_failure() {
         &ops,
         "session_history_download_hash_verification",
         "session history download phase failed",
+    );
+    assert!(
+        ops.iter()
+            .all(|op| !op.0.starts_with("session_history_requested_larger_prefix_")),
+        "failed materialization must not emit prefix attribution telemetry: {ops:?}"
     );
 }
 
@@ -2578,6 +2592,133 @@ async fn run_in_sandbox_records_mismatch_fallback_and_restores_prestarted_histor
             "expected restore telemetry, got: {ops:?}"
         );
         assert_successful_action(&ops, "session_history_identity_finalize_missing_metadata");
+        assert!(
+            ops.iter()
+                .all(|op| { !op.0.starts_with("session_history_requested_larger_prefix_") }),
+            "ineligible materializers must not emit prefix attribution telemetry: {ops:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn run_in_sandbox_records_requested_larger_prefix_outcomes_without_changing_restore() {
+    let requested_history = b"prefix\nextension\n";
+    let cases: [(&[u8], bool); 2] = [(b"prefix\n", true), (b"differ\n", false)];
+
+    for (local_history, expected_verified) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let sandbox = sandbox_mock::MockSandbox::new("test");
+        let server = MockServer::start_async().await;
+        let history_mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/history.blob");
+                then.status(200).body(requested_history);
+            })
+            .await;
+        let requested_hash = hex::encode(Sha256::digest(requested_history));
+        let local_hash = hex::encode(Sha256::digest(local_history));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            cli_agent_session_id: "sess-prefix-attribution-123".into(),
+            history: ResumeSessionHistory::Ref {
+                history_ref: ResumeSessionHistoryRef {
+                    kind: ResumeSessionHistoryRefKind::Blob,
+                    hash: requested_hash.clone(),
+                    url: server.url("/history.blob?token=secret"),
+                    encoding: None,
+                    raw_size: requested_history.len() as u64,
+                    encoded_size: requested_history.len() as u64,
+                    download_source: None,
+                },
+            },
+        });
+        sandbox.push_read_file_result(Ok(None));
+        let materializer = SessionHistoryMaterializer::start_cancellable_with_prefix_attribution(
+            &config.http,
+            &config.session_history_cpu,
+            ctx.resume_session.as_ref(),
+            effective_cli_framework(&ctx.cli_agent_type),
+            tokio_util::sync::CancellationToken::new(),
+            None,
+            history_prefix_attribution(local_history),
+        );
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let result = run_in_sandbox(
+            &sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::Reused,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+                .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                    materializer,
+                    fallback: Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        RestoredSessionIdentityMismatchReason::HistoryHash(
+                            RestoredSessionHistoryHashSizeRelationship::RequestedLarger,
+                        ),
+                    ))),
+                }),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.failure.is_none());
+        assert!(result.reusable_session_identity.is_none());
+        history_mock.assert_calls_async(1).await;
+        let writes = sandbox.write_file_calls();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].content, requested_history);
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_successful_action_once(&ops, "session_history_restore_fallback_identity_mismatch");
+        assert_successful_action_once(&ops, "session_history_identity_mismatch_history_hash");
+        assert_successful_action_once(
+            &ops,
+            "session_history_identity_mismatch_history_hash_requested_larger",
+        );
+        assert_successful_action_once(&ops, "session_history_download");
+        assert_successful_action_once(&ops, "session_restore");
+
+        let extension_actions = ops
+            .iter()
+            .filter(|op| {
+                op.0.starts_with("session_history_requested_larger_prefix_extension_")
+            })
+            .count();
+        if expected_verified {
+            assert_successful_action_once(&ops, "session_history_requested_larger_prefix_verified");
+            assert_no_action(&ops, "session_history_requested_larger_prefix_divergent");
+            assert_successful_action_once(
+                &ops,
+                "session_history_requested_larger_prefix_extension_lt_64_kib",
+            );
+            assert_eq!(
+                extension_actions, 1,
+                "unexpected extension actions: {ops:?}"
+            );
+        } else {
+            assert_no_action(&ops, "session_history_requested_larger_prefix_verified");
+            assert_successful_action_once(
+                &ops,
+                "session_history_requested_larger_prefix_divergent",
+            );
+            assert_eq!(
+                extension_actions, 0,
+                "unexpected extension actions: {ops:?}"
+            );
+        }
+
+        let diagnostics = format!("{ops:?}");
+        assert!(!diagnostics.contains(&requested_hash));
+        assert!(!diagnostics.contains(&local_hash));
+        assert!(!diagnostics.contains("token=secret"));
+        assert!(!diagnostics.contains("prefix\nextension"));
     }
 }
 
