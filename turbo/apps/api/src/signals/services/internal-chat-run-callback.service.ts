@@ -1759,7 +1759,7 @@ async function claimQueuedUserMessageForDispatch(args: {
       FOR UPDATE
     `);
     if (!threadRows.rows[0]) {
-      return [];
+      return null;
     }
 
     const rows = await tx.execute<{
@@ -1780,7 +1780,7 @@ async function claimQueuedUserMessageForDispatch(args: {
       run.chatThreadId !== args.threadId ||
       (run.status !== "queued" && run.status !== "pending")
     ) {
-      return [];
+      return null;
     }
 
     const [competingRun] = await tx
@@ -1796,7 +1796,7 @@ async function claimQueuedUserMessageForDispatch(args: {
       )
       .limit(1);
     if (competingRun) {
-      return [];
+      return null;
     }
 
     // Queue-first messages (identified by their chat_message_queue item) are
