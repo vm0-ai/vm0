@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.144.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.11...runner-rs-v0.144.12) (2026-07-14)
+
+
+### Documentation
+
+* **mitm-addon:** document registry lookup failure semantics ([#21411](https://github.com/vm0-ai/vm0/issues/21411)) ([37f2792](https://github.com/vm0-ai/vm0/commit/37f2792bfac8e24e2e2d3e99931dee68576f1da2))
+* **runner:** clarify job budget and parking lifecycle ([#21410](https://github.com/vm0-ai/vm0/issues/21410)) ([24da677](https://github.com/vm0-ai/vm0/commit/24da677b275c88c79c44e533b46ae28bac350621))
+* **runner:** document deferred cache fill contract ([#21414](https://github.com/vm0-ai/vm0/issues/21414)) ([e6acc5a](https://github.com/vm0-ai/vm0/commit/e6acc5a4582fcb4a988c463fba39c75f1683e130))
+* **runner:** record active-input forwarding invariants ([#21416](https://github.com/vm0-ai/vm0/issues/21416)) ([c99f3fa](https://github.com/vm0-ai/vm0/commit/c99f3fa50743d428c0ebba2f6b95ab0117ccdfb6))
+
+
+### Performance Improvements
+
+* **runner:** measure session history append lineage ([#21417](https://github.com/vm0-ai/vm0/issues/21417)) ([f653bec](https://github.com/vm0-ai/vm0/commit/f653bec6793e2d3889cc8323e3699502b7eccea1))
+
 ## [0.144.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.144.10...runner-rs-v0.144.11) (2026-07-14)
 
 

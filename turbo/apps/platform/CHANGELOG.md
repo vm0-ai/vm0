@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.598.0](https://github.com/vm0-ai/vm0/compare/app-v0.597.5...app-v0.598.0) (2026-07-14)
+
+
+### Features
+
+* move template categories into a responsive sidebar ([#21400](https://github.com/vm0-ai/vm0/issues/21400)) ([fe47744](https://github.com/vm0-ai/vm0/commit/fe47744c297131d94dad8bf4d8a95dc427cbfd4b))
+
+
+### Bug Fixes
+
+* **platform:** keep Codex fast mode for GPT-5.6 threads ([#21420](https://github.com/vm0-ai/vm0/issues/21420)) ([f9a9a66](https://github.com/vm0-ai/vm0/commit/f9a9a66f6c89bc2a33b6f4264d561a2072fd1a65))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.1
+    * @vm0/connectors bumped to 1.160.0
+    * @vm0/core bumped to 8.431.0
+
 ## [0.597.5](https://github.com/vm0-ai/vm0/compare/app-v0.597.4...app-v0.597.5) (2026-07-14)
 
 

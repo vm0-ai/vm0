@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.240.0](https://github.com/vm0-ai/vm0/compare/cli-v9.239.0...cli-v9.240.0) (2026-07-14)
+
+
+### Features
+
+* make microsoft and outlook connectors generally available ([#21401](https://github.com/vm0-ai/vm0/issues/21401)) ([3aa658f](https://github.com/vm0-ai/vm0/commit/3aa658f8cf655bd22d84331678db801c914a5541))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.193.1
+    * @vm0/connectors bumped to 1.160.0
+    * @vm0/core bumped to 8.431.0
+
 ## [9.239.0](https://github.com/vm0-ai/vm0/compare/cli-v9.238.10...cli-v9.239.0) (2026-07-14)
 
 

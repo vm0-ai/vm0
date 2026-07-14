@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.431.0](https://github.com/vm0-ai/vm0/compare/core-v8.430.0...core-v8.431.0) (2026-07-14)
+
+
+### Features
+
+* make microsoft and outlook connectors generally available ([#21401](https://github.com/vm0-ai/vm0/issues/21401)) ([3aa658f](https://github.com/vm0-ai/vm0/commit/3aa658f8cf655bd22d84331678db801c914a5541))
+
+
+### Refactoring
+
+* read staff plan limits from org entitlements ([#21398](https://github.com/vm0-ai/vm0/issues/21398)) ([dbf5a61](https://github.com/vm0-ai/vm0/commit/dbf5a612bf2431b3b56c6a67ac2f6d45aba235df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.1
+    * @vm0/connectors bumped to 1.160.0
+
 ## [8.430.0](https://github.com/vm0-ai/vm0/compare/core-v8.429.0...core-v8.430.0) (2026-07-14)
 
 

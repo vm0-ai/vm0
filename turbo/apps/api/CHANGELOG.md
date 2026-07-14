@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.273.1](https://github.com/vm0-ai/vm0/compare/api-v1.273.0...api-v1.273.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* improve teams okou bot validation ([#21412](https://github.com/vm0-ai/vm0/issues/21412)) ([dff7782](https://github.com/vm0-ai/vm0/commit/dff77826a148be4c983c833efe90ca68da4f0621))
+
+
+### Refactoring
+
+* read staff plan limits from org entitlements ([#21398](https://github.com/vm0-ai/vm0/issues/21398)) ([dbf5a61](https://github.com/vm0-ai/vm0/commit/dbf5a612bf2431b3b56c6a67ac2f6d45aba235df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.1
+    * @vm0/connectors bumped to 1.160.0
+    * @vm0/core bumped to 8.431.0
+    * @vm0/db bumped to 1.115.1
+
 ## [1.273.0](https://github.com/vm0-ai/vm0/compare/api-v1.272.1...api-v1.273.0) (2026-07-14)
 
 
