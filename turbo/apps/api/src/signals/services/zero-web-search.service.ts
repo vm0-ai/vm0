@@ -279,8 +279,12 @@ function normalizedHttpUrl(value: string): string | undefined {
     }
   }
   const url = safeUrlParse(value);
-  return url && (url.protocol === "http:" || url.protocol === "https:")
-    ? url.toString()
+  if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+    return undefined;
+  }
+  const normalized = url.toString();
+  return normalized.length <= ZERO_WEB_SEARCH_MAX_URL_CHARS
+    ? normalized
     : undefined;
 }
 

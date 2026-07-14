@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { HttpResponse, http } from "msw";
 import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
@@ -9,10 +11,12 @@ import {
   type ZeroWebSearchRequest,
 } from "@vm0/api-contracts/contracts/zero-web-search";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import {
   deleteUsagePricingRows,
@@ -33,6 +37,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -250,6 +255,80 @@ describe("zero web-search route", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: web-search:read",
     );
+  });
+
+  it("accepts agent tokens and attributes usage to their run", async () => {
+    const actor = await webSearchEnabledActor();
+    if (!actor.orgId) {
+      throw new Error(
+        "Zero Web Search test actor must belong to an organization",
+      );
+    }
+    const bdd = createBddApi(context);
+    const api = createRunsApi(context);
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    await api.grantProEntitlement(actor);
+    await fundActor(actor);
+    await seedWebSearchPricing();
+    configureProvider();
+    const name = `web-search-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1.0",
+      agents: {
+        [name]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "Find current public information",
+    });
+    const token = api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+      "web-search:read",
+    ]);
+    server.use(
+      http.post(PERPLEXITY_SEARCH_URL, () => {
+        return HttpResponse.json(providerResponse());
+      }),
+    );
+
+    const response = await accept(
+      client()(zeroWebSearchContract).search({
+        headers: { authorization: `Bearer ${token}` },
+        body: defaultRequest(),
+      }),
+      [200],
+    );
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        {
+          id: actor.userId,
+          primaryEmailAddressId: `email_${actor.userId}`,
+          emailAddresses: [
+            {
+              id: `email_${actor.userId}`,
+              emailAddress: `${actor.userId}@example.com`,
+            },
+          ],
+        },
+      ],
+    });
+    const usage = await accept(
+      setupApp({ context })(zeroUsageRunsContract).get({
+        headers: authenticate(actor),
+        query: { runId: run.runId },
+      }),
+      [200],
+    );
+
+    expect(response.body.creditsCharged).toBe(5);
+    expect(usage.body.runs).toHaveLength(1);
+    expect(usage.body.runs[0]?.runId).toBe(run.runId);
+    expect(usage.body.runs[0]?.creditsCharged).toBe(5);
   });
 
   it("rejects invalid filters before calling Perplexity", async () => {
@@ -537,6 +616,19 @@ describe("zero web-search route", () => {
           {
             title: "Bad",
             url: "https://exam\nple.com",
+            snippet: "bad",
+          },
+        ],
+      }),
+      "PERPLEXITY_INVALID_RESPONSE",
+    ],
+    [
+      "URL exceeding the bound after normalization",
+      JSON.stringify({
+        results: [
+          {
+            title: "Bad",
+            url: `https://example.com/${"界".repeat(700)}`,
             snippet: "bad",
           },
         ],
