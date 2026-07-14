@@ -110,6 +110,7 @@ const FORBIDDEN_MEMORY_CACHE_TIMING_KEYS = [
   "userId",
   "workflow_id",
   "workflowId",
+  "workflow_trigger_id",
   "workflowAutomationId",
   "workflow_name",
   "workflowName",
