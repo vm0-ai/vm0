@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.430.0](https://github.com/vm0-ai/vm0/compare/core-v8.429.0...core-v8.430.0) (2026-07-14)
+
+
+### Features
+
+* add managed zero scrape ([#20778](https://github.com/vm0-ai/vm0/issues/20778)) ([4e72f67](https://github.com/vm0-ai/vm0/commit/4e72f67713b096f72ba4cab591c440906783e68f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.193.0
+    * @vm0/connectors bumped to 1.159.0
+
 ## [8.429.0](https://github.com/vm0-ai/vm0/compare/core-v8.428.0...core-v8.429.0) (2026-07-14)
 
 

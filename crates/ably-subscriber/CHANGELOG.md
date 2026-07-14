@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.4...ably-subscriber-v1.0.5) (2026-07-14)
+
+
+### Bug Fixes
+
+* **ably-subscriber:** enforce clean websocket shutdown ([#21399](https://github.com/vm0-ai/vm0/issues/21399)) ([cf8031e](https://github.com/vm0-ai/vm0/commit/cf8031e425122c0fc5eff333c6d717211045ba6b))
+
 ## [1.0.4](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v1.0.3...ably-subscriber-v1.0.4) (2026-07-13)
 
 
