@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.275.4](https://github.com/vm0-ai/vm0/compare/api-v1.275.3...api-v1.275.4) (2026-07-14)
+
+
+### Refactoring
+
+* **api:** stop writing the legacy automation identifier ([#21507](https://github.com/vm0-ai/vm0/issues/21507)) ([24ed4ac](https://github.com/vm0-ai/vm0/commit/24ed4ac5deb3bff63901a7ae896cbd094081a9cd))
+
 ## [1.275.3](https://github.com/vm0-ai/vm0/compare/api-v1.275.2...api-v1.275.3) (2026-07-14)
 
 
