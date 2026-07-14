@@ -40,6 +40,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 
@@ -782,9 +786,16 @@ function ArtifactCard({
         className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-t border-border p-3"
       >
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold text-foreground">
-            {item.filename}
-          </h2>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <h2 className="truncate text-sm font-semibold text-foreground">
+                  {item.filename}
+                </h2>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{item.filename}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <p className="mt-1 truncate text-[11px] text-muted-foreground/80">
             {contextLabel}
           </p>
