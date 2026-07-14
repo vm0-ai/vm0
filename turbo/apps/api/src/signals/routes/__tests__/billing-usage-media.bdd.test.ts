@@ -1128,6 +1128,20 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(imageIo.body);
     expect(imageIo.body.error.code).toBe("INSUFFICIENT_CREDITS");
 
+    const suspendedVideo = await api.requestVideoIoGenerate(
+      admin,
+      { prompt: "animated billing usage chart" },
+      [402],
+    );
+    expectApiError(suspendedVideo.body);
+    expect(suspendedVideo.body.error.code).toBe("PRO_REQUIRED");
+
+    await seedOrgMetadata({
+      orgId: admin.orgId,
+      tier: "pro",
+      credits: 0,
+    });
+
     const missingVideoIoPrompt = await api.requestVideoIoGenerate(
       admin,
       {},
@@ -1545,6 +1559,49 @@ function sttFormData(
 }
 
 describe("FILE-02: audio transcription v1 provider contract", () => {
+  it("enforces the lifetime audio quota for limited-free-1 API transcription", async () => {
+    const { api, admin } = testActors();
+    if (!admin.orgId) {
+      throw new Error("Expected limited-free audio test user to have an org");
+    }
+    const runsApi = createRunsApi(context);
+    await runsApi.grantProEntitlement(admin);
+    await seedOrgMetadata({
+      orgId: admin.orgId,
+      tier: "limited-free-1",
+      credits: 0,
+    });
+
+    const authApi = createAuthOrgAgentsBddApi(context);
+    const apiKey = await authApi.createApiKey(admin, {
+      name: "BDD limited-free audio quota",
+      expiresInDays: 1,
+    });
+    server.use(
+      http.post("https://api.openai.com/v1/audio/transcriptions", () => {
+        return HttpResponse.json({ text: "limited-free transcript" });
+      }),
+    );
+
+    const pcm = Uint8Array.from([0x00, 0x00]);
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const transcribed = await requestAudioTranscriptionRaw(apiKey.token, pcm);
+      expect(transcribed.status).toBe(200);
+    }
+    const quota = await api.readVoiceQuota(admin);
+    expect(quota.body).toStrictEqual({ allowed: false, count: 10, limit: 10 });
+
+    const blocked = await requestAudioTranscriptionRaw(apiKey.token, pcm);
+    expect(blocked.status).toBe(402);
+    expect(blocked.body).toStrictEqual({
+      error: {
+        message:
+          "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
+        code: "AUDIO_INPUT_QUOTA_EXCEEDED",
+      },
+    });
+  });
+
   it("transcribes raw PCM through OpenAI behind the feature switch with the WAV byte contract", async () => {
     const { api, admin } = testActors();
     const runsApi = createRunsApi(context);

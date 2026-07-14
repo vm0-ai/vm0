@@ -4096,6 +4096,13 @@
       "when": 1783998553112,
       "tag": "0584_move_workflow_queue_events_to_chat_message_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 585,
+      "version": "7",
+      "when": 1784001554285,
+      "tag": "0585_sudden_manta",
+      "breakpoints": true
     }
   ]
 }

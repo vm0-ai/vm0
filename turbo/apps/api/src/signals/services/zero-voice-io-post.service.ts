@@ -965,7 +965,7 @@ export const recordSttUsage$ = command(
             lastAt: sql`now()`,
           },
         }),
-      params.orgTier === "free"
+      params.orgTier === "free" || params.orgTier === "limited-free-1"
         ? writeDb
             .insert(userBehaviorCount)
             .values({
