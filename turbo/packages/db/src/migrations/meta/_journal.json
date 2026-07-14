@@ -4145,6 +4145,13 @@
       "when": 1784025054146,
       "tag": "0591_rename_zero_workflow_webhook_triggers_to_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 592,
+      "version": "7",
+      "when": 1784031179060,
+      "tag": "0592_rename_workflow_user_trigger_threads_to_automations",
+      "breakpoints": true
     }
   ]
 }
