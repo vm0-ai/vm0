@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.50.7"
+version = "0.51.0"
 edition.workspace = true
 
 [dependencies]

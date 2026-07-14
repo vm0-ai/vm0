@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.268.0](https://github.com/vm0-ai/vm0/compare/api-v1.267.0...api-v1.268.0) (2026-07-14)
+
+
+### Features
+
+* default new organizations to luna with ultra reasoning ([#21323](https://github.com/vm0-ai/vm0/issues/21323)) ([d42f4c3](https://github.com/vm0-ai/vm0/commit/d42f4c30743bcb6aa087fd2c077b348b519175ca))
+
+
+### Refactoring
+
+* **db:** drop legacy chat automation columns ([#21320](https://github.com/vm0-ai/vm0/issues/21320)) ([47b832c](https://github.com/vm0-ai/vm0/commit/47b832cc762a95649c44b93f7cf8c9c5818d38ea))
+* roll out artifact favorites and retire the switch ([#21293](https://github.com/vm0-ai/vm0/issues/21293)) ([20accfa](https://github.com/vm0-ai/vm0/commit/20accfa64190f6c04596dda2e9879de3e5d7b339))
+
+
+### Performance Improvements
+
+* **api:** bound incomplete chat round loading ([#21301](https://github.com/vm0-ai/vm0/issues/21301)) ([8bdd66c](https://github.com/vm0-ai/vm0/commit/8bdd66c6cf55bae296d7e89c08b19b889babe59f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.189.0
+    * @vm0/connectors bumped to 1.157.1
+    * @vm0/core bumped to 8.427.1
+    * @vm0/db bumped to 1.111.5
+
 ## [1.267.0](https://github.com/vm0-ai/vm0/compare/api-v1.266.1...api-v1.267.0) (2026-07-13)
 
 

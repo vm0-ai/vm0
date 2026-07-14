@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.596.1](https://github.com/vm0-ai/vm0/compare/app-v0.596.0...app-v0.596.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **platform:** shorten thinking indicator line pause ([#21324](https://github.com/vm0-ai/vm0/issues/21324)) ([43d7a75](https://github.com/vm0-ai/vm0/commit/43d7a75d3f331341e6dffed666f4567cfca5d549))
+* show keyboard focus on the artifact agent filter ([#21286](https://github.com/vm0-ai/vm0/issues/21286)) ([bd22c11](https://github.com/vm0-ai/vm0/commit/bd22c111a45dcd5e1ca9a3f51c4fd6a7d87f5e1c))
+
+
+### Refactoring
+
+* roll out artifact favorites and retire the switch ([#21293](https://github.com/vm0-ai/vm0/issues/21293)) ([20accfa](https://github.com/vm0-ai/vm0/commit/20accfa64190f6c04596dda2e9879de3e5d7b339))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.189.0
+    * @vm0/connectors bumped to 1.157.1
+    * @vm0/core bumped to 8.427.1
+
 ## [0.596.0](https://github.com/vm0-ai/vm0/compare/app-v0.595.5...app-v0.596.0) (2026-07-13)
 
 
