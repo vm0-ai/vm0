@@ -1679,6 +1679,20 @@ describe("team page navigation", () => {
         within(readGroupHeader).getByLabelText("Read allow options"),
       ).toHaveTextContent("7d");
     });
+    click(within(readGroupHeader).getByLabelText("Read allow options"));
+    click(menuItemByText("Allow always"));
+    await waitFor(() => {
+      expect(
+        within(readGroupHeader).getByLabelText("Read allow options"),
+      ).toHaveTextContent("Always");
+    });
+    click(within(readGroupHeader).getByLabelText("Read allow options"));
+    click(menuItemByText("Allow for 7d"));
+    await waitFor(() => {
+      expect(
+        within(readGroupHeader).getByLabelText("Read allow options"),
+      ).toHaveTextContent("7d");
+    });
 
     click(readGroupElement);
     const bookmarksReadRow = await permissionRowByName(
