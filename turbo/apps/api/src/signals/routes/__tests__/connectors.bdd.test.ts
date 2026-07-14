@@ -1708,6 +1708,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("preserves valid Unicode prefixes while deriving a canonical default slug", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const rawPrefix = "https://münich.example/v1/";
+
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Unicode Host API",
+      prefixes: [rawPrefix],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+
+    expect(connector.prefixes).toStrictEqual([rawPrefix]);
+    expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
+    expect(connector.slug).toMatch(/^xn-mnich-kva-example-[a-z0-9]{6}$/);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
+    await expect(
+      connectorsApi.listCustomConnectors(admin),
+    ).resolves.toStrictEqual([]);
+  });
+
   it("deletes only the legacy secret value through the legacy secret endpoint", async () => {
     const bdd = createBddApi(context);
     const admin = bdd.user({ orgRole: "org:admin" });
