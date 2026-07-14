@@ -11,7 +11,6 @@ import {
   check,
   jsonb,
   real,
-  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
@@ -257,9 +256,7 @@ export const zeroWorkflowAutomations = pgTable(
 export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
   "zero_workflow_automation_memory_embeddings",
   {
-    // Retained during the Automation ID expand/contract window so the
-    // previously deployed API can keep reading and upserting cache rows.
-    legacyWorkflowAutomationId: uuid("workflow_trigger_id")
+    workflowAutomationId: uuid("workflow_automation_id")
       .primaryKey()
       .references(
         () => {
@@ -267,9 +264,6 @@ export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    workflowAutomationId: uuid("workflow_automation_id")
-      .notNull()
-      .unique("zero_workflow_automation_memory_embeddings_automation_id_uq"),
     embeddingModel: text("embedding_model").notNull(),
     queryHash: varchar("query_hash", { length: 64 }).notNull(),
     embedding: real("embedding").array().notNull(),
@@ -280,11 +274,6 @@ export const zeroWorkflowAutomationMemoryEmbeddings = pgTable(
         "zero_workflow_automation_memory_embeddings_dimensions_check",
         sql`cardinality(${table.embedding}) = 1536`,
       ),
-      foreignKey({
-        name: "zero_workflow_automation_memory_embeddings_automation_id_fk",
-        columns: [table.workflowAutomationId],
-        foreignColumns: [zeroWorkflowAutomations.id],
-      }).onDelete("cascade"),
     ];
   },
 );
