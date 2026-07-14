@@ -4101,10 +4101,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       models: [expect.objectContaining({ slug: "MiniMax-M3" })],
     });
     expect(
-      claim.firewalls?.map((firewall) => {
-        return firewallEntryName(firewall);
-      }),
-    ).toContain("model-provider:minimax-api-key");
+      inlineFirewallApis(claim.firewalls, "model-provider:minimax-api-key")[0]
+        ?.base,
+    ).toBe("https://api.minimax.io/v1");
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
