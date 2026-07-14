@@ -1,10 +1,7 @@
 import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import {
-  FeatureSwitchKey,
-  LEGACY_NOTION_WORKFLOW_TRIGGERS_FEATURE_SWITCH_KEY as LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY,
-} from "@vm0/connectors/feature-switch-key";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { authenticatedIdentity$, clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
@@ -51,9 +48,7 @@ function applySwitches(
 
   const notionWorkflowAutomations =
     overrides?.[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    overrides?.[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY] ??
-    effectiveSwitches?.[FeatureSwitchKey.NotionWorkflowAutomations] ??
-    effectiveSwitches?.[LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY];
+    effectiveSwitches?.[FeatureSwitchKey.NotionWorkflowAutomations];
   if (notionWorkflowAutomations !== undefined) {
     result[FeatureSwitchKey.NotionWorkflowAutomations] = Boolean(
       notionWorkflowAutomations,
@@ -122,18 +117,10 @@ export const setFeatureSwitch$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(apiFeatureSwitchClient$);
-    const compatibleOverrides: Record<string, boolean> = { ...overrides };
-    const notionWorkflowAutomations =
-      overrides[FeatureSwitchKey.NotionWorkflowAutomations];
-    if (notionWorkflowAutomations !== undefined) {
-      compatibleOverrides[
-        LEGACY_NOTION_WORKFLOW_AUTOMATIONS_FEATURE_SWITCH_KEY
-      ] = notionWorkflowAutomations;
-    }
     signal.throwIfAborted();
     await accept(
       client.update({
-        body: { switches: compatibleOverrides },
+        body: { switches: overrides },
         fetchOptions: { signal },
       }),
       [200],
