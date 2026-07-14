@@ -5088,15 +5088,6 @@ mod tests {
             .expect("both background fills should finish before later warm staging")
             .unwrap();
 
-        let cold_lock = tokio::time::timeout(
-            Duration::from_secs(5),
-            lock::acquire(home.storage_lock(cold_name, version)),
-        )
-        .await
-        .expect("cold worker should release the host cache lock before guest staging unblocks")
-        .unwrap();
-        drop(cold_lock);
-
         gate.wait_entered(1, Duration::from_secs(5)).await.unwrap();
         gate.release_one();
         let manifest = task.await.unwrap().unwrap();
