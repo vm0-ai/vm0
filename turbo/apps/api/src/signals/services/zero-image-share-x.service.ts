@@ -11,7 +11,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, settle } from "../utils";
 import { lockConnectorState } from "./auth-state-lock.service";
 import {
   decryptStoredSecretValue,
@@ -471,9 +471,14 @@ async function xApiJson(args: {
   });
   args.signal.throwIfAborted();
 
-  const body = safeJsonParse((await tapError(response.text())) ?? "") ?? null;
+  const responseText = await response.text();
   if (!response.ok) {
     throw new Error(`X API returned ${response.status}`);
+  }
+
+  const body = safeJsonParse(responseText);
+  if (body === undefined) {
+    throw new Error("X API returned invalid JSON");
   }
   return body;
 }
