@@ -71,12 +71,18 @@ pub(super) fn rootfs_script_command(script: &Path) -> tokio::process::Command {
 
 struct RootfsScriptProcess {
     child: Option<tokio::process::Child>,
-    pgid: Option<nix::unistd::Pid>,
 }
 
 impl Drop for RootfsScriptProcess {
     fn drop(&mut self) {
-        if let Some(pgid) = self.pgid {
+        // Rootfs scripts are synchronous and must finish descendant work before
+        // returning. Process-group cleanup is only an abnormal-drop fallback
+        // while the owned child still pins the process-group identity.
+        if let Some(child) = self.child.as_ref()
+            && let Some(pid) = child.id()
+            && let Ok(pid) = i32::try_from(pid)
+        {
+            let pgid = nix::unistd::Pid::from_raw(pid);
             let _ = nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL);
         }
         crate::child_cleanup::kill_and_reap_child_on_drop("rootfs script", &mut self.child);
@@ -90,17 +96,13 @@ pub(super) async fn run_rootfs_script(
     let child = cmd
         .spawn()
         .map_err(|e| RunnerError::Internal(format!("spawn {label}: {e}")))?;
-    let pgid = child.id().map(|pid| nix::unistd::Pid::from_raw(pid as i32));
-    let mut process = RootfsScriptProcess { child: None, pgid };
+    let mut process = RootfsScriptProcess { child: None };
     let child = process.child.insert(child);
     let status = child
         .wait()
         .await
         .map_err(|e| RunnerError::Internal(format!("wait for {label}: {e}")))?;
     process.child = None;
-    if status.success() {
-        process.pgid = None;
-    }
     Ok(status)
 }
 
@@ -161,25 +163,8 @@ mod tests {
         false
     }
 
-    struct ProcessGroupCleanup {
-        pgid_file: PathBuf,
-    }
-
-    impl Drop for ProcessGroupCleanup {
-        fn drop(&mut self) {
-            if let Ok(raw_pgid) = std::fs::read_to_string(&self.pgid_file)
-                && let Ok(pgid) = raw_pgid.parse::<i32>()
-            {
-                let _ = nix::sys::signal::killpg(
-                    nix::unistd::Pid::from_raw(pgid),
-                    nix::sys::signal::Signal::SIGKILL,
-                );
-            }
-        }
-    }
-
-    async fn write_process_group_leak_script(dir: &Path) -> PathBuf {
-        let script = dir.join("leak-process-group.sh");
+    async fn write_process_group_test_script(dir: &Path) -> PathBuf {
+        let script = dir.join("process-group-test.sh");
         tokio::fs::write(
             &script,
             r#"#!/usr/bin/env bash
@@ -191,6 +176,10 @@ survived_file="$3"
 mode="${4:-fail}"
 
 printf '%s' "$$" > "$pgid_file"
+if [[ "$mode" == "fail" ]]; then
+  exit 17
+fi
+
 (
   trap '' HUP TERM INT
   printf started > "$started_file"
@@ -202,11 +191,7 @@ while [[ ! -f "$started_file" ]]; do
   sleep 0.01
 done
 
-if [[ "$mode" == "wait" ]]; then
-  sleep 30
-fi
-
-exit 1
+sleep 30
 "#,
         )
         .await
@@ -287,26 +272,22 @@ exit 1
     }
 
     #[tokio::test]
-    async fn run_rootfs_script_kills_process_group_after_script_failure() {
+    async fn run_rootfs_script_returns_nonzero_status() {
         let dir = tempfile::tempdir().unwrap();
         let pgid = dir.path().join("pgid");
         let started = dir.path().join("started");
         let survived = dir.path().join("survived");
-        let script = write_process_group_leak_script(dir.path()).await;
-        let _cleanup = ProcessGroupCleanup {
-            pgid_file: pgid.clone(),
-        };
+        let script = write_process_group_test_script(dir.path()).await;
 
         let mut cmd = rootfs_script_command(&script);
         cmd.arg(&pgid).arg(&started).arg(&survived).arg("fail");
 
-        let status = run_rootfs_script(cmd, "leak-process-group.sh")
+        let status = run_rootfs_script(cmd, "process-group-test.sh")
             .await
             .unwrap();
 
-        assert!(!status.success());
-        assert!(started.exists(), "test child should have started");
-        assert_process_group_stopped_without_survival_marker(&pgid, &survived).await;
+        assert_eq!(status.code(), Some(17));
+        assert!(!started.exists(), "failed script must not background work");
     }
 
     #[tokio::test]
@@ -315,16 +296,13 @@ exit 1
         let pgid = dir.path().join("pgid");
         let started = dir.path().join("started");
         let survived = dir.path().join("survived");
-        let script = write_process_group_leak_script(dir.path()).await;
-        let _cleanup = ProcessGroupCleanup {
-            pgid_file: pgid.clone(),
-        };
+        let script = write_process_group_test_script(dir.path()).await;
 
         let mut cmd = rootfs_script_command(&script);
         cmd.arg(&pgid).arg(&started).arg(&survived).arg("wait");
 
         let handle =
-            tokio::spawn(async move { run_rootfs_script(cmd, "leak-process-group.sh").await });
+            tokio::spawn(async move { run_rootfs_script(cmd, "process-group-test.sh").await });
         wait_for_file(&started).await;
         handle.abort();
         let _ = handle.await;
