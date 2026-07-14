@@ -635,7 +635,14 @@ async function createRegionComment(
 describe("image editing", () => {
   it("adds a remove-background result for the selected canvas image", async () => {
     const user = userEvent.setup({ delay: null });
-    mockImageEditGeneration();
+    const requests: {
+      model?: string;
+      prompt?: string;
+      sourceImageUrls?: readonly string[];
+    }[] = [];
+    mockImageEditGeneration((body) => {
+      requests.push(body);
+    });
     setupChatThread({
       featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
     });
@@ -735,6 +742,42 @@ describe("image editing", () => {
         screen.getByTestId("artifact-sidebar-body-image-copy"),
       ).toHaveAttribute("src", EDITED_IMAGE_URL);
     });
+    expect(requests).toStrictEqual([
+      {
+        model: "birefnet",
+        sourceImageUrls: [SOURCE_IMAGE_URL],
+      },
+    ]);
+  });
+
+  it("uses the dedicated promptless upscaler when enhancing an image", async () => {
+    const user = userEvent.setup({ delay: null });
+    const requests: {
+      model?: string;
+      prompt?: string;
+      sourceImageUrls?: readonly string[];
+    }[] = [];
+    mockImageEditGeneration((body) => {
+      requests.push(body);
+    });
+    setupChatThread({
+      featureSwitches: { [FeatureSwitchKey.ImageEditing]: true },
+    });
+
+    await openSelectedImageEditToolbar(user);
+    await user.click(screen.getByTestId("image-edit-enhance"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("artifact-sidebar-body-image-copy"),
+      ).toHaveAttribute("src", EDITED_IMAGE_URL);
+    });
+    expect(requests).toStrictEqual([
+      {
+        model: "clarity-upscaler",
+        sourceImageUrls: [SOURCE_IMAGE_URL],
+      },
+    ]);
   });
 
   it("restores a generated image after exiting and reopening image edit mode", async () => {
