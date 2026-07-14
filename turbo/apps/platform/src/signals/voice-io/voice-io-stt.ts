@@ -12,9 +12,10 @@ import {
 import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import {
+  bestEffort,
   createDeferredPromise,
+  jsonParseOr,
   resetSignal,
-  settle,
   tapError,
   withCleanup,
 } from "../utils.ts";
@@ -306,10 +307,7 @@ function createAudioActivityTracker(
 async function closeAudioContextQuietly(
   audioContext: AudioContext,
 ): Promise<void> {
-  const result = await settle(audioContext.close());
-  if (!result.ok) {
-    L.error("Audio activity monitor close failed", result.error);
-  }
+  await bestEffort(audioContext.close());
 }
 
 async function startAudioActivityMonitor(
@@ -497,13 +495,10 @@ async function readSttApiResponse(
   signal: AbortSignal,
 ): Promise<SttApiResult> {
   if (!response.ok) {
-    const settled = await settle(response.json());
+    const body = jsonParseOr<{
+      error?: { code?: string; message?: string };
+    } | null>(await response.text(), null);
     signal.throwIfAborted();
-    const body = settled.ok
-      ? (settled.value as {
-          error?: { code?: string; message?: string };
-        } | null)
-      : null;
     return {
       ok: false,
       status: response.status,
@@ -594,21 +589,23 @@ const transcribeAudioBlob$ = command(
     const extension = mimeType.includes("mp4") ? "mp4" : "webm";
     formData.append("file", blob, `recording.${extension}`);
 
-    const responseResult = await settle(
+    const response = await tapError(
       fetchFn("/api/zero/voice-io/stt", {
         method: "POST",
         body: formData,
         signal,
       }),
-      signal,
+      (error) => {
+        L.error("STT fetch failed", error);
+        toast.error("Transcription failed");
+      },
     );
-    if (!responseResult.ok) {
-      L.error("STT fetch failed", responseResult.error);
-      toast.error("Transcription failed");
+    signal.throwIfAborted();
+    if (!response) {
       return { ok: false, quotaExceeded: false };
     }
 
-    const result = await readSttApiResponse(responseResult.value, signal);
+    const result = await readSttApiResponse(response, signal);
     if (!result.ok) {
       if (isAudioInputQuotaFailure(result)) {
         await set(openAudioInputQuotaRecovery$, signal);
@@ -913,14 +910,14 @@ export const startRecording$ = command(
     await waitForBrowserPaint(signal);
     signal.throwIfAborted();
 
-    const streamResult = await settle(openMedia(signal), signal);
-    if (!streamResult.ok) {
-      L.error("Microphone start failed", streamResult.error);
+    const stream = await tapError(openMedia(signal), (error) => {
+      L.error("Microphone start failed", error);
       toast.error("Microphone access denied");
+    });
+    if (stream === undefined) {
       set(internalStarting$, false);
       return;
     }
-    const stream = streamResult.value;
     if (!stream) {
       set(internalStarting$, false);
       return;
@@ -972,7 +969,7 @@ export const startRecording$ = command(
     set(internalStream$, stream);
     set(internalRecorder$, recorder);
     set(internalRecordingSession$, recordingSession);
-    const audioActivityMonitorResult = await settle(
+    const startedAudioActivityMonitor = await tapError(
       startAudioActivityMonitor(
         stream,
         (activity) => {
@@ -985,18 +982,16 @@ export const startRecording$ = command(
         },
         signal,
       ),
-      signal,
+      (error) => {
+        L.error("Audio activity monitor start failed", error);
+      },
     );
     signal.throwIfAborted();
-    if (!audioActivityMonitorResult.ok) {
-      L.error(
-        "Audio activity monitor start failed",
-        audioActivityMonitorResult.error,
-      );
+    if (startedAudioActivityMonitor === undefined) {
       set(internalVoiceActivityAvailable$, false);
       return;
     }
-    audioActivityMonitor = audioActivityMonitorResult.value;
+    audioActivityMonitor = startedAudioActivityMonitor;
     const monitorStartedAt = audioActivityNow();
     voiceActivityReliable =
       audioActivityMonitor !== null &&

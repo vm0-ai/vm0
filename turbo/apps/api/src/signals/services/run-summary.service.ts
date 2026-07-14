@@ -5,7 +5,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { logger } from "../../lib/log";
 import { optionalEnv } from "../../lib/env";
 import { writeDb$, type Db } from "../external/db";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const log = logger("run-summary");
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -49,8 +49,7 @@ async function generateText(
   });
 
   if (!response.ok) {
-    const settled = await settle(response.text());
-    const text = settled.ok ? settled.value : "unknown error";
+    const text = (await tapError(response.text())) ?? "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 
@@ -122,7 +121,7 @@ export async function saveRunSummary(
   },
   signal?: AbortSignal,
 ): Promise<void> {
-  const result = await settle(
+  await tapError(
     (async () => {
       const summary = await generateRunSummary(
         args.triggerSource,
@@ -145,15 +144,14 @@ export async function saveRunSummary(
         .where(eq(zeroRuns.id, args.runId));
       signal?.throwIfAborted();
     })(),
+    (error) => {
+      log.warn("Failed to generate run summary", {
+        runId: args.runId,
+        error,
+      });
+    },
   );
   signal?.throwIfAborted();
-
-  if (!result.ok) {
-    log.warn("Failed to generate run summary", {
-      runId: args.runId,
-      error: result.error,
-    });
-  }
 }
 
 export const saveRunSummary$ = command(

@@ -39,7 +39,7 @@ import {
   putS3Object,
 } from "../external/s3";
 import { nowDate } from "../external/time";
-import { createDeferredPromise, safeSync, settle } from "../utils";
+import { createDeferredPromise, onRejection, safeSync, settle } from "../utils";
 import {
   normalizeSessionHistoryBlobEncoding,
   resumeSessionHistoryBlobKey,
@@ -663,22 +663,16 @@ async function resolveSessionHistory(
     const encodedSize =
       args.encodedSize && args.encodedSize > 0 ? args.encodedSize : undefined;
     const key = resumeSessionHistoryBlobKey(args.hash, normalizedEncoding);
-    const result = await settle(
-      loadSessionHistoryBlob(runtime, {
-        encoding: normalizedEncoding,
-        encodedSize,
-        hash: args.hash,
-        key,
-        rawSize,
-      }),
-    );
+    const result = await loadSessionHistoryBlob(runtime, {
+      encoding: normalizedEncoding,
+      encodedSize,
+      hash: args.hash,
+      key,
+      rawSize,
+    });
     runtime.signal.throwIfAborted();
 
-    if (result.ok) {
-      return result.value;
-    }
-
-    throw result.error;
+    return result;
   }
 
   return args.legacyText;
@@ -935,10 +929,12 @@ async function assembleZip(
   }
 
   const finalized = (async () => {
-    const result = await settle(archive.finalize(), signal);
-    if (!result.ok && !done.settled()) {
-      done.reject(result.error);
-    }
+    await onRejection(archive.finalize(), (error) => {
+      if (!done.settled()) {
+        done.reject(error);
+      }
+    });
+    signal.throwIfAborted();
     return await done.promise;
   })();
   return await Promise.race([done.promise, finalized]);

@@ -19,7 +19,7 @@ import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphon
 import { ingestAxiomEvents$ } from "./agent-event-consumer-axiom.service";
 import { processChatAssistantEvents$ } from "./agent-event-consumer-chat-assistant.service";
 import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 
 const L = logger("webhook:events");
 
@@ -136,22 +136,24 @@ const runEventConsumer$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     set(eventConsumerPayloadState$, params.payload);
-    const result = await settle(
+    const result = await tapError(
       Promise.resolve(set(params.consumer.command$, signal)),
-      signal,
+      (error) => {
+        L.error(`Event consumer "${params.consumer.name}" failed`, {
+          runId: params.payload.runId,
+          error,
+        });
+      },
     );
+    signal.throwIfAborted();
 
-    if (!result.ok) {
-      L.error(`Event consumer "${params.consumer.name}" failed`, {
-        runId: params.payload.runId,
-        error: result.error,
-      });
+    if (!result) {
       return false;
     }
-    if (result.value.status !== 200) {
+    if (result.status !== 200) {
       L.error(`Event consumer "${params.consumer.name}" failed`, {
         runId: params.payload.runId,
-        status: result.value.status,
+        status: result.status,
       });
       return false;
     }

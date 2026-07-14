@@ -604,37 +604,41 @@ function deleteUserObjectsForPrefixesBestEffort(
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
     for (const prefix of prefixes) {
-      const objectsResult = await settle(get(listS3Objects(bucket, prefix)));
-      if (!objectsResult.ok) {
-        L.warn("failed to list user storage objects", {
-          userId,
-          prefix,
-          error: objectsResult.error,
-        });
+      const objects = await tapError(
+        get(listS3Objects(bucket, prefix)),
+        (error) => {
+          L.warn("failed to list user storage objects", {
+            userId,
+            prefix,
+            error,
+          });
+        },
+      );
+      if (!objects) {
         continue;
       }
 
-      if (objectsResult.value.length === 0) {
+      if (objects.length === 0) {
         continue;
       }
 
-      const deleteResult = await settle(
+      await tapError(
         get(
           deleteS3Objects(
             bucket,
-            objectsResult.value.map((object) => {
+            objects.map((object) => {
               return object.key;
             }),
           ),
         ),
+        (error) => {
+          L.warn("failed to delete user storage objects", {
+            userId,
+            prefix,
+            error,
+          });
+        },
       );
-      if (!deleteResult.ok) {
-        L.warn("failed to delete user storage objects", {
-          userId,
-          prefix,
-          error: deleteResult.error,
-        });
-      }
     }
   });
 }
@@ -690,16 +694,13 @@ function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
     const exportKeys = exportRows.flatMap((row) => {
       return row.s3Key ? [row.s3Key] : [];
     });
-    const deleteExportsResult = await settle(
-      get(deleteS3Objects(bucket, exportKeys)),
-    );
-    if (!deleteExportsResult.ok) {
+    await tapError(get(deleteS3Objects(bucket, exportKeys)), (error) => {
       L.warn("failed to delete user export objects", {
         userId,
         count: exportKeys.length,
-        error: deleteExportsResult.error,
+        error,
       });
-    }
+    });
   });
 }
 

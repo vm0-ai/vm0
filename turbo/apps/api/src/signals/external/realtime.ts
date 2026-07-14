@@ -4,7 +4,7 @@ import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contrac
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { settle, tapError } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("Realtime");
 
@@ -263,7 +263,7 @@ export async function publishRunnerJobNotification(
     readonly affinityProtectedUntil: string | null;
   },
 ): Promise<boolean> {
-  const result = await settle(
+  const published = await tapError(
     (async () => {
       const channel = ablyClient().channels.get(`runner-group:${group}`);
       await channel.publish("job", {
@@ -277,15 +277,15 @@ export async function publishRunnerJobNotification(
           : {}),
       });
       L.debug(`Published job ${runId} to runner-group:${group} (broadcast)`);
+      return true;
     })(),
+    (error) => {
+      L.warn("Failed to publish runner job notification", {
+        group,
+        runId,
+        error,
+      });
+    },
   );
-  if (result.ok) {
-    return true;
-  }
-  L.warn("Failed to publish runner job notification", {
-    group,
-    runId,
-    error: result.error,
-  });
-  return false;
+  return published ?? false;
 }

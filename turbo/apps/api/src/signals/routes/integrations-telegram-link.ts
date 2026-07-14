@@ -24,7 +24,7 @@ import {
 import { sendMessage } from "../external/telegram-client";
 import { publishUserSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
-import { settle, tapError } from "../utils";
+import { bestEffort, tapError } from "../utils";
 import {
   ensureTelegramArtifactStorage$,
   formatTelegramUserDisplayName,
@@ -193,14 +193,7 @@ function noLinkedTelegramAccountResponse() {
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  const publishResult = await settle(
-    publishUserSignal([userId], "telegram:changed"),
-  );
-  if (!publishResult.ok) {
-    log.warn("Failed to publish Telegram user change", {
-      error: publishResult.error,
-    });
-  }
+  await bestEffort(publishUserSignal([userId], "telegram:changed"));
 }
 
 async function resolveOfficialConnectComposeId(

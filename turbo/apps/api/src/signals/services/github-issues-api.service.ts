@@ -1,5 +1,5 @@
 import { logger } from "../../lib/log";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const L = logger("GithubIssuesApi");
@@ -306,19 +306,18 @@ export async function postGithubIssueCommentBestEffort(args: {
   readonly body: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const result = await settle(
+  await tapError(
     (async (): Promise<void> => {
       await postGithubIssueComment(args);
     })(),
+    (error) => {
+      L.warn("Best-effort comment failed", {
+        repo: args.repo,
+        issueNumber: args.issueNumber,
+        error,
+      });
+    },
   );
-
-  if (!result.ok) {
-    L.warn("Best-effort comment failed", {
-      repo: args.repo,
-      issueNumber: args.issueNumber,
-      error: result.error,
-    });
-  }
 }
 
 export async function addGithubCommentReaction(args: {
@@ -328,7 +327,7 @@ export async function addGithubCommentReaction(args: {
   readonly content: string;
   readonly signal: AbortSignal;
 }): Promise<string | undefined> {
-  const result = await settle(
+  return await tapError(
     (async (): Promise<string | undefined> => {
       const response = await fetch(
         `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}/reactions`,
@@ -352,18 +351,14 @@ export async function addGithubCommentReaction(args: {
       const data = (await response.json()) as { readonly id: number };
       return String(data.id);
     })(),
+    (error) => {
+      L.warn("Failed to add comment reaction", {
+        commentId: args.commentId,
+        content: args.content,
+        error,
+      });
+    },
   );
-
-  if (!result.ok) {
-    L.warn("Failed to add comment reaction", {
-      commentId: args.commentId,
-      content: args.content,
-      error: result.error,
-    });
-    return undefined;
-  }
-
-  return result.value;
 }
 
 export async function removeGithubCommentReaction(args: {
@@ -373,7 +368,7 @@ export async function removeGithubCommentReaction(args: {
   readonly reactionId: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  const result = await settle(
+  await tapError(
     (async (): Promise<void> => {
       const response = await fetch(
         `${GITHUB_API_BASE}/repos/${args.repo}/issues/comments/${args.commentId}/reactions/${args.reactionId}`,
@@ -392,13 +387,12 @@ export async function removeGithubCommentReaction(args: {
         });
       }
     })(),
+    (error) => {
+      L.warn("Failed to remove comment reaction", {
+        commentId: args.commentId,
+        reactionId: args.reactionId,
+        error,
+      });
+    },
   );
-
-  if (!result.ok) {
-    L.warn("Failed to remove comment reaction", {
-      commentId: args.commentId,
-      reactionId: args.reactionId,
-      error: result.error,
-    });
-  }
 }

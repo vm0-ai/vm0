@@ -10,7 +10,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { safeJsonParse, settle } from "../utils";
+import { safeJsonParse, tapError } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-message-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
@@ -121,8 +121,7 @@ async function generateText(
   });
 
   if (!response.ok) {
-    const settled = await settle(response.text());
-    const text = settled.ok ? settled.value : "unknown error";
+    const text = (await tapError(response.text())) ?? "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 
@@ -284,7 +283,7 @@ export async function generateAndPersistChatThreadTitle(args: {
   readonly prompt: string;
   readonly includePriorRounds: boolean;
 }): Promise<void> {
-  const result = await settle(
+  await tapError(
     (async () => {
       if (!(await shouldGenerateChatThreadTitle(args.db, args.threadId))) {
         return;
@@ -307,13 +306,13 @@ export async function generateAndPersistChatThreadTitle(args: {
         );
       }
     })(),
+    (err) => {
+      log.warn("Chat title generation failed", {
+        threadId: args.threadId,
+        err,
+      });
+    },
   );
-  if (!result.ok) {
-    log.warn("Chat title generation failed", {
-      threadId: args.threadId,
-      err: result.error,
-    });
-  }
 }
 
 export async function generateAndPersistChatThreadTitleFromCallback(args: {
@@ -325,7 +324,7 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
   readonly prompt: string;
   readonly currentAssistantReply: string | undefined;
 }): Promise<void> {
-  const result = await settle(
+  await tapError(
     (async () => {
       if (!(await shouldGenerateChatThreadTitle(args.db, args.threadId))) {
         return;
@@ -351,13 +350,13 @@ export async function generateAndPersistChatThreadTitleFromCallback(args: {
         );
       }
     })(),
+    (err) => {
+      log.warn("Chat title generation failed", {
+        threadId: args.threadId,
+        err,
+      });
+    },
   );
-  if (!result.ok) {
-    log.warn("Chat title generation failed", {
-      threadId: args.threadId,
-      err: result.error,
-    });
-  }
 }
 
 export function generateChatNotificationSummary(
@@ -478,13 +477,12 @@ export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
 }): Promise<ChatMessageRecommendedFollowups> {
-  const result = await settle(generateRecommendedFollowups(args.messages));
-  if (!result.ok) {
-    log.warn("Recommended follow-up generation failed", {
-      ...(args.threadId ? { threadId: args.threadId } : {}),
-      err: result.error,
-    });
-    return [];
-  }
-  return result.value;
+  return (
+    (await tapError(generateRecommendedFollowups(args.messages), (err) => {
+      log.warn("Recommended follow-up generation failed", {
+        ...(args.threadId ? { threadId: args.threadId } : {}),
+        err,
+      });
+    })) ?? []
+  );
 }

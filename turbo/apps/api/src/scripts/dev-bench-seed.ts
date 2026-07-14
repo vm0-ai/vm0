@@ -21,7 +21,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
-import { settle } from "../signals/utils";
+import { onRejection } from "../signals/utils";
 
 const BULK_INSERT_CHUNK = 500;
 const SCRIPT_MARKER = "dev-bench-seed";
@@ -1009,11 +1009,8 @@ async function main(): Promise<void> {
   if (!userId || !agentId) {
     usage();
   }
-  const result = await settle(seedDevBench({ userId, agentId }));
+  await onRejection(seedDevBench({ userId, agentId }), closeDbPool);
   await closeDbPool();
-  if (!result.ok) {
-    throw result.error;
-  }
 }
 
 if (isMainModule()) {

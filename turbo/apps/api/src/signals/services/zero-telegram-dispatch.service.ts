@@ -23,7 +23,7 @@ import { sendChatAction, sendMessage } from "../external/telegram-client";
 import { publishUserSignal } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
-import { settle } from "../utils";
+import { bestEffort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
@@ -410,15 +410,7 @@ async function sendTypingAction(args: {
   readonly botToken: string;
   readonly chatId: string;
 }): Promise<void> {
-  const result = await settle(
-    sendChatAction(args.botToken, args.chatId, "typing"),
-  );
-  if (!result.ok) {
-    L.debug("Failed to send Telegram typing action", {
-      chatId: args.chatId,
-      error: result.error,
-    });
-  }
+  await bestEffort(sendChatAction(args.botToken, args.chatId, "typing"));
 }
 
 async function sendQueuedNotification(args: {
@@ -472,10 +464,7 @@ async function loadInstallation(
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  const result = await settle(publishUserSignal([userId], "telegram:changed"));
-  if (!result.ok) {
-    L.warn("Failed to publish Telegram user change", { error: result.error });
-  }
+  await bestEffort(publishUserSignal([userId], "telegram:changed"));
 }
 
 async function touchTelegramUserLink(

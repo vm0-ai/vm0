@@ -19,7 +19,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   embedZeroMemoryText,
   type LoadedMemoryEmbedding,
@@ -812,18 +812,18 @@ async function embedQuery(args: {
   readonly query: string;
   readonly loader?: MemoryEmbeddingLoader;
 }): Promise<LoadedMemoryEmbedding> {
-  const result = await settle(
-    args.loader
-      ? args.loader(args.query)
-      : (async (): Promise<LoadedMemoryEmbedding> => {
-          return { embedding: await embedZeroMemoryText(args.query) };
-        })(),
+  return (
+    (await tapError(
+      args.loader
+        ? args.loader(args.query)
+        : (async (): Promise<LoadedMemoryEmbedding> => {
+            return { embedding: await embedZeroMemoryText(args.query) };
+          })(),
+      (error) => {
+        log.warn("Failed to embed zero memory query", { error });
+      },
+    )) ?? { embedding: null }
   );
-  if (result.ok) {
-    return result.value;
-  }
-  log.warn("Failed to embed zero memory query", { error: result.error });
-  return { embedding: null };
 }
 
 async function loadSemanticQueryEmbedding(

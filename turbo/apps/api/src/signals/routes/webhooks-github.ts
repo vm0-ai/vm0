@@ -9,7 +9,7 @@ import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { now } from "../external/time";
-import { safeJsonParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeSync, tapError } from "../utils";
 import {
   gitHubInstallationEventSchema,
   gitHubIssueCommentEventSchema,
@@ -42,27 +42,22 @@ function githubWebhookHeaders(headers: Headers): GithubWebhookHeaders | null {
     : null;
 }
 
-async function verifyGitHubWebhookSignature(args: {
+function verifyGitHubWebhookSignature(args: {
   readonly secret: string;
   readonly signature: string;
   readonly body: string;
-}): Promise<boolean> {
+}): boolean {
   const expected = `sha256=${createHmac("sha256", args.secret)
     .update(args.body)
     .digest("hex")}`;
 
-  // timingSafeEqual throws synchronously when the buffers differ in length —
-  // wrap in an async IIFE so the throw becomes a rejection settle can observe.
-  const result = await settle(
-    (async (): Promise<boolean> => {
-      await Promise.resolve();
-      return timingSafeEqual(
-        Buffer.from(args.signature),
-        Buffer.from(expected),
-      );
-    })(),
-  );
-  return result.ok ? result.value : false;
+  const result = safeSync(() => {
+    return timingSafeEqual(
+      Buffer.from(args.signature),
+      Buffer.from(expected),
+    );
+  });
+  return "ok" in result ? result.ok : false;
 }
 
 const postGithubWebhook$ = command(

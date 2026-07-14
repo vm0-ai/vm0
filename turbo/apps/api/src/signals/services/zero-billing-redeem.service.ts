@@ -8,7 +8,7 @@ import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
-import { settle } from "../utils";
+import { bestEffort, onRejection, settle } from "../utils";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { getCampaign } from "./one-time-products";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
@@ -239,31 +239,28 @@ const ensureCampaignStillAvailable$ = command(
 
     const stripe = getStripeClient();
     // Parallel: each is an independent Stripe read; wall time is one RTT.
-    const fetched = await settle(
+    const [coupon, price] = await onRejection(
       Promise.all([
         stripe.coupons.retrieve(campaign.couponId),
         stripe.prices.retrieve(campaign.priceId),
       ]),
+      async (error) => {
+        if (
+          error instanceof StripeSDK.errors.StripeInvalidRequestError &&
+          error.code === "resource_missing"
+        ) {
+          log.warn("one_time_purchase stripe resource missing on resume", {
+            orgId: args.orgId,
+            campaignKey: args.campaignKey,
+            couponId: campaign.couponId,
+            priceId: campaign.priceId,
+            stripeMessage: error.message,
+          });
+          await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
+        }
+      },
     );
     signal.throwIfAborted();
-    if (!fetched.ok) {
-      if (
-        fetched.error instanceof StripeSDK.errors.StripeInvalidRequestError &&
-        fetched.error.code === "resource_missing"
-      ) {
-        log.warn("one_time_purchase stripe resource missing on resume", {
-          orgId: args.orgId,
-          campaignKey: args.campaignKey,
-          couponId: campaign.couponId,
-          priceId: campaign.priceId,
-          stripeMessage: fetched.error.message,
-        });
-        await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
-      }
-      throw fetched.error;
-    }
-    signal.throwIfAborted();
-    const [coupon, price] = fetched.value;
 
     if (!coupon.valid) {
       log.warn("one_time_purchase coupon no longer valid on resume", {
@@ -305,17 +302,7 @@ const cleanupStaleRedemption$ = command(
     const stripe = getStripeClient();
     // Best-effort: don't let session-already-expired prevent row cleanup.
     // Sessions auto-expire after 24h anyway; a failure here is cosmetic.
-    const expireOutcome = await settle(
-      stripe.checkout.sessions.expire(stripeSessionId),
-    );
-    signal.throwIfAborted();
-    if (!expireOutcome.ok) {
-      log.debug("one_time_purchase session already expired or un-expirable", {
-        orgId: args.orgId,
-        campaignKey: args.campaignKey,
-        stripeSessionId,
-      });
-    }
+    await bestEffort(stripe.checkout.sessions.expire(stripeSessionId), signal);
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
     await writeDb

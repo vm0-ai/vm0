@@ -8,7 +8,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import type { Db, ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   embedZeroMemoryText,
   memoryEmbeddingContentHash,
@@ -152,12 +152,10 @@ export async function trySyncZeroMemorySearchEntryForMemory(
   db: Db,
   args: MemoryScope & { readonly memoryId: string },
 ): Promise<void> {
-  const result = await settle(syncZeroMemorySearchEntryForMemory(db, args));
-  if (result.ok) {
-    return;
-  }
-  log.warn("Failed to sync zero memory search entry", {
-    memoryId: args.memoryId,
-    error: result.error,
+  await tapError(syncZeroMemorySearchEntryForMemory(db, args), (error) => {
+    log.warn("Failed to sync zero memory search entry", {
+      memoryId: args.memoryId,
+      error,
+    });
   });
 }

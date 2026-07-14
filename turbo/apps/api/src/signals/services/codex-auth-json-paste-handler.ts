@@ -11,7 +11,7 @@ import {
 } from "./codex-auth-json-parser";
 import { fetchCodexUsageMetadata } from "./codex-usage.service";
 import { logger } from "../../lib/log";
-import { settle, throwIfAbort } from "../utils";
+import { settle, tapError, throwIfAbort } from "../utils";
 
 /**
  * Shape of an upserted provider row that the paste handler serializes into the
@@ -88,10 +88,6 @@ type UpsertCodexProvider = (args: {
   };
 }) => Promise<{ provider: UpsertedProvider; created: boolean }>;
 
-function unknownErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
 /**
  * Common args shared by both scopes. Split out so the discriminated union
  * below can intersect each scope's identity fields onto the same payload
@@ -141,28 +137,18 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
   const pasteResult = await settle(
     (async () => {
       const parsed = parseCodexAuthJson(args.rawAuthJson);
-      const usageMetadataResult = await settle(
-        fetchCodexUsageMetadata({
-          accessToken: parsed.accessToken,
-          accountId: parsed.accountId,
-          idToken: parsed.idToken,
-          signal: args.signal,
-        }),
-      );
-      const usageMetadata = usageMetadataResult.ok
-        ? usageMetadataResult.value
-        : null;
-      if (!usageMetadataResult.ok) {
-        log.debug(
-          args.scope === "personal"
-            ? "personal codex usage metadata unavailable"
-            : "codex usage metadata unavailable",
-          {
-            ...logContext,
-            errorMessage: unknownErrorMessage(usageMetadataResult.error),
+      const usageMetadata =
+        (await tapError(
+          fetchCodexUsageMetadata({
+            accessToken: parsed.accessToken,
+            accountId: parsed.accountId,
+            idToken: parsed.idToken,
+            signal: args.signal,
+          }),
+          () => {
+            return undefined;
           },
-        );
-      }
+        )) ?? null;
 
       const { provider, created } = await args.upsert({
         authMethod: "auth_json",

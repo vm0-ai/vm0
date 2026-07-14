@@ -9,7 +9,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
@@ -368,7 +368,7 @@ export const dispatchRunCallbacks$ = command(
       signal.throwIfAborted();
       results.push(dispatchResult);
     }
-    const goalContinuationResult = await settle(
+    await tapError(
       set(
         continueGoalIfIdle$,
         {
@@ -378,14 +378,11 @@ export const dispatchRunCallbacks$ = command(
         },
         signal,
       ),
+      (error) => {
+        L.error("Goal continuation dispatch failed", { runId, error });
+      },
     );
     signal.throwIfAborted();
-    if (!goalContinuationResult.ok) {
-      L.error("Goal continuation dispatch failed", {
-        runId,
-        error: goalContinuationResult.error,
-      });
-    }
     return results;
   },
 );

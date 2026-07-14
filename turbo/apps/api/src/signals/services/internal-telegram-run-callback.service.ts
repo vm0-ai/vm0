@@ -37,7 +37,7 @@ import {
   storeTelegramBotMessage,
 } from "./zero-telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
-import { settle } from "../utils";
+import { bestEffort } from "../utils";
 
 const L = logger("InternalCallbacksTelegram");
 const TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS = 1100;
@@ -271,15 +271,9 @@ async function deleteThinkingMessageIfPresent(args: {
     return;
   }
 
-  const result = await settle(
+  await bestEffort(
     deleteMessage(args.botToken, args.chatId, Number(args.thinkingMessageId)),
   );
-  if (!result.ok) {
-    L.debug("Failed to delete legacy thinking placeholder", {
-      thinkingMessageId: args.thinkingMessageId,
-      error: result.error,
-    });
-  }
 }
 
 function buildCompletionOutput(args: {
@@ -657,16 +651,11 @@ async function handleTelegramInternalCallback(
   }
 
   if (callback.status === "progress") {
-    const typing = await settle(
+    await bestEffort(
       sendChatAction(botToken, payload.chatId, "typing"),
+      signal,
     );
     signal.throwIfAborted();
-    if (!typing.ok) {
-      L.debug("Failed to refresh typing indicator", {
-        runId: callback.runId,
-        error: typing.error,
-      });
-    }
     return successResponse();
   }
 

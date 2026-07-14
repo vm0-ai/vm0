@@ -26,7 +26,7 @@ import {
   sendTeamsTypingActivity,
 } from "../external/teams-bot-client";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { bestEffort } from "../utils";
 import {
   loadUserFeatureSwitchContext,
   userFeatureSwitchOverrides,
@@ -470,7 +470,7 @@ async function handleProgress(args: {
     return successResponse();
   }
 
-  const indicatorResult = await settle(
+  await bestEffort(
     sendTeamsTypingActivity({
       serviceUrl: args.payload.serviceUrl,
       conversationId: args.payload.conversationId,
@@ -479,19 +479,6 @@ async function handleProgress(args: {
     }),
     args.signal,
   );
-  const error = !indicatorResult.ok
-    ? indicatorResult.error
-    : indicatorResult.value.kind === "teams-error"
-      ? indicatorResult.value.error
-      : undefined;
-  if (error !== undefined) {
-    L.debug("Failed to refresh Teams typing indicator", {
-      tenantId: args.payload.tenantId,
-      conversationId: args.payload.conversationId,
-      activityId: args.payload.activityId,
-      error,
-    });
-  }
   return successResponse();
 }
 
@@ -507,7 +494,7 @@ async function clearTeamsThinkingReaction(args: {
     return;
   }
 
-  const result = await settle(
+  await bestEffort(
     deleteTeamsReaction({
       serviceUrl: args.serviceUrl,
       conversationId: args.payload.conversationId,
@@ -518,19 +505,6 @@ async function clearTeamsThinkingReaction(args: {
     }),
     args.signal,
   );
-  const error = !result.ok
-    ? result.error
-    : result.value.kind === "teams-error"
-      ? result.value.error
-      : undefined;
-  if (error !== undefined) {
-    L.debug("Failed to clear Teams thinking reaction", {
-      tenantId: args.payload.tenantId,
-      conversationId: args.payload.conversationId,
-      activityId: args.payload.activityId,
-      error,
-    });
-  }
 }
 
 async function handleCompletion(args: {

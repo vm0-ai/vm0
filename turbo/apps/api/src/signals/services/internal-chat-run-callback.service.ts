@@ -927,21 +927,20 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
   readonly threadId: string;
   readonly signal: AbortSignal;
 }): Promise<readonly ChatCompletionContextMessage[]> {
-  const result = await settle(
-    loadChatThreadRecommendedFollowupContext({
-      db: args.db,
-      threadId: args.threadId,
-    }),
-    args.signal,
+  return (
+    (await tapError(
+      loadChatThreadRecommendedFollowupContext({
+        db: args.db,
+        threadId: args.threadId,
+      }),
+      (err) => {
+        log.warn("Recommended follow-up context load failed", {
+          threadId: args.threadId,
+          err,
+        });
+      },
+    )) ?? []
   );
-  if (!result.ok) {
-    log.warn("Recommended follow-up context load failed", {
-      threadId: args.threadId,
-      err: result.error,
-    });
-    return [];
-  }
-  return result.value;
 }
 
 async function handleCompletedChatCallback(args: {
@@ -1116,17 +1115,16 @@ async function runCompletedChatCallbackSideEffects(args: {
 
     let summary: string | null = null;
     if (args.lastResultText) {
-      const generated = await settle(
-        generateChatNotificationSummary(args.run.prompt, args.lastResultText),
-      );
-      if (generated.ok) {
-        summary = generated.value;
-      } else {
-        log.warn("Failed to generate notification summary", {
-          runId: args.runId,
-          error: generated.error,
-        });
-      }
+      summary =
+        (await tapError(
+          generateChatNotificationSummary(args.run.prompt, args.lastResultText),
+          (error) => {
+            log.warn("Failed to generate notification summary", {
+              runId: args.runId,
+              error,
+            });
+          },
+        )) ?? null;
     }
 
     await sendUserPushNotifications({

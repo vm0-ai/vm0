@@ -34,7 +34,7 @@ import {
   listS3Objects,
   s3ObjectExists,
 } from "../external/s3";
-import { createDeferredPromise, safeSync, settle } from "../utils";
+import { createDeferredPromise, onRejection, safeSync, settle } from "../utils";
 import { decryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 
@@ -543,10 +543,12 @@ async function assembleZip(
   }
 
   const finalized = (async () => {
-    const result = await settle(archive.finalize(), signal);
-    if (!result.ok && !done.settled()) {
-      done.reject(result.error);
-    }
+    await onRejection(archive.finalize(), (error) => {
+      if (!done.settled()) {
+        done.reject(error);
+      }
+    });
+    signal.throwIfAborted();
     return await done.promise;
   })();
   return await Promise.race([done.promise, finalized]);

@@ -17,8 +17,8 @@ import { threadCodexServiceTierFromSelection } from "./model-selection-request.t
 import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
 import {
   createDeferredPromise,
+  onRejection,
   resetSignalScope,
-  settle,
   withCleanup,
 } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -463,17 +463,15 @@ function createSubscribeRealtime() {
           await Promise.race([ready.promise, subscription]);
           subscriptionSignal.throwIfAborted();
           if (ready.settled() && handlers.onSubscribed$) {
-            const synced = await settle(
+            await onRejection(
               Promise.resolve(set(handlers.onSubscribed$, subscriptionSignal)),
-              subscriptionSignal,
+              async () => {
+                subscriptionScope.abort();
+                await Promise.allSettled(subscriptionPromises);
+                signal.throwIfAborted();
+              },
             );
             subscriptionSignal.throwIfAborted();
-            if (!synced.ok) {
-              subscriptionScope.abort();
-              await Promise.allSettled(subscriptionPromises);
-              signal.throwIfAborted();
-              throw synced.error;
-            }
           }
           await subscription;
           subscriptionSignal.throwIfAborted();

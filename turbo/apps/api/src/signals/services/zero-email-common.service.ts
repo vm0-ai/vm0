@@ -24,7 +24,7 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import { writeDb$, type Db } from "../external/db";
-import { settle } from "../utils";
+import { bestEffort, settle } from "../utils";
 
 type ClerkClient = ReturnType<typeof createClerkClient>;
 type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -815,14 +815,8 @@ export const enqueueEmail$ = command(
       throw new Error("Failed to insert email outbox row");
     }
 
-    const drainResult = await settle(drainById(db, row.id));
+    await bestEffort(drainById(db, row.id), signal);
     signal.throwIfAborted();
-    if (!drainResult.ok) {
-      log.debug("Inline email outbox drain failed", {
-        id: row.id,
-        error: drainResult.error,
-      });
-    }
   },
 );
 

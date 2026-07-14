@@ -71,7 +71,7 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
+import { settle, tapError } from "../utils";
 import {
   decryptPersistentSecretsMap,
   decryptStoredSecretValue,
@@ -2899,17 +2899,18 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     if (Object.hasOwn(args.secrets, row.secretName)) {
       continue;
     }
-    const decrypted = await settle(
+    const decrypted = await tapError(
       decryptStoredSecretValue(row.encryptedValue, args.featureSwitchContext),
+      (error) => {
+        L.warn("Failed to decrypt custom connector auth ref", {
+          runId: args.runId,
+          secretName: row.secretName,
+          error,
+        });
+      },
     );
-    if (decrypted.ok) {
-      args.secrets[row.secretName] = decrypted.value;
-    } else {
-      L.warn("Failed to decrypt custom connector auth ref", {
-        runId: args.runId,
-        secretName: row.secretName,
-        error: decrypted.error,
-      });
+    if (decrypted !== undefined) {
+      args.secrets[row.secretName] = decrypted;
     }
   }
 }

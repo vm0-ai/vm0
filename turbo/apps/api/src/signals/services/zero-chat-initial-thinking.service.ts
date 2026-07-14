@@ -6,7 +6,7 @@ import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { generateText } from "../external/openrouter";
 import { publishUserSignal } from "../external/realtime";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
 import {
   runGroupIdForRun,
@@ -184,22 +184,22 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   }
 
   const history = await loadThinkingContextMessages(args);
-  const generated = await settle(
+  const thinking = await tapError(
     generateInitialThinkingText({
       currentPrompt: args.currentPrompt,
       history,
     }),
+    (err) => {
+      log.warn("Initial thinking generation failed", {
+        threadId: args.threadId,
+        runId: args.runId,
+        err,
+      });
+    },
   );
-  if (!generated.ok) {
-    log.warn("Initial thinking generation failed", {
-      threadId: args.threadId,
-      runId: args.runId,
-      err: generated.error,
-    });
+  if (thinking === undefined) {
     return false;
   }
-
-  const thinking = generated.value;
   if (thinking === null) {
     return false;
   }

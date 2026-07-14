@@ -9,7 +9,7 @@ import { ApiError, accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { reloadOrgModelProviders$ } from "../../external/org-model-providers.ts";
-import { onRef, resetSignal, settle } from "../../utils.ts";
+import { bestEffort, onRef, resetSignal, settle } from "../../utils.ts";
 import { reloadPersonalModelProvider$ } from "../model-first-personal-oauth.ts";
 
 type ClaudeCodeDeviceAuthDialogMode = "connect" | "reconnect";
@@ -348,7 +348,7 @@ function createClaudeCodeClose$(ctx: ClaudeCodeDeviceAuthSignalContext) {
       return;
     }
 
-    await settle(
+    await bestEffort(
       set(cancelClaudeCodeDeviceAuth$, sessionToken, signal),
       signal,
     );

@@ -19,7 +19,7 @@ import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { closeDbPool, db } from "../lib/db";
 import { optionalEnv } from "../lib/env";
 import { nowDate } from "../lib/time";
-import { settle } from "../signals/utils";
+import { onRejection } from "../signals/utils";
 import rawDevSeedSkillVolumes from "./dev-seed-skill-volumes.json";
 
 function writeLine(message: string): void {
@@ -650,11 +650,8 @@ function isMainModule(): boolean {
 }
 
 async function runDevSeed(): Promise<void> {
-  const result = await settle(devSeed());
+  await onRejection(devSeed(), closeDbPool);
   await closeDbPool();
-  if (!result.ok) {
-    throw result.error;
-  }
 }
 
 if (isMainModule()) {

@@ -1,5 +1,5 @@
 import { optionalEnv } from "../../lib/env";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
@@ -120,8 +120,7 @@ export async function generateTextWithUsage(
   });
 
   if (!response.ok) {
-    const settled = await settle(response.text());
-    const text = settled.ok ? settled.value : "unknown error";
+    const text = (await tapError(response.text())) ?? "unknown error";
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 

@@ -53,7 +53,7 @@ import {
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
 import { now, nowDate } from "../external/time";
-import { safeUrlParse, settle, tapError } from "../utils";
+import { safeJsonParse, safeUrlParse, settle, tapError } from "../utils";
 import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
@@ -451,7 +451,7 @@ async function configureTelegramBot(args: {
     return badGateway("Failed to register webhook with Telegram");
   }
 
-  const commandsResult = await settle(
+  await tapError(
     setMyCommands(args.botToken, [
       { command: "new_session", description: "Start a new conversation" },
       { command: "connect", description: `Connect to ${args.agentName}` },
@@ -462,12 +462,10 @@ async function configureTelegramBot(args: {
       },
       { command: "help", description: "Show available commands" },
     ]),
+    (error) => {
+      log.warn("Failed to register Telegram bot commands", { error });
+    },
   );
-  if (!commandsResult.ok) {
-    log.warn("Failed to register Telegram bot commands", {
-      error: commandsResult.error,
-    });
-  }
 
   return undefined;
 }
@@ -2965,12 +2963,12 @@ export const telegramWebhook$ = command(
       if (!verifyTelegramWebhook(request, config.webhookSecret)) {
         return textResponse("Unauthorized", 401);
       }
-      const parsed = await settle(request.json());
+      const parsed = safeJsonParse(await request.text());
       signal.throwIfAborted();
-      if (!parsed.ok || !isTelegramUpdate(parsed.value)) {
+      if (!isTelegramUpdate(parsed)) {
         return textResponse("Bad Request", 400);
       }
-      const message = parsed.value.message;
+      const message = parsed.message;
       if (!message || !hasTelegramMessageContextContent(message)) {
         return okText();
       }
@@ -3006,13 +3004,13 @@ export const telegramWebhook$ = command(
       return textResponse("Unauthorized", 401);
     }
 
-    const parsed = await settle(request.json());
+    const parsed = safeJsonParse(await request.text());
     signal.throwIfAborted();
-    if (!parsed.ok || !isTelegramUpdate(parsed.value)) {
+    if (!isTelegramUpdate(parsed)) {
       return textResponse("Bad Request", 400);
     }
 
-    const message = parsed.value.message;
+    const message = parsed.message;
     if (!message || !hasTelegramMessageContextContent(message)) {
       return okText();
     }

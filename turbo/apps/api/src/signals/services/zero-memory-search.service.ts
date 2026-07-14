@@ -18,7 +18,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import type { ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import { settle } from "../utils";
+import { tapError } from "../utils";
 import {
   embedZeroMemoryText,
   memoryEmbeddingSqlLiteral,
@@ -285,14 +285,11 @@ async function loadLexicalDocumentCandidates(
 }
 
 async function embedQuery(query: string) {
-  const result = await settle(embedZeroMemoryText(query));
-  if (result.ok) {
-    return result.value;
-  }
-  log.warn("Failed to embed zero memory document query", {
-    error: result.error,
-  });
-  return null;
+  return (
+    (await tapError(embedZeroMemoryText(query), (error) => {
+      log.warn("Failed to embed zero memory document query", { error });
+    })) ?? null
+  );
 }
 
 async function loadSemanticDocumentCandidates(
