@@ -337,6 +337,7 @@ impl Sandbox for CancelAfterWaitSandbox {
 pub(in crate::executor::tests) struct QueuedCopyFileSandbox {
     inner: Box<dyn Sandbox>,
     copy_file_results: Mutex<VecDeque<Vec<u8>>>,
+    remove_path_before_start: Option<std::path::PathBuf>,
     remove_path_before_copy: Option<std::path::PathBuf>,
 }
 
@@ -348,8 +349,17 @@ impl QueuedCopyFileSandbox {
         Self {
             inner,
             copy_file_results: Mutex::new(VecDeque::from(copy_file_results)),
+            remove_path_before_start: None,
             remove_path_before_copy: None,
         }
+    }
+
+    pub(in crate::executor::tests) fn with_remove_path_before_start(
+        mut self,
+        path: std::path::PathBuf,
+    ) -> Self {
+        self.remove_path_before_start = Some(path);
+        self
     }
 
     pub(in crate::executor::tests) fn with_remove_path_before_copy(
@@ -376,6 +386,9 @@ impl Sandbox for QueuedCopyFileSandbox {
     }
 
     async fn start(&mut self) -> sandbox::Result<()> {
+        if let Some(path) = self.remove_path_before_start.take() {
+            std::fs::remove_file(path)?;
+        }
         self.inner.start().await
     }
 

@@ -14,6 +14,38 @@ fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
         .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
     assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
 }
+
+struct RemoveRegistryBeforeStartFactory {
+    inner: MockSandboxFactory,
+    registry_path: PathBuf,
+}
+
+#[async_trait::async_trait]
+impl SandboxFactory for RemoveRegistryBeforeStartFactory {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn config_hash(&self) -> String {
+        self.inner.config_hash()
+    }
+
+    async fn create(&self, config: sandbox::SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
+        let sandbox = self.inner.create(config).await?;
+        Ok(Box::new(
+            QueuedCopyFileSandbox::new(sandbox, Vec::new())
+                .with_remove_path_before_start(self.registry_path.clone()),
+        ))
+    }
+
+    async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
+        self.inner.destroy(sandbox).await;
+    }
+
+    async fn shutdown(&mut self) {
+        self.inner.shutdown().await;
+    }
+}
 #[test]
 fn proxy_register_fast_success_logs_info() {
     let events = capture_proxy_register_events(|| {
@@ -124,6 +156,50 @@ async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_
         "agent must not start when proxy registry registration fails"
     );
 }
+
+#[tokio::test]
+async fn execute_new_sandbox_does_not_retry_when_proxy_unregister_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_start_result(Err(SandboxError::StartRequiresFreshSandbox {
+        message: "guest DNS readiness failed".into(),
+    }));
+    let factory = RemoveRegistryBeforeStartFactory {
+        inner: MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        registry_path: dir.path().join("proxy-registry.json"),
+    };
+    let ctx = minimal_context();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = execute_new_sandbox(
+        &factory,
+        &ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::PoolMiss,
+        },
+        &config,
+        &default_params(),
+        &mut telemetry,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.err().unwrap();
+    assert!(
+        error.to_string().contains("guest DNS readiness failed"),
+        "got: {error}"
+    );
+    assert_eq!(overrides.create_configs().len(), 1);
+    assert_eq!(overrides.destroy_call_count(), 1);
+    assert_no_telemetry_action(
+        &telemetry,
+        "runner_fresh_sandbox_retry_after_start_readiness",
+    );
+}
+
 #[tokio::test]
 async fn execute_reused_sandbox_proxy_register_failure_returns_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
