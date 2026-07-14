@@ -48,6 +48,19 @@ describe("isFeatureEnabled", () => {
     ).toBe(false);
   });
 
+  it("should return true when orgId hash matches enabledOrgIdHashes", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Lab, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ApiKeys, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+  });
+
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
@@ -64,6 +77,15 @@ describe("isFeatureEnabled", () => {
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Lab, {})).toBe(false);
   });
+
+  it("should return true when orgId matches even if userId does not", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Lab, {
+        userId: "non-matching-user",
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("getAllFeatureStates", () => {
@@ -71,6 +93,17 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+  });
+
+  it("should enable switches when orgId matches enabledOrgIdHashes", () => {
+    const states = getAllFeatureStates({
+      orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    });
+    expect(states[FeatureSwitchKey.Lab]).toBe(true);
+    // Globally enabled should still be true
+    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+    // Switches without org hashes should remain false
+    expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(false);
   });
 
   it("should return false for switches with orgId hashes when orgId does not match", () => {
@@ -92,6 +125,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
@@ -124,6 +158,7 @@ describe("getAllFeatureStates", () => {
     // WorkflowWebhookTriggers is globally enabled, so it is on for every org
     expect(otherOrgStates[FeatureSwitchKey.WorkflowWebhookTriggers]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroScrape]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.CodexFrameworkForMinimax]).toBe(
       false,
     );
