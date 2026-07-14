@@ -224,7 +224,7 @@ const postVideoInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     .where(eq(orgMetadata.orgId, auth.orgId))
     .limit(1);
   signal.throwIfAborted();
-  if (org?.tier === "limited-free-1") {
+  if (org?.tier === "limited-free-1" || org?.tier === "pro-suspend") {
     return videoRequiresPaidPlan();
   }
 

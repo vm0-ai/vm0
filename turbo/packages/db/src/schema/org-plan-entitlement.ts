@@ -41,6 +41,9 @@ export const orgPlanEntitlements = pgTable(
     videoGenerationAllowed: boolean("video_generation_allowed")
       .notNull()
       .default(false),
+    workflowWebhookTriggerAllowed: boolean("workflow_webhook_trigger_allowed")
+      .notNull()
+      .default(false),
     audioLifetimeLimit: integer("audio_lifetime_limit"),
     audioDailyRateLimit: integer("audio_daily_rate_limit").notNull().default(0),
     audioDailyDurationSeconds: integer("audio_daily_duration_seconds")

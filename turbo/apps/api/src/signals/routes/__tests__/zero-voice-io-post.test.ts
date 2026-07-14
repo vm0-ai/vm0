@@ -822,9 +822,9 @@ describe("POST /api/zero/voice-io/*", () => {
       expect(response.status).toBe(200);
     }
 
-    // The lifetime counter is only product-visible at free tier (the quota
-    // surface always reports 0 for pro/team). Downgrading the org to free
-    // exposes it: had the pro requests incremented it, count would be 2.
+    // The lifetime counter is only recorded for lifetime-limited tiers (the
+    // quota surface always reports 0 for pro/team). Downgrading the org to
+    // free exposes it: had the pro requests incremented it, count would be 2.
     await seedOrgMetadata({
       orgId: fixture.orgId,
       tier: "free",
@@ -837,28 +837,31 @@ describe("POST /api/zero/voice-io/*", () => {
     });
   });
 
-  it("increments the /stt free-tier audio input counter up to quota", async () => {
-    const fixture = await seedVoiceFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    mockBytePlusStt("free transcript");
+  it.each(["free", "limited-free-1"] as const)(
+    "increments the /stt lifetime audio input counter for %s orgs up to quota",
+    async (tier) => {
+      const fixture = await seedVoiceFixture({ tier });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      mockBytePlusStt("quota transcript");
 
-    const app = createVoiceIoTestApp();
-    for (let attempt = 1; attempt <= AUDIO_INPUT_FREE_QUOTA; attempt++) {
-      const response = await app.request("/api/zero/voice-io/stt", {
-        method: "POST",
-        headers: authHeaders(),
-        body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
-      });
-      expect(response.status).toBe(200);
-      // The quota surface reports the lifetime count while under the daily
-      // limits and flips to blocked exactly at the shared limit of 10.
-      await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
-        allowed: attempt < AUDIO_INPUT_FREE_QUOTA,
-        count: attempt,
-        limit: AUDIO_INPUT_FREE_QUOTA,
-      });
-    }
-  });
+      const app = createVoiceIoTestApp();
+      for (let attempt = 1; attempt <= AUDIO_INPUT_FREE_QUOTA; attempt++) {
+        const response = await app.request("/api/zero/voice-io/stt", {
+          method: "POST",
+          headers: authHeaders(),
+          body: sttForm(sttFile(new Uint8Array([1, 2, 3]), "audio/webm")),
+        });
+        expect(response.status).toBe(200);
+        // The quota surface reports the lifetime count while under the daily
+        // limits and flips to blocked exactly at the shared limit of 10.
+        await expect(readAudioQuota(fixture)).resolves.toStrictEqual({
+          allowed: attempt < AUDIO_INPUT_FREE_QUOTA,
+          count: attempt,
+          limit: AUDIO_INPUT_FREE_QUOTA,
+        });
+      }
+    },
+  );
 
   it("blocks /stt before BytePlus when the free audio quota is exhausted", async () => {
     const fixture = await seedVoiceFixture({});

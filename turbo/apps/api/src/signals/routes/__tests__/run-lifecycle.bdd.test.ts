@@ -8864,6 +8864,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       supportByok: false,
       restrictedVm0Models: true,
       videoGenerationAllowed: false,
+      workflowWebhookTriggerAllowed: false,
       stripeSubscriptionId: granted.subscriptionId,
       stripePriceId: "price_bdd_pro",
       currentPeriodEnd: new Date(stalePeriodEndUnix * 1000).toISOString(),

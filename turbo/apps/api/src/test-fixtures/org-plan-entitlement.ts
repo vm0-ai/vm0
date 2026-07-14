@@ -22,6 +22,7 @@ interface OrgPlanEntitlementFixtureState {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
   readonly videoGenerationAllowed: boolean;
+  readonly workflowWebhookTriggerAllowed: boolean;
   readonly audioLifetimeLimit: number | null;
   readonly audioDailyRateLimit: number;
   readonly audioDailyDurationSeconds: number;
@@ -50,6 +51,8 @@ export async function readOrgPlanEntitlementFixture(
       supportByok: orgPlanEntitlements.supportByok,
       restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
       videoGenerationAllowed: orgPlanEntitlements.videoGenerationAllowed,
+      workflowWebhookTriggerAllowed:
+        orgPlanEntitlements.workflowWebhookTriggerAllowed,
       audioLifetimeLimit: orgPlanEntitlements.audioLifetimeLimit,
       audioDailyRateLimit: orgPlanEntitlements.audioDailyRateLimit,
       audioDailyDurationSeconds: orgPlanEntitlements.audioDailyDurationSeconds,

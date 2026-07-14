@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { zeroBillingConcurrencyCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
@@ -7,6 +9,7 @@ import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
+import { db$ } from "../external/db";
 import {
   activeConcurrencyPriceId,
   createConcurrencyCheckoutSession$,
@@ -39,6 +42,19 @@ const concurrencyCheckoutAuthed$ = command(
       return bodyResult.response;
     }
     const { quantity, successUrl, cancelUrl } = bodyResult.data;
+
+    const db = get(db$);
+    const [org] = await db
+      .select({ tier: orgMetadata.tier })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, auth.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (org?.tier !== "team" && org?.tier !== "custom") {
+      return badRequestMessage(
+        "Additional concurrency is only available for Team or Custom workspaces",
+      );
+    }
 
     if (
       !billingRedirectAllowed(successUrl) ||

@@ -241,7 +241,10 @@ const voiceInputPolicy$ = command(
       }),
     );
     const lifetimeAudioCount = counts.get(AUDIO_INPUT_BEHAVIOR_KEY) ?? 0;
-    if (orgTier === "free" && lifetimeAudioCount >= AUDIO_INPUT_FREE_QUOTA) {
+    if (
+      (orgTier === "free" || orgTier === "limited-free-1") &&
+      lifetimeAudioCount >= AUDIO_INPUT_FREE_QUOTA
+    ) {
       return paymentRequired(
         "Audio input quota exceeded. Upgrade to Pro or Team for unlimited audio input.",
         "AUDIO_INPUT_QUOTA_EXCEEDED",
@@ -363,7 +366,7 @@ const recordVoiceInputUsage$ = command(
             lastAt: sql`now()`,
           },
         }),
-      params.orgTier === "free"
+      params.orgTier === "free" || params.orgTier === "limited-free-1"
         ? writeDb
             .insert(userBehaviorCount)
             .values({
