@@ -1,0 +1,149 @@
+from contextlib import suppress
+
+
+def sync_alias_before_raise(flow):
+    metadata = flow.metadata
+    with suppress(RuntimeError):
+        raise RuntimeError()
+    return metadata["vm_run_id"]
+
+
+def sync_direct_after_raise(flow):
+    with suppress(RuntimeError):
+        raise RuntimeError()
+    return flow.metadata["firewall_name"]
+
+
+async def async_alias_before_raise(flow, manager):
+    metadata = flow.metadata
+    async with manager:
+        raise RuntimeError()
+    return metadata["original_url"]
+
+
+def branch_alias_on_raise(flow, manager, condition):
+    metadata = {}
+    with manager:
+        if condition:
+            metadata = flow.metadata
+            raise RuntimeError()
+        metadata = {}
+    return metadata["vm_proxy_log_path"]
+
+
+def branch_entry_alias_on_raise(flow, manager, condition):
+    metadata = flow.metadata
+    with manager:
+        if condition:
+            raise RuntimeError()
+        metadata = {}
+    return metadata["capture_body"]
+
+
+def rebind_before_raise(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        metadata = {}
+        raise RuntimeError()
+    return metadata["vm_run_id"]
+
+
+def return_is_terminal(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        return None
+    return metadata["vm_run_id"]
+
+
+def break_is_terminal(flow, manager, rows):
+    metadata = flow.metadata
+    for _row in rows:
+        with manager:
+            break
+        metadata["vm_run_id"]
+
+
+def continue_is_terminal(flow, manager, rows):
+    metadata = flow.metadata
+    for _row in rows:
+        with manager:
+            continue
+        metadata["vm_run_id"]
+
+
+def with_target_rebinds_to_external(flow, manager):
+    metadata = flow.metadata
+    with manager as metadata:
+        pass
+    return metadata["vm_run_id"]
+
+
+def nested_function_raise_is_deferred(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        def inner():
+            raise RuntimeError()
+
+        return None
+    return metadata["vm_run_id"]
+
+
+def nested_managers_may_defer_suppression(flow, outer_manager, inner_manager):
+    metadata = flow.metadata
+    with outer_manager:
+        with inner_manager:
+            raise RuntimeError()
+        metadata = {}
+    return metadata["firewall_base"]
+
+
+def bare_handler_return_is_terminal(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        try:
+            raise RuntimeError()
+        except:
+            return None
+    return metadata["vm_run_id"]
+
+
+def typed_handler_may_not_catch(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        try:
+            raise RuntimeError()
+        except ValueError:
+            return None
+    return metadata["auth_refreshed_connectors"]
+
+
+def terminal_finally_overrides_raise(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        try:
+            raise RuntimeError()
+        finally:
+            return None
+    return metadata["vm_run_id"]
+
+
+def raising_finally_may_be_suppressed(flow, manager):
+    metadata = flow.metadata
+    with manager:
+        try:
+            return None
+        finally:
+            raise RuntimeError()
+    return metadata["auth_resolved_secrets"]
+
+
+def class_body_raise_may_be_suppressed(flow, manager):
+    metadata = flow.metadata
+    with manager:
+
+        class Broken:
+            raise RuntimeError()
+
+        metadata = {}
+    return metadata["connector_diagnostic_base"]

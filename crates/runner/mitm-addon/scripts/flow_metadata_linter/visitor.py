@@ -62,6 +62,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self.violations: list[str] = []
         self._violation_messages: set[str] = set()
         self._metadata_alias_scopes: list[set[str]] = [set()]
+        self._exception_alias_scopes: list[set[str]] = []
         self._class_nested_scope_alias_scopes: list[set[str]] = []
         self._metadata_key_checked_node_ids: set[int] = set()
         self._named_expr_target_scope_indexes: list[int] = []
@@ -201,6 +202,13 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_aliases.clear()
         self._metadata_aliases.update(aliases)
 
+    def _record_exception_aliases(self, aliases: set[str] | None = None) -> None:
+        if not self._exception_alias_scopes:
+            return
+        self._exception_alias_scopes[-1].update(
+            self._metadata_aliases if aliases is None else aliases
+        )
+
     def _visit_definition_expression(
         self,
         node: ast.AST,
@@ -237,6 +245,15 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.pop()
         return result, falls_through
 
+    def _visit_branch_body_capturing_exceptions(
+        self, body: list[ast.stmt], aliases: set[str]
+    ) -> tuple[set[str], bool, set[str]]:
+        exception_aliases: set[str] = set()
+        self._exception_alias_scopes.append(exception_aliases)
+        result_aliases, falls_through = self._visit_branch_body(body, aliases)
+        self._exception_alias_scopes.pop()
+        return result_aliases, falls_through, exception_aliases
+
     def _visit_branch_body_state_only(
         self, body: list[ast.stmt], aliases: set[str]
     ) -> tuple[set[str], bool]:
@@ -262,6 +279,17 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         result = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
         return result, falls_through
+
+    def _visit_except_handler_branch_capturing_exceptions(
+        self, handler: ast.ExceptHandler, aliases: set[str]
+    ) -> tuple[set[str], bool, set[str]]:
+        exception_aliases: set[str] = set()
+        self._exception_alias_scopes.append(exception_aliases)
+        result_aliases, falls_through = self._visit_except_handler_branch(handler, aliases)
+        self._exception_alias_scopes.pop()
+        if handler.name is not None:
+            exception_aliases.discard(handler.name)
+        return result_aliases, falls_through, exception_aliases
 
     def _visit_scoped_body(
         self,
@@ -335,7 +363,9 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         body_base_aliases = self._nested_function_base_aliases()
         body_base_aliases.difference_update(body_global_names)
         body_base_aliases.update(self._metadata_alias_scopes[0] & body_global_names)
+        self._exception_alias_scopes.append(set())
         self._visit_scoped_body(node.body, shadowed_names, metadata_defaults, body_base_aliases)
+        self._exception_alias_scopes.pop()
         self._metadata_aliases.discard(node.name)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -349,12 +379,14 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         for default in [*node.args.defaults, *node.args.kw_defaults]:
             if default is not None:
                 self._visit_default_value(default)
+        self._exception_alias_scopes.append(set())
         self._visit_scoped_expression(
             node.body,
             (_argument_names(node.args) | _expression_bound_names(node.body)) - metadata_defaults,
             metadata_defaults,
             self._nested_function_base_aliases(),
         )
+        self._exception_alias_scopes.pop()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for decorator in node.decorator_list:
@@ -376,9 +408,15 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         class_body_aliases.update(
             self._metadata_alias_scopes[0] & (class_body_bound_names | class_body_global_names)
         )
+        class_failure_aliases = set(self._metadata_aliases)
+        class_exception_aliases: set[str] = set()
+        self._exception_alias_scopes.append(class_exception_aliases)
         self._class_nested_scope_alias_scopes.append(outer_aliases)
         self._visit_scoped_body(node.body, base_aliases=class_body_aliases)
         self._class_nested_scope_alias_scopes.pop()
+        self._exception_alias_scopes.pop()
+        if class_exception_aliases:
+            self._record_exception_aliases(class_failure_aliases)
         self._metadata_aliases.discard(node.name)
 
     def visit_TypeAlias(self, node: ast.AST) -> None:
@@ -582,6 +620,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._record_metadata_merge_key_violations(node.exc)
         self._record_metadata_merge_key_violations(node.cause)
         self.generic_visit(node)
+        self._record_exception_aliases()
 
     def visit_Yield(self, node: ast.Yield) -> None:
         self._record_metadata_merge_key_violations(node.value)
@@ -673,7 +712,7 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         )
         self._replace_current_aliases(loop_exit_aliases | orelse_aliases)
 
-    def visit_With(self, node: ast.With) -> None:
+    def _visit_with_statement(self, node: ast.With | ast.AsyncWith) -> None:
         for item in node.items:
             self._record_metadata_merge_key_violations(item.context_expr)
             self.visit(item.context_expr)
@@ -681,23 +720,22 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
         self._metadata_alias_scopes.append(body_aliases)
         for item in node.items:
             self._discard_alias_target(item.optional_vars)
+        exception_aliases: set[str] = set()
+        self._exception_alias_scopes.append(exception_aliases)
         body_falls_through = self._visit_current_scope_body(node.body)
+        self._exception_alias_scopes.pop()
         body_result_aliases = set(self._metadata_aliases)
         self._metadata_alias_scopes.pop()
-        self._replace_current_aliases(body_result_aliases if body_falls_through else set())
+        exit_aliases = body_result_aliases if body_falls_through else set()
+        exit_aliases.update(exception_aliases)
+        self._replace_current_aliases(exit_aliases)
+        self._record_exception_aliases(exception_aliases)
+
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_with_statement(node)
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
-        for item in node.items:
-            self._record_metadata_merge_key_violations(item.context_expr)
-            self.visit(item.context_expr)
-        body_aliases = set(self._metadata_aliases)
-        self._metadata_alias_scopes.append(body_aliases)
-        for item in node.items:
-            self._discard_alias_target(item.optional_vars)
-        body_falls_through = self._visit_current_scope_body(node.body)
-        body_result_aliases = set(self._metadata_aliases)
-        self._metadata_alias_scopes.pop()
-        self._replace_current_aliases(body_result_aliases if body_falls_through else set())
+        self._visit_with_statement(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         if node.type is not None:
@@ -714,43 +752,66 @@ class _MetadataKeyVisitor(ast.NodeVisitor):
 
     def _visit_try_statement(self, node: ast.Try) -> None:
         base_aliases = set(self._metadata_aliases)
-        body_aliases, body_falls_through = self._visit_branch_body(node.body, base_aliases)
-        handler_start_aliases = base_aliases | body_aliases
+        body_aliases, body_falls_through, body_exception_aliases = (
+            self._visit_branch_body_capturing_exceptions(node.body, base_aliases)
+        )
+        handler_start_aliases = base_aliases | body_aliases | body_exception_aliases
         handler_results = [
-            self._visit_except_handler_branch(handler, handler_start_aliases)
+            self._visit_except_handler_branch_capturing_exceptions(handler, handler_start_aliases)
             for handler in node.handlers
         ]
         exit_aliases: set[str] = set()
+        exception_aliases: set[str] = set()
+        if not any(handler.type is None for handler in node.handlers):
+            exception_aliases.update(body_exception_aliases)
         if body_falls_through:
             if node.orelse:
-                orelse_aliases, orelse_falls_through = self._visit_branch_body(
-                    node.orelse, body_aliases
+                orelse_aliases, orelse_falls_through, orelse_exception_aliases = (
+                    self._visit_branch_body_capturing_exceptions(node.orelse, body_aliases)
                 )
+                exception_aliases.update(orelse_exception_aliases)
                 if orelse_falls_through:
                     exit_aliases.update(orelse_aliases)
             else:
                 exit_aliases.update(body_aliases)
-        for aliases, falls_through in handler_results:
+        for aliases, falls_through, handler_exception_aliases in handler_results:
+            exception_aliases.update(handler_exception_aliases)
             if falls_through:
                 exit_aliases.update(aliases)
         if node.finalbody:
-            finalbody_scan_aliases = base_aliases | body_aliases
-            for aliases, _falls_through in handler_results:
+            finalbody_scan_aliases = (
+                base_aliases
+                | body_aliases
+                | body_exception_aliases
+                | exit_aliases
+                | exception_aliases
+            )
+            for aliases, _falls_through, handler_exception_aliases in handler_results:
                 finalbody_scan_aliases.update(aliases)
+                finalbody_scan_aliases.update(handler_exception_aliases)
+            finalbody_exception_aliases: set[str] = set()
+            self._exception_alias_scopes.append(finalbody_exception_aliases)
+            finalbody_scan_result, finalbody_falls_through = self._visit_branch_body(
+                node.finalbody, finalbody_scan_aliases
+            )
             if finalbody_scan_aliases == exit_aliases:
-                exit_aliases, finalbody_falls_through = self._visit_branch_body(
-                    node.finalbody, exit_aliases
+                exit_aliases = finalbody_scan_result
+            elif exit_aliases:
+                exit_aliases = self._visit_branch_body_state_only(node.finalbody, exit_aliases)[0]
+            if exception_aliases and finalbody_falls_through:
+                exception_aliases = (
+                    finalbody_scan_result
+                    if finalbody_scan_aliases == exception_aliases
+                    else self._visit_branch_body_state_only(node.finalbody, exception_aliases)[0]
                 )
             else:
-                self._visit_branch_body(node.finalbody, finalbody_scan_aliases)
-                exit_aliases, finalbody_falls_through = (
-                    self._visit_branch_body_state_only(node.finalbody, exit_aliases)
-                    if exit_aliases
-                    else (set(), True)
-                )
+                exception_aliases = set()
+            self._exception_alias_scopes.pop()
             if not finalbody_falls_through:
                 exit_aliases = set()
+            exception_aliases.update(finalbody_exception_aliases)
         self._replace_current_aliases(exit_aliases)
+        self._record_exception_aliases(exception_aliases)
 
     def visit_Try(self, node: ast.Try) -> None:
         self._visit_try_statement(node)
